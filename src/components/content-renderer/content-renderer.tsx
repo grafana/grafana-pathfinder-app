@@ -847,9 +847,14 @@ function ContentProcessor({
 
     elements.forEach((el, idx) => {
       if (el.type === 'interactive-section') {
-        // Predict sectionId using the same logic as InteractiveSection's useMemo:
-        // prefer the explicit HTML id prop, otherwise use the sequential counter.
-        const sectionId = el.props.id ? `section-${el.props.id}` : `section-${++sectionCounter}`;
+        // Same precedence InteractiveSection's own useMemo applies: the
+        // parser-stamped sectionId (sectionRuntimeId) wins outright. Falling
+        // through to the id-based/counter derivation here for an id-less
+        // section double-registers it under a second key the parser-stamped
+        // id has already claimed, inflating the total (section-registry
+        // -third-deriver-double-count).
+        const sectionId =
+          el.props.sectionId ?? (el.props.id ? `section-${el.props.id}` : `section-${++sectionCounter}`);
         const stepCount = countStepsInSection(el);
         registerSectionSteps(sectionId, stepCount, docOrder);
         docOrder++;

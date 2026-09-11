@@ -223,6 +223,36 @@ describe('useLearningPaths — URL-based path rollup (decision 4)', () => {
     expect(result.current.getPathProgress('linux-server-integration')).toBe(100);
     expect(result.current.isPathCompleted('linux-server-integration')).toBe(true);
   });
+
+  // reset-guard-identity-divergence (blocker 2, required fix): resetPath's
+  // guard invalidation must not depend on the dynamic fetchPathGuides call
+  // having landed. `path.guides` is `[]` in the static mockPathsData until
+  // that fetch resolves, so resetting immediately after the paths array
+  // first appears — before awaiting the guides fetch — must still recover
+  // and invalidate each milestone's guard from real (mocked) storage.
+  it('lifts the per-milestone guard from recovered content keys even before the guides fetch lands', async () => {
+    useUrlBasedPath();
+    const { interactiveCompletionStorage } = jest.requireMock('../lib/user-storage');
+    interactiveCompletionStorage.getAll.mockResolvedValue({
+      [LINUX_MODULES['select-platform']!]: 100,
+      [LINUX_MODULES['install-alloy']!]: 50,
+    });
+
+    const { result } = renderHook(() => useLearningPaths());
+    // Deliberately not awaiting the guides fetch — `path.guides` is still `[]`.
+    await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain('linux-server-integration'));
+    expect(result.current.paths.find((p) => p.id === 'linux-server-integration')?.guides).toHaveLength(0);
+
+    await act(async () => {
+      await result.current.resetPath('linux-server-integration');
+    });
+
+    const invalidatedKeys = new Set(mockCompletionEmittedClear.mock.calls.map(([key]) => key));
+    // The slugs recovered from real storage-derived content keys, not from
+    // the (still-empty) dynamically-fetched path.guides.
+    expect(invalidatedKeys).toContain('guide:app-platform:select-platform');
+    expect(invalidatedKeys).toContain('guide:app-platform:install-alloy');
+  });
 });
 
 describe('useLearningPaths — App Platform path ingestion', () => {

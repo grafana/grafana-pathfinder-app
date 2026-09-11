@@ -281,7 +281,6 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
     // reset target is a milestone — the reset path must derive the same
     // slug this way, not guess at it independently.
     const milestoneSlug = resolveActiveMilestoneSlug({
-      contentType: 'learning-journey',
       currentUrl: 'https://example.com/journey/m1',
       journeyBaseUrl: 'base',
     });
@@ -296,6 +295,43 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
 
     expect(emitted).toHaveLength(2);
     expect(emitted[1]).toMatchObject({ guideSource: 'app-platform', guideId: 'm1' });
+  });
+
+  // Reviewer's finding (reset-guard-identity-divergence, round 2): the reset
+  // path must not depend on the CALLER correctly classifying the tab as a
+  // learning-journey. MyLearningTab.tsx:301-303 launches a path member with
+  // its PARENT PATH's manifest ({...parentPath.manifest, id: parentPath.id})
+  // and prepareGuideLaunch's own routing classification (isLearningJourneyUrl)
+  // returns false for a `backend-guide:` scheme URL — so a caller deriving
+  // "is this a milestone" from contentType can disagree with the writer,
+  // which never consulted contentType at all. This asserts the agreement
+  // holds even when the reset site's contentType is wrong/absent — the fix
+  // must key off `journeyBaseUrl` alone, which is always populated once the
+  // content resolves, regardless of how the launch route classified the tab.
+  it('re-marking after a reset still emits a second record when the reset site cannot classify the tab as a learning-journey (reset-guard-identity-divergence)', async () => {
+    // Mirrors MyLearningTab.tsx:301-303 exactly.
+    const parentPathManifest = { id: 'my-path', repository: 'app-platform', type: 'path' };
+    const context = { packageManifest: parentPathManifest };
+
+    await markMilestoneDone('backend-guide:my-path', 'milestone-one', undefined, context);
+    expect(emitted).toHaveLength(1);
+
+    // No contentType passed at all — the reset site must not need it.
+    const milestoneSlug = resolveActiveMilestoneSlug({
+      currentUrl: 'backend-guide:milestone-one',
+      journeyBaseUrl: 'backend-guide:my-path',
+    });
+    expect(milestoneSlug).toBe('milestone-one');
+
+    await resetGuideProgress('backend-guide:my-path', {
+      packageManifest: parentPathManifest,
+      milestoneSlug,
+    });
+
+    await markMilestoneDone('backend-guide:my-path', 'milestone-one', undefined, context);
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[1]).toMatchObject({ guideSource: 'app-platform', guideId: 'milestone-one' });
   });
 });
 

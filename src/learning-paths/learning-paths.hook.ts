@@ -22,6 +22,7 @@ import type {
 
 import { invalidateEmittedCompletion } from '../completion-records';
 import { StorageEvents } from '../lib/event-names';
+import { getMilestoneSlug } from '../lib/learning-journey-url';
 import { logger } from '../lib/logging';
 import {
   learningProgressStorage,
@@ -515,6 +516,11 @@ export function useLearningPaths(): UseLearningPathsReturn {
         return;
       }
 
+      // Guard-invalidation member ids beyond `path.guides`, which for a
+      // URL-based path can still be empty here — the dynamic milestone fetch
+      // that populates it is not required for a reset to be effective.
+      let recoveredMilestoneSlugs: string[] = [];
+
       if (path.url) {
         await milestoneCompletionStorage.clear(path.url);
 
@@ -541,6 +547,14 @@ export function useLearningPaths(): UseLearningPathsReturn {
         await guideCompletionMarkStorage.clearAllWithPrefix(normalizedUrl);
 
         milestoneKeys.forEach((key) => evictContentCache(key));
+
+        // markMilestoneDone keys the durable guard on the bare slug, not the
+        // content key — recovered here from real storage rather than from
+        // `path.guides`, which needs the dynamic milestone fetch to have
+        // landed and can still be empty at reset time.
+        recoveredMilestoneSlugs = milestoneKeys
+          .map((key) => getMilestoneSlug(key))
+          .filter((slug): slug is string => Boolean(slug));
       } else {
         // No base URL: either a static bundled path (`bundled:<id>`) or an App
         // Platform path whose members are `backend-guide:<id>`. We can't tell
@@ -575,7 +589,10 @@ export function useLearningPaths(): UseLearningPathsReturn {
       // Lifts the write-side dedupe guard for the path itself and every
       // member, so a member re-completed after this reset emits a fresh
       // durable record rather than deduping against the one just erased.
-      invalidateEmittedCompletionsForPathMembers([path.id, ...path.guides]);
+      // `recoveredMilestoneSlugs` covers a URL-based path whose members
+      // never keyed into `path.guides` because the dynamic fetch had not
+      // landed at reset time.
+      invalidateEmittedCompletionsForPathMembers([path.id, ...path.guides, ...recoveredMilestoneSlugs]);
 
       window.dispatchEvent(
         new CustomEvent(StorageEvents.InteractiveProgressCleared, {

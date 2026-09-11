@@ -36,7 +36,6 @@ export function useContentReset({ model }: UseContentResetOptions) {
           packageManifest: activeTab?.content?.metadata?.packageManifest,
           repository: activeTab?.content?.metadata?.repository,
           milestoneSlug: resolveActiveMilestoneSlug({
-            contentType: activeTab?.content?.type,
             currentUrl: activeTab?.currentUrl,
             journeyBaseUrl: activeTab?.content?.metadata?.learningJourney?.baseUrl,
           }),

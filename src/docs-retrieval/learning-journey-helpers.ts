@@ -623,13 +623,20 @@ export interface SurfaceCompletionInput {
  * this check independently could disagree with the writer about which
  * content counts as a milestone, which is the same class of drift the
  * identity-derivation split above exists to prevent.
+ *
+ * Deliberately does NOT gate on `contentType === 'learning-journey'` — a
+ * caller's own content-type classification is exactly the thing that can
+ * disagree between the writer and a reset site (a path member opened
+ * through a route that does not tag it that way still has a real
+ * `learningJourney.baseUrl` once its content resolves). `journeyBaseUrl`
+ * being resolvable is the one signal that is always true when this is
+ * genuinely a milestone, regardless of how the caller classified the tab.
  */
 export function resolveActiveMilestoneSlug(input: {
-  contentType?: string;
   currentUrl?: string;
   journeyBaseUrl?: string;
 }): string | undefined {
-  const slug = input.contentType === 'learning-journey' && input.currentUrl ? getMilestoneSlug(input.currentUrl) : '';
+  const slug = input.currentUrl ? getMilestoneSlug(input.currentUrl) : '';
   return slug && input.journeyBaseUrl ? slug : undefined;
 }
 
@@ -640,12 +647,12 @@ export function resolveActiveMilestoneSlug(input: {
  * than each surface re-deciding (or forgetting to emit).
  */
 export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): void {
-  const { baseUrl, contentUrl, currentUrl, contentType, metadata, guideTitle } = input;
+  const { baseUrl, contentUrl, currentUrl, metadata, guideTitle } = input;
   // Two distinct keys: the surface base a tab happens to be pinned at, and the
   // journey's resolved cover URL that milestone progress is stored under.
   const surfaceBase = baseUrl || contentUrl;
   const journeyBase = metadata?.learningJourney?.baseUrl;
-  const slug = resolveActiveMilestoneSlug({ contentType, currentUrl, journeyBaseUrl: journeyBase }) ?? '';
+  const slug = resolveActiveMilestoneSlug({ currentUrl, journeyBaseUrl: journeyBase }) ?? '';
   const willMarkMilestone = Boolean(slug && journeyBase);
   const completionContext: CompletionContext = {
     packageManifest: metadata?.packageManifest,
