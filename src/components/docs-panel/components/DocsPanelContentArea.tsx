@@ -384,7 +384,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                 panel={model}
                 activeTab={activeTab}
                 surface="sidebar"
-                contentRoot={contentRef}
                 hasInteractiveProgress={hasInteractiveProgress}
                 progressKey={progressKey}
                 onResetGuide={handleResetGuide}

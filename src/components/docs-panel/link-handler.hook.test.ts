@@ -243,7 +243,10 @@ describe('useLinkClickHandler', () => {
       expect(mockModel.navigateToPreviousMilestone).toHaveBeenCalled();
     });
 
-    it('completes a step-free milestone against the UNLOCKED milestones, not the locked-inclusive total', () => {
+    // Decision 6 (docs/design/COMPLETION-MODEL.md): navigation earns no
+    // completion credit, on a step-free milestone or otherwise. Only
+    // evidence or the Mark complete button may call `markMilestoneDone`.
+    it('does NOT complete a step-free milestone on bottom-nav Next', () => {
       const { markMilestoneDone } = jest.requireMock('../../docs-retrieval');
       mockModel.getActiveTab.mockReturnValue({
         id: 'tab1',
@@ -256,7 +259,6 @@ describe('useLinkClickHandler', () => {
           metadata: {
             learningJourney: {
               baseUrl: 'backend-guide:fe-alerting-path',
-              // 3 declared, 1 locked → 2 reachable.
               totalMilestones: 3,
               milestones: [
                 { number: 1, title: 'm1', url: 'backend-guide:fe-alerting-01', isActive: false },
@@ -274,20 +276,13 @@ describe('useLinkClickHandler', () => {
         useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
       );
 
-      // No `[data-step-id]` in contentDiv → the milestone is completed on Next.
+      // No `[data-step-id]` in contentDiv — a prose-only milestone.
       const nextButton = document.createElement('button');
       nextButton.setAttribute('data-journey-nav', 'next');
       contentDiv.appendChild(nextButton);
       fireEvent.click(nextButton);
 
-      // The two unlocked slugs, not all 3 declared — a locked trailing member
-      // carries `url: ''`, yields no slug, and must not block completion.
-      expect(markMilestoneDone).toHaveBeenCalledWith(
-        'backend-guide:fe-alerting-path',
-        'fe-alerting-01',
-        ['fe-alerting-01', 'fe-alerting-02'],
-        expect.any(Object)
-      );
+      expect(markMilestoneDone).not.toHaveBeenCalled();
     });
 
     // -------------------------------------------------------------------------

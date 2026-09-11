@@ -13,9 +13,6 @@
  *
  * Surface-specific bits stay in props:
  * - `surface` controls the analytics `interaction_location` for "Open".
- * - `contentRoot` lets the sidebar scope the "no interactive steps" DOM
- *   query to its panel's content ref; fullscreen falls back to the global
- *   `[data-pathfinder-content="true"]` selector.
  *
  * The kebab uses `usePanelModeControls()` directly rather than taking a
  * consumer-injected slot, so Pop out/Dock and Full screen are correct on
@@ -34,12 +31,7 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import {
-  getJourneyProgress,
-  getMilestoneSlug,
-  markMilestoneDone,
-  resolveExpectedMilestoneIds,
-} from '../../../docs-retrieval';
+import { getJourneyProgress } from '../../../docs-retrieval';
 import { usePanelModeControls } from '../../../global-state/use-panel-mode';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import { testIds } from '../../../constants/testIds';
@@ -58,13 +50,6 @@ export interface LearningJourneyMilestoneToolbarProps {
    * sidebar from fullscreen interactions.
    */
   surface: MilestoneToolbarSurface;
-  /**
-   * Element whose subtree is searched for `[data-step-id]` to decide
-   * whether to mark a step-less milestone done before navigating forward.
-   * When omitted, falls back to a global
-   * `[data-pathfinder-content="true"]` query (the fullscreen surface).
-   */
-  contentRoot?: React.RefObject<HTMLElement | null>;
   /**
    * From `useGuideProgressState`. Drives the visibility of the
    * "Reset guide" button.
@@ -91,7 +76,6 @@ export function LearningJourneyMilestoneToolbar({
   panel,
   activeTab,
   surface,
-  contentRoot,
   hasInteractiveProgress,
   progressKey,
   onResetGuide,
@@ -142,26 +126,6 @@ export function LearningJourneyMilestoneToolbar({
       interaction_location: 'milestone_progress_bar',
       completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
     });
-    // Mirror the legacy behavior: when the current milestone has no
-    // interactive steps in the rendered DOM, mark it done so progress
-    // advances even though there's nothing to "complete". The DOM scope
-    // comes from `contentRoot` (sidebar) or the global content attribute
-    // (fullscreen) — both restrict the search to the active panel.
-    if (activeTab.currentUrl) {
-      const root: ParentNode =
-        contentRoot?.current ?? document.querySelector('[data-pathfinder-content="true"]') ?? document;
-      const hasInteractiveSteps = root.querySelectorAll('[data-step-id]').length > 0;
-      if (!hasInteractiveSteps) {
-        const slug = getMilestoneSlug(activeTab.currentUrl);
-        if (slug) {
-          void markMilestoneDone(lj.baseUrl, slug, resolveExpectedMilestoneIds(lj), {
-            packageManifest: activeTab.content?.metadata?.packageManifest,
-            repository: activeTab.content?.metadata?.repository,
-            guideTitle: activeTab.title,
-          });
-        }
-      }
-    }
     panel.navigateToNextMilestone();
   };
 
