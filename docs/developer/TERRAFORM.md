@@ -6,9 +6,13 @@ provider change and no backend change are needed: `InteractiveGuide` is an App
 Platform kind, and that resource manages any namespaced App Platform kind from
 a Kubernetes-style manifest.
 
-This replaces the [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh)
-workflow for stacks where the aggregator is already enabled, and adds three
-things the scripts cannot do: deletion, drift detection, and real state.
+On stacks where the aggregator is already enabled, this replaces the
+[`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) workflow **for
+content the CRD fully declares**, and adds three things the scripts cannot do:
+deletion, drift detection, and real state. For content that uses fields the
+CRD prunes, Terraform is not a weaker option but an unusable one — the plan
+never converges. Check your content against [what "covered by the CRD shape"
+means](#what-covered-by-the-crd-shape-means) before retiring the script path.
 
 This document is a **partial** answer to
 [#1233](https://github.com/grafana/grafana-pathfinder-app/issues/1233). It
@@ -45,8 +49,9 @@ guides/
 
 ### The guide
 
-`intro-to-loki.json` holds the bare `spec` — the same shape the editor's
-**Library → Export** produces, minus the Kubernetes envelope:
+`intro-to-loki.json` holds the bare `spec` — the shape the editor's **Copy
+JSON** and **Download JSON** items produce from the more-actions menu, plus
+`status`, which that export does not carry:
 
 ```json
 {
@@ -125,9 +130,10 @@ Terraform reports `1 added`. The guide is now in the stack's library and, at
 `"status": "published"`, live in the docs panel.
 
 Re-running `terraform plan` with nothing changed reports no changes. That
-clean second plan is the property the bash scripts cannot offer, and it is
-worth checking on a new manifest before trusting it — see [what "covered by
-the CRD shape" means](#what-covered-by-the-crd-shape-means).
+clean second plan is the property the bash scripts cannot offer, and it is the
+first thing to check on a new manifest — though it is necessary rather than
+sufficient, for reasons in [what "covered by the CRD shape"
+means](#what-covered-by-the-crd-shape-means).
 
 ### Changing and removing a guide
 
@@ -180,6 +186,48 @@ For a path, `metadata.name` and `spec.id` must not diverge — the manifest's
 `metadata.name`. See [`spec.id` must be a valid resource
 name](EXTERNAL_API.md#specid-must-be-a-valid-resource-name).
 
+The cover page's own `spec` carries the manifest, and it should declare
+`repository` even though the server defaults it:
+
+```json
+{
+  "id": "drilldown-logs-lj",
+  "title": "Explore your logs",
+  "schemaVersion": "1.0.0",
+  "status": "published",
+  "manifest": {
+    "type": "path",
+    "repository": "app-platform",
+    "milestones": ["drilldown-logs-view-logs"]
+  },
+  "blocks": [{ "type": "markdown", "id": "cover", "content": "# Explore your logs" }]
+}
+```
+
+Leaving `repository` out is fine under the scripts and a permadiff under
+Terraform. The server defaults it to `"app-platform"`, the provider's refresh
+back-fills any key the server added that your configuration does not declare,
+and the next plan proposes to remove it — after which the server defaults it
+again. This is a second, distinct cause of a plan that never converges:
+pruning removes what you declared, defaulting adds what you did not. Declare
+every server-defaulted key explicitly so configuration and server agree.
+
+Two manifest transformations `upsert-learning-path.sh` performs are yours to
+do by hand here, because `jsondecode` passes the file through unchanged:
+
+- **`depends` must be CNF** — an array of arrays. A bare string is rejected,
+  so `"depends": ["needs-loki"]` has to be widened to
+  `"depends": [["needs-loki"]]`.
+- **Undeclared manifest keys must be nested under `additionalFields`** —
+  `recommends`, `suggests`, `startingLocation`, a `stats` stamp, and `author`
+  subkeys beyond `name` and `team` are pruned anywhere else.
+
+See [the manifest field table](EXTERNAL_API.md#manifest) for which keys the
+CRD declares. Pasting an existing package's `manifest.json` straight under
+`spec` therefore gets you a 422 on the first and silent loss on the second —
+and per [check 2](#checking-a-manifest-before-you-trust-it), a plan will not
+catch the silent half.
+
 ## What "covered by the CRD shape" means
 
 Terraform provisions guides reliably **for content the CRD fully declares**.
@@ -205,11 +253,12 @@ including this one.
 Under the bash scripts, pruning is a silent content loss: your guide uploads,
 and a field is quietly missing.
 
-Under Terraform it becomes a **plan that never converges**. The provider
-refreshes `spec` from the server on every read, and while it recurses into
-nested objects, it takes arrays from the server wholesale. `spec.blocks` is an
-array. So a pruned field is absent from state while your configuration still
-declares it, and Terraform proposes to add it back on every plan:
+Under Terraform, a pruned **block** field becomes a **plan that never
+converges**. The provider refreshes `spec` from the server on every read, and
+while it recurses into nested objects, it takes arrays from the server
+wholesale. `spec.blocks` is an array. So a pruned block field is absent from
+state while your configuration still declares it, and Terraform proposes to
+add it back on every plan:
 
 ```text
 ~ blocks = [
@@ -226,6 +275,13 @@ Each apply reports a change, the server prunes the field again, and the next
 plan shows the same diff. `terraform plan -detailed-exitcode` returns 2
 forever, so the loop also breaks any CI gate built on a clean plan.
 
+A pruned key inside a map is the quieter case, and the recursion is why: when
+a key your configuration declares is missing from the live object, the refresh
+keeps the configuration's value rather than the server's absence. State
+matches configuration, no diff appears, and the field is gone on the stack
+anyway. Everything under `spec.manifest` behaves this way, so pruning there is
+as silent under Terraform as it is under the scripts.
+
 This is a provider-side diffing issue, not a Pathfinder one, and
 `grafana_apps_generic_resource` is documented as experimental with diffing
 semantics subject to change.
@@ -239,24 +295,41 @@ Two checks, in order of cost:
    under `--strict-blocks`:
 
    ```bash
+   export PATHFINDER_SA_TOKEN="$GRAFANA_SA_TOKEN"
+
    scripts/upsert-learning-path.sh \
      --stack slug.grafana.net \
      --package ./my-package \
      --dry-run --strict-blocks
    ```
 
-   The block-field half of this check is local and needs no working stack. Its
-   collision half does make a network call, which
+   The block-field half of this check makes no network call, but the script
+   refuses to start without a token and exits 64 with usage before validating
+   anything — so a CI job running only this check still has to set
+   `PATHFINDER_SA_TOKEN`. The value need only be present, not valid. The
+   collision half does reach the stack, which
    [#1869](https://github.com/grafana/grafana-pathfinder-app/issues/1869)
    currently blocks; the header then reports `Collisions: not checked` and the
    field validation still runs.
 
-2. **Apply, then plan again.** A clean second plan means every field you
-   declared survived the round trip. A diff that reappears after an apply is
-   the permadiff above, and names the offending field.
+2. **Apply, then plan again.** A clean second plan is necessary but not
+   sufficient. It proves the block array round-tripped, because the provider
+   takes arrays from the server wholesale — which is exactly why block pruning
+   surfaces as the permadiff above. It proves nothing about map-nested keys,
+   including everything under `spec.manifest`: when a key your configuration
+   declares is missing from the live object, `refreshConfigScopedSpec` keeps
+   the configuration's value, so state matches configuration and the plan is
+   clean while the field is gone on the server.
 
-Keep check 1 in CI even after moving provisioning to Terraform. It reports
-which field is lossy; Terraform only reports that something is.
+   When a diff does reappear after an apply, its direction names the cause: a
+   field Terraform proposes to **add** was pruned by the server; one it
+   proposes to **remove** was defaulted by the server and is absent from your
+   configuration (see [paths and journeys](#paths-and-journeys)).
+
+That asymmetry is why check 1 stays in CI even after provisioning moves to
+Terraform: it is the only one of the two that detects a silently pruned
+map-nested field, and for block fields it reports _which_ field is lossy where
+Terraform reports only that something is.
 
 A dry run with no warnings is a statement about the CUE at its `main`, not
 about the stack you are uploading to. A stack on an older backend prunes more.

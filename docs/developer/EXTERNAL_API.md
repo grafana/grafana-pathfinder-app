@@ -68,7 +68,7 @@ scripts/upsert-guide.sh \
 
 The script:
 
-1. **Auto-detects the input format** — accepts either a bare spec or a full Kubernetes envelope (e.g. from Library → Export).
+1. **Auto-detects the input format** — accepts either a bare spec (what the editor's **Copy JSON** / **Download JSON** items produce) or a full Kubernetes envelope (what a GET against the endpoint returns).
 2. **Auto-detects the stack namespace** from `/api/frontend/settings` (or accepts `--namespace`).
 3. **Fills in missing required fields**: defaults `status` to `"published"` and `schemaVersion` to `"1.0.0"`, and backfills `spec.id` from the slugified `title` when absent.
 4. Slugifies the resource name from `spec.id` (or the slugified `spec.title` if `id` is missing).
