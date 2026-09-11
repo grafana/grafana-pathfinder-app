@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { testIds } from '../../../constants/testIds';
 import { DocsPanelContentArea, type DocsPanelContentAreaProps } from './DocsPanelContentArea';
 
@@ -237,6 +237,45 @@ describe('DocsPanelContentArea', () => {
       expect(journeyProgressFromMilestones).toHaveBeenCalledWith(lj.baseUrl, lj.milestones);
       const fill = container.querySelector('.progressFill') as HTMLElement;
       expect(fill.style.width).toBe('31%');
+    });
+
+    // The bar reads storage during render, so it goes stale once mounted
+    // unless the component re-renders on the completion store's own
+    // announcement — the same revision seam useLearningPaths and the
+    // milestone toolbar already subscribe to (round 5). Without that
+    // subscription here, this test fails: the fill stays at 10%.
+    it('follows new evidence without an unrelated prop change forcing the re-render', () => {
+      journeyProgressFromMilestones.mockReturnValue(10);
+      const base = makeProps();
+      const lj = { baseUrl: 'backend-guide:path', totalMilestones: 4, currentMilestone: 2, milestones: [] };
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'learning-journey',
+          isLoading: true,
+          content: {
+            url: base.activeTab!.baseUrl,
+            type: 'learning-journey',
+            content: '',
+            metadata: { learningJourney: lj },
+          },
+        } as any,
+      });
+
+      const { container } = render(<DocsPanelContentArea {...props} />);
+      const fill = container.querySelector('.progressFill') as HTMLElement;
+      expect(fill.style.width).toBe('10%');
+
+      journeyProgressFromMilestones.mockReturnValue(30);
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('pathfinder:progress', {
+            detail: { kind: 'guide', contentKey: 'irrelevant', percentage: 30, hasProgress: true },
+          })
+        );
+      });
+
+      expect(fill.style.width).toBe('30%');
     });
   });
 

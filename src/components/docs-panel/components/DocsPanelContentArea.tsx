@@ -15,7 +15,7 @@
  * Lazy imports are kept INSIDE this file so webpack sees the same dynamic-import
  * module specifiers and chunk resolution stays stable.
  */
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useSyncExternalStore } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { usePluginContext } from '@grafana/data';
@@ -37,6 +37,7 @@ import {
   AnalyticsLinkType,
 } from '../../../lib/analytics';
 import { recordGuideCompletionForSurface, journeyProgressFromMilestones } from '../../../docs-retrieval';
+import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
@@ -122,6 +123,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   const twoTabControllerEnabled = getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableTwoTabController;
 
   const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
+
+  // The loading-state milestone bar below reads journeyProgressFromMilestones
+  // out of storage during render, so this re-render is what keeps it from
+  // painting a stale fill once evidence lands while the tab stays mounted.
+  useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
 
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
