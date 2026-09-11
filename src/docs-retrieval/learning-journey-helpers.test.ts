@@ -6,11 +6,13 @@
 import {
   countUnlockedMilestones,
   generateJourneyContentWithExtras,
+  getJourneyProgress,
   getMilestoneSlug,
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
   isLastMilestone,
 } from './learning-journey-helpers';
+import { StorageKeys } from '../lib/storage-keys';
 import type { RawContent, Milestone, LearningJourneyMetadata } from '../types/content.types';
 
 function milestone(number: number, overrides: Partial<Milestone> = {}): Milestone {
@@ -65,6 +67,78 @@ function ljMetadata(currentMilestone: number, milestones: Milestone[]): Learning
 describe('countUnlockedMilestones', () => {
   it('counts only unlocked (navigable) milestones', () => {
     expect(countUnlockedMilestones([milestone(1), milestone(2, { isLocked: true, url: '' }), milestone(3)])).toBe(2);
+  });
+});
+
+// Decision 4: a journey's percentage is the mean of its unlocked milestones'
+// own percentages — a navigation position no longer. Storage is real
+// (localStorage-backed) here; both stores getJourneyProgress reads
+// (interactiveCompletionStorage, milestoneCompletionStorage) resolve
+// synchronously straight from localStorage, with no @grafana/runtime needed.
+describe('getJourneyProgress', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  function setPersistedPercentages(record: Record<string, number>): void {
+    localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify(record));
+  }
+
+  function setCompletedMilestoneSlugs(journeyBaseUrl: string, slugs: string[]): void {
+    localStorage.setItem(StorageKeys.MILESTONE_COMPLETION, JSON.stringify({ [journeyBaseUrl]: slugs }));
+  }
+
+  it('is 0% for a journey with no unlocked milestones', () => {
+    const content = journeyContent(0, [milestone(1, { isLocked: true, url: '' })]);
+    expect(getJourneyProgress(content)).toBe(0);
+  });
+
+  it('is 0% for an unopened journey, before any milestone has a record', () => {
+    const content = journeyContent(0, [milestone(1), milestone(2)]);
+    expect(getJourneyProgress(content)).toBe(0);
+  });
+
+  it('reads the doc\'s worked example end to end — four milestones at 100/25/0/0 reads 31%', () => {
+    const m1 = milestone(1, { url: 'backend-guide:m1' });
+    const m2 = milestone(2, { url: 'backend-guide:m2' });
+    const m3 = milestone(3, { url: 'backend-guide:m3' });
+    const m4 = milestone(4, { url: 'backend-guide:m4' });
+    const content = journeyContent(2, [m1, m2, m3, m4]);
+
+    setCompletedMilestoneSlugs(content.metadata.learningJourney!.baseUrl, [getMilestoneSlug(m1.url)!]);
+    setPersistedPercentages({ [m2.url]: 25 });
+
+    expect(getJourneyProgress(content)).toBe(31);
+  });
+
+  it('does not advance just because the reader navigated to a later milestone', () => {
+    // The old formula was `currentMilestone / totalMilestones`, which read
+    // 100% on the last milestone of a ten-milestone journey with nothing
+    // completed. The mean must not reproduce that.
+    const milestones = Array.from({ length: 10 }, (_, i) => milestone(i + 1, { url: `backend-guide:m${i + 1}` }));
+    const content = journeyContent(10, milestones);
+
+    expect(getJourneyProgress(content)).toBe(0);
+  });
+
+  it('excludes a locked milestone from both halves of the mean', () => {
+    const m1 = milestone(1, { url: 'backend-guide:m1' });
+    const locked = milestone(2, { isLocked: true, url: '' });
+    const content = journeyContent(1, [m1, locked]);
+
+    setCompletedMilestoneSlugs(content.metadata.learningJourney!.baseUrl, [getMilestoneSlug(m1.url)!]);
+
+    // If the locked milestone counted in the denominator this would be 50%.
+    expect(getJourneyProgress(content)).toBe(100);
+  });
+
+  it('reads 100 for a member in the completed set even with no persisted percentage', () => {
+    const m1 = milestone(1, { url: 'backend-guide:m1' });
+    const content = journeyContent(1, [m1]);
+
+    setCompletedMilestoneSlugs(content.metadata.learningJourney!.baseUrl, [getMilestoneSlug(m1.url)!]);
+
+    expect(getJourneyProgress(content)).toBe(100);
   });
 });
 

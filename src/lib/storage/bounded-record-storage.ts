@@ -4,6 +4,16 @@ import type { UserStorage } from '../../types/storage.types';
 export interface BoundedRecordStorage {
   get(key: string): Promise<number>;
   /**
+   * Synchronous read of the whole record — for callers that cannot await one
+   * (a path rollup's mean runs synchronously, in several places, and needs
+   * the whole record rather than one key: `path-member-join.ts` reads by key
+   * presence across several candidate keys per member). The hybrid storage
+   * backend writes through to localStorage before it queues the Grafana
+   * write, so the value is already there. `{}` when nothing has been
+   * written yet or the stored value is malformed.
+   */
+  peekAll(): Record<string, number>;
+  /**
    * Clamps `percentage` to `[0, 100]` and retries once after `cleanup()` on quota errors.
    *
    * On overflow the record is trimmed to `limit` entries: zero-progress
@@ -108,6 +118,19 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
         return data?.[key] || 0;
       } catch {
         return 0;
+      }
+    },
+
+    peekAll(): Record<string, number> {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) {
+          return {};
+        }
+        const data = JSON.parse(raw) as unknown;
+        return data && typeof data === 'object' ? (data as Record<string, number>) : {};
+      } catch {
+        return {};
       }
     },
 

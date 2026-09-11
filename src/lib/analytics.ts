@@ -496,32 +496,22 @@ export interface JourneyContent {
 }
 
 /**
- * Calculates the completion percentage for a learning journey
+ * Extracts journey metadata properties for analytics events.
+ *
+ * `completionPercentage` is a required parameter, not computed here:
+ * `analytics.ts` is tier 1 and the shared percentage calculation
+ * (`getJourneyProgress`, `src/docs-retrieval/learning-journey-helpers.ts`)
+ * is tier 2, so a tier-1 module cannot call into it — every caller is tier 4
+ * and already has the figure from the surface it's instrumenting.
  *
  * @param content - The content object containing journey metadata
- * @returns Completion percentage (0-100) or 0 if not a learning journey
- */
-export function calculateJourneyProgress(content: JourneyContent | null | undefined): number {
-  if (!content || content.type !== 'learning-journey' || !content.metadata?.learningJourney) {
-    return 0;
-  }
-
-  const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
-
-  if (!totalMilestones || totalMilestones === 0) {
-    return 0;
-  }
-
-  return Math.round(((currentMilestone || 0) / totalMilestones) * 100);
-}
-
-/**
- * Extracts journey metadata properties for analytics events
- *
- * @param content - The content object containing journey metadata
+ * @param completionPercentage - The journey's current percentage, from the shared calculation
  * @returns Object with journey properties or empty object if not a journey
  */
-export function getJourneyProperties(content: JourneyContent | null | undefined): Record<string, number> {
+export function getJourneyProperties(
+  content: JourneyContent | null | undefined,
+  completionPercentage: number
+): Record<string, number> {
   if (!content || content.type !== 'learning-journey' || !content.metadata?.learningJourney) {
     return {};
   }
@@ -529,7 +519,7 @@ export function getJourneyProperties(content: JourneyContent | null | undefined)
   const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
 
   return {
-    completion_percentage: calculateJourneyProgress(content),
+    completion_percentage: completionPercentage,
     current_milestone: currentMilestone || 0,
     total_milestones: totalMilestones || 0,
   };
@@ -543,6 +533,7 @@ export function getJourneyProperties(content: JourneyContent | null | undefined)
  *
  * @param baseProperties - Base properties for the analytics event
  * @param content - Optional content object to extract journey data from
+ * @param completionPercentage - The journey's current percentage, from the shared calculation
  * @returns Enriched properties object with journey data if applicable
  *
  * @example
@@ -552,15 +543,16 @@ export function getJourneyProperties(content: JourneyContent | null | undefined)
  *   enrichWithJourneyContext({
  *     content_url: url,
  *     link_type: AnalyticsLinkType.ExternalBrowser,
- *   }, activeTab?.content)
+ *   }, activeTab?.content, activeTab?.content ? getJourneyProgress(activeTab.content) : 0)
  * );
  * ```
  */
 export function enrichWithJourneyContext(
   baseProperties: Record<string, string | number | boolean>,
-  content: JourneyContent | null | undefined
+  content: JourneyContent | null | undefined,
+  completionPercentage: number
 ): Record<string, string | number | boolean> {
-  const journeyProps = getJourneyProperties(content);
+  const journeyProps = getJourneyProperties(content, completionPercentage);
 
   // Only add journey properties if they exist (non-empty object)
   if (Object.keys(journeyProps).length > 0) {

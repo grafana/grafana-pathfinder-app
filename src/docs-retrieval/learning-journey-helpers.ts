@@ -11,7 +11,14 @@ import {
   RelatedJourneys,
   ConclusionImage,
 } from '../types/content.types';
-import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressStorage } from '../lib/user-storage';
+import {
+  journeyCompletionStorage,
+  milestoneCompletionStorage,
+  learningProgressStorage,
+  interactiveCompletionStorage,
+} from '../lib/user-storage';
+import { resolvePathMemberPercentages, type PathMember } from '../global-state/path-member-join';
+import { meanOfMemberPercentages } from '../lib/guide-stats';
 // Pre-existing lateral edge documented in ALLOWED_LATERAL_VIOLATIONS
 // (architecture.test.ts). This file already calls into `learning-paths`
 // via several dynamic imports — moving the badge coordinator behind a
@@ -120,18 +127,53 @@ export function getTotalMilestones(content: RawContent): number {
 /**
  * Progress tracking helpers
  */
+/**
+ * A journey's percentage: the mean of its unlocked milestones' own
+ * percentages (docs/design/COMPLETION-MODEL.md, decision 4 applied to
+ * milestones as path members). Not a navigation position — opening the
+ * last milestone of a ten-milestone journey having completed nothing no
+ * longer reports 100%.
+ *
+ * Each milestone is a member keyed by its own URL (decision 9's join), so
+ * this reads the SAME per-milestone percentage the milestone reports for
+ * itself as a guide. Locked milestones are excluded from both halves of the
+ * mean — `totalMilestones` is the locked-inclusive display count, and using
+ * it would make 100% unreachable on any partially published journey.
+ */
+/**
+ * The shared calculation behind {@link getJourneyProgress}, taking the
+ * journey's own identity rather than a full `RawContent` — so the cover
+ * page (`LearningPathTableOfContents`, which has `milestones` and `baseUrl`
+ * but not a `RawContent`) computes the identical number rather than a
+ * second, independent one. A reader must not see two different percentages
+ * for the same journey on adjacent screens.
+ */
+export function journeyProgressFromMilestones(baseUrl: string, milestones: readonly Milestone[]): number {
+  const unlocked = milestones.filter((m) => !m.isLocked);
+  if (unlocked.length === 0) {
+    return 0;
+  }
+
+  const members: PathMember[] = unlocked.map((m) => ({ id: getMilestoneSlug(m.url) ?? m.url, url: m.url }));
+  const completedMemberIds = Array.from(milestoneCompletionStorage.getCompletedSync(baseUrl));
+  const { resolvedPercentages } = resolvePathMemberPercentages(members, {
+    completedMemberIds,
+    // interactiveCompletionStorage, and only that — journeyCompletionStorage
+    // holds no record under backend-guide: for a partially progressed
+    // member, so joining against it would exclude every one of them.
+    persistedPercentages: interactiveCompletionStorage.peekAll(),
+  });
+
+  return meanOfMemberPercentages(resolvedPercentages).percent;
+}
+
 export function getJourneyProgress(content: RawContent): number {
   if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
     return 0;
   }
 
-  const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
-
-  if (totalMilestones === 0) {
-    return 0;
-  }
-
-  return Math.round((currentMilestone / totalMilestones) * 100);
+  const lj = content.metadata.learningJourney;
+  return journeyProgressFromMilestones(lj.baseUrl, lj.milestones);
 }
 
 export function isJourneyCoverPage(content: RawContent): boolean {
@@ -399,16 +441,6 @@ function appendBottomNavigationToContent(
  * - Handles quota exhaustion with built-in cleanup
  * - Provides user-specific storage in Grafana database
  */
-
-export function getJourneyCompletionPercentage(journeyBaseUrl: string): number {
-  // Note: This is now async but wrapped to maintain backward compatibility
-  // The storage operation will resolve quickly from cache
-  let result = 0;
-  journeyCompletionStorage.get(journeyBaseUrl).then((percentage) => {
-    result = percentage;
-  });
-  return result;
-}
 
 export async function getJourneyCompletionPercentageAsync(journeyBaseUrl: string): Promise<number> {
   return journeyCompletionStorage.get(journeyBaseUrl);

@@ -852,6 +852,23 @@ export const milestoneCompletionStorage = {
     return completed.has(milestoneSlug);
   },
 
+  /**
+   * Synchronous read, for the journey progress rollup (`getJourneyProgress`
+   * is called synchronously from several render paths). Mirrors
+   * `guideCompletionMarkStorage.isMarked`: the hybrid storage writes through
+   * to localStorage before it queues the Grafana write, so the value is
+   * already there.
+   */
+  getCompletedSync(journeyBaseUrl: string, milestoneUrls: string[] = []): Set<string> {
+    try {
+      const raw = localStorage.getItem(StorageKeys.MILESTONE_COMPLETION);
+      const data = raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
+      return getStoredMilestoneSlugs(data, journeyBaseUrl, milestoneUrls);
+    } catch {
+      return new Set();
+    }
+  },
+
   async clear(journeyBaseUrl: string): Promise<void> {
     try {
       const storage = createUserStorage();

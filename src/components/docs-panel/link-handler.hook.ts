@@ -297,7 +297,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.InteractiveLearning,
                     interaction_location: 'interactive_learning_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  activeTab?.content ? getJourneyProgress(activeTab.content) : 0
                 )
               )
             );
@@ -324,7 +325,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.ExternalBrowser,
                     interaction_location: 'external_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  activeTab?.content ? getJourneyProgress(activeTab.content) : 0
                 )
               )
             );
@@ -409,7 +411,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.SideJourney,
                     interaction_location: 'side_journey_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  activeTab?.content ? getJourneyProgress(activeTab.content) : 0
                 )
               )
             );
@@ -428,7 +431,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.SideJourneyExternal,
                     interaction_location: 'side_journey_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  activeTab?.content ? getJourneyProgress(activeTab.content) : 0
                 )
               )
             );
@@ -491,7 +495,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.RelatedJourney,
                     interaction_location: 'related_journey_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  activeTab?.content ? getJourneyProgress(activeTab.content) : 0
                 )
               )
             );
@@ -510,7 +515,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                     link_type: AnalyticsLinkType.RelatedJourneyExternal,
                     interaction_location: 'related_journey_link',
                   },
-                  activeTab?.content
+                  activeTab?.content,
+                  activeTab?.content ? getJourneyProgress(activeTab.content) : 0
                 )
               )
             );

@@ -40,7 +40,6 @@ export { fetchPackageInfoFromUrl, isPackageContentUrl } from './package-info-fro
 export {
   getNextMilestoneUrl as getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrl as getPreviousMilestoneUrlFromContent,
-  getJourneyCompletionPercentage,
   setJourneyCompletionPercentage,
   clearJourneyCompletion,
 } from './learning-journey-helpers';

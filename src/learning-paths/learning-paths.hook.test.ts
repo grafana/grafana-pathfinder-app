@@ -52,6 +52,7 @@ jest.mock('../lib/user-storage', () => ({
   interactiveStepStorage: { clearAllForContent: (contentKey: string) => mockClearAllForContent(contentKey) },
   interactiveCompletionStorage: {
     getAll: jest.fn().mockResolvedValue({}),
+    peekAll: jest.fn().mockReturnValue({}),
     clear: jest.fn(),
     clearMany: jest.fn().mockResolvedValue(undefined),
   },

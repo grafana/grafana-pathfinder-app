@@ -15,7 +15,30 @@ jest.mock('@grafana/i18n', () => ({
 }));
 
 jest.mock('../../lib/user-storage', () => ({
-  milestoneCompletionStorage: { getCompleted: jest.fn() },
+  milestoneCompletionStorage: { getCompleted: jest.fn(), getCompletedSync: jest.fn(() => new Set()) },
+  interactiveCompletionStorage: { peekAll: jest.fn(() => ({})) },
+}));
+
+jest.mock('../../docs-retrieval', () => ({
+  // A hand-rolled stand-in, not the real implementation: the real one lives
+  // in learning-journey-helpers.ts, which pulls in completion-records' full
+  // @grafana/runtime surface — overkill for a render-only test. Equivalent
+  // to the real mean-of-percentages for every scenario this file exercises
+  // (binary completed/not-completed; no partial persisted percentage is
+  // ever configured here). The real calculation has its own dedicated
+  // tests in learning-journey-helpers.test.ts and rollup.test.ts.
+  journeyProgressFromMilestones: (baseUrl: string, milestones: ReadonlyArray<{ url: string; isLocked?: boolean }>) => {
+    // jest.mock factories are hoisted, so they can't close over a top-level import.
+    const { milestoneCompletionStorage: storage } = require('../../lib/user-storage');
+    const { getMilestoneSlug: slugOf } = require('../../lib/learning-journey-url');
+    const unlocked = milestones.filter((m) => !m.isLocked);
+    if (unlocked.length === 0) {
+      return 0;
+    }
+    const completed: Set<string> = storage.getCompletedSync(baseUrl);
+    const completedCount = unlocked.filter((m) => completed.has(slugOf(m.url))).length;
+    return completedCount === unlocked.length ? 100 : Math.min(99, Math.floor((completedCount / unlocked.length) * 100));
+  },
 }));
 
 const getBadgeForPathMock = jest.fn();
@@ -26,6 +49,18 @@ jest.mock('../../learning-paths', () => ({
 const getCompletedMock = milestoneCompletionStorage.getCompleted as jest.MockedFunction<
   typeof milestoneCompletionStorage.getCompleted
 >;
+const getCompletedSyncMock = milestoneCompletionStorage.getCompletedSync as jest.MockedFunction<
+  typeof milestoneCompletionStorage.getCompletedSync
+>;
+
+/** Sets both the async completion read (drives checkmarks/CTA target) and
+ *  the sync one (drives journeyProgressFromMilestones's percentage) from
+ *  the same slugs, so the two halves of the component agree in tests the
+ *  way they agree in production. */
+function setCompletedSlugs(slugs: Set<string>): void {
+  getCompletedMock.mockResolvedValue(slugs);
+  getCompletedSyncMock.mockReturnValue(slugs);
+}
 
 const baseUrl = 'https://grafana.com/docs/learning-paths/demo/';
 const milestones: Milestone[] = [
@@ -37,7 +72,7 @@ describe('LearningPathTableOfContents', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('renders every milestone title with a heading', async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
     expect(screen.getByText('In this path')).toBeInTheDocument();
@@ -52,7 +87,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('shows a check for completed milestones and a play icon for the next (current) one', async () => {
-    getCompletedMock.mockResolvedValue(new Set(['set-up']));
+    setCompletedSlugs(new Set(['set-up']));
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
     await waitFor(() => expect(document.querySelectorAll('[data-icon="check"]')).toHaveLength(1));
@@ -83,6 +118,7 @@ describe('LearningPathTableOfContents', () => {
     expect(document.querySelector('[data-journey-start]')).not.toBeInTheDocument();
 
     await act(async () => {
+      getCompletedSyncMock.mockReturnValue(new Set(['set-up']));
       resolveCompleted(new Set(['set-up']));
     });
 
@@ -91,7 +127,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('shows a Get started CTA targeting the first milestone, with no progress ring, at 0%', async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
     const cta = await screen.findByText('Get started');
@@ -102,7 +138,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('shows a progress ring and a Resume CTA targeting the next incomplete milestone', async () => {
-    getCompletedMock.mockResolvedValue(new Set(['set-up']));
+    setCompletedSlugs(new Set(['set-up']));
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
     const cta = await screen.findByText('Resume');
@@ -112,7 +148,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('hides the CTA once every milestone is completed', async () => {
-    getCompletedMock.mockResolvedValue(new Set(['set-up', 'explore']));
+    setCompletedSlugs(new Set(['set-up', 'explore']));
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
     // Both milestone rows plus the now-100%-complete progress ring each render
@@ -123,7 +159,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it("renders each milestone's description when the source provides one", async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     const withDescriptions: Milestone[] = [
       { ...milestones[0]!, description: 'Connect Grafana to your first data source.' },
       milestones[1]!,
@@ -134,7 +170,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('shows an "Earns X badge" preview when the path has a completion badge', async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     getBadgeForPathMock.mockReturnValue({ id: 'core-badge', title: 'Core Concepts', icon: 'grafana' });
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} pathId="core-grafana-concepts-lj" />);
 
@@ -143,7 +179,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('omits the badge preview when no pathId is known or no badge is defined for it', async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     getBadgeForPathMock.mockReturnValue(undefined);
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
@@ -153,7 +189,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('shows a hero card with the title, description, and module count when provided', async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     render(
       <LearningPathTableOfContents
         milestones={milestones}
@@ -170,7 +206,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('shows the hero card from title alone, with no description and no badge', async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     getBadgeForPathMock.mockReturnValue(undefined);
     render(
       <LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} title="Connect your first data source" />
@@ -181,7 +217,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('omits the hero card entirely when there is no title, description, or badge', async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     getBadgeForPathMock.mockReturnValue(undefined);
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
@@ -190,7 +226,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('shows the total estimated duration when every milestone has one authored', async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     const timedMilestones: Milestone[] = [
       { ...milestones[0]!, estimatedMinutes: 15 },
       { ...milestones[1]!, estimatedMinutes: 20 },
@@ -201,7 +237,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('formats the total as hours once it reaches 60 minutes, rounded', async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     const timedMilestones: Milestone[] = [
       { ...milestones[0]!, estimatedMinutes: 100 },
       { ...milestones[1]!, estimatedMinutes: 130 },
@@ -213,7 +249,7 @@ describe('LearningPathTableOfContents', () => {
   });
 
   it('omits the total duration from the hero when any milestone lacks an authored estimate', async () => {
-    getCompletedMock.mockResolvedValue(new Set());
+    setCompletedSlugs(new Set());
     // milestones[0] has its own authored estimate (rendered on its own row
     // regardless), but milestones[1] doesn't — the hero total requires all.
     const partiallyTimedMilestones: Milestone[] = [{ ...milestones[0]!, estimatedMinutes: 15 }, milestones[1]!];
@@ -234,7 +270,7 @@ describe('LearningPathTableOfContents', () => {
     ];
 
     it('locks every module after the first, unstarted one', async () => {
-      getCompletedMock.mockResolvedValue(new Set());
+      setCompletedSlugs(new Set());
       render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
 
       await waitFor(() => expect(screen.getAllByText('Locked')).toHaveLength(2));
@@ -242,7 +278,7 @@ describe('LearningPathTableOfContents', () => {
     });
 
     it('unlocks the next module once the previous one completes, keeping the rest locked', async () => {
-      getCompletedMock.mockResolvedValue(new Set(['one']));
+      setCompletedSlugs(new Set(['one']));
       render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
 
       await waitFor(() => expect(screen.getAllByText('Locked')).toHaveLength(1));
@@ -252,7 +288,7 @@ describe('LearningPathTableOfContents', () => {
     it('treats a module completed out of order as done, not locked', async () => {
       // "Three" completed while "One"/"Two" aren't — the cursor still sits at
       // "One", but "Three" must not be marked both completed and locked.
-      getCompletedMock.mockResolvedValue(new Set(['three']));
+      setCompletedSlugs(new Set(['three']));
       render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
 
       await waitFor(() => expect(document.querySelectorAll('.guideIconBadge [data-icon="check"]')).toHaveLength(1));

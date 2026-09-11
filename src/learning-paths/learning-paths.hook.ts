@@ -32,7 +32,13 @@ import {
   guideCompletionMarkStorage,
 } from '../lib/user-storage';
 import { evictContentCache } from '../global-state/completion-store';
-import { pathMemberContentKeys, pathMemberIdSchemeKeys } from '../global-state/path-member-join';
+import {
+  pathMemberContentKeys,
+  pathMemberIdSchemeKeys,
+  resolvePathMemberPercentages,
+  type PathMember,
+} from '../global-state/path-member-join';
+import { meanOfMemberPercentages, type MemberRollupProgress } from '../lib/guide-stats';
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
@@ -86,15 +92,24 @@ function formatLegacyBadgeTitle(badgeId: string): string {
 }
 
 /**
- * Calculates path completion percentage
+ * A path's rollup: the mean of its members' percentages
+ * (docs/design/COMPLETION-MODEL.md, decision 4), joined to each member's
+ * persisted percentage by content key (decision 9). Equal weight per
+ * member, regardless of length. `path.guides` is empty for a URL-based
+ * path (`path.url` set) — those are learning journeys and read their
+ * progress through `getJourneyProgress` instead, not through this rollup.
  */
-function calculatePathProgress(path: LearningPath, completedGuides: string[]): number {
-  if (path.guides.length === 0) {
-    return 0;
-  }
-
-  const completedCount = path.guides.filter((g) => completedGuides.includes(g)).length;
-  return Math.round((completedCount / path.guides.length) * 100);
+function calculatePathRollup(path: LearningPath, completedGuides: readonly string[]): MemberRollupProgress {
+  const members: PathMember[] = path.guides.map((id) => ({ id }));
+  const { resolvedPercentages } = resolvePathMemberPercentages(members, {
+    pathBaseUrl: path.url,
+    completedMemberIds: completedGuides,
+    // interactiveCompletionStorage, and only that — see path-member-join.ts's
+    // own doc comment for why journeyCompletionStorage would systematically
+    // exclude every partially-progressed App Platform member.
+    persistedPercentages: interactiveCompletionStorage.peekAll(),
+  });
+  return meanOfMemberPercentages(resolvedPercentages);
 }
 
 /**
@@ -414,17 +429,23 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (!path) {
         return 0;
       }
-      return calculatePathProgress(path, progress.completedGuides);
+      return calculatePathRollup(path, progress.completedGuides).percent;
     },
     [paths, progress.completedGuides]
   );
 
-  // Check if a path is completed
+  // Check if a path is completed. Not `getPathProgress(pathId) === 100` — a
+  // fully-finished path can legitimately round to 99 (meanOfMemberPercentages
+  // reserves 100 for `complete`), so that comparison would strand it.
   const isPathCompleted = useCallback(
     (pathId: string): boolean => {
-      return getPathProgress(pathId) === 100;
+      const path = paths.find((p) => p.id === pathId);
+      if (!path) {
+        return false;
+      }
+      return calculatePathRollup(path, progress.completedGuides).complete;
     },
-    [getPathProgress]
+    [paths, progress.completedGuides]
   );
 
   // Mark a guide as completed.

@@ -310,6 +310,7 @@ describe('useLinkClickHandler', () => {
             learningJourney: {
               currentMilestone: 2,
               totalMilestones: 6,
+              milestones: [],
             },
           },
         },
@@ -359,6 +360,7 @@ describe('useLinkClickHandler', () => {
             learningJourney: {
               currentMilestone: 3,
               totalMilestones: 6,
+              milestones: [],
             },
           },
         },

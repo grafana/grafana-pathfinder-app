@@ -191,6 +191,37 @@ describe('milestoneCompletionStorage', () => {
     await expect(milestoneCompletionStorage.getCompleted('backend-guide:fe-alerting-path')).resolves.toEqual(new Set());
     expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
   });
+
+  describe('getCompletedSync', () => {
+    it('returns an empty set before anything is written', () => {
+      expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set());
+    });
+
+    it('reads back a completion written through markCompleted, synchronously', async () => {
+      await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'install-alloy');
+
+      expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set(['install-alloy']));
+    });
+
+    it('resolves milestone aliases the same way the async read does', () => {
+      localStorage.setItem(
+        StorageKeys.MILESTONE_COMPLETION,
+        JSON.stringify({ 'bundled:demo-milestone/content.json': ['demo-milestone'] })
+      );
+
+      expect(
+        milestoneCompletionStorage.getCompletedSync('bundled:demo-cover/content.json', [
+          'bundled:demo-milestone/content.json',
+        ])
+      ).toEqual(new Set(['demo-milestone']));
+    });
+
+    it('returns an empty set for malformed JSON rather than throwing', () => {
+      localStorage.setItem(StorageKeys.MILESTONE_COMPLETION, '{not json');
+
+      expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set());
+    });
+  });
 });
 
 // ============================================================================

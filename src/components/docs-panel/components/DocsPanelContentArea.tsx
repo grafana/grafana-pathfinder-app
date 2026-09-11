@@ -36,7 +36,7 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { recordGuideCompletionForSurface } from '../../../docs-retrieval';
+import { recordGuideCompletionForSurface, journeyProgressFromMilestones } from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
@@ -224,7 +224,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       <div
                         className={styles.progressFill}
                         style={{
-                          width: `${((ljMeta.currentMilestone || 0) / (ljMeta.totalMilestones || 1)) * 100}%`,
+                          // The shared calculation (docs/design/COMPLETION-MODEL.md,
+                          // decision 4) — earned progress, not navigation
+                          // position, so this must not climb just because the
+                          // reader turned pages without completing anything.
+                          width: `${journeyProgressFromMilestones(ljMeta.baseUrl, ljMeta.milestones)}%`,
                         }}
                       />
                     </div>

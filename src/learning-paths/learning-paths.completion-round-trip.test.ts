@@ -2,7 +2,7 @@
  * Write → read round-trip for App Platform path progress.
  *
  * The completion write (`markMilestoneDone`, docs-retrieval) and the progress
- * read (`getPathProgress` → the module-private `calculatePathProgress`) agree
+ * read (`getPathProgress` → the module-private `calculatePathRollup`) agree
  * only if both key on the bare package id. Every other test on either side
  * mocks the other away, so the two could drift apart — a member recorded under
  * `backend-guide:fe-alerting-01` would leave My Learning stuck at 0%.
@@ -29,6 +29,7 @@ jest.mock('@grafana/runtime', () => ({
 import { markMilestoneDone, getMilestoneSlug } from '../docs-retrieval/learning-journey-helpers';
 import { invalidateCustomGuideRepositoryCache } from '../lib/custom-guide-repository-client';
 import { StorageKeys } from '../lib/storage-keys';
+import { interactiveCompletionStorage } from '../lib/user-storage';
 import { useLearningPaths } from './learning-paths.hook';
 
 const EMPTY_PROGRESS = {
@@ -102,6 +103,22 @@ describe('App Platform path progress — completion write → getPathProgress re
 
     await waitFor(() => {
       expect(result.current.getPathProgress(PATH_ID)).toBe(50);
+    });
+    expect(result.current.isPathCompleted(PATH_ID)).toBe(false);
+  });
+
+  // Decision 4: path progress is the MEAN of member percentages, not a
+  // completed-count fraction — a member's own partial progress must show,
+  // not just whole-guide completion membership.
+  it('reads a member\'s partial persisted percentage into the mean, not just completed-guide membership', async () => {
+    await interactiveCompletionStorage.set(`backend-guide:${MEMBERS[0]}`, 40);
+
+    const result = await renderPaths();
+
+    await waitFor(() => {
+      // (40 + 0) / 2 = 20 — the unopened second member contributes 0, not
+      // excluded, because it has a formable key that simply holds nothing.
+      expect(result.current.getPathProgress(PATH_ID)).toBe(20);
     });
     expect(result.current.isPathCompleted(PATH_ID)).toBe(false);
   });
