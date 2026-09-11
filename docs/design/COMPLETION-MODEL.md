@@ -141,6 +141,25 @@ preamble that emits no evidence is never individually completable. If you are
 chasing a percentage that looks too high, look at `containerEndPositions` and at
 which block a section acknowledgement credited, not at a completed-step count.
 
+**Transitional behaviour: a percentage persisted under the previous counting
+rule.** Before this decision, a guide's persisted percentage was
+`completedSteps / totalDocumentSteps`; this decision makes it `position /
+totalBlockCount`, which is systematically lower for the same real evidence —
+a guide that read 100% under the old rule can read well under 100% under this
+one for identical completed steps. The stored record carries no version, so
+nothing can tell an old-rule value from a new-rule one by inspection. Rather
+than migrate or version the namespace, the content-load seam
+(`content-renderer.tsx`) recomputes and re-persists a guide's percentage
+under the current rule whenever its frozen index publishes and real evidence
+already exists (`refreshGuidePercentageOnLoad`) — so reopening a guide is
+what heals it. A guide with real evidence that is never reopened keeps
+reporting its old-rule value until it is. This is deliberately not a proof:
+a guide read only through a surface that never re-triggers the content-load
+seam stays stale for as long as that holds, and the direction of the error
+is always the same (a stale value reads too high, never too low), which is
+what makes a path or journey able to read complete off a member that has not
+actually recomputed.
+
 ### Decision 2 — every guide and every milestone ends in a Mark complete button
 
 **Decision.** Every guide and every milestone ends in a button that takes the

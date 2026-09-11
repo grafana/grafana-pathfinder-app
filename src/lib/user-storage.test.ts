@@ -18,7 +18,7 @@ import {
   unwrapEnvelope,
   wrapEnvelope,
 } from './user-storage';
-import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from './storage-keys';
+import { StorageKeys, buildVersionedSectionStorageKey } from './storage-keys';
 
 // Mock `@grafana/runtime` so the quota-toast helper can publish through a
 // jest spy. The mock is also necessary because user-storage.ts statically
@@ -957,10 +957,12 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
     expect(await sectionDoneStorage.get(SHORT_GUIDE, 'section-1')).toBeNull();
   });
 
-  it('clears every completion dedupe guard without breeding timestamp companions', async () => {
-    // `removeItem` writes a deletion companion beside whatever it removes, so
-    // a reset that hands it the previous reset's companions deepens the tail
-    // by one level each time and doubles the backend writes.
+  // owd-emitted-guard-remote-tombstones: this namespace is local-only
+  // (createLocalStorage(), never createUserStorage()) precisely so it never
+  // breeds a hybrid-backend timestamp companion — even when a real Grafana
+  // user-storage backend IS active for every other namespace, which this
+  // case sets up deliberately to prove the guard opts out of it.
+  it('clears every completion dedupe guard with a plain delete, no backend companion, even with a hybrid backend active', async () => {
     jest.useFakeTimers();
     const grafanaStorage = {
       getItem: jest.fn(async () => null),
@@ -978,23 +980,14 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
         .map(([key]) => key)
         .filter((key): key is string => typeof key === 'string');
       setItem.mockRestore();
-      await completionEmittedStorage.clearAll();
 
       expect(completionEmittedStorage.isEmitted('guide:bundled:one')).toBe(false);
       expect(completionEmittedStorage.isEmitted('guide:bundled:two')).toBe(false);
-      // One deletion companion per guard — a companion handed back through
-      // `removeItem` would write another one beside itself.
-      expect(new Set(writtenKeys)).toEqual(
-        new Set(
-          ['guide:bundled:one', 'guide:bundled:two'].map(
-            (dedupeKey) =>
-              `${buildVersionedContentStorageKey(StorageKeys.COMPLETION_EMITTED_PREFIX, dedupeKey)}__timestamp`
-          )
-        )
-      );
-      expect(writtenKeys).toHaveLength(2);
-      // Nothing left under the namespace — not the guards, not the deletion
-      // companions the removals wrote, and no companion of a companion.
+      // A plain delete writes nothing — no companion, unlike the hybrid
+      // backend's removeItem, which this namespace no longer goes through.
+      expect(writtenKeys).toEqual([]);
+      expect(grafanaStorage.setItem).not.toHaveBeenCalled();
+      // Nothing left under the namespace at all, guards or companions.
       expect(Object.keys(localStorage).filter((key) => key.startsWith(StorageKeys.COMPLETION_EMITTED_PREFIX))).toEqual(
         []
       );
@@ -1002,6 +995,20 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
       setGlobalStorage(createLocalStorage());
       jest.useRealTimers();
     }
+  });
+
+  // The other half of owd-emitted-guard-remote-tombstones's required fix:
+  // clearing a guard that was never set must not write anything either.
+  it('does not write when clearing a guard that was never set', async () => {
+    const setItem = jest.spyOn(Storage.prototype, 'setItem');
+    const removeItem = jest.spyOn(Storage.prototype, 'removeItem');
+
+    await completionEmittedStorage.clear('guide:bundled:never-marked');
+
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
+    setItem.mockRestore();
+    removeItem.mockRestore();
   });
 
   it('writes no record of its own — only the backend timestamp companions of records it removed', async () => {

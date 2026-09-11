@@ -58,7 +58,11 @@ import {
   TextSelectionState,
 } from '../../integrations/assistant-integration';
 import { substituteVariables } from '../../utils/variable-substitution';
-import { STANDALONE_SECTION_ID, isBlockEditorPreviewUrl } from '../../global-state/completion-store';
+import {
+  STANDALONE_SECTION_ID,
+  isBlockEditorPreviewUrl,
+  refreshGuidePercentageOnLoad,
+} from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
@@ -769,6 +773,14 @@ function ContentProcessor({
       index: computeGuideBlockIndex(rawGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
       denominatorSource: 'live-pre-inlining',
     });
+    // A percentage persisted under the deleted step-count rule is read back
+    // verbatim by the new position-based one and is systematically higher,
+    // with no version on the record to tell old from new — reopening a
+    // guide with real evidence is the point this becomes recomputable
+    // (old-rule-percentages-reinterpreted). No-ops for a guide with no
+    // evidence at all, so this never fills the capped percentage namespace
+    // with zeros just from being opened.
+    refreshGuidePercentageOnLoad(contentKey);
   }, [rawGuide, baseUrl, guideIndexEvictionRevision]);
 
   // The resolved overlay is keyed to the inputs it was computed from, so an

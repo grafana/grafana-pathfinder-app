@@ -35,10 +35,12 @@ import { journeyProgressFromMilestones } from '../../docs-retrieval/learning-jou
 import {
   markStepCompleted,
   peekGuidePercentage,
+  refreshGuidePercentageOnLoad,
   resetCompletionStoreForTests,
+  STANDALONE_SECTION_ID,
 } from '../../global-state/completion-store';
 import { resetContentKeyForTests, setActiveTabUrl } from '../../global-state/content-key';
-import { interactiveCompletionStorage } from '../user-storage';
+import { interactiveCompletionStorage, interactiveStepStorage } from '../user-storage';
 import { publishGuideIndex } from '../../global-state/active-guide-index';
 import { resolvePathMemberPercentages } from '../../global-state/path-member-join';
 import { StorageKeys, buildVersionedContentStorageKey } from '../storage-keys';
@@ -450,5 +452,66 @@ describe('cross-surface percentage parity (C2)', () => {
     expect(peekGuidePercentage(CONTENT_KEY)).toBe(expectedPercent);
     expect(interactiveCompletionStorage.peekAll()[CONTENT_KEY]).toBe(expectedPercent);
     expect(journeyPercentFor(CONTENT_KEY)).toBe(expectedPercent);
+  });
+
+  // old-rule-percentages-reinterpreted: a percentage PERSISTED under the
+  // deleted completedSteps/totalDocumentSteps rule is read back verbatim by
+  // the new position/totalBlockCount rule and is systematically higher — the
+  // record carries no version, so nothing but reopening the guide with real
+  // evidence can recompute it. This is the content-load seam's own guarded
+  // refresh (content-renderer.tsx calls this once the index publishes), not
+  // a step write, so it must work with no NEW evidence arriving in this call.
+  it('recomputes a stale, higher percentage persisted under the old counting rule once the guide reopens with real evidence', async () => {
+    const index = freshIndex();
+    const firstCompletable = index.blocks.find((b) => b.completable);
+    if (!firstCompletable) {
+      throw new Error('fixture guide has no completable block — pick a different one');
+    }
+    const stepId = [...index.positionsByStepId.entries()].find(([, pos]) => pos === firstCompletable.position)?.[0];
+    if (!stepId) {
+      throw new Error("fixture guide's first completable block has no resolvable step id");
+    }
+    const correctPercent = guideProgress(index, [{ kind: 'do-it', blockId: stepId }]).percent;
+    // A stale figure the OLD rule could plausibly have produced for the same
+    // real evidence — systematically higher, per the review's own measured
+    // example (100 under the old rule where the new rule gives 68).
+    const staleOldRulePercent = Math.min(100, correctPercent + 30);
+
+    publishGuideIndex({ contentKey: CONTENT_KEY, index, denominatorSource: 'live-pre-inlining' });
+    setActiveTabUrl(CONTENT_KEY);
+
+    // Real evidence exists (the step really was completed), but the persisted
+    // percentage was left at whatever the old rule wrote for it. Seeded
+    // directly into interactiveStepStorage rather than through
+    // markStepCompleted/persistSection, which would immediately refresh the
+    // percentage to the correct value and leave nothing stale to observe —
+    // standing in for a record written by a version of this code before
+    // this PR shipped, when evidence and the stored percentage genuinely
+    // disagreed for everyone until their next storage write.
+    await interactiveStepStorage.setCompleted(CONTENT_KEY, STANDALONE_SECTION_ID, new Set([stepId]));
+    localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify({ [CONTENT_KEY]: staleOldRulePercent }));
+    expect(interactiveCompletionStorage.peekAll()[CONTENT_KEY]).toBe(staleOldRulePercent);
+
+    // The content-load seam's refresh — no new evidence arrives in this call.
+    refreshGuidePercentageOnLoad(CONTENT_KEY);
+    await flushStorageWrites();
+
+    expect(interactiveCompletionStorage.peekAll()[CONTENT_KEY]).toBe(correctPercent);
+    expect(peekGuidePercentage(CONTENT_KEY)).toBe(correctPercent);
+  });
+
+  it('does not write a 0% for a guide with no evidence at all just from reopening it', async () => {
+    // A distinct content key from the rest of this describe block —
+    // interactiveStepStorage's listAllCompleted cache is keyed by content
+    // key and is invalidated only by an explicit write/clear, not by
+    // localStorage.clear() in beforeEach, so reusing CONTENT_KEY here would
+    // inherit whatever an earlier test in this file left cached for it.
+    const untouchedContentKey = 'bundled:parity-fixture-untouched';
+    publishGuideIndex({ contentKey: untouchedContentKey, index: freshIndex(), denominatorSource: 'live-pre-inlining' });
+
+    refreshGuidePercentageOnLoad(untouchedContentKey);
+    await flushStorageWrites();
+
+    expect(Object.keys(interactiveCompletionStorage.peekAll())).not.toContain(untouchedContentKey);
   });
 });

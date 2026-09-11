@@ -463,6 +463,28 @@ export function refreshAndNotifyGuideProgress(contentKey: string): void {
   notify(contentKey);
 }
 
+/**
+ * Content-load-seam counterpart to {@link refreshAndNotifyGuideProgress},
+ * for a percentage that may have been PERSISTED under a counting rule this
+ * guide's evidence has never been recomputed against — the transitional gap
+ * `old-rule-percentages-reinterpreted` names: a base-model completedSteps /
+ * totalDocumentSteps figure read back verbatim by the new position / total
+ * BlockCount rule, systematically higher, with no version on the record and
+ * no migration. Reopening a guide with any real evidence recomputes and
+ * re-persists it under the current rule, right at the seam that first makes
+ * recomputation possible (the frozen index just published).
+ *
+ * Guarded on evidence existing at all — an untouched guide would otherwise
+ * write a 0 into the capped `interactiveCompletionStorage` namespace on
+ * every load, competing with real readers' progress for the same bound.
+ */
+export function refreshGuidePercentageOnLoad(contentKey: string): void {
+  if (collectEvidence(contentKey).length === 0) {
+    return;
+  }
+  refreshAndNotifyGuideProgress(contentKey);
+}
+
 export interface UseStepCompletionResult {
   completed: boolean;
   reason: ProgressReason | null;
