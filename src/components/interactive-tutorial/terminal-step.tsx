@@ -167,6 +167,7 @@ export const TerminalStep = forwardRef<
     const checker = useStepChecker({
       requirements: requirements || '',
       objectives: objectives || '',
+      hints,
       targetAction: 'noop',
       refTarget: '',
       stepId: renderedStepId,

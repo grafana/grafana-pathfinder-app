@@ -204,7 +204,6 @@ export const InteractiveStep = forwardRef<
       description,
       children,
       requirements,
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- grandfathered: arrives from the section but is never forwarded to useStepChecker; see #1815
       objectives,
       hints,
       onComplete,
@@ -320,6 +319,7 @@ export const InteractiveStep = forwardRef<
 
     const checker = useStepChecker({
       requirements,
+      objectives,
       hints,
       targetAction,
       refTarget,
@@ -390,9 +390,6 @@ export const InteractiveStep = forwardRef<
         }
       }
     }, [isNoopAction, isEligibleForChecking, disabled, stepId, onStepComplete, onComplete]);
-
-    // NOTE: Auto-completion when objectives are met is now handled by useStepChecker
-    // via the onObjectivesComplete callback passed above.
 
     const shouldShowExplanation = isPartOfSection
       ? !isNoopAction && (!isEligibleForChecking || (requirements && !checker.isEnabled && !lazyScrollAvailable))
