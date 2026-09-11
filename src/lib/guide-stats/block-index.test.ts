@@ -173,6 +173,46 @@ describe('computeGuideBlockIndex', () => {
     expect(index.positionsById.has('s3')).toBe(false);
     expect(index.finalCompletablePosition).toBe(0);
   });
+
+  it('excludes a positionsByStepId entry for every sibling after a snippet-ref, but keeps the ref itself and earlier siblings', () => {
+    const resolveStepId = jest.fn((_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+      `${context.parentSectionId}:${context.index}`
+    );
+
+    const index = computeGuideBlockIndex(
+      [
+        interactive(),
+        { type: 'snippet-ref', blocks: [] },
+        interactive(),
+        interactive(),
+      ],
+      { resolveStepId }
+    );
+
+    // Post-inlining the snippet-ref's real expansion size shifts every later
+    // sibling's runtime step id, which this pre-inlining traversal cannot
+    // know without waiting on the snippet CDN — so it must not guess.
+    expect(index.positionsByStepId.size).toBe(2);
+    expect(index.positionsByStepId.get('__standalone__:0')).toBe(1); // before the ref
+    expect(index.positionsByStepId.get('__standalone__:1')).toBe(2); // the ref itself
+    expect(index.positionsByStepId.has('__standalone__:2')).toBe(false); // after the ref
+    expect(index.positionsByStepId.has('__standalone__:3')).toBe(false); // after the ref
+  });
+
+  it('does not let a snippet-ref in one section suppress step ids in a sibling section', () => {
+    const resolveStepId = (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+      `${context.parentSectionId}:${context.index}`;
+
+    const index = computeGuideBlockIndex(
+      [
+        section([{ type: 'snippet-ref', blocks: [] }, interactive()], 'a'),
+        section([interactive()], 'b'),
+      ],
+      { resolveStepId }
+    );
+
+    expect(index.positionsByStepId.has('section-b:0')).toBe(true);
+  });
 });
 
 /**

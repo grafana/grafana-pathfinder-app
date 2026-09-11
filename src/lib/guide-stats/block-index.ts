@@ -155,7 +155,10 @@ export interface GuideBlockIndex {
    * Position by runtime step id — the key a completed "Do it" arrives under,
    * which is the author id only for the rare block that carries one. Empty
    * when no resolver was supplied. First occurrence wins, as with
-   * {@link positionsById}.
+   * {@link positionsById}. Excludes every block after a `snippet-ref`
+   * sibling in the same parent — see the traversal's own comment — so those
+   * blocks fall back to {@link positionsById}/0 rather than a step id the
+   * runtime will never dispatch.
    */
   positionsByStepId: ReadonlyMap<string, number>;
   /**
@@ -213,6 +216,20 @@ export function computeGuideBlockIndex(
       return;
     }
 
+    // A `snippet-ref` splices in a runtime-sized batch of blocks before
+    // `json-parser.ts` ever sees the guide (`snippet-engine/inline-refs.ts`),
+    // shifting every later sibling's POST-inlining index by however many
+    // blocks it expands into — an amount this traversal cannot know without
+    // waiting on the snippet CDN, which would defeat the frozen index's
+    // stability guarantee (see `active-guide-index.ts`). So once a
+    // snippet-ref has been seen among this parent's children, later
+    // siblings are excluded from `positionsByStepId` rather than keyed
+    // under an index the runtime will never dispatch: a miss falls through
+    // to `positionsById`/0, the honest degradation an unauthored block
+    // already gets, instead of colliding with whatever unrelated block
+    // happens to hash to the same wrong-index step id.
+    let sawSnippetRefSibling = false;
+
     for (let index = 0; index < children.length; index++) {
       const block = children[index];
       if (!block || typeof block.type !== 'string') {
@@ -244,22 +261,7 @@ export function computeGuideBlockIndex(
       if (typeof block.id === 'string' && block.id.length > 0 && !positionsById.has(block.id)) {
         positionsById.set(block.id, position);
       }
-      // Known limitation, owned elsewhere: these keys come from PRE-inlining
-      // sibling indices, but `json-parser.ts` assigns `props.stepId` from the
-      // POST-inlining tree, because `src/snippet-engine/inline-refs.ts` splices
-      // a ref's resolved blocks in before the parser ever sees the guide. So in
-      // a guide holding a snippet-ref, every block after the ref is keyed under
-      // a step id the runtime never dispatches — a following section included,
-      // whose entire subtree rekeys along with its `section:<path>` namespace —
-      // and that guide reads 0% while looking healthy. Reconciling the two
-      // trees belongs to the work that owns the pre/post-inlining seam, not to
-      // the denominator, which is deliberately pre-inlining so a guide measures
-      // the same however the reader arrived at it. Deferring is safe because
-      // two separate sweeps found no snippet-ref at all, neither in the bundled
-      // library nor across the 598 published guides; that same absence is why
-      // `progress.parity.test.ts`'s corpus sweep is silent on this class of
-      // guide rather than covering it.
-      if (resolveStepId && parentSectionId !== undefined) {
+      if (resolveStepId && parentSectionId !== undefined && !sawSnippetRefSibling) {
         const stepId = resolveStepId(block, { parentSectionId, index });
         if (stepId && !positionsByStepId.has(stepId)) {
           positionsByStepId.set(stepId, position);
@@ -268,6 +270,9 @@ export function computeGuideBlockIndex(
       if (completable) {
         completableBlockCount++;
         finalCompletablePosition = position;
+      }
+      if (block.type === 'snippet-ref') {
+        sawSnippetRefSibling = true;
       }
     }
   }

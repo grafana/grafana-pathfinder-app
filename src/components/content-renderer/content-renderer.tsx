@@ -62,6 +62,9 @@ import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
+import { publishGuideIndex } from '../../global-state/active-guide-index';
+import { resolveCountedBlockStepId } from '../../global-state/guide-step-id-resolver';
+import { computeGuideBlockIndex } from '../../lib/guide-stats';
 import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 import { MarkCompleteFooter } from '../mark-complete';
@@ -685,18 +688,43 @@ function ContentProcessor({
     return parseHTMLToComponents(html, baseUrl);
   }, [html, baseUrl]);
 
-  // A guide may reference snippets that resolve asynchronously from the CDN.
-  const guideWithSnippetRefs = useMemo<JsonGuide | null>(() => {
+  // Raw parse of the tree as received — pre-inlining on a direct open,
+  // already-expanded on the launch path (`prepare-guide-launch.ts`). Shared
+  // by the snippet-ref detection below and the frozen block index, so a
+  // guide-shaped `html` is only ever JSON.parsed once here.
+  const rawGuide = useMemo<JsonGuide | null>(() => {
     if (!isJsonGuideContent(html)) {
       return null;
     }
     try {
-      const guide = JSON.parse(html) as JsonGuide;
-      return guideHasSnippetRefs(guide) ? guide : null;
+      return JSON.parse(html) as JsonGuide;
     } catch {
       return null;
     }
   }, [html]);
+
+  // A guide may reference snippets that resolve asynchronously from the CDN.
+  const guideWithSnippetRefs = useMemo<JsonGuide | null>(() => {
+    return rawGuide && guideHasSnippetRefs(rawGuide) ? rawGuide : null;
+  }, [rawGuide]);
+
+  // The frozen block index (docs/design/COMPLETION-MODEL.md §B1): one
+  // traversal over the tree available synchronously at first paint,
+  // published once per content key and never recomputed for the life of
+  // that key — `publishGuideIndex` is itself idempotent, so a re-render or
+  // an unrelated prop change is a no-op here. It owns both the denominator
+  // and the numerator's positions so they can never come from two
+  // traversals and disagree.
+  useMemo(() => {
+    if (!rawGuide) {
+      return;
+    }
+    publishGuideIndex({
+      contentKey: resolveGuideContentKey(baseUrl),
+      index: computeGuideBlockIndex(rawGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
+      denominatorSource: 'live-pre-inlining',
+    });
+  }, [rawGuide, baseUrl]);
 
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.

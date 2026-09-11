@@ -39,6 +39,7 @@ import { StorageEvents } from '../lib/event-names';
 import { StorageKeys, buildVersionedSectionStorageKey, parseVersionedStorageKey } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
 
+import { evictAllGuideIndexes, evictGuideIndex } from './active-guide-index';
 import { getContentKey } from './content-key';
 import { getRegisteredSectionCount, getTotalDocumentSteps } from './section-registry';
 import { dispatchProgress, type ProgressReason } from './progress-events';
@@ -695,6 +696,10 @@ export function evictSectionCacheForKey(contentKey: string, sectionId: string): 
  * remain mounted under it, use `evictAllContentCaches()` instead.
  */
 export function evictContentCache(contentKey: string): void {
+  // Otherwise the next load for this key would find the old frozen block
+  // index still published and skip recomputing it (publishGuideIndex is
+  // idempotent per content key), serving stale positions after a reset.
+  evictGuideIndex(contentKey);
   entries.delete(contentKey);
   const prefix = `${contentKey}::`;
   for (const key of Array.from(hydratedSections)) {
@@ -825,6 +830,7 @@ export function markStepsCompleted(
  * re-reads empty sets immediately.
  */
 export function evictAllContentCaches(): void {
+  evictAllGuideIndexes();
   const contentKeys = Array.from(listenersByContent.keys());
   // Bump every existing hydration version BEFORE clearing the maps so
   // any in-flight hydration cycle drops its merge on resolve. Clearing
