@@ -1059,41 +1059,38 @@ export const InteractiveStep = forwardRef<
 
             {/* Only show "Do it" button when doIt prop is true AND not a noop action */}
             {/* Noop actions are informational only - no buttons needed */}
-            {doIt &&
-              !isNoopAction &&
-              !isCompletedWithObjectives &&
-              finalIsEnabled && (
-                <Button
-                  onClick={handleDoAction}
-                  disabled={
-                    disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable) || !finalIsEnabled
-                  }
-                  size="sm"
-                  variant="primary"
-                  className="interactive-step-do-btn"
-                  data-testid={testIds.interactive.doItButton(renderedStepId)}
-                  title={
-                    hints ||
-                    (targetAction === 'navigate'
-                      ? `Go there: ${getActionDescription()}`
-                      : isPopoutAction
-                        ? `${popoutButtonLabel}: ${getActionDescription()}`
-                        : `Do it: ${getActionDescription()}`)
-                  }
-                >
-                  {isDoRunning || isCurrentlyExecuting
-                    ? targetAction === 'navigate'
-                      ? 'Going...'
-                      : isPopoutAction
-                        ? popoutButtonRunningLabel
-                        : 'Executing...'
-                    : targetAction === 'navigate'
-                      ? 'Go there'
-                      : isPopoutAction
-                        ? popoutButtonLabel
-                        : 'Do it'}
-                </Button>
-              )}
+            {doIt && !isNoopAction && !isCompletedWithObjectives && finalIsEnabled && (
+              <Button
+                onClick={handleDoAction}
+                disabled={
+                  disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable) || !finalIsEnabled
+                }
+                size="sm"
+                variant="primary"
+                className="interactive-step-do-btn"
+                data-testid={testIds.interactive.doItButton(renderedStepId)}
+                title={
+                  hints ||
+                  (targetAction === 'navigate'
+                    ? `Go there: ${getActionDescription()}`
+                    : isPopoutAction
+                      ? `${popoutButtonLabel}: ${getActionDescription()}`
+                      : `Do it: ${getActionDescription()}`)
+                }
+              >
+                {isDoRunning || isCurrentlyExecuting
+                  ? targetAction === 'navigate'
+                    ? 'Going...'
+                    : isPopoutAction
+                      ? popoutButtonRunningLabel
+                      : 'Executing...'
+                  : targetAction === 'navigate'
+                    ? 'Go there'
+                    : isPopoutAction
+                      ? popoutButtonLabel
+                      : 'Do it'}
+              </Button>
+            )}
 
             {/* Show "Skip" button when step is skippable (always available, not just on error) */}
             {/* Noop actions don't need skip - they're just informational */}
