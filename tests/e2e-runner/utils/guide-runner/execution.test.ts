@@ -74,6 +74,7 @@ import {
   GUIDED_RELOAD_LOAD_TIMEOUT_MS,
   LATE_COMPLETION_CHECK_TIMEOUT_MS,
   STEP_OVERHEAD_TIMEOUT_MS,
+  DEFAULT_STEP_TIMEOUT_MS,
 } from './constants';
 import type { StepTestResult, TestableStep } from './types';
 
@@ -267,6 +268,12 @@ describe('hard step deadline', () => {
 
     expect(calculateStepDeadline(simple)).toBe(calculateStepTimeout(simple) * 2 + STEP_OVERHEAD_TIMEOUT_MS);
     expect(calculateStepDeadline(guided)).toBe(calculateStepTimeout(guided) * 2 + STEP_OVERHEAD_TIMEOUT_MS);
+  });
+
+  it('keeps derived guided deadlines timer-safe even with many maximum-length substeps', () => {
+    const guided = createTestableStep({ stepKind: 'guided', actionCount: 10_000, substepTimeoutMs: 2_147_483_647 });
+    expect(calculateStepTimeout(guided)).toBe(DEFAULT_STEP_TIMEOUT_MS + 10_000 * 600_000);
+    expect(calculateStepDeadline(guided)).toBe(2_147_483_647);
   });
 
   it('allows preamble work to finish after the inner operation budget', async () => {

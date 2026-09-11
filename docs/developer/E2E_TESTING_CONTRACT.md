@@ -372,9 +372,9 @@ console.log(`Progress: ${parseInt(currentIndex) + 1}/${totalSteps}`);
 
 **Presence**: Always present on guided roots, including before execution.
 
-`getGuidedStepTimeout()` owns normalization. An absent, non-finite, non-positive, or timer-unsafe value uses the 120000ms default.
+`getGuidedStepTimeout()` owns normalization. An absent, non-finite, or non-positive value uses the 120000ms default. Positive runtime values are rounded down and clamped to 1–600000ms. The authoring schema requires an integer in that range (maximum 10 minutes). The runner also caps derived timer delays at 2147483647ms to prevent overflow across many substeps.
 
-The same deadline covers authored requirements, target discovery, navigation preparation, highlighting, and user interaction. Lazy discovery runs at most once per substep.
+The same deadline covers authored requirements, target discovery, navigation preparation, highlighting, and user interaction. Requirement retries use exponential delays from 2000ms, with at most six checks over the default deadline unless a one-time target fix succeeds. Lazy discovery runs at most once per substep. An accepted action remains completed when its synchronous effects cross the deadline. An already satisfied toggle completes without highlighting.
 
 #### `data-test-substep-skippable`
 

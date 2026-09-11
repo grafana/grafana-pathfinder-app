@@ -6,6 +6,19 @@ For prescriptive agent constraints on testing (unit, integration, and E2E), see 
 
 This is the canonical implementation-backed reference for E2E CLI behavior. Verify behavior against this document and the source files below before changing code.
 
+## Guided driver regression tests
+
+The Playwright CI job runs the guided driver fixtures in Chromium. These tests need no Grafana server.
+
+To run them locally:
+
+```bash
+npm exec playwright install chromium
+npm run test:guided-browser
+```
+
+The script sets `PATHFINDER_GUIDED_BROWSER_TESTS=1`. Ordinary Jest runs skip these browser fixtures.
+
 ## Key concepts
 
 - **DOM-based step discovery**: Tests interact with the rendered UI, not raw JSON. The plugin handles conditional logic; the runner iterates whatever steps are visible.

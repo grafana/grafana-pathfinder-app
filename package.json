@@ -22,6 +22,7 @@
     "peerjs-server": "node scripts/peerjs-server.js",
     "test": "jest --watch --onlyChanged",
     "test:ci": "jest --passWithNoTests --maxWorkers 4",
+    "test:guided-browser": "PATHFINDER_GUIDED_BROWSER_TESTS=1 jest --runInBand --coverage=false --runTestsByPath tests/e2e-runner/utils/guide-runner/drivers/guided.browser.test.ts",
     "test:coverage": "jest --coverage",
     "test:review-contract": "node --test .cursor/skills/review/scripts/*.test.mjs",
     "test:scripts": "bash scripts/tests/run.sh",

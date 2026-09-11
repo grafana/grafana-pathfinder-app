@@ -1500,6 +1500,7 @@ export class NavigationManager {
       return;
     }
     const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement | null;
+    // #709: the ID exists in both states; only this label prevents accidental undocking.
     if (dockMenuButton?.getAttribute('aria-label') === 'Dock menu') {
       dockMenuButton.click();
       await waitForReactUpdates();

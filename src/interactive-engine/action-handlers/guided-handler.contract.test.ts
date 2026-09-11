@@ -206,6 +206,56 @@ describe('GuidedHandler substep contract', () => {
     });
   });
 
+  it('preserves a near-miss click accepted before synchronous effects cross the deadline', async () => {
+    const target = addTarget();
+    jest.spyOn(target, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      right: 200,
+      top: 100,
+      bottom: 200,
+    } as DOMRect);
+    const click = jest.spyOn(target, 'click').mockImplementation(() => {
+      target.setAttribute('aria-pressed', 'true');
+      jest.setSystemTime(31_001);
+    });
+    const onCompleted = jest.fn();
+    const onSettled = jest.fn();
+    const result = handler.executeGuidedStep(
+      { targetAction: 'button', refTarget: '#target' },
+      0,
+      1,
+      30_000,
+      onCompleted,
+      { onSettled }
+    );
+    await jest.advanceTimersByTimeAsync(29_999);
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 95, clientY: 150 }));
+    await expect(result).resolves.toBe('completed');
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(target).toHaveAttribute('aria-pressed', 'true');
+    expect(onCompleted).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+  });
+
+  it('settles an already satisfied toggle without waiting for highlighting', async () => {
+    const target = addTarget();
+    target.setAttribute('aria-pressed', 'true');
+    navigation.highlightWithComment.mockImplementation(() => new Promise(() => {}));
+    const onCompleted = jest.fn();
+    const result = handler.executeGuidedStep(
+      { targetAction: 'button', refTarget: '#target', targetState: 'aria-pressed:true' },
+      0,
+      1,
+      30_000,
+      onCompleted
+    );
+    await jest.advanceTimersByTimeAsync(30_000);
+    await expect(result).resolves.toBe('completed');
+    expect(navigation.highlightWithComment).not.toHaveBeenCalled();
+    expect(onCompleted).toHaveBeenCalledTimes(1);
+  });
+
   it('checks requirements before navigation expansion or target resolution', async () => {
     const check = deferred<typeof passed>();
     const checkRequirements = jest.fn(() => check.promise);
@@ -258,7 +308,10 @@ describe('GuidedHandler substep contract', () => {
     expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ durationMs: 2000 }));
   });
 
-  it('times out unmet mandatory requirements without target side effects', async () => {
+  it.each([
+    [60_000, 5],
+    [120_000, 6],
+  ])('bounds unmet requirement checks over %s ms to %s calls', async (timeout, calls) => {
     addTarget();
     const checkRequirements = jest.fn().mockResolvedValue(unmet);
     const onSettled = jest.fn();
@@ -266,17 +319,17 @@ describe('GuidedHandler substep contract', () => {
       { targetAction: 'button', refTarget: '#target', requirements: 'has-datasource:prometheus', lazyRender: true },
       0,
       1,
-      60_000,
+      timeout,
       undefined,
       { checkRequirements, onSettled }
     );
-    await jest.advanceTimersByTimeAsync(60_000);
+    await jest.advanceTimersByTimeAsync(timeout);
     await expect(result).resolves.toBe('timeout');
-    expect(checkRequirements.mock.calls.length).toBeGreaterThan(1);
+    expect(checkRequirements).toHaveBeenCalledTimes(calls);
     expect(findTargets).not.toHaveBeenCalled();
     expect(lazyScroll).not.toHaveBeenCalled();
     expect(navigation.ensureNavigationOpen).not.toHaveBeenCalled();
-    expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ status: 'timeout', durationMs: 60_000 }));
+    expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ status: 'timeout', durationMs: timeout }));
   });
 
   it('keeps an unmet optional precheck as a fast skip', async () => {

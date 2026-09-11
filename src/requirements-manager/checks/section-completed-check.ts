@@ -20,7 +20,7 @@ export async function sectionCompletedCheck(check: string, contentKey?: string):
     }
 
     // A remote guide cannot borrow completion from a section in the live tab.
-    const sectionElement = scopedContentKey === localContentKey ? document.getElementById(sectionId) : null;
+    const sectionElement = contentKey === undefined ? document.getElementById(sectionId) : null;
     const isCompleted = sectionElement?.classList.contains('completed') || false;
 
     return {

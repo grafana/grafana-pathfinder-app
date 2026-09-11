@@ -30,7 +30,13 @@ import {
 } from './index';
 import { registerCompatibilityGuideId, resetGuideIdentityForTests } from '../global-state/guide-identity';
 import { guideResponseStorage, sectionDoneStorage } from '../lib/user-storage';
-import { sanitizeContentKey, resetContentKeyForTests, setActiveTabUrl } from '../global-state/content-key';
+import {
+  getContentKey,
+  sanitizeContentKey,
+  resetContentKeyForTests,
+  setActiveTabUrl,
+} from '../global-state/content-key';
+import { fetchRawHtml } from '../docs-retrieval/content-fetcher/fetch-raw';
 import { sectionCompletedCheck } from './checks/section-completed-check';
 
 jest.mock('../lib/user-storage', () => ({
@@ -38,6 +44,7 @@ jest.mock('../lib/user-storage', () => ({
     getResponse: jest.fn(),
   },
   sectionDoneStorage: {
+    set: jest.fn(),
     get: jest.fn(),
   },
 }));
@@ -145,6 +152,42 @@ describe('explicit content scope', () => {
     }
   );
 
+  it('reads the section writer namespace after the learning-path content.json ladder', async () => {
+    const requestedUrl = 'https://grafana.com/docs/learning-paths/alerting-first-rule/build-query/';
+    const contentUrl = new URL('content.json', requestedUrl).href;
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(
+      async (url) =>
+        ({
+          ok: true,
+          url: String(url),
+          headers: new Headers({ 'Content-Type': 'text/html' }),
+          text: async () => (String(url) === contentUrl ? '{"id":"guide-owner","blocks":[]}' : '<html>Guide</html>'),
+        }) as Response
+    );
+    try {
+      const fetched = await fetchRawHtml(requestedUrl, {});
+      expect(fetched.finalUrl).toBe(contentUrl);
+      setActiveTabUrl(requestedUrl);
+      const writerKey = getContentKey();
+      expect(writerKey).not.toBe(sanitizeContentKey(fetched.finalUrl!));
+      await sectionDoneStorage.set(writerKey, 'section-setup', true);
+      getSectionDone.mockImplementation(async (key) => (key === writerKey ? true : null));
+
+      render(
+        <GuideHost guideId="guide-owner">
+          <ScopedProbe postconditions={false} />
+        </GuideHost>
+      );
+
+      await waitFor(() => expect(screen.getByTestId('scope-result')).toHaveTextContent(':true'));
+      expect(getSectionDone).toHaveBeenCalledWith(writerKey, 'section-setup');
+      expect(sectionDoneStorage.set).toHaveBeenCalledWith(writerKey, 'section-setup', true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it('reads remote section completion from the explicit storage scope', async () => {
     getSectionDone.mockImplementation(async (key) => (key === 'bundled:remote' ? true : null));
     expect(await sectionCompletedCheck('section-completed:setup', 'bundled:remote')).toMatchObject({
@@ -157,7 +200,7 @@ describe('explicit content scope', () => {
   it.each([
     ['bundled:remote', false],
     ['', false],
-    ['bundled:live', true],
+    ['bundled:live', false],
     [undefined, true],
   ] as const)('uses the DOM fallback only for the local content scope (%s)', async (contentKey, pass) => {
     render(<div id="section-setup" className="completed" />);
@@ -313,6 +356,6 @@ describe('ContentRenderer guide-identity contract', () => {
       'utf8'
     );
     expect(source).toMatch(/useLayoutEffect\(\s*\(\)\s*=>\s*registerCompatibilityGuideId\(/);
-    expect(source).toContain('<GuideRequirementsProvider guideId={guideId} contentKey={content.url}>');
+    expect(source).toContain('<GuideRequirementsProvider guideId={guideId}>');
   });
 });

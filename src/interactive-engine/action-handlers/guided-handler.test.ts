@@ -93,7 +93,6 @@ describe('GuidedHandler', () => {
           {
             targetAction: 'highlight',
             refTarget: '#drawer',
-            targetState: true,
             targetComment: `${labelPrefix} step ${stepIndex}`,
           },
           stepIndex,
@@ -112,7 +111,7 @@ describe('GuidedHandler', () => {
       document.body.innerHTML = '<button id="drawer" aria-expanded="true">Add</button>';
       const button = document.querySelector<HTMLButtonElement>('#drawer')!;
       (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
-      mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => button.click());
     });
 
     it('clears prior-run credit so a restarted sequence paints from zero', async () => {
@@ -241,27 +240,23 @@ describe('GuidedHandler', () => {
 
       expect(result).toBe('completed');
       expect(button.getAttribute('aria-expanded')).toBe('true');
-      // Without the note the box would flash "Click Add" and vanish.
-      const [highlighted, shownComment] = (mockNavigationManager.highlightWithComment as jest.Mock).mock.calls[0];
-      expect(highlighted).toBe(button);
-      expect(shownComment).toContain('Already in the right position');
-      expect(shownComment).toContain('Click Add');
+      expect(mockNavigationManager.highlightWithComment).not.toHaveBeenCalled();
     });
 
     it('asks for performed progress, crediting only steps the reader finished', async () => {
       document.body.innerHTML = '<button id="drawer" aria-expanded="true">Add</button>';
       const button = document.querySelector<HTMLButtonElement>('#drawer')!;
       (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
-      mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => button.click());
 
       await guidedHandler.executeGuidedStep(
-        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: 'First instruction' },
+        { targetAction: 'highlight', refTarget: '#drawer', targetComment: 'First instruction' },
         0,
         2,
         5
       );
       await guidedHandler.executeGuidedStep(
-        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: 'Second instruction' },
+        { targetAction: 'highlight', refTarget: '#drawer', targetComment: 'Second instruction' },
         1,
         2,
         5

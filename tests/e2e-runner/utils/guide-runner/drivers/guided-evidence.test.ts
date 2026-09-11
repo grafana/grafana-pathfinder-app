@@ -74,7 +74,7 @@ describe('captured guided evidence', () => {
     ['-1', 120000],
     ['NaN', 120000],
     ['Infinity', 120000],
-    ['2147483648', 120000],
+    ['2147483648', 600000],
   ])('uses the effective timeout for %s', async (raw, timeoutMs) => {
     const { element, locator } = createRoot();
     if (raw !== null) {

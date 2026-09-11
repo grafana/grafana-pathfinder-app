@@ -38,25 +38,6 @@ async function pause(page: Page, durationMs: number, deadlineMs: number): Promis
   }
 }
 
-export async function waitForGuidedExecutionStart(
-  page: Page,
-  stepLocator: Locator,
-  timeout = getGuidedStepTimeout()
-): Promise<void> {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    const state = await stepLocator.getAttribute('data-test-step-state');
-    if (state === 'executing' || state === 'completed') {
-      return;
-    }
-    if (state === 'error' || state === 'cancelled') {
-      throw new Error(`Guided step entered ${state} state before execution`);
-    }
-    await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
-  }
-  throw new Error('Guided step did not enter executing state');
-}
-
 interface ParsedNthMatchSelector {
   baseSelector: string;
   index: number;

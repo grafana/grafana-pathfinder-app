@@ -690,6 +690,7 @@ export function evictSectionCacheForKey(contentKey: string, sectionId: string): 
 }
 
 // Guide reset pairs this cache clear with a stored-progress clear.
+// Only hooks subscribed to this exact key re-render; a different active key is unaffected.
 export function evictContentCache(contentKey: string): void {
   invalidatePendingStepRuns(contentKey);
   entries.delete(contentKey);
@@ -801,7 +802,7 @@ export function markStepsCompleted(
 export function evictAllContentCaches(): void {
   invalidatePendingStepRuns();
   const contentKeys = Array.from(listenersByContent.keys());
-  // Keep hydration generations so stale reads cannot match a fresh cycle.
+  // Bump before clearing maps; deleting generations lets an in-flight read match a fresh cycle.
   for (const key of Array.from(hydratedSections)) {
     bumpHydrationVersion(key);
   }

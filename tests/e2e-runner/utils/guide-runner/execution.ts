@@ -91,7 +91,8 @@ export function calculateStepTimeout(step: TestableStep): number {
 }
 
 export function calculateStepDeadline(step: TestableStep, stepTimeout = calculateStepTimeout(step)): number {
-  return stepTimeout * 2 + STEP_OVERHEAD_TIMEOUT_MS;
+  // Even many individually bounded substeps can overflow a JavaScript timer.
+  return Math.min(2_147_483_647, stepTimeout * 2 + STEP_OVERHEAD_TIMEOUT_MS);
 }
 
 export function calculateGuideTimeout(steps: TestableStep[]): number {
@@ -170,7 +171,6 @@ export {
   runGuidedSubstepLoop,
   waitForFormfillSettle,
   waitForGuidedCommentBoxReady,
-  waitForGuidedExecutionStart,
 } from './drivers/guided';
 
 // ============================================
@@ -298,7 +298,7 @@ async function executeStepCore(
   options: StepExecutionOptions = {}
 ): Promise<StepTestResult> {
   const timeout = options.timeout ?? calculateStepTimeout(step);
-  const deadlineMs = options.deadlineMs ?? calculateStepDeadline(step, timeout);
+  const deadlineMs = Math.min(2_147_483_647, options.deadlineMs ?? calculateStepDeadline(step, timeout));
   const startedAt = Date.now();
   let substeps: StepSubstepResult[] | undefined;
   const work = executeStepWork(page, step, {

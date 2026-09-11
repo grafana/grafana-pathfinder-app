@@ -137,7 +137,8 @@ export class GuidedHandler {
       if (result !== null) {
         return result;
       }
-      result = Date.now() >= deadline ? 'timeout' : nextResult;
+      // An accepted action can finish its synchronous effects after the deadline.
+      result = nextResult;
       controller.abort();
       try {
         // Publish before a completion callback can detach the guided root.
@@ -277,10 +278,12 @@ export class GuidedHandler {
       targetState !== null &&
       satisfiesTargetState(resolveStateSource(targetElement, targetState), targetState) === true;
 
-    // Attach before highlighting so click activation cannot beat the listener.
-    if (!alreadySatisfied) {
-      this.createCompletionListener(action, targetElement, signal, arbiter);
+    if (alreadySatisfied) {
+      arbiter.settle('completed');
+      return;
     }
+    // Attach before highlighting so click activation cannot beat the listener.
+    this.createCompletionListener(action, targetElement, signal, arbiter);
     if (!arbiter.isActive()) {
       return;
     }
@@ -295,9 +298,6 @@ export class GuidedHandler {
       action.targetValue,
       action.refTarget
     );
-    if (alreadySatisfied && arbiter.isActive()) {
-      arbiter.settle('completed');
-    }
   }
 
   private createNoopCompletionListener(stepIndex: number, arbiter: GuidedStepArbiter): void {
@@ -414,6 +414,7 @@ export class GuidedHandler {
       throw new Error('Guided requirements need an injected checker');
     }
     const { arbiter } = context;
+    let retryDelay: number = INTERACTIVE_CONFIG.guided.retryInterval;
     while (arbiter.isActive()) {
       const result = await options.checkRequirements(action);
       if (!arbiter.isActive()) {
@@ -448,7 +449,8 @@ export class GuidedHandler {
         arbiter.settle('skipped');
         return false;
       }
-      await this.waitForRetry(context);
+      await this.waitForRetry(context, retryDelay);
+      retryDelay *= 2;
     }
     return false;
   }
@@ -495,7 +497,10 @@ export class GuidedHandler {
     });
   }
 
-  private waitForRetry(context: GuidedStepContext): Promise<void> {
+  private waitForRetry(
+    context: GuidedStepContext,
+    retryDelay: number = INTERACTIVE_CONFIG.guided.retryInterval
+  ): Promise<void> {
     if (!context.arbiter.isActive()) {
       return Promise.resolve();
     }
@@ -505,10 +510,7 @@ export class GuidedHandler {
         context.signal.removeEventListener('abort', finish);
         resolve();
       };
-      const timer = setTimeout(
-        finish,
-        Math.min(INTERACTIVE_CONFIG.guided.retryInterval, Math.max(0, context.deadline - Date.now()))
-      );
+      const timer = setTimeout(finish, Math.min(retryDelay, Math.max(0, context.deadline - Date.now())));
       context.signal.addEventListener('abort', finish, { once: true });
       if (context.signal.aborted) {
         finish();

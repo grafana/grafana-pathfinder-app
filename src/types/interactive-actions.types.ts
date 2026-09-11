@@ -18,6 +18,8 @@ export interface InternalAction {
   targetComment?: string; // Optional comment to display during this step
 }
 
+export const MAX_GUIDED_STEP_TIMEOUT_MS = 600_000;
+
 export interface GuidedAction extends InternalAction {
   targetAction: 'hover' | 'button' | 'highlight' | 'noop' | 'formfill';
   isSkippable?: boolean;
