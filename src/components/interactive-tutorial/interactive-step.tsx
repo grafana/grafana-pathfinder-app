@@ -1062,14 +1062,11 @@ export const InteractiveStep = forwardRef<
             {doIt &&
               !isNoopAction &&
               !isCompletedWithObjectives &&
-              (finalIsEnabled || checker.completionReason === 'objectives') && (
+              finalIsEnabled && (
                 <Button
                   onClick={handleDoAction}
                   disabled={
-                    disabled ||
-                    isAnyActionRunning ||
-                    (checker.isChecking && !lazyScrollAvailable) ||
-                    (!finalIsEnabled && checker.completionReason !== 'objectives')
+                    disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable) || !finalIsEnabled
                   }
                   size="sm"
                   variant="primary"
