@@ -124,8 +124,8 @@ harmlessly. For a path they must not:
 
 `metadata.name` is the slugified `spec.id`, so any id that isn't
 already slug-shaped produces a resource the path can't reach, and every
-milestone 404s with no error surfaced in the UI. The script refuses to
-upload in that case; rename the package instead.
+milestone renders as a locked "(not yet available)" row rather than an
+error. The script refuses to upload in that case; rename the package instead.
 
 ### Block fields the CRD doesn't declare
 

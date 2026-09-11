@@ -9,9 +9,9 @@ a Kubernetes-style manifest.
 On stacks where the aggregator is already enabled, this replaces the
 [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) workflow **for
 content the CRD fully declares**, and adds three things the scripts cannot do:
-deletion, drift detection, and real state. For content using fields the CRD
-prunes it is not weaker but unusable — the plan never converges. Check yours
-against [what "covered by the CRD shape"
+deletion, drift detection, and real state. For content using **block** fields
+the CRD prunes it is not weaker but unusable — the plan never converges. Check
+yours against [what "covered by the CRD shape"
 means](#what-covered-by-the-crd-shape-means) before retiring the script path.
 
 This document is a **partial** answer to
@@ -181,12 +181,12 @@ resource "grafana_apps_generic_resource" "drilldown_logs_path" {
 
 Every resource in a path — cover page and each member — must keep
 `metadata.name` and `spec.id` identical. `milestones` keys on `spec.id`, and
-milestone resolution string-templates that id into a URL that addresses
-resources by name, so a member whose `spec.id` is `view-logs` under the name
-`drilldown-logs-view-logs` 404s with nothing surfaced in the UI. Terraform
-makes this easier to get wrong than the scripts, which slugify the name from
-`spec.id` for you: here the name is hand-typed in HCL while `spec.id` sits in
-a separate JSON file. So `view-logs.json` above has to declare
+milestone resolution string-templates that id into a URL addressing resources
+by name, so a member whose `spec.id` is `view-logs` under the name
+`drilldown-logs-view-logs` stays a locked row titled with the raw id, disabled
+and marked "(not yet available)", with only a console warning. The scripts
+slugify the name from `spec.id`; here it is hand-typed in HCL while `spec.id`
+sits in a separate JSON file, so `view-logs.json` above has to declare
 `"id": "drilldown-logs-view-logs"`. See [`spec.id` must be a valid resource
 name](EXTERNAL_API.md#specid-must-be-a-valid-resource-name).
 
@@ -341,26 +341,26 @@ about the stack you are uploading to. A stack on an older backend prunes more.
 
 ## What Terraform gives you over the scripts
 
-| Capability                                    | Either script                     | Terraform          |
-| --------------------------------------------- | --------------------------------- | ------------------ |
-| Create and update                             | Yes                               | Yes                |
-| `resourceVersion` handling, conflict retry    | Yes                               | Yes                |
-| Namespace discovery                           | Yes                               | Yes                |
-| Delete a guide that left the source of truth  | No                                | Yes                |
-| Detect an out-of-band edit                    | No                                | Yes                |
-| Ownership model                               | An annotation, only when opted in | State plus manager |
-| Reports which block field the CRD would prune | `upsert-learning-path.sh` only    | No                 |
+| Capability                                    | Either script                            | Terraform          |
+| --------------------------------------------- | ---------------------------------------- | ------------------ |
+| Create and update                             | Yes                                      | Yes                |
+| `resourceVersion` handling                    | Yes                                      | Yes                |
+| Retry a conflicting concurrent write          | No — the write fails outright            | Yes                |
+| Namespace discovery                           | Yes                                      | Yes                |
+| Delete a guide that left the source of truth  | No                                       | Yes                |
+| Detect an out-of-band edit                    | No                                       | Yes                |
+| Ownership model                               | Annotation; opt-in for `upsert-guide.sh` | State plus manager |
+| Reports which block field the CRD would prune | `upsert-learning-path.sh` only           | No                 |
 
 Ownership is worth a note. Terraform stamps
 `grafana.app/managedBy: terraform` and `grafana.app/managerId`, and knows what
-it owns from state. The scripts use a
-`pathfinderbackend.ext.grafana.app/managed-by` annotation instead, but only
-`upsert-learning-path.sh` without `--overwrite` refuses a resource that lacks
-it — `upsert-guide.sh` records and enforces the annotation only if the caller
-passes `--annotation` / `--require-annotation`, so a bare run PUTs straight
-over a Terraform-managed guide with no guard. With no revision history on
-these resources that clobber is unrecoverable. Pick one owner per guide, and
-do not leave both paths live in CI.
+it owns from state. `upsert-learning-path.sh` stamps a
+`pathfinderbackend.ext.grafana.app/managed-by` annotation on every write and,
+without `--overwrite`, refuses a resource that lacks it; `upsert-guide.sh`
+does neither unless the caller passes `--annotation` / `--require-annotation`,
+so a bare run PUTs straight over a Terraform-managed guide. With no revision
+history that clobber is unrecoverable. Pick one owner per guide, and do not
+leave both paths live in CI.
 
 ## What this does not solve
 
