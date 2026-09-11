@@ -13,6 +13,8 @@
 const journeySetMock = jest.fn();
 const milestoneMarkCompletedMock = jest.fn();
 const milestoneGetCompletedMock = jest.fn();
+const milestoneGetCompletedSyncMock: (...a: unknown[]) => Set<string> = jest.fn(() => new Set<string>());
+const interactiveCompletionPeekAllMock: (...a: unknown[]) => Record<string, number> = jest.fn(() => ({}));
 const awardBadgeMock = jest.fn();
 const markGuideCompletedMock = jest.fn();
 const getPathsDataMock = jest.fn();
@@ -25,6 +27,9 @@ jest.mock('../lib/user-storage', () => ({
   milestoneCompletionStorage: {
     markCompleted: (...a: unknown[]) => milestoneMarkCompletedMock(...a),
     getCompleted: (...a: unknown[]) => milestoneGetCompletedMock(...a),
+    // Backs the recommendation-card refresh's journeyProgressFromMilestones
+    // call — empty by default (nothing else completed), overridable per test.
+    getCompletedSync: (...a: unknown[]) => milestoneGetCompletedSyncMock(...a),
   },
   learningProgressStorage: { awardBadge: (...a: unknown[]) => awardBadgeMock(...a) },
   // The recorder's durable dedupe guard. A plain in-memory fake here (rather
@@ -46,7 +51,10 @@ jest.mock('../lib/user-storage', () => ({
   // file's identity-boundary focus — no-op stand-ins so importing it doesn't
   // require re-deriving its whole dependency graph here.
   guideCompletionMarkStorage: { clear: jest.fn().mockResolvedValue(undefined) },
-  interactiveCompletionStorage: { clear: jest.fn().mockResolvedValue(undefined) },
+  interactiveCompletionStorage: {
+    clear: jest.fn().mockResolvedValue(undefined),
+    peekAll: () => interactiveCompletionPeekAllMock(),
+  },
   interactiveStepStorage: { clearAllForContent: jest.fn().mockResolvedValue(undefined) },
 }));
 
@@ -605,7 +613,7 @@ describe('surface emitter routing matrix (bundled/remote × milestone/standalone
     expect(journeySetMock).not.toHaveBeenCalled();
   });
 
-  it('remote + milestone → milestone-as-guide fact, no bundled progress write', async () => {
+  it('remote + milestone → milestone-as-guide fact, and refreshes journeyCompletionStorage for the recommendation card (journey-percentage-diverges-on-recommendation-card)', async () => {
     recordGuideCompletionForSurface({
       baseUrl: 'https://ex/lj',
       contentUrl: 'https://ex/lj',
@@ -619,7 +627,12 @@ describe('surface emitter routing matrix (bundled/remote × milestone/standalone
     const guide = emitted.filter((f) => f.kind === 'guide');
     expect(guide).toHaveLength(1);
     expect(guide[0]).toMatchObject({ guideId: 'm1', guideCategory: 'learning-journey' });
-    expect(journeySetMock).not.toHaveBeenCalled();
+    // This journey is not `bundled:`, so the OLD bundled-progress write never
+    // fires here — but the recommendation card's completionPercentage
+    // (context.service.ts) reads this same journeyCompletionStorage key
+    // directly, never the shared calculation, so it must be refreshed on
+    // every milestone completion rather than only on the journey's next load.
+    expect(journeySetMock).toHaveBeenCalledWith('https://ex/lj', expect.any(Number));
   });
 });
 

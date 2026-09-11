@@ -1,6 +1,7 @@
 import { logger } from '../lib/logging';
 
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
+import { invalidateEmittedCompletion } from './completion-recorder';
 import { reportCompletionWriteDegradation } from './completion-write-telemetry';
 import { DRAIN_BUDGET_PER_PASS, MAX_RETENTION_MS } from './completion-write-timing';
 import { createCompletionEventId, type CompletionWriteStorage, type QueuedWrite } from './completion-write-storage';
@@ -68,6 +69,17 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   // the cap and letting another tab observe/drain it — see `queue-eviction-concurrency`.
   let inFlightId: string | null = null;
 
+  // A record leaving the queue for a reason that is NOT the backend rejecting
+  // it (eviction over cap, dropped past the retention horizon) means the
+  // fact was lost, not recorded — the durable guard the recorder set on
+  // enqueue acceptance must not survive that, or the identity becomes
+  // permanently unrecordable for the rest of this browser profile. A
+  // terminal (4xx) drop is deliberately excluded: that record WAS considered
+  // and rejected, so the guard staying set is correct.
+  function liftGuardFor(item: QueuedWrite): void {
+    invalidateEmittedCompletion(item.body.guideSource, item.body.guideId);
+  }
+
   function isExpired(item: QueuedWrite): boolean {
     const completedAtMs = Date.parse(item.body.completedAt);
     const referenceMs = Number.isFinite(completedAtMs) ? completedAtMs : item.createdAt;
@@ -88,6 +100,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         const [expired] = loaded.splice(i, 1);
         if (expired) {
           storage.remove(expired.id);
+          liftGuardFor(expired);
           logger.warn('completion write: dropped record past retention horizon', { id: expired.id });
           reportCompletionWriteDegradation('expired-drop');
         }
@@ -97,6 +110,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
       const evicted = loaded.shift();
       if (evicted) {
         storage.remove(evicted.id);
+        liftGuardFor(evicted);
         logger.warn('completion write: load-time eviction over cap', { id: evicted.id });
         reportCompletionWriteDegradation('eviction');
       }
@@ -138,6 +152,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         const [evicted] = items.splice(evictIndex, 1);
         if (evicted) {
           storage.remove(evicted.id);
+          liftGuardFor(evicted);
           logger.warn('completion write: queue full, evicted oldest', { evictedId: evicted.id });
           reportCompletionWriteDegradation('eviction');
         }
@@ -187,6 +202,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
       // terminal rejection.
       if (isExpired(item)) {
         remove(item);
+        liftGuardFor(item);
         logger.warn('completion write: dropped record past retention horizon', { id: item.id });
         reportCompletionWriteDegradation('expired-drop');
         continue;

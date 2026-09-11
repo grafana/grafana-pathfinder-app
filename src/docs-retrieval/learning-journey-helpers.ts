@@ -673,6 +673,19 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
       resolveExpectedMilestoneIds(metadata?.learningJourney),
       completionContext
     );
+    // The recommendation card reads journeyCompletionStorage directly
+    // (context.service.ts), never the shared calculation, and the only other
+    // writer is the content-load seam (docs-panel.tsx) — so without this, the
+    // card's number trails by however much was earned since the journey was
+    // last opened, for every journey shape except backend-guide (which gets
+    // its own refresh on full completion). Refreshing here on every milestone
+    // keeps it live for the rest too (journey-percentage-diverges-on
+    // -recommendation-card). A no-op for a backend-guide base, which
+    // persistJourneyCompletionPercentage already declines to write.
+    if (metadata?.learningJourney) {
+      const freshJourneyProgress = journeyProgressFromMilestones(journeyBase, metadata.learningJourney.milestones);
+      setJourneyCompletionPercentage(journeyBase, freshJourneyProgress, completionContext);
+    }
   } else if (!surfaceBase?.startsWith('bundled:')) {
     recordStandaloneGuideCompletion(completionContext);
   }

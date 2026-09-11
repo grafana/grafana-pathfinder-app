@@ -10,6 +10,11 @@ import { createWriteQueue as createRawWriteQueue, type WriteQueueDeps } from './
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
 import type { CompletionWriteStorage, QueuedWrite } from './completion-write-storage';
 import { reportCompletionWriteDegradation } from './completion-write-telemetry';
+// Real, unmocked — the durable guard these cases prove gets lifted/kept is
+// completion-recorder.ts's real dedupe guard over real (jsdom) localStorage.
+import { completionEmittedStorage } from '../lib/user-storage';
+
+const GUARD_KEY = 'guide:bundled:g1';
 
 const degradationMock = reportCompletionWriteDegradation as jest.Mock;
 
@@ -132,6 +137,24 @@ describe('write queue — enqueue and eviction', () => {
     expect(q.size()).toBe(2);
     expect(q.snapshot().map((i) => i.body.guideId)).toEqual(['b', 'c']);
   });
+
+  // owd-guard-outlives-dropped-record: an eviction over cap means the fact
+  // was never sent, so the recorder's durable guard (set on enqueue
+  // acceptance, before this) must not survive it — otherwise the identity
+  // can never be recorded again in any future session.
+  it('lifts the durable guard for a record evicted over cap', async () => {
+    await completionEmittedStorage.markEmitted('guide:bundled:a');
+    expect(completionEmittedStorage.isEmitted('guide:bundled:a')).toBe(true);
+
+    const s = makeSender([{ kind: 'created' }]);
+    const ids = ['a', 'b', 'c'];
+    const q = createWriteQueue({ now: () => 0, send: s.send, maxSize: 2, nextId: () => ids.shift()! });
+    q.enqueue(body({ guideId: 'a' }));
+    q.enqueue(body({ guideId: 'b' }));
+    q.enqueue(body({ guideId: 'c' })); // evicts 'a'
+
+    expect(completionEmittedStorage.isEmitted('guide:bundled:a')).toBe(false);
+  });
 });
 
 describe('write queue — retry/backoff/terminal/disarm', () => {
@@ -171,6 +194,19 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
     const r = await q.processDue();
     expect(q.size()).toBe(0);
     expect(r.disarmed).toBe(false);
+  });
+
+  // owd-guard-outlives-dropped-record: the opposite of the eviction/expiry
+  // cases — a terminal (4xx) drop means the backend DID consider the fact
+  // and rejected it, so unlike a lost record this one keeps its guard set.
+  it('keeps the durable guard set for a terminally-rejected record', async () => {
+    await completionEmittedStorage.markEmitted(GUARD_KEY);
+    const s = makeSender([{ kind: 'terminal' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send });
+    q.enqueue(body({ guideId: 'g1' }));
+    await q.processDue();
+
+    expect(completionEmittedStorage.isEmitted(GUARD_KEY)).toBe(true);
   });
 
   it('retains a transient write beyond eight attempts', async () => {
@@ -706,6 +742,22 @@ describe('write queue — retention horizon (retry-retention-horizon)', () => {
     expect(s.calls).toHaveLength(0);
     expect(q.size()).toBe(0);
     expect(r.disarmed).toBe(false);
+  });
+
+  // owd-guard-outlives-dropped-record: past the retention horizon, the
+  // backend would terminally reject a replay, but the fact itself was never
+  // sent — the durable guard must lift so a later re-completion is not
+  // permanently unrecordable.
+  it('lifts the durable guard for a record dropped past the retention horizon', async () => {
+    await completionEmittedStorage.markEmitted(GUARD_KEY);
+    expect(completionEmittedStorage.isEmitted(GUARD_KEY)).toBe(true);
+
+    const s = makeSender([{ kind: 'created' }]);
+    const q = createWriteQueue({ now: () => NOW + THIRTY_DAYS + 1, send: s.send });
+    q.enqueue(body({ guideId: 'g1', completedAt: new Date(NOW).toISOString() }));
+    await q.processDue();
+
+    expect(completionEmittedStorage.isEmitted(GUARD_KEY)).toBe(false);
   });
 });
 
