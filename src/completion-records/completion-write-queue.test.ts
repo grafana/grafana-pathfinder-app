@@ -68,6 +68,7 @@ function makeStorage(items = new Map<string, QueuedWrite>()) {
     put: (item) => {
       items.set(item.id, { ...item });
       listeners.forEach((listener) => listener());
+      return true;
     },
     remove: (id) => {
       items.delete(id);
@@ -401,6 +402,7 @@ function makeLeasedStorage(
     put: (item) => {
       items.set(item.id, { ...item });
       listeners.forEach((l) => l());
+      return true;
     },
     remove: (id) => {
       items.delete(id);

@@ -480,8 +480,7 @@ export function InteractiveSection({
 
   // Trigger reactive checks when section completion status changes.
   // The `gateAnalysis.isAllPassive` branch lets sections with zero
-  // interactive steps still persist `sectionDoneStorage` + refresh
-  // guide progress (F-1, #909 follow-up).
+  // interactive steps reach this at all (F-1, #909 follow-up).
   useEffect(() => {
     if (isCompleted && (stepComponents.length > 0 || gateAnalysis.isAllPassive)) {
       // Single unified event — replaces the two legacy CustomEvents
@@ -499,11 +498,11 @@ export function InteractiveSection({
         // Preview mode is sandboxed — keep the ephemeral check DOM-only.
         if (!isPreviewMode) {
           sectionDoneStorage.set(getContentKey(), sectionId, true);
-          // All-passive sections bypass `persistSection`, so refresh
-          // the guide percentage explicitly.
-          if (gateAnalysis.isAllPassive) {
-            refreshAndNotifyGuideProgress(getContentKey());
-          }
+          // An acknowledgement is percentage-bearing evidence for every
+          // section shape — it credits the section's last block — and no
+          // ack write goes through `persistSection`, so refresh here for
+          // all of them, not only the all-passive ones.
+          refreshAndNotifyGuideProgress(getContentKey());
         }
       }
 

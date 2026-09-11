@@ -78,7 +78,12 @@ beforeEach(() => {
   __resetRecorderForTests();
   persistedEmitted.clear();
   emitted = [];
-  unsubscribe = onCompletionRecorded((fact) => emitted.push(fact));
+  unsubscribe = onCompletionRecorded((fact) => {
+    emitted.push(fact);
+    // Stands in for the write queue's durable acceptance, which is what arms
+    // the recorder's exactly-once guard.
+    return true;
+  });
   milestoneGetCompletedMock.mockResolvedValue(new Set());
   getPathsDataMock.mockReturnValue({ paths: [] });
 });

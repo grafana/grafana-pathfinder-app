@@ -1,5 +1,5 @@
 /**
- * The content-load seam publishes the frozen block index (decision B1) under
+ * The content-load seam publishes the frozen block index (decision 1) under
  * the content key the reader is actually on.
  *
  * The panel that owns the active tab URL publishes it from a LAYOUT effect,

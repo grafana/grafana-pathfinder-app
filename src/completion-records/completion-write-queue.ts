@@ -28,7 +28,8 @@ export interface ProcessResult {
 }
 
 export interface WriteQueue {
-  enqueue(body: CompletionWriteBody): void;
+  /** `true` when the record was persisted durably, so it survives a reload. */
+  enqueue(body: CompletionWriteBody): boolean;
   processDue(): Promise<ProcessResult>;
   size(): number;
   isDisarmed(): boolean;
@@ -119,7 +120,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     return Math.max(0, Math.min(maxBackoffMs, Math.round(base + jitter)));
   }
 
-  function enqueue(body: CompletionWriteBody): void {
+  function enqueue(body: CompletionWriteBody): boolean {
     // A structural-404 disarm suppresses network drains for the session but must
     // NOT stop persistence: later facts still enqueue and survive to the next
     // load, where they drain once the route exists. Never gate enqueue on it.
@@ -145,7 +146,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     const createdAt = now();
     const item = { id: nextId(), body, attempts: 0, createdAt, nextAttemptAt: createdAt };
     items.push(item);
-    storage.put(item);
+    return storage.put(item);
   }
 
   async function processDue(): Promise<ProcessResult> {

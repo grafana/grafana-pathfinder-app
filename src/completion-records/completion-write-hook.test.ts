@@ -20,6 +20,7 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 import { logger } from '../lib/logging';
+import { StorageKeys } from '../lib/storage-keys';
 
 import { recordGuideCompletion, recordJourneyCompletion, __resetRecorderForTests } from './completion-recorder';
 import {
@@ -142,13 +143,29 @@ describe('arming', () => {
     await runTimer();
 
     expect(sent).toHaveLength(0);
-    // The recorder's own durable dedupe guard (completion-recorder.ts) still
-    // persists — it tracks "was this fact emitted", independent of whether
-    // any listener could act on it. Only the write queue is identity-gated.
     const writeQueueKeys = Object.keys(localStorage).filter((key) =>
       key.startsWith('grafana-pathfinder-app-completion-write-queue-v2:')
     );
     expect(writeQueueKeys).toHaveLength(0);
+    // And the recorder's durable dedupe guard stays unset: nothing accepted
+    // this fact, so a later session with an identity must be able to record
+    // it again rather than dedupe against a completion nobody holds.
+    const emittedGuardKeys = Object.keys(localStorage).filter((key) =>
+      key.startsWith(StorageKeys.COMPLETION_EMITTED_PREFIX)
+    );
+    expect(emittedGuardKeys).toHaveLength(0);
+  });
+
+  it('sets the recorder guard once the identity resolves and the record persists', async () => {
+    armCompletionWriteHook(deps());
+
+    recordGuideCompletion(guideFact({ guideId: 'owned' }));
+    await runTimer();
+
+    const emittedGuardKeys = Object.keys(localStorage).filter((key) =>
+      key.startsWith(StorageKeys.COMPLETION_EMITTED_PREFIX)
+    );
+    expect(emittedGuardKeys).toHaveLength(1);
   });
 
   it('warns when it goes inert, so an anonymous user is distinguishable from a broken one', () => {

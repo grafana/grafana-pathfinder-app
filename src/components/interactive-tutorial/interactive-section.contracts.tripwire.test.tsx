@@ -98,6 +98,7 @@ import { INTERACTIVE_STEP_COMPONENT_TYPES } from './section-child-classifier';
 import { memoryStore, resetSectionHarness, silenceSectionWarnings } from '../../test-utils/interactive-section-harness';
 import { publishGuideIndex, evictAllGuideIndexes } from '../../global-state/active-guide-index';
 import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { peekGuidePercentage } from '../../global-state/completion-store';
 
 const NON_PREVIEW_KEY = '/';
 const PREVIEW_KEY = 'block-editor://preview/test-guide';
@@ -133,6 +134,25 @@ function renderSingleStepSection() {
     </InteractiveSection>
   );
 }
+
+/**
+ * A section with an interactive step AND trailing prose: `analyzeAcknowledgement`
+ * reports `needsAcknowledgement` without `isAllPassive`, so the reader finishes
+ * it by acknowledging after the last step.
+ */
+function renderMixedSection() {
+  return render(
+    <InteractiveSection id="mixed" title="Mixed section" autoCollapse={false}>
+      <InteractiveStep targetAction="highlight" refTarget=".a">
+        Step
+      </InteractiveStep>
+      <p>Read this before moving on.</p>
+    </InteractiveSection>
+  );
+}
+
+const MIXED_SECTION_ID = 'section-mixed';
+const MIXED_STEP_ID = `${MIXED_SECTION_ID}-step-1`;
 
 const SECTION_ID = 'section-contracts';
 const STEP_ID = `${SECTION_ID}-step-1`;
@@ -174,6 +194,50 @@ describe('step-type registry parity', () => {
         continue;
       }
       expect(INTERACTIVE_STEP_COMPONENT_TYPES.has(component)).toBe(true);
+    }
+  });
+});
+
+describe('InteractiveSection — an acknowledgement moves the guide percentage', () => {
+  function publishMixedIndex(): void {
+    publishGuideIndex({
+      contentKey: NON_PREVIEW_KEY,
+      index: computeGuideBlockIndex([
+        { type: 'section', id: 'mixed', blocks: [{ type: 'interactive', id: MIXED_STEP_ID }, { type: 'markdown' }] },
+      ]),
+      denominatorSource: 'live-pre-inlining',
+    });
+  }
+
+  function guidePercentages(events: Array<{ name: string; detail: any }>): number[] {
+    return events
+      .filter((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'guide')
+      .map((e) => e.detail.percentage);
+  }
+
+  it('credits the section end when a mixed section is acknowledged, and persists the same number', async () => {
+    const { events, unsubscribe } = recordSectionEvents();
+    try {
+      publishMixedIndex();
+      renderMixedSection();
+      await waitFor(() => expect(screen.getByTestId(completeBtn(MIXED_STEP_ID))).toBeInTheDocument());
+      act(() => {
+        screen.getByTestId(completeBtn(MIXED_STEP_ID)).click();
+      });
+      // The step is block 1 of 2; the section's trailing prose is block 2.
+      await waitFor(() => expect(guidePercentages(events)).toContain(50));
+
+      act(() => {
+        screen.getByTestId(testIds.interactive.markSectionCompleteButton(MIXED_SECTION_ID)).click();
+      });
+
+      // Acknowledging evidences the section's last block, so both the reported
+      // and the persisted percentage have to move with it.
+      await waitFor(() => expect(guidePercentages(events)).toContain(100));
+      expect(peekGuidePercentage(NON_PREVIEW_KEY)).toBe(100);
+      expect(memoryStore.get(`interactive-completion::${NON_PREVIEW_KEY}`)).toBe(100);
+    } finally {
+      unsubscribe();
     }
   });
 });

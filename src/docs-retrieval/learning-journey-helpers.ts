@@ -127,27 +127,7 @@ export function getTotalMilestones(content: RawContent): number {
 /**
  * Progress tracking helpers
  */
-/**
- * A journey's percentage: the mean of its unlocked milestones' own
- * percentages (docs/design/COMPLETION-MODEL.md, decision 4 applied to
- * milestones as path members). Not a navigation position — opening the
- * last milestone of a ten-milestone journey having completed nothing no
- * longer reports 100%.
- *
- * Each milestone is a member keyed by its own URL (decision 9's join), so
- * this reads the SAME per-milestone percentage the milestone reports for
- * itself as a guide. Locked milestones are excluded from both halves of the
- * mean — `totalMilestones` is the locked-inclusive display count, and using
- * it would make 100% unreachable on any partially published journey.
- */
-/**
- * The shared calculation behind {@link getJourneyProgress}, taking the
- * journey's own identity rather than a full `RawContent` — so the cover
- * page (`LearningPathTableOfContents`, which has `milestones` and `baseUrl`
- * but not a `RawContent`) computes the identical number rather than a
- * second, independent one. A reader must not see two different percentages
- * for the same journey on adjacent screens.
- */
+/** One milestone's own percentage, as the journey mean's per-member input. */
 export interface MilestonePercentage {
   milestone: Milestone;
   /** `undefined` when the member resolved to no key at all — excluded from the mean. */
@@ -191,6 +171,14 @@ export function journeyMilestonePercentages(
   return unlocked.map((milestone, index) => ({ milestone, percent: resolved[index]?.percent }));
 }
 
+/**
+ * The shared calculation behind {@link getJourneyProgress}, taking the
+ * journey's own identity rather than a full `RawContent` — so the cover
+ * page (`LearningPathTableOfContents`, which has `milestones` and `baseUrl`
+ * but not a `RawContent`) computes the identical number rather than a
+ * second, independent one. A reader must not see two different percentages
+ * for the same journey on adjacent screens.
+ */
 export function journeyProgressFromMilestones(baseUrl: string, milestones: readonly Milestone[]): number {
   const resolvedPercentages = journeyMilestonePercentages(baseUrl, milestones).flatMap(({ percent }) =>
     percent === undefined ? [] : [percent]
@@ -199,6 +187,19 @@ export function journeyProgressFromMilestones(baseUrl: string, milestones: reado
   return meanOfMemberPercentages(resolvedPercentages).percent;
 }
 
+/**
+ * A journey's percentage: the mean of its unlocked milestones' own
+ * percentages (docs/design/COMPLETION-MODEL.md, decision 4 applied to
+ * milestones as path members). Not a navigation position — opening the
+ * last milestone of a ten-milestone journey having completed nothing no
+ * longer reports 100%.
+ *
+ * Each milestone is a member keyed by its own URL (decision 9's join), so
+ * this reads the SAME per-milestone percentage the milestone reports for
+ * itself as a guide. Locked milestones are excluded from both halves of the
+ * mean — `totalMilestones` is the locked-inclusive display count, and using
+ * it would make 100% unreachable on any partially published journey.
+ */
 export function getJourneyProgress(content: RawContent): number {
   if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
     return 0;

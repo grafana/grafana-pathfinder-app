@@ -19,21 +19,27 @@ const listeners = new Set<CompletionListener>();
 // re-initializes). Persisting forever is correct here: once a guide is
 // recorded, no legitimate second completion exists for the same identity
 // until an explicit reset, which calls `invalidateEmittedCompletion` below.
+//
+// Both halves are set together, and only on a listener's durable acceptance
+// — see `record` below.
 const emitted = new Set<string>();
 
 function dedupeKey(kind: CompletionKind, guideSource: string, guideId: string): string {
   return `${kind}:${guideSource}:${guideId}`;
 }
 
-function emit(fact: CompletionFact): void {
+/** `true` when at least one listener durably accepted the fact. */
+function emit(fact: CompletionFact): boolean {
+  let accepted = false;
   for (const listener of listeners) {
     try {
-      listener(fact);
+      accepted = listener(fact) === true || accepted;
     } catch (error) {
       // A misbehaving subscriber must never break the completion path.
       logger.warn('Completion listener threw', { error });
     }
   }
+  return accepted;
 }
 
 /**
@@ -62,9 +68,17 @@ function record(fact: CompletionFact): void {
       emitted.add(key);
       return;
     }
-    emitted.add(key);
-    void completionEmittedStorage.markEmitted(key);
-    emit(fact);
+    // Set the guard only once someone durably accepted the fact. Between the
+    // two risks here: a duplicate is recoverable — the record is true, and
+    // downstream dedup can collapse it — while a lost completion is not,
+    // because nobody will try again. So this accepts the duplicate and
+    // refuses the loss. Nothing accepted (no subscriber armed yet, no
+    // identity, a failed persist) leaves the identity eligible for a later
+    // attempt, including on a later session.
+    if (emit(fact)) {
+      emitted.add(key);
+      void completionEmittedStorage.markEmitted(key);
+    }
   } catch (error) {
     logger.warn('Failed to record completion', { error });
   }

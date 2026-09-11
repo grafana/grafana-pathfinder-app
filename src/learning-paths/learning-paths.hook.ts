@@ -97,12 +97,24 @@ function formatLegacyBadgeTitle(badgeId: string): string {
  * A path's rollup: the mean of its members' percentages
  * (docs/design/COMPLETION-MODEL.md, decision 4), joined to each member's
  * persisted percentage by content key (decision 9). Equal weight per
- * member, regardless of length. `path.guides` is empty for a URL-based
- * path (`path.url` set) — those are learning journeys and read their
- * progress through `getJourneyProgress` instead, not through this rollup.
+ * member, regardless of length.
+ *
+ * `resolveMemberUrl` is load-bearing for a URL-based path (`path.url` set):
+ * its members are addressed by a docs URL that cannot be derived from the
+ * member id, so without it the join can form no key, every member resolves
+ * `'unresolved'`, and the mean is taken over the completed ones alone — one
+ * finished module out of six would read 100%. Bundled and App Platform
+ * members carry no URL and resolve through the id schemes instead.
  */
-function calculatePathRollup(path: LearningPath, completedGuides: readonly string[]): MemberRollupProgress {
-  const members: PathMember[] = path.guides.map((id) => ({ id }));
+function calculatePathRollup(
+  path: LearningPath,
+  completedGuides: readonly string[],
+  resolveMemberUrl: (guideId: string, pathId: string) => string | undefined
+): MemberRollupProgress {
+  const members: PathMember[] = path.guides.map((id) => {
+    const url = resolveMemberUrl(id, path.id);
+    return url ? { id, url } : { id };
+  });
   const { resolvedPercentages } = resolvePathMemberPercentages(members, {
     pathBaseUrl: path.url,
     completedMemberIds: completedGuides,
@@ -431,9 +443,9 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (!path) {
         return 0;
       }
-      return calculatePathRollup(path, progress.completedGuides).percent;
+      return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).percent;
     },
-    [paths, progress.completedGuides]
+    [paths, progress.completedGuides, getGuideUrlForPath]
   );
 
   // Check if a path is completed. Not `getPathProgress(pathId) === 100` — a
@@ -445,9 +457,9 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (!path) {
         return false;
       }
-      return calculatePathRollup(path, progress.completedGuides).complete;
+      return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).complete;
     },
-    [paths, progress.completedGuides]
+    [paths, progress.completedGuides, getGuideUrlForPath]
   );
 
   // Mark a guide as completed.
