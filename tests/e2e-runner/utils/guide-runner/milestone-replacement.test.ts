@@ -3,7 +3,7 @@ import { join } from 'path';
 import type { ElementHandle, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
-import { StorageKeys, buildVersionedContentStorageKey } from '../../../../src/lib/storage-keys';
+import { StorageKeys, buildVersionedSectionStorageKey } from '../../../../src/lib/storage-keys';
 
 import { dismissBadgeCelebrations } from './badge-celebrations';
 import { STEP_ROOT_SELECTOR } from './constants';
@@ -30,10 +30,10 @@ function stepHandle(): FakeStepHandle {
 }
 
 const E2E_STORAGE_KEYS = {
-  steps: `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${E2E_GUIDE_URL}-section-1`,
-  collapse: `${StorageKeys.SECTION_COLLAPSE_PREFIX}${E2E_GUIDE_URL}-section-1`,
-  acknowledged: `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${E2E_GUIDE_URL}-section-1`,
-  done: `${StorageKeys.SECTION_DONE_PREFIX}${E2E_GUIDE_URL}-section-1`,
+  steps: buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, E2E_GUIDE_URL, 'section-1'),
+  collapse: buildVersionedSectionStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, E2E_GUIDE_URL, 'section-1'),
+  acknowledged: buildVersionedSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, E2E_GUIDE_URL, 'section-1'),
+  done: buildVersionedSectionStorageKey(StorageKeys.SECTION_DONE_PREFIX, E2E_GUIDE_URL, 'section-1'),
 };
 
 function clearMatchingE2EStorage(): void {
@@ -60,13 +60,7 @@ function seedNoCompletionResidue(): void {
 }
 
 function expectMatchingStorageEmpty(): void {
-  const markerKey = buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, E2E_GUIDE_URL);
-
-  const legacyStorageIsInactive =
-    localStorage.getItem(markerKey) !== null ||
-    Object.values(E2E_STORAGE_KEYS).every((key) => localStorage.getItem(key) === null);
-
-  expect(legacyStorageIsInactive).toBe(true);
+  Object.values(E2E_STORAGE_KEYS).forEach((key) => expect(localStorage.getItem(key)).toBeNull());
   expect(JSON.parse(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION) ?? '{}')).toEqual({
     other: 50,
   });
@@ -295,8 +289,12 @@ it('uses the plugin reset capability when only no-completion residue exists', as
   expectMatchingStorageEmpty();
 });
 
-it('preserves legacy progress for a sibling guide whose content key shares the E2E guide prefix', async () => {
-  const siblingKey = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${E2E_GUIDE_URL}-cloud-section-1`;
+it('preserves progress for a sibling guide whose content key shares the E2E guide prefix', async () => {
+  const siblingKey = buildVersionedSectionStorageKey(
+    StorageKeys.INTERACTIVE_STEPS_PREFIX,
+    `${E2E_GUIDE_URL}-cloud`,
+    'section-1'
+  );
   const siblingValue = JSON.stringify(['step-1']);
 
   localStorage.setItem(siblingKey, siblingValue);
@@ -553,7 +551,7 @@ it('accepts and clears safe residue recreated after reset acknowledgment', async
   expectMatchingStorageEmpty();
 });
 
-it('ignores a legacy hybrid-storage timestamp companion after reset', async () => {
+it('does not read a hybrid-storage timestamp companion as leftover progress', async () => {
   seedStoredCompletion();
   const timestampKey = `${E2E_STORAGE_KEYS.steps}__timestamp`;
   localStorage.setItem(timestampKey, '1757060000000');
@@ -563,12 +561,16 @@ it('ignores a legacy hybrid-storage timestamp companion after reset', async () =
 
   expect(harness.operations).toEqual(['reset', 'close']);
   expectMatchingStorageEmpty();
-  expect(localStorage.getItem(timestampKey)).toBe('1757060000000');
+  expect(localStorage.getItem(timestampKey)).toBeNull();
 });
 
 it('preserves malformed shared completion data and requires the reset path', async () => {
   const malformedCompletion = '{"other-guide":50';
-  const unrelatedStepKey = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}bundled:other-guide-section-1`;
+  const unrelatedStepKey = buildVersionedSectionStorageKey(
+    StorageKeys.INTERACTIVE_STEPS_PREFIX,
+    'bundled:other-guide',
+    'section-1'
+  );
   localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, malformedCompletion);
   localStorage.setItem(unrelatedStepKey, JSON.stringify(['other-step']));
   const harness = replacementHarness({ resetControlCount: 0 });
@@ -614,7 +616,11 @@ it('clears stored completion when the prior milestone failed before tab activati
 
 it('repairs malformed shared completion when no prior tab opened', async () => {
   const malformedCompletion = '{"other-guide":50';
-  const unrelatedStepKey = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}bundled:other-guide-section-1`;
+  const unrelatedStepKey = buildVersionedSectionStorageKey(
+    StorageKeys.INTERACTIVE_STEPS_PREFIX,
+    'bundled:other-guide',
+    'section-1'
+  );
   localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, malformedCompletion);
   localStorage.setItem(unrelatedStepKey, JSON.stringify(['other-step']));
   const harness = replacementHarness({ resetControlCount: 0 });

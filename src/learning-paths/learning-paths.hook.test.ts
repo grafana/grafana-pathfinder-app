@@ -1,19 +1,22 @@
 /**
- * Focused test for App Platform path/journey runtime ingestion
+ * Focused tests for App Platform path/journey runtime ingestion
  * (RFC CUSTOM-GUIDE-PACKAGES.md §6.11) — merging into `paths` and
- * `resolveGuideMetadata`'s fallback tier. Other hook behavior (badges,
- * streaks, resets) is exercised elsewhere; this file mocks those
- * dependencies down to no-ops to isolate the merge logic.
+ * `resolveGuideMetadata`'s fallback tier — and for how `resetPath` reports a
+ * clear that only partly took. Other hook behavior (badges, streaks) is
+ * exercised elsewhere; this file mocks those dependencies down to no-ops.
  */
-import { renderHook, waitFor } from '@testing-library/react';
+import { AppEvents } from '@grafana/data';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 let mockNamespace: string | undefined = 'stacks-123';
+const mockPublish = jest.fn();
 jest.mock('@grafana/runtime', () => ({
   config: {
     get namespace() {
       return mockNamespace;
     },
   },
+  getAppEvents: () => ({ publish: mockPublish }),
 }));
 
 const mockFetchAppPlatformLearningPaths = jest.fn();
@@ -32,6 +35,7 @@ jest.mock('./paths-data', () => ({
   }),
 }));
 
+const mockClearAllForContent = jest.fn(async (_contentKey: string): Promise<void> => undefined);
 jest.mock('../lib/user-storage', () => ({
   learningProgressStorage: {
     get: jest.fn().mockResolvedValue({
@@ -44,9 +48,17 @@ jest.mock('../lib/user-storage', () => ({
     dismissCelebration: jest.fn(),
     removeCompletedGuides: jest.fn(),
   },
-  interactiveStepStorage: { clearAllForContent: jest.fn() },
-  interactiveCompletionStorage: { getAll: jest.fn().mockResolvedValue({}), clear: jest.fn() },
-  journeyCompletionStorage: { getAll: jest.fn().mockResolvedValue({}), clear: jest.fn() },
+  interactiveStepStorage: { clearAllForContent: (contentKey: string) => mockClearAllForContent(contentKey) },
+  interactiveCompletionStorage: {
+    getAll: jest.fn().mockResolvedValue({}),
+    clear: jest.fn(),
+    clearMany: jest.fn().mockResolvedValue(undefined),
+  },
+  journeyCompletionStorage: {
+    getAll: jest.fn().mockResolvedValue({}),
+    clear: jest.fn(),
+    clearMany: jest.fn().mockResolvedValue(undefined),
+  },
   milestoneCompletionStorage: { clear: jest.fn() },
 }));
 
@@ -63,6 +75,7 @@ import { useLearningPaths } from './learning-paths.hook';
 beforeEach(() => {
   jest.clearAllMocks();
   mockNamespace = 'stacks-123';
+  mockClearAllForContent.mockImplementation(async () => undefined);
 });
 
 describe('useLearningPaths — App Platform path ingestion', () => {
@@ -143,5 +156,70 @@ describe('useLearningPaths — App Platform path ingestion', () => {
 
     expect(mockFetchAppPlatformLearningPaths).not.toHaveBeenCalled();
     expect(result.current.paths.map((p) => p.id)).toEqual(['bundled-path']);
+  });
+});
+
+// A bulk path reset clears several content keys. If it abandoned the sweep on
+// the first rejection, the rest of the path would stay reset-but-not-cleared
+// with nothing said about it; if it reported per key, the reader would get one
+// toast per guide. `resetPath` must finish the sweep, report once, and resolve
+// — its two call sites await it inside an un-caught `onClick`.
+describe('useLearningPaths — resetPath reports a partial failure once', () => {
+  // The keys `resetPath` sweeps for the bundled fixture path (`bundled-path`
+  // with member `bundled-guide`): both id schemes, and for `bundled:` both
+  // launch shapes.
+  const SWEPT_CONTENT_KEYS = [
+    'bundled:bundled-path',
+    'bundled:bundled-path/content.json',
+    'backend-guide:bundled-path',
+    'bundled:bundled-guide',
+    'bundled:bundled-guide/content.json',
+    'backend-guide:bundled-guide',
+  ];
+  const FAILING_KEY = 'bundled:bundled-path';
+
+  beforeEach(() => {
+    mockFetchAppPlatformLearningPaths.mockResolvedValue({ paths: [], guideMetadata: {} });
+    mockClearAllForContent.mockImplementation(async (contentKey: string) => {
+      if (contentKey === FAILING_KEY) {
+        throw new Error('record survived delete');
+      }
+    });
+  });
+
+  it('attempts every content key, publishes one alert error, and still resolves', async () => {
+    const { result } = renderHook(() => useLearningPaths());
+    await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain('bundled-path'));
+
+    await act(async () => {
+      await expect(result.current.resetPath('bundled-path')).resolves.toBeUndefined();
+    });
+
+    const attempted = mockClearAllForContent.mock.calls.map(([key]) => key);
+    expect(new Set(attempted)).toEqual(new Set(SWEPT_CONTENT_KEYS));
+    expect(attempted).toContain(FAILING_KEY);
+
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+    expect(mockPublish).toHaveBeenCalledWith({
+      type: AppEvents.alertError.name,
+      payload: [
+        'Reset incomplete',
+        "Some of this path's progress could not be cleared. Reload the page and try again.",
+      ],
+    });
+  });
+
+  it('says nothing when every content key clears', async () => {
+    mockClearAllForContent.mockImplementation(async () => undefined);
+
+    const { result } = renderHook(() => useLearningPaths());
+    await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain('bundled-path'));
+
+    await act(async () => {
+      await result.current.resetPath('bundled-path');
+    });
+
+    expect(mockClearAllForContent).toHaveBeenCalledTimes(SWEPT_CONTENT_KEYS.length);
+    expect(mockPublish).not.toHaveBeenCalled();
   });
 });

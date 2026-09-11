@@ -28,7 +28,15 @@ Two walks outside the parser re-derive the same id straight from guide JSON — 
 
 ## Completion store — canonical persistence
 
-Step completion lives in `src/global-state/completion-store.ts`. The store is the canonical persistence layer — `SectionState` no longer carries a parallel `completed` set, and step components no longer maintain a local `isLocallyCompleted` flag. The store uses `interactiveStepStorage`; untouched content keeps the legacy section-key shape, while a reset switches that content key to collision-safe length-prefixed section keys.
+Step completion lives in `src/global-state/completion-store.ts`. The store is the canonical persistence layer — `SectionState` no longer carries a parallel `completed` set, and step components no longer maintain a local `isLocallyCompleted` flag. The store uses `interactiveStepStorage`, whose keys are built by `src/lib/storage/progress-keys.ts`.
+
+### Progress key shape
+
+The four per-section namespaces — interactive steps, section collapse, section acknowledgement, section done — all key records as `{prefix}{len(contentKey)}:{contentKey}:{sectionId}`. The character count in front of the content key marks the boundary, which matters because content keys contain hyphens (`bundled:welcome-to-grafana`) or are whole tab URLs: the shape this replaced joined content key and section id with a hyphen and marked neither end, so a scan for `bundled:welcome-to-grafana` also matched every record belonging to `bundled:welcome-to-grafana-cloud` (#1846).
+
+Records in the superseded shape are not read. Which guide one belongs to cannot be recovered — the information was never stored — so they are discarded rather than migrated, in one pass per page load (`sweepDiscardedProgressRecords`, called from `useUserStorage`). The same pass removes the `CONTENT_PROGRESS_V2_PREFIX` markers the interim scheme used. What a reader loses is their position inside a guide they started and did not finish; completed guides, badges and the streak live under `LEARNING_PROGRESS`, finished milestones under `MILESTONE_COMPLETION`, and durable completions in the completion-record queue, none of which the sweep can reach.
+
+`clearAllForContent` (the per-guide reset) writes no record of its own — the interim scheme completed by writing a per-content marker, and a refused write left the old progress live and still read. It deletes, then re-reads. The removal path swallows its own failures, so a removal that did not take is invisible to the caller; re-reading is what lets a reader be told the guide is clear only once it is. Any record still present at that point makes the reset throw rather than appear to work, whatever left it there.
 
 The step-checker FSM (`src/requirements-manager/step-checker.hook.ts`) and the `SequentialRequirementsManager` orchestrator remain as mirrors of the store — they hold the in-memory checking state needed to drive the UI. The FSM writes through to the store on every terminal transition (manual completion, skipped, objectives auto-complete, and reset) via `writeStoreCompletion` / `writeStoreReset`, so the orchestration mirrors and the canonical store cannot disagree on either axis. The `step-checker.store-bridge.test.ts` tripwire pins this contract.
 
@@ -68,8 +76,7 @@ The completion store's caches (`entries`, `hydratedSections`, `hydrationVersion`
 A module-scope `storage` event listener (installed via `installCrossTabSync` at module init) reacts to cross-tab writes:
 
 1. `event.key === null` — another tab called `localStorage.clear()`; drop every in-memory cache via `evictAllContentCaches`.
-2. `event.key.startsWith(StorageKeys.CONTENT_PROGRESS_V2_PREFIX)` — another tab switched one content key to versioned progress storage; match the exact marker key against known content keys, invalidate its count cache, and evict that content cache.
-3. `event.key.startsWith(StorageKeys.INTERACTIVE_STEPS_PREFIX)` — another tab wrote either a legacy or versioned `(contentKey, sectionId)` slot; reconstruct both exact key forms from the live set of active sections, then `evictSectionCacheForKey` + `notify` so the subscriber re-hydrates from authoritative storage on the next render.
+2. `event.key.startsWith(StorageKeys.INTERACTIVE_STEPS_PREFIX)` — another tab wrote a `(contentKey, sectionId)` slot; rebuild the key for each active section and compare it whole rather than parsing the event's key, then `evictSectionCacheForKey` + `notify` so the subscriber re-hydrates from authoritative storage on the next render.
 
 A per-section monotonic `hydrationVersion` counter closes the in-flight hydration race: every cache-clearing path bumps the version, and `ensureHydrated` snapshots the version at schedule time. When the storage read resolves, a mismatch indicates the cycle was invalidated (by an eviction or a fresh re-hydration kicked off by the listener) and the merge is dropped. This strictly supersedes the `!hydratedSections.has(key)` race guard — the version check also catches the case where a new `ensureHydrated` cycle has already re-added the key before the old `.then` runs.
 

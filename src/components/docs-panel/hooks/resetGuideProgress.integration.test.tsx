@@ -7,7 +7,7 @@ import {
   useStepCompletion,
 } from '../../../global-state/completion-store';
 import { resetContentKeyForTests, setActiveTabUrl } from '../../../global-state/content-key';
-import { StorageKeys } from '../../../lib/storage-keys';
+import { StorageKeys, buildVersionedSectionStorageKey } from '../../../lib/storage-keys';
 import { resetGuideProgress } from './resetGuideProgress';
 
 const E2E_GUIDE_URL = 'bundled:e2e-test';
@@ -15,8 +15,12 @@ const OTHER_GUIDE_URL = 'bundled:other-guide';
 const SECTION_ID = 'section-1';
 const STEP_ID = 'step-1';
 
-function progressKey(prefix: string, contentKey: string): string {
+function supersededKey(prefix: string, contentKey: string): string {
   return `${prefix}${contentKey}-${SECTION_ID}`;
+}
+
+function currentKey(prefix: string, contentKey: string): string {
+  return buildVersionedSectionStorageKey(prefix, contentKey, SECTION_ID);
 }
 
 function StepProbe(): React.ReactElement {
@@ -68,14 +72,14 @@ describe('resetGuideProgress integration', () => {
   });
 
   it('preserves other guide and application state', async () => {
-    const e2eKeys = [
-      progressKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, E2E_GUIDE_URL),
-      progressKey(StorageKeys.SECTION_COLLAPSE_PREFIX, E2E_GUIDE_URL),
-      progressKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, E2E_GUIDE_URL),
-      progressKey(StorageKeys.SECTION_DONE_PREFIX, E2E_GUIDE_URL),
+    const supersededOwnKeys = [
+      supersededKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, E2E_GUIDE_URL),
+      supersededKey(StorageKeys.SECTION_COLLAPSE_PREFIX, E2E_GUIDE_URL),
+      supersededKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, E2E_GUIDE_URL),
+      supersededKey(StorageKeys.SECTION_DONE_PREFIX, E2E_GUIDE_URL),
     ];
-    const otherGuideKey = progressKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, OTHER_GUIDE_URL);
-    e2eKeys.forEach((key) => localStorage.setItem(key, JSON.stringify([STEP_ID])));
+    const otherGuideKey = currentKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, OTHER_GUIDE_URL);
+    supersededOwnKeys.forEach((key) => localStorage.setItem(key, JSON.stringify([STEP_ID])));
     localStorage.setItem(otherGuideKey, JSON.stringify([STEP_ID]));
     localStorage.setItem(
       StorageKeys.INTERACTIVE_COMPLETION,
@@ -92,9 +96,10 @@ describe('resetGuideProgress integration', () => {
     try {
       await resetGuideProgress(E2E_GUIDE_URL);
 
-      // Legacy section keys remain physically present after reset; the per-content
-      // v2 marker makes them logically inactive without risking prefix collisions.
-      e2eKeys.forEach((key) => expect(localStorage.getItem(key)).toBe(JSON.stringify([STEP_ID])));
+      // A reset addresses only keys in the current shape, so records left in the
+      // superseded shape are out of its reach by design. Nothing reads them; the
+      // discard sweep removes them on the next page load, not this reset.
+      supersededOwnKeys.forEach((key) => expect(localStorage.getItem(key)).toBe(JSON.stringify([STEP_ID])));
       expect(localStorage.getItem(otherGuideKey)).toBe(JSON.stringify([STEP_ID]));
       expect(JSON.parse(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION) ?? '{}')).toEqual({
         [OTHER_GUIDE_URL]: 50,
