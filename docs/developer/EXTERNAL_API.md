@@ -260,6 +260,25 @@ with `--data-binary @file`. `--stack` must be a bare hostname with an
 optional port; a value carrying userinfo, a path, or a brace expansion is
 rejected before the token is attached to anything.
 
+## Provisioning with Terraform
+
+The Grafana provider's `grafana_apps_generic_resource` manages any
+namespaced App Platform kind from a Kubernetes-style manifest, and
+`InteractiveGuide` is one — so guides can be provisioned with Terraform
+today, with no provider or backend change. That buys deletion, drift
+detection and state, none of which the scripts above offer.
+
+It comes with one sharp caveat. The provider refreshes `spec` from the
+server on every read and takes arrays wholesale, so a block field the
+CRD prunes (see [block fields the CRD doesn't
+declare](#block-fields-the-crd-doesnt-declare)) turns into a plan that
+never converges rather than a silent content loss. Keep
+`upsert-learning-path.sh --dry-run --strict-blocks` as the pre-flight
+that names the offending field.
+
+See [`TERRAFORM.md`](TERRAFORM.md) for a worked example, the
+path-ordering pattern, and what Terraform does and does not solve.
+
 ## Authentication
 
 Every request needs a `Authorization: Bearer <service-account-token>`
@@ -568,6 +587,7 @@ Common cases:
 ## Related
 
 - [`CUSTOM_GUIDES.md`](CUSTOM_GUIDES.md) — full custom-guide lifecycle (draft/publish, the editor library, status badges).
+- [`TERRAFORM.md`](TERRAFORM.md) — provisioning guides with Terraform: worked example, path ordering, and the CRD-shape caveat.
 - [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) — the bash helper.
 - [`src/components/block-editor/hooks/useBackendGuides.ts`](../../src/components/block-editor/hooks/useBackendGuides.ts) — the editor's frontend client (calls the same endpoints from the browser via the user's session).
 - [`grafana-pathfinder-backend/kinds/interactiveguide.cue`](https://github.com/grafana/grafana-pathfinder-backend/blob/main/kinds/interactiveguide.cue) — authoritative CUE schema for the spec.
