@@ -28,6 +28,7 @@ import {
   interactiveCompletionStorage,
   journeyCompletionStorage,
   milestoneCompletionStorage,
+  guideCompletionMarkStorage,
 } from '../lib/user-storage';
 import { evictContentCache } from '../global-state/completion-store';
 import { pathMemberContentKeys, pathMemberIdSchemeKeys } from '../global-state/path-member-join';
@@ -467,6 +468,10 @@ export function useLearningPaths(): UseLearningPathsReturn {
         await clearInteractiveProgressForContentKeys(milestoneKeys);
         await interactiveCompletionStorage.clearMany(milestoneKeys);
         await journeyCompletionStorage.clearMany(journeyKeys);
+        // Prefix sweep, not `milestoneKeys`: a marked milestone the reader
+        // never stepped through has no interactive completion record to
+        // recover its key from.
+        await guideCompletionMarkStorage.clearAllWithPrefix(normalizedUrl);
 
         milestoneKeys.forEach((key) => evictContentCache(key));
       } else {
@@ -493,6 +498,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
         // Batched, not one clear per key: each helper read-modify-writes a single shared record.
         await interactiveCompletionStorage.clearMany(contentKeys);
         await journeyCompletionStorage.clearMany(rawSchemeKeys);
+        await guideCompletionMarkStorage.clearMany(contentKeys);
 
         contentKeys.forEach((key) => evictContentCache(key));
 

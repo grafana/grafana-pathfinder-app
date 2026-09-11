@@ -254,6 +254,7 @@ The module depends on several storage instances:
 - `interactiveCompletionStorage` — interactive guide completion flags (used by `resetPath`)
 - `journeyCompletionStorage` — journey-level completion (used by `resetPath`)
 - `milestoneCompletionStorage` — milestone completion for URL-based and package-backed paths (used by resets)
+- `guideCompletionMarkStorage` — the foot-of-guide "Mark complete" mark, cleared by `resetPath` (by content-key prefix on the URL branch, since a marked-but-unstepped milestone has no other record to recover its key from)
 
 Static guide completion flows through `markGuideCompleted()` in `badge-coordinator.ts`, which evaluates badges against the bundled path definitions. URL-based and App Platform journey milestones flow through `markMilestoneDone` in `docs-retrieval/learning-journey-helpers.ts`; it updates local completion state and emits completion facts (including the whole-journey `journey_completed` trigger) through the `completion-records` recorder.
 

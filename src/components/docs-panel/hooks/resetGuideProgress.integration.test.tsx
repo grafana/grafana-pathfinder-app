@@ -8,6 +8,7 @@ import {
 } from '../../../global-state/completion-store';
 import { resetContentKeyForTests, setActiveTabUrl } from '../../../global-state/content-key';
 import { StorageKeys, buildVersionedSectionStorageKey } from '../../../lib/storage-keys';
+import { guideCompletionMarkStorage } from '../../../lib/user-storage';
 import { resetGuideProgress } from './resetGuideProgress';
 
 const E2E_GUIDE_URL = 'bundled:e2e-test';
@@ -69,6 +70,17 @@ describe('resetGuideProgress integration', () => {
     await flushMicrotasks();
 
     expect(screen.getByTestId('completed')).toHaveTextContent('false');
+  });
+
+  it('brings a marked guide back unmarked, so the reader can mark it again', async () => {
+    await guideCompletionMarkStorage.set(E2E_GUIDE_URL, true);
+    await guideCompletionMarkStorage.set(OTHER_GUIDE_URL, true);
+    await expect(guideCompletionMarkStorage.get(E2E_GUIDE_URL)).resolves.toBe(true);
+
+    await resetGuideProgress(E2E_GUIDE_URL);
+
+    await expect(guideCompletionMarkStorage.get(E2E_GUIDE_URL)).resolves.toBeNull();
+    await expect(guideCompletionMarkStorage.get(OTHER_GUIDE_URL)).resolves.toBe(true);
   });
 
   it('preserves other guide and application state', async () => {

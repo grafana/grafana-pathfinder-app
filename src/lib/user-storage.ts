@@ -46,8 +46,15 @@ import { StorageEvents } from './event-names';
 import { getLearningJourneyBaseUrl } from './learning-journey-url';
 import { logger } from './logging';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
+import { collectKeysByPrefix } from './storage/key-utils';
 import { listProgressEntries, progressSectionKey, sweepDiscardedProgressRecords } from './storage/progress-keys';
-import { HYBRID_TIMESTAMP_SUFFIX, PROGRESS_SECTION_PREFIXES, StorageKeys } from './storage-keys';
+import {
+  HYBRID_TIMESTAMP_SUFFIX,
+  PROGRESS_SECTION_PREFIXES,
+  StorageKeys,
+  buildVersionedContentStorageKey,
+  parseVersionedStorageKey,
+} from './storage-keys';
 
 // ============================================================================
 // LEARNING PROGRESS SCHEMA (for defense-in-depth validation)
@@ -1331,6 +1338,94 @@ export const sectionDoneStorage = {
       await storage.removeItem(progressSectionKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId));
     } catch (error) {
       logger.warn('Failed to clear section done state', { error });
+    }
+  },
+};
+
+/**
+ * Guide-level completion mark storage.
+ *
+ * Persists the `mark-guide-complete` evidence produced by the "Mark
+ * complete" control at the foot of every guide and milestone. Keyed by
+ * content key alone: the mark evidences the whole guide, so unlike
+ * `sectionAcknowledgementStorage` there is no section to qualify it with.
+ *
+ * Two-state — `true` or absent (`null`) — for the same reason that
+ * namespace is: reset paths call `.clear()` rather than writing a `false`
+ * sentinel, so absence is the only "not marked" representation.
+ */
+function guideCompletionMarkKey(contentKey: string): string {
+  return buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, contentKey);
+}
+
+export const guideCompletionMarkStorage = {
+  /** `true` when the guide carries the mark; otherwise `null`. */
+  async get(contentKey: string): Promise<true | null> {
+    try {
+      const storage = createUserStorage();
+      const marked = await storage.getItem<boolean>(guideCompletionMarkKey(contentKey));
+      return marked === true ? true : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Synchronous read, for the completion store's percentage derivation which
+   * runs during render. Mirrors
+   * `sectionAcknowledgementStorage.countAllAcknowledged`: the hybrid storage
+   * writes through to localStorage before it queues the Grafana write, so the
+   * value is already there.
+   */
+  isMarked(contentKey: string): boolean {
+    try {
+      return localStorage.getItem(guideCompletionMarkKey(contentKey)) === 'true';
+    } catch {
+      return false;
+    }
+  },
+
+  /** Only `true` is accepted; use `.clear()` to remove an entry. */
+  async set(contentKey: string, isMarked: true): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.setItem(guideCompletionMarkKey(contentKey), isMarked);
+    } catch (error) {
+      logger.warn('Failed to save guide completion mark', { error });
+    }
+  },
+
+  async clear(contentKey: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(guideCompletionMarkKey(contentKey));
+    } catch (error) {
+      logger.warn('Failed to clear guide completion mark', { error });
+    }
+  },
+
+  async clearMany(contentKeys: string[]): Promise<void> {
+    await Promise.all(contentKeys.map((contentKey) => guideCompletionMarkStorage.clear(contentKey)));
+  },
+
+  /**
+   * Clear every mark whose content key starts with `contentKeyPrefix`, or all
+   * of them when it is omitted. Marks are keyed by content key alone and
+   * milestone keys are recorded nowhere, so the bulk reset paths recover them
+   * by prefix exactly as the path reset recovers step keys.
+   */
+  async clearAllWithPrefix(contentKeyPrefix = ''): Promise<void> {
+    try {
+      const contentKeys: string[] = [];
+      for (const key of collectKeysByPrefix(localStorage, StorageKeys.GUIDE_COMPLETION_MARK_PREFIX)) {
+        const parsed = parseVersionedStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, key);
+        if (parsed && parsed.sectionId === '' && parsed.contentKey.startsWith(contentKeyPrefix)) {
+          contentKeys.push(parsed.contentKey);
+        }
+      }
+      await guideCompletionMarkStorage.clearMany(contentKeys);
+    } catch (error) {
+      logger.warn('Failed to clear guide completion marks', { error });
     }
   },
 };

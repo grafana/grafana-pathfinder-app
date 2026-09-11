@@ -65,6 +65,7 @@ export enum UserInteraction {
   StepAutoCompleted = 'step_auto_completed',
   StepAutoCompleteFailed = 'step_auto_complete_failed',
   ResetProgressClick = 'reset_progress_click',
+  MarkCompleteClicked = 'mark_complete_clicked',
 
   // Global Link Interception
   GlobalDocsLinkIntercepted = 'global_docs_link_intercepted',

@@ -79,6 +79,12 @@
     "body": "Interactive guides walk you through Grafana one step at a time. \"Show me\" highlights the control to use, and \"Do it\" performs the step for you.",
     "title": "Learn by doing"
   },
+  "markComplete": {
+    "completed": "Completed",
+    "guideButton": "Mark complete",
+    "milestoneButton": "Mark complete and continue",
+    "percentComplete": "{{percent}}% complete"
+  },
   "myLearning": {
     "badges": "Badges",
     "badgesDescription": "Earn badges by completing paths and maintaining streaks",

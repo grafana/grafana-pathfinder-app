@@ -19,7 +19,7 @@ import {
 } from './completion-store';
 import { setActiveTabUrl, resetContentKeyForTests } from './content-key';
 import { subscribeProgressEvent, type ProgressEventDetail } from './progress-events';
-import { StorageKeys, buildVersionedSectionStorageKey } from '../lib/storage-keys';
+import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from '../lib/storage-keys';
 
 // In-memory mocks for the persisted-storage layer so tests are hermetic
 // and synchronous-where-they-can-be. Records are addressed by a NUL-joined
@@ -36,6 +36,7 @@ function belongsTo(pair: string, contentKey: string): boolean {
 const storedCompleted = new Map<string, Set<string>>(); // pairKey(contentKey, sectionId) -> ids
 const storedAcks = new Map<string, true>(); // pairKey(contentKey, sectionId) -> true
 const guidePercentages = new Map<string, number>();
+const storedMarks = new Set<string>(); // contentKey
 
 jest.mock('../lib/user-storage', () => ({
   interactiveStepStorage: {
@@ -68,6 +69,9 @@ jest.mock('../lib/user-storage', () => ({
       guidePercentages.set(contentKey, percentage);
     }),
   },
+  guideCompletionMarkStorage: {
+    isMarked: jest.fn((contentKey: string) => storedMarks.has(contentKey)),
+  },
   sectionAcknowledgementStorage: {
     countAllAcknowledged: jest.fn((contentKey: string) => {
       let count = 0;
@@ -94,6 +98,7 @@ beforeEach(() => {
   storedCompleted.clear();
   storedAcks.clear();
   guidePercentages.clear();
+  storedMarks.clear();
   mockTotalDocumentSteps = 0;
   mockRegisteredSectionCount = 0;
   resetCompletionStoreForTests();
@@ -258,6 +263,89 @@ describe('completion-store', () => {
       refreshAndNotifyGuideProgress(CONTENT_KEY);
 
       expect(guidePercentages.get(CONTENT_KEY)).toBe(100);
+    });
+  });
+
+  // A1 — the Mark complete control's mark is authoritative for the guide
+  // percentage, so every reader of it agrees and a later step write cannot
+  // move a marked guide back down.
+  describe('a marked guide', () => {
+    it('reports 100% with no steps completed at all', () => {
+      mockTotalDocumentSteps = 3;
+      storedMarks.add(CONTENT_KEY);
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+    });
+
+    it('reports 100% for a prose-only guide, which has neither steps nor sections', () => {
+      storedMarks.add(CONTENT_KEY);
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+    });
+
+    it('stays at 100% for every reader after a later step completion', async () => {
+      mockTotalDocumentSteps = 3;
+      storedMarks.add(CONTENT_KEY);
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      await flushMicrotasks();
+
+      act(() => {
+        markStepCompleted('step-1', 'section-x', 'manual');
+      });
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      // The persisted percentage is what the recommendation card reads.
+      expect(guidePercentages.get(CONTENT_KEY)).toBe(100);
+    });
+
+    it('stays at 100% after an all-passive ack recomputes the percentage', () => {
+      mockRegisteredSectionCount = 3;
+      storedAcks.set(pairKey(CONTENT_KEY, 'section-1'), true);
+      storedMarks.add(CONTENT_KEY);
+
+      act(() => {
+        refreshAndNotifyGuideProgress(CONTENT_KEY);
+      });
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      expect(guidePercentages.get(CONTENT_KEY)).toBe(100);
+    });
+
+    it('still reports 100% once the in-memory caches are gone, as after a reload', () => {
+      mockTotalDocumentSteps = 3;
+      storedMarks.add(CONTENT_KEY);
+
+      evictAllContentCaches();
+      resetCompletionStoreForTests();
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+    });
+
+    it('counts nothing, because the mark settles the answer before any storage scan', () => {
+      // `getGuideProgress` is a `useSyncExternalStore` snapshot, so it runs on
+      // every render of the Mark complete footer; `countAllAcknowledged` is an
+      // uncached scan over the whole of localStorage.
+      const { interactiveStepStorage, sectionAcknowledgementStorage } = jest.requireMock('../lib/user-storage');
+      mockRegisteredSectionCount = 3;
+      storedMarks.add(CONTENT_KEY);
+      interactiveStepStorage.countAllCompleted.mockClear();
+      sectionAcknowledgementStorage.countAllAcknowledged.mockClear();
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+
+      expect(sectionAcknowledgementStorage.countAllAcknowledged).not.toHaveBeenCalled();
+      expect(interactiveStepStorage.countAllCompleted).not.toHaveBeenCalled();
+    });
+
+    it('drops back to the derived percentage once the mark is cleared', () => {
+      mockTotalDocumentSteps = 4;
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1']));
+      storedMarks.add(CONTENT_KEY);
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+
+      storedMarks.delete(CONTENT_KEY);
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(25);
     });
   });
 
@@ -648,6 +736,78 @@ describe('completion-store', () => {
       const shortAgain = render(<StepProbe stepId="step-1" sectionId="section-x" />);
       expect(shortAgain.getByTestId('completed').textContent).toBe('true');
       shortAgain.unmount();
+    });
+
+    // A1 — the mark namespace became authoritative for the guide percentage,
+    // so a mark another tab writes has to reach this tab's subscribers.
+    it('notifies subscribers when another tab writes a completion mark', () => {
+      const listener = jest.fn();
+      subscribeProgress(CONTENT_KEY, listener);
+
+      storedMarks.add(CONTENT_KEY);
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, CONTENT_KEY),
+            newValue: 'true',
+            oldValue: null,
+          })
+        );
+      });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+    });
+
+    it('spares a sibling guide whose key merely starts with the written one', () => {
+      const listener = jest.fn();
+      subscribeProgress(CONTENT_KEY, listener);
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, `${CONTENT_KEY}-extended`),
+            newValue: 'true',
+            oldValue: null,
+          })
+        );
+      });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('ignores a mark left in the superseded shape, which #1864 discarded', () => {
+      const listener = jest.fn();
+      subscribeProgress(CONTENT_KEY, listener);
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: `${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${CONTENT_KEY}`,
+            newValue: 'true',
+            oldValue: null,
+          })
+        );
+      });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('ignores the timestamp sibling the hybrid storage writes beside each mark', () => {
+      const listener = jest.fn();
+      subscribeProgress(CONTENT_KEY, listener);
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: `${buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, CONTENT_KEY)}__timestamp`,
+            newValue: '1757000000000',
+            oldValue: null,
+          })
+        );
+      });
+
+      expect(listener).not.toHaveBeenCalled();
     });
 
     it('drops stale in-flight hydration when a cross-tab storage event triggers re-hydration', async () => {
