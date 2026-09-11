@@ -103,6 +103,59 @@ export interface ChallengeBlockProps {
 }
 
 let challengeCounter = 0;
+let instanceCounter = 0;
+
+const activeSessionHolders = new Map<string, Set<string>>();
+const activeConnectingInstances = new Set<string>();
+
+function registerSessionHolder(sessionId: string, instanceId: string): void {
+  let holders = activeSessionHolders.get(sessionId);
+  if (!holders) {
+    holders = new Set();
+    activeSessionHolders.set(sessionId, holders);
+  }
+  holders.add(instanceId);
+}
+
+function unregisterSessionHolder(sessionId: string, instanceId: string): void {
+  const holders = activeSessionHolders.get(sessionId);
+  if (holders) {
+    holders.delete(instanceId);
+    if (holders.size === 0) {
+      activeSessionHolders.delete(sessionId);
+    }
+  }
+}
+
+function hasOtherSessionHolders(sessionId: string, instanceId: string): boolean {
+  const holders = activeSessionHolders.get(sessionId);
+  if (!holders) {
+    return false;
+  }
+  for (const holder of holders) {
+    if (holder !== instanceId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function registerConnectingInstance(instanceId: string): void {
+  activeConnectingInstances.add(instanceId);
+}
+
+function unregisterConnectingInstance(instanceId: string): void {
+  activeConnectingInstances.delete(instanceId);
+}
+
+function hasOtherConnectingInstances(instanceId: string): boolean {
+  for (const id of activeConnectingInstances) {
+    if (id !== instanceId) {
+      return true;
+    }
+  }
+  return false;
+}
 
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
@@ -226,6 +279,10 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 }) => {
   const styles = useStyles2(getStyles);
   const terminalCtx = useTerminalContext();
+  const terminalCtxRef = useRef(terminalCtx);
+  useEffect(() => {
+    terminalCtxRef.current = terminalCtx;
+  }, [terminalCtx]);
   const codaGate = useCodaTerminalGate();
   const codaEligibility = useCodaSessionEligibility(codaGate !== 'disabled');
   useReportSandboxUnavailable(codaGate, codaEligibility, !!terminalCtx?.isTerminalRegistered, 'challenge');
@@ -271,6 +328,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // command still completes (we don't abort fetches mid-flight today) but no
   // subsequent commands run and the block returns to idle.
   const cancelRequestedRef = useRef(false);
+  const setupRunIdRef = useRef(0);
   // Status the terminal had when the user clicked Start. We use this to
   // ignore a stale 'error' (or any other) status until the terminal has
   // observably transitioned in response to our openTerminal call — otherwise
@@ -281,9 +339,35 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // against it: if this challenge asked for a different VM, openTerminal is
   // tearing it down and the SDK deletes it on the way out.
   const staleSessionIdRef = useRef<string | null>(null);
+  const [instanceId] = useState(() => `ch-inst-${++instanceCounter}`);
   const provisionedSessionIdRef = useRef<string | null>(null);
-  const everProvisionedSessionIdRef = useRef<string | null>(null);
   const setupSessionIdRef = useRef<string | null>(null);
+  const heldSessionIdRef = useRef<string | null>(null);
+
+  const claimSession = useCallback(
+    (sessionId: string) => {
+      if (heldSessionIdRef.current && heldSessionIdRef.current !== sessionId) {
+        unregisterSessionHolder(heldSessionIdRef.current, instanceId);
+      }
+      heldSessionIdRef.current = sessionId;
+      registerSessionHolder(sessionId, instanceId);
+    },
+    [instanceId]
+  );
+
+  const releaseSession = useCallback(() => {
+    unregisterConnectingInstance(instanceId);
+    if (heldSessionIdRef.current) {
+      unregisterSessionHolder(heldSessionIdRef.current, instanceId);
+      heldSessionIdRef.current = null;
+    }
+  }, [instanceId]);
+
+  useEffect(() => {
+    return () => {
+      releaseSession();
+    };
+  }, [releaseSession]);
 
   const { completed: storedCompleted, reason: storedReason } = useStepCompletion(stepId, sectionId);
   const isStandalone = !onStepComplete;
@@ -363,13 +447,15 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   }, [storedCompleted, onStepComplete, stepId, sectionId, isStandalone]);
 
   const resetToIdle = useCallback(() => {
+    setupRunIdRef.current++;
     setupStartedRef.current = false;
     provisionedSessionIdRef.current = null;
     setupSessionIdRef.current = null;
+    releaseSession();
     setSetupProgress(null);
     setErrorDetail('');
     setState(mode === 'standard' ? 'ready' : 'idle');
-  }, [mode]);
+  }, [mode, releaseSession]);
 
   // Handle reset trigger from parent section.
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: reset challenge state when parent section increments resetTrigger */
@@ -401,8 +487,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       }
       setupStartedRef.current = true;
       cancelRequestedRef.current = false;
+      unregisterConnectingInstance(instanceId);
+      const runId = ++setupRunIdRef.current;
       setupSessionIdRef.current = sessionId;
+      claimSession(sessionId);
       setState('preparing');
+
+      const isAborted = () => runId !== setupRunIdRef.current || cancelRequestedRef.current;
 
       // Two paths: a single bash script (preferred, allows multi-line / heredocs
       // / control flow) or the legacy per-command array. setupScript wins when
@@ -413,8 +504,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       setSetupProgress({ current: 0, total: totalStepsToRun });
       try {
         if (useScript) {
-          if (cancelRequestedRef.current) {
-            resetToIdle();
+          if (isAborted()) {
             return;
           }
           setSetupProgress({ current: 1, total: totalStepsToRun });
@@ -422,8 +512,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
           // are realistic and need the headroom. Backend hard-caps at the same
           // value, so we just request it.
           const result = await runExec(sessionId, setupScript!, 120_000);
-          if (cancelRequestedRef.current) {
-            resetToIdle();
+          if (isAborted()) {
             return;
           }
           if (result.exitCode !== 0) {
@@ -433,15 +522,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
           }
         } else {
           for (let i = 0; i < setupCommands.length; i++) {
-            if (cancelRequestedRef.current) {
-              resetToIdle();
+            if (isAborted()) {
               return;
             }
             setSetupProgress({ current: i + 1, total: totalStepsToRun });
             const cmd = setupCommands[i]!;
             const result = await runExec(sessionId, cmd, 30000);
-            if (cancelRequestedRef.current) {
-              resetToIdle();
+            if (isAborted()) {
               return;
             }
             if (result.exitCode !== 0) {
@@ -455,14 +542,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         }
         // Sentinel write — must be last. Once present, the gated coda-exit-zero
         // check is allowed to evaluate the author's success criterion.
-        if (cancelRequestedRef.current) {
-          resetToIdle();
+        if (isAborted()) {
           return;
         }
         setSetupProgress({ current: totalStepsToRun, total: totalStepsToRun });
         const sentinel = await runExec(sessionId, SENTINEL_WRITE_COMMAND, 5000);
-        if (cancelRequestedRef.current) {
-          resetToIdle();
+        if (isAborted()) {
           return;
         }
         if (sentinel.exitCode !== 0) {
@@ -473,6 +558,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         setSetupProgress(null);
         setState('ready');
       } catch (err) {
+        if (isAborted()) {
+          return;
+        }
         // Branch on the backend's error code. The message is for display and
         // its wording is not a contract.
         const codaErr = toCodaError(err);
@@ -490,7 +578,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         setState('setup-failed');
       }
     },
-    [setupCommands, setupScript, resetToIdle, runExec]
+    [setupCommands, setupScript, runExec, claimSession, instanceId]
   );
 
   // Watch terminal status while we're trying to connect. When it goes live,
@@ -530,12 +618,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       if (statusAtStartRef.current === 'connected' && terminalCtx.sessionId === staleSessionIdRef.current) {
         return;
       }
-      const isOurLiveSession =
-        Boolean(staleSessionIdRef.current) && staleSessionIdRef.current === everProvisionedSessionIdRef.current;
-      const isFreshlyProvisioned = terminalCtx.sessionId !== staleSessionIdRef.current || isOurLiveSession;
-      if (isFreshlyProvisioned) {
+      claimSession(terminalCtx.sessionId);
+      if (terminalCtx.sessionId !== staleSessionIdRef.current) {
         provisionedSessionIdRef.current = terminalCtx.sessionId;
-        everProvisionedSessionIdRef.current = terminalCtx.sessionId;
       }
       runSetup(terminalCtx.sessionId);
       return;
@@ -562,6 +647,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     codaGate,
     codaEligibility,
     runSetup,
+    claimSession,
   ]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -589,14 +675,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setupStartedRef.current = false;
     cancelRequestedRef.current = false;
     statusAtStartRef.current = terminalCtx.status;
-    const sessionIdBeforeStart = terminalCtx.status === 'connected' ? terminalCtx.sessionId : null;
-    const isOurLiveSession =
-      Boolean(sessionIdBeforeStart) && sessionIdBeforeStart === everProvisionedSessionIdRef.current;
+    const sessionIdBeforeStart = terminalCtx.sessionId;
     // The session the terminal holds right now is not ours to use: if this
     // challenge wants a different VM, openTerminal replaces it and the SDK
     // deletes it. The effect below must not start setup against it either.
     staleSessionIdRef.current = terminalCtx.sessionId;
     provisionedSessionIdRef.current = null;
+    registerConnectingInstance(instanceId);
     setState('connecting');
     const vmOpts =
       vmTemplate || vmScenario || vmApp
@@ -606,19 +691,42 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     // actually ended up connected, which is the only id setup may run against.
     const nextSessionId = await terminalCtx.openTerminal(vmOpts);
     if (cancelRequestedRef.current) {
+      const currentLiveSessionId = terminalCtxRef.current?.sessionId;
+      const isProvisioner = Boolean(nextSessionId) && nextSessionId !== sessionIdBeforeStart;
+      const isDifferentSession = Boolean(currentLiveSessionId) && currentLiveSessionId !== nextSessionId;
+      const hasOther =
+        (Boolean(nextSessionId) && hasOtherSessionHolders(nextSessionId!, instanceId)) ||
+        hasOtherConnectingInstances(instanceId);
+      if (isProvisioner && !isDifferentSession && !hasOther) {
+        terminalCtxRef.current?.disconnect();
+      }
+      releaseSession();
       resetToIdle();
       return;
     }
     if (nextSessionId) {
-      if (nextSessionId !== sessionIdBeforeStart || isOurLiveSession) {
+      claimSession(nextSessionId);
+      if (nextSessionId !== sessionIdBeforeStart) {
         provisionedSessionIdRef.current = nextSessionId;
-        everProvisionedSessionIdRef.current = nextSessionId;
       }
       runSetup(nextSessionId);
     }
     // No session: the effect below reports the terminal's own reason, which
     // names the actual cause (unregistered backend, role floor, quota).
-  }, [disabled, terminalCtx, codaGate, codaEligibility, vmTemplate, vmScenario, vmApp, runSetup, resetToIdle]);
+  }, [
+    disabled,
+    terminalCtx,
+    codaGate,
+    codaEligibility,
+    vmTemplate,
+    vmScenario,
+    vmApp,
+    runSetup,
+    resetToIdle,
+    claimSession,
+    releaseSession,
+    instanceId,
+  ]);
 
   const handleCheckMyWork = useCallback(async () => {
     cancelRequestedRef.current = false;
@@ -660,29 +768,20 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 
   const handleCancel = useCallback(() => {
     cancelRequestedRef.current = true;
-    if (state === 'connecting') {
-      // No setup is in flight yet — bail immediately. (Setup will see the
-      // flag if it starts after this and skip out before running anything.)
-      resetToIdle();
-    } else if (
-      mode === 'coda' &&
-      (state === 'ready' || state === 'checking' || state === 'failed-check' || state === 'setup-failed')
-    ) {
-      const liveSessionId = terminalCtx?.sessionId;
+    setupRunIdRef.current++;
+    if (state === 'connecting' || state === 'preparing') {
+      const liveSessionId = terminalCtxRef.current?.sessionId;
       const isOwner = Boolean(provisionedSessionIdRef.current) && provisionedSessionIdRef.current === liveSessionId;
-      if (isOwner) {
-        terminalCtx?.disconnect();
-        everProvisionedSessionIdRef.current = null;
+      const hasOther =
+        (Boolean(liveSessionId) && hasOtherSessionHolders(liveSessionId!, instanceId)) ||
+        hasOtherConnectingInstances(instanceId);
+      if (isOwner && !hasOther) {
+        terminalCtxRef.current?.disconnect();
+        provisionedSessionIdRef.current = null;
       }
-      resetToIdle();
-    } else if (state === 'ready' || state === 'checking' || state === 'failed-check' || state === 'setup-failed') {
-      // Standard mode never touches Coda, so it must never see a Coda gate —
-      // and must never tear down a session another step may be using.
-      resetToIdle();
     }
-    // For 'preparing': the in-flight runExec resolves first; the loop checks
-    // cancelRequestedRef on the next iteration and calls resetToIdle itself.
-  }, [state, resetToIdle, terminalCtx, mode]);
+    resetToIdle();
+  }, [state, resetToIdle, instanceId]);
 
   // Standard mode never touches Coda, so it must never see a Coda gate.
   const configGateMessage = mode === 'coda' ? codaConfigGateMessage(codaGate, codaEligibility, SANDBOX_SUBJECT) : null;
@@ -863,4 +962,11 @@ ChallengeBlock.displayName = 'ChallengeBlock';
 /** Reset the anonymous challenge counter (test/Storybook helper). */
 export function resetChallengeCounter(): void {
   challengeCounter = 0;
+  activeSessionHolders.clear();
+  activeConnectingInstances.clear();
+}
+
+export function resetSessionHoldersForTest(): void {
+  activeSessionHolders.clear();
+  activeConnectingInstances.clear();
 }

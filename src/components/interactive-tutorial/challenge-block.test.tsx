@@ -1,7 +1,7 @@
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
 
-import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+import { ChallengeBlock, resetChallengeCounter, resetSessionHoldersForTest } from './challenge-block';
 import { resetInteractiveCounters } from './interactive-section';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { useCodaSessionEligibility, useCodaTerminalGate } from '../../integrations/coda/useCodaAvailability.hook';
@@ -160,6 +160,7 @@ function mockCheckerState(overrides: MockCheckerOverrides = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   resetChallengeCounter();
+  resetSessionHoldersForTest();
   mockUseStepChecker.mockImplementation((props) => ({
     status: 'enabled' as StepStatus,
     isEnabled: true,
@@ -521,6 +522,76 @@ describe('ChallengeBlock', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+  });
+
+  it('does not write setup-failed over idle when in-flight exec throws after cancel during preparing', async () => {
+    let rejectFirst: (error: Error) => void = () => {};
+    const post = jest.fn().mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectFirst = reject;
+        })
+    );
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected' });
+
+    render(<ChallengeBlock {...baseProps} setupCommands={['sleep 30']} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      rejectFirst(new Error('session_not_found'));
+    });
+
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+  });
+
+  it('ignores late-resolving exec from cancelled setup when subsequent start is in flight', async () => {
+    let resolveFirstAttempt: (value: unknown) => void = () => {};
+    const post = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirstAttempt = resolve;
+          })
+      )
+      .mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected' });
+
+    render(<ChallengeBlock {...baseProps} setupCommands={['cmd1', 'cmd2']} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await act(async () => {
+      resolveFirstAttempt({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
     });
   });
 
@@ -1541,7 +1612,7 @@ describe('ChallengeBlock', () => {
       expect(disconnect).not.toHaveBeenCalled();
     });
 
-    it('disconnects terminal on skip when this challenge owns the session', async () => {
+    it('does not disconnect terminal on skip even when this challenge owns the session', async () => {
       const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
       setBackend(post);
       const NEW_SESSION = 'ch-session-owned-skip';
@@ -1569,7 +1640,7 @@ describe('ChallengeBlock', () => {
       fireEvent.click(skipButton);
 
       expect(mockMarkSkipped).toHaveBeenCalled();
-      expect(disconnect).toHaveBeenCalledTimes(1);
+      expect(disconnect).not.toHaveBeenCalled();
     });
 
     it('does not disconnect terminal on cancel when the live session belongs to another step', async () => {
@@ -1633,7 +1704,7 @@ describe('ChallengeBlock', () => {
       });
     });
 
-    it('disconnects terminal on cancel when this challenge owns the live session', async () => {
+    it('does not disconnect terminal on cancel in ready state even when this challenge provisioned the session', async () => {
       const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
       setBackend(post);
       const NEW_SESSION = 'ch-session-owned';
@@ -1656,13 +1727,13 @@ describe('ChallengeBlock', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
-      expect(disconnect).toHaveBeenCalledTimes(1);
+      expect(disconnect).not.toHaveBeenCalled();
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
       });
     });
 
-    it('disconnects terminal on cancel after setup fails and try again succeeds on the same session', async () => {
+    it('does not disconnect terminal on cancel after setup fails and try again succeeds on the same session', async () => {
       const post = jest
         .fn()
         .mockResolvedValueOnce({ stdout: '', stderr: 'mock setup error', exitCode: 1, durationMs: 1 })
@@ -1698,13 +1769,13 @@ describe('ChallengeBlock', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
-      expect(disconnect).toHaveBeenCalledTimes(1);
+      expect(disconnect).not.toHaveBeenCalled();
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
       });
     });
 
-    it('restores session ownership on restart after resetTrigger while session remains live', async () => {
+    it('does not disconnect terminal on cancel after restart following resetTrigger while session remains live', async () => {
       const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
       setBackend(post);
       const SESSION = 'ch-session-reset-live';
@@ -1741,13 +1812,13 @@ describe('ChallengeBlock', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
-      expect(disconnect).toHaveBeenCalledTimes(1);
+      expect(disconnect).not.toHaveBeenCalled();
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
       });
     });
 
-    it('does not disconnect terminal when reusing another step session, but disconnects a newly provisioned session on subsequent start', async () => {
+    it('does not disconnect terminal on cancel in ready state whether reusing or provisioning a session', async () => {
       const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
       setBackend(post);
       const REUSED_SESSION = 'ch-session-initial-reused';
@@ -1803,7 +1874,7 @@ describe('ChallengeBlock', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
-      expect(disconnect).toHaveBeenCalledTimes(1);
+      expect(disconnect).not.toHaveBeenCalled();
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
       });
@@ -1875,8 +1946,14 @@ describe('ChallengeBlock', () => {
       });
     });
 
-    it('claims ownership and disconnects on cancel when a newly provisioned session connects late via the effect', async () => {
-      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    it('claims ownership and disconnects on cancel while preparing when a newly provisioned session connects late via the effect', async () => {
+      let resolveSetup: (value: unknown) => void = () => {};
+      const post = jest.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveSetup = resolve;
+          })
+      );
       setBackend(post);
       const NEW_SESSION = 'ch-session-late-owned';
       const openTerminal = jest.fn().mockReturnValue(new Promise(() => {}));
@@ -1887,22 +1964,462 @@ describe('ChallengeBlock', () => {
       });
 
       const { rerender } = render(
-        <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-late-owned" />
+        <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-late-owned" />
       );
       fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
 
       mockTerminalCtx({ status: 'connected', sessionId: NEW_SESSION, disconnect, openTerminal });
-      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-late-owned" />);
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-late-owned" />);
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
       });
 
       fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
       expect(disconnect).toHaveBeenCalledTimes(1);
+      resolveSetup({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('preserves shared session when provisioning block is cancelled after a second block joins', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const SHARED_SESSION = 'ch-session-shared-survives';
+      let currentSessionId: string | null = null;
+      let currentStatus: 'disconnected' | 'connected' = 'disconnected';
+      const disconnect = jest.fn().mockImplementation(() => {
+        currentSessionId = null;
+        currentStatus = 'disconnected';
+      });
+      const openTerminal = jest.fn().mockImplementation(() => {
+        currentSessionId = SHARED_SESSION;
+        currentStatus = 'connected';
+        return Promise.resolve(SHARED_SESSION);
+      });
+      mockTerminalCtx({
+        status: currentStatus,
+        sessionId: currentSessionId,
+        openTerminal,
+        disconnect,
+      });
+
+      const { rerender } = render(
+        <div>
+          <div data-testid="block-a">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-a" />
+          </div>
+          <div data-testid="block-b">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-b" />
+          </div>
+        </div>
+      );
+
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({
+        status: 'connected',
+        sessionId: SHARED_SESSION,
+        openTerminal,
+        disconnect,
+      });
+      rerender(
+        <div>
+          <div data-testid="block-a">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-a" />
+          </div>
+          <div data-testid="block-b">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-b" />
+          </div>
+        </div>
+      );
+
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId('block-a')).getByRole('button', { name: /check my work/i })
+        ).toBeInTheDocument();
+      });
+
+      fireEvent.click(within(screen.getByTestId('block-b')).getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId('block-b')).getByRole('button', { name: /check my work/i })
+        ).toBeInTheDocument();
+      });
+
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId('block-a')).getByRole('button', { name: /start challenge/i })
+        ).toBeInTheDocument();
+      });
+      expect(within(screen.getByTestId('block-b')).getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+
+    it('disconnects terminal on cancel while preparing if this block provisioned the session', async () => {
+      let resolveSetup: (value: unknown) => void = () => {};
+      const post = jest.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveSetup = resolve;
+          })
+      );
+      setBackend(post);
+      const NEW_SESSION = 'ch-session-cancel-preparing';
+      const openTerminal = jest.fn().mockResolvedValue(NEW_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-prep" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: NEW_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-prep" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      resolveSetup({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('disconnects terminal on cancel while connecting if openTerminal provisions a new session', async () => {
+      let resolveOpenTerminal: (sessionId: string) => void = () => {};
+      const openTerminal = jest.fn().mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveOpenTerminal = resolve;
+        })
+      );
+      const NEW_SESSION = 'ch-session-cancel-conn';
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-conn" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      await act(async () => {
+        resolveOpenTerminal(NEW_SESSION);
+      });
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal on cancel while connecting if openTerminal returns an existing session', async () => {
+      let resolveOpenTerminal: (sessionId: string) => void = () => {};
+      const openTerminal = jest.fn().mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveOpenTerminal = resolve;
+        })
+      );
+      const EXISTING_SESSION = 'ch-session-exist-conn';
+      const { disconnect } = mockTerminalCtx({
+        status: 'connected',
+        sessionId: EXISTING_SESSION,
+        openTerminal,
+      });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-conn-exist" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      await act(async () => {
+        resolveOpenTerminal(EXISTING_SESSION);
+      });
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect a reused session held while disconnected when cancelled after openTerminal awaits', async () => {
+      let resolveOpenTerminal: (sessionId: string) => void = () => {};
+      const openTerminal = jest.fn().mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveOpenTerminal = resolve;
+        })
+      );
+      const REUSED_DISCONNECTED_SESSION = 'ch-session-reused-disconnected';
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: REUSED_DISCONNECTED_SESSION,
+        openTerminal,
+      });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-conn-reused-disc" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      await act(async () => {
+        resolveOpenTerminal(REUSED_DISCONNECTED_SESSION);
+      });
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect a reused session held while disconnected when cancelled during preparing', async () => {
+      let resolveSetup: (value: unknown) => void = () => {};
+      const post = jest.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveSetup = resolve;
+          })
+      );
+      setBackend(post);
+      const REUSED_DISCONNECTED_SESSION = 'ch-session-reused-disc-prep';
+      const openTerminal = jest.fn().mockResolvedValue(REUSED_DISCONNECTED_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: REUSED_DISCONNECTED_SESSION,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-disc-prep" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: REUSED_DISCONNECTED_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-disc-prep" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      resolveSetup({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal on cancel when setup has failed', async () => {
+      const post = jest
+        .fn()
+        .mockResolvedValueOnce({ stdout: '', stderr: 'mock setup error', exitCode: 1, durationMs: 1 });
+      setBackend(post);
+      const FAILED_SESSION = 'ch-session-setup-failed';
+      const openTerminal = jest.fn().mockResolvedValue(FAILED_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={['exit 1']} stepId="ch-coda-cancel-failed" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: FAILED_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['exit 1']} stepId="ch-coda-cancel-failed" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect shared session when one of two concurrently connecting blocks is cancelled', async () => {
+      let resolveSetupA: (value: unknown) => void = () => {};
+      let resolveSetupB: (value: unknown) => void = () => {};
+      let callCount = 0;
+      const post = jest.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return new Promise((resolve) => {
+            resolveSetupA = resolve;
+          });
+        }
+        return new Promise((resolve) => {
+          resolveSetupB = resolve;
+        });
+      });
+      setBackend(post);
+      const SHARED_SESSION = 'ch-session-concurrent-connecting';
+      const openTerminal = jest.fn().mockResolvedValue(SHARED_SESSION);
+      const disconnect = jest.fn();
+      mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+        disconnect,
+      });
+
+      const { rerender } = render(
+        <div>
+          <div data-testid="block-a">
+            <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-concurrent-a" />
+          </div>
+          <div data-testid="block-b">
+            <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-concurrent-b" />
+          </div>
+        </div>
+      );
+
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /start challenge/i }));
+      fireEvent.click(within(screen.getByTestId('block-b')).getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({
+        status: 'connected',
+        sessionId: SHARED_SESSION,
+        openTerminal,
+        disconnect,
+      });
+      rerender(
+        <div>
+          <div data-testid="block-a">
+            <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-concurrent-a" />
+          </div>
+          <div data-testid="block-b">
+            <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-concurrent-b" />
+          </div>
+        </div>
+      );
+
+      await waitFor(() => {
+        expect(within(screen.getByTestId('block-a')).getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+      });
+
+      // Cancel block-a while block-b is still in preparing on the same provisioned session
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId('block-a')).getByRole('button', { name: /start challenge/i })
+        ).toBeInTheDocument();
+      });
+
+      // Block-b is still preparing; cancelling it now tears down the session since no other block holds it
+      fireEvent.click(within(screen.getByTestId('block-b')).getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      resolveSetupA({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      resolveSetupB({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    });
+
+    it('does not disconnect terminal on cancel-after-await if terminal is attached to a different session', async () => {
+      let resolveOpenTerminal: (sessionId: string) => void = () => {};
+      const openTerminal = jest.fn().mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveOpenTerminal = resolve;
+        })
+      );
+      const NEW_SESSION = 'ch-session-new-provisioned';
+      const OTHER_SESSION = 'ch-session-other-active';
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-diff-sess" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      // External event moves terminal to another session before openTerminal resolves
+      mockTerminalCtx({
+        status: 'connected',
+        sessionId: OTHER_SESSION,
+        openTerminal,
+        disconnect,
+      });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-diff-sess" />);
+
+      await act(async () => {
+        resolveOpenTerminal(NEW_SESSION);
+      });
+
+      expect(disconnect).not.toHaveBeenCalled();
+    });
+
+    it('does not disconnect terminal on cancel-after-await if another block is connecting', async () => {
+      let resolveOpenTerminalA: (sessionId: string) => void = () => {};
+      let resolveOpenTerminalB: (sessionId: string) => void = () => {};
+      let callCount = 0;
+      const openTerminal = jest.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return new Promise<string>((resolve) => {
+            resolveOpenTerminalA = resolve;
+          });
+        }
+        return new Promise<string>((resolve) => {
+          resolveOpenTerminalB = resolve;
+        });
+      });
+      const NEW_SESSION = 'ch-session-await-concurrent';
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      render(
+        <div>
+          <div data-testid="block-a">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-postawait-a" />
+          </div>
+          <div data-testid="block-b">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-postawait-b" />
+          </div>
+        </div>
+      );
+
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /start challenge/i }));
+      fireEvent.click(within(screen.getByTestId('block-b')).getByRole('button', { name: /start challenge/i }));
+
+      // Cancel block A while both are awaiting connection
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /cancel/i }));
+
+      await act(async () => {
+        resolveOpenTerminalA(NEW_SESSION);
+      });
+
+      // Block B is still connecting, so A's post-await resolution must NOT disconnect
+      expect(disconnect).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveOpenTerminalB(NEW_SESSION);
       });
     });
 
