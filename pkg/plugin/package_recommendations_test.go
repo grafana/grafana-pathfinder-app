@@ -274,6 +274,9 @@ func TestIsAllowedInteractiveLearningHost(t *testing.T) {
 		{"https://interactive-learning.grafana.net/packages/repository.json", true},
 		{"https://interactive-learning.grafana-dev.net/packages/repository.json", true},
 		{"https://interactive-learning.grafana-ops.net/x.json", true},
+		{"https://interactive-learning-private.grafana.net/packages/repository.json", true},
+		{"https://interactive-learning-private.grafana-dev.net/packages/repository.json", true},
+		{"https://interactive-learning-private.grafana-ops.net/x.json", true},
 		// Wrong scheme.
 		{"http://interactive-learning.grafana.net/packages/repository.json", false},
 		// Not allowlisted.
