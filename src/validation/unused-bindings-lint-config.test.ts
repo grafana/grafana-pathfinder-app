@@ -131,14 +131,10 @@ function lintProbe(source: string): LintMessage[] {
  * Whoever clears #1815 updates this list in the same pull request: the
  * assertion below is strict equality in both directions, so a new unused
  * binding fails as growth and a fixed one fails as drift until it is removed
- * here. The nineteenth grandfathered binding — `objectives` in
- * `interactive-step.tsx` — is deliberately absent: it uses an inline
- * `eslint-disable-next-line`, which ESLint's own unused-disable-directive
- * reporting self-clears once the binding becomes used.
+ * here.
  */
 const GRANDFATHERED: Record<string, string[]> = {
   'src/components/interactive-tutorial/code-block-step.tsx': [
-    'hints',
     'onStepReset',
     'resetTrigger',
     'sectionTitle',
@@ -154,7 +150,6 @@ const GRANDFATHERED: Record<string, string[]> = {
     'totalSteps',
   ],
   'src/components/interactive-tutorial/terminal-step.tsx': [
-    'hints',
     'onStepReset',
     'resetTrigger',
     'sectionTitle',

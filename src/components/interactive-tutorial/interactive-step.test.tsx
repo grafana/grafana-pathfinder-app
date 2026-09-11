@@ -6,6 +6,7 @@ import { ControllerChannelProvider } from '../../global-state/controller-channel
 import { TEST_PAIRING } from '../../test-utils/fake-cross-tab-transport';
 import { createPairingAcceptProof } from '../../lib/pairing-manager';
 import { testIds } from '../../constants/testIds';
+import { resetCompletionStoreForTests } from '../../global-state/completion-store';
 
 describe('executeWithLazyScroll: step outcome propagation', () => {
   afterEach(() => {
@@ -83,6 +84,102 @@ describe('InteractiveStep: showMeText label override', () => {
     const step = screen.getByTestId(testIds.interactive.step('show-only-failure'));
     await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'error'));
     expect(screen.queryByTestId(testIds.interactive.stepCompleted('show-only-failure'))).not.toBeInTheDocument();
+  });
+});
+
+describe('InteractiveStep: objectives', () => {
+  const SATISFIED_OBJECTIVE_TARGET = '#objectives-target';
+  const UNSATISFIABLE_REQUIREMENT = 'on-page:/pathfinder-objectives-never-here';
+
+  beforeEach(() => {
+    const target = document.createElement('div');
+    target.id = 'objectives-target';
+    document.body.appendChild(target);
+  });
+
+  afterEach(() => {
+    document.getElementById('objectives-target')?.remove();
+    resetCompletionStoreForTests();
+  });
+
+  it('auto-completes a step whose objectives are satisfied even while its requirements fail', async () => {
+    const onComplete = jest.fn();
+
+    render(
+      <InteractiveStep
+        stepId="objectives-autocomplete"
+        targetAction="highlight"
+        refTarget={SATISFIED_OBJECTIVE_TARGET}
+        requirements={UNSATISFIABLE_REQUIREMENT}
+        objectives="exists-reftarget"
+        onComplete={onComplete}
+      >
+        Example
+      </InteractiveStep>
+    );
+
+    const step = screen.getByTestId(testIds.interactive.step('objectives-autocomplete'));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'completed'));
+    expect(screen.getByTestId(testIds.interactive.stepCompleted('objectives-autocomplete'))).toBeInTheDocument();
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+  });
+
+  it('suppresses the blocking requirements explanation once objectives are satisfied', async () => {
+    render(
+      <InteractiveStep
+        stepId="objectives-suppress"
+        targetAction="highlight"
+        refTarget={SATISFIED_OBJECTIVE_TARGET}
+        requirements={UNSATISFIABLE_REQUIREMENT}
+        objectives="exists-reftarget"
+      >
+        Example
+      </InteractiveStep>
+    );
+
+    const step = screen.getByTestId(testIds.interactive.step('objectives-suppress'));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'completed'));
+    expect(screen.queryByTestId(testIds.interactive.requirementCheck('objectives-suppress'))).not.toBeInTheDocument();
+  });
+
+  it('still blocks on the same failing requirements when no objectives are authored', async () => {
+    render(
+      <InteractiveStep
+        stepId="objectives-absent"
+        targetAction="highlight"
+        refTarget={SATISFIED_OBJECTIVE_TARGET}
+        requirements={UNSATISFIABLE_REQUIREMENT}
+      >
+        Example
+      </InteractiveStep>
+    );
+
+    expect(await screen.findByTestId(testIds.interactive.requirementCheck('objectives-absent'))).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.step('objectives-absent'))).toHaveAttribute(
+      'data-test-step-state',
+      'requirements-unmet'
+    );
+  });
+
+  it('reports a section-managed step complete through the objectives path', async () => {
+    const onStepComplete = jest.fn();
+
+    render(
+      <InteractiveStep
+        stepId="section-1-step-1"
+        sectionId="section-1"
+        targetAction="highlight"
+        refTarget={SATISFIED_OBJECTIVE_TARGET}
+        requirements={UNSATISFIABLE_REQUIREMENT}
+        objectives="exists-reftarget"
+        onStepComplete={onStepComplete}
+      >
+        Example
+      </InteractiveStep>
+    );
+
+    await waitFor(() => expect(onStepComplete).toHaveBeenCalledWith('section-1-step-1'));
+    expect(screen.getByTestId(testIds.interactive.stepCompleted('section-1-step-1'))).toBeInTheDocument();
   });
 });
 
