@@ -1001,10 +1001,27 @@ function parseStepIds(raw: string): unknown[] | null {
 }
 
 /**
- * Cache for countAllCompleted to avoid O(n) localStorage scan on every step completion.
- * Invalidated by setCompleted, clear, and clearAllForContent operations.
+ * Cache for the completed-step id scan, so neither `countAllCompleted` nor
+ * `listAllCompleted` costs an O(n) localStorage sweep per call. The count is
+ * the list's length, so one cache serves both and they cannot disagree.
+ *
+ * Load-bearing for the render path, not just for write throughput: the
+ * completion percentage's evidence bridge reads the list, and that read sits
+ * on the Mark complete footer's `useSyncExternalStore` snapshot, which React
+ * calls on every render.
+ *
+ * Invalidated by setCompleted, clear, clearAllForContent, clearAll, and the
+ * cross-tab listener's `invalidateCountCache`.
  */
-const completedCountCache = new Map<string, number>();
+const completedIdsCache = new Map<string, readonly string[]>();
+
+/** The same cache for acknowledged sections — the evidence bridge's other sweep. */
+const acknowledgedIdsCache = new Map<string, readonly string[]>();
+
+function invalidateProgressScanCaches(contentKey: string): void {
+  completedIdsCache.delete(contentKey);
+  acknowledgedIdsCache.delete(contentKey);
+}
 
 /**
  * Interactive step completion storage operations
@@ -1020,7 +1037,7 @@ export const interactiveStepStorage = {
    * Idempotent on unknown keys; safe to call from any tab.
    */
   invalidateCountCache(contentKey: string): void {
-    completedCountCache.delete(contentKey);
+    invalidateProgressScanCaches(contentKey);
   },
 
   /**
@@ -1042,8 +1059,8 @@ export const interactiveStepStorage = {
    */
   async setCompleted(contentKey: string, sectionId: string, completedIds: Set<string>): Promise<void> {
     try {
-      // Invalidate count cache before write so next countAllCompleted() re-scans
-      completedCountCache.delete(contentKey);
+      // Invalidate before the write so the next scan re-reads storage
+      completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
       await storage.setItem(key, Array.from(completedIds));
@@ -1057,7 +1074,7 @@ export const interactiveStepStorage = {
    */
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
-      completedCountCache.delete(contentKey);
+      completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       await storage.removeItem(progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId));
     } catch (error) {
@@ -1083,7 +1100,7 @@ export const interactiveStepStorage = {
    * namespaces. Rejects rather than resolving if any record survives.
    */
   async clearAllForContent(contentKey: string): Promise<void> {
-    completedCountCache.delete(contentKey);
+    invalidateProgressScanCaches(contentKey);
     const storage = createUserStorage();
 
     const keysFor = (): string[] =>
@@ -1123,11 +1140,12 @@ export const interactiveStepStorage = {
   /**
    * Clear ALL interactive step and section collapse data across every content key.
    * Used by the "Reset progress" action to ensure guides don't instantly re-complete.
-   * Also fully invalidates the in-memory completedCountCache.
+   * Also fully invalidates the in-memory progress-scan caches.
    */
   async clearAll(): Promise<void> {
     try {
-      completedCountCache.clear();
+      completedIdsCache.clear();
+      acknowledgedIdsCache.clear();
       const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
       const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
       const ackPrefix = StorageKeys.SECTION_ACKNOWLEDGED_PREFIX;
@@ -1153,39 +1171,26 @@ export const interactiveStepStorage = {
   },
 
   countAllCompleted(contentKey: string): number {
-    const cached = completedCountCache.get(contentKey);
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    try {
-      let total = 0;
-      for (const { raw } of listProgressEntries(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey)) {
-        const ids = parseStepIds(raw);
-        if (ids) {
-          // Filter out the #842 all-passive ack-marker so it doesn't inflate
-          // the document completion numerator. The marker is persisted to
-          // satisfy the reducer's "ack requires completion" invariant but is
-          // not a real step and is not counted in getTotalDocumentSteps().
-          total += ids.filter((id) => typeof id !== 'string' || !id.endsWith('::ack-marker')).length;
-        }
-      }
-      completedCountCache.set(contentKey, total);
-      return total;
-    } catch {
-      return 0;
-    }
+    return interactiveStepStorage.listAllCompleted(contentKey).length;
   },
 
   /**
    * Synchronously list every completed step id across every section for a
    * content key — the numerator `completion-store.ts`'s evidence bridge
-   * feeds into `guideProgress`. Same scan and same #842 ack-marker filter
-   * as `countAllCompleted`, uncached: callers that need the ids themselves
-   * rather than just a count are the completion percentage's write path,
-   * not a render-loop hot path.
+   * feeds into `guideProgress`, and the source of `countAllCompleted`'s
+   * count, so the two can never disagree.
+   *
+   * The #842 all-passive ack-marker is filtered out so it doesn't inflate the
+   * document completion numerator: the marker is persisted to satisfy the
+   * reducer's "ack requires completion" invariant but is not a real step and
+   * is not counted in getTotalDocumentSteps().
    */
   listAllCompleted(contentKey: string): readonly string[] {
+    const cached = completedIdsCache.get(contentKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     try {
       const ids: string[] = [];
       for (const { raw } of listProgressEntries(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey)) {
@@ -1198,6 +1203,7 @@ export const interactiveStepStorage = {
           }
         }
       }
+      completedIdsCache.set(contentKey, ids);
       return ids;
     } catch {
       return [];
@@ -1293,6 +1299,7 @@ export const sectionAcknowledgementStorage = {
    */
   async set(contentKey: string, sectionId: string, isAcknowledged: true): Promise<void> {
     try {
+      acknowledgedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
       await storage.setItem(key, isAcknowledged);
@@ -1309,6 +1316,7 @@ export const sectionAcknowledgementStorage = {
    */
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
+      acknowledgedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       await storage.removeItem(progressSectionKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId));
     } catch (error) {
@@ -1323,25 +1331,22 @@ export const sectionAcknowledgementStorage = {
    * without an async read.
    */
   countAllAcknowledged(contentKey: string): number {
-    try {
-      let count = 0;
-      for (const { raw } of listProgressEntries(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey)) {
-        if (raw === 'true') {
-          count++;
-        }
-      }
-      return count;
-    } catch {
-      return 0;
-    }
+    return sectionAcknowledgementStorage.listAllAcknowledged(contentKey).length;
   },
 
   /**
-   * Synchronously list every acknowledged section id for a content key —
-   * the `mark-section-complete` evidence `completion-store.ts`'s evidence
-   * bridge feeds into `guideProgress`. Mirrors `countAllAcknowledged`.
+   * Synchronously list every acknowledged section id for a content key — the
+   * `mark-section-complete` evidence `completion-store.ts`'s evidence bridge
+   * feeds into `guideProgress`, and the source of `countAllAcknowledged`'s
+   * count. Cached per content key like the step scan, because the same
+   * evidence bridge is read from a render-path snapshot.
    */
   listAllAcknowledged(contentKey: string): readonly string[] {
+    const cached = acknowledgedIdsCache.get(contentKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     try {
       const sectionIds: string[] = [];
       for (const { sectionId, raw } of listProgressEntries(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey)) {
@@ -1349,10 +1354,20 @@ export const sectionAcknowledgementStorage = {
           sectionIds.push(sectionId);
         }
       }
+      acknowledgedIdsCache.set(contentKey, sectionIds);
       return sectionIds;
     } catch {
       return [];
     }
+  },
+
+  /**
+   * Drop the cached acknowledgement scan for a content key without touching
+   * localStorage — the cross-tab counterpart to
+   * `interactiveStepStorage.invalidateCountCache`.
+   */
+  invalidateAcknowledgementCache(contentKey: string): void {
+    acknowledgedIdsCache.delete(contentKey);
   },
 };
 

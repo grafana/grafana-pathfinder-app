@@ -298,7 +298,7 @@ const ALLOWED_PERCENTAGE_CALCULATION_ENTRIES: readonly AllowedArchitectureEntry[
   {
     violation: 'interactive-engine/navigation-manager.ts',
     reason:
-      "The guided-tour comment box's progress bar tracks position within one guided/multistep block's own child steps (COMPLETION-MODEL.md decision 5, A5 — explicitly out of scope). A different altitude from guide/path/journey completion; never a denominator this model owns.",
+      "The guided-tour comment box's progress bar tracks position within one guided/multistep block's own child steps — a `guided` block counts as ONE block with its children outside the denominator (COMPLETION-MODEL.md decision 1), so this is a different altitude from guide/path/journey completion and never a denominator this model owns.",
     tracking: ARCHITECTURE_BY_DESIGN,
   },
   {

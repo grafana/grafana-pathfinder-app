@@ -435,6 +435,104 @@ describe('sectionAcknowledgementStorage', () => {
 });
 
 // ============================================================================
+// Progress-scan caching — the completion percentage reads these on a render
+// path (the Mark complete footer's useSyncExternalStore snapshot), so a
+// repeated read must not re-sweep localStorage, and a write must still be
+// seen immediately.
+// ============================================================================
+
+describe('progress scans are cached per content key and invalidated by writes', () => {
+  const CONTENT_KEY = 'bundled:scan-cache';
+
+  beforeEach(async () => {
+    localStorage.clear();
+    // Through the API, so the caches are invalidated along with storage.
+    await interactiveStepStorage.clearAllForContent(CONTENT_KEY);
+  });
+
+  function countStorageKeyReads(read: () => void): number {
+    const spy = jest.spyOn(Storage.prototype, 'key');
+    try {
+      read();
+      return spy.mock.calls.length;
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('does not re-scan localStorage for a repeated step-evidence read', async () => {
+    await interactiveStepStorage.setCompleted(CONTENT_KEY, 'section-1', new Set(['step-1', 'step-2']));
+
+    const firstRead = countStorageKeyReads(() => {
+      expect(interactiveStepStorage.listAllCompleted(CONTENT_KEY)).toEqual(['step-1', 'step-2']);
+    });
+    const repeatedReads = countStorageKeyReads(() => {
+      interactiveStepStorage.listAllCompleted(CONTENT_KEY);
+      interactiveStepStorage.countAllCompleted(CONTENT_KEY);
+      interactiveStepStorage.listAllCompleted(CONTENT_KEY);
+    });
+
+    expect(firstRead).toBeGreaterThan(0);
+    expect(repeatedReads).toBe(0);
+  });
+
+  it('sees a step written after a cached read', async () => {
+    await interactiveStepStorage.setCompleted(CONTENT_KEY, 'section-1', new Set(['step-1']));
+    expect(interactiveStepStorage.countAllCompleted(CONTENT_KEY)).toBe(1);
+
+    await interactiveStepStorage.setCompleted(CONTENT_KEY, 'section-1', new Set(['step-1', 'step-2']));
+
+    expect(interactiveStepStorage.listAllCompleted(CONTENT_KEY)).toEqual(['step-1', 'step-2']);
+  });
+
+  it('does not re-scan localStorage for a repeated acknowledgement read', async () => {
+    await sectionAcknowledgementStorage.set(CONTENT_KEY, 'section-1', true);
+
+    const firstRead = countStorageKeyReads(() => {
+      expect(sectionAcknowledgementStorage.listAllAcknowledged(CONTENT_KEY)).toEqual(['section-1']);
+    });
+    const repeatedReads = countStorageKeyReads(() => {
+      sectionAcknowledgementStorage.listAllAcknowledged(CONTENT_KEY);
+      sectionAcknowledgementStorage.countAllAcknowledged(CONTENT_KEY);
+    });
+
+    expect(firstRead).toBeGreaterThan(0);
+    expect(repeatedReads).toBe(0);
+  });
+
+  it('sees an acknowledgement cleared after a cached read', async () => {
+    await sectionAcknowledgementStorage.set(CONTENT_KEY, 'section-1', true);
+    expect(sectionAcknowledgementStorage.countAllAcknowledged(CONTENT_KEY)).toBe(1);
+
+    await sectionAcknowledgementStorage.clear(CONTENT_KEY, 'section-1');
+
+    expect(sectionAcknowledgementStorage.listAllAcknowledged(CONTENT_KEY)).toEqual([]);
+  });
+
+  it('re-scans after the cross-tab invalidation hooks', async () => {
+    await interactiveStepStorage.setCompleted(CONTENT_KEY, 'section-1', new Set(['step-1']));
+    await sectionAcknowledgementStorage.set(CONTENT_KEY, 'section-1', true);
+    expect(interactiveStepStorage.countAllCompleted(CONTENT_KEY)).toBe(1);
+    expect(sectionAcknowledgementStorage.countAllAcknowledged(CONTENT_KEY)).toBe(1);
+
+    // Another tab's write lands in localStorage without passing through this
+    // tab's storage API, which is exactly what these hooks exist for.
+    localStorage.setItem(
+      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, CONTENT_KEY, 'section-2'),
+      JSON.stringify(['step-9'])
+    );
+    localStorage.removeItem(
+      buildVersionedSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, CONTENT_KEY, 'section-1')
+    );
+    interactiveStepStorage.invalidateCountCache(CONTENT_KEY);
+    sectionAcknowledgementStorage.invalidateAcknowledgementCache(CONTENT_KEY);
+
+    expect(interactiveStepStorage.countAllCompleted(CONTENT_KEY)).toBe(2);
+    expect(sectionAcknowledgementStorage.countAllAcknowledged(CONTENT_KEY)).toBe(0);
+  });
+});
+
+// ============================================================================
 // sectionAcknowledgementStorage.countAllAcknowledged (F-1 follow-up to #909)
 // ============================================================================
 

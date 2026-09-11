@@ -83,19 +83,32 @@ const TRANSPARENT_CONTAINERS: ReadonlySet<string> = new Set(TRANSPARENT_CONTAINE
 /** The sentinel `json-parser.ts` keys top-level blocks under. */
 const STANDALONE_PARENT_ID = '__standalone__';
 
-/**
- * The step-id namespace a transparent container puts its children in, spelled
- * exactly as `json-parser.ts` spells it. A `collapsible` yields `undefined`:
- * its converter passes no step context, so its children take no derived id.
- */
-function childSectionId(block: CountableBlock, jsonPath: string): string | undefined {
+/** The step-id namespace a transparent container puts its children in. */
+interface ContainerNamespace {
+  /**
+   * The namespace itself, spelled exactly as `json-parser.ts` spells it.
+   * `undefined` for a `collapsible`: its converter passes no step context, so
+   * its children take no derived id.
+   */
+  id: string | undefined;
+  /**
+   * Whether the namespace embeds the container's own sibling index. An author
+   * id does not, which is what makes an id-bearing section's children immune
+   * to a `snippet-ref` splice anywhere outside it.
+   */
+  indexDerived: boolean;
+}
+
+function childSectionNamespace(block: CountableBlock, jsonPath: string): ContainerNamespace {
   if (block.type === 'section') {
-    return block.id ? `section-${block.id}` : `section:${jsonPath}`;
+    return block.id
+      ? { id: `section-${block.id}`, indexDerived: false }
+      : { id: `section:${jsonPath}`, indexDerived: true };
   }
   if (block.type === 'assistant') {
-    return `assistant:${jsonPath}`;
+    return { id: `assistant:${jsonPath}`, indexDerived: true };
   }
-  return undefined;
+  return { id: undefined, indexDerived: true };
 }
 
 /** Where a block sits, in the namespace the parser keys derived step ids under. */
@@ -155,17 +168,19 @@ export interface GuideBlockIndex {
    * Position by runtime step id — the key a completed "Do it" arrives under,
    * which is the author id only for the rare block that carries one. Empty
    * when no resolver was supplied. First occurrence wins, as with
-   * {@link positionsById}. Excludes every block that follows a `snippet-ref`
-   * sibling, nested descendants included — see the traversal's own comment —
-   * so those blocks fall back to {@link positionsById}/0 rather than a step
-   * id the runtime will never dispatch.
+   * {@link positionsById}. Excludes every block whose runtime step id a
+   * `snippet-ref` splice would shift — its own later siblings, and anything
+   * under a container whose namespace embeds a shifted index — see the
+   * traversal's own comment. Those blocks fall back to
+   * {@link positionsById}/0 rather than a step id the runtime will never
+   * dispatch.
    */
   positionsByStepId: ReadonlyMap<string, number>;
   /**
    * For each container carrying an id, the position of the last counted block
    * inside it — the position "mark as complete" on that container evidences.
    * Keyed by the container's RUNTIME id (`section-<authorId>`, as
-   * `childSectionId` spells it), not the bare author id, because that is the
+   * `childSectionNamespace` spells it), not the bare author id, because that is the
    * namespace the acknowledgement the reader actually produces arrives under.
    * Containers with no counted descendants are absent. First occurrence wins
    * when ids are duplicated, matching `positionsById`: last-wins would let a
@@ -214,7 +229,12 @@ export function computeGuideBlockIndex(
     // step context, which is what makes a `collapsible` child unaddressable.
     parentSectionId: string | undefined,
     jsonPath: string,
-    afterSnippetRef: boolean
+    // Whether `parentSectionId` embeds an index a `snippet-ref` shifted, and
+    // whether `jsonPath` does. They differ: an id-bearing section resets the
+    // first while still carrying the second down to any id-less container
+    // nested inside it.
+    parentNamespaceShifted: boolean,
+    jsonPathShifted: boolean
   ): void {
     if (!Array.isArray(children)) {
       return;
@@ -226,15 +246,14 @@ export function computeGuideBlockIndex(
     // blocks it expands into — an amount this traversal cannot know without
     // waiting on the snippet CDN, which would defeat the frozen index's
     // stability guarantee (see `active-guide-index.ts`). So once a
-    // snippet-ref has been seen among this parent's children, later
-    // siblings — and everything nested inside them, whose own keys are
-    // derived from those same shifted indices — are excluded from
-    // `positionsByStepId` rather than keyed under an index the runtime will
-    // never dispatch: a miss falls through to `positionsById`/0, the honest
-    // degradation an unauthored block already gets, instead of colliding
-    // with whatever unrelated block happens to hash to the same
-    // wrong-index step id.
-    let stepIdsUnpredictable = afterSnippetRef;
+    // snippet-ref has been seen among this parent's children, later siblings
+    // — and anything nested under one whose namespace embeds that shifted
+    // index — are excluded from `positionsByStepId` rather than keyed under
+    // an index the runtime will never dispatch: a miss falls through to
+    // `positionsById`/0, the honest degradation an unauthored block already
+    // gets, instead of colliding with whatever unrelated block happens to
+    // hash to the same wrong-index step id.
+    let sawSnippetRefSibling = false;
 
     for (let index = 0; index < children.length; index++) {
       const block = children[index];
@@ -249,16 +268,24 @@ export function computeGuideBlockIndex(
           sectionCount++;
         }
         const before = counted.length;
-        const containerId = childSectionId(block, blockJsonPath);
-        visit(block.blocks, path, containerId, `${blockJsonPath}.blocks`, stepIdsUnpredictable);
+        const namespace = childSectionNamespace(block, blockJsonPath);
+        const childJsonPathShifted = jsonPathShifted || sawSnippetRefSibling;
+        visit(
+          block.blocks,
+          path,
+          namespace.id,
+          `${blockJsonPath}.blocks`,
+          namespace.indexDerived && childJsonPathShifted,
+          childJsonPathShifted
+        );
         if (
-          containerId !== undefined &&
+          namespace.id !== undefined &&
           typeof block.id === 'string' &&
           block.id.length > 0 &&
           counted.length > before &&
-          !containerEndPositions.has(containerId)
+          !containerEndPositions.has(namespace.id)
         ) {
-          containerEndPositions.set(containerId, counted.length);
+          containerEndPositions.set(namespace.id, counted.length);
         }
         continue;
       }
@@ -269,7 +296,7 @@ export function computeGuideBlockIndex(
       if (typeof block.id === 'string' && block.id.length > 0 && !positionsById.has(block.id)) {
         positionsById.set(block.id, position);
       }
-      if (resolveStepId && parentSectionId !== undefined && !stepIdsUnpredictable) {
+      if (resolveStepId && parentSectionId !== undefined && !parentNamespaceShifted && !sawSnippetRefSibling) {
         const stepId = resolveStepId(block, { parentSectionId, index });
         if (stepId && !positionsByStepId.has(stepId)) {
           positionsByStepId.set(stepId, position);
@@ -280,12 +307,12 @@ export function computeGuideBlockIndex(
         finalCompletablePosition = position;
       }
       if (block.type === 'snippet-ref') {
-        stepIdsUnpredictable = true;
+        sawSnippetRefSibling = true;
       }
     }
   }
 
-  visit(blocks, [], STANDALONE_PARENT_ID, 'blocks', false);
+  visit(blocks, [], STANDALONE_PARENT_ID, 'blocks', false, false);
 
   return {
     totalBlockCount: counted.length,

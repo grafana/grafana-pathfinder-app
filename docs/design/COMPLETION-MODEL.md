@@ -35,12 +35,12 @@ argument.
 
 ## The model on one page
 
-| Level     | Progress is                                                    | Reaches 100% by                                                                             |
-| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**                             |
-| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Mark complete and continue**                                                |
-| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9 — the join ships; the rollup that consumes it does not) |
-| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be)                          |
+| Level     | Progress is                                                    | Reaches 100% by                                                    |
+| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**    |
+| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Mark complete and continue**                       |
+| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9)                               |
+| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be) |
 
 **A vocabulary warning before you read further.** "Journey" in decision 5 means a
 level _above_ paths — a path of paths. That is not what "journey" means in the
@@ -186,9 +186,9 @@ is what triggers badge awards, durable completion records, path progress and the
 could trigger any of them under this model.
 
 What the mark is wired to, precisely: the completion store treats it as
-authoritative for the guide percentage — `getGuideProgress` and
-`refreshGuidePercentage` both report 100 for a marked guide regardless of step
-and ack counts, so a later step write cannot move it back down and every reader
+authoritative for the guide percentage — `peekGuidePercentage` and
+`refreshGuidePercentage` both report 100 for a marked guide regardless of the
+evidence, so a later step write cannot move it back down and every reader
 of the percentage agrees. What it is **not** yet wired to is the evidence
 arithmetic in `progress.ts`: that module models the `mark-guide-complete`
 evidence kind — the one that evidences the whole guide regardless of `blockId` —
@@ -279,11 +279,13 @@ in twenty seconds has demonstrated nothing about the eight milestones, and a
 model that credited them would report a path as complete on the strength of a
 reader looking for its last page.
 
-**What this changes.** Today's learning-path completion is milestone-click-based:
-`calculatePathProgress` in `src/learning-paths/learning-paths.hook.ts` counts
-milestones present in a completed-guides list, and `milestoneCompletionStorage`
-records milestone slugs. Under this model a milestone reaches 100% the same way a
-guide does, and navigation past it does not. This is exactly the baseline the
+**What this changes.** Learning-path completion used to be
+milestone-click-based: the path rollup in
+`src/learning-paths/learning-paths.hook.ts` counted milestones present in a
+completed-guides list, and `milestoneCompletionStorage` records milestone slugs.
+It is now `calculatePathRollup`, the mean of its members' own percentages, so a
+milestone reaches 100% the same way a guide does and navigation past it does
+not. This is exactly the baseline the
 rejected alternative argues against discarding, so the change is deliberate and
 its cost is known: the
 existing milestone-click series is not comparable to what comes after it, and any
@@ -330,14 +332,16 @@ it, but that is an evidence population and not a firing condition.
 **Its frequency and per-reader state are open.** See
 [open questions](#open-questions).
 
-### Decision 9 — an unresolvable path member is excluded from the mean and counted (the join is built; the rollup that consumes it is not)
+### Decision 9 — an unresolvable path member is excluded from the mean and counted
 
-**What is built, and what is not.** `src/global-state/path-member-join.ts` and
-its exports ship with this decision; no production code resolves a member
-percentage yet. `calculatePathProgress` remains a completed-count fraction and
-is what every UI consumer still reads. The percentage half lands with the
-rollup, so read the exports below as staged rather than live, and the
-present-tense rules as what the join does when asked.
+**What is built.** `src/global-state/path-member-join.ts` and the rollups that
+consume it both ship: `calculatePathRollup`
+(`src/learning-paths/learning-paths.hook.ts`) and
+`journeyMilestonePercentages` / `journeyProgressFromMilestones`
+(`src/docs-retrieval/learning-journey-helpers.ts`) resolve each member's own
+percentage through this join and average them with `meanOfMemberPercentages`.
+Every UI consumer reads that number, so the rules below are live rather than
+staged.
 
 **Decision.** Decision 4's mean joins each member to its persisted percentage by
 content key, and that key is stored nowhere: a member is keyed by the sanitized

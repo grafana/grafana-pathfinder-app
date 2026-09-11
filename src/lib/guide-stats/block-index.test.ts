@@ -211,6 +211,35 @@ describe('computeGuideBlockIndex', () => {
     expect(index.positionsByStepId.size).toBe(1);
   });
 
+  it('keeps step ids inside an id-bearing section that follows a snippet-ref', () => {
+    const resolveStepId = (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+      `${context.parentSectionId}:${context.index}`;
+
+    const index = computeGuideBlockIndex([{ type: 'snippet-ref', blocks: [] }, section([interactive()], 'b')], {
+      resolveStepId,
+    });
+
+    // `section-b` is the runtime namespace whatever the splice does to the
+    // outer array, and the child's index is its position inside the section —
+    // so this position is knowable and must not be given up.
+    expect(index.positionsByStepId.get('section-b:0')).toBe(2);
+  });
+
+  it('still excludes an id-less section nested inside an id-bearing one that follows a snippet-ref', () => {
+    const resolveStepId = (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+      `${context.parentSectionId}:${context.index}`;
+
+    const index = computeGuideBlockIndex(
+      [{ type: 'snippet-ref', blocks: [] }, section([section([interactive()])], 'b')],
+      { resolveStepId }
+    );
+
+    // The inner section takes its namespace from a json path that still
+    // carries the shifted outer index.
+    expect(index.positionsByStepId.has('section:blocks[1].blocks[0].blocks:0')).toBe(false);
+    expect(index.positionsByStepId.size).toBe(1);
+  });
+
   it('does not let a snippet-ref in one section suppress step ids in a sibling section', () => {
     const resolveStepId = (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
       `${context.parentSectionId}:${context.index}`;

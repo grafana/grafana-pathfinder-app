@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
@@ -62,7 +62,11 @@ import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
-import { publishGuideIndex } from '../../global-state/active-guide-index';
+import {
+  getGuideIndexEvictionRevision,
+  publishGuideIndex,
+  subscribeGuideIndexEvictions,
+} from '../../global-state/active-guide-index';
 import { resolveCountedBlockStepId } from '../../global-state/guide-step-id-resolver';
 import { computeGuideBlockIndex } from '../../lib/guide-stats';
 import { StorageEvents } from '../../lib/event-names';
@@ -708,19 +712,30 @@ function ContentProcessor({
     return rawGuide && guideHasSnippetRefs(rawGuide) ? rawGuide : null;
   }, [rawGuide]);
 
-  // The frozen block index (docs/design/COMPLETION-MODEL.md §B1): one
-  // traversal over the tree available synchronously at first paint,
+  // The frozen block index (docs/design/COMPLETION-MODEL.md, decision 1):
+  // one traversal over the tree available synchronously at first paint,
   // published once per content key and never recomputed for the life of
   // that key — `publishGuideIndex` is itself idempotent, so a re-render or
   // an unrelated prop change is a no-op here. It owns both the denominator
   // and the numerator's positions so they can never come from two
   // traversals and disagree.
   //
+  // The eviction revision is a dependency because this is the only
+  // producer: a reset that evicts the index while this guide stays mounted
+  // would otherwise leave it with no index for the rest of the session, and
+  // no percentage with it.
+  //
   // Passive effect, not `useMemo`/`useLayoutEffect`, for the same reason
   // MarkCompleteFooter resolves its key in one: both producers of the
   // content key publish it from a layout effect, so resolving during
   // render (or in a child layout effect, which runs first) would publish
   // the PREVIOUS milestone's key and leave this one with no index at all.
+  const guideIndexEvictionRevision = useSyncExternalStore(
+    subscribeGuideIndexEvictions,
+    getGuideIndexEvictionRevision,
+    getGuideIndexEvictionRevision
+  );
+
   useEffect(() => {
     if (!rawGuide) {
       return;
@@ -730,7 +745,7 @@ function ContentProcessor({
       index: computeGuideBlockIndex(rawGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
       denominatorSource: 'live-pre-inlining',
     });
-  }, [rawGuide, baseUrl]);
+  }, [rawGuide, baseUrl, guideIndexEvictionRevision]);
 
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.

@@ -964,6 +964,19 @@ function handleStorageEvent(event: StorageEvent): void {
     return;
   }
 
+  // An acknowledgement is evidence for the percentage the same way a step is,
+  // and this tab's ack scan is cached — so a cross-tab ack has to invalidate
+  // it and reach subscribers, or the footer keeps reporting the pre-ack
+  // position.
+  if (event.key.startsWith(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX)) {
+    const parsed = parseVersionedStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, event.key);
+    if (parsed) {
+      sectionAcknowledgementStorage.invalidateAcknowledgementCache(parsed.contentKey);
+      notify(parsed.contentKey);
+    }
+    return;
+  }
+
   if (!event.key.startsWith(StorageKeys.INTERACTIVE_STEPS_PREFIX)) {
     return;
   }
@@ -982,9 +995,10 @@ function handleStorageEvent(event: StorageEvent): void {
       continue;
     }
     evictSectionCacheForKey(contentKey, sectionId);
-    // `completedCountCache` in `user-storage.ts` is also per-tab and
-    // would otherwise return a stale count on the next `countAllCompleted`
-    // call (the tail-reset zero-check in `persistSection`, below).
+    // The completed-step scan cache in `user-storage.ts` is also per-tab and
+    // would otherwise return a stale list on the next `listAllCompleted` /
+    // `countAllCompleted` call (the evidence bridge, and the tail-reset
+    // zero-check in `persistSection`).
     interactiveStepStorage.invalidateCountCache(contentKey);
     notify(contentKey);
     return;

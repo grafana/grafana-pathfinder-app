@@ -40,6 +40,34 @@ export interface ActiveGuideIndex {
 const activeIndexes = new Map<string, ActiveGuideIndex>();
 
 /**
+ * Eviction is half a contract: a guide that is still mounted when its index is
+ * dropped has no other producer, and its content-load seam has already run —
+ * so without a signal it would never publish again and that guide would stop
+ * reporting a percentage for the rest of the session. The seam subscribes to
+ * this revision and republishes; the index stays frozen per content key
+ * between one eviction and the next, because `publishGuideIndex` is
+ * idempotent.
+ */
+const evictionListeners = new Set<() => void>();
+let evictionRevision = 0;
+
+function notifyEvicted(): void {
+  evictionRevision += 1;
+  evictionListeners.forEach((listener) => listener());
+}
+
+export function subscribeGuideIndexEvictions(listener: () => void): () => void {
+  evictionListeners.add(listener);
+  return () => {
+    evictionListeners.delete(listener);
+  };
+}
+
+export function getGuideIndexEvictionRevision(): number {
+  return evictionRevision;
+}
+
+/**
  * Publish the frozen index for a content key. Idempotent: a later call for
  * a content key that already has one is ignored rather than overwriting —
  * the index is frozen for the life of that key, not just at first publish.
@@ -57,10 +85,16 @@ export function getGuideIndex(contentKey: string): ActiveGuideIndex | undefined 
 
 /** Paired with `evictContentCache` — a reset must let the next load recompute a fresh index. */
 export function evictGuideIndex(contentKey: string): void {
-  activeIndexes.delete(contentKey);
+  if (activeIndexes.delete(contentKey)) {
+    notifyEvicted();
+  }
 }
 
 /** Paired with `evictAllContentCaches` — "Reset all learning progress". */
 export function evictAllGuideIndexes(): void {
+  if (activeIndexes.size === 0) {
+    return;
+  }
   activeIndexes.clear();
+  notifyEvicted();
 }
