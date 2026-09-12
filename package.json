@@ -154,8 +154,8 @@
     "peerjs": "^1.5.5",
     "prismjs": "^1.30.0",
     "qrcode": "^1.5.4",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "react-router-dom": "^6.28.0",
     "rxjs": "^7.8.2",
     "zod": "^4.4.3"
