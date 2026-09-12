@@ -39,7 +39,7 @@ solve](#what-this-does-not-solve).
 
 ## A minimal worked example
 
-Three files in one directory:
+Two files in one directory:
 
 ```text
 guides/
@@ -189,8 +189,7 @@ sits in a separate JSON file, so `view-logs.json` above has to declare
 `"id": "drilldown-logs-view-logs"`. See [`spec.id` must be a valid resource
 name](EXTERNAL_API.md#specid-must-be-a-valid-resource-name).
 
-The cover page's own `spec` carries the manifest, and it should declare
-`repository` even though the server defaults it:
+The cover page's own `spec` carries the manifest:
 
 ```json
 {
@@ -230,10 +229,9 @@ do by hand here, because `jsondecode` passes the file through unchanged:
   only.
 
 See [the manifest field table](EXTERNAL_API.md#manifest) for which keys the
-CRD declares. Pasting an existing package's `manifest.json` straight under
-`spec` therefore gets you a 422 on the first and silent loss on the second,
-and [nothing catches the silent
-half](#checking-a-manifest-before-you-trust-it).
+CRD declares. Both apply under `spec.manifest`; paste the file at the `spec`
+top level instead and the keys are undeclared there, so nothing 422s and
+everything is [silently pruned](#checking-a-manifest-before-you-trust-it).
 
 ## What "covered by the CRD shape" means
 

@@ -140,11 +140,11 @@ Blocks nested three or more levels deep fall under
 `x-kubernetes-preserve-unknown-fields` and survive; anything shallower does
 not.
 
-The gap is currently the `input` block: `defaultValue`, which costs the
-input its prefilled value, and the whole `dataCheck*` family
-(`dataCheckQuery`, `dataCheckBlocking`, `dataCheckFailureMessage`,
-`dataCheckTimeFrom`, `dataCheckTimeTo`), which lands the picker without
-its data check — it renders, and the check simply never runs.
+The gap is currently `defaultValue` on the `input` block, which costs the
+input its prefilled value; the whole `dataCheck*` family (`dataCheckQuery`,
+`dataCheckBlocking`, `dataCheckFailureMessage`, `dataCheckTimeFrom`,
+`dataCheckTimeTo`), which lands the picker without its data check — it
+renders, and the check simply never runs; and `gcx` on `terminal-connect`.
 
 It has been much wider, and it moves in both directions. At one point
 the CUE was missing twenty-six fields including `autoCollapse`,
@@ -159,9 +159,9 @@ Two things keep it honest instead:
   your content would lose, and `--strict-blocks` turns that warning into
   a failure. Run it with `--dry-run` before an upload — that is the live
   check.
-- `src/validation/upsert-script-crd-fields.test.ts` fails when the app's
-  `KNOWN_FIELDS` gains a block field the script's `BLOCK` allowlist
-  lacks, so app-side drift cannot land silently.
+- `src/validation/upsert-script-crd-fields.test.ts` pins that set as
+  `PRUNED_BY_CRD` and fails when the app's `KNOWN_FIELDS` gains a block
+  field the script's `BLOCK` allowlist lacks, so drift cannot land silently.
 
 Neither can see the backend repo. When the CUE changes, update the
 `BLOCK` / `STEP` arrays in `upsert-learning-path.sh` and the
