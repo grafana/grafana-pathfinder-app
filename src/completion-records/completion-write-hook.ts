@@ -115,10 +115,11 @@ class CompletionWriteController {
     this.unsubscribeStorage = null;
   }
 
-  private onFact(fact: CompletionFact): void {
+  /** `true` only when the fact was durably persisted — the recorder's guard hangs off this. */
+  private onFact(fact: CompletionFact): boolean {
     try {
       if (this.disposed || !this.queue) {
-        return;
+        return false;
       }
       // Reject a fact whose identifiers are invalid after normalization rather
       // than queue a guaranteed terminal 400. The backend stays authoritative;
@@ -126,18 +127,20 @@ class CompletionWriteController {
       if (!isValidIdentifier(fact.guideSource) || !isValidIdentifier(fact.guideId)) {
         logger.warn('completion write: rejected fact with invalid identifier');
         reportCompletionWriteDegradation('enqueue-failed');
-        return;
+        return false;
       }
       // Always enqueue+persist, even after a structural-404 disarm: the fact
       // survives to the next load and drains once the route exists. Only skip
       // scheduling a drain that would immediately no-op while network-disarmed.
-      this.queue.enqueue(this.toBody(fact));
+      const persisted = this.queue.enqueue(this.toBody(fact));
       if (!this.queue.isDisarmed()) {
         this.scheduleDrain(0);
       }
+      return persisted;
     } catch (error) {
       logger.warn('completion write: enqueue failed (ignored)', { error: String(error) });
       reportCompletionWriteDegradation('enqueue-failed');
+      return false;
     }
   }
 

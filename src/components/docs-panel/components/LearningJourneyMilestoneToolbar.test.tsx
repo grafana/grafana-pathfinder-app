@@ -5,9 +5,10 @@
  * depend on:
  * - returns null for non-journey tabs (consumer can render unconditionally)
  * - arrow nav fires `panel.navigateToPrevious/Next`
- * - the next-arrow auto-completes step-less milestones via markMilestoneDone
+ * - the next-arrow never calls markMilestoneDone (navigation credits nothing)
  * - the kebab menu's conditional items (Open, Reset guide, Pop out/Dock, Full screen)
- * - the segmented progress bar's per-milestone state
+ * - the segmented progress bar's per-milestone state, filled from the shared
+ *   completion calculation rather than from navigation position
  * - the surface flag flips the analytics interaction_location
  */
 
@@ -23,6 +24,7 @@ import type { DocsPanelModelOperations } from '../types';
 
 const reportAppInteractionMock = jest.fn();
 const markMilestoneDoneMock = jest.fn();
+const journeyMilestonePercentagesMock = jest.fn();
 const usePanelModeControlsMock = jest.fn();
 
 jest.mock('../../../lib/analytics', () => ({
@@ -40,6 +42,7 @@ jest.mock('../../../lib/analytics', () => ({
 
 jest.mock('../../../docs-retrieval', () => ({
   getJourneyProgress: () => 0,
+  journeyMilestonePercentages: (...args: unknown[]) => journeyMilestonePercentagesMock(...args),
   getMilestoneSlug: jest.requireActual('../../../lib/learning-journey-url').getMilestoneSlug,
   markMilestoneDone: (...args: unknown[]) => markMilestoneDoneMock(...args),
   resolveExpectedMilestoneIds: (lj?: { milestones?: Array<{ url: string }> }) =>
@@ -162,6 +165,7 @@ function renderToolbar(props: Partial<LearningJourneyMilestoneToolbarProps> = {}
 
 beforeEach(() => {
   jest.clearAllMocks();
+  journeyMilestonePercentagesMock.mockReturnValue([]);
   usePanelModeControlsMock.mockReturnValue({
     panelMode: 'sidebar',
     handleTogglePanelMode: jest.fn(),
@@ -214,27 +218,18 @@ describe('LearningJourneyMilestoneToolbar', () => {
     expect(screen.getByLabelText('Previous milestone')).toBeDisabled();
   });
 
-  it('marks the current milestone done when the next arrow is clicked on a step-less milestone', () => {
-    const contentRoot: React.RefObject<HTMLElement | null> = { current: document.createElement('div') };
-    // No `[data-step-id]` descendants → step-less milestone.
-
-    renderToolbar({ contentRoot });
+  // Decision 6 (docs/design/COMPLETION-MODEL.md): navigation earns no
+  // completion credit, on a step-less milestone or otherwise. Only evidence
+  // or the Mark complete button may call `markMilestoneDone`.
+  it('does NOT mark the milestone done when the next arrow is clicked on a step-less milestone', () => {
+    renderToolbar();
     fireEvent.click(screen.getByLabelText('Next milestone'));
 
-    expect(markMilestoneDoneMock).toHaveBeenCalledWith(
-      'https://grafana.com/docs/learning-journeys/foo-canonical',
-      'm1',
-      expect.any(Array),
-      expect.objectContaining({ packageManifest: undefined })
-    );
+    expect(markMilestoneDoneMock).not.toHaveBeenCalled();
   });
 
-  it('does NOT mark the milestone done when the rendered DOM has interactive steps', () => {
-    const root = document.createElement('div');
-    root.innerHTML = '<div data-step-id="step-1"></div>';
-    const contentRoot: React.RefObject<HTMLElement | null> = { current: root };
-
-    renderToolbar({ contentRoot });
+  it('does NOT mark the milestone done when the next arrow is clicked and the DOM has interactive steps', () => {
+    renderToolbar();
     fireEvent.click(screen.getByLabelText('Next milestone'));
 
     expect(markMilestoneDoneMock).not.toHaveBeenCalled();
@@ -314,26 +309,64 @@ describe('LearningJourneyMilestoneToolbar', () => {
   });
 
   describe('segmented progress bar', () => {
+    /** What the shared calculation reports for milestones 1..3. */
+    function sharedPercentages(percents: Array<number | undefined>): void {
+      journeyMilestonePercentagesMock.mockReturnValue(
+        percents.map((percent, index) => ({ milestone: { number: index + 1 }, percent }))
+      );
+    }
+
+    function segmentStates(container: HTMLElement): Array<string | null> {
+      return Array.from(container.querySelectorAll('[data-segment-state]')).map((s) =>
+        s.getAttribute('data-segment-state')
+      );
+    }
+
     it('renders one segment per milestone, states matching current/done/upcoming', () => {
+      sharedPercentages([0, 0, 0]);
       const { container } = renderToolbar();
-      const segments = container.querySelectorAll('[data-segment-state]');
-      expect(Array.from(segments).map((s) => s.getAttribute('data-segment-state'))).toEqual([
-        'current',
-        'upcoming',
-        'upcoming',
-      ]);
+      expect(segmentStates(container)).toEqual(['current', 'upcoming', 'upcoming']);
     });
 
-    it('marks earlier milestones done and later ones upcoming relative to currentMilestone', () => {
+    it('fills a segment only when that milestone is complete, never from navigation position', () => {
+      sharedPercentages([0, 0, 0]);
       const tab = makeJourneyTab();
       (tab.content as any).metadata.learningJourney.currentMilestone = 2;
+
       const { container } = renderToolbar({ activeTab: tab });
-      const segments = container.querySelectorAll('[data-segment-state]');
-      expect(Array.from(segments).map((s) => s.getAttribute('data-segment-state'))).toEqual([
-        'done',
-        'current',
-        'upcoming',
-      ]);
+
+      // Milestone 1 was paged past with nothing completed, so it stays unfilled.
+      expect(segmentStates(container)).toEqual(['upcoming', 'current', 'upcoming']);
+    });
+
+    it('fills every completed milestone, wherever the reader currently is', () => {
+      sharedPercentages([100, 0, 100]);
+      const tab = makeJourneyTab();
+      (tab.content as any).metadata.learningJourney.currentMilestone = 2;
+
+      const { container } = renderToolbar({ activeTab: tab });
+
+      expect(segmentStates(container)).toEqual(['done', 'current', 'done']);
+    });
+
+    it('leaves a partially progressed milestone unfilled', () => {
+      sharedPercentages([99, 0, 0]);
+      const tab = makeJourneyTab();
+      (tab.content as any).metadata.learningJourney.currentMilestone = 3;
+
+      const { container } = renderToolbar({ activeTab: tab });
+
+      expect(segmentStates(container)).toEqual(['upcoming', 'upcoming', 'current']);
+    });
+
+    it('reads the shared calculation for the journey the toolbar is showing', () => {
+      sharedPercentages([0, 0, 0]);
+      renderToolbar();
+
+      expect(journeyMilestonePercentagesMock).toHaveBeenCalledWith(
+        'https://grafana.com/docs/learning-journeys/foo-canonical',
+        expect.arrayContaining([expect.objectContaining({ number: 1 })])
+      );
     });
   });
 

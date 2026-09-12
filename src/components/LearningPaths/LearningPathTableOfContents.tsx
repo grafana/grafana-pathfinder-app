@@ -6,6 +6,7 @@ import type { Milestone } from '../../types/content.types';
 import type { PathGuide } from '../../types/learning-paths.types';
 import { milestoneCompletionStorage } from '../../lib/user-storage';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
+import { journeyProgressFromMilestones } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import { getBadgeForPath } from '../../learning-paths';
 import { GuideList } from './GuideList';
@@ -80,8 +81,13 @@ export function LearningPathTableOfContents({
     };
   });
 
-  const completedCount = guides.filter((g) => g.completed).length;
-  const progress = milestones.length > 0 ? Math.round((completedCount / milestones.length) * 100) : 0;
+  // The shared calculation (docs/design/COMPLETION-MODEL.md, decision 4): the
+  // mean of unlocked milestones' own percentages, not a completed-count
+  // fraction — so this and the sidebar milestone bar never show two
+  // different numbers for the same journey. A reader who only navigated
+  // without completing anything sees this at 0%, honestly, even after
+  // visiting every milestone.
+  const progress = journeyProgressFromMilestones(baseUrl, milestones);
 
   const ctaTarget = cursor >= 0 ? milestones[cursor] : undefined;
   const ctaLabel = progress === 0 ? t('coverPage.getStarted', 'Get started') : t('coverPage.resume', 'Resume');

@@ -23,7 +23,8 @@ export interface LeaseResult {
 
 export interface CompletionWriteStorage {
   list(): QueuedWrite[];
-  put(item: QueuedWrite): void;
+  /** `true` when the item reached localStorage, `false` on the volatile fallback that a reload loses. */
+  put(item: QueuedWrite): boolean;
   remove(id: string): void;
   clear(): void;
   acquireLease(now: number): LeaseResult;
@@ -92,12 +93,14 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
     return Array.from(result.values());
   }
 
-  function put(item: QueuedWrite): void {
+  function put(item: QueuedWrite): boolean {
     try {
       localStorage.setItem(`${itemPrefix}${item.id}`, JSON.stringify(item));
       volatileItems.delete(item.id);
+      return true;
     } catch {
       volatileItems.set(item.id, { ...item });
+      return false;
     }
   }
 

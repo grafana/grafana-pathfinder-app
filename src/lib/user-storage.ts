@@ -852,6 +852,23 @@ export const milestoneCompletionStorage = {
     return completed.has(milestoneSlug);
   },
 
+  /**
+   * Synchronous read, for the journey progress rollup (`getJourneyProgress`
+   * is called synchronously from several render paths). Mirrors
+   * `guideCompletionMarkStorage.isMarked`: the hybrid storage writes through
+   * to localStorage before it queues the Grafana write, so the value is
+   * already there.
+   */
+  getCompletedSync(journeyBaseUrl: string, milestoneUrls: string[] = []): Set<string> {
+    try {
+      const raw = localStorage.getItem(StorageKeys.MILESTONE_COMPLETION);
+      const data = raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
+      return getStoredMilestoneSlugs(data, journeyBaseUrl, milestoneUrls);
+    } catch {
+      return new Set();
+    }
+  },
+
   async clear(journeyBaseUrl: string): Promise<void> {
     try {
       const storage = createUserStorage();
@@ -984,10 +1001,27 @@ function parseStepIds(raw: string): unknown[] | null {
 }
 
 /**
- * Cache for countAllCompleted to avoid O(n) localStorage scan on every step completion.
- * Invalidated by setCompleted, clear, and clearAllForContent operations.
+ * Cache for the completed-step id scan, so neither `countAllCompleted` nor
+ * `listAllCompleted` costs an O(n) localStorage sweep per call. The count is
+ * the list's length, so one cache serves both and they cannot disagree.
+ *
+ * Load-bearing for the render path, not just for write throughput: the
+ * completion percentage's evidence bridge reads the list, and that read sits
+ * on the Mark complete footer's `useSyncExternalStore` snapshot, which React
+ * calls on every render.
+ *
+ * Invalidated by setCompleted, clear, clearAllForContent, clearAll, and the
+ * cross-tab listener's `invalidateCountCache`.
  */
-const completedCountCache = new Map<string, number>();
+const completedIdsCache = new Map<string, readonly string[]>();
+
+/** The same cache for acknowledged sections — the evidence bridge's other sweep. */
+const acknowledgedIdsCache = new Map<string, readonly string[]>();
+
+function invalidateProgressScanCaches(contentKey: string): void {
+  completedIdsCache.delete(contentKey);
+  acknowledgedIdsCache.delete(contentKey);
+}
 
 /**
  * Interactive step completion storage operations
@@ -996,14 +1030,14 @@ export const interactiveStepStorage = {
   /**
    * Drop the cached completion count for a content key without touching
    * localStorage. Used by the cross-tab `storage` listener in
-   * `completion-store.ts` so the next `countAllCompleted` / `getGuideProgress`
-   * call re-scans from authoritative storage rather than returning a
-   * stale per-tab snapshot.
+   * `completion-store.ts` so the next `countAllCompleted` call re-scans
+   * from authoritative storage rather than returning a stale per-tab
+   * snapshot.
    *
    * Idempotent on unknown keys; safe to call from any tab.
    */
   invalidateCountCache(contentKey: string): void {
-    completedCountCache.delete(contentKey);
+    invalidateProgressScanCaches(contentKey);
   },
 
   /**
@@ -1025,8 +1059,8 @@ export const interactiveStepStorage = {
    */
   async setCompleted(contentKey: string, sectionId: string, completedIds: Set<string>): Promise<void> {
     try {
-      // Invalidate count cache before write so next countAllCompleted() re-scans
-      completedCountCache.delete(contentKey);
+      // Invalidate before the write so the next scan re-reads storage
+      completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
       await storage.setItem(key, Array.from(completedIds));
@@ -1040,7 +1074,7 @@ export const interactiveStepStorage = {
    */
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
-      completedCountCache.delete(contentKey);
+      completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       await storage.removeItem(progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId));
     } catch (error) {
@@ -1066,7 +1100,7 @@ export const interactiveStepStorage = {
    * namespaces. Rejects rather than resolving if any record survives.
    */
   async clearAllForContent(contentKey: string): Promise<void> {
-    completedCountCache.delete(contentKey);
+    invalidateProgressScanCaches(contentKey);
     const storage = createUserStorage();
 
     const keysFor = (): string[] =>
@@ -1106,11 +1140,12 @@ export const interactiveStepStorage = {
   /**
    * Clear ALL interactive step and section collapse data across every content key.
    * Used by the "Reset progress" action to ensure guides don't instantly re-complete.
-   * Also fully invalidates the in-memory completedCountCache.
+   * Also fully invalidates the in-memory progress-scan caches.
    */
   async clearAll(): Promise<void> {
     try {
-      completedCountCache.clear();
+      completedIdsCache.clear();
+      acknowledgedIdsCache.clear();
       const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
       const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
       const ackPrefix = StorageKeys.SECTION_ACKNOWLEDGED_PREFIX;
@@ -1136,27 +1171,42 @@ export const interactiveStepStorage = {
   },
 
   countAllCompleted(contentKey: string): number {
-    const cached = completedCountCache.get(contentKey);
+    return interactiveStepStorage.listAllCompleted(contentKey).length;
+  },
+
+  /**
+   * Synchronously list every completed step id across every section for a
+   * content key — the numerator `completion-store.ts`'s evidence bridge
+   * feeds into `guideProgress`, and the source of `countAllCompleted`'s
+   * count, so the two can never disagree.
+   *
+   * The #842 all-passive ack-marker is filtered out so it doesn't inflate the
+   * document completion numerator: the marker is persisted to satisfy the
+   * reducer's "ack requires completion" invariant but is not a real step and
+   * is not counted in getTotalDocumentSteps().
+   */
+  listAllCompleted(contentKey: string): readonly string[] {
+    const cached = completedIdsCache.get(contentKey);
     if (cached !== undefined) {
       return cached;
     }
 
     try {
-      let total = 0;
+      const ids: string[] = [];
       for (const { raw } of listProgressEntries(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey)) {
-        const ids = parseStepIds(raw);
-        if (ids) {
-          // Filter out the #842 all-passive ack-marker so it doesn't inflate
-          // the document completion numerator. The marker is persisted to
-          // satisfy the reducer's "ack requires completion" invariant but is
-          // not a real step and is not counted in getTotalDocumentSteps().
-          total += ids.filter((id) => typeof id !== 'string' || !id.endsWith('::ack-marker')).length;
+        const stepIds = parseStepIds(raw);
+        if (stepIds) {
+          for (const id of stepIds) {
+            if (typeof id === 'string' && !id.endsWith('::ack-marker')) {
+              ids.push(id);
+            }
+          }
         }
       }
-      completedCountCache.set(contentKey, total);
-      return total;
+      completedIdsCache.set(contentKey, ids);
+      return ids;
     } catch {
-      return 0;
+      return [];
     }
   },
 };
@@ -1249,6 +1299,7 @@ export const sectionAcknowledgementStorage = {
    */
   async set(contentKey: string, sectionId: string, isAcknowledged: true): Promise<void> {
     try {
+      acknowledgedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
       await storage.setItem(key, isAcknowledged);
@@ -1265,6 +1316,7 @@ export const sectionAcknowledgementStorage = {
    */
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
+      acknowledgedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       await storage.removeItem(progressSectionKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId));
     } catch (error) {
@@ -1279,17 +1331,43 @@ export const sectionAcknowledgementStorage = {
    * without an async read.
    */
   countAllAcknowledged(contentKey: string): number {
+    return sectionAcknowledgementStorage.listAllAcknowledged(contentKey).length;
+  },
+
+  /**
+   * Synchronously list every acknowledged section id for a content key — the
+   * `mark-section-complete` evidence `completion-store.ts`'s evidence bridge
+   * feeds into `guideProgress`, and the source of `countAllAcknowledged`'s
+   * count. Cached per content key like the step scan, because the same
+   * evidence bridge is read from a render-path snapshot.
+   */
+  listAllAcknowledged(contentKey: string): readonly string[] {
+    const cached = acknowledgedIdsCache.get(contentKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     try {
-      let count = 0;
-      for (const { raw } of listProgressEntries(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey)) {
+      const sectionIds: string[] = [];
+      for (const { sectionId, raw } of listProgressEntries(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey)) {
         if (raw === 'true') {
-          count++;
+          sectionIds.push(sectionId);
         }
       }
-      return count;
+      acknowledgedIdsCache.set(contentKey, sectionIds);
+      return sectionIds;
     } catch {
-      return 0;
+      return [];
     }
+  },
+
+  /**
+   * Drop the cached acknowledgement scan for a content key without touching
+   * localStorage — the cross-tab counterpart to
+   * `interactiveStepStorage.invalidateCountCache`.
+   */
+  invalidateAcknowledgementCache(contentKey: string): void {
+    acknowledgedIdsCache.delete(contentKey);
   },
 };
 
@@ -1426,6 +1504,77 @@ export const guideCompletionMarkStorage = {
       await guideCompletionMarkStorage.clearMany(contentKeys);
     } catch (error) {
       logger.warn('Failed to clear guide completion marks', { error });
+    }
+  },
+};
+
+/**
+ * Durable half of `completion-records/completion-recorder.ts`'s exactly-once
+ * guard. Keyed by the recorder's own `kind:guideSource:guideId` dedupe
+ * string — not a content key — via the same versioned-key builder, so the
+ * guard survives a page reload rather than resetting with the module's
+ * in-memory `Set`. A reset invalidates the specific keys for the guide being
+ * reset (`completion-records`'s `invalidateEmittedCompletion`), which is what
+ * lets a re-marked guide emit a fresh record.
+ *
+ * Deliberately `createLocalStorage()`, never `createUserStorage()` —
+ * surviving a reload is the whole contract, not surviving a device change.
+ * The guard is read synchronously via raw `localStorage` (`isEmitted`
+ * below), so a remote-synced copy could never be consulted anyway: every
+ * write through the hybrid backend would be a PATCH nothing ever reads back
+ * (owd-emitted-guard-remote-tombstones), and its `removeItem` writes an
+ * empty-value tombstone rather than deleting, which a bulk reset would
+ * otherwise fan out into dozens of PATCHes for guard keys that never held a
+ * value. `createLocalStorage()`'s `removeItem` is a plain
+ * `localStorage.removeItem` — an actual delete, no tombstone.
+ */
+function completionEmittedKey(dedupeKey: string): string {
+  return buildVersionedContentStorageKey(StorageKeys.COMPLETION_EMITTED_PREFIX, dedupeKey);
+}
+
+export const completionEmittedStorage = {
+  /** Synchronous read — the recorder's dedupe check runs outside React render, but must stay non-blocking. */
+  isEmitted(dedupeKey: string): boolean {
+    try {
+      return localStorage.getItem(completionEmittedKey(dedupeKey)) === 'true';
+    } catch {
+      return false;
+    }
+  },
+
+  async markEmitted(dedupeKey: string): Promise<void> {
+    try {
+      const storage = createLocalStorage();
+      await storage.setItem(completionEmittedKey(dedupeKey), true);
+    } catch (error) {
+      logger.warn('Failed to persist completion dedupe key', { error });
+    }
+  },
+
+  async clear(dedupeKey: string): Promise<void> {
+    // isEmitted is a synchronous, unconditional check, so skip the write
+    // entirely when there is nothing to clear — a reset over a set of
+    // members it does not know completed any of would otherwise still issue
+    // one localStorage removeItem per combination that never occurred.
+    if (!completionEmittedStorage.isEmitted(dedupeKey)) {
+      return;
+    }
+    try {
+      localStorage.removeItem(completionEmittedKey(dedupeKey));
+    } catch (error) {
+      logger.warn('Failed to clear completion dedupe key', { error });
+    }
+  },
+
+  async clearAll(): Promise<void> {
+    try {
+      // A plain localStorage-backed key: an actual delete, no tombstone
+      // companion to sweep afterwards.
+      for (const key of collectKeysByPrefix(localStorage, StorageKeys.COMPLETION_EMITTED_PREFIX)) {
+        localStorage.removeItem(key);
+      }
+    } catch (error) {
+      logger.warn('Failed to clear completion dedupe keys', { error });
     }
   },
 };

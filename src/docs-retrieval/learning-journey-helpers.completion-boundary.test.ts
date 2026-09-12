@@ -13,9 +13,13 @@
 const journeySetMock = jest.fn();
 const milestoneMarkCompletedMock = jest.fn();
 const milestoneGetCompletedMock = jest.fn();
+const milestoneGetCompletedSyncMock: (...a: unknown[]) => Set<string> = jest.fn(() => new Set<string>());
+const interactiveCompletionPeekAllMock: (...a: unknown[]) => Record<string, number> = jest.fn(() => ({}));
 const awardBadgeMock = jest.fn();
 const markGuideCompletedMock = jest.fn();
 const getPathsDataMock = jest.fn();
+
+const persistedEmitted = new Set<string>();
 
 jest.mock('../lib/user-storage', () => ({
   __esModule: true,
@@ -23,14 +27,46 @@ jest.mock('../lib/user-storage', () => ({
   milestoneCompletionStorage: {
     markCompleted: (...a: unknown[]) => milestoneMarkCompletedMock(...a),
     getCompleted: (...a: unknown[]) => milestoneGetCompletedMock(...a),
+    // Backs the recommendation-card refresh's journeyProgressFromMilestones
+    // call — empty by default (nothing else completed), overridable per test.
+    getCompletedSync: (...a: unknown[]) => milestoneGetCompletedSyncMock(...a),
   },
   learningProgressStorage: { awardBadge: (...a: unknown[]) => awardBadgeMock(...a) },
+  // The recorder's durable dedupe guard. A plain in-memory fake here (rather
+  // than the real storage) matches this file's existing "real recorder,
+  // mocked storage" split — the recorder's own tests cover the guard itself.
+  completionEmittedStorage: {
+    isEmitted: (key: string) => persistedEmitted.has(key),
+    markEmitted: async (key: string) => {
+      persistedEmitted.add(key);
+    },
+    clear: async (key: string) => {
+      persistedEmitted.delete(key);
+    },
+    clearAll: async () => {
+      persistedEmitted.clear();
+    },
+  },
+  // Reset-path plumbing resetGuideProgress also touches, irrelevant to this
+  // file's identity-boundary focus — no-op stand-ins so importing it doesn't
+  // require re-deriving its whole dependency graph here.
+  guideCompletionMarkStorage: { clear: jest.fn().mockResolvedValue(undefined) },
+  interactiveCompletionStorage: {
+    clear: jest.fn().mockResolvedValue(undefined),
+    peekAll: () => interactiveCompletionPeekAllMock(),
+  },
+  interactiveStepStorage: { clearAllForContent: jest.fn().mockResolvedValue(undefined) },
 }));
 
 jest.mock('../learning-paths', () => ({
   __esModule: true,
   markGuideCompleted: (...a: unknown[]) => markGuideCompletedMock(...a),
   getPathsData: () => getPathsDataMock(),
+}));
+
+jest.mock('../global-state/completion-store', () => ({
+  __esModule: true,
+  evictContentCache: jest.fn(),
 }));
 
 import { of } from 'rxjs';
@@ -44,8 +80,10 @@ import {
   markMilestoneDone,
   resolveExpectedMilestoneIds,
   recordGuideCompletionForSurface,
+  resolveActiveMilestoneSlug,
   getMilestoneSlug,
 } from './learning-journey-helpers';
+import { resetGuideProgress } from '../components/docs-panel/hooks/resetGuideProgress';
 import type { LearningJourneyMetadata, Milestone } from '../types/content.types';
 import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
 import {
@@ -59,8 +97,14 @@ let unsubscribe: () => void;
 beforeEach(() => {
   jest.clearAllMocks();
   __resetRecorderForTests();
+  persistedEmitted.clear();
   emitted = [];
-  unsubscribe = onCompletionRecorded((fact) => emitted.push(fact));
+  unsubscribe = onCompletionRecorded((fact) => {
+    emitted.push(fact);
+    // Stands in for the write queue's durable acceptance, which is what arms
+    // the recorder's exactly-once guard.
+    return true;
+  });
   milestoneGetCompletedMock.mockResolvedValue(new Set());
   getPathsDataMock.mockReturnValue({ paths: [] });
 });
@@ -227,6 +271,75 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
       packageManifest: { id: 'fe-alerting-01', repository: 'app-platform' },
     });
     expect(emitted[0]).toMatchObject({ guideSource: 'app-platform', guideId: 'm1' });
+  });
+
+  // Mainstream shape both earlier fix rounds missed: a manifest is present,
+  // and its id ('fe-alerting-01') differs from the milestone slug ('m1'). The
+  // reset path must lift the guard under the SAME identity markMilestoneDone
+  // wrote it under (app-platform:m1) — not under the manifest id, which is
+  // what resolveCompletionIdentity would resolve to if the reset path called
+  // it directly with this manifest. Reddens without the reset path deriving
+  // milestone identity through resolveMilestoneCompletionIdentity.
+  it('re-marking after a reset still emits a second durable record when a manifest is present (pf-cutover-milestone-reset-identity-manifest)', async () => {
+    const context = { packageManifest: { id: 'fe-alerting-01', repository: 'app-platform' } };
+    await markMilestoneDone('base', 'm1', undefined, context);
+    expect(emitted).toHaveLength(1);
+
+    // The exact predicate recordGuideCompletionForSurface uses to decide a
+    // reset target is a milestone — the reset path must derive the same
+    // slug this way, not guess at it independently.
+    const milestoneSlug = resolveActiveMilestoneSlug({
+      currentUrl: 'https://example.com/journey/m1',
+      journeyBaseUrl: 'base',
+    });
+    expect(milestoneSlug).toBe('m1');
+
+    await resetGuideProgress('base', {
+      packageManifest: context.packageManifest,
+      milestoneSlug,
+    });
+
+    await markMilestoneDone('base', 'm1', undefined, context);
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[1]).toMatchObject({ guideSource: 'app-platform', guideId: 'm1' });
+  });
+
+  // Reviewer's finding (reset-guard-identity-divergence, round 2): the reset
+  // path must not depend on the CALLER correctly classifying the tab as a
+  // learning-journey. MyLearningTab.tsx:301-303 launches a path member with
+  // its PARENT PATH's manifest ({...parentPath.manifest, id: parentPath.id})
+  // and prepareGuideLaunch's own routing classification (isLearningJourneyUrl)
+  // returns false for a `backend-guide:` scheme URL — so a caller deriving
+  // "is this a milestone" from contentType can disagree with the writer,
+  // which never consulted contentType at all. This asserts the agreement
+  // holds even when the reset site's contentType is wrong/absent — the fix
+  // must key off `journeyBaseUrl` alone, which is always populated once the
+  // content resolves, regardless of how the launch route classified the tab.
+  it('re-marking after a reset still emits a second record when the reset site cannot classify the tab as a learning-journey (reset-guard-identity-divergence)', async () => {
+    // Mirrors MyLearningTab.tsx:301-303 exactly.
+    const parentPathManifest = { id: 'my-path', repository: 'app-platform', type: 'path' };
+    const context = { packageManifest: parentPathManifest };
+
+    await markMilestoneDone('backend-guide:my-path', 'milestone-one', undefined, context);
+    expect(emitted).toHaveLength(1);
+
+    // No contentType passed at all — the reset site must not need it.
+    const milestoneSlug = resolveActiveMilestoneSlug({
+      currentUrl: 'backend-guide:milestone-one',
+      journeyBaseUrl: 'backend-guide:my-path',
+    });
+    expect(milestoneSlug).toBe('milestone-one');
+
+    await resetGuideProgress('backend-guide:my-path', {
+      packageManifest: parentPathManifest,
+      milestoneSlug,
+    });
+
+    await markMilestoneDone('backend-guide:my-path', 'milestone-one', undefined, context);
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[1]).toMatchObject({ guideSource: 'app-platform', guideId: 'milestone-one' });
   });
 });
 
@@ -500,7 +613,7 @@ describe('surface emitter routing matrix (bundled/remote × milestone/standalone
     expect(journeySetMock).not.toHaveBeenCalled();
   });
 
-  it('remote + milestone → milestone-as-guide fact, no bundled progress write', async () => {
+  it('remote + milestone → milestone-as-guide fact, and refreshes journeyCompletionStorage for the recommendation card (journey-percentage-diverges-on-recommendation-card)', async () => {
     recordGuideCompletionForSurface({
       baseUrl: 'https://ex/lj',
       contentUrl: 'https://ex/lj',
@@ -514,7 +627,12 @@ describe('surface emitter routing matrix (bundled/remote × milestone/standalone
     const guide = emitted.filter((f) => f.kind === 'guide');
     expect(guide).toHaveLength(1);
     expect(guide[0]).toMatchObject({ guideId: 'm1', guideCategory: 'learning-journey' });
-    expect(journeySetMock).not.toHaveBeenCalled();
+    // This journey is not `bundled:`, so the OLD bundled-progress write never
+    // fires here — but the recommendation card's completionPercentage
+    // (context.service.ts) reads this same journeyCompletionStorage key
+    // directly, never the shared calculation, so it must be refreshed on
+    // every milestone completion rather than only on the journey's next load.
+    expect(journeySetMock).toHaveBeenCalledWith('https://ex/lj', expect.any(Number));
   });
 });
 

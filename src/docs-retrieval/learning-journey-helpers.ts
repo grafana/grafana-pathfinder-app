@@ -11,7 +11,14 @@ import {
   RelatedJourneys,
   ConclusionImage,
 } from '../types/content.types';
-import { journeyCompletionStorage, milestoneCompletionStorage, learningProgressStorage } from '../lib/user-storage';
+import {
+  journeyCompletionStorage,
+  milestoneCompletionStorage,
+  learningProgressStorage,
+  interactiveCompletionStorage,
+} from '../lib/user-storage';
+import { resolvePathMemberPercentages, type PathMember } from '../global-state/path-member-join';
+import { meanOfMemberPercentages } from '../lib/guide-stats';
 // Pre-existing lateral edge documented in ALLOWED_LATERAL_VIOLATIONS
 // (architecture.test.ts). This file already calls into `learning-paths`
 // via several dynamic imports — moving the badge coordinator behind a
@@ -23,8 +30,8 @@ import {
   recordGuideCompletion,
   recordJourneyCompletion,
   resolveCompletionIdentity,
+  resolveMilestoneCompletionIdentity,
   manifestGuideId,
-  manifestGuideSource,
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
@@ -120,18 +127,86 @@ export function getTotalMilestones(content: RawContent): number {
 /**
  * Progress tracking helpers
  */
+/** One milestone's own percentage, as the journey mean's per-member input. */
+export interface MilestonePercentage {
+  milestone: Milestone;
+  /** `undefined` when the member resolved to no key at all — excluded from the mean. */
+  percent: number | undefined;
+}
+
+/**
+ * Each unlocked milestone's own percentage, in journey order — the per-member
+ * half of {@link journeyProgressFromMilestones}, exposed so a surface that
+ * paints one mark per milestone (the toolbar's segmented bar) reads the very
+ * numbers the journey percentage is the mean of, rather than a second opinion
+ * such as navigation position.
+ */
+export function journeyMilestonePercentages(
+  baseUrl: string,
+  milestones: readonly Milestone[]
+): readonly MilestonePercentage[] {
+  const unlocked = milestones.filter((m) => !m.isLocked);
+  if (unlocked.length === 0) {
+    return [];
+  }
+
+  const members: PathMember[] = unlocked.map((m) => ({ id: getMilestoneSlug(m.url) ?? m.url, url: m.url }));
+  // The milestone URLs resolve alias-keyed records the canonical base URL
+  // alone would miss — the same argument the cover page's async read passes,
+  // so both screens see one set of completed milestones.
+  const completedMemberIds = Array.from(
+    milestoneCompletionStorage.getCompletedSync(
+      baseUrl,
+      milestones.map((m) => m.url)
+    )
+  );
+  const { members: resolved } = resolvePathMemberPercentages(members, {
+    completedMemberIds,
+    // interactiveCompletionStorage, and only that — journeyCompletionStorage
+    // holds no record under backend-guide: for a partially progressed
+    // member, so joining against it would exclude every one of them.
+    persistedPercentages: interactiveCompletionStorage.peekAll(),
+  });
+
+  return unlocked.map((milestone, index) => ({ milestone, percent: resolved[index]?.percent }));
+}
+
+/**
+ * The shared calculation behind {@link getJourneyProgress}, taking the
+ * journey's own identity rather than a full `RawContent` — so the cover
+ * page (`LearningPathTableOfContents`, which has `milestones` and `baseUrl`
+ * but not a `RawContent`) computes the identical number rather than a
+ * second, independent one. A reader must not see two different percentages
+ * for the same journey on adjacent screens.
+ */
+export function journeyProgressFromMilestones(baseUrl: string, milestones: readonly Milestone[]): number {
+  const resolvedPercentages = journeyMilestonePercentages(baseUrl, milestones).flatMap(({ percent }) =>
+    percent === undefined ? [] : [percent]
+  );
+
+  return meanOfMemberPercentages(resolvedPercentages).percent;
+}
+
+/**
+ * A journey's percentage: the mean of its unlocked milestones' own
+ * percentages (docs/design/COMPLETION-MODEL.md, decision 4 applied to
+ * milestones as path members). Not a navigation position — opening the
+ * last milestone of a ten-milestone journey having completed nothing no
+ * longer reports 100%.
+ *
+ * Each milestone is a member keyed by its own URL (decision 9's join), so
+ * this reads the SAME per-milestone percentage the milestone reports for
+ * itself as a guide. Locked milestones are excluded from both halves of the
+ * mean — `totalMilestones` is the locked-inclusive display count, and using
+ * it would make 100% unreachable on any partially published journey.
+ */
 export function getJourneyProgress(content: RawContent): number {
   if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
     return 0;
   }
 
-  const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
-
-  if (totalMilestones === 0) {
-    return 0;
-  }
-
-  return Math.round((currentMilestone / totalMilestones) * 100);
+  const lj = content.metadata.learningJourney;
+  return journeyProgressFromMilestones(lj.baseUrl, lj.milestones);
 }
 
 export function isJourneyCoverPage(content: RawContent): boolean {
@@ -400,16 +475,6 @@ function appendBottomNavigationToContent(
  * - Provides user-specific storage in Grafana database
  */
 
-export function getJourneyCompletionPercentage(journeyBaseUrl: string): number {
-  // Note: This is now async but wrapped to maintain backward compatibility
-  // The storage operation will resolve quickly from cache
-  let result = 0;
-  journeyCompletionStorage.get(journeyBaseUrl).then((percentage) => {
-    result = percentage;
-  });
-  return result;
-}
-
 export async function getJourneyCompletionPercentageAsync(journeyBaseUrl: string): Promise<number> {
   return journeyCompletionStorage.get(journeyBaseUrl);
 }
@@ -549,18 +614,45 @@ export interface SurfaceCompletionInput {
 }
 
 /**
+ * The milestone slug for the given content, iff it names a learning-journey
+ * milestone under a resolvable journey base — otherwise `undefined`. This is
+ * the ONE predicate for "is this a milestone, and under what slug", shared by
+ * the writer ({@link recordGuideCompletionForSurface}, which calls
+ * `markMilestoneDone` exactly when this resolves) and any reader that needs
+ * to agree with it — the reset path in particular. A caller that re-derived
+ * this check independently could disagree with the writer about which
+ * content counts as a milestone, which is the same class of drift the
+ * identity-derivation split above exists to prevent.
+ *
+ * Deliberately does NOT gate on `contentType === 'learning-journey'` — a
+ * caller's own content-type classification is exactly the thing that can
+ * disagree between the writer and a reset site (a path member opened
+ * through a route that does not tag it that way still has a real
+ * `learningJourney.baseUrl` once its content resolves). `journeyBaseUrl`
+ * being resolvable is the one signal that is always true when this is
+ * genuinely a milestone, regardless of how the caller classified the tab.
+ */
+export function resolveActiveMilestoneSlug(input: {
+  currentUrl?: string;
+  journeyBaseUrl?: string;
+}): string | undefined {
+  const slug = input.currentUrl ? getMilestoneSlug(input.currentUrl) : '';
+  return slug && input.journeyBaseUrl ? slug : undefined;
+}
+
+/**
  * The single surface-neutral completion emitter. Wired by each content-owning
  * component (DocsPanelContentArea, FloatingPanelContent, GuideReaderOverlay) so
  * every surface routes terminal completion through the same decision, rather
  * than each surface re-deciding (or forgetting to emit).
  */
 export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): void {
-  const { baseUrl, contentUrl, currentUrl, contentType, metadata, guideTitle } = input;
+  const { baseUrl, contentUrl, currentUrl, metadata, guideTitle } = input;
   // Two distinct keys: the surface base a tab happens to be pinned at, and the
   // journey's resolved cover URL that milestone progress is stored under.
   const surfaceBase = baseUrl || contentUrl;
   const journeyBase = metadata?.learningJourney?.baseUrl;
-  const slug = contentType === 'learning-journey' && currentUrl ? getMilestoneSlug(currentUrl) : '';
+  const slug = resolveActiveMilestoneSlug({ currentUrl, journeyBaseUrl: journeyBase }) ?? '';
   const willMarkMilestone = Boolean(slug && journeyBase);
   const completionContext: CompletionContext = {
     packageManifest: metadata?.packageManifest,
@@ -581,6 +673,19 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
       resolveExpectedMilestoneIds(metadata?.learningJourney),
       completionContext
     );
+    // The recommendation card reads journeyCompletionStorage directly
+    // (context.service.ts), never the shared calculation, and the only other
+    // writer is the content-load seam (docs-panel.tsx) — so without this, the
+    // card's number trails by however much was earned since the journey was
+    // last opened, for every journey shape except backend-guide (which gets
+    // its own refresh on full completion). Refreshing here on every milestone
+    // keeps it live for the rest too (journey-percentage-diverges-on
+    // -recommendation-card). A no-op for a backend-guide base, which
+    // persistJourneyCompletionPercentage already declines to write.
+    if (metadata?.learningJourney) {
+      const freshJourneyProgress = journeyProgressFromMilestones(journeyBase, metadata.learningJourney.milestones);
+      setJourneyCompletionPercentage(journeyBase, freshJourneyProgress, completionContext);
+    }
   } else if (!surfaceBase?.startsWith('bundled:')) {
     recordStandaloneGuideCompletion(completionContext);
   }
@@ -660,10 +765,10 @@ export async function markMilestoneDone(
   // warehouse. Local progress is unaffected — milestone progress is stored per
   // journey base URL — so a collision never grants unearned credit. Tracked for
   // RFC reconciliation.
-  const milestoneIdentity = resolveCompletionIdentity({
-    repository: context?.repository ?? manifestGuideSource(context?.packageManifest),
-    fallbackId: milestoneSlug,
-    fallbackSource: 'bundled',
+  const milestoneIdentity = resolveMilestoneCompletionIdentity({
+    repository: context?.repository,
+    packageManifest: context?.packageManifest,
+    milestoneSlug,
   });
   recordGuideCompletion({
     kind: 'guide',

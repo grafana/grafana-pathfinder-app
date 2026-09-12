@@ -115,7 +115,7 @@ describe('furthestEvidencedPosition', () => {
   });
 
   it('treats "mark as complete" on a section as reaching its last block', () => {
-    expect(furthestEvidencedPosition(index, [{ kind: 'mark-section-complete', blockId: 'setup' }])).toBe(3);
+    expect(furthestEvidencedPosition(index, [{ kind: 'mark-section-complete', blockId: 'section-setup' }])).toBe(3);
   });
 
   it('treats "mark as complete" on the guide as reaching the end', () => {
@@ -125,7 +125,7 @@ describe('furthestEvidencedPosition', () => {
   it('ignores signals naming a block that is not counted', () => {
     expect(furthestEvidencedPosition(index, [{ kind: 'do-it', blockId: 'gone' }])).toBe(0);
     expect(furthestEvidencedPosition(index, [{ kind: 'do-it' }])).toBe(0);
-    expect(furthestEvidencedPosition(index, [{ kind: 'mark-section-complete', blockId: 'intro' }])).toBe(0);
+    expect(furthestEvidencedPosition(index, [{ kind: 'mark-section-complete', blockId: 'section-intro' }])).toBe(0);
   });
 
   it('ignores no evidence at all', () => {

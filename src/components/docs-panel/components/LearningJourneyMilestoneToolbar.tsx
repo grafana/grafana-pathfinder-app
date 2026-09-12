@@ -13,9 +13,6 @@
  *
  * Surface-specific bits stay in props:
  * - `surface` controls the analytics `interaction_location` for "Open".
- * - `contentRoot` lets the sidebar scope the "no interactive steps" DOM
- *   query to its panel's content ref; fullscreen falls back to the global
- *   `[data-pathfinder-content="true"]` selector.
  *
  * The kebab uses `usePanelModeControls()` directly rather than taking a
  * consumer-injected slot, so Pop out/Dock and Full screen are correct on
@@ -23,7 +20,7 @@
  * surfaces that previously had no way to change panel mode from here.
  */
 
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { Button, Dropdown, Menu, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
@@ -34,12 +31,8 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import {
-  getJourneyProgress,
-  getMilestoneSlug,
-  markMilestoneDone,
-  resolveExpectedMilestoneIds,
-} from '../../../docs-retrieval';
+import { getJourneyProgress, journeyMilestonePercentages } from '../../../docs-retrieval';
+import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { usePanelModeControls } from '../../../global-state/use-panel-mode';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import { testIds } from '../../../constants/testIds';
@@ -58,13 +51,6 @@ export interface LearningJourneyMilestoneToolbarProps {
    * sidebar from fullscreen interactions.
    */
   surface: MilestoneToolbarSurface;
-  /**
-   * Element whose subtree is searched for `[data-step-id]` to decide
-   * whether to mark a step-less milestone done before navigating forward.
-   * When omitted, falls back to a global
-   * `[data-pathfinder-content="true"]` query (the fullscreen surface).
-   */
-  contentRoot?: React.RefObject<HTMLElement | null>;
   /**
    * From `useGuideProgressState`. Drives the visibility of the
    * "Reset guide" button.
@@ -91,7 +77,6 @@ export function LearningJourneyMilestoneToolbar({
   panel,
   activeTab,
   surface,
-  contentRoot,
   hasInteractiveProgress,
   progressKey,
   onResetGuide,
@@ -99,6 +84,9 @@ export function LearningJourneyMilestoneToolbar({
 }: LearningJourneyMilestoneToolbarProps) {
   const styles = useStyles2(getMilestoneStyles);
   const { panelMode, handleTogglePanelMode, handleGoFullScreen } = usePanelModeControls();
+  // The segments below read each milestone's percentage out of storage, so the
+  // store's announcement is what keeps them from painting a stale fill.
+  useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
 
   const lj = activeTab.content?.type === 'learning-journey' ? activeTab.content.metadata.learningJourney : undefined;
   const showMilestoneProgress = activeTab.type === 'learning-journey' && Boolean(lj);
@@ -142,26 +130,6 @@ export function LearningJourneyMilestoneToolbar({
       interaction_location: 'milestone_progress_bar',
       completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
     });
-    // Mirror the legacy behavior: when the current milestone has no
-    // interactive steps in the rendered DOM, mark it done so progress
-    // advances even though there's nothing to "complete". The DOM scope
-    // comes from `contentRoot` (sidebar) or the global content attribute
-    // (fullscreen) — both restrict the search to the active panel.
-    if (activeTab.currentUrl) {
-      const root: ParentNode =
-        contentRoot?.current ?? document.querySelector('[data-pathfinder-content="true"]') ?? document;
-      const hasInteractiveSteps = root.querySelectorAll('[data-step-id]').length > 0;
-      if (!hasInteractiveSteps) {
-        const slug = getMilestoneSlug(activeTab.currentUrl);
-        if (slug) {
-          void markMilestoneDone(lj.baseUrl, slug, resolveExpectedMilestoneIds(lj), {
-            packageManifest: activeTab.content?.metadata?.packageManifest,
-            repository: activeTab.content?.metadata?.repository,
-            guideTitle: activeTab.title,
-          });
-        }
-      }
-    }
     panel.navigateToNextMilestone();
   };
 
@@ -238,15 +206,22 @@ export function LearningJourneyMilestoneToolbar({
     </Menu>
   );
 
+  // Fill comes from the shared calculation (docs/design/COMPLETION-MODEL.md,
+  // decision 4), the same numbers the journey percentage is the mean of, so a
+  // reader who only pages forward leaves the segments behind them unfilled.
+  // The label and the current-position highlight stay navigation-derived.
+  const completedMilestoneNumbers = new Set(
+    journeyMilestonePercentages(lj.baseUrl, lj.milestones)
+      .filter(({ percent }) => percent === 100)
+      .map(({ milestone }) => milestone.number)
+  );
+
   const segments = Array.from({ length: lj.totalMilestones || 0 }, (_, i) => {
     const number = i + 1;
-    if (number < (lj.currentMilestone ?? 0)) {
-      return 'done';
-    }
     if (number === (lj.currentMilestone ?? 0)) {
       return 'current';
     }
-    return 'upcoming';
+    return completedMilestoneNumbers.has(number) ? 'done' : 'upcoming';
   });
 
   return (

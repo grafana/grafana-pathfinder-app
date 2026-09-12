@@ -19,6 +19,8 @@
  * keeping them aligned is cheaper than moving the type to Tier 0.
  */
 
+import { StorageEvents } from '../lib/event-names';
+
 export type ProgressReason = 'none' | 'objectives' | 'manual' | 'skipped';
 
 export type ProgressEventDetail =
@@ -60,4 +62,50 @@ export function subscribeProgressEvent(listener: (detail: ProgressEventDetail) =
   };
   window.addEventListener(PROGRESS_EVENT, handler);
   return () => window.removeEventListener(PROGRESS_EVENT, handler);
+}
+
+/**
+ * "Some guide's percentage may have moved" as a `useSyncExternalStore`
+ * source, for a surface that reads the shared percentage out of storage
+ * during render rather than subscribing per content key.
+ *
+ * A path rollup and a journey mean are functions of every member's persisted
+ * percentage, so their hosts cannot subscribe to one content key — and the
+ * inputs they used to be functions of (milestone position, the completed-guide
+ * list) no longer decide the number. Without this they would keep painting
+ * whatever the last unrelated render computed, which is the same
+ * two-numbers-for-one-guide the model exists to prevent, in the stale
+ * direction.
+ *
+ * Deliberately a bare revision rather than a payload: the readers recompute
+ * from storage, so all they need is "read again".
+ */
+let guideProgressRevision = 0;
+const revisionListeners = new Set<() => void>();
+
+export function subscribeGuideProgressRevision(listener: () => void): () => void {
+  revisionListeners.add(listener);
+  return () => {
+    revisionListeners.delete(listener);
+  };
+}
+
+export function getGuideProgressRevision(): number {
+  return guideProgressRevision;
+}
+
+function bumpGuideProgressRevision(): void {
+  guideProgressRevision += 1;
+  revisionListeners.forEach((listener) => listener());
+}
+
+if (typeof window !== 'undefined') {
+  // Both halves of "the number changed": a percentage write announces itself
+  // as `kind: 'guide'`, and every reset path dispatches the cleared event.
+  subscribeProgressEvent((detail) => {
+    if (detail.kind === 'guide') {
+      bumpGuideProgressRevision();
+    }
+  });
+  window.addEventListener(StorageEvents.InteractiveProgressCleared, bumpGuideProgressRevision);
 }

@@ -34,6 +34,7 @@ describe('StorageKeys — stable string contract', () => {
       SECTION_ACKNOWLEDGED_PREFIX: 'grafana-pathfinder-app-section-acknowledged-',
       SECTION_DONE_PREFIX: 'grafana-pathfinder-app-section-done-',
       GUIDE_COMPLETION_MARK_PREFIX: 'grafana-pathfinder-app-guide-complete-mark-',
+      COMPLETION_EMITTED_PREFIX: 'grafana-pathfinder-app-completion-emitted-',
       FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
       FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
       FULLSCREEN_BUNDLING_ACTION: 'grafana-pathfinder-app-fullscreen-bundling-action',

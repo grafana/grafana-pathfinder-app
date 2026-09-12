@@ -2,6 +2,7 @@ import { getAppEvents } from '@grafana/runtime';
 
 import {
   __resetQuotaWarningForTests,
+  completionEmittedStorage,
   createHybridStorage,
   createLocalStorage,
   guideResponseStorage,
@@ -190,6 +191,37 @@ describe('milestoneCompletionStorage', () => {
     await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set());
     await expect(milestoneCompletionStorage.getCompleted('backend-guide:fe-alerting-path')).resolves.toEqual(new Set());
     expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
+  });
+
+  describe('getCompletedSync', () => {
+    it('returns an empty set before anything is written', () => {
+      expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set());
+    });
+
+    it('reads back a completion written through markCompleted, synchronously', async () => {
+      await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'install-alloy');
+
+      expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set(['install-alloy']));
+    });
+
+    it('resolves milestone aliases the same way the async read does', () => {
+      localStorage.setItem(
+        StorageKeys.MILESTONE_COMPLETION,
+        JSON.stringify({ 'bundled:demo-milestone/content.json': ['demo-milestone'] })
+      );
+
+      expect(
+        milestoneCompletionStorage.getCompletedSync('bundled:demo-cover/content.json', [
+          'bundled:demo-milestone/content.json',
+        ])
+      ).toEqual(new Set(['demo-milestone']));
+    });
+
+    it('returns an empty set for malformed JSON rather than throwing', () => {
+      localStorage.setItem(StorageKeys.MILESTONE_COMPLETION, '{not json');
+
+      expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set());
+    });
   });
 });
 
@@ -400,6 +432,104 @@ describe('sectionAcknowledgementStorage', () => {
     const key = buildVersionedSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, 'guide-a', 'section-1');
     expect(localStorage.getItem(key)).not.toBeNull();
     expect(localStorage.getItem(`${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}guide-a-section-1`)).toBeNull();
+  });
+});
+
+// ============================================================================
+// Progress-scan caching — the completion percentage reads these on a render
+// path (the Mark complete footer's useSyncExternalStore snapshot), so a
+// repeated read must not re-sweep localStorage, and a write must still be
+// seen immediately.
+// ============================================================================
+
+describe('progress scans are cached per content key and invalidated by writes', () => {
+  const CONTENT_KEY = 'bundled:scan-cache';
+
+  beforeEach(async () => {
+    localStorage.clear();
+    // Through the API, so the caches are invalidated along with storage.
+    await interactiveStepStorage.clearAllForContent(CONTENT_KEY);
+  });
+
+  function countStorageKeyReads(read: () => void): number {
+    const spy = jest.spyOn(Storage.prototype, 'key');
+    try {
+      read();
+      return spy.mock.calls.length;
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('does not re-scan localStorage for a repeated step-evidence read', async () => {
+    await interactiveStepStorage.setCompleted(CONTENT_KEY, 'section-1', new Set(['step-1', 'step-2']));
+
+    const firstRead = countStorageKeyReads(() => {
+      expect(interactiveStepStorage.listAllCompleted(CONTENT_KEY)).toEqual(['step-1', 'step-2']);
+    });
+    const repeatedReads = countStorageKeyReads(() => {
+      interactiveStepStorage.listAllCompleted(CONTENT_KEY);
+      interactiveStepStorage.countAllCompleted(CONTENT_KEY);
+      interactiveStepStorage.listAllCompleted(CONTENT_KEY);
+    });
+
+    expect(firstRead).toBeGreaterThan(0);
+    expect(repeatedReads).toBe(0);
+  });
+
+  it('sees a step written after a cached read', async () => {
+    await interactiveStepStorage.setCompleted(CONTENT_KEY, 'section-1', new Set(['step-1']));
+    expect(interactiveStepStorage.countAllCompleted(CONTENT_KEY)).toBe(1);
+
+    await interactiveStepStorage.setCompleted(CONTENT_KEY, 'section-1', new Set(['step-1', 'step-2']));
+
+    expect(interactiveStepStorage.listAllCompleted(CONTENT_KEY)).toEqual(['step-1', 'step-2']);
+  });
+
+  it('does not re-scan localStorage for a repeated acknowledgement read', async () => {
+    await sectionAcknowledgementStorage.set(CONTENT_KEY, 'section-1', true);
+
+    const firstRead = countStorageKeyReads(() => {
+      expect(sectionAcknowledgementStorage.listAllAcknowledged(CONTENT_KEY)).toEqual(['section-1']);
+    });
+    const repeatedReads = countStorageKeyReads(() => {
+      sectionAcknowledgementStorage.listAllAcknowledged(CONTENT_KEY);
+      sectionAcknowledgementStorage.countAllAcknowledged(CONTENT_KEY);
+    });
+
+    expect(firstRead).toBeGreaterThan(0);
+    expect(repeatedReads).toBe(0);
+  });
+
+  it('sees an acknowledgement cleared after a cached read', async () => {
+    await sectionAcknowledgementStorage.set(CONTENT_KEY, 'section-1', true);
+    expect(sectionAcknowledgementStorage.countAllAcknowledged(CONTENT_KEY)).toBe(1);
+
+    await sectionAcknowledgementStorage.clear(CONTENT_KEY, 'section-1');
+
+    expect(sectionAcknowledgementStorage.listAllAcknowledged(CONTENT_KEY)).toEqual([]);
+  });
+
+  it('re-scans after the cross-tab invalidation hooks', async () => {
+    await interactiveStepStorage.setCompleted(CONTENT_KEY, 'section-1', new Set(['step-1']));
+    await sectionAcknowledgementStorage.set(CONTENT_KEY, 'section-1', true);
+    expect(interactiveStepStorage.countAllCompleted(CONTENT_KEY)).toBe(1);
+    expect(sectionAcknowledgementStorage.countAllAcknowledged(CONTENT_KEY)).toBe(1);
+
+    // Another tab's write lands in localStorage without passing through this
+    // tab's storage API, which is exactly what these hooks exist for.
+    localStorage.setItem(
+      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, CONTENT_KEY, 'section-2'),
+      JSON.stringify(['step-9'])
+    );
+    localStorage.removeItem(
+      buildVersionedSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, CONTENT_KEY, 'section-1')
+    );
+    interactiveStepStorage.invalidateCountCache(CONTENT_KEY);
+    sectionAcknowledgementStorage.invalidateAcknowledgementCache(CONTENT_KEY);
+
+    expect(interactiveStepStorage.countAllCompleted(CONTENT_KEY)).toBe(2);
+    expect(sectionAcknowledgementStorage.countAllAcknowledged(CONTENT_KEY)).toBe(0);
   });
 });
 
@@ -825,6 +955,60 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
     expect(await sectionCollapseStorage.get(SHORT_GUIDE, 'section-1')).toBe(false);
     expect(await sectionAcknowledgementStorage.get(SHORT_GUIDE, 'section-1')).toBeNull();
     expect(await sectionDoneStorage.get(SHORT_GUIDE, 'section-1')).toBeNull();
+  });
+
+  // owd-emitted-guard-remote-tombstones: this namespace is local-only
+  // (createLocalStorage(), never createUserStorage()) precisely so it never
+  // breeds a hybrid-backend timestamp companion — even when a real Grafana
+  // user-storage backend IS active for every other namespace, which this
+  // case sets up deliberately to prove the guard opts out of it.
+  it('clears every completion dedupe guard with a plain delete, no backend companion, even with a hybrid backend active', async () => {
+    jest.useFakeTimers();
+    const grafanaStorage = {
+      getItem: jest.fn(async () => null),
+      setItem: jest.fn(async () => undefined),
+    };
+    setGlobalStorage(createHybridStorage(grafanaStorage));
+
+    try {
+      await completionEmittedStorage.markEmitted('guide:bundled:one');
+      await completionEmittedStorage.markEmitted('guide:bundled:two');
+
+      const setItem = jest.spyOn(Storage.prototype, 'setItem');
+      await completionEmittedStorage.clearAll();
+      const writtenKeys = setItem.mock.calls
+        .map(([key]) => key)
+        .filter((key): key is string => typeof key === 'string');
+      setItem.mockRestore();
+
+      expect(completionEmittedStorage.isEmitted('guide:bundled:one')).toBe(false);
+      expect(completionEmittedStorage.isEmitted('guide:bundled:two')).toBe(false);
+      // A plain delete writes nothing — no companion, unlike the hybrid
+      // backend's removeItem, which this namespace no longer goes through.
+      expect(writtenKeys).toEqual([]);
+      expect(grafanaStorage.setItem).not.toHaveBeenCalled();
+      // Nothing left under the namespace at all, guards or companions.
+      expect(Object.keys(localStorage).filter((key) => key.startsWith(StorageKeys.COMPLETION_EMITTED_PREFIX))).toEqual(
+        []
+      );
+    } finally {
+      setGlobalStorage(createLocalStorage());
+      jest.useRealTimers();
+    }
+  });
+
+  // The other half of owd-emitted-guard-remote-tombstones's required fix:
+  // clearing a guard that was never set must not write anything either.
+  it('does not write when clearing a guard that was never set', async () => {
+    const setItem = jest.spyOn(Storage.prototype, 'setItem');
+    const removeItem = jest.spyOn(Storage.prototype, 'removeItem');
+
+    await completionEmittedStorage.clear('guide:bundled:never-marked');
+
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
+    setItem.mockRestore();
+    removeItem.mockRestore();
   });
 
   it('writes no record of its own — only the backend timestamp companions of records it removed', async () => {

@@ -5,8 +5,9 @@
  * clear that only partly took. Other hook behavior (badges, streaks) is
  * exercised elsewhere; this file mocks those dependencies down to no-ops.
  */
+import React from 'react';
 import { AppEvents } from '@grafana/data';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 
 let mockNamespace: string | undefined = 'stacks-123';
 const mockPublish = jest.fn();
@@ -24,33 +25,42 @@ jest.mock('./app-platform-paths', () => ({
   fetchAppPlatformLearningPaths: (namespace: string) => mockFetchAppPlatformLearningPaths(namespace),
 }));
 
+const mockFetchPathGuides = jest.fn();
 jest.mock('./fetch-path-guides', () => ({
-  fetchPathGuides: jest.fn().mockResolvedValue(null),
+  fetchPathGuides: (pathUrl: string, signal?: AbortSignal) => mockFetchPathGuides(pathUrl, signal),
 }));
 
+const BUNDLED_PATHS_DATA = {
+  paths: [{ id: 'bundled-path', title: 'Bundled path', description: '', guides: ['bundled-guide'], badgeId: '' }],
+  guideMetadata: { 'bundled-guide': { title: 'Bundled guide', estimatedMinutes: 5 } },
+};
+let mockPathsData: { paths: unknown[]; guideMetadata: Record<string, unknown> } = BUNDLED_PATHS_DATA;
 jest.mock('./paths-data', () => ({
-  getPathsData: () => ({
-    paths: [{ id: 'bundled-path', title: 'Bundled path', description: '', guides: ['bundled-guide'], badgeId: '' }],
-    guideMetadata: { 'bundled-guide': { title: 'Bundled guide', estimatedMinutes: 5 } },
-  }),
+  getPathsData: () => mockPathsData,
 }));
+
+const EMPTY_PROGRESS = {
+  completedGuides: [] as string[],
+  earnedBadges: [],
+  streakDays: 0,
+  lastActivityDate: '',
+  pendingCelebrations: [],
+};
+const mockProgressGet = jest.fn();
+const mockPeekAll = jest.fn();
 
 const mockClearAllForContent = jest.fn(async (_contentKey: string): Promise<void> => undefined);
+const mockCompletionEmittedClear = jest.fn(async (_dedupeKey: string): Promise<void> => undefined);
 jest.mock('../lib/user-storage', () => ({
   learningProgressStorage: {
-    get: jest.fn().mockResolvedValue({
-      completedGuides: [],
-      earnedBadges: [],
-      streakDays: 0,
-      lastActivityDate: '',
-      pendingCelebrations: [],
-    }),
+    get: () => mockProgressGet(),
     dismissCelebration: jest.fn(),
     removeCompletedGuides: jest.fn(),
   },
   interactiveStepStorage: { clearAllForContent: (contentKey: string) => mockClearAllForContent(contentKey) },
   interactiveCompletionStorage: {
     getAll: jest.fn().mockResolvedValue({}),
+    peekAll: () => mockPeekAll(),
     clear: jest.fn(),
     clearMany: jest.fn().mockResolvedValue(undefined),
   },
@@ -63,6 +73,12 @@ jest.mock('../lib/user-storage', () => ({
   guideCompletionMarkStorage: {
     clearMany: jest.fn().mockResolvedValue(undefined),
     clearAllWithPrefix: jest.fn().mockResolvedValue(undefined),
+  },
+  completionEmittedStorage: {
+    isEmitted: jest.fn().mockReturnValue(false),
+    markEmitted: jest.fn().mockResolvedValue(undefined),
+    clear: (dedupeKey: string) => mockCompletionEmittedClear(dedupeKey),
+    clearAll: jest.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -80,6 +96,163 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockNamespace = 'stacks-123';
   mockClearAllForContent.mockImplementation(async () => undefined);
+  mockPathsData = BUNDLED_PATHS_DATA;
+  mockFetchPathGuides.mockResolvedValue(null);
+  mockProgressGet.mockResolvedValue(EMPTY_PROGRESS);
+  mockPeekAll.mockReturnValue({});
+  mockFetchAppPlatformLearningPaths.mockResolvedValue({ paths: [], guideMetadata: {} });
+});
+
+/**
+ * A URL-based path: its members are addressed by a docs URL fetched at
+ * runtime, and `paths-cloud.json` ships six of them. Their member keys can
+ * only be formed from that URL, which is what makes the rollup's join
+ * different from the bundled/App Platform id schemes.
+ */
+const LINUX_PATH_URL = 'https://grafana.com/docs/learning-paths/linux-server-integration/';
+const LINUX_MODULES: Record<string, string> = {
+  'select-platform': `${LINUX_PATH_URL}select-platform/`,
+  'install-alloy': `${LINUX_PATH_URL}install-alloy/`,
+  'view-dashboard': `${LINUX_PATH_URL}view-dashboard/`,
+};
+
+function useUrlBasedPath(): void {
+  mockPathsData = {
+    paths: [
+      {
+        id: 'linux-server-integration',
+        title: 'Linux server integration',
+        description: '',
+        guides: [],
+        badgeId: '',
+        url: LINUX_PATH_URL,
+      },
+    ],
+    guideMetadata: {},
+  };
+  mockFetchPathGuides.mockResolvedValue({
+    guides: Object.keys(LINUX_MODULES),
+    guideMetadata: Object.fromEntries(
+      Object.entries(LINUX_MODULES).map(([id, url]) => [id, { title: id, estimatedMinutes: 5, url }])
+    ),
+  });
+}
+
+describe('useLearningPaths — URL-based path rollup (decision 4)', () => {
+  async function renderUrlBasedPath() {
+    const rendered = renderHook(() => useLearningPaths());
+    await waitFor(() => expect(rendered.result.current.paths[0]?.guides).toHaveLength(3));
+    return rendered;
+  }
+
+  it('scores every module, not only the completed one', async () => {
+    // The regression: without each member's launch URL the join can form no
+    // key for it, so five of six modules drop out of the mean and one
+    // finished module reads 100%.
+    useUrlBasedPath();
+    mockProgressGet.mockResolvedValue({ ...EMPTY_PROGRESS, completedGuides: ['select-platform'] });
+
+    const { result } = await renderUrlBasedPath();
+
+    expect(result.current.getPathProgress('linux-server-integration')).toBe(33);
+    expect(result.current.isPathCompleted('linux-server-integration')).toBe(false);
+  });
+
+  it("reads a module's own persisted percentage into the mean", async () => {
+    useUrlBasedPath();
+    mockProgressGet.mockResolvedValue({ ...EMPTY_PROGRESS, completedGuides: ['select-platform'] });
+    mockPeekAll.mockReturnValue({ [LINUX_MODULES['install-alloy']!]: 50 });
+
+    const { result } = await renderUrlBasedPath();
+
+    expect(result.current.getPathProgress('linux-server-integration')).toBe(50);
+  });
+
+  it('is 0% while nothing has been completed, however many modules were opened', async () => {
+    useUrlBasedPath();
+
+    const { result } = await renderUrlBasedPath();
+
+    expect(result.current.getPathProgress('linux-server-integration')).toBe(0);
+    expect(result.current.isPathCompleted('linux-server-integration')).toBe(false);
+  });
+
+  // The rollup reads each member's percentage out of storage at call time, so
+  // the number goes stale unless the completion store's own announcement
+  // re-renders the surface displaying it — the way the Mark complete footer
+  // stays live. Mirrors My Learning, which memoises on `getPathProgress`.
+  it('re-reads the rollup when the completion store announces new evidence', async () => {
+    useUrlBasedPath();
+
+    function Probe() {
+      const { getPathProgress } = useLearningPaths();
+      const percent = React.useMemo(() => getPathProgress('linux-server-integration'), [getPathProgress]);
+      return React.createElement('span', { 'data-testid': 'rollup' }, String(percent));
+    }
+
+    // A baseline only reachable once the three modules have loaded, so the
+    // move below cannot be the fetch resolving.
+    mockPeekAll.mockReturnValue({ [LINUX_MODULES['select-platform']!]: 30 });
+
+    render(React.createElement(Probe));
+    await waitFor(() => expect(screen.getByTestId('rollup').textContent).toBe('10'));
+
+    mockPeekAll.mockReturnValue({ [LINUX_MODULES['select-platform']!]: 90 });
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: {
+            kind: 'guide',
+            contentKey: LINUX_MODULES['select-platform'],
+            percentage: 90,
+            hasProgress: true,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => expect(screen.getByTestId('rollup').textContent).toBe('30'));
+  });
+
+  it('is complete only once every module is', async () => {
+    useUrlBasedPath();
+    mockProgressGet.mockResolvedValue({ ...EMPTY_PROGRESS, completedGuides: Object.keys(LINUX_MODULES) });
+
+    const { result } = await renderUrlBasedPath();
+
+    expect(result.current.getPathProgress('linux-server-integration')).toBe(100);
+    expect(result.current.isPathCompleted('linux-server-integration')).toBe(true);
+  });
+
+  // reset-guard-identity-divergence (blocker 2, required fix): resetPath's
+  // guard invalidation must not depend on the dynamic fetchPathGuides call
+  // having landed. `path.guides` is `[]` in the static mockPathsData until
+  // that fetch resolves, so resetting immediately after the paths array
+  // first appears — before awaiting the guides fetch — must still recover
+  // and invalidate each milestone's guard from real (mocked) storage.
+  it('lifts the per-milestone guard from recovered content keys even before the guides fetch lands', async () => {
+    useUrlBasedPath();
+    const { interactiveCompletionStorage } = jest.requireMock('../lib/user-storage');
+    interactiveCompletionStorage.getAll.mockResolvedValue({
+      [LINUX_MODULES['select-platform']!]: 100,
+      [LINUX_MODULES['install-alloy']!]: 50,
+    });
+
+    const { result } = renderHook(() => useLearningPaths());
+    // Deliberately not awaiting the guides fetch — `path.guides` is still `[]`.
+    await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain('linux-server-integration'));
+    expect(result.current.paths.find((p) => p.id === 'linux-server-integration')?.guides).toHaveLength(0);
+
+    await act(async () => {
+      await result.current.resetPath('linux-server-integration');
+    });
+
+    const invalidatedKeys = new Set(mockCompletionEmittedClear.mock.calls.map(([key]) => key));
+    // The slugs recovered from real storage-derived content keys, not from
+    // the (still-empty) dynamically-fetched path.guides.
+    expect(invalidatedKeys).toContain('guide:app-platform:select-platform');
+    expect(invalidatedKeys).toContain('guide:app-platform:install-alloy');
+  });
 });
 
 describe('useLearningPaths — App Platform path ingestion', () => {
@@ -225,5 +398,36 @@ describe('useLearningPaths — resetPath reports a partial failure once', () => 
 
     expect(mockClearAllForContent).toHaveBeenCalledTimes(SWEPT_CONTENT_KEYS.length);
     expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  // Reset-then-re-mark defect: a member re-completed after a path reset must
+  // not dedupe against the completion this reset just erased.
+  it('lifts the completion-recorder dedupe guard for the path and every member', async () => {
+    mockClearAllForContent.mockImplementation(async () => undefined);
+
+    const { result } = renderHook(() => useLearningPaths());
+    await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain('bundled-path'));
+
+    await act(async () => {
+      await result.current.resetPath('bundled-path');
+    });
+
+    const invalidatedKeys = mockCompletionEmittedClear.mock.calls.map(([key]) => key);
+    expect(new Set(invalidatedKeys)).toEqual(
+      new Set([
+        'guide:bundled:bundled-path',
+        'journey:bundled:bundled-path',
+        'guide:app-platform:bundled-path',
+        'journey:app-platform:bundled-path',
+        'guide:interactive-tutorials:bundled-path',
+        'journey:interactive-tutorials:bundled-path',
+        'guide:bundled:bundled-guide',
+        'journey:bundled:bundled-guide',
+        'guide:app-platform:bundled-guide',
+        'journey:app-platform:bundled-guide',
+        'guide:interactive-tutorials:bundled-guide',
+        'journey:interactive-tutorials:bundled-guide',
+      ])
+    );
   });
 });

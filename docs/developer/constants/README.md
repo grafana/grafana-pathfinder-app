@@ -170,15 +170,9 @@ The constants directory is organized into specialized files that separate concer
 - Support dynamic ID generation for repeated elements (tabs, cards, steps)
 - Enable cross-component test coordination with consistent naming
 
-**Key Exports**:
-
-- `testIds.docsPanel` - Main container, tabs, close button, loading/error states
-- `testIds.contextPanel` - Recommendations, user profile bar, custom guides, other docs sections
-- `testIds.devTools` - Preview banner, full-screen mode, minimized sidebar
-- `testIds.interactive` - Sections, steps, buttons (show me, do it, skip, redo), requirements, quizzes, conditionals
-- `testIds.appConfig` - Configuration form fields (recommender URL, interactive features, timeouts)
-- `testIds.termsAndConditions` - Terms toggle, submit button, content area
-- `testIds.blockEditor` - Modals, palette, form controls, section editing
+**Key Exports**: see `src/constants/testIds.ts` for the current namespaces — not
+duplicated here, since a hand-copied list drifts from the code the moment a
+namespace is added (this one was missing `testIds.markComplete`).
 
 **Naming Convention**:
 
