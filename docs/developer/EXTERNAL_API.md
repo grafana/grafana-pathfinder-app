@@ -68,7 +68,7 @@ scripts/upsert-guide.sh \
 
 The script:
 
-1. **Auto-detects the input format** — accepts either a bare spec or a full Kubernetes envelope (e.g. from Library → Export).
+1. **Auto-detects the input format** — accepts either a bare spec (what the editor's **Copy JSON** / **Download JSON** items produce) or a full Kubernetes envelope (what a GET against the endpoint returns).
 2. **Auto-detects the stack namespace** from `/api/frontend/settings` (or accepts `--namespace`).
 3. **Fills in missing required fields**: defaults `status` to `"published"` and `schemaVersion` to `"1.0.0"`, and backfills `spec.id` from the slugified `title` when absent.
 4. Slugifies the resource name from `spec.id` (or the slugified `spec.title` if `id` is missing).
@@ -124,8 +124,8 @@ harmlessly. For a path they must not:
 
 `metadata.name` is the slugified `spec.id`, so any id that isn't
 already slug-shaped produces a resource the path can't reach, and every
-milestone 404s with no error surfaced in the UI. The script refuses to
-upload in that case; rename the package instead.
+milestone renders as a locked "(not yet available)" row rather than an
+error. The script refuses to upload in that case; rename the package instead.
 
 ### Block fields the CRD doesn't declare
 
@@ -140,11 +140,11 @@ Blocks nested three or more levels deep fall under
 `x-kubernetes-preserve-unknown-fields` and survive; anything shallower does
 not.
 
-The gap is currently the `input` block: `defaultValue`, which costs the
-input its prefilled value, and the whole `dataCheck*` family
-(`dataCheckQuery`, `dataCheckBlocking`, `dataCheckFailureMessage`,
-`dataCheckTimeFrom`, `dataCheckTimeTo`), which lands the picker without
-its data check — it renders, and the check simply never runs.
+The gap is currently `defaultValue` on the `input` block, which costs the
+input its prefilled value; the whole `dataCheck*` family (`dataCheckQuery`,
+`dataCheckBlocking`, `dataCheckFailureMessage`, `dataCheckTimeFrom`,
+`dataCheckTimeTo`), which lands the picker without its data check — it
+renders, and the check simply never runs; and `gcx` on `terminal-connect`.
 
 It has been much wider, and it moves in both directions. At one point
 the CUE was missing twenty-six fields including `autoCollapse`,
@@ -159,9 +159,9 @@ Two things keep it honest instead:
   your content would lose, and `--strict-blocks` turns that warning into
   a failure. Run it with `--dry-run` before an upload — that is the live
   check.
-- `src/validation/upsert-script-crd-fields.test.ts` fails when the app's
-  `KNOWN_FIELDS` gains a block field the script's `BLOCK` allowlist
-  lacks, so app-side drift cannot land silently.
+- `src/validation/upsert-script-crd-fields.test.ts` pins that set as
+  `PRUNED_BY_CRD` and fails when the app's `KNOWN_FIELDS` gains a block
+  field the script's `BLOCK` allowlist lacks, so drift cannot land silently.
 
 Neither can see the backend repo. When the CUE changes, update the
 `BLOCK` / `STEP` arrays in `upsert-learning-path.sh` and the
@@ -259,6 +259,25 @@ argv either: it goes in a `0600` curl config file, and payloads are sent
 with `--data-binary @file`. `--stack` must be a bare hostname with an
 optional port; a value carrying userinfo, a path, or a brace expansion is
 rejected before the token is attached to anything.
+
+## Provisioning with Terraform
+
+The Grafana provider's `grafana_apps_generic_resource` manages any
+namespaced App Platform kind from a Kubernetes-style manifest, and
+`InteractiveGuide` is one — so guides can be provisioned with Terraform
+today, with no provider or backend change. That buys deletion, drift
+detection and state, none of which the scripts above offer.
+
+It comes with one sharp caveat. The provider refreshes `spec` from the
+server on every read and takes arrays wholesale, so a block field the
+CRD prunes (see [block fields the CRD doesn't
+declare](#block-fields-the-crd-doesnt-declare)) turns into a plan that
+never converges rather than a silent content loss. For package-shaped
+content, keep `upsert-learning-path.sh --dry-run --strict-blocks` as the
+pre-flight that names the offending field; a bare spec has none.
+
+See [`TERRAFORM.md`](TERRAFORM.md) for a worked example, the
+path-ordering pattern, and what Terraform does and does not solve.
 
 ## Authentication
 
@@ -568,6 +587,7 @@ Common cases:
 ## Related
 
 - [`CUSTOM_GUIDES.md`](CUSTOM_GUIDES.md) — full custom-guide lifecycle (draft/publish, the editor library, status badges).
+- [`TERRAFORM.md`](TERRAFORM.md) — provisioning guides with Terraform: worked example, path ordering, and the CRD-shape caveat.
 - [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) — the bash helper.
 - [`src/components/block-editor/hooks/useBackendGuides.ts`](../../src/components/block-editor/hooks/useBackendGuides.ts) — the editor's frontend client (calls the same endpoints from the browser via the user's session).
 - [`grafana-pathfinder-backend/kinds/interactiveguide.cue`](https://github.com/grafana/grafana-pathfinder-backend/blob/main/kinds/interactiveguide.cue) — authoritative CUE schema for the spec.
