@@ -136,9 +136,8 @@ manifest, though [not a sufficient one](#what-covered-by-the-crd-shape-means).
 ### Changing and removing a guide
 
 Edit `intro-to-loki.json` and re-apply; Terraform updates the resource in
-place, handling `resourceVersion` and retrying on a conflicting concurrent
-write. Remove the resource block and apply, or run `terraform destroy`, and
-the guide is deleted from the stack.
+place, handling `resourceVersion`. Remove the resource block and apply, or run
+`terraform destroy`, and the guide is deleted from the stack.
 
 Deletion is the sharpest difference from the scripts. They are additive by
 design: a milestone dropped from a package stays on the stack until someone
@@ -250,10 +249,11 @@ on the next read. There is no 422 and no error body.
 
 Depth decides whether a field survives. Blocks nested three or more levels
 deep fall under `x-kubernetes-preserve-unknown-fields` and are kept; anything
-shallower is not. At the time of writing the gap is the `input` block's
-`defaultValue` and the `dataCheck*` family, but that set moves in both
-directions as the CUE changes, so do not trust any enumeration of it —
-including this one.
+shallower is not. Today's gap is `input.defaultValue`, the `dataCheck*` family,
+and `gcx` on `terminal-connect` — losing that last one connects the terminal
+step without installing a credential. The set is pinned as
+[`PRUNED_BY_CRD`](../../src/validation/upsert-script-crd-fields.test.ts) and
+moves both ways as the CUE changes, so trust a dry run over any enumeration.
 
 ### Why this matters more under Terraform than under the scripts
 
@@ -341,16 +341,16 @@ about the stack you are uploading to. A stack on an older backend prunes more.
 
 ## What Terraform gives you over the scripts
 
-| Capability                                    | Either script                            | Terraform          |
-| --------------------------------------------- | ---------------------------------------- | ------------------ |
-| Create and update                             | Yes                                      | Yes                |
-| `resourceVersion` handling                    | Yes                                      | Yes                |
-| Retry a conflicting concurrent write          | No — the write fails outright            | Yes                |
-| Namespace discovery                           | Yes                                      | Yes                |
-| Delete a guide that left the source of truth  | No                                       | Yes                |
-| Detect an out-of-band edit                    | No                                       | Yes                |
-| Ownership model                               | Annotation; opt-in for `upsert-guide.sh` | State plus manager |
-| Reports which block field the CRD would prune | `upsert-learning-path.sh` only           | No                 |
+| Capability                                    | Either script                            | Terraform                                      |
+| --------------------------------------------- | ---------------------------------------- | ---------------------------------------------- |
+| Create and update                             | Yes                                      | Yes                                            |
+| `resourceVersion` handling                    | Yes                                      | Yes                                            |
+| Retry a conflicting concurrent write          | No — the write fails outright            | Yes — provider retry helper, not verified live |
+| Namespace discovery                           | Yes                                      | Yes                                            |
+| Delete a guide that left the source of truth  | No                                       | Yes                                            |
+| Detect an out-of-band edit                    | No                                       | Yes                                            |
+| Ownership model                               | Annotation; opt-in for `upsert-guide.sh` | State plus manager                             |
+| Reports which block field the CRD would prune | `upsert-learning-path.sh` only           | No                                             |
 
 Ownership is worth a note. Terraform stamps
 `grafana.app/managedBy: terraform` and `grafana.app/managerId`, and knows what
