@@ -49,7 +49,7 @@ export class SequentialRequirementsManager {
     return SequentialRequirementsManager.instance;
   }
 
-  registerStep(id: string, _isSequence: boolean): void {
+  registerStep(id: string, isSequence: boolean): void {
     if (!this.steps.has(id)) {
       this.steps.set(id, {
         isEnabled: false,
@@ -343,7 +343,7 @@ export class SequentialRequirementsManager {
     this.contextMonitoringCancelled = false;
 
     // Import dynamically to avoid circular deps
-    import('../context-engine')
+    import('../lib/context-event-bus')
       .then(({ onContextChange }) => {
         // Check if monitoring was cancelled during the async import
         if (this.contextMonitoringCancelled) {

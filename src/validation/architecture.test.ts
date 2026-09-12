@@ -141,12 +141,6 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1359',
   },
   {
-    violation: 'requirements-manager/checks/grafana-api.ts -> context-engine',
-    reason:
-      'The Grafana API requirement reuses the context engine query operation instead of maintaining a second API execution path.',
-    tracking: '#1763',
-  },
-  {
     violation: 'requirements-manager/step-checker.hook.ts -> interactive-engine',
     reason:
       'The step checker coordinates interactive completion state and is one edge of the tracked requirements/interactive engine cycle.',
@@ -162,18 +156,6 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     violation: 'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
     reason:
       'Learning-journey document helpers delegate progress mutation to the learning-path coordinator rather than duplicating persistence logic.',
-    tracking: '#1763',
-  },
-  {
-    violation: 'requirements-manager/requirements-checker.hook.ts -> context-engine',
-    reason:
-      'Requirement checking consumes context-engine query results until the shared query boundary is extracted below both engines.',
-    tracking: '#1763',
-  },
-  {
-    violation: 'requirements-manager/step-checker.hook.ts -> context-engine',
-    reason:
-      'Step-level requirement checks consume context-engine query results until the shared query boundary is extracted below both engines.',
     tracking: '#1763',
   },
 ];
