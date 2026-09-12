@@ -109,16 +109,6 @@ class ContinuousReplayInstrumentation extends ReplayInstrumentation {
       this.metas = metas;
     }
   }
-
-  public pauseRecordingForSurface(): void {
-    // Private in the SDK, so unchecked by the compiler; names verified at 2.11.0
-    // and asserted against the real recorder in replay-lifecycle.test.ts.
-    (this as unknown as { pauseRecording: () => void }).pauseRecording();
-  }
-
-  public resumeRecordingForSurface(): void {
-    (this as unknown as { resumeRecording: () => void }).resumeRecording();
-  }
 }
 
 // Deliberately not part of the `instrumentations` array at init: recording
@@ -138,8 +128,8 @@ export async function activateSessionReplay(
   return {
     samplingRate: resolved,
     controller: {
-      pause: () => instrumentation.pauseRecordingForSurface(),
-      resume: () => instrumentation.resumeRecordingForSurface(),
+      pause: () => instrumentation.pauseRecording(),
+      resume: () => instrumentation.resumeRecording(),
     },
   };
 }
