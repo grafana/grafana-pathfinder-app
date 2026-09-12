@@ -386,7 +386,10 @@ export const JsonInteractiveBlockSchema = z
     ),
     lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
     scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
-    openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
+    openGuide: z
+      .string()
+      .optional()
+      .describe('Guide ID to open during an internal navigate action (ignored for external http(s) targets)'),
     // Assistant customization props
     ...AssistantPropsSchema.shape,
     // Editor-only annotation (stripped on export)

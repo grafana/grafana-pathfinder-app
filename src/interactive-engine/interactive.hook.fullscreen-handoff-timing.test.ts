@@ -198,4 +198,24 @@ describe('executeInteractiveAction composed with the real requestSidebarHandoffA
 
     expect(outcome).toBe('error');
   });
+
+  it('forwards openGuide to the navigate handler through executeInteractiveAction', async () => {
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'sidebar');
+    const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+    await act(async () => {
+      await result.current.executeInteractiveAction({
+        targetAction: 'navigate',
+        refTarget: '/dashboards',
+        openGuide: 'bundled:destination-guide',
+      });
+    });
+
+    const { NavigateHandler } = require('./action-handlers');
+    const navigateHandlerInstance = NavigateHandler.mock.results.at(-1)!.value;
+    expect(navigateHandlerInstance.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ openGuide: 'bundled:destination-guide' }),
+      true
+    );
+  });
 });
