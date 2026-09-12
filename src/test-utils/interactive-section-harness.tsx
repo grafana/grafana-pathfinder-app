@@ -28,8 +28,6 @@
 
 import React from 'react';
 
-import { markSkipsSectionNumbering } from '../components/interactive-tutorial/skip-section-numbering';
-
 export const memoryStore = new Map<string, unknown>();
 
 /** Configurable return value for `checkRequirementsFromData`. Override per-test
@@ -268,8 +266,7 @@ export function createDatasourceCheckStepMock() {
   return { DatasourceCheckStep: () => null, resetDatasourceCheckStepCounter: jest.fn() };
 }
 export function createInteractiveConditionalMock() {
-  // Mirror production: the real component self-tags as skip-numbering.
-  return { InteractiveConditional: markSkipsSectionNumbering(() => null) };
+  return { InteractiveConditional: () => null };
 }
 
 /** Factory for `jest.mock('../../interactive-engine', ...)`. */
