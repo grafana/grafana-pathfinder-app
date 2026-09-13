@@ -116,16 +116,30 @@ auto-dock (`dockOnLeavingFullScreen`) ends the session via `endTransientSession`
 preference — and forces no surface open (outcome `'transient_back'`). The exit
 is **always** quiet: the prior surface is deliberately never captured or
 restored, so Back never reopens a surface the launch didn't durably choose.
-PUSH/REPLACE keep today's dock (an interactive `navigate` step leaving full
-screen still needs a panel to continue in), and a non-transient POP (a
-deliberately-adopted full screen) docks too. history v4 cannot tell Back from
-Forward — both are POP — which is accepted for this quiet exit.
+A non-transient POP (a deliberately-adopted full screen) still docks. history
+v4 cannot tell Back from Forward — both are POP — which is accepted for this
+quiet exit. PUSH behavior is covered by decision 5.
 
 `endTransientSession` neither persists (the launch never chose a preference —
 decision 2) nor dispatches `PANEL_MODE_CHANGE_EVENT` (the surface is already
 unmounted, so no live listener). Its call is deferred so `FullScreenPanel`'s
 unmount cleanup runs first while `getMode()` is still `'fullscreen'`; see the
 code comments for that hazard and the dead-state hazard it also avoids.
+
+### Decision 5 (#1472) — ordinary navigation out of transient prose exits quietly
+
+A Grafana nav or guide link click is a history **PUSH**, the same action emitted
+by an interactive navigation. Treating every PUSH as interactive therefore
+reopened the sidebar when a reader simply left a transient prose guide.
+
+The click-time handoff introduced in #1670 is the discriminator. A real
+Grafana-driving step calls `requestSidebarHandoffAndWait` before navigation;
+`handleExitToSidebar` changes the mode before its PUSH reaches the auto-dock, so
+Guard 1 ignores it. `NavigationManager.fixLocationRequirement` uses that same
+facade rather than pushing directly. A transient PUSH that still reaches the
+auto-dock has no interactive continuation and quietly calls
+`endTransientSession` (`'transient_navigation'`) instead of opening a surface.
+REPLACE retains the docking behavior.
 
 ## What is safe to change vs. load-bearing
 
@@ -140,7 +154,6 @@ code comments for that hazard and the dead-state hazard it also avoids.
 ## Related
 
 - Return-path interaction with browser Back on a transient prose launch:
-  **#1448** (resolved — see decision 4). The Grafana nav-click-with-prose
-  annoyance is a separate follow-up needing an interactive-step-in-progress
-  signal, still to be filed.
+  **#1448** (resolved — see decision 4). Grafana nav clicks from the same
+  transient prose state are covered by **#1472** (see decision 5).
 - Auto-open listener ownership across surfaces: **#1450**.

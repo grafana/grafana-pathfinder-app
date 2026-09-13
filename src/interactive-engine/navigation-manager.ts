@@ -14,6 +14,7 @@ import {
 import { assertExhaustive } from '../lib/assert-exhaustive';
 import { logger } from '../lib/logging';
 import { sanitizeDocumentationHTML } from '../security';
+import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../global-state/panel-mode';
 import { applyE2ECommentBoxAttributes } from './e2e-attributes';
 
 export interface NavigationOptions {
@@ -1365,8 +1366,12 @@ export class NavigationManager {
    * This function can be called by the "Fix this" button for location requirements
    */
   async fixLocationRequirement(targetPath: string): Promise<void> {
-    const { locationService } = await import('@grafana/runtime');
-    locationService.push(targetPath);
+    if (isGrafanaDrivingHandoffNeeded('navigate')) {
+      await requestSidebarHandoffAndWait({ targetPath });
+    } else {
+      const { locationService } = await import('@grafana/runtime');
+      locationService.push(targetPath);
+    }
     // Wait for navigation to complete and React to update
     await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
   }
