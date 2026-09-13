@@ -95,7 +95,7 @@ export class HoverHandler {
     ) {
       try {
         targetElement.focus();
-      } catch (error) {
+      } catch {
         // Ignore focus errors - element might not be focusable despite attributes
       }
     }

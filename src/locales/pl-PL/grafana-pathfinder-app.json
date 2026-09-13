@@ -97,6 +97,12 @@
     "body": "",
     "title": ""
   },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "Wszystkie ścieżki ukończone!",
     "allCompleteTooltip": "Ukończono wszystkie ścieżki nauki — dobra robota!",

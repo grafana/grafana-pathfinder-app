@@ -25,7 +25,7 @@ const mockIsValidInteractiveElement = jest.fn();
 const mockExtractInteractiveDataFromElement = jest.fn();
 
 // Mock elements
-const createMockElement = (data: Partial<InteractiveElementData> = {}): Element =>
+const createMockElement = (): Element =>
   ({
     tagName: 'DIV',
     classList: { contains: jest.fn() },

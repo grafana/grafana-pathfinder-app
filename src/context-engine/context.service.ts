@@ -177,7 +177,7 @@ export class ContextService {
         };
       }
 
-      const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
+      const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData);
       if (!isRecommenderEnabled(pluginConfig)) {
         // When the recommender is disabled, OSS users with internet access can
         // still see guides authored on the public CDN. The fetch is gated on
@@ -209,7 +209,7 @@ export class ContextService {
         platform: this.getCurrentPlatform(),
         timeout_ms: DEFAULT_RECOMMENDER_TIMEOUT,
       });
-      const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
+      const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData);
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
         ...fallbackResult,
@@ -234,7 +234,7 @@ export class ContextService {
   ): Promise<{ recommendations: Recommendation[]; error: string | null }> {
     const staticLinkRecommendations = this.getStaticLinkRecommendations(contextData);
     const allRecommendations = [...bundledRecommendations, ...staticLinkRecommendations];
-    const processedRecommendations = await this.processLearningJourneys(allRecommendations, {});
+    const processedRecommendations = await this.processLearningJourneys(allRecommendations);
 
     return {
       recommendations: processedRecommendations,
@@ -416,10 +416,10 @@ export class ContextService {
           bundledRecommendations
         );
         const allRecommendations = [...deduplicatedExternal, ...bundledRecommendations];
-        const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
+        const processedRecommendations = await this.processLearningJourneys(allRecommendations);
 
         // Process featured recommendations separately (deduplicated against bundled)
-        const processedFeaturedRecommendations = await this.processLearningJourneys(deduplicatedFeatured, pluginConfig);
+        const processedFeaturedRecommendations = await this.processLearningJourneys(deduplicatedFeatured);
 
         // Filter and sort recommendations
         const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
@@ -815,10 +815,7 @@ export class ContextService {
    * - Learning journeys store completion in journeyCompletionStorage
    * - Interactives store completion in interactiveCompletionStorage (via step completion)
    */
-  private static async processLearningJourneys(
-    recommendations: Recommendation[],
-    pluginConfig?: DocsPluginConfig
-  ): Promise<Recommendation[]> {
+  private static async processLearningJourneys(recommendations: Recommendation[]): Promise<Recommendation[]> {
     return Promise.all(
       recommendations.map(async (rec) => {
         // Process learning journeys, interactives, and items without a type
@@ -1307,7 +1304,7 @@ export class ContextService {
   private static getGrafanaVersion(): string {
     try {
       return config.bootData.settings.buildInfo.version || 'Unknown';
-    } catch (error) {
+    } catch {
       return 'Unknown';
     }
   }
@@ -1729,10 +1726,7 @@ export class ContextService {
    * Get bundled interactive recommendations from index.json file
    * Filters based on current URL to show contextually relevant interactives
    */
-  private static async getBundledInteractiveRecommendations(
-    contextData: ContextData,
-    pluginConfig: DocsPluginConfig
-  ): Promise<Recommendation[]> {
+  private static async getBundledInteractiveRecommendations(contextData: ContextData): Promise<Recommendation[]> {
     const bundledRecommendations: Recommendation[] = [];
 
     try {

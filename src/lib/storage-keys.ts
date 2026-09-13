@@ -13,14 +13,16 @@ export const StorageKeys = {
   INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion', // Stores completion percentage by contentKey
   TABS: 'grafana-pathfinder-app-tabs',
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
-  INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Legacy prefix; reset guides use versioned section keys.
+  INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: see buildVersionedSectionStorageKey
+  // Superseded per-content marker. Nothing reads it; kept so the discard sweep can recognise and remove it.
   CONTENT_PROGRESS_V2_PREFIX: 'grafana-pathfinder-app-content-progress-v2:',
   WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview', // HTML content for editor persistence
   WYSIWYG_PREVIEW_JSON: 'grafana-pathfinder-app-wysiwyg-preview-json', // JSON content for test preview
   E2E_TEST_GUIDE: 'grafana-pathfinder-app-e2e-test-guide', // JSON content for E2E test runner
-  SECTION_COLLAPSE_PREFIX: 'grafana-pathfinder-app-section-collapse-', // Dynamic: grafana-pathfinder-app-section-collapse-{contentKey}-{sectionId}
-  SECTION_ACKNOWLEDGED_PREFIX: 'grafana-pathfinder-app-section-acknowledged-', // Dynamic: grafana-pathfinder-app-section-acknowledged-{contentKey}-{sectionId} (issue #842 gate)
-  SECTION_DONE_PREFIX: 'grafana-pathfinder-app-section-done-', // Dynamic: grafana-pathfinder-app-section-done-{contentKey}-{sectionId} (mount-free `section-completed:` check)
+  SECTION_COLLAPSE_PREFIX: 'grafana-pathfinder-app-section-collapse-', // Dynamic: see buildVersionedSectionStorageKey
+  SECTION_ACKNOWLEDGED_PREFIX: 'grafana-pathfinder-app-section-acknowledged-', // Dynamic: see buildVersionedSectionStorageKey (issue #842 gate)
+  SECTION_DONE_PREFIX: 'grafana-pathfinder-app-section-done-', // Dynamic: see buildVersionedSectionStorageKey (mount-free `section-completed:` check)
+  GUIDE_COMPLETION_MARK_PREFIX: 'grafana-pathfinder-app-guide-complete-mark-', // Dynamic: see buildVersionedContentStorageKey (`mark-guide-complete` evidence; keyed by content key alone)
   // Full screen mode persistence (for page refreshes during recording)
   FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
   FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
@@ -107,10 +109,92 @@ export function buildAssistantStorageKey(contentKey: string, assistantId: string
   return `${StorageKeys.ASSISTANT_CUSTOMIZATION_PREFIX}${contentKey}-${assistantId}`;
 }
 
+/**
+ * The four per-section progress namespaces, in the order every sweep and
+ * adoption pass walks them. Grouped here so a caller cannot handle three
+ * of them and silently miss the fourth.
+ */
+export const PROGRESS_SECTION_PREFIXES = [
+  StorageKeys.INTERACTIVE_STEPS_PREFIX,
+  StorageKeys.SECTION_COLLAPSE_PREFIX,
+  StorageKeys.SECTION_ACKNOWLEDGED_PREFIX,
+  StorageKeys.SECTION_DONE_PREFIX,
+] as const;
+
+/**
+ * Companion-key suffix written by the hybrid storage backend to carry a
+ * write/delete timestamp. Exported so key scans can skip these without
+ * re-declaring the literal.
+ */
+export const HYBRID_TIMESTAMP_SUFFIX = '__timestamp';
+
+/**
+ * Builds the collision-safe section key: `{prefix}{len}:{contentKey}:{sectionId}`.
+ *
+ * The character count in front of the content key is what makes the shape
+ * unambiguous — a reader counts to the end of the content key instead of
+ * searching for a separator that also occurs inside it.
+ */
 export function buildVersionedSectionStorageKey(prefix: string, contentKey: string, sectionId: string): string {
   return `${prefix}${contentKey.length}:${contentKey}:${sectionId}`;
 }
 
+/**
+ * Builds the collision-safe per-content key: `{prefix}{len}:{contentKey}`.
+ * Used by the E2E runner to address a whole content key's records.
+ */
 export function buildVersionedContentStorageKey(prefix: string, contentKey: string): string {
   return `${prefix}${contentKey.length}:${contentKey}`;
+}
+
+/**
+ * Builds the superseded, boundary-free section key:
+ * `{prefix}{contentKey}-{sectionId}`.
+ *
+ * Nothing reads or writes this shape. It exists so the discard sweep's tests
+ * can create the records being removed without restating the shape inline.
+ */
+export function buildDiscardedSectionStorageKey(prefix: string, contentKey: string, sectionId: string): string {
+  return `${prefix}${contentKey}-${sectionId}`;
+}
+
+export interface ParsedVersionedStorageKey {
+  contentKey: string;
+  /** Section id for a section key; `''` for a per-content key. */
+  sectionId: string;
+}
+
+/**
+ * Inverse of {@link buildVersionedSectionStorageKey} and
+ * {@link buildVersionedContentStorageKey}. Returns `null` for anything that
+ * is not a well-formed versioned key under `prefix` — which includes keys in
+ * the superseded shape and the hybrid backend's timestamp companions.
+ */
+export function parseVersionedStorageKey(prefix: string, key: string): ParsedVersionedStorageKey | null {
+  if (!key.startsWith(prefix)) {
+    return null;
+  }
+  const rest = key.slice(prefix.length);
+  const separator = rest.indexOf(':');
+  if (separator < 1) {
+    return null;
+  }
+  const declaredLength = Number(rest.slice(0, separator));
+  if (!Number.isSafeInteger(declaredLength) || declaredLength < 1) {
+    return null;
+  }
+  const contentKeyStart = separator + 1;
+  const contentKeyEnd = contentKeyStart + declaredLength;
+  const contentKey = rest.slice(contentKeyStart, contentKeyEnd);
+  if (contentKey.length !== declaredLength) {
+    return null;
+  }
+  const remainder = rest.slice(contentKeyEnd);
+  if (remainder === '') {
+    return { contentKey, sectionId: '' };
+  }
+  if (!remainder.startsWith(':')) {
+    return null;
+  }
+  return { contentKey, sectionId: remainder.slice(1) };
 }

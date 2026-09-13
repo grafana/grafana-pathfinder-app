@@ -6,7 +6,6 @@
 
 import React from 'react';
 import { Button, Tooltip, useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
 /**
@@ -45,7 +44,7 @@ export function HandRaiseButton({ isRaised, onToggle }: HandRaiseButtonProps) {
   );
 }
 
-const getStyles = (theme: GrafanaTheme2) => ({
+const getStyles = () => ({
   button: css({
     minWidth: 'auto',
   }),

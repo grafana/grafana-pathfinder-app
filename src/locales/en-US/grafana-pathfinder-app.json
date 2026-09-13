@@ -79,6 +79,12 @@
     "body": "Interactive guides walk you through Grafana one step at a time. \"Show me\" highlights the control to use, and \"Do it\" performs the step for you.",
     "title": "Learn by doing"
   },
+  "markComplete": {
+    "completed": "Completed",
+    "guideButton": "Mark complete",
+    "milestoneButton": "Mark complete and continue",
+    "percentComplete": "{{percent}}% complete"
+  },
   "myLearning": {
     "badges": "Badges",
     "badgesDescription": "Earn badges by completing paths and maintaining streaks",
@@ -110,6 +116,8 @@
     "pathsDescription": "Structured guides to help you master Grafana step by step",
     "privatePaths": "Private paths",
     "privatePathsDescription": "Paths published for your organization",
+    "resetPathErrorMessage": "Some of this path's progress could not be cleared. Reload the page and try again.",
+    "resetPathErrorTitle": "Reset incomplete",
     "subtitle": "Track your progress, earn badges, and master Grafana"
   },
   "userProfileBar": {

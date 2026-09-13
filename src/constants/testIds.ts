@@ -453,6 +453,13 @@ export const testIds = {
     warning: 'kiosk-mode-warning',
   },
 
+  markComplete: {
+    footer: 'mark-complete-footer',
+    button: 'mark-complete-button',
+    percentage: 'mark-complete-percentage',
+    completed: 'mark-complete-completed',
+  },
+
   guideReader: {
     overlay: 'guide-reader-overlay',
     closeButton: 'guide-reader-close',

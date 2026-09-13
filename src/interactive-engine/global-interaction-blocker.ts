@@ -40,13 +40,13 @@ class GlobalInteractionBlocker {
    * Create multiple blocking overlays: main content, header, and full-screen modal blocker
    * This provides comprehensive interaction blocking while preserving docs plugin functionality
    */
-  private createBlockingOverlay(data: InteractiveElementData): void {
+  private createBlockingOverlay(): void {
     if (this.blockingOverlay) {
       return;
     }
 
     // Create main content overlay
-    this.createMainContentOverlay(data);
+    this.createMainContentOverlay();
 
     // Create header overlay
     this.createHeaderOverlay();
@@ -58,13 +58,13 @@ class GlobalInteractionBlocker {
     this.setupOverlayManagement();
 
     // Add initial status indicator to main overlay
-    this.addStatusIndicator(data);
+    this.addStatusIndicator();
   }
 
   /**
    * Create overlay for main page content area
    */
-  private createMainContentOverlay(data: InteractiveElementData): void {
+  private createMainContentOverlay(): void {
     const pageContent = document.getElementById('pageContent');
 
     this.blockingOverlay = document.createElement('div');
@@ -281,7 +281,7 @@ class GlobalInteractionBlocker {
   /**
    * Add status indicator and cancel button - independent of overlays so always visible
    */
-  private addStatusIndicator(data: InteractiveElementData): void {
+  private addStatusIndicator(): void {
     if (this.statusIndicator) {
       return; // Already created
     }
@@ -547,7 +547,7 @@ class GlobalInteractionBlocker {
 
     this.sectionBlockingActive = true;
     this.cancelCallback = cancelCallback || null;
-    this.createBlockingOverlay(data);
+    this.createBlockingOverlay();
 
     // Initialize modal state tracking with current state
     this.lastKnownModalState = this.isModalActive();
@@ -556,7 +556,7 @@ class GlobalInteractionBlocker {
   /**
    * Stop section blocking (removes overlay)
    */
-  stopSectionBlocking(sectionId: string): void {
+  stopSectionBlocking(_sectionId: string): void {
     if (!this.sectionBlockingActive) {
       return;
     }
@@ -575,8 +575,7 @@ class GlobalInteractionBlocker {
     this.statusMessage = message;
     this.sectionBlockingActive = true;
     this.cancelCallback = cancelCallback || null;
-    const stubData: InteractiveElementData = { refTarget: '', targetAction: 'noop', tagName: 'div' };
-    this.createBlockingOverlay(stubData);
+    this.createBlockingOverlay();
     this.lastKnownModalState = this.isModalActive();
   }
 

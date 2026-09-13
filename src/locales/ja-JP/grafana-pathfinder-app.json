@@ -89,6 +89,12 @@
     "body": "",
     "title": ""
   },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "すべてのパスが完了しました！",
     "allCompleteTooltip": "すべての学習パスを完了しました — お疲れさまでした！",

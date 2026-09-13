@@ -182,6 +182,8 @@ If more than one day has elapsed since the last activity, the streak is reported
 
 **URL-based paths**: Clears milestone tracking for the path URL and removes the fetched guide slugs from `completedGuides`. It discovers interactive and journey completion keys by normalized URL prefix, clears them in batches (including the path URL's own journey-completion key), clears matching interactive steps, and evicts matching in-memory completion cache entries.
 
+Clearing interactive steps can fail: `interactiveStepStorage.clearAllForContent` rejects when a record survives the delete, so a reset cannot report success having changed nothing (see `docs/developer/STEP_MODEL.md`). Both branches attempt every content key before reporting — one rejection does not leave the rest of the path untouched — and a sweep with any failure in it publishes a single `alertError` toast (`myLearning.resetPathError*`).
+
 After either reset path, the hook dispatches `CustomEvent('interactive-progress-cleared')` and reloads learning progress so UI components refresh.
 
 The My Learning **Reset all progress** action is broader: it discards queued durable completion writes, then clears all learning progress, journey completion, milestone checklists, interactive steps, interactive completion, and in-memory completion caches before dispatching the same refresh event. Clearing milestone storage prevents an old checklist from immediately re-crossing the whole-path completion threshold after the reset. The `discardQueuedCompletionWrites()` call runs first, before the reset's first `await`: a completion write that has not left the browser is still the user's to withdraw, and a drain scheduled before the reset would otherwise fire inside that window and mint durable records for the guides they just asked us to forget.
@@ -252,6 +254,7 @@ The module depends on several storage instances:
 - `interactiveCompletionStorage` — interactive guide completion flags (used by `resetPath`)
 - `journeyCompletionStorage` — journey-level completion (used by `resetPath`)
 - `milestoneCompletionStorage` — milestone completion for URL-based and package-backed paths (used by resets)
+- `guideCompletionMarkStorage` — the foot-of-guide "Mark complete" mark, cleared by `resetPath` (by content-key prefix on the URL branch, since a marked-but-unstepped milestone has no other record to recover its key from)
 
 Static guide completion flows through `markGuideCompleted()` in `badge-coordinator.ts`, which evaluates badges against the bundled path definitions. URL-based and App Platform journey milestones flow through `markMilestoneDone` in `docs-retrieval/learning-journey-helpers.ts`; it updates local completion state and emits completion facts (including the whole-journey `journey_completed` trigger) through the `completion-records` recorder.
 
