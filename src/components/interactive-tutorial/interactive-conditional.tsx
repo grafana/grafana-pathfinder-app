@@ -182,7 +182,6 @@ export function InteractiveConditional({
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
-        setEmptyRenderToken(null);
         setConditionsPassed(result.pass);
         setIsChecking(false);
       } catch (error) {
@@ -190,7 +189,6 @@ export function InteractiveConditional({
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
-        setEmptyRenderToken(null);
         setConditionsPassed(false);
         setIsChecking(false);
       }

@@ -256,6 +256,15 @@ describe('InteractiveConditional', () => {
     expect(item.firstElementChild).toHaveAttribute('data-section-numbering-empty', 'true');
     expect(item.querySelectorAll('.interactive-conditional').length).toBeGreaterThan(1);
     expect(getComputedStyle(item).display).toBe('none');
+
+    await act(async () => {
+      document.dispatchEvent(new CustomEvent('interactive-action-completed', { detail: {} }));
+      jest.advanceTimersByTime(300);
+      jest.runAllTimers();
+    });
+
+    expect(item.firstElementChild).toHaveAttribute('data-section-numbering-empty', 'true');
+    expect(getComputedStyle(item).display).toBe('none');
   });
 
   it('keeps an empty nested conditional mounted so its DOM watch can recover', async () => {
@@ -424,6 +433,15 @@ describe('InteractiveConditional', () => {
     expect(item).toHaveAttribute('data-numbered', 'true');
     expect(getComputedStyle(item).height).toBe('0px');
     expect(getComputedStyle(item).overflow).toBe('hidden');
+
+    await act(async () => {
+      document.dispatchEvent(new CustomEvent('interactive-action-completed', { detail: {} }));
+      jest.advanceTimersByTime(300);
+      jest.runAllTimers();
+    });
+
+    expect(item.firstElementChild).toHaveAttribute('data-section-numbering-retained', 'true');
+    expect(getComputedStyle(item).height).toBe('0px');
   });
 
   it('retains an occupied numbering slot when re-evaluation empties the branch', async () => {
