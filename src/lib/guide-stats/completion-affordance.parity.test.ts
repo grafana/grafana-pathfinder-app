@@ -19,6 +19,7 @@ import { VALID_BLOCK_TYPES } from '../../types/json-guide.schema';
 import { computeGuideBlockIndex } from './block-index';
 import {
   COMPLETION_AFFORDANCE_BLOCK_TYPES,
+  CONDITIONAL_COMPLETION_AFFORDANCE_BLOCK_TYPES,
   NON_COMPLETABLE_INTERACTIVE_BLOCK_TYPES,
   emitsCompletionEvidence,
 } from './completion-affordance';
@@ -62,8 +63,9 @@ describe('completion affordance parity with the runtime step registry', () => {
   });
 
   it('counts exactly the unconditionally-tracked block types as completable', () => {
+    const conditional = new Set<string>(CONDITIONAL_COMPLETION_AFFORDANCE_BLOCK_TYPES);
     const fromRegistry = STEP_TYPE_PARSE_KEYS.map((key) => PARSE_KEY_TO_BLOCK_TYPE[key]).filter(
-      (type) => type !== 'input'
+      (type): type is string => typeof type === 'string' && !conditional.has(type)
     );
 
     expect([...COMPLETION_AFFORDANCE_BLOCK_TYPES].sort()).toEqual([...new Set(fromRegistry)].sort());
@@ -80,6 +82,15 @@ describe('completion affordance parity with the runtime step registry', () => {
     );
   });
 
+  it('keeps conditional types separate from the unconditional registry', () => {
+    const unconditional = new Set<string>(COMPLETION_AFFORDANCE_BLOCK_TYPES);
+
+    expect([...CONDITIONAL_COMPLETION_AFFORDANCE_BLOCK_TYPES].filter((type) => unconditional.has(type))).toEqual([]);
+    expect([...CONDITIONAL_COMPLETION_AFFORDANCE_BLOCK_TYPES].filter((type) => !VALID_BLOCK_TYPES.has(type))).toEqual(
+      []
+    );
+  });
+
   it('never treats a block type with no parse key as completable', () => {
     for (const type of NON_COMPLETABLE_INTERACTIVE_BLOCK_TYPES) {
       expect(emitsCompletionEvidence({ type })).toBe(false);
@@ -89,8 +100,8 @@ describe('completion affordance parity with the runtime step registry', () => {
   it('classifies every block type in the schema, so a new one must declare itself', () => {
     const declared = new Set<string>([
       ...COMPLETION_AFFORDANCE_BLOCK_TYPES,
+      ...CONDITIONAL_COMPLETION_AFFORDANCE_BLOCK_TYPES,
       ...NON_COMPLETABLE_INTERACTIVE_BLOCK_TYPES,
-      'input',
     ]);
     const interactiveButUndeclared = [...INTERACTIVE_BLOCK_TYPES].filter((type) => !declared.has(type));
 
@@ -103,7 +114,7 @@ describe('completion affordance parity with the runtime step registry', () => {
     const completable = new Set<string>(COMPLETION_AFFORDANCE_BLOCK_TYPES);
     const renderOnly = [...renderInteractive].filter((type) => !completable.has(type));
 
-    expect(renderOnly.sort()).toEqual(['grot-guide', 'input']);
+    expect(renderOnly.sort()).toEqual(['grot-guide', ...CONDITIONAL_COMPLETION_AFFORDANCE_BLOCK_TYPES].sort());
   });
 });
 

@@ -23,14 +23,18 @@ import { parseJsonGuide } from '../../docs-retrieval/json-parser';
 import type { ParsedElement } from '../../types/content.types';
 import type { JsonBlock, JsonGuide } from '../../types/json-guide.types';
 import { computeGuideBlockIndex } from './block-index';
-import { COMPLETION_AFFORDANCE_BLOCK_TYPES, emitsCompletionEvidence } from './completion-affordance';
+import {
+  COMPLETION_AFFORDANCE_BLOCK_TYPES,
+  CONDITIONAL_COMPLETION_AFFORDANCE_BLOCK_TYPES,
+  emitsCompletionEvidence,
+} from './completion-affordance';
 import fs from 'fs';
 import path from 'path';
 
 /**
- * Every shape that can emit completion evidence. `input` appears as its one
- * tracked authored form — a blocking datasource check — because that is the
- * only input the parser splits out as a step.
+ * Every shape that can emit completion evidence. Conditional types come from
+ * the shared completion-affordance registry rather than a second hand-written
+ * list in this test.
  */
 const COMPLETABLE_SHAPES: ReadonlyArray<{ shape: string; block: JsonBlock }> = [
   {
@@ -135,7 +139,10 @@ describe('step-id parity with the parser, over the completable set', () => {
     // label: a label is hand-written and can drift from what it names, and a
     // mislabelled entry would drop a whole type from the sweep while the suite
     // stayed green. `shape` is a test title and nothing more.
-    const completable: ReadonlyArray<JsonBlock['type']> = [...COMPLETION_AFFORDANCE_BLOCK_TYPES, 'input'];
+    const completable: ReadonlyArray<JsonBlock['type']> = [
+      ...COMPLETION_AFFORDANCE_BLOCK_TYPES,
+      ...CONDITIONAL_COMPLETION_AFFORDANCE_BLOCK_TYPES,
+    ];
     const covered = new Set(COMPLETABLE_SHAPES.map((entry) => entry.block.type));
     const uncovered = completable.filter((type) => !covered.has(type));
 
