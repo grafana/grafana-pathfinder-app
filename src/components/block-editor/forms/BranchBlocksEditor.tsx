@@ -263,40 +263,43 @@ const getStyles = (theme: GrafanaTheme2) => ({
 // Helper Functions
 // ============================================================================
 
-/**
- * Create a default block of a given type
- */
+const BLOCK_DEFAULT_BUILDERS = {
+  markdown: () => ({ type: 'markdown', content: '' }),
+  divider: () => ({ type: 'divider' }),
+  interactive: () => ({ type: 'interactive', action: 'highlight', reftarget: '', content: '' }),
+  image: () => ({ type: 'image', src: '' }),
+  video: () => ({ type: 'video', src: '' }),
+  quiz: () => ({
+    type: 'quiz',
+    question: '',
+    choices: [
+      { id: 'a', text: '', correct: true },
+      { id: 'b', text: '' },
+    ],
+  }),
+  input: () => ({ type: 'input', prompt: '', inputType: 'text', variableName: '' }),
+  multistep: () => ({ type: 'multistep', content: '', steps: [] }),
+  guided: () => ({ type: 'guided', content: '', steps: [] }),
+  challenge: () => ({ type: 'challenge', title: '', brief: '', successCriteria: '' }),
+  callout: () => ({ type: 'callout', title: '', content: '' }),
+} as const satisfies { [K in BlockType]?: () => Extract<JsonBlock, { type: K }> };
+
+/** Block types that have an intentional default builder. */
+export type DefaultableBlockType = keyof typeof BLOCK_DEFAULT_BUILDERS;
+
+/** Builder-backed block types safe to offer in the branch picker (see #1542). */
+export type BranchAddableBlockType = Exclude<DefaultableBlockType, 'challenge'>;
+
+function isDefaultableBlockType(type: BlockType): type is DefaultableBlockType {
+  return Object.hasOwn(BLOCK_DEFAULT_BUILDERS, type);
+}
+
 export function createDefaultBlock(type: BlockType): JsonBlock {
+  if (isDefaultableBlockType(type)) {
+    return BLOCK_DEFAULT_BUILDERS[type]();
+  }
+
   switch (type) {
-    case 'markdown':
-      return { type: 'markdown', content: '' };
-    case 'divider':
-      return { type: 'divider' };
-    case 'interactive':
-      return { type: 'interactive', action: 'highlight', reftarget: '', content: '' };
-    case 'image':
-      return { type: 'image', src: '' };
-    case 'video':
-      return { type: 'video', src: '' };
-    case 'quiz':
-      return {
-        type: 'quiz',
-        question: '',
-        choices: [
-          { id: 'a', text: '', correct: true },
-          { id: 'b', text: '' },
-        ],
-      };
-    case 'input':
-      return { type: 'input', prompt: '', inputType: 'text', variableName: '' };
-    case 'multistep':
-      return { type: 'multistep', content: '', steps: [] };
-    case 'guided':
-      return { type: 'guided', content: '', steps: [] };
-    case 'challenge':
-      return { type: 'challenge', title: '', brief: '', successCriteria: '' };
-    case 'callout':
-      return { type: 'callout', title: '', content: '' };
     case 'section':
     case 'html':
     case 'conditional':
@@ -314,11 +317,7 @@ export function createDefaultBlock(type: BlockType): JsonBlock {
   }
 }
 
-// Block types the inline branch editor can construct without falling through to an
-// empty markdown stub. Nested containers are excluded; types that need dedicated
-// forms (challenge, quiz, terminal, …) are also excluded so the combobox cannot
-// silently create the wrong block shape (see #1542).
-const BRANCH_INLINE_CREATABLE_TYPES: BlockType[] = [
+export const ALLOWED_BRANCH_BLOCK_TYPES = [
   'markdown',
   'divider',
   'interactive',
@@ -329,9 +328,7 @@ const BRANCH_INLINE_CREATABLE_TYPES: BlockType[] = [
   'quiz',
   'multistep',
   'guided',
-];
-
-export const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BRANCH_INLINE_CREATABLE_TYPES;
+] as const satisfies readonly BranchAddableBlockType[];
 
 // Block types that support inline form editing in BranchBlocksEditor
 // quiz, multistep, and guided require the dedicated editors and cannot be edited inline
@@ -393,7 +390,7 @@ export interface BranchBlocksEditorProps {
   /** Called when blocks change */
   onChange: (blocks: JsonBlock[]) => void;
   /** Block types offered in the add menu. Defaults to ALLOWED_BRANCH_BLOCK_TYPES. */
-  addableBlockTypes?: BlockType[];
+  addableBlockTypes?: readonly BranchAddableBlockType[];
   /** Called to start/stop the element picker */
   onPickerModeChange?: BlockFormProps['onPickerModeChange'];
 }
