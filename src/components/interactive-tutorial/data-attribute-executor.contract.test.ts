@@ -56,7 +56,11 @@ function directExecutorAttributes(): Set<string> {
   if (start < 0) {
     throw new Error('InteractiveActionRequest type not found');
   }
-  const request = source.slice(start, source.indexOf('\n};', start));
+  const end = source.indexOf('\n  };', start);
+  if (end < 0) {
+    throw new Error('InteractiveActionRequest type boundary not found');
+  }
+  const request = source.slice(start, end);
   return new Set(
     Object.entries(ACTION_ATTRIBUTE_FIELDS)
       .filter(([, field]) => request.includes(`'${field}'`))
@@ -90,5 +94,15 @@ describe('renderer data attributes reach an action executor', () => {
     expect(written).not.toContain('data-testid');
     expect(written).not.toContain('data-step-id');
     expect(written).not.toContain('data-internal-actions');
+  });
+
+  it('scopes the request scan to InteractiveActionRequest', () => {
+    const source = read('../../types/interactive.types.ts');
+    const start = source.indexOf('export type InteractiveActionRequest');
+    const end = source.indexOf('\n  };', start);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(source.slice(start, end)).not.toContain('InteractiveRequirementsData');
   });
 });
