@@ -768,6 +768,28 @@ describe('runInspect', () => {
     expect(result.data?.valid).toBe(true);
   });
 
+  it('counts challenge hints in the package summary', async () => {
+    const dir = await bootstrap();
+    await runAddBlock({
+      dir,
+      type: 'challenge',
+      id: 'repair-dashboard',
+      fields: {
+        mode: 'standard',
+        title: 'Repair the dashboard',
+        brief: 'Find and fix the broken dashboard.',
+        successCriteria: 'is-admin',
+      },
+    });
+    await runAddHint({ dir, parent: 'repair-dashboard', text: 'Check the dashboard variables.' });
+
+    const result = runInspect({ dir });
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data?.containers).toEqual([{ id: 'repair-dashboard', type: 'challenge', childCount: 1 }]);
+    }
+  });
+
   it('returns block details for --block <id>', async () => {
     const dir = await bootstrap();
     await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
