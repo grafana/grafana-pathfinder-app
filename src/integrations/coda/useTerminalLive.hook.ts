@@ -53,6 +53,9 @@ function codaSessionErrorMessage(err: unknown): string {
   return codaErrorCodeMessage(codaErr.code, codaErr.message);
 }
 
+const PROTOCOL_MISMATCH_MESSAGE =
+  'Unreadable message from the sandbox backend — the plugin and backend may be out of sync.';
+
 interface UseTerminalLiveOptions {
   /** Terminal instance ref - accessed in callbacks, not during render */
   terminalRef: RefObject<Terminal | null>;
@@ -307,12 +310,17 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         },
 
         onProtocolError: ({ detail, sessionId: sid, vmId }) => {
-          connectionLogRef.current.warn('Coda protocol mismatch', {
+          connectionLogRef.current.error('Coda protocol mismatch', undefined, {
             detail,
             sessionId: sid,
             vmId,
             category: 'protocol_error',
           });
+
+          terminal.writeln('\r\n');
+          terminal.writeln(`\x1b[31m✖ Error: ${PROTOCOL_MISMATCH_MESSAGE}\x1b[0m`);
+          setError(PROTOCOL_MISMATCH_MESSAGE);
+          setStatus('error');
         },
       });
     },
