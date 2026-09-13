@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ts from 'typescript';
 
 import { getAllFileImports, isTestFile, resolveImportToFileNode } from './import-graph';
 
@@ -28,6 +29,61 @@ const KNOWN_EDITOR_UNBLOCKED: Readonly<Record<string, string>> = {
 interface CapabilityConsumer {
   relPath: string;
   source: string;
+}
+
+interface CallSite {
+  resultName: string | null;
+  scope: string;
+}
+
+function isFunctionScope(node: ts.Node): boolean {
+  return (
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isMethodDeclaration(node)
+  );
+}
+
+function callSites(source: string, callee: string): CallSite[] {
+  const sourceFile = ts.createSourceFile(
+    'capability-consumer.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const sites: CallSite[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === callee) {
+      let current: ts.Node | undefined = node.parent;
+      let resultName: string | null = null;
+      let scope: ts.Node | undefined;
+      while (current) {
+        if (!resultName && ts.isVariableDeclaration(current) && ts.isIdentifier(current.name)) {
+          resultName = current.name.text;
+        }
+        if (isFunctionScope(current)) {
+          scope = current;
+          break;
+        }
+        current = current.parent;
+      }
+      if (!scope) {
+        throw new Error(`${callee} call has no function scope`);
+      }
+      sites.push({ resultName, scope: scope.getText(sourceFile) });
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return sites;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function capabilityConsumers(): CapabilityConsumer[] {
@@ -81,18 +137,53 @@ function isRuntimeConsumer(consumer: CapabilityConsumer): boolean {
 }
 
 function editorBlocksSelection(source: string): boolean {
-  return (
-    /useCodaTerminalGate\(\)\s*===\s*['"]configured['"]/.test(source) ||
-    source.includes('effectiveExcludeTypes') ||
-    /CODA_BLOCK_TYPES\.includes\(type\)/.test(source)
+  const directGate = callSites(source, 'useCodaTerminalGate').some(({ scope }) =>
+    /return\s+useCodaTerminalGate\(\)\s*===\s*['"]configured['"]/.test(scope)
   );
+  if (directGate) {
+    return true;
+  }
+
+  return callSites(source, 'useCodaBlockTypesAvailable').some(({ resultName, scope }) => {
+    if (!resultName) {
+      return false;
+    }
+    const result = escapeRegExp(resultName);
+    const conditionalExclusion = new RegExp(`\\b${result}\\b\\s*\\?[\\s\\S]*?:[\\s\\S]*?CODA_BLOCK_TYPES`).test(scope);
+    const guardedFallback =
+      new RegExp(`if\\s*\\(\\s*${result}\\s*\\)`).test(scope) &&
+      /return\s+conversions\.filter\([\s\S]*?CODA_BLOCK_TYPES\.includes\(type\)/.test(scope);
+    return conditionalExclusion || guardedFallback;
+  });
 }
 
 function runtimeSurfacesFailure(source: string): boolean {
-  const sharedGuard = source.includes('codaUnavailableMessage(');
-  const visibleState = source.includes('setErrorDetail(unavailable)') || source.includes('{sandboxUnavailable}');
-  const failurePath = source.includes('setup-failed') || source.includes('sandboxUnavailable');
-  return sharedGuard && visibleState && failurePath;
+  const sites = callSites(source, 'codaUnavailableMessage');
+  return (
+    sites.length > 0 &&
+    sites.every(({ resultName, scope }) => {
+      if (!resultName) {
+        return false;
+      }
+      const result = escapeRegExp(resultName);
+      const failsVisible = new RegExp(
+        `if\\s*\\(\\s*${result}\\s*\\)\\s*\\{[\\s\\S]*?setErrorDetail\\(\\s*${result}\\s*\\)[\\s\\S]*?setState\\(\\s*['"]setup-failed['"]\\s*\\)`
+      ).test(scope);
+      const rendersVisible =
+        new RegExp(`\\{\\s*${result}\\s*\\}`).test(scope) &&
+        new RegExp(`(?:!\\s*${result}|${result}\\s*&&|&&\\s*${result})`).test(scope);
+      return failsVisible || rendersVisible;
+    })
+  );
+}
+
+function authoringHelperUsesGate(source: string): boolean {
+  return callSites(source, 'useCodaTerminalGate').some(({ resultName, scope }) => {
+    if (!resultName) {
+      return false;
+    }
+    return new RegExp(`\\b${escapeRegExp(resultName)}\\b\\s*!==\\s*['"]disabled['"]`).test(scope);
+  });
 }
 
 describe('Coda capability-gated authoring contract', () => {
@@ -124,7 +215,7 @@ describe('Coda capability-gated authoring contract', () => {
 
   it('keeps capability-aware authoring helpers explicit', () => {
     const unguarded = authoringSupport
-      .filter((consumer) => !/gate\s*!==\s*['"]disabled['"]/.test(consumer.source))
+      .filter((consumer) => !authoringHelperUsesGate(consumer.source))
       .map(({ relPath }) => relPath);
     expect(unguarded).toEqual([]);
   });
@@ -134,5 +225,46 @@ describe('Coda capability-gated authoring contract', () => {
       .filter((consumer) => !runtimeSurfacesFailure(consumer.source))
       .map(({ relPath }) => relPath);
     expect(unguarded).toEqual([]);
+  });
+
+  it('does not accept editor evidence from a sibling function', () => {
+    const source = `
+      function Palette() {
+        const available = useCodaBlockTypesAvailable();
+        return available ? allTypes : allTypes;
+      }
+      function oldGuard() {
+        return CODA_BLOCK_TYPES.includes(type) ? effectiveExcludeTypes : allTypes;
+      }
+    `;
+
+    expect(editorBlocksSelection(source)).toBe(false);
+  });
+
+  it('does not accept a visible failure wired to another result', () => {
+    const source = `
+      function Runtime() {
+        const unavailable = codaUnavailableMessage(gate, eligibility, wired, subject);
+        if (sandboxUnavailable) {
+          setErrorDetail(sandboxUnavailable);
+          setState('setup-failed');
+        }
+        return <div>{sandboxUnavailable}</div>;
+      }
+    `;
+
+    expect(runtimeSurfacesFailure(source)).toBe(false);
+  });
+
+  it('binds authoring helper evidence to the gate call result', () => {
+    const source = `
+      function useOptions() {
+        const terminalGate = useCodaTerminalGate();
+        const enabled = wanted && delegate !== 'disabled';
+        return { enabled, terminalGate };
+      }
+    `;
+
+    expect(authoringHelperUsesGate(source)).toBe(false);
   });
 });
