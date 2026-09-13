@@ -5,7 +5,7 @@ describe('resolveSafeTargetPath', () => {
     expect(resolveSafeTargetPath('/connections/datasources')).toBe('/connections/datasources');
   });
 
-  it('rejects a protocol-relative URL before it ever reaches validateRedirectPath', () => {
+  it('rejects a protocol-relative URL', () => {
     expect(resolveSafeTargetPath('//evil.com')).toBeUndefined();
   });
 
@@ -29,8 +29,8 @@ describe('resolveSafeTargetPath', () => {
     expect(resolveSafeTargetPath('/')).toBeUndefined();
   });
 
-  it('strips query and fragment from an otherwise-safe path', () => {
-    expect(resolveSafeTargetPath('/explore?left=%5B%5D')).toBe('/explore');
+  it('preserves query and fragment on an otherwise-safe path', () => {
+    expect(resolveSafeTargetPath('/explore?left=%5B%5D#queries')).toBe('/explore?left=%5B%5D#queries');
   });
 });
 

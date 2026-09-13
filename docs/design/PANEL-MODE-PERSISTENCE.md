@@ -136,8 +136,9 @@ The click-time handoff introduced in #1670 is the discriminator. A real
 Grafana-driving step calls `requestSidebarHandoffAndWait` before navigation;
 `handleExitToSidebar` changes the mode before its PUSH reaches the auto-dock, so
 Guard 1 ignores it. `NavigationManager.fixLocationRequirement` uses that same
-facade rather than pushing directly. A transient PUSH that still reaches the
-auto-dock has no interactive continuation and quietly calls
+facade rather than pushing directly, after validating the authored requirement
+target; a refused target reports a failed fix and does not leave full screen. A
+transient PUSH that still reaches the auto-dock has no interactive continuation and quietly calls
 `endTransientSession` (`'transient_navigation'`) instead of opening a surface.
 REPLACE retains the docking behavior.
 
