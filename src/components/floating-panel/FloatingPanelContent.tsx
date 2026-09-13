@@ -170,6 +170,7 @@ export function FloatingPanelContent({
             });
             onGuideComplete?.();
           }}
+          onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}
         />
       </div>
     </AlignmentPendingContext.Provider>

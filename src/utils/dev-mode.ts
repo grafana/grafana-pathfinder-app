@@ -197,7 +197,7 @@ export const isDevModeEnabledGlobal = (): boolean => {
     }
 
     return isDevModeEnabled(globalConfig, userId);
-  } catch (e) {
+  } catch {
     return false;
   }
 };
@@ -239,7 +239,7 @@ export const isAssistantDevModeEnabledGlobal = (): boolean => {
     }
 
     return isAssistantDevModeEnabled(globalConfig, userId);
-  } catch (e) {
+  } catch {
     return false;
   }
 };

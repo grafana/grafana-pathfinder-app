@@ -89,6 +89,12 @@
     "body": "",
     "title": ""
   },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "Alle leerpaden voltooid!",
     "allCompleteTooltip": "U heeft elk leerpad voltooid — goed gedaan!",

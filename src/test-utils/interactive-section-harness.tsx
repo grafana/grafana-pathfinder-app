@@ -72,6 +72,7 @@ const collapseKey = (contentKey: string, sectionId: string) => `section-collapse
 const ackKey = (contentKey: string, sectionId: string) => `section-ack::${contentKey}::${sectionId}`;
 const doneKey = (contentKey: string, sectionId: string) => `section-done::${contentKey}::${sectionId}`;
 const completionKey = (contentKey: string) => `interactive-completion::${contentKey}`;
+const markKey = (contentKey: string) => `guide-complete-mark::${contentKey}`;
 
 /** Sweep all harness keys for a content key (matches the real
  *  `clearAllForContent` contract — sweeps steps + collapse + ack + done). */
@@ -181,6 +182,18 @@ export function createUserStorageMock() {
       }),
       clear: jest.fn(async (contentKey: string) => {
         memoryStore.delete(completionKey(contentKey));
+      }),
+    },
+    /** The `mark-guide-complete` namespace the completion store consults
+     *  synchronously when it derives a guide's percentage. */
+    guideCompletionMarkStorage: {
+      isMarked: jest.fn((contentKey: string) => memoryStore.get(markKey(contentKey)) === true),
+      get: jest.fn(async (contentKey: string) => (memoryStore.get(markKey(contentKey)) === true ? true : null)),
+      set: jest.fn(async (contentKey: string, value: true) => {
+        memoryStore.set(markKey(contentKey), value);
+      }),
+      clear: jest.fn(async (contentKey: string) => {
+        memoryStore.delete(markKey(contentKey));
       }),
     },
   };

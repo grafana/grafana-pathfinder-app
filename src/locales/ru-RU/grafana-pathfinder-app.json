@@ -97,6 +97,12 @@
     "body": "",
     "title": ""
   },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "Все пути пройдены!",
     "allCompleteTooltip": "Вы прошли все пути обучения — отличная работа!",

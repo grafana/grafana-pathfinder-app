@@ -16,6 +16,10 @@
  *     a global, so standalone helpers never see an uninitialized state.
  *   - The hook's returned object exposes a stable `UserStorage` shape; calls
  *     route to the underlying installed backend.
+ *   - Mounting runs the discard of progress records in the superseded key
+ *     shape, exactly once per page lifecycle. That single call is the only
+ *     thing that makes the discard happen for a real reader, so it is pinned
+ *     here rather than only at `sweepDiscardedProgressRecords` itself.
  *
  * These tests are deliberately about *backend selection*, not the queue or
  * sync internals — those are pinned in `user-storage.plumbing.test.ts`.
@@ -25,6 +29,7 @@ import { renderHook, act } from '@testing-library/react';
 import type { GrafanaUserStorage } from '../types/storage.types';
 
 import { __resetSyncedForTests, createLocalStorage, setGlobalStorage, useUserStorage } from './user-storage';
+import { StorageKeys, buildDiscardedSectionStorageKey, buildVersionedSectionStorageKey } from './storage-keys';
 
 const usePluginUserStorageMock = jest.fn();
 
@@ -156,5 +161,74 @@ describe('useUserStorage — operations route to the installed backend', () => {
     });
 
     expect(localStorage.getItem('to-remove')).toBeNull();
+  });
+});
+
+describe('useUserStorage — discards progress records in the superseded key shape', () => {
+  const GUIDE = 'bundled:welcome-to-grafana';
+  const NEIGHBOUR = 'bundled:welcome-to-grafana-cloud';
+  const SECTION = 'section-1';
+
+  function discarded(prefix: string, contentKey: string): string {
+    return buildDiscardedSectionStorageKey(prefix, contentKey, SECTION);
+  }
+
+  async function mountHook(): Promise<void> {
+    usePluginUserStorageMock.mockReturnValue(null);
+    renderHook(() => useUserStorage());
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+
+  it('removes every superseded-shape record and marker on mount', async () => {
+    const supersededKeys = [
+      discarded(StorageKeys.INTERACTIVE_STEPS_PREFIX, GUIDE),
+      discarded(StorageKeys.SECTION_COLLAPSE_PREFIX, GUIDE),
+      discarded(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, NEIGHBOUR),
+      discarded(StorageKeys.SECTION_DONE_PREFIX, NEIGHBOUR),
+      `${StorageKeys.CONTENT_PROGRESS_V2_PREFIX}${GUIDE}`,
+    ];
+    supersededKeys.forEach((key) => localStorage.setItem(key, JSON.stringify(['step-1'])));
+
+    await mountHook();
+
+    supersededKeys.forEach((key) => expect(localStorage.getItem(key)).toBeNull());
+  });
+
+  it('leaves current-shape progress and unrelated plugin state alone', async () => {
+    const currentKey = buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, GUIDE, SECTION);
+    localStorage.setItem(currentKey, JSON.stringify(['step-1']));
+    localStorage.setItem(StorageKeys.LEARNING_PROGRESS, JSON.stringify({ earnedBadges: [{ id: 'b' }], streakDays: 7 }));
+    localStorage.setItem(discarded(StorageKeys.INTERACTIVE_STEPS_PREFIX, NEIGHBOUR), JSON.stringify(['cloud-1']));
+
+    await mountHook();
+
+    expect(JSON.parse(localStorage.getItem(currentKey)!)).toEqual(['step-1']);
+    expect(JSON.parse(localStorage.getItem(StorageKeys.LEARNING_PROGRESS)!)).toEqual({
+      earnedBadges: [{ id: 'b' }],
+      streakDays: 7,
+    });
+    expect(localStorage.getItem(discarded(StorageKeys.INTERACTIVE_STEPS_PREFIX, NEIGHBOUR))).toBeNull();
+  });
+
+  it('sweeps once per page lifecycle, however many times the hook mounts', async () => {
+    localStorage.setItem(discarded(StorageKeys.INTERACTIVE_STEPS_PREFIX, GUIDE), JSON.stringify(['step-1']));
+
+    await mountHook();
+
+    expect(localStorage.getItem(discarded(StorageKeys.INTERACTIVE_STEPS_PREFIX, GUIDE))).toBeNull();
+
+    const later = discarded(StorageKeys.SECTION_DONE_PREFIX, NEIGHBOUR);
+    localStorage.setItem(later, JSON.stringify(true));
+
+    await mountHook();
+
+    expect(localStorage.getItem(later)).toBe(JSON.stringify(true));
+
+    __resetSyncedForTests();
+    await mountHook();
+
+    expect(localStorage.getItem(later)).toBeNull();
   });
 });

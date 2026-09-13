@@ -1,5 +1,9 @@
 import { evictContentCache } from '../../../global-state/completion-store';
-import { interactiveCompletionStorage, interactiveStepStorage } from '../../../lib/user-storage';
+import {
+  guideCompletionMarkStorage,
+  interactiveCompletionStorage,
+  interactiveStepStorage,
+} from '../../../lib/user-storage';
 import { resetGuideProgress } from './resetGuideProgress';
 
 jest.mock('../../../global-state/completion-store');
@@ -10,12 +14,14 @@ const mockInteractiveStepStorage = interactiveStepStorage as jest.Mocked<typeof 
 const mockInteractiveCompletionStorage = interactiveCompletionStorage as jest.Mocked<
   typeof interactiveCompletionStorage
 >;
+const mockGuideCompletionMarkStorage = guideCompletionMarkStorage as jest.Mocked<typeof guideCompletionMarkStorage>;
 
 describe('resetGuideProgress', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockInteractiveStepStorage.clearAllForContent.mockResolvedValue(undefined);
     mockInteractiveCompletionStorage.clear.mockResolvedValue(undefined);
+    mockGuideCompletionMarkStorage.clear.mockResolvedValue(undefined);
   });
 
   it('clears persisted and cached progress and emits the cleared event', async () => {
@@ -25,6 +31,7 @@ describe('resetGuideProgress', () => {
 
     expect(mockInteractiveStepStorage.clearAllForContent).toHaveBeenCalledWith('bundled:e2e-test');
     expect(mockInteractiveCompletionStorage.clear).toHaveBeenCalledWith('bundled:e2e-test');
+    expect(mockGuideCompletionMarkStorage.clear).toHaveBeenCalledWith('bundled:e2e-test');
     expect(mockEvictContentCache).toHaveBeenCalledWith('bundled:e2e-test');
     expect(dispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({

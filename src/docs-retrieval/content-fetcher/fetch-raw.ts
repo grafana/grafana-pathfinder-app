@@ -65,7 +65,7 @@ export function enforceHttps(url: string): boolean {
 /**
  * Generate user-friendly error messages based on error type
  */
-export function generateUserFriendlyError(error: FetchError | undefined, url: string): string {
+export function generateUserFriendlyError(error: FetchError | undefined, _url: string): string {
   if (!error) {
     return 'Failed to load content. Please try again.';
   }
