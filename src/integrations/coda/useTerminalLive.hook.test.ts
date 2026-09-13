@@ -177,8 +177,12 @@ describe('useTerminalLive session lifetime', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it('surfaces a protocol mismatch and closes the unusable live session', async () => {
+  it('surfaces a protocol mismatch without terminating the live session', async () => {
     const { hook, terminalRef, handlers, close } = await connectedHook();
+
+    act(() => {
+      handlers.current.onConnected?.('vm-1');
+    });
 
     act(() => {
       handlers.current.onProtocolError?.({
@@ -188,12 +192,12 @@ describe('useTerminalLive session lifetime', () => {
       });
     });
 
-    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.status).toBe('connected');
     expect(hook.result.current.error).toBe(
       'Unreadable message from the sandbox backend — the plugin and backend may be out of sync.'
     );
-    expect(hook.result.current.sessionId).toBeNull();
-    expect(close).toHaveBeenCalled();
+    expect(hook.result.current.sessionId).toBe(SESSION_ID);
+    expect(close).not.toHaveBeenCalled();
 
     expect(mockedLogger.error).toHaveBeenCalledWith(
       '[Terminal] Coda protocol mismatch',
@@ -212,6 +216,11 @@ describe('useTerminalLive session lifetime', () => {
       '\x1b[31m✖ Error: Unreadable message from the sandbox backend — the plugin and backend may be out of sync.\x1b[0m'
     );
     expect(writeln.mock.calls.some(([line]) => String(line).includes('Session ended - VM disconnected'))).toBe(false);
+
+    act(() => {
+      handlers.current.onOutput?.('compatible frame after mismatch');
+    });
+    expect(terminalRef.current.write).toHaveBeenCalledWith('compatible frame after mismatch');
   });
 });
 

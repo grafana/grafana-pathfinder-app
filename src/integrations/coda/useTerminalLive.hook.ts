@@ -310,11 +310,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         },
 
         onProtocolError: ({ detail, sessionId: sid, vmId }) => {
-          // The SDK keeps its stream alive after reporting a mismatch, but this
-          // consumer cannot safely use a session whose protocol it cannot read.
-          // Mark the close as an error so onClosed does not replace the useful
-          // diagnostic with a generic disconnect banner.
-          hadErrorRef.current = true;
+          // CodaSession deliberately reports an invalid frame without ending the
+          // stream. Keep that non-fatal contract so a later compatible frame can
+          // still recover; the visible diagnostic is the consumer-side action.
           connectionLogRef.current.error('Coda protocol mismatch', undefined, {
             detail,
             sessionId: sid,
@@ -322,12 +320,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             category: 'protocol_error',
           });
 
-          cleanup();
-
           terminal.writeln('\r\n');
           terminal.writeln(`\x1b[31m✖ Error: ${PROTOCOL_MISMATCH_MESSAGE}\x1b[0m`);
           setError(PROTOCOL_MISMATCH_MESSAGE);
-          setStatus('error');
         },
       });
     },
