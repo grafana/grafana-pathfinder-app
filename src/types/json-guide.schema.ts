@@ -198,7 +198,7 @@ export const JsonStepSchema = z
     tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
     description: z.string().optional().describe('Step description shown to the user'),
     skippable: z.boolean().optional().describe('Allow user to skip this step'),
-    formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
+    formHint: z.string().optional().describe('Validation-failure message for formfill input fields'),
     validateInput: z.boolean().optional().describe('Strictly validate formfill input against targetvalue'),
     lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
     scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
@@ -376,7 +376,7 @@ export const JsonInteractiveBlockSchema = z
     objectives: z.array(ObjectiveTokenSchema).optional().describe(objectivesDescription('block')),
     skippable: z.boolean().optional().describe('Allow user to skip this block'),
     hint: z.string().optional().describe('Hint text shown if user is stuck'),
-    formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
+    formHint: z.string().optional().describe('Validation-failure message for formfill input fields'),
     validateInput: z.boolean().optional().describe('Strictly validate formfill input against targetvalue'),
     showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
     doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
@@ -386,7 +386,10 @@ export const JsonInteractiveBlockSchema = z
     ),
     lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
     scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
-    openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
+    openGuide: z
+      .string()
+      .optional()
+      .describe('Guide ID to open during an internal navigate action (ignored for external http(s) targets)'),
     // Assistant customization props
     ...AssistantPropsSchema.shape,
     // Editor-only annotation (stripped on export)
