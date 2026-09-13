@@ -23,7 +23,7 @@ const PRESENTATIONAL_ADDABLE_TYPES = [
   'image',
   'video',
   'callout',
-] as const satisfies readonly DefaultableBlockType[];
+] as const satisfies ReadonlyArray<DefaultableBlockType & PresentationalBlock['type']>;
 
 function isCollapsibleBlock(block: JsonBlock): block is JsonCollapsibleBlock {
   return block.type === 'collapsible';

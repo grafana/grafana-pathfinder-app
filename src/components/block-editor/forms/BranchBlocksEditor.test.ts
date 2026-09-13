@@ -2,11 +2,14 @@ import { ALLOWED_BRANCH_BLOCK_TYPES, createDefaultBlock, type BranchBlocksEditor
 
 type AddableBlockTypes = NonNullable<BranchBlocksEditorProps['addableBlockTypes']>;
 
-const buildablePropTypes: AddableBlockTypes = ['markdown', 'challenge'];
+const buildablePropTypes: AddableBlockTypes = ['markdown', 'guided'];
+// @ts-expect-error challenge has a builder but cannot be edited through this picker
+const nonAddableBuilderType: AddableBlockTypes = ['challenge'];
 // @ts-expect-error terminal has no intentional default builder
 const fallbackOnlyPropTypes: AddableBlockTypes = ['terminal'];
 
 void buildablePropTypes;
+void nonAddableBuilderType;
 void fallbackOnlyPropTypes;
 
 describe('BranchBlocksEditor createDefaultBlock', () => {
@@ -31,6 +34,10 @@ describe('BranchBlocksEditor createDefaultBlock', () => {
     }
   });
 
+  it('does not offer challenge without an inline editor', () => {
+    expect(ALLOWED_BRANCH_BLOCK_TYPES).not.toContain('challenge');
+  });
+
   it('builds a challenge block instead of empty markdown if challenged', () => {
     expect(createDefaultBlock('challenge')).toEqual({
       type: 'challenge',
@@ -42,6 +49,10 @@ describe('BranchBlocksEditor createDefaultBlock', () => {
 
   it('builds an empty divider block', () => {
     expect(createDefaultBlock('divider')).toEqual({ type: 'divider' });
+  });
+
+  it('keeps the legacy fallback for non-defaultable block types', () => {
+    expect(createDefaultBlock('terminal')).toEqual({ type: 'markdown', content: '' });
   });
 
   it('builds an empty callout block, not empty markdown', () => {

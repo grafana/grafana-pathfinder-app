@@ -263,16 +263,13 @@ const getStyles = (theme: GrafanaTheme2) => ({
 // Helper Functions
 // ============================================================================
 
-/**
- * Create a default block of a given type
- */
 const BLOCK_DEFAULT_BUILDERS = {
-  markdown: (): JsonBlock => ({ type: 'markdown', content: '' }),
-  divider: (): JsonBlock => ({ type: 'divider' }),
-  interactive: (): JsonBlock => ({ type: 'interactive', action: 'highlight', reftarget: '', content: '' }),
-  image: (): JsonBlock => ({ type: 'image', src: '' }),
-  video: (): JsonBlock => ({ type: 'video', src: '' }),
-  quiz: (): JsonBlock => ({
+  markdown: () => ({ type: 'markdown', content: '' }),
+  divider: () => ({ type: 'divider' }),
+  interactive: () => ({ type: 'interactive', action: 'highlight', reftarget: '', content: '' }),
+  image: () => ({ type: 'image', src: '' }),
+  video: () => ({ type: 'video', src: '' }),
+  quiz: () => ({
     type: 'quiz',
     question: '',
     choices: [
@@ -280,18 +277,21 @@ const BLOCK_DEFAULT_BUILDERS = {
       { id: 'b', text: '' },
     ],
   }),
-  input: (): JsonBlock => ({ type: 'input', prompt: '', inputType: 'text', variableName: '' }),
-  multistep: (): JsonBlock => ({ type: 'multistep', content: '', steps: [] }),
-  guided: (): JsonBlock => ({ type: 'guided', content: '', steps: [] }),
-  challenge: (): JsonBlock => ({ type: 'challenge', title: '', brief: '', successCriteria: '' }),
-  callout: (): JsonBlock => ({ type: 'callout', title: '', content: '' }),
-} as const satisfies Partial<Record<BlockType, () => JsonBlock>>;
+  input: () => ({ type: 'input', prompt: '', inputType: 'text', variableName: '' }),
+  multistep: () => ({ type: 'multistep', content: '', steps: [] }),
+  guided: () => ({ type: 'guided', content: '', steps: [] }),
+  challenge: () => ({ type: 'challenge', title: '', brief: '', successCriteria: '' }),
+  callout: () => ({ type: 'callout', title: '', content: '' }),
+} as const satisfies { [K in BlockType]?: () => Extract<JsonBlock, { type: K }> };
 
 /** Block types that have an intentional default builder. */
 export type DefaultableBlockType = keyof typeof BLOCK_DEFAULT_BUILDERS;
 
+/** Builder-backed block types safe to offer in the branch picker (see #1542). */
+export type BranchAddableBlockType = Exclude<DefaultableBlockType, 'challenge'>;
+
 function isDefaultableBlockType(type: BlockType): type is DefaultableBlockType {
-  return type in BLOCK_DEFAULT_BUILDERS;
+  return Object.hasOwn(BLOCK_DEFAULT_BUILDERS, type);
 }
 
 export function createDefaultBlock(type: BlockType): JsonBlock {
@@ -317,7 +317,6 @@ export function createDefaultBlock(type: BlockType): JsonBlock {
   }
 }
 
-// Block types offered by default in the branch add picker.
 export const ALLOWED_BRANCH_BLOCK_TYPES = [
   'markdown',
   'divider',
@@ -329,7 +328,7 @@ export const ALLOWED_BRANCH_BLOCK_TYPES = [
   'quiz',
   'multistep',
   'guided',
-] as const satisfies readonly DefaultableBlockType[];
+] as const satisfies readonly BranchAddableBlockType[];
 
 // Block types that support inline form editing in BranchBlocksEditor
 // quiz, multistep, and guided require the dedicated editors and cannot be edited inline
@@ -391,7 +390,7 @@ export interface BranchBlocksEditorProps {
   /** Called when blocks change */
   onChange: (blocks: JsonBlock[]) => void;
   /** Block types offered in the add menu. Defaults to ALLOWED_BRANCH_BLOCK_TYPES. */
-  addableBlockTypes?: readonly DefaultableBlockType[];
+  addableBlockTypes?: readonly BranchAddableBlockType[];
   /** Called to start/stop the element picker */
   onPickerModeChange?: BlockFormProps['onPickerModeChange'];
 }
