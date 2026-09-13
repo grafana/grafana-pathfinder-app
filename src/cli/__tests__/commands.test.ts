@@ -7,6 +7,7 @@ import { Command } from 'commander';
 
 import { runAddBlock } from '../commands/add-block';
 import { runAddChoice } from '../commands/add-choice';
+import { runAddHint } from '../commands/add-hint';
 import { runAddStep } from '../commands/add-step';
 import { runCreate } from '../commands/create';
 import { editBlockSpec, runEditBlock } from '../commands/edit-block';
@@ -509,6 +510,52 @@ describe('runAddChoice', () => {
     if (dup.status === 'error') {
       expect(dup.code).toBe('DUPLICATE_ID');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runAddHint
+// ---------------------------------------------------------------------------
+
+describe('runAddHint', () => {
+  it('appends progressive hints to a challenge block', async () => {
+    const dir = await bootstrap();
+    const added = await runAddBlock({
+      dir,
+      type: 'challenge',
+      id: 'repair-dashboard',
+      fields: {
+        mode: 'standard',
+        title: 'Repair the dashboard',
+        brief: 'Find and fix the broken dashboard.',
+        successCriteria: 'is-admin',
+      },
+    });
+    expect(added.status).toBe('ok');
+
+    const result = await runAddHint({
+      dir,
+      parent: 'repair-dashboard',
+      text: 'Check the dashboard variables.',
+    });
+    expect(result).toMatchObject({
+      status: 'ok',
+      data: { parent: 'repair-dashboard', position: 'blocks[0].hintLevels[0]' },
+    });
+    const challenge = readContent(dir).blocks[0] as { hintLevels?: Array<{ text: string }> };
+    expect(challenge.hintLevels).toEqual([{ text: 'Check the dashboard variables.' }]);
+  });
+
+  it('rejects empty hint text and a non-challenge parent without writing', async () => {
+    const dir = await bootstrap();
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
+
+    const empty = await runAddHint({ dir, parent: 'intro', text: '' });
+    expect(empty).toMatchObject({ status: 'error', code: 'SCHEMA_VALIDATION' });
+
+    const wrongParent = await runAddHint({ dir, parent: 'intro', text: 'Look closer.' });
+    expect(wrongParent).toMatchObject({ status: 'error', code: 'WRONG_PARENT_KIND' });
+    expect(readContent(dir).blocks).toHaveLength(1);
   });
 });
 

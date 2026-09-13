@@ -110,6 +110,7 @@ const MANAGE_BLOCK_OPERATIONS = {
   'remove-block': { withhold: ['orphanChildren'] },
   'add-step': {},
   'add-choice': {},
+  'add-hint': {},
 } as const satisfies Record<string, { withhold?: readonly string[] }>;
 
 const MANAGE_GUIDE_OPERATIONS = {
@@ -362,11 +363,11 @@ export function registerMutationTools(
     'pathfinder_manage_block',
     {
       description: [
-        'Use this tool when the user wants to add, edit, or remove a single block, or append a step or quiz choice, in a Pathfinder guide.',
+        'Use this tool when the user wants to add, edit, or remove a single block, or append a step, quiz choice, or challenge hint, in a Pathfinder guide.',
         'Scope: one block at a time, addressed by id inside the guide tree. Guide-level metadata (description, category, language, targeting) is NOT a block operation — use pathfinder_manage_guide for that.',
-        'Pass `operation` as the CLI command name: "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice".',
+        'Pass `operation` as the CLI command name: "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice" | "add-hint".',
         'Adds append under the parent (reorder = remove-block + add-block). Duplicate ids → DUPLICATE_ID.',
-        'Steps and choices are not individually editable or removable; cascade-remove their parent block and rebuild it instead.',
+        'Steps, choices, and hints are not individually editable or removable; cascade-remove their parent block and rebuild it instead.',
         'Call pathfinder_help({ command: <operation> }) for the `opts` interface; for add-block, call help again with the chosen block type as `subcommand`.',
         'Returns a session ack (or the updated artifact in stateless mode).',
       ].join(' '),

@@ -15,6 +15,7 @@
 import type { CommandGroupSpec, CommandSpec } from '../contracts';
 import { addBlockGroup } from './add-block';
 import { addChoiceSpec } from './add-choice';
+import { addHintSpec } from './add-hint';
 import { addStepSpec } from './add-step';
 import { buildGraphSpec } from './build-graph';
 import { buildRepositorySpec } from './build-repository';
@@ -45,6 +46,7 @@ export const COMMAND_MANIFEST: readonly CommandEntry[] = Object.freeze([
   entry(addBlockGroup),
   entry(addStepSpec),
   entry(addChoiceSpec),
+  entry(addHintSpec),
   entry(setManifestSpec),
   entry(inspectSpec),
   entry(editBlockSpec),
