@@ -29,6 +29,10 @@ jest.mock('../../lib/logging', () => ({
 }));
 
 const mockedCreateSession = createSession as jest.MockedFunction<typeof createSession>;
+const mockedLogger = jest.requireMock('../../lib/logging').logger as {
+  error: jest.Mock;
+  warn: jest.Mock;
+};
 
 const SESSION_ID = 's_0123456789abcdef0123456789abcdef';
 
@@ -171,6 +175,42 @@ describe('useTerminalLive session lifetime', () => {
 
     expect(hook.result.current.sessionId).toBeNull();
     expect(close).toHaveBeenCalled();
+  });
+
+  it('surfaces a protocol mismatch without closing the live session', async () => {
+    const { hook, terminalRef, handlers, close } = await connectedHook();
+
+    act(() => {
+      handlers.current.onProtocolError?.({
+        detail: 'event payload failed validation',
+        sessionId: SESSION_ID,
+        vmId: 'vm-1',
+      });
+    });
+
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.error).toBe(
+      'Unreadable message from the sandbox backend — the plugin and backend may be out of sync.'
+    );
+    expect(hook.result.current.sessionId).toBe(SESSION_ID);
+    expect(close).not.toHaveBeenCalled();
+
+    expect(mockedLogger.error).toHaveBeenCalledWith(
+      '[Terminal] Coda protocol mismatch',
+      expect.objectContaining({
+        detail: 'event payload failed validation',
+        sessionId: SESSION_ID,
+        vmId: 'vm-1',
+        category: 'protocol_error',
+      })
+    );
+    expect(mockedLogger.warn).not.toHaveBeenCalled();
+
+    const writeln = terminalRef.current.writeln as jest.Mock;
+    expect(writeln).toHaveBeenCalledWith('\r\n');
+    expect(writeln).toHaveBeenCalledWith(
+      '\x1b[31m✖ Error: Unreadable message from the sandbox backend — the plugin and backend may be out of sync.\x1b[0m'
+    );
   });
 });
 
