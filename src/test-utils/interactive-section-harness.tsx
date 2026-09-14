@@ -321,7 +321,7 @@ export function createInteractiveEngineMock() {
     NavigationManager: jest.fn().mockImplementation(() => ({
       clearAllHighlights: jest.fn(),
       fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
-      fixLocationRequirement: jest.fn().mockResolvedValue(undefined),
+      fixLocationRequirement: jest.fn().mockResolvedValue(true),
       expandParentNavigationSection: jest.fn().mockResolvedValue(undefined),
     })),
     ...require('../interactive-engine/outcome-classifier'),

@@ -45,7 +45,7 @@ jest.mock('../interactive-engine', () => ({
   useSequentialStepState: jest.fn(() => undefined),
   NavigationManager: jest.fn().mockImplementation(() => ({
     expandParentNavigationSection: jest.fn().mockResolvedValue(true),
-    fixLocationRequirement: jest.fn().mockResolvedValue(undefined),
+    fixLocationRequirement: jest.fn().mockResolvedValue(true),
     fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
   })),
 }));
