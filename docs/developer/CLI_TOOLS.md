@@ -351,7 +351,7 @@ The `stats` key holds a fixed set of numbers in a fixed key order, so unchanged 
 - `multistep` and `guided` count as exactly one block each. Their inner steps are deliberately outside the denominator.
 - `conditional` counts as one block, and neither branch is descended into. Descending into both would put blocks in the denominator the reader can never see.
 - `snippet-ref` counts as one block, and its resolved contents inherit that single position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in before the parser sees the guide, so the stamped denominator is the **pre-inlining** count and a consumer must index the pre-inlining tree. Mapping an inlined block back to its ref is not an option today: the splice carries no provenance, so there is nothing to map back from.
-- Completion is `n / total` with no special case. A "Do it" yields 100% only when its block is the guide's last counted one — `finalCompletablePosition === blockCount`. Anything less means the guide needs a "Mark as complete" button at its foot, and that field is the signal for it.
+- Completion is `n / total` with no special case. A "Do it" yields 100% only when its block is the guide's last counted one — `finalCompletablePosition === blockCount`. Anything less means step evidence alone stops short, and the reader closes the gap with the foot-of-guide "Mark complete" control, which every guide carries regardless of this field (`docs/design/COMPLETION-MODEL.md`, decision 2).
 - A `path` or `journey` rolls up as its own body followed by its milestones in declared order. Milestones are measured before their parents.
 
 ### Strictness

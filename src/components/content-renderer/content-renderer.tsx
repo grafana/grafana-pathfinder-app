@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
@@ -58,10 +58,25 @@ import {
   TextSelectionState,
 } from '../../integrations/assistant-integration';
 import { substituteVariables } from '../../utils/variable-substitution';
-import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
+import {
+  STANDALONE_SECTION_ID,
+  isBlockEditorPreviewUrl,
+  refreshGuidePercentageOnLoad,
+} from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { resolveGuideContentKey } from '../../global-state/guide-content-key';
+import {
+  evictGuideIndex,
+  getGuideIndexEvictionRevision,
+  publishGuideIndex,
+  subscribeGuideIndexEvictions,
+} from '../../global-state/active-guide-index';
+import { resolveCountedBlockStepId } from '../../global-state/guide-step-id-resolver';
+import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
+import { MarkCompleteFooter } from '../mark-complete';
 import { resolveFullScreenFallbackLocation } from './full-screen-fallback-location';
 
 /**
@@ -108,6 +123,13 @@ interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
   onGuideComplete?: () => void;
+  /**
+   * Advance to the next milestone, for the milestone form of the Mark complete
+   * control. Surfaces that cannot navigate — or that are on the last milestone
+   * — leave it unset, which downgrades the label to "Mark complete"; the
+   * control itself is never conditional.
+   */
+  onContinueToNextMilestone?: () => void;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -126,6 +148,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   content,
   onContentReady,
   onGuideComplete,
+  onContinueToNextMilestone,
   className,
   containerRef,
 }: ContentRendererProps) {
@@ -150,10 +173,59 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     onGuideCompleteRef.current = onGuideComplete;
   }, [onGuideComplete]);
 
+  const markCompleteRearmedRef = useRef(false);
+
+  // The one gate every completion route passes through — the automatic
+  // section/step routes below and the Mark complete control at the foot of the
+  // content alike — so a guide records exactly one completion however it was
+  // finished, and a click followed by an auto-complete does not record twice.
+  // Emitting also spends any pending re-arm: whichever route gets here first
+  // is the one completion, so a later click cannot re-open a gate that has
+  // already closed on this guide.
+  const triggerGuideComplete = useCallback(() => {
+    if (guideCompleteCalledRef.current) {
+      return;
+    }
+    guideCompleteCalledRef.current = true;
+    markCompleteRearmedRef.current = false;
+    onGuideCompleteRef.current?.();
+  }, []);
+
+  // The Mark complete route's own entry to that gate. A reset arms this route
+  // and only this route, so the reader's next click records once; the gate
+  // closes again inside `triggerGuideComplete`, leaving the automatic routes
+  // exactly the state they would have seen without the reset.
+  const triggerGuideCompleteFromMark = useCallback(() => {
+    if (markCompleteRearmedRef.current) {
+      markCompleteRearmedRef.current = false;
+      guideCompleteCalledRef.current = false;
+    }
+    triggerGuideComplete();
+  }, [triggerGuideComplete]);
+
   // Reset tracking state when content changes (new guide = fresh start)
   useEffect(() => {
     guideCompleteCalledRef.current = false;
     completedSectionsRef.current = new Set();
+    markCompleteRearmedRef.current = false;
+  }, [content?.url]);
+
+  // A reset clears a guide's progress without remounting this renderer, so a
+  // re-mark afterwards would otherwise write progress and record no completion.
+  // This arms the Mark complete route only: the automatic routes read the
+  // shared gate at their own invocation time and a reset must not change what
+  // they see, so nothing here touches the gate or the tracked sections.
+  useEffect(() => {
+    const handleCleared = (event: Event) => {
+      const clearedKey = (event as CustomEvent).detail?.contentKey;
+      if (clearedKey === '*' || clearedKey === resolveGuideContentKey(content?.url)) {
+        markCompleteRearmedRef.current = true;
+      }
+    };
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    return () => {
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    };
   }, [content?.url]);
 
   // Ref to track the current content URL - updated synchronously before effects run
@@ -207,8 +279,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         }
         const totalSections = countSections();
         if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current?.();
+          triggerGuideComplete();
         }
       }, 100); // Small delay to ensure DOM is stable
     };
@@ -233,10 +304,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 
       // Check if all sections complete - trigger immediately if count is accurate
       if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
-        if (!guideCompleteCalledRef.current && onGuideCompleteRef.current) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current();
-        }
+        triggerGuideComplete();
       } else {
         // If count seems off, use debounced check as fallback
         debouncedCompletionCheck();
@@ -271,8 +339,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       const allComplete = Array.from(sections).every((section) => section.classList.contains('completed'));
 
       if (allComplete) {
-        guideCompleteCalledRef.current = true;
-        onGuideCompleteRef.current?.();
+        triggerGuideComplete();
       }
     };
 
@@ -303,8 +370,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         const eventKeyNorm = detail.contentKey.replace(/\/+$/, '');
         const tabUrlNorm = currentTabUrl.replace(/\/+$/, '');
         if (eventKeyNorm === tabUrlNorm) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current?.();
+          triggerGuideComplete();
         }
       }
     };
@@ -338,7 +404,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         clearTimeout(debounceTimer);
       }
     };
-  }, [activeRef, content?.url]); // Removed onGuideComplete - using ref instead
+  }, [activeRef, content?.url, triggerGuideComplete]); // Removed onGuideComplete - using ref instead
 
   // Expose current content key globally for interactive persistence.
   // MUST be useLayoutEffect so the global is set before children's useEffect
@@ -412,8 +478,9 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   const fullScreenFallbackLocation =
     resolveFullScreenFallbackLocation(getCurrentMilestone(content)?.startingLocation) ??
     resolveFullScreenFallbackLocation(typeof courseStartingLocation === 'string' ? courseStartingLocation : undefined);
+  const isCoverPage = isJourneyCoverPage(content);
   const beforeContent =
-    isJourneyCoverPage(content) && journey && journey.milestones.length > 0 ? (
+    isCoverPage && journey && journey.milestones.length > 0 ? (
       <LearningPathTableOfContents
         milestones={journey.milestones}
         baseUrl={journey.baseUrl}
@@ -422,6 +489,19 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         description={pathDescription}
       />
     ) : null;
+
+  // Unconditional for every guide and every milestone (COMPLETION-MODEL.md,
+  // decision 2). A path's cover page is the one thing it is absent from, and
+  // that is not the deleted predicate: a table of contents is neither a guide
+  // nor a milestone, and marking it complete would record a guide nobody read.
+  const afterContent = isCoverPage ? null : (
+    <MarkCompleteFooter
+      context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
+      contentUrl={content.url}
+      onMarkComplete={triggerGuideCompleteFromMark}
+      onContinue={onContinueToNextMilestone}
+    />
+  );
 
   return (
     <GuideResponseProvider guideId={guideId}>
@@ -438,6 +518,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
           selectionState={selectionState}
           documentContext={documentContext}
           beforeContent={beforeContent}
+          afterContent={afterContent}
           fullScreenFallbackLocation={fullScreenFallbackLocation}
         />
       </GuideRequirementsProvider>
@@ -458,6 +539,7 @@ interface ContentWithVariablesProps {
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
   beforeContent?: React.ReactNode;
+  afterContent?: React.ReactNode;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
 }
@@ -474,6 +556,7 @@ function ContentWithVariables({
   selectionState,
   documentContext,
   beforeContent,
+  afterContent,
   fullScreenFallbackLocation,
 }: ContentWithVariablesProps) {
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
@@ -559,6 +642,7 @@ function ContentWithVariables({
         responses={responses}
         fullScreenFallbackLocation={fullScreenFallbackLocation}
       />
+      {afterContent}
       {selectionState.isValid && (
         <AssistantSelectionPopover
           selectedText={selectionState.selectedText}
@@ -583,14 +667,7 @@ interface ContentProcessorProps {
   fullScreenFallbackLocation?: string;
 }
 
-function ContentProcessor({
-  html,
-  contentType,
-  baseUrl,
-  onReady,
-  responses,
-  fullScreenFallbackLocation,
-}: ContentProcessorProps) {
+function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Reset interactive counters only when content changes (not on every render)
@@ -613,18 +690,91 @@ function ContentProcessor({
     return parseHTMLToComponents(html, baseUrl);
   }, [html, baseUrl]);
 
-  // A guide may reference snippets that resolve asynchronously from the CDN.
-  const guideWithSnippetRefs = useMemo<JsonGuide | null>(() => {
+  // Raw parse of the tree as received — pre-inlining on a direct open,
+  // already-expanded on the launch path (`prepare-guide-launch.ts`). Shared
+  // by the snippet-ref detection below and the frozen block index, so a
+  // guide-shaped `html` is only ever JSON.parsed once here.
+  const rawGuide = useMemo<JsonGuide | null>(() => {
     if (!isJsonGuideContent(html)) {
       return null;
     }
     try {
-      const guide = JSON.parse(html) as JsonGuide;
-      return guideHasSnippetRefs(guide) ? guide : null;
+      return JSON.parse(html) as JsonGuide;
     } catch {
       return null;
     }
   }, [html]);
+
+  // A guide may reference snippets that resolve asynchronously from the CDN.
+  const guideWithSnippetRefs = useMemo<JsonGuide | null>(() => {
+    return rawGuide && guideHasSnippetRefs(rawGuide) ? rawGuide : null;
+  }, [rawGuide]);
+
+  // The frozen block index (docs/design/COMPLETION-MODEL.md, decision 1):
+  // one traversal over the tree available synchronously at first paint,
+  // published once per content key and never recomputed for the life of
+  // that key — `publishGuideIndex` is itself idempotent, so a re-render or
+  // an unrelated prop change is a no-op here. It owns both the denominator
+  // and the numerator's positions so they can never come from two
+  // traversals and disagree.
+  //
+  // The eviction revision is a dependency because this is the only
+  // producer: a reset that evicts the index while this guide stays mounted
+  // would otherwise leave it with no index for the rest of the session, and
+  // no percentage with it.
+  //
+  // Passive effect, not `useMemo`/`useLayoutEffect`, for the same reason
+  // MarkCompleteFooter resolves its key in one: both producers of the
+  // content key publish it from a layout effect, so resolving during
+  // render (or in a child layout effect, which runs first) would publish
+  // the PREVIOUS milestone's key and leave this one with no index at all.
+  const guideIndexEvictionRevision = useSyncExternalStore(
+    subscribeGuideIndexEvictions,
+    getGuideIndexEvictionRevision,
+    getGuideIndexEvictionRevision
+  );
+
+  // The freeze contract's premise — a content key's content is immutable —
+  // holds for a real guide but not for a block-editor preview, whose key
+  // (block-editor://preview/<id>) stays constant for the whole editing
+  // session while the content underneath it changes on every edit. Tracking
+  // the last rawGuide this component published under a given preview key
+  // lets the effect below tell "content actually changed" apart from
+  // "this render was caused by the eviction this same effect just made" —
+  // without that distinction, evicting on every run would notify, which
+  // re-renders, which re-runs the effect, forever.
+  const lastPublishedPreviewGuideRef = useRef<{ contentKey: string; guide: JsonGuide } | null>(null);
+
+  useEffect(() => {
+    if (!rawGuide) {
+      return;
+    }
+    const contentKey = resolveGuideContentKey(baseUrl);
+    if (isBlockEditorPreviewUrl(baseUrl)) {
+      const last = lastPublishedPreviewGuideRef.current;
+      if (last && last.contentKey === contentKey && last.guide !== rawGuide) {
+        // Content changed under the same stable preview key — republish
+        // rather than silently keep serving the index from before this
+        // edit, which is what publishGuideIndex's ordinary idempotency
+        // would otherwise do.
+        evictGuideIndex(contentKey);
+      }
+      lastPublishedPreviewGuideRef.current = { contentKey, guide: rawGuide };
+    }
+    publishGuideIndex({
+      contentKey,
+      index: computeGuideBlockIndex(rawGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
+      denominatorSource: 'live-pre-inlining',
+    });
+    // A percentage persisted under the deleted step-count rule is read back
+    // verbatim by the new position-based one and is systematically higher,
+    // with no version on the record to tell old from new — reopening a
+    // guide with real evidence is the point this becomes recomputable
+    // (old-rule-percentages-reinterpreted). No-ops for a guide with no
+    // evidence at all, so this never fills the capped percentage namespace
+    // with zeros just from being opened.
+    refreshGuidePercentageOnLoad(contentKey);
+  }, [rawGuide, baseUrl, guideIndexEvictionRevision]);
 
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.
@@ -702,9 +852,14 @@ function ContentProcessor({
 
     elements.forEach((el, idx) => {
       if (el.type === 'interactive-section') {
-        // Predict sectionId using the same logic as InteractiveSection's useMemo:
-        // prefer the explicit HTML id prop, otherwise use the sequential counter.
-        const sectionId = el.props.id ? `section-${el.props.id}` : `section-${++sectionCounter}`;
+        // Same precedence InteractiveSection's own useMemo applies: the
+        // parser-stamped sectionId (sectionRuntimeId) wins outright. Falling
+        // through to the id-based/counter derivation here for an id-less
+        // section double-registers it under a second key the parser-stamped
+        // id has already claimed, inflating the total (section-registry
+        // -third-deriver-double-count).
+        const sectionId =
+          el.props.sectionId ?? (el.props.id ? `section-${el.props.id}` : `section-${++sectionCounter}`);
         const stepCount = countStepsInSection(el);
         registerSectionSteps(sectionId, stepCount, docOrder);
         docOrder++;
@@ -967,7 +1122,8 @@ interface StandaloneStepPosition {
  * `src/components/interactive-tutorial/step-type-registry.ts`.
  *
  * Note: input-block is intentionally excluded — it doesn't track completion
- * and would inflate the total step count, making 100% completion impossible.
+ * and would inflate the total step count, putting a step-derived 100% out of
+ * reach.
  * An `input` block emits `datasource-check-step` instead when its author asked
  * a failing data check to block, and only that form is tracked here.
  *
@@ -1120,6 +1276,7 @@ function renderParsedElement(
           objectives={element.props.objectives}
           hints={element.props.hints}
           id={element.props.id} // Pass the HTML id attribute
+          sectionId={element.props.sectionId}
           autoCollapse={element.props.autoCollapse}
         >
           {renderChildren(element.children)}

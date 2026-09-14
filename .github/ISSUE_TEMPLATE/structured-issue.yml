@@ -1,0 +1,94 @@
+name: Structured issue
+description: Describe a bug, improvement, or internal task with clear scope and acceptance criteria
+labels:
+  - needs-review
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the work and how we will know it is done.
+        Type, area, and severity answers help triage and grooming; they do not apply GitHub labels automatically.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: In one or two plain sentences, describe what is wrong or what you want to change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User impact / flow change
+      description: |
+        In plain language, without dense technical jargon, what changes for the user or in the application's flow when this is solved?
+        For strictly internal work (tests, tech-debt, or docs) with no user-facing effect, write "Internal only - no user-facing change".
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List concrete, checkable conditions that prove this issue is closed. Use a checklist of observable behavior and/or test results so the implementer and reviewer share the same completion bar.
+      placeholder: |
+        - [ ] Given ..., when ..., then ...
+        - [ ] A test verifies ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+      description: Optional but encouraged. Describe what to change, what not to change, and any existing behavior that must be preserved.
+
+  - type: textarea
+    id: grounding
+    attributes:
+      label: Where it lives / grounding
+      description: Share known file or function anchors, where components connect, or an existing example to follow. Grooming can enrich this later if you are unsure.
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Type
+      options:
+        - Bug
+        - Enhancement
+        - Tech-debt
+        - Documentation
+        - Other
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Choose the closest area from the repository's labels, or Other/unsure.
+      options:
+        - area/docs-renderer
+        - area/context-engine
+        - area/interactives
+        - area/requirements
+        - area/ui
+        - area/grafana
+        - area/external-api
+        - area/config
+        - area/analytics
+        - area/integrations
+        - Other/unsure
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this issue? Leave this blank for internal work where severity does not apply.
+      options:
+        - Low - Minor inconvenience
+        - Medium - Affects functionality but a workaround exists
+        - High - Blocks the workflow
+        - Critical - Breaks a core flow with no workaround
+        - Unknown - Not enough information yet
+    validations:
+      required: false

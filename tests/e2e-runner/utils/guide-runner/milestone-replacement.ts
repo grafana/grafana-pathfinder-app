@@ -2,7 +2,11 @@ import type { ElementHandle, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
 import { StorageEvents } from '../../../../src/lib/event-names';
-import { StorageKeys, buildVersionedContentStorageKey } from '../../../../src/lib/storage-keys';
+import {
+  HYBRID_TIMESTAMP_SUFFIX,
+  StorageKeys,
+  buildVersionedContentStorageKey,
+} from '../../../../src/lib/storage-keys';
 import { dismissBadgeCelebrations } from './badge-celebrations';
 import { STEP_ROOT_SELECTOR } from './constants';
 import { FatalTransitionError, type FatalTransitionKind } from './transition-error';
@@ -11,7 +15,6 @@ export const E2E_GUIDE_URL = 'bundled:e2e-test';
 const REPLACEMENT_TIMEOUT_MS = 15_000;
 const RESET_POSTCONDITION_ATTEMPTS = 5;
 const RESET_POSTCONDITION_POLL_MS = 250;
-const HYBRID_STORAGE_TIMESTAMP_SUFFIX = '__timestamp';
 // Add a version only after this runner implements that version's control contract.
 const SUPPORTED_PATHFINDER_E2E_CONTROL_VERSIONS: readonly number[] = [1];
 
@@ -37,26 +40,15 @@ async function activeGuideTab(page: Page): Promise<{ id: string; url: string }> 
 }
 
 async function inspectE2EProgressStorage(page: Page): Promise<E2EProgressStorageState> {
-  const legacyPrefixes = {
-    steps: `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${E2E_GUIDE_URL}-`,
-    collapse: `${StorageKeys.SECTION_COLLAPSE_PREFIX}${E2E_GUIDE_URL}-`,
-    acknowledged: `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${E2E_GUIDE_URL}-`,
-    done: `${StorageKeys.SECTION_DONE_PREFIX}${E2E_GUIDE_URL}-`,
-  };
-
-  const versionedPrefixes = {
+  const prefixes = {
     steps: `${buildVersionedContentStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, E2E_GUIDE_URL)}:`,
     collapse: `${buildVersionedContentStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, E2E_GUIDE_URL)}:`,
     acknowledged: `${buildVersionedContentStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, E2E_GUIDE_URL)}:`,
     done: `${buildVersionedContentStorageKey(StorageKeys.SECTION_DONE_PREFIX, E2E_GUIDE_URL)}:`,
   };
 
-  const markerKey = buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, E2E_GUIDE_URL);
-
   return page.evaluate(
-    ({ contentKey, completionKey, timestampSuffix, markerKey, legacyPrefixes, versionedPrefixes }) => {
-      const prefixes = localStorage.getItem(markerKey) !== null ? versionedPrefixes : legacyPrefixes;
-
+    ({ contentKey, completionKey, timestampSuffix, prefixes }) => {
       const matchingPrefixes = [prefixes.steps, prefixes.collapse, prefixes.acknowledged, prefixes.done];
 
       let hasStoredCompletion = false;
@@ -110,10 +102,8 @@ async function inspectE2EProgressStorage(page: Page): Promise<E2EProgressStorage
     {
       contentKey: E2E_GUIDE_URL,
       completionKey: StorageKeys.INTERACTIVE_COMPLETION,
-      timestampSuffix: HYBRID_STORAGE_TIMESTAMP_SUFFIX,
-      markerKey,
-      legacyPrefixes,
-      versionedPrefixes,
+      timestampSuffix: HYBRID_TIMESTAMP_SUFFIX,
+      prefixes,
     }
   );
 }
@@ -218,9 +208,7 @@ async function requireEmptyE2EProgressStorage(page: Page): Promise<void> {
 }
 
 async function clearNoCompletionResidue(page: Page): Promise<void> {
-  const markerKey = buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, E2E_GUIDE_URL);
-
-  const versionedPrefixes = [
+  const progressPrefixes = [
     StorageKeys.INTERACTIVE_STEPS_PREFIX,
     StorageKeys.SECTION_COLLAPSE_PREFIX,
     StorageKeys.SECTION_ACKNOWLEDGED_PREFIX,
@@ -228,22 +216,17 @@ async function clearNoCompletionResidue(page: Page): Promise<void> {
   ].map((prefix) => `${buildVersionedContentStorageKey(prefix, E2E_GUIDE_URL)}:`);
 
   await page.evaluate(
-    ({ contentKey, completionKey, markerKey, versionedPrefixes }) => {
+    ({ contentKey, completionKey, progressPrefixes }) => {
       const keysToRemove: string[] = [];
 
       for (let index = 0; index < localStorage.length; index++) {
         const key = localStorage.key(index);
-        if (key && versionedPrefixes.some((prefix) => key.startsWith(prefix))) {
+        if (key && progressPrefixes.some((prefix) => key.startsWith(prefix))) {
           keysToRemove.push(key);
         }
       }
 
       keysToRemove.forEach((key) => localStorage.removeItem(key));
-
-      // Legacy section keys cannot be deleted safely because content keys may
-      // share a prefix. Switching this content key to v2 makes those entries
-      // logically inactive while preserving sibling-guide progress.
-      localStorage.setItem(markerKey, 'true');
 
       const completionValue = localStorage.getItem(completionKey);
       if (completionValue) {
@@ -261,8 +244,7 @@ async function clearNoCompletionResidue(page: Page): Promise<void> {
     {
       contentKey: E2E_GUIDE_URL,
       completionKey: StorageKeys.INTERACTIVE_COMPLETION,
-      markerKey,
-      versionedPrefixes,
+      progressPrefixes,
     }
   );
 }

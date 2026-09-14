@@ -49,11 +49,11 @@ AP_CURL_CONFIG=
 
 # curl reads the Authorization header from a 0600 config file rather than an
 # argv -H, so the token is not exposed in the process table for the length of a
-# multi-resource run. Unquoted on purpose: curl takes the rest of the line
-# verbatim, which quoting would subject to backslash escaping.
+# multi-resource run. Quote the value because curl config values containing
+# whitespace must be quoted.
 ap_auth_init() {
   AP_CURL_CONFIG=$(mktemp)
-  printf 'header = Authorization: Bearer %s\n' "$1" >"$AP_CURL_CONFIG"
+  printf 'header = "Authorization: Bearer %s"\n' "$1" >"$AP_CURL_CONFIG"
 }
 
 ap_auth_cleanup() {

@@ -92,7 +92,7 @@ describe('useGcxCredential', () => {
   it('installs a minted credential and calls onReady exactly once', async () => {
     mockProvisionGcx.mockResolvedValue(CREDENTIAL);
     const onReady = jest.fn();
-    const { result } = renderHook(() => useGcxCredential(onReady, 's_abc'));
+    const { result } = renderHook(() => useGcxCredential(onReady, 's_abc', 'step-a'));
 
     await act(async () => {
       await result.current.run('s_abc');
@@ -239,18 +239,37 @@ describe('state shared across surfaces', () => {
     expect(step.result.current.credential).toEqual(CREDENTIAL);
   });
 
-  it('completes a step whose credential was installed from the toolbar', async () => {
+  it('shares toolbar readiness without completing a step that did not request the run', async () => {
     mockProvisionGcx.mockResolvedValue(CREDENTIAL);
     const onReady = jest.fn();
-    renderHook(() => useGcxCredential(onReady, 's_abc'));
+    const step = renderHook(() => useGcxCredential(onReady, 's_abc', 'step-a'));
     const toolbar = renderHook(() => useGcxCredential(undefined, 's_abc'));
 
     await act(async () => {
       await toolbar.result.current.run('s_abc');
     });
 
-    expect(onReady).toHaveBeenCalledTimes(1);
-    expect(onReady).toHaveBeenCalledWith(CREDENTIAL);
+    expect(step.result.current.state).toBe('ready');
+    expect(step.result.current.credential).toEqual(CREDENTIAL);
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  it('notifies only the step that requested a shared-session run', async () => {
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const onReadyA = jest.fn();
+    const onReadyB = jest.fn();
+    const stepA = renderHook(() => useGcxCredential(onReadyA, 's_abc', 'step-a'));
+    const stepB = renderHook(() => useGcxCredential(onReadyB, 's_abc', 'step-b'));
+
+    await act(async () => {
+      await stepA.result.current.run('s_abc');
+    });
+
+    expect(stepB.result.current.state).toBe('ready');
+    expect(stepB.result.current.credential).toEqual(CREDENTIAL);
+    expect(onReadyA).toHaveBeenCalledTimes(1);
+    expect(onReadyA).toHaveBeenCalledWith(CREDENTIAL);
+    expect(onReadyB).not.toHaveBeenCalled();
   });
 
   it('forgets a credential when the terminal moves to another session', async () => {

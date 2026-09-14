@@ -17,9 +17,9 @@ export interface CompletionEvidence {
   kind: CompletionEvidenceKind;
   /**
    * Block id the signal came from: the interactive block for `do-it` — its
-   * runtime step id, falling back to an author id — and the section container
-   * for `mark-section-complete`. Ignored for `mark-guide-complete`, which
-   * always evidences the whole guide.
+   * runtime step id, falling back to an author id — and the section
+   * container's runtime id for `mark-section-complete`. Ignored for
+   * `mark-guide-complete`, which always evidences the whole guide.
    */
   blockId?: string;
 }

@@ -89,6 +89,12 @@
     "body": "",
     "title": ""
   },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "Semua jalur selesai!",
     "allCompleteTooltip": "Anda telah menyelesaikan semua jalur pembelajaran — kerja bagus!",

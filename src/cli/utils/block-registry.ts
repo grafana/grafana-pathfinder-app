@@ -16,6 +16,7 @@ import type { z } from 'zod';
 import {
   JsonAssistantBlockSchema,
   JsonCalloutBlockSchema,
+  JsonChallengeBlockSchema,
   JsonCodeBlockBlockSchema,
   JsonConditionalBlockSchema,
   JsonDividerBlockSchema,
@@ -53,6 +54,7 @@ export const BLOCK_SCHEMA_MAP = {
   image: JsonImageBlockSchema,
   video: JsonVideoBlockSchema,
   callout: JsonCalloutBlockSchema,
+  challenge: JsonChallengeBlockSchema,
   interactive: JsonInteractiveBlockSchema,
   multistep: JsonMultistepBlockSchema,
   guided: JsonGuidedBlockSchema,
@@ -86,25 +88,13 @@ export const BLOCK_SCHEMA_MAP = {
  * — the CLI flow simply hasn't been built. Note its children are restricted to
  * `PresentationalBlockSchema`, which `add-block --parent` does not enforce.
  *
- * `challenge` has no CLI flow for `hintLevels`: it is `z.array(z.object(...))`,
- * which the schema-options bridge reports as `unsupported` (`array of object`,
- * schema-options.ts:119) and drops. Progressive hints are the block's whole
- * point, so `add-block challenge` would silently produce a hintless challenge.
- * An `add-hint` sibling command is the prerequisite for registering it. Every
- * other field projects fine, in both `standard` and `coda` modes.
- *
  * The completeness test asserts that this set, unioned with the keys of
  * `BLOCK_SCHEMA_MAP`, exactly matches `VALID_BLOCK_TYPES` — which is derived
  * from `KNOWN_FIELDS`, itself total over `JsonBlock['type']`. Adding a member
  * to the block union therefore forces a deliberate decision here: register it
  * for CLI authoring or document why it's excluded.
  */
-export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set([
-  'grot-guide',
-  'snippet-ref',
-  'collapsible',
-  'challenge',
-]);
+export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set(['grot-guide', 'snippet-ref', 'collapsible']);
 
 /**
  * Block-type discriminator strings the CLI knows how to create. Sourced
@@ -121,7 +111,7 @@ export type BlockType = keyof typeof BLOCK_SCHEMA_MAP;
 export const BLOCK_TYPES: readonly BlockType[] = Object.keys(BLOCK_SCHEMA_MAP) as BlockType[];
 
 /**
- * Container block types — those that hold child blocks, steps, or choices.
+ * Container block types — those that hold child blocks, steps, choices, or hints.
  * The CLI requires `--id` for these so subsequent `--parent <id>` commands
  * can target them. Leaf blocks fall back to auto-assigned `<type>-<n>` IDs.
  *
@@ -136,6 +126,7 @@ export const CONTAINER_BLOCK_TYPES: ReadonlySet<BlockType> = new Set([
   'multistep',
   'guided',
   'quiz',
+  'challenge',
 ]);
 
 /**

@@ -12,6 +12,10 @@ export const isConditionalBlock = (block: JsonBlock): block is JsonConditionalBl
 export const isInteractiveBlock = (block: JsonBlock): block is JsonInteractiveBlock => block.type === 'interactive';
 export const isMultistepBlock = (block: JsonBlock): block is JsonMultistepBlock => block.type === 'multistep';
 export const isGuidedBlock = (block: JsonBlock): block is JsonGuidedBlock => block.type === 'guided';
+export const isMergeableBlock = (
+  block: JsonBlock | undefined
+): block is JsonInteractiveBlock | JsonMultistepBlock | JsonGuidedBlock =>
+  !!block && (isInteractiveBlock(block) || isMultistepBlock(block) || isGuidedBlock(block));
 
 export const generateBlockId = (): string => `block-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 

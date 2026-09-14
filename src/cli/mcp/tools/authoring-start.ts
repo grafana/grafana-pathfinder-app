@@ -44,7 +44,7 @@ const CONTAINER_TYPES_TEXT = BLOCK_TYPES.filter((type) => CONTAINER_BLOCK_TYPES.
 const AUTHORING_CONTEXT = {
   version: CURRENT_SCHEMA_VERSION,
   product:
-    'Grafana Pathfinder is a Grafana plugin that runs interactive, contextual guides as a sidebar in Grafana. A guide is a tree of "blocks" — markdown, interactive UI actions, sections, conditionals, multistep, quizzes — stored as JSON.',
+    'Grafana Pathfinder is a Grafana plugin that runs interactive, contextual guides as a sidebar in Grafana. A guide is a tree of "blocks" — markdown, interactive UI actions, sections, conditionals, multistep, quizzes, and challenges — stored as JSON.',
   // Routing reaffirmation surface. The same constants seed the server-level
   // `instructions` string in `lib/server-instructions.ts`, so an agent that
   // reached this tool via the initialize hint sees consistent vocabulary,
@@ -55,7 +55,7 @@ const AUTHORING_CONTEXT = {
   domains: [...PATHFINDER_DOMAINS],
   workflow: [
     '1. Call pathfinder_help({ command: "create" }), then pathfinder_create_package with those parameters in `opts`. The response carries BOTH a sessionToken (use this for subsequent calls) AND a seed artifact (ignore unless you are running in stateless fallback mode).',
-    '2. Build the block tree with pathfinder_manage_block, operation "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice" (CLI command names). Every operation is scoped to ONE block, addressed by id. All adds append under the parent, so author in display order. Steps and choices are not individually editable or removable; cascade-remove their parent block and rebuild it instead. Pass {sessionToken}; each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact.',
+    '2. Build the block tree with pathfinder_manage_block, operation "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice" | "add-hint" (CLI command names). Every operation is scoped to ONE block, addressed by id. All adds append under the parent, so author in display order. Steps, choices, and hints are not individually editable or removable; cascade-remove their parent block and rebuild it instead. Pass {sessionToken}; each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact.',
     '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_read_session with operation "list-blocks" | "get-block" | "get-manifest" and {sessionToken}; get-block also takes top-level blockId. Cheap; use freely instead of re-reading the full artifact.',
     '4. Set guide-level metadata with pathfinder_manage_guide, operation "set-manifest" — description, category, language, targeting, and anything else describing the package as a whole. This is a different tool from pathfinder_manage_block on purpose: guide metadata is not a block operation, and this is usually the last authoring step before validate.',
     '5. When you need the full artifact body in your context (rare — e.g. for a wholesale review before finalize), call pathfinder_inspect with {sessionToken, opts:{}}. This is the explicit "pull the artifact" escape hatch.',
@@ -129,7 +129,7 @@ const AUTHORING_CONTEXT = {
     'If the target lives in a virtualized list, paginated table, or dashboard row below the fold, use a `guided` block with `lazyRender: true` on the step — a plain `interactive` will fail because `exists-reftarget` waits but cannot scroll.',
   ],
   discovery: [
-    "pathfinder_help — the parameter interface for any CLI-backed tool's `opts`; read it per `interfaceContract.parameters`. For pathfinder_manage_block and pathfinder_manage_guide, pass `command` equal to that call's `operation`. Remember the addressing parameters help returns (`parent` for add-step / add-choice).",
+    "pathfinder_help — the parameter interface for any CLI-backed tool's `opts`; read it per `interfaceContract.parameters`. For pathfinder_manage_block and pathfinder_manage_guide, pass `command` equal to that call's `operation`. Remember the addressing parameters help returns (`parent` for add-step / add-choice / add-hint).",
     'pathfinder_read_session — MCP-native explicit schema. Given a sessionToken and operation list-blocks | get-block | get-manifest (plus blockId for get-block), returns a cheap facet of the session artifact. Use freely.',
     'pathfinder_inspect — escape hatch. Given a sessionToken (or artifact) plus help-derived `opts`, returns the full artifact plus a tree summary.',
     'pathfinder_read_repository — MCP-native explicit schema. Given operation list-packages | get-package | get-manifest plus its documented top-level filters/id, discovers or inspects published CDN packages. Sibling of pathfinder_read_session for published (not session) content.',

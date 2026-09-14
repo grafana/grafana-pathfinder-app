@@ -678,7 +678,7 @@ export const JsonTerminalConnectBlockSchema = z.object({
  * @coupling Type: JsonChallengeHint
  */
 export const JsonChallengeHintSchema = z.object({
-  text: z.string().min(1, 'Hint text is required'),
+  text: z.string().min(1, 'Hint text is required').describe('Markdown hint text revealed to the learner'),
 });
 
 /**

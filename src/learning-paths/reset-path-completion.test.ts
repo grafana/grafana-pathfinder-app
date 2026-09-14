@@ -40,6 +40,7 @@ jest.mock('../lib/analytics', () => ({
 import { __resetRecorderForTests, onCompletionRecorded, type CompletionFact } from '../completion-records';
 import { markMilestoneDone } from '../docs-retrieval';
 import {
+  guideCompletionMarkStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
   journeyCompletionStorage,
@@ -128,7 +129,10 @@ describe('resetPath — App Platform path (no url)', () => {
 
     __resetRecorderForTests();
     const facts: CompletionFact[] = [];
-    const unsubscribe = onCompletionRecorded((fact) => facts.push(fact));
+    const unsubscribe = onCompletionRecorded((fact) => {
+      facts.push(fact);
+      return true;
+    });
 
     await markMilestoneDone(PATH_KEY, GUIDES[0]!, GUIDES, {
       packageManifest: { id: PATH_ID, repository: 'app-platform' },
@@ -223,6 +227,19 @@ describe('resetPath — App Platform path (no url)', () => {
     expect(pathMemberContentKeys({ id: longId })).toEqual([]);
   });
 
+  it('clears every member guide completion mark and spares unrelated content', async () => {
+    for (const key of [...MEMBER_KEYS, SENTINEL_KEY]) {
+      await guideCompletionMarkStorage.set(key, true);
+    }
+
+    await renderAndResetPath();
+
+    for (const key of MEMBER_KEYS) {
+      await expect(guideCompletionMarkStorage.get(key)).resolves.toBeNull();
+    }
+    await expect(guideCompletionMarkStorage.get(SENTINEL_KEY)).resolves.toBe(true);
+  });
+
   it('clears interactive progress recorded against the path cover itself', async () => {
     for (const pathKey of [PATH_KEY, BUNDLED_PATH_KEY]) {
       await interactiveStepStorage.setCompleted(pathKey, 'cover-section', new Set(['step-1', 'step-2']));
@@ -278,5 +295,18 @@ describe('resetPath — URL-based journey path', () => {
     expect(MILESTONE_URLS.filter((url) => url in interactives)).toEqual([]);
     expect(journeys[OTHER_JOURNEY_KEY]).toBe(100);
     expect(interactives[OTHER_JOURNEY_KEY]).toBe(100);
+  });
+
+  it('clears a milestone mark recovered by prefix, even with no interactive progress to find it by', async () => {
+    for (const url of [...MILESTONE_URLS, OTHER_JOURNEY_KEY]) {
+      await guideCompletionMarkStorage.set(url, true);
+    }
+
+    await renderAndResetPath(URL_PATH_ID);
+
+    for (const url of MILESTONE_URLS) {
+      await expect(guideCompletionMarkStorage.get(url)).resolves.toBeNull();
+    }
+    await expect(guideCompletionMarkStorage.get(OTHER_JOURNEY_KEY)).resolves.toBe(true);
   });
 });

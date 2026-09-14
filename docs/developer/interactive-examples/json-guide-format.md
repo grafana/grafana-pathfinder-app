@@ -1009,6 +1009,7 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
 | `requirements` | string[] | ❌       | Conditions that must be met for this step                              |
 | `objectives`   | string[] | ❌       | Conditions that auto-complete this step when already satisfied         |
 | `skippable`    | boolean  | ❌       | Allow skipping                                                         |
+| `hint`         | string   | ❌       | Hint shown when step cannot be completed                               |
 
 #### Terminal Block
 
@@ -1028,6 +1029,7 @@ A shell command shown with copy-to-clipboard and an "Execute" button that runs t
 | `command`      | string   | ✅       | The shell command                                           |
 | `requirements` | string[] | ❌       | Conditions that must be met (commonly `is-terminal-active`) |
 | `skippable`    | boolean  | ❌       | Allow skipping                                              |
+| `hint`         | string   | ❌       | Hint shown when step cannot be completed                    |
 
 Terminal blocks only render in the docs panel when the administrator has enabled the Coda terminal integration.
 

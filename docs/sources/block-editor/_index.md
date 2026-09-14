@@ -105,7 +105,7 @@ Keep adding blocks until your guide tells a complete story. The canvas shows eac
 
 ![Block editor with a few blocks added](/media/docs/pathfinder/block-editor-with-blocks.png)
 
-You can drag blocks by their handle to reorder them, or use **Select blocks** to pick several in one go (useful for merging sequential steps into a single multistep block).
+You can drag blocks by their handle to reorder them, or use **Select blocks** to choose any root or nested block. The selection toolbar can delete one or more blocks in a single confirmed, undoable change; when at least two mergeable steps are selected, it also offers multistep or guided grouping.
 
 ### 6. Save and publish
 

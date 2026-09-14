@@ -29,9 +29,10 @@ import {
   interactiveStepStorage,
   interactiveCompletionStorage,
   milestoneCompletionStorage,
+  guideCompletionMarkStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
-import { discardQueuedCompletionWrites } from '../../completion-records';
+import { discardQueuedCompletionWrites, invalidateAllEmittedCompletions } from '../../completion-records';
 import type { EarnedBadge } from '../../types';
 
 import { getBadgeProgress } from './badge-utils';
@@ -352,6 +353,10 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       // This prevents guides from instantly re-completing when reopened
       await interactiveStepStorage.clearAll();
       await interactiveCompletionStorage.clearAll();
+      await guideCompletionMarkStorage.clearAllWithPrefix();
+      // Lifts the write-side dedupe guard for every guide, so any guide
+      // re-completed after this reset emits a fresh durable record.
+      invalidateAllEmittedCompletions();
       // Drop every open guide's in-memory completion snapshot too — without
       // this, currently mounted `useStepCompletion` subscribers would still
       // render the prior state until the user closed and reopened the tab.

@@ -38,7 +38,7 @@ const mockUseIsAlignmentPaused = jest.requireMock('../global-state/alignment-pen
 
 // Mock interactive-engine to control NavigationManager (lazy-imported) and useInteractiveElements
 const mockExpandParentNavigationSection = jest.fn().mockResolvedValue(true);
-const mockFixLocationRequirement = jest.fn().mockResolvedValue(undefined);
+const mockFixLocationRequirement = jest.fn().mockResolvedValue(true);
 const mockFixNavigationRequirementsOnNavManager = jest.fn().mockResolvedValue(undefined);
 const mockFixNavigationRequirementsFromHook = jest.fn().mockResolvedValue(undefined);
 const mockCheckRequirementsFromData = jest
@@ -278,6 +278,35 @@ describe('useStepChecker fix dispatch (regression)', () => {
     expect(mockFixLocationRequirement).toHaveBeenCalledWith('/explore');
     expect(mockExpandParentNavigationSection).not.toHaveBeenCalled();
     expect(mockFixNavigationRequirementsOnNavManager).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a refused location fix while preserving the retry affordance', async () => {
+    mockFixLocationRequirement.mockResolvedValueOnce(false);
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'on-page:/admin/users',
+      error: [
+        failedRequirement({
+          requirement: 'on-page:/admin/users',
+          canFix: true,
+          fixType: 'location',
+          targetHref: '/admin/users',
+        }),
+      ],
+    });
+
+    const { result } = await renderStepChecker({ requirements: 'on-page:/admin/users' });
+
+    await act(async () => {
+      await result.current.checkStep();
+    });
+    await act(async () => {
+      await result.current.fixRequirement?.();
+    });
+
+    expect(result.current.error).toBe('Location requirement target is not allowed');
+    expect(result.current.canFixRequirement).toBe(true);
+    expect(result.current.fixType).toBe('location');
   });
 
   it('dispatches expand-options-group by clicking collapsed Options group toggles in the DOM', async () => {

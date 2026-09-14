@@ -311,7 +311,7 @@ export async function runPlaywrightPreflightChecks(
 /**
  * Format pre-flight results for console output.
  */
-export function formatPreflightResults(result: PreFlightResult, verbose: boolean = false): string {
+export function formatPreflightResults(result: PreFlightResult, verbose = false): string {
   const lines: string[] = [];
 
   if (verbose) {

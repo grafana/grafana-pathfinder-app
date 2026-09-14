@@ -168,6 +168,39 @@ describe('mutation tools — session-mode dispatch', () => {
       });
     });
 
+    it('pathfinder_manage_block — add-hint: appends to a challenge and returns an ack', async () => {
+      await seedSession(h.store, TOKEN);
+      const challenge = await h.call('pathfinder_manage_block', {
+        operation: 'add-block',
+        sessionToken: TOKEN,
+        opts: {
+          type: 'challenge',
+          id: 'repair-dashboard',
+          mode: 'standard',
+          title: 'Repair the dashboard',
+          brief: 'Find and fix the broken dashboard.',
+          successCriteria: 'is-admin',
+        },
+      });
+      expect(challenge.status).toBe('ok');
+      expect(challenge.generation).toBe(2);
+
+      const hinted = await h.call('pathfinder_manage_block', {
+        operation: 'add-hint',
+        sessionToken: TOKEN,
+        opts: { parent: 'repair-dashboard', text: 'Check the dashboard variables.' },
+      });
+      expect(hinted.status).toBe('ok');
+      expect(hinted.generation).toBe(3);
+      expect(hinted.artifact).toBeUndefined();
+
+      const loaded = await h.store.load(TOKEN);
+      const block = (loaded?.artifact.content.blocks as Array<{ id: string; hintLevels?: unknown[] }>).find(
+        (entry) => entry.id === 'repair-dashboard'
+      );
+      expect(block?.hintLevels).toEqual([{ text: 'Check the dashboard variables.' }]);
+    });
+
     it('pathfinder_manage_block — edit-block + remove-block: full mutation arc through the session', async () => {
       await seedSession(h.store, TOKEN);
       // Add

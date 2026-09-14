@@ -182,14 +182,13 @@ When the `changelog` skill is invoked from `release-prep`, override its Phase 3 
 
    To cut the release, run:
 
-     git push origin main
      git tag -a v<version> -m "Release v<version>"
      git push origin v<version>
 
    The `release.yml` workflow triggers on `v*` tag push and creates the GitHub release.
    ```
 
-   Order matters: push the commit first so the tag points at an upstream-known SHA, then tag, then push the tag. Confirm this order with the user if they're unfamiliar.
+   The release-prep commit must already be merged before tagging, so the tag points at an upstream-known SHA. Then push the tag. Confirm this order with the user if they're unfamiliar.
 
 ## Reuses
 
@@ -272,9 +271,8 @@ Reply with the version to proceed.
 
 Ready to release v2.11.0.
 
-To cut the release, run:
+To cut the release after the release-prep PR is merged, run:
 
-  git push origin main
   git tag -a v2.11.0 -m "Release v2.11.0"
   git push origin v2.11.0
 

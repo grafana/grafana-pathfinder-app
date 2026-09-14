@@ -46,7 +46,15 @@ import { StorageEvents } from './event-names';
 import { getLearningJourneyBaseUrl } from './learning-journey-url';
 import { logger } from './logging';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
-import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from './storage-keys';
+import { collectKeysByPrefix } from './storage/key-utils';
+import { listProgressEntries, progressSectionKey, sweepDiscardedProgressRecords } from './storage/progress-keys';
+import {
+  HYBRID_TIMESTAMP_SUFFIX,
+  PROGRESS_SECTION_PREFIXES,
+  StorageKeys,
+  buildVersionedContentStorageKey,
+  parseVersionedStorageKey,
+} from './storage-keys';
 
 // ============================================================================
 // LEARNING PROGRESS SCHEMA (for defense-in-depth validation)
@@ -100,39 +108,11 @@ const DEFAULT_GUIDE_RESPONSES: GuideResponses = {};
 
 export { StorageKeys, type StorageKeyName, type StorageKeyValue } from './storage-keys';
 
-// Timestamp suffix used by the OLD storage format (separate companion keys).
-// Kept for migration detection and cleanup only — new writes use envelope format.
-const TIMESTAMP_SUFFIX = '__timestamp';
-
 /**
  * Gets the timestamp key for a given storage key (old format, used during migration)
  */
 function getTimestampKey(key: string): string {
-  return `${key}${TIMESTAMP_SUFFIX}`;
-}
-
-function getContentProgressV2MarkerKey(contentKey: string): string {
-  return buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, contentKey);
-}
-
-function usesVersionedProgressStorage(contentKey: string): boolean {
-  try {
-    return localStorage.getItem(getContentProgressV2MarkerKey(contentKey)) !== null;
-  } catch {
-    return false;
-  }
-}
-
-function buildProgressSectionStorageKey(prefix: string, contentKey: string, sectionId: string): string {
-  return usesVersionedProgressStorage(contentKey)
-    ? buildVersionedSectionStorageKey(prefix, contentKey, sectionId)
-    : `${prefix}${contentKey}-${sectionId}`;
-}
-
-function buildProgressContentStoragePrefix(prefix: string, contentKey: string): string {
-  return usesVersionedProgressStorage(contentKey)
-    ? `${buildVersionedContentStorageKey(prefix, contentKey)}:`
-    : `${prefix}${contentKey}-`;
+  return `${key}${HYBRID_TIMESTAMP_SUFFIX}`;
 }
 
 // ============================================================================
@@ -494,6 +474,30 @@ export function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserSto
 }
 
 /**
+ * Module-level guard so the one-off discard of progress records left in the
+ * superseded key shape runs once per page lifecycle rather than on every
+ * `useUserStorage()` mount.
+ */
+let hasSweptDiscardedProgress = false;
+
+/**
+ * Discards progress records in the superseded key shape, once per page load.
+ *
+ * Housekeeping, not a migration: nothing reads that shape, so when this runs
+ * relative to anything else does not matter.
+ */
+function sweepDiscardedProgressOnce(): void {
+  if (hasSweptDiscardedProgress) {
+    return;
+  }
+  hasSweptDiscardedProgress = true;
+  const removed = sweepDiscardedProgressRecords();
+  if (removed > 0) {
+    logger.info('Discarded progress records left in the superseded key shape', { removed });
+  }
+}
+
+/**
  * Module-level guard: ensures syncFromGrafanaStorage runs at most once per page lifecycle.
  * Multiple `useUserStorage()` mounts (React Strict Mode, component remounts) would
  * otherwise trigger 3-6 syncs per page load, each generating 10-20 API calls.
@@ -501,11 +505,13 @@ export function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserSto
 let hasSynced = false;
 
 /**
- * Test-only reset of the module-level `hasSynced` flag so suites can
- * exercise the once-per-lifecycle sync contract deterministically.
+ * Test-only reset of the module-level once-per-lifecycle flags (Grafana sync
+ * and the discard sweep) so suites can exercise those contracts
+ * deterministically.
  */
 export function __resetSyncedForTests(): void {
   hasSynced = false;
+  hasSweptDiscardedProgress = false;
 }
 
 /**
@@ -706,6 +712,8 @@ export function useUserStorage(): UserStorage {
   useEffect(() => {
     let storage: UserStorage;
 
+    sweepDiscardedProgressOnce();
+
     try {
       // Check if Grafana storage is actually available and functional
       if (grafanaStorage && typeof grafanaStorage.getItem === 'function') {
@@ -844,6 +852,23 @@ export const milestoneCompletionStorage = {
     return completed.has(milestoneSlug);
   },
 
+  /**
+   * Synchronous read, for the journey progress rollup (`getJourneyProgress`
+   * is called synchronously from several render paths). Mirrors
+   * `guideCompletionMarkStorage.isMarked`: the hybrid storage writes through
+   * to localStorage before it queues the Grafana write, so the value is
+   * already there.
+   */
+  getCompletedSync(journeyBaseUrl: string, milestoneUrls: string[] = []): Set<string> {
+    try {
+      const raw = localStorage.getItem(StorageKeys.MILESTONE_COMPLETION);
+      const data = raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
+      return getStoredMilestoneSlugs(data, journeyBaseUrl, milestoneUrls);
+    } catch {
+      return new Set();
+    }
+  },
+
   async clear(journeyBaseUrl: string): Promise<void> {
     try {
       const storage = createUserStorage();
@@ -966,11 +991,37 @@ export const tabStorage = {
   },
 };
 
+function parseStepIds(raw: string): unknown[] | null {
+  try {
+    const ids = JSON.parse(raw);
+    return Array.isArray(ids) ? ids : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Cache for countAllCompleted to avoid O(n) localStorage scan on every step completion.
- * Invalidated by setCompleted, clear, and clearAllForContent operations.
+ * Cache for the completed-step id scan, so neither `countAllCompleted` nor
+ * `listAllCompleted` costs an O(n) localStorage sweep per call. The count is
+ * the list's length, so one cache serves both and they cannot disagree.
+ *
+ * Load-bearing for the render path, not just for write throughput: the
+ * completion percentage's evidence bridge reads the list, and that read sits
+ * on the Mark complete footer's `useSyncExternalStore` snapshot, which React
+ * calls on every render.
+ *
+ * Invalidated by setCompleted, clear, clearAllForContent, clearAll, and the
+ * cross-tab listener's `invalidateCountCache`.
  */
-const completedCountCache = new Map<string, number>();
+const completedIdsCache = new Map<string, readonly string[]>();
+
+/** The same cache for acknowledged sections — the evidence bridge's other sweep. */
+const acknowledgedIdsCache = new Map<string, readonly string[]>();
+
+function invalidateProgressScanCaches(contentKey: string): void {
+  completedIdsCache.delete(contentKey);
+  acknowledgedIdsCache.delete(contentKey);
+}
 
 /**
  * Interactive step completion storage operations
@@ -979,14 +1030,14 @@ export const interactiveStepStorage = {
   /**
    * Drop the cached completion count for a content key without touching
    * localStorage. Used by the cross-tab `storage` listener in
-   * `completion-store.ts` so the next `countAllCompleted` / `getGuideProgress`
-   * call re-scans from authoritative storage rather than returning a
-   * stale per-tab snapshot.
+   * `completion-store.ts` so the next `countAllCompleted` call re-scans
+   * from authoritative storage rather than returning a stale per-tab
+   * snapshot.
    *
    * Idempotent on unknown keys; safe to call from any tab.
    */
   invalidateCountCache(contentKey: string): void {
-    completedCountCache.delete(contentKey);
+    invalidateProgressScanCaches(contentKey);
   },
 
   /**
@@ -995,7 +1046,7 @@ export const interactiveStepStorage = {
   async getCompleted(contentKey: string, sectionId: string): Promise<Set<string>> {
     try {
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
+      const key = progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
       const ids = await storage.getItem<string[]>(key);
       return new Set(ids || []);
     } catch {
@@ -1008,10 +1059,10 @@ export const interactiveStepStorage = {
    */
   async setCompleted(contentKey: string, sectionId: string, completedIds: Set<string>): Promise<void> {
     try {
-      // Invalidate count cache before write so next countAllCompleted() re-scans
-      completedCountCache.delete(contentKey);
+      // Invalidate before the write so the next scan re-reads storage
+      completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
+      const key = progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
       await storage.setItem(key, Array.from(completedIds));
     } catch (error) {
       logger.warn('Failed to save completed steps', { error });
@@ -1023,10 +1074,9 @@ export const interactiveStepStorage = {
    */
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
-      completedCountCache.delete(contentKey);
+      completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
-      await storage.removeItem(key);
+      await storage.removeItem(progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId));
     } catch (error) {
       logger.warn('Failed to clear completed steps', { error });
     }
@@ -1037,67 +1087,44 @@ export const interactiveStepStorage = {
    */
   async hasProgress(contentKey: string): Promise<boolean> {
     try {
-      const prefix = buildProgressContentStoragePrefix(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey);
-      // Check localStorage directly for keys matching the prefix
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(prefix)) {
-          const value = localStorage.getItem(key);
-          if (value) {
-            try {
-              const ids = JSON.parse(value);
-              if (Array.isArray(ids) && ids.length > 0) {
-                return true;
-              }
-            } catch {
-              // Invalid JSON, skip
-            }
-          }
-        }
-      }
-      return false;
+      return listProgressEntries(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey).some(
+        ({ raw }) => (parseStepIds(raw)?.length ?? 0) > 0
+      );
     } catch {
       return false;
     }
   },
 
   /**
-   * Clears all logical section progress for one content key.
-   *
-   * Legacy section keys are intentionally left in place because their
-   * `${contentKey}-${sectionId}` suffix is ambiguous when content keys
-   * share a prefix. The per-content v2 marker makes subsequent reads ignore
-   * those legacy entries and use collision-safe length-prefixed keys.
+   * Clears every section record for one content key, across all four
+   * namespaces. Rejects rather than resolving if any record survives.
    */
   async clearAllForContent(contentKey: string): Promise<void> {
+    invalidateProgressScanCaches(contentKey);
+    const storage = createUserStorage();
+
+    const keysFor = (): string[] =>
+      PROGRESS_SECTION_PREFIXES.flatMap((prefix) =>
+        listProgressEntries(prefix, contentKey).map(({ sectionId }) =>
+          progressSectionKey(prefix, contentKey, sectionId)
+        )
+      );
+
     try {
-      completedCountCache.delete(contentKey);
-      const storage = createUserStorage();
-
-      const stepsPrefix = `${buildVersionedContentStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey)}:`;
-      const collapsePrefix = `${buildVersionedContentStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey)}:`;
-      const ackPrefix = `${buildVersionedContentStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey)}:`;
-      const donePrefix = `${buildVersionedContentStorageKey(StorageKeys.SECTION_DONE_PREFIX, contentKey)}:`;
-
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (
-          key &&
-          !key.endsWith(TIMESTAMP_SUFFIX) &&
-          (key.startsWith(stepsPrefix) ||
-            key.startsWith(collapsePrefix) ||
-            key.startsWith(ackPrefix) ||
-            key.startsWith(donePrefix))
-        ) {
-          keysToRemove.push(key);
-        }
-      }
-
-      await Promise.all(keysToRemove.map((key) => storage.removeItem(key)));
-      await storage.setItem(getContentProgressV2MarkerKey(contentKey), true);
+      await Promise.all(keysFor().map((key) => storage.removeItem(key)));
     } catch (error) {
-      logger.warn('Failed to clear all progress for content', { error });
+      logger.warn('Failed to clear progress for content', { error });
+    }
+
+    // A reset must not look like it worked when it did not. The removal path
+    // swallows its own failures — `createLocalStorage.removeItem` logs and
+    // returns — so a removal that did not take is invisible here. Re-reading is
+    // what lets the reader be told the guide is clear only once it is, and it
+    // holds however a record came to survive: the check is on what is left, not
+    // on why.
+    const remaining = keysFor();
+    if (remaining.length > 0) {
+      throw new Error(`Progress reset left ${remaining.length} record(s) in place`);
     }
   },
 
@@ -1113,11 +1140,12 @@ export const interactiveStepStorage = {
   /**
    * Clear ALL interactive step and section collapse data across every content key.
    * Used by the "Reset progress" action to ensure guides don't instantly re-complete.
-   * Also fully invalidates the in-memory completedCountCache.
+   * Also fully invalidates the in-memory progress-scan caches.
    */
   async clearAll(): Promise<void> {
     try {
-      completedCountCache.clear();
+      completedIdsCache.clear();
+      acknowledgedIdsCache.clear();
       const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
       const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
       const ackPrefix = StorageKeys.SECTION_ACKNOWLEDGED_PREFIX;
@@ -1143,38 +1171,42 @@ export const interactiveStepStorage = {
   },
 
   countAllCompleted(contentKey: string): number {
-    const cached = completedCountCache.get(contentKey);
+    return interactiveStepStorage.listAllCompleted(contentKey).length;
+  },
+
+  /**
+   * Synchronously list every completed step id across every section for a
+   * content key — the numerator `completion-store.ts`'s evidence bridge
+   * feeds into `guideProgress`, and the source of `countAllCompleted`'s
+   * count, so the two can never disagree.
+   *
+   * The #842 all-passive ack-marker is filtered out so it doesn't inflate the
+   * document completion numerator: the marker is persisted to satisfy the
+   * reducer's "ack requires completion" invariant but is not a real step and
+   * is not counted in getTotalDocumentSteps().
+   */
+  listAllCompleted(contentKey: string): readonly string[] {
+    const cached = completedIdsCache.get(contentKey);
     if (cached !== undefined) {
       return cached;
     }
 
     try {
-      const prefix = buildProgressContentStoragePrefix(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey);
-      let total = 0;
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(prefix)) {
-          const value = localStorage.getItem(key);
-          if (value) {
-            try {
-              const ids = JSON.parse(value);
-              if (Array.isArray(ids)) {
-                // Filter out the #842 all-passive ack-marker so it doesn't inflate
-                // the document completion numerator. The marker is persisted to
-                // satisfy the reducer's "ack requires completion" invariant but is
-                // not a real step and is not counted in getTotalDocumentSteps().
-                total += ids.filter((id) => typeof id !== 'string' || !id.endsWith('::ack-marker')).length;
-              }
-            } catch {
-              // Invalid JSON, skip
+      const ids: string[] = [];
+      for (const { raw } of listProgressEntries(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey)) {
+        const stepIds = parseStepIds(raw);
+        if (stepIds) {
+          for (const id of stepIds) {
+            if (typeof id === 'string' && !id.endsWith('::ack-marker')) {
+              ids.push(id);
             }
           }
         }
       }
-      completedCountCache.set(contentKey, total);
-      return total;
+      completedIdsCache.set(contentKey, ids);
+      return ids;
     } catch {
-      return 0;
+      return [];
     }
   },
 };
@@ -1189,7 +1221,7 @@ export const sectionCollapseStorage = {
   async get(contentKey: string, sectionId: string): Promise<boolean> {
     try {
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId);
+      const key = progressSectionKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId);
       const isCollapsed = await storage.getItem<boolean>(key);
       return isCollapsed ?? false; // Default to expanded (false)
     } catch {
@@ -1203,7 +1235,7 @@ export const sectionCollapseStorage = {
   async set(contentKey: string, sectionId: string, isCollapsed: boolean): Promise<void> {
     try {
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId);
+      const key = progressSectionKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId);
       await storage.setItem(key, isCollapsed);
     } catch (error) {
       logger.warn('Failed to save section collapse state', { error });
@@ -1216,8 +1248,7 @@ export const sectionCollapseStorage = {
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId);
-      await storage.removeItem(key);
+      await storage.removeItem(progressSectionKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId));
     } catch (error) {
       logger.warn('Failed to clear section collapse state', { error });
     }
@@ -1252,7 +1283,7 @@ export const sectionAcknowledgementStorage = {
   async get(contentKey: string, sectionId: string): Promise<true | null> {
     try {
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
+      const key = progressSectionKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
       const acknowledged = await storage.getItem<boolean>(key);
       return acknowledged === true ? true : null;
     } catch {
@@ -1268,8 +1299,9 @@ export const sectionAcknowledgementStorage = {
    */
   async set(contentKey: string, sectionId: string, isAcknowledged: true): Promise<void> {
     try {
+      acknowledgedIdsCache.delete(contentKey);
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
+      const key = progressSectionKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
       await storage.setItem(key, isAcknowledged);
     } catch (error) {
       logger.warn('Failed to save section acknowledgement state', { error });
@@ -1284,9 +1316,9 @@ export const sectionAcknowledgementStorage = {
    */
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
+      acknowledgedIdsCache.delete(contentKey);
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
-      await storage.removeItem(key);
+      await storage.removeItem(progressSectionKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId));
     } catch (error) {
       logger.warn('Failed to clear section acknowledgement state', { error });
     }
@@ -1299,22 +1331,43 @@ export const sectionAcknowledgementStorage = {
    * without an async read.
    */
   countAllAcknowledged(contentKey: string): number {
+    return sectionAcknowledgementStorage.listAllAcknowledged(contentKey).length;
+  },
+
+  /**
+   * Synchronously list every acknowledged section id for a content key — the
+   * `mark-section-complete` evidence `completion-store.ts`'s evidence bridge
+   * feeds into `guideProgress`, and the source of `countAllAcknowledged`'s
+   * count. Cached per content key like the step scan, because the same
+   * evidence bridge is read from a render-path snapshot.
+   */
+  listAllAcknowledged(contentKey: string): readonly string[] {
+    const cached = acknowledgedIdsCache.get(contentKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     try {
-      const prefix = buildProgressContentStoragePrefix(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey);
-      let count = 0;
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(prefix)) {
-          const value = localStorage.getItem(key);
-          if (value === 'true') {
-            count++;
-          }
+      const sectionIds: string[] = [];
+      for (const { sectionId, raw } of listProgressEntries(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey)) {
+        if (raw === 'true') {
+          sectionIds.push(sectionId);
         }
       }
-      return count;
+      acknowledgedIdsCache.set(contentKey, sectionIds);
+      return sectionIds;
     } catch {
-      return 0;
+      return [];
     }
+  },
+
+  /**
+   * Drop the cached acknowledgement scan for a content key without touching
+   * localStorage — the cross-tab counterpart to
+   * `interactiveStepStorage.invalidateCountCache`.
+   */
+  invalidateAcknowledgementCache(contentKey: string): void {
+    acknowledgedIdsCache.delete(contentKey);
   },
 };
 
@@ -1339,7 +1392,7 @@ export const sectionDoneStorage = {
   async get(contentKey: string, sectionId: string): Promise<true | null> {
     try {
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId);
+      const key = progressSectionKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId);
       const done = await storage.getItem<boolean>(key);
       return done === true ? true : null;
     } catch {
@@ -1350,7 +1403,7 @@ export const sectionDoneStorage = {
   async set(contentKey: string, sectionId: string, isDone: true): Promise<void> {
     try {
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId);
+      const key = progressSectionKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId);
       await storage.setItem(key, isDone);
     } catch (error) {
       logger.warn('Failed to save section done state', { error });
@@ -1360,10 +1413,168 @@ export const sectionDoneStorage = {
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
       const storage = createUserStorage();
-      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId);
-      await storage.removeItem(key);
+      await storage.removeItem(progressSectionKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId));
     } catch (error) {
       logger.warn('Failed to clear section done state', { error });
+    }
+  },
+};
+
+/**
+ * Guide-level completion mark storage.
+ *
+ * Persists the `mark-guide-complete` evidence produced by the "Mark
+ * complete" control at the foot of every guide and milestone. Keyed by
+ * content key alone: the mark evidences the whole guide, so unlike
+ * `sectionAcknowledgementStorage` there is no section to qualify it with.
+ *
+ * Two-state — `true` or absent (`null`) — for the same reason that
+ * namespace is: reset paths call `.clear()` rather than writing a `false`
+ * sentinel, so absence is the only "not marked" representation.
+ */
+function guideCompletionMarkKey(contentKey: string): string {
+  return buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, contentKey);
+}
+
+export const guideCompletionMarkStorage = {
+  /** `true` when the guide carries the mark; otherwise `null`. */
+  async get(contentKey: string): Promise<true | null> {
+    try {
+      const storage = createUserStorage();
+      const marked = await storage.getItem<boolean>(guideCompletionMarkKey(contentKey));
+      return marked === true ? true : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Synchronous read, for the completion store's percentage derivation which
+   * runs during render. Mirrors
+   * `sectionAcknowledgementStorage.countAllAcknowledged`: the hybrid storage
+   * writes through to localStorage before it queues the Grafana write, so the
+   * value is already there.
+   */
+  isMarked(contentKey: string): boolean {
+    try {
+      return localStorage.getItem(guideCompletionMarkKey(contentKey)) === 'true';
+    } catch {
+      return false;
+    }
+  },
+
+  /** Only `true` is accepted; use `.clear()` to remove an entry. */
+  async set(contentKey: string, isMarked: true): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.setItem(guideCompletionMarkKey(contentKey), isMarked);
+    } catch (error) {
+      logger.warn('Failed to save guide completion mark', { error });
+    }
+  },
+
+  async clear(contentKey: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(guideCompletionMarkKey(contentKey));
+    } catch (error) {
+      logger.warn('Failed to clear guide completion mark', { error });
+    }
+  },
+
+  async clearMany(contentKeys: string[]): Promise<void> {
+    await Promise.all(contentKeys.map((contentKey) => guideCompletionMarkStorage.clear(contentKey)));
+  },
+
+  /**
+   * Clear every mark whose content key starts with `contentKeyPrefix`, or all
+   * of them when it is omitted. Marks are keyed by content key alone and
+   * milestone keys are recorded nowhere, so the bulk reset paths recover them
+   * by prefix exactly as the path reset recovers step keys.
+   */
+  async clearAllWithPrefix(contentKeyPrefix = ''): Promise<void> {
+    try {
+      const contentKeys: string[] = [];
+      for (const key of collectKeysByPrefix(localStorage, StorageKeys.GUIDE_COMPLETION_MARK_PREFIX)) {
+        const parsed = parseVersionedStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, key);
+        if (parsed && parsed.sectionId === '' && parsed.contentKey.startsWith(contentKeyPrefix)) {
+          contentKeys.push(parsed.contentKey);
+        }
+      }
+      await guideCompletionMarkStorage.clearMany(contentKeys);
+    } catch (error) {
+      logger.warn('Failed to clear guide completion marks', { error });
+    }
+  },
+};
+
+/**
+ * Durable half of `completion-records/completion-recorder.ts`'s exactly-once
+ * guard. Keyed by the recorder's own `kind:guideSource:guideId` dedupe
+ * string — not a content key — via the same versioned-key builder, so the
+ * guard survives a page reload rather than resetting with the module's
+ * in-memory `Set`. A reset invalidates the specific keys for the guide being
+ * reset (`completion-records`'s `invalidateEmittedCompletion`), which is what
+ * lets a re-marked guide emit a fresh record.
+ *
+ * Deliberately `createLocalStorage()`, never `createUserStorage()` —
+ * surviving a reload is the whole contract, not surviving a device change.
+ * The guard is read synchronously via raw `localStorage` (`isEmitted`
+ * below), so a remote-synced copy could never be consulted anyway: every
+ * write through the hybrid backend would be a PATCH nothing ever reads back
+ * (owd-emitted-guard-remote-tombstones), and its `removeItem` writes an
+ * empty-value tombstone rather than deleting, which a bulk reset would
+ * otherwise fan out into dozens of PATCHes for guard keys that never held a
+ * value. `createLocalStorage()`'s `removeItem` is a plain
+ * `localStorage.removeItem` — an actual delete, no tombstone.
+ */
+function completionEmittedKey(dedupeKey: string): string {
+  return buildVersionedContentStorageKey(StorageKeys.COMPLETION_EMITTED_PREFIX, dedupeKey);
+}
+
+export const completionEmittedStorage = {
+  /** Synchronous read — the recorder's dedupe check runs outside React render, but must stay non-blocking. */
+  isEmitted(dedupeKey: string): boolean {
+    try {
+      return localStorage.getItem(completionEmittedKey(dedupeKey)) === 'true';
+    } catch {
+      return false;
+    }
+  },
+
+  async markEmitted(dedupeKey: string): Promise<void> {
+    try {
+      const storage = createLocalStorage();
+      await storage.setItem(completionEmittedKey(dedupeKey), true);
+    } catch (error) {
+      logger.warn('Failed to persist completion dedupe key', { error });
+    }
+  },
+
+  async clear(dedupeKey: string): Promise<void> {
+    // isEmitted is a synchronous, unconditional check, so skip the write
+    // entirely when there is nothing to clear — a reset over a set of
+    // members it does not know completed any of would otherwise still issue
+    // one localStorage removeItem per combination that never occurred.
+    if (!completionEmittedStorage.isEmitted(dedupeKey)) {
+      return;
+    }
+    try {
+      localStorage.removeItem(completionEmittedKey(dedupeKey));
+    } catch (error) {
+      logger.warn('Failed to clear completion dedupe key', { error });
+    }
+  },
+
+  async clearAll(): Promise<void> {
+    try {
+      // A plain localStorage-backed key: an actual delete, no tombstone
+      // companion to sweep afterwards.
+      for (const key of collectKeysByPrefix(localStorage, StorageKeys.COMPLETION_EMITTED_PREFIX)) {
+        localStorage.removeItem(key);
+      }
+    } catch (error) {
+      logger.warn('Failed to clear completion dedupe keys', { error });
     }
   },
 };

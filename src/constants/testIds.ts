@@ -302,6 +302,7 @@ export const testIds = {
     recordStopButton: 'block-editor-record-stop',
     mergeMultistepButton: 'block-editor-merge-multistep',
     mergeGuidedButton: 'block-editor-merge-guided',
+    bulkDeleteButton: 'block-editor-bulk-delete',
     clearSelectionButton: 'block-editor-clear-selection',
     toggleSelectionButton: 'block-editor-toggle-selection',
     loadTemplateButton: 'block-editor-load-template',
@@ -451,6 +452,13 @@ export const testIds = {
     tileTitle: (index: number) => `kiosk-mode-tile-title-${index}`,
     loading: 'kiosk-mode-loading',
     warning: 'kiosk-mode-warning',
+  },
+
+  markComplete: {
+    footer: 'mark-complete-footer',
+    button: 'mark-complete-button',
+    percentage: 'mark-complete-percentage',
+    completed: 'mark-complete-completed',
   },
 
   guideReader: {
