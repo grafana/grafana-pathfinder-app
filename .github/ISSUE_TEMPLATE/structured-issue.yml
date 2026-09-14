@@ -1,6 +1,5 @@
 name: Structured issue
 description: Describe a bug, improvement, or internal task with clear scope and acceptance criteria
-title: '<Short summary>'
 body:
   - type: markdown
     attributes:
@@ -83,10 +82,12 @@ body:
     id: severity
     attributes:
       label: Severity
-      description: How severe is this issue?
+      description: How severe is this issue? Leave this blank for internal work where severity does not apply.
       options:
         - Low - Minor inconvenience
         - Medium - Affects functionality but a workaround exists
         - High - Blocks the workflow
+        - Critical - Breaks a core flow with no workaround
+        - Unknown - Not enough information yet
     validations:
-      required: true
+      required: false
