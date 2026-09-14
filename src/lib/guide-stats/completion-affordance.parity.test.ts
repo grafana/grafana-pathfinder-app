@@ -91,6 +91,10 @@ describe('completion affordance parity with the runtime step registry', () => {
     );
   });
 
+  it.each(['constructor', 'toString', '__proto__'])('does not treat inherited key %s as a predicate', (type) => {
+    expect(emitsCompletionEvidence({ type })).toBe(false);
+  });
+
   it('never treats a block type with no parse key as completable', () => {
     for (const type of NON_COMPLETABLE_INTERACTIVE_BLOCK_TYPES) {
       expect(emitsCompletionEvidence({ type })).toBe(false);

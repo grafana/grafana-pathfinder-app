@@ -95,7 +95,7 @@ export function emitsCompletionEvidence(block: CompletionAffordanceBlock): boole
     return true;
   }
 
-  if (!Object.hasOwn(CONDITIONAL_COMPLETION_AFFORDANCE_PREDICATES, block.type)) {
+  if (!Object.prototype.hasOwnProperty.call(CONDITIONAL_COMPLETION_AFFORDANCE_PREDICATES, block.type)) {
     return false;
   }
 
