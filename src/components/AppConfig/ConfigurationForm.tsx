@@ -136,7 +136,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     editDraft({ tutorialUrl: event.target.value.trim() });
   };
 
-  const onChangeDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
+  const onChangeDevMode = async () => {
     if (!currentUserId) {
       alert('Cannot determine current user. Please refresh the page and try again.');
       return;

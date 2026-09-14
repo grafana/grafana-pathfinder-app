@@ -147,7 +147,6 @@ export function InteractiveSection({
   title,
   description,
   children,
-  isSequence = false,
   requirements,
   objectives,
   hints,
