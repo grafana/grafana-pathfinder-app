@@ -114,7 +114,7 @@ describe('Coda terminal section, forced by the feature flag', () => {
     await settle();
 
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
-    expect(savedChanges().enableCodaTerminal).toBe(false);
+    expect(savedChanges()).not.toHaveProperty('enableCodaTerminal');
   });
 
   it('leaves an explicit opt-in alone rather than flattening it', async () => {
@@ -125,7 +125,7 @@ describe('Coda terminal section, forced by the feature flag', () => {
     await settle();
 
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
-    expect(savedChanges().enableCodaTerminal).toBe(true);
+    expect(savedChanges()).not.toHaveProperty('enableCodaTerminal');
   });
 });
 

@@ -49,10 +49,7 @@ export interface InteractiveFeaturesProps extends PluginConfigPageProps<AppPlugi
 
 const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   const styles = useStyles2(getStyles);
-  // Seeded through `useSeededDraft`, which reads the store this tab writes to.
-  // `enabled`/`pinned` stay unread here: echoing a stale snapshot of them is what
-  // unpinned the plugin (`aa1c2efd`). saveTenantSettings reads them at write time.
-  const { draft: state, edit, config: resolvedConfig } = useSeededDraft(buildStateFromConfig);
+  const { draft: state, changes, edit, config: resolvedConfig } = useSeededDraft(buildStateFromConfig);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
@@ -129,7 +126,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   const onSubmit = async (event: React.SubmitEvent) => {
     event.preventDefault();
 
-    // Check for validation errors
     if (Object.keys(validationErrors).length > 0) {
       return;
     }
@@ -137,24 +133,11 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setIsSaving(true);
 
     try {
-      // Only the fields this tab owns. saveTenantSettings reads current settings
-      // authoritatively first, so the `plugin.meta` snapshot this form was seeded
-      // from can no longer write stale values back over another tab's save.
       await saveTenantSettings({
         pluginId: plugin.meta.id,
-        changes: {
-          enableAutoDetection: state.enableAutoDetection,
-          requirementsCheckTimeout: state.requirementsCheckTimeout,
-          guidedStepTimeout: state.guidedStepTimeout,
-          disableAutoCollapse: state.disableAutoCollapse,
-          enableKioskMode: state.enableKioskMode,
-          kioskRulesUrl: state.kioskRulesUrl,
-          enableAiAutoHeal: state.enableAiAutoHeal,
-          enableTwoTabController: state.enableTwoTabController,
-        },
+        changes,
       });
 
-      // Reload page to apply new settings
       setTimeout(() => {
         try {
           window.location.reload();
@@ -255,8 +238,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               Fine-tune timing parameters for interactive guide behavior
             </Text>
           </div>
-
-          {/* Requirements Check Timeout */}
           <Field
             label="Requirements check timeout"
             description="Maximum time to wait for requirement validation. Range: 1000-10000ms"
@@ -276,8 +257,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               max={10000}
             />
           </Field>
-
-          {/* Guided Step Timeout */}
           <Field
             label="Guided step timeout"
             description="Maximum time to wait for user to complete guided steps. Range: 5000-120000ms (5s-2min)"

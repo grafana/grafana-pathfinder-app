@@ -8,7 +8,7 @@
  */
 
 import { renderHook, waitFor } from '@testing-library/react';
-import { usePluginContext } from '@grafana/data';
+import { usePathfinderPluginConfig } from '../../hooks';
 import { getFeatureFlagValue } from '../../utils/openfeature';
 import { resetCodaTerminalFlagCache } from '../../utils/coda-enablement';
 import { isAppPluginEnabled, isAppPluginInstalled } from '@grafana/runtime';
@@ -36,10 +36,7 @@ jest.mock('../../utils/openfeature', () => ({
   getFeatureFlagValue: jest.fn(),
 }));
 
-jest.mock('@grafana/data', () => ({
-  ...jest.requireActual('@grafana/data'),
-  usePluginContext: jest.fn(),
-}));
+jest.mock('../../hooks', () => ({ usePathfinderPluginConfig: jest.fn() }));
 
 jest.mock('./coda-api', () => ({
   ...jest.requireActual('./coda-api'),
@@ -48,7 +45,9 @@ jest.mock('./coda-api', () => ({
 
 const mockedIsAppPluginEnabled = isAppPluginEnabled as jest.MockedFunction<typeof isAppPluginEnabled>;
 const mockedIsAppPluginInstalled = isAppPluginInstalled as jest.MockedFunction<typeof isAppPluginInstalled>;
-const mockedUsePluginContext = usePluginContext as jest.MockedFunction<typeof usePluginContext>;
+const mockedUsePathfinderPluginConfig = usePathfinderPluginConfig as jest.MockedFunction<
+  typeof usePathfinderPluginConfig
+>;
 const mockedGetCapabilities = getCapabilities as jest.MockedFunction<typeof getCapabilities>;
 const mockedGetFeatureFlagValue = getFeatureFlagValue as jest.MockedFunction<typeof getFeatureFlagValue>;
 
@@ -237,8 +236,9 @@ describe('isCodaPluginAvailable', () => {
 
 describe('useCodaTerminalGate', () => {
   function withTerminalSetting(enableCodaTerminal: boolean) {
-    mockedUsePluginContext.mockReturnValue({
-      meta: { jsonData: { enableCodaTerminal, devMode: true, devModeOptIn: true } },
+    mockedUsePathfinderPluginConfig.mockReturnValue({
+      config: { enableCodaTerminal, devMode: true, devModeOptIn: true },
+      isResolved: true,
     } as never);
   }
 
@@ -260,6 +260,17 @@ describe('useCodaTerminalGate', () => {
     expect(mockedIsAppPluginEnabled).not.toHaveBeenCalled();
   });
 
+  it('responds when the resolved tenant setting disables the terminal', async () => {
+    withTerminalSetting(true);
+    const { result, rerender } = renderHook(() => useCodaTerminalGate());
+    await waitFor(() => expect(result.current).toBe('configured'));
+
+    withTerminalSetting(false);
+    rerender();
+
+    expect(result.current).toBe('disabled');
+  });
+
   it('reports configured when both operator gates pass', async () => {
     withTerminalSetting(true);
     const { result } = renderHook(() => useCodaTerminalGate());
@@ -271,8 +282,9 @@ describe('useCodaTerminalGate', () => {
   // TerminalPanel, so blocks offered controls that dead-ended on
   // "the sandbox terminal is not available here".
   it('reports disabled for the setting alone, matching the terminal panel it shares a gate with', () => {
-    mockedUsePluginContext.mockReturnValue({
-      meta: { jsonData: { enableCodaTerminal: true, devMode: false, devModeOptIn: false } },
+    mockedUsePathfinderPluginConfig.mockReturnValue({
+      config: { enableCodaTerminal: true, devMode: false, devModeOptIn: false },
+      isResolved: true,
     } as never);
     const { result } = renderHook(() => useCodaTerminalGate());
 
@@ -282,7 +294,7 @@ describe('useCodaTerminalGate', () => {
 
   it('reports configured from the feature flag with no dev mode and no setting', async () => {
     mockedGetFeatureFlagValue.mockReturnValue(true);
-    mockedUsePluginContext.mockReturnValue({ meta: { jsonData: {} } } as never);
+    mockedUsePathfinderPluginConfig.mockReturnValue({ config: {}, isResolved: true } as never);
     const { result } = renderHook(() => useCodaTerminalGate());
 
     await waitFor(() => expect(result.current).toBe('configured'));

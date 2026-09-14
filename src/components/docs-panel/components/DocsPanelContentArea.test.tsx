@@ -75,6 +75,8 @@ function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPane
       openEditorTab: jest.fn(),
       confirmAlignment: jest.fn(),
       dismissAlignment: jest.fn(),
+      canNavigateNext: jest.fn(() => false),
+      navigateToNextMilestone: jest.fn(),
     } as any,
     contextPanel: { Component: () => null } as any,
     isFullScreenActive: false,

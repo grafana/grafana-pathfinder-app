@@ -77,6 +77,7 @@ beforeEach(() => {
 
 describe('publishPathfinderPluginConfig', () => {
   it('writes the defaulted config to the readiness global', () => {
+    mockOptIn.mockReturnValue(true);
     const published = publishPathfinderPluginConfig({ devMode: true, devModeOptIn: true });
 
     expect(readGlobal()).toBe(published);
@@ -199,13 +200,13 @@ describe('settings resolution across stores', () => {
     expect(published.devModeOptIn).toBe(true);
   });
 
-  it('does not re-resolve an opt-in the caller already supplied', () => {
+  it('uses the current user choice even when tenant data contains an opt-in', () => {
     mockOptIn.mockReturnValue(true);
 
     const published = publishPathfinderPluginConfig({ devMode: true, devModeOptIn: false });
 
-    expect(published.devModeOptIn).toBe(false);
-    expect(mockOptIn).not.toHaveBeenCalled();
+    expect(published.devModeOptIn).toBe(true);
+    expect(mockOptIn).toHaveBeenCalled();
   });
 
   it('carries a pre-migration devModeUserIds opt-in forward, once', () => {
@@ -278,6 +279,41 @@ describe('usePathfinderPluginConfig', () => {
     const { result } = renderHook(() => usePathfinderPluginConfig());
 
     expect(result.current.isResolved).toBe(true);
+  });
+
+  it('keeps state stable when equal plugin metadata is recreated on each render', async () => {
+    mockFetchPluginSettings.mockRejectedValue(new Error('403'));
+    const stableContext = { meta: { jsonData: { enableLiveSessions: true, devModeUserIds: [7] } } };
+    let contextReads = 0;
+    mockPluginContext.mockImplementation(() => {
+      contextReads += 1;
+      // Bound a regressed render loop so this test fails instead of hanging Jest.
+      return contextReads > 10
+        ? stableContext
+        : { meta: { jsonData: { enableLiveSessions: true, devModeUserIds: [7] } } };
+    });
+
+    const { result, rerender } = renderHook(() => usePathfinderPluginConfig());
+    const first = result.current;
+    await settleRefresh();
+    rerender();
+
+    expect(result.current).toBe(first);
+    expect(result.current.config.enableLiveSessions).toBe(true);
+    expect(contextReads).toBeLessThan(10);
+  });
+
+  it('updates resolution status when equal default values arrive from plugin metadata', async () => {
+    mockFetchPluginSettings.mockRejectedValue(new Error('403'));
+    const { result, rerender } = renderHook(() => usePathfinderPluginConfig());
+    await settleRefresh();
+    expect(result.current.isResolved).toBe(false);
+
+    mockPluginContext.mockReturnValue({ meta: { jsonData: {} } });
+    rerender();
+
+    expect(result.current.isResolved).toBe(true);
+    expect(result.current.config).toEqual(getConfigWithDefaults({}));
   });
 
   it('adopts a later publish via the config-updated event', async () => {

@@ -354,7 +354,6 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         const imageSrc = image.src;
         const imageAlt = image.alt || 'Image';
 
-        // Create image lightbox modal with theme awareness
         createImageLightbox(imageSrc, imageAlt, theme);
       }
 
@@ -636,7 +635,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
   }, [contentRef, theme, activeTab?.content, activeTab?.baseUrl, activeTab?.title, model]);
 }
 
-function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaTheme2) {
+// `_theme` is unread: the modal is still hard-coded to fixed colours.
+function createImageLightbox(imageSrc: string, imageAlt: string, _theme: GrafanaTheme2) {
   // Prevent multiple modals
   if (document.querySelector('.journey-image-modal')) {
     return;

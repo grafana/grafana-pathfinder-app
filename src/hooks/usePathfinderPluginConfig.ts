@@ -49,10 +49,6 @@ function configEquals(a: ResolvedPathfinderConfig, b: ResolvedPathfinderConfig):
  * every time and make a later opt-out impossible to keep.
  */
 function withPerUserSettings(jsonData: PathfinderPluginConfig): PathfinderPluginConfig {
-  if (jsonData.devModeOptIn !== undefined) {
-    return jsonData;
-  }
-
   const stored = resolveDevModeOptIn();
   if (stored !== undefined) {
     return { ...jsonData, devModeOptIn: stored };
@@ -129,7 +125,10 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
   const pluginContext = usePluginContext();
   const pluginMeta = pluginContext?.meta;
   const contextState = useMemo<PathfinderPluginConfigState | undefined>(
-    () => (pluginMeta ? { config: getConfigWithDefaults(pluginMeta.jsonData || {}), isResolved: true } : undefined),
+    () =>
+      pluginMeta
+        ? { config: getConfigWithDefaults(withPerUserSettings(pluginMeta.jsonData || {})), isResolved: true }
+        : undefined,
     [pluginMeta]
   );
 
@@ -143,7 +142,9 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
         return;
       }
       const next = resolveState(contextState);
-      setState((previous) => (previous.config === next.config ? previous : next));
+      setState((previous) =>
+        previous.isResolved === next.isResolved && configEquals(previous.config, next.config) ? previous : next
+      );
     };
 
     document.addEventListener(PATHFINDER_CONFIG_UPDATED_EVENT, sync);

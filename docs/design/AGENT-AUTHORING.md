@@ -456,35 +456,46 @@ Which fields become parameters is a fact about a `CommandSpec`'s own schema, not
 
 Zod v4 supports `.describe()` on any schema field. The bridge reads these descriptions and passes them to Commander as option descriptions. This makes the Zod schema file the single source of truth for both validation and CLI help text.
 
+<!-- Byte-exact copy of the schema. `src/validation/agent-authoring-docs.test.ts` fails if this drifts, so prettier must not reflow it. -->
+<!-- prettier-ignore -->
 ```typescript
-// In json-guide.schema.ts
-export const JsonInteractiveBlockSchema = z.object({
-  type: z.literal('interactive'),
-  action: JsonInteractiveActionSchema.describe('Action to perform on target element'),
-  reftarget: z
-    .string()
-    .optional()
-    .describe('CSS selector or data-testid for the target element (required for non-noop actions)'),
-  content: z.string().min(1).describe('Instructional text shown to user (markdown)'),
-  tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
-  requirements: z
-    .array(z.string())
-    .optional()
-    .describe('Prerequisite conditions (e.g., on-page:/dashboards, is-admin)'),
-  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
-  skippable: z.boolean().optional().describe('Allow user to skip this block'),
-  hint: z.string().optional().describe('Hint text shown if user is stuck'),
-  formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
-  validateInput: z.boolean().optional().describe('Strictly validate formfill input against targetvalue'),
-  showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
-  doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
-  completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
-  verify: z.string().optional().describe('CSS selector to check for verification after action'),
-  lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
-  scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
-  openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
-  ...AssistantPropsSchema.shape,
-});
+// src/types/json-guide.schema.ts
+export const JsonInteractiveBlockSchema = z
+  .object({
+    type: z.literal('interactive'),
+    id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+    action: JsonInteractiveActionSchema.describe('Action to perform on target element'),
+    // ...
+    tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
+    requirements: z
+      .array(RequirementTokenSchema)
+      .optional()
+      .describe('Prerequisite conditions, one condition per entry (e.g., on-page:/dashboards)'),
+    objectives: z.array(ObjectiveTokenSchema).optional().describe(objectivesDescription('block')),
+    skippable: z.boolean().optional().describe('Allow user to skip this block'),
+    hint: z.string().optional().describe('Hint text shown if user is stuck'),
+    formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
+    validateInput: z.boolean().optional().describe('Strictly validate formfill input against targetvalue'),
+    showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
+    doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
+    completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
+    verify: VerifyConditionSchema.optional().describe(
+      'Post-action verification condition, evaluated after the action runs; the step completes only once it is satisfied. Same condition vocabulary as `requirements` (e.g., on-page:/connections/datasources/edit) — not a CSS selector. One string, comma-separated for more than one condition.'
+    ),
+    lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
+    scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
+    openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
+    // Assistant customization props
+    ...AssistantPropsSchema.shape,
+    // Editor-only annotation (stripped on export)
+    ...AuthorAnnotatedSchema.shape,
+  })
+```
+
+The excerpt stops at the object literal; the `.refine()` chain that follows supplies the `Constraints:` block in `--help`, not option descriptions. `objectivesDescription` is a generator so the block, section and conditional-branch surfaces cannot drift apart — for a block it resolves to:
+
+```text
+Conditions that automatically complete this block, in the same vocabulary as `requirements`. Checked first, before eligibility and requirements, so a block whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a block that creates one). Prefer this over `skippable` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.
 ```
 
 Fields without `.describe()` fall back to a generic description derived from the field name and type (e.g., `"scrollContainer (string, optional)"`). Descriptions should be added incrementally — start with the most commonly used block types and expand over time.
@@ -646,7 +657,7 @@ Error: --parent "setup" not found in my-guide/
 
 ### Help output
 
-Help output is terse and structured for agent parsing. When an agent runs `--help` on a block type subcommand:
+Help output is terse and structured for agent parsing. The sketch below is abridged in both directions — the real output lists every option, and prints each `.describe()` string in full rather than the one-line summaries shown here. The schema is the authority on wording; this is the authority on shape.
 
 ```
 $ pathfinder-cli add-block interactive my-guide/ --help
@@ -665,13 +676,14 @@ Optional:
   --tooltip <string>                Tooltip shown on highlighted element
   --requirements <item> (repeatable)
                                     Prerequisite conditions (e.g., on-page:/dashboards)
-  --objectives <item> (repeatable)  Learning objectives this block addresses
+  --objectives <item> (repeatable)  Conditions that automatically complete this block (checked
+                                    before requirements)
   --skippable                       Allow user to skip this block
   --hint <string>                   Hint text shown if user is stuck
   --show-me                         Enable "Show me" button
   --do-it                           Enable "Do it" button
   --complete-early                  Allow completion before all steps done
-  --verify <string>                 CSS selector for post-action verification
+  --verify <string>                 Post-action verification condition
   --open-guide <string>             Guide ID to open when block completes
 
 Constraints:
@@ -683,7 +695,7 @@ Addressing:
   --id <string>                     ID for this block (required for container types)
 ```
 
-Note what is absent: no verbose paragraphs, no full schema dumps, no JSON examples. An agent gets exactly the flag names, types, descriptions, and constraints. This is the minimum viable context for correct usage.
+Note what is absent: no prose around the flags, no full schema dumps, no JSON examples. An agent gets exactly the flag names, types, descriptions, and constraints. This is the minimum viable context for correct usage.
 
 The help also includes a summary of valid values for common repeatable fields. For `--requirements`:
 
@@ -701,6 +713,8 @@ Common requirements:
 Since #1639, `pathfinder_help` no longer forwards `pathfinder-cli <command> [<subcommand>] --help --format json` verbatim. Every bound command's `CommandSpec` (`src/cli/contracts/spec.ts`) is the single authority for its input shape, and both entrypoints render it rather than one projecting the other: Commander renders it into flags for `--help --format json`, and `src/cli/mcp/lib/command-interface.ts` renders the same schema into the agent-facing interface `pathfinder_help` publishes (see [Pathfinder authoring MCP service — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)). This makes the schema, not either rendering, the public contract:
 
 - A field's name is its schema field name; its type, enum, requiredness, and description come straight from the Zod shape and its `.describe()` text — nothing is inferred from a flag string.
+- Parameters are published in three lists, and only two of them are named for requiredness. `addressing` is named for role and overlaps both: `add-block --type section`'s `id` is required and lands there, so `required` + `optional` is **not** the interface. `requiredParams` states every parameter the caller must supply regardless of bucket — for a group variant, the discriminator followed by that variant's `requiredByType` entry, which is also the list the preflight demands — and every parameter also carries its own `required` flag. `requiredByType` is that list without the discriminator, so it is the per-variant summary and not a substitute for the variant's own `requiredParams`. A consumer that reads only the two requiredness-named buckets builds a field list with a required parameter missing from it.
+- `requirements` / `conditions` accept a closed vocabulary that the schema cannot express (`RequirementTokenSchema` is a refined `z.string()`). A surface that publishes one of those parameters and has no way to print the vocabulary is given it: `pathfinder_help` attaches `requirementTokens`, and `pathfinder_get_schema` attaches `x-requirement-tokens`, both enumerated from `REQUIREMENT_TOKEN_CATALOGUE`. The command line is pointed at `pathfinder-cli requirements list` instead and gets no copy.
 - Binding is opt-in: `pathfinder_help` and `validateCommandArgs` only address commands an MCP tool has registered (`bindCommandInterface`); an unbound CLI command reports `UNKNOWN_COMMAND` rather than publishing flags no tool accepts.
 - A binding may withhold parameters the command declares (e.g. `add-block`'s `before`/`after`/`position`) as a narrowing of the agent procedure, not a fact about the command — the CLI still offers them. Withheld or unknown parameters sent in `opts` are rejected with `UNSUPPORTED_PARAMETER`, never silently dropped.
 - `validateCommandArgs` preflights an `opts` bag against the exact interface `pathfinder_help` publishes, so a missing required field, an unknown field, or a withheld field is reported before the runner is called, in the same vocabulary `pathfinder_help` uses.

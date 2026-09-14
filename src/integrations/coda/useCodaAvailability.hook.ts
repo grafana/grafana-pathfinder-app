@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePluginContext } from '@grafana/data';
+import { usePathfinderPluginConfig } from '../../hooks';
+import { useEffect, useRef, useState } from 'react';
 import { isAppPluginEnabled, isAppPluginInstalled } from '@grafana/runtime';
 import { isCodaTerminalEnabled } from '../../utils/coda-enablement';
 import { recordSandboxUnavailable, type SandboxUnavailableReason } from '../../lib/telemetry/facade';
@@ -142,11 +142,8 @@ export function useCodaPluginAvailable(shouldProbe: boolean): boolean {
 export type CodaTerminalGate = 'checking' | 'disabled' | 'plugin-missing' | 'configured';
 
 export function useCodaTerminalGate(): CodaTerminalGate {
-  const pluginContext = usePluginContext();
-  const enabled = useMemo(
-    () => isCodaTerminalEnabled(pluginContext?.meta?.jsonData || {}),
-    [pluginContext?.meta?.jsonData]
-  );
+  const { config: pluginConfig } = usePathfinderPluginConfig();
+  const enabled = isCodaTerminalEnabled(pluginConfig);
   const availability = useCodaPluginAvailability(enabled);
 
   if (!enabled) {

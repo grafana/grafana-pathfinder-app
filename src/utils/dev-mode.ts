@@ -124,7 +124,7 @@ export const isDevModeEnabledGlobal = (): boolean => {
     }
 
     return isDevModeEnabled(globalConfig);
-  } catch (e) {
+  } catch {
     return false;
   }
 };
@@ -164,7 +164,7 @@ export const isAssistantDevModeEnabledGlobal = (): boolean => {
     }
 
     return isAssistantDevModeEnabled(globalConfig);
-  } catch (e) {
+  } catch {
     return false;
   }
 };

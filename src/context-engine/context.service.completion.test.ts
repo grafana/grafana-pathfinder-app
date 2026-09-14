@@ -59,7 +59,7 @@ jest.mock('../lib/hash.util', () => ({
     hashedUserId: 'hashed-user',
     hashedEmail: 'hashed-email',
   }),
-  hashString: jest.fn((input: string) => Promise.resolve('a'.repeat(64))),
+  hashString: jest.fn((_input: string) => Promise.resolve('a'.repeat(64))),
 }));
 
 // Mock user storage modules

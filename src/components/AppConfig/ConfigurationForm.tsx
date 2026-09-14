@@ -65,18 +65,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const urlParams = new URLSearchParams(window.location.search);
   const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
-  // Seeded through `useSeededDraft`, which reads the store this tab writes to.
-  // `enabled`/`pinned` stay unread here: echoing a stale snapshot of them is what
-  // unpinned the plugin (`aa1c2efd`). saveTenantSettings reads them at write time.
-  const { draft: state, edit: editDraft, config: resolvedConfig } = useSeededDraft(buildStateFromConfig);
+  const { draft: state, changes, edit: editDraft, config: resolvedConfig } = useSeededDraft(buildStateFromConfig);
   const [isSaving, setIsSaving] = useState(false);
   const [portError, setPortError] = useState<string | undefined>(undefined);
 
-  // Both gates: the tenant flag, and this browser's own opt-in.
   const devModeEnabledForUser = isDevModeEnabled(resolvedConfig);
   const tenantDevModeEnabled = resolvedConfig.devMode;
 
-  // `state` stays untouched by the flag, so a save writes the stack's own value.
   const codaForcedByFlag = isCodaTerminalForcedByFlag();
   const codaTerminalShown = codaForcedByFlag || state.enableCodaTerminal;
   const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
@@ -85,10 +80,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const assistantDevModeEnabled = resolvedConfig.enableAssistantDevMode;
   const [assistantDevModeToggling, setAssistantDevModeToggling] = useState<boolean>(false);
 
-  // Show dev mode input if URL param is set OR if dev mode is already enabled for this user
   const showDevModeInput = hasDevParam || devModeEnabledForUser;
 
-  // Show advanced config fields only in dev mode (for Grafana team development)
   const showAdvancedConfig = devModeEnabledForUser || showDevModeInput;
 
   const isRecommenderUrlMissing = showAdvancedConfig && !state.recommenderServiceUrl;
@@ -102,26 +95,21 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     editDraft({ tutorialUrl: event.target.value.trim() });
   };
 
-  const onChangeDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
+  const onChangeDevMode = async () => {
     setDevModeToggling(true);
     try {
-      // Both gates must be true for anything to appear, so turning on lifts the
-      // tenant gate too. Turning off touches only this browser — revoking the
-      // stack-wide gate is the separate admin switch below.
       if (!devModeEnabledForUser && !tenantDevModeEnabled) {
         await saveTenantSettings({ pluginId: plugin.meta.id, changes: { devMode: true } });
       }
 
       await toggleDevMode(devModeEnabledForUser);
 
-      // Reload page to refresh plugin config and apply changes globally
       setTimeout(() => {
         window.location.reload();
       }, 500);
     } catch (error) {
       logger.error('Failed to toggle dev mode', { error });
 
-      // Show user-friendly error message
       const errorMessage = error instanceof Error ? error.message : 'Failed to toggle dev mode. Please try again.';
       alert(errorMessage);
 
@@ -129,7 +117,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     }
   };
 
-  // The instance-level veto: the switch above can only ever lift the gate.
   const onChangeTenantDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
     const enabled = event.target.checked;
     setTenantDevModeToggling(true);
@@ -162,7 +149,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         changes: { enableAssistantDevMode: newValue },
       });
 
-      // Reload page to refresh plugin config and apply changes globally
       setTimeout(() => {
         window.location.reload();
       }, 500);
@@ -203,8 +189,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     const resolved = isNaN(port) ? DEFAULT_PEERJS_PORT : port;
     const { min, max } = TENANT_SETTING_BOUNDS.peerjsPort;
 
-    // The kind 422s an out-of-range port, and a save carries the whole config —
-    // so an unvalidated port here fails every tab's save, not just this one's.
     setPortError(resolved < min || resolved > max ? `Must be between ${min} and ${max}` : undefined);
     editDraft({ peerjsPort: resolved });
   };
@@ -222,23 +206,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     setIsSaving(true);
 
     try {
-      // Only the fields this tab owns. saveTenantSettings reads the current
-      // settings authoritatively and preserves everything else, so this form
-      // cannot clobber another tab's values or the provisioned ones.
       await saveTenantSettings({
         pluginId: plugin.meta.id,
-        changes: {
-          recommenderServiceUrl: state.recommenderServiceUrl,
-          tutorialUrl: state.tutorialUrl,
-          interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
-          openPanelOnLaunch: state.openPanelOnLaunch,
-          enableLiveSessions: state.enableLiveSessions,
-          peerjsHost: state.peerjsHost,
-          peerjsPort: state.peerjsPort,
-          peerjsKey: state.peerjsKey,
-          peerjsSecure: state.peerjsSecure,
-          enableCodaTerminal: state.enableCodaTerminal,
-        },
+        changes,
       });
 
       setTimeout(() => {
@@ -257,10 +227,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   return (
     <form onSubmit={onSubmit} data-testid={testIds.appConfig.form}>
       <FieldSet label="Plugin configuration" className={s.marginTopXl}>
-        {/* Advanced configuration fields - only shown in dev mode */}
         {showAdvancedConfig && (
           <>
-            {/* Recommender Service URL */}
             <Field
               label="Recommender service URL"
               description="The URL of the service that provides documentation recommendations (Dev mode only)"
@@ -276,8 +244,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             </Field>
           </>
         )}
-
-        {/* Tutorial URL - available to all users */}
         <Field
           label="Auto-launch tutorial URL"
           description="Optional: URL of a learning path or documentation page to automatically open when the Interactive learning panel opens. Useful for demo scenarios. Can be set via environment variable GRAFANA_INTERACTIVE_LEARNING_TUTORIAL_URL"
@@ -292,8 +258,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             onChange={onChangeTutorialUrl}
           />
         </Field>
-
-        {/* Dev Mode - Per-User Setting (stored server-side in Grafana user preferences) */}
         {showDevModeInput && (
           <>
             <Field
@@ -331,8 +295,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 {tenantDevModeToggling && <span className={s.updateText}>Saving to server and reloading...</span>}
               </div>
             </Field>
-
-            {/* Assistant Dev Mode - Only show when main dev mode is enabled */}
             {devModeEnabledForUser && (
               <Field
                 label="Enable Assistant (Dev Mode)"
@@ -372,8 +334,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             )}
           </>
         )}
-
-        {/* Global Link Interception */}
         <FieldSet
           label={
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -415,8 +375,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             </Alert>
           )}
         </FieldSet>
-
-        {/* Open Panel on Launch */}
         <FieldSet
           label={
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -454,8 +412,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             </Alert>
           )}
         </FieldSet>
-
-        {/* Live sessions (collaborative learning) - Dev Mode Only */}
         {devModeEnabledForUser && (
           <FieldSet
             label={
@@ -493,8 +449,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                     recommended for production-critical workflows.
                   </Text>
                 </Alert>
-
-                {/* PeerJS Server Configuration */}
                 <div className={s.marginTop}>
                   <Text variant="h6">Signaling Server Settings</Text>
                   <div style={{ marginTop: '8px', marginBottom: '16px' }}>

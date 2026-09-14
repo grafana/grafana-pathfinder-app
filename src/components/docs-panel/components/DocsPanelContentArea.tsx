@@ -1,3 +1,4 @@
+import { usePathfinderPluginConfig } from '../../../hooks';
 /**
  * Content area for the docs panel — the 5+ branch switch that lives below
  * the tab bar.
@@ -18,8 +19,6 @@
 import React, { Suspense, lazy } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
-import { usePluginContext } from '@grafana/data';
-import { getConfigWithDefaults } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
@@ -118,8 +117,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
     restoreScrollPosition,
   } = props;
 
-  const pluginContext = usePluginContext();
-  const twoTabControllerEnabled = getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableTwoTabController;
+  const { config: pluginConfig } = usePathfinderPluginConfig();
+  const twoTabControllerEnabled = pluginConfig.enableTwoTabController;
 
   const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
 
@@ -429,6 +428,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                           metadata: stableContent.metadata,
                           guideTitle: activeTab?.title,
                         })
+                      }
+                      onContinueToNextMilestone={
+                        model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
                       }
                     />
                   </AlignmentPendingContext.Provider>

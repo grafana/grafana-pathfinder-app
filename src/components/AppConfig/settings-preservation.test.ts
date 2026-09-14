@@ -27,6 +27,7 @@ import { fetchPluginSettings, updatePluginSettings } from '../../utils/utils.plu
 import { saveTenantSettings } from './save-settings';
 
 jest.mock('../../utils/pathfinder-settings-api', () => ({
+  ...jest.requireActual('../../utils/pathfinder-settings-api'),
   fetchPathfinderSettingsSnapshot: jest.fn(),
   savePathfinderSettings: jest.fn(),
 }));
@@ -86,7 +87,7 @@ describe('saveTenantSettings — App Platform path', () => {
     // Read back from the resource, not from this form.
     expect(written.enableLiveSessions).toBe(true);
     // Defaulted, so a partial write cannot blank it.
-    expect(written.enableAutoDetection).toBe(true);
+    expect(written).not.toHaveProperty('enableAutoDetection');
   });
 
   it('hands the read snapshot to the writer so the save is a compare-and-swap', async () => {
@@ -247,16 +248,13 @@ describe('saveTenantSettings — a field this tab does not own', () => {
     expect(written.enableAiAutoHeal).toBe(false);
   });
 
-  it('still sends it to the settings resource, where an omission is not a gap', async () => {
-    // The opposite shape, and deliberately so: the kind defaults a field it is
-    // not sent, and its `enableAiAutoHeal` default disagrees with ours. Omitting
-    // the field there would hand the decision to a value in another repo.
+  it('does not materialize an unset field into the settings resource', async () => {
     mockSaveTenant.mockResolvedValue(true);
     mockFetchTenant.mockResolvedValue(tenantSnapshot({}));
 
     await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://changed.example.com' } });
 
-    expect(mockSaveTenant.mock.calls[0]![0].enableAiAutoHeal).toBe(DEFAULT_ENABLE_AI_AUTO_HEAL);
+    expect(mockSaveTenant.mock.calls[0]![0]).not.toHaveProperty('enableAiAutoHeal');
   });
 });
 

@@ -118,25 +118,30 @@ The plugin configuration interface that allows administrators to set up the docu
 - `./TermsAndConditions` - Terms acceptance component
 - `./InteractiveFeatures` - Feature flags component
 
-**Where settings are stored**:
+**Settings ownership**:
 
-Three stores own disjoint slices. See `src/constants.ts` for the authoritative
-shape and `src/utils/pathfinder-settings-api.ts` for the client.
+| Owner  | Values                                                                                                                          | Storage and writer                                                                                                                                                                                                            |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User   | Developer opt-in                                                                                                                | Browser-local key scoped by Grafana subpath, org ID and user ID; `lib/dev-mode-opt-in.ts`. It does not sync across devices.                                                                                                   |
+| Org    | Explicit overrides in `PathfinderTenantSettings`, including feature preferences, timeouts, content sources and terms acceptance | Sparse `PathfinderSettings` singleton named `default` in the stack namespace; viewer read, admin write through `saveTenantSettings`.                                                                                          |
+| System | Provisioned stack identity and credentials, runtime defaults, rollout flags                                                     | SSS owns plugin `stackId` and `secureJsonData.accessToken`; `getConfigWithDefaults` owns defaults; OpenFeature owns rollout decisions. Tenant writes never persist evaluated flags or default values from an untouched field. |
 
-| Slice                                                                           | Store                                                                                                                                    | Written by               |
-| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| Tenant settings (`PathfinderTenantSettings` — every field the config tabs edit) | `PathfinderSettings` App Platform resource, group `pathfinderbackend.ext.grafana.app`, one singleton named `default` per stack namespace | `saveTenantSettings`     |
-| This user's dev-mode opt-in (`devModeOptIn`)                                    | `localStorage`, key `StorageKeys.DEV_MODE_OPT_IN`                                                                                        | `lib/dev-mode-opt-in.ts` |
-| Provisioned fields (`stackId`, `secureJsonData.accessToken`)                    | plugin settings, written by Grafana Cloud stack-state-service                                                                            | provisioning only        |
+Plugin `jsonData` remains the tenant fallback for OSS, self-managed and local dev
+without the settings API. The fallback preserves unknown provisioning fields,
+`enabled`, and `pinned`; credentials are never submitted by a config form. The
+existing OBO bridge remains independent of this storage choice.
 
-Plugin `jsonData` also remains the **fallback** store for tenant settings
-wherever the App Platform group is not served — OSS, self-managed, and local dev.
-Availability is not knowable up front: the GAP aggregation toggle is shared with
-`InteractiveGuide`, so it can be on while `pathfindersettings` is not served — a
-stack running the plugin ahead of the backend. Both the read and the write treat
-an "unavailable" status as "not served here" and fall back; only 403 escalates,
-so a permission failure surfaces rather than silently landing in the other store.
-Which rung a read landed on is reported by `recordSettingsStoreResolved`.
+GET 404/405/501 permits fallback and a first save tries POST. Existing resources
+are updated only with the read `resourceVersion`; a 409 is surfaced. Read errors,
+503 outages, malformed snapshots and any failed update of an existing resource
+stop the save. They never cause a write to the legacy store.
+`recordSettingsStoreResolved` reports read outcomes.
+
+The backend schema leaves org fields optional and without defaults. Missing
+fields resolve from explicit legacy overrides, then runtime defaults. A save
+carries existing overrides plus edited fields, preserving unknown resource
+fields without freezing future system defaults. All runtime settings consumers
+use `usePathfinderPluginConfig`, including Coda, AI recovery and guide engines.
 
 **Why not `jsonData` for everything**: Grafana replaces `jsonData` wholesale on
 write and Cloud provisioning targets the same record, so the two writers
@@ -193,7 +198,7 @@ interface PathfinderPluginConfig extends Partial<PathfinderTenantSettings>, Part
 3. **Form Input**: Admin updates settings through form fields in selected tab
 4. **Validation**: Ensures required fields are populated and formats are correct
 5. **Terms Acceptance**: (Recommendations tab) Requires accepting terms to enable recommendations
-6. **Save**: The tab passes only the fields it owns to `saveTenantSettings`, which re-reads current settings authoritatively and writes the resolved result. The App Platform write carries that read's `resourceVersion` (so a concurrent admin save conflicts rather than losing) and layers over the read spec (so a field a newer backend added, `schemaVersion` included, is not dropped by an older client)
+6. **Save**: The tab passes only fields the admin edited to `saveTenantSettings`, which re-reads current settings authoritatively and writes the sparse overrides. The App Platform write carries that read's `resourceVersion` (so a concurrent admin save conflicts rather than losing) and layers over the read spec (so a field a newer backend added, `schemaVersion` included, is not dropped by an older client)
 7. **Reload**: Refreshes page to apply new configuration across plugin
 
 **Security Features**:
@@ -202,7 +207,7 @@ interface PathfinderPluginConfig extends Partial<PathfinderTenantSettings>, Part
 - **Least privilege**: Writing tenant settings requires the `pathfinder-backend:settings-editor` role, bound to admin. Reading is bound to viewer
 - **Ownership isolation**: `configToSpec` projects through `TENANT_SETTING_KEYS`, so per-user and provisioned fields cannot reach the tenant resource
 - **Dev Mode Protection**: two gates — the admin-controlled tenant `devMode` flag and the user's own opt-in. Both must be true. The **Dev mode** switch lifts the tenant gate as well as recording the opt-in; **Dev mode for this stack** is the separate admin veto that closes it for everyone
-- **Bounded writes**: `clampToKindBounds` holds numeric fields inside the ranges `kinds/pathfindersettings.cue` enforces. A save carries the whole resolved config, so one out-of-range legacy value would otherwise 422 every tab's save, not just the tab that owns the field
+- **Bounded writes**: `clampToKindBounds` holds numeric fields inside the ranges `kinds/pathfindersettings.cue` enforces. A save carries the stored overrides, so one out-of-range legacy value would otherwise 422 every tab's save, not just the tab that owns the field
 
 **Default Values**:
 
@@ -242,7 +247,7 @@ Updates the global configuration via window object which provides settings to:
 
 ### Feature Flag Integration
 
-- Interactive features configuration affects OpenFeature flags
+- Interactive features configuration stores org preferences; OpenFeature flags are evaluated separately
 - Feature flags control component visibility and behavior
 - Allows gradual rollout of new features
 - Supports A/B testing and experimentation

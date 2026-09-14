@@ -89,6 +89,12 @@
     "body": "",
     "title": ""
   },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "所有路徑已完成！",
     "allCompleteTooltip": "您已完成所有學習路徑——做得很好！",

@@ -70,16 +70,17 @@ test.describe.serial('Block Editor', () => {
 
   // Clear localStorage before each test to ensure isolation, then seed this
   // user's dev-mode opt-in — clearing state also clears the opt-in.
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(
-      ([key]) => {
-        window.localStorage.setItem(key, 'true');
-      },
-      [StorageKeys.DEV_MODE_OPT_IN]
-    );
+  test.beforeEach(async ({ page, request }) => {
+    const response = await request.get('/api/user');
+    expect(response.ok()).toBe(true);
+    const user = await response.json();
     await page.goto('/');
+    const appSubUrl = await page.evaluate(() => window.grafanaBootData.settings.appSubUrl || '');
+    const key = `${StorageKeys.DEV_MODE_OPT_IN}:${encodeURIComponent(appSubUrl)}:${user.orgId}:${user.id}`;
+    await page.addInitScript((storageKey) => window.localStorage.setItem(storageKey, 'true'), key);
     await clearBlockEditorState(page);
-    await page.evaluate(([key]) => window.localStorage.setItem(key, 'true'), [StorageKeys.DEV_MODE_OPT_IN]);
+    await page.evaluate((storageKey) => window.localStorage.setItem(storageKey, 'true'), key);
+    await page.reload();
   });
 
   test('should open block editor via editor tab', async ({ page }) => {

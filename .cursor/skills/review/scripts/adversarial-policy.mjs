@@ -55,7 +55,7 @@ export function decideVerification(observation, verdicts = [], provisionallyBloc
       return awaiting(lane, 'skeptic', 2);
     }
     if (seen === 1) {
-      return awaiting(lane, null, 0);
+      return awaiting(lane, 'skeptic', 1);
     }
     if (seen === 2) {
       if (refuted === 2) {

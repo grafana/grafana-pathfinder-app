@@ -106,33 +106,7 @@ export const ALLOWED_GRAFANA_DOCS_HOSTNAMES = ['grafana.com', 'docs.grafana.com'
 export const DEFAULT_DEV_MODE = false;
 export const DEFAULT_DEV_MODE_OPT_IN = false;
 
-// ============================================================================
-// CONFIGURATION SHAPE AND OWNERSHIP
-//
-// Three stores own disjoint slices of what used to be one plugin-jsonData blob:
-//
-//   1. PathfinderSettings (App Platform, tenant-scoped, admin-write) — every
-//      field in TENANT_SETTING_KEYS below. See utils/pathfinder-settings-api.ts.
-//   2. This browser's localStorage — `devModeOptIn`, via lib/dev-mode-opt-in.ts,
-//      which records why the hybrid user-storage layer was ruled out. Per-user
-//      state must never sit in a tenant-scoped store; the old `devModeUserIds`
-//      array was a per-user list kept in an org-wide blob for want of anywhere
-//      better.
-//   3. Plugin jsonData — provisioning only (`stackId`, and
-//      `secureJsonData.accessToken`), plus the legacy copy of slice 1 that is
-//      still read as a fallback wherever App Platform is unavailable (OSS,
-//      self-managed, local dev).
-//
-// Why the split: Grafana's plugin-settings write replaces jsonData wholesale,
-// and Cloud provisioning targets the same record, so a user-editable value kept
-// there is lost on the next instance restart.
-// ============================================================================
-
-/**
- * Tenant-owned settings — the `PathfinderSettings` App Platform kind. Field
- * names and defaults are in lockstep with kinds/pathfindersettings.cue in
- * grafana-pathfinder-backend.
- */
+// Org overrides are sparse in storage; defaults and rollout decisions remain system-owned.
 export interface PathfinderTenantSettings {
   recommenderServiceUrl: string;
   tutorialUrl: string;
@@ -175,7 +149,7 @@ export interface PathfinderTenantSettings {
 /**
  * Every tenant-owned key, in one place so the settings client and the jsonData
  * fallback cannot drift from `PathfinderTenantSettings`. The satisfies clause
- * makes a missing key a compile error.
+ * rejects keys outside the tenant slice.
  */
 export const TENANT_SETTING_KEYS = [
   'recommenderServiceUrl',
@@ -215,38 +189,19 @@ export const TENANT_SETTING_BOUNDS = {
   peerjsPort: { min: 1, max: 65535 },
 } as const satisfies Partial<Record<keyof PathfinderTenantSettings, { min: number; max: number }>>;
 
-/** Per-user settings, resolved from this browser's localStorage. */
 export interface PathfinderUserSettings {
-  /**
-   * Whether THIS user has opted into developer surfaces. Gated by the
-   * tenant-level `devMode`; both must be true. Replaces the old
-   * `devModeUserIds` array. Per-browser, not per-account — see
-   * lib/dev-mode-opt-in.ts.
-   */
   devModeOptIn: boolean;
 }
 
-/**
- * The resolved plugin configuration every consumer reads. Also the shape of the
- * legacy jsonData blob, which is why every field stays optional: a jsonData
- * record predating this split has none of them, and a stack with no
- * PathfinderSettings resource yet has none either.
- */
-export interface PathfinderPluginConfig extends Partial<PathfinderTenantSettings>, Partial<PathfinderUserSettings> {
-  /**
-   * Per-user dev-mode allow-list.
-   *
-   * @deprecated Superseded by `devModeOptIn` in per-user storage. Still read so
-   * a stack that has not yet written new-style settings keeps working; never
-   * written. Do not add new readers.
-   */
-  devModeUserIds?: number[];
-  /**
-   * Grafana Cloud stack identifier, provisioned into plugin jsonData by
-   * stack-state-service. Never written by this plugin — it is the field whose
-   * accidental erasure motivated moving settings out of jsonData.
-   */
+export interface PathfinderSystemSettings {
+  /** Provisioned by SSS; settings writes must preserve it. */
   stackId?: string;
+}
+
+export interface PathfinderPluginConfig
+  extends Partial<PathfinderTenantSettings>, Partial<PathfinderUserSettings>, PathfinderSystemSettings {
+  /** @deprecated Read only for the one-shot migration to user-scoped local storage. */
+  devModeUserIds?: number[];
 }
 
 /** Fully-resolved configuration: every tenant and per-user field present. */
