@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CodeBlockStep } from './code-block-step';
 
 const mockClearAndInsertCode = jest.fn();
@@ -27,6 +27,29 @@ describe('CodeBlockStep: currentCode resync with the code prop', () => {
     rerender(<CodeBlockStep code="query_range(node_cpu_seconds_total)" refTarget="#editor" />);
 
     expect(container.querySelector('code')).toHaveTextContent('query_range(node_cpu_seconds_total)');
+  });
+});
+
+describe('CodeBlockStep: hints', () => {
+  const UNSATISFIABLE_REQUIREMENT = 'on-page:/pathfinder-code-block-never-here';
+
+  it('explains an unmet requirement with the authored hint', async () => {
+    render(
+      <CodeBlockStep
+        code="query_range(up)"
+        refTarget="#editor"
+        requirements={UNSATISFIABLE_REQUIREMENT}
+        hints="Open the Explore query editor before inserting this query."
+      />
+    );
+
+    expect(await screen.findByText('Open the Explore query editor before inserting this query.')).toBeInTheDocument();
+  });
+
+  it('falls back to the generic requirement message when no hint is authored', async () => {
+    render(<CodeBlockStep code="query_range(up)" refTarget="#editor" requirements={UNSATISFIABLE_REQUIREMENT} />);
+
+    expect(await screen.findByText(/Navigate to the .* page first/)).toBeInTheDocument();
   });
 });
 
