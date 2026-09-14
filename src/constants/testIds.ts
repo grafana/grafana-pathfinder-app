@@ -302,6 +302,7 @@ export const testIds = {
     recordStopButton: 'block-editor-record-stop',
     mergeMultistepButton: 'block-editor-merge-multistep',
     mergeGuidedButton: 'block-editor-merge-guided',
+    bulkDeleteButton: 'block-editor-bulk-delete',
     clearSelectionButton: 'block-editor-clear-selection',
     toggleSelectionButton: 'block-editor-toggle-selection',
     loadTemplateButton: 'block-editor-load-template',
