@@ -130,4 +130,4 @@ Namespace every `npx` example under `pathfinder-cli@...` — for a hypothetical 
 
 ## Filing issues
 
-When filing an issue (including deferred review follow-ups), fill out the fields in `.github/ISSUE_TEMPLATE/structured-issue.yml`, especially User impact / flow change and Acceptance criteria, and apply appropriate type, area, and severity labels.
+When filing an issue (including deferred review follow-ups), fill out the fields in `.github/ISSUE_TEMPLATE/structured-issue.yml`, especially User impact / flow change and Acceptance criteria, and apply the `needs-review` label plus appropriate type, area, and severity labels.
