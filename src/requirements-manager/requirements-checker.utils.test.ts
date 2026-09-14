@@ -45,7 +45,6 @@ jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
 }));
 
-// Mock ContextService
 jest.mock('../lib/grafana-api', () => ({
   fetchPlugins: jest.fn(),
   fetchDashboardsByName: jest.fn(),
