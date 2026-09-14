@@ -33,6 +33,7 @@ import { markStepCompleted, resetStep, useStepCompletion } from '../../global-st
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
+import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -410,12 +411,54 @@ export const InteractiveStep = forwardRef<
     // ============================================================================
 
     // Resolve the target element for monitoring
-    const formTargetElement = useMemo(() => {
-      if (targetAction !== 'formfill' || !refTarget) {
-        return null;
+    const [formTargetElement, setFormTargetElement] = useState<HTMLElement | null>(null);
+
+    useEffect(() => {
+      if (
+        targetAction !== 'formfill' ||
+        !refTarget ||
+        validateInput !== true ||
+        !finalIsEnabled ||
+        isCompletedWithObjectives ||
+        disabled
+      ) {
+        setFormTargetElement(null);
+        return;
       }
-      return resolveTargetElement({ targetAction, refTarget, targetValue: currentTargetValue });
-    }, [targetAction, refTarget, currentTargetValue]);
+
+      const resolveFormTarget = () => {
+        const nextElement = resolveTargetElement({ targetAction, refTarget, targetValue: currentTargetValue });
+        setFormTargetElement((previousElement) => (previousElement === nextElement ? previousElement : nextElement));
+      };
+
+      resolveFormTarget();
+      let resolveTimer: ReturnType<typeof setTimeout> | null = null;
+      const scheduleResolve = () => {
+        if (resolveTimer !== null) {
+          return;
+        }
+        resolveTimer = setTimeout(() => {
+          resolveTimer = null;
+          resolveFormTarget();
+        }, 50);
+      };
+      const observer = new MutationObserver(scheduleResolve);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => {
+        observer.disconnect();
+        if (resolveTimer !== null) {
+          clearTimeout(resolveTimer);
+        }
+      };
+    }, [
+      targetAction,
+      refTarget,
+      currentTargetValue,
+      validateInput,
+      finalIsEnabled,
+      isCompletedWithObjectives,
+      disabled,
+    ]);
 
     // Handle form validation completion
     const handleFormValidationComplete = useCallback(() => {
@@ -504,6 +547,7 @@ export const InteractiveStep = forwardRef<
           targetValue: currentTargetValue,
           targetState,
           targetComment,
+          openGuide,
           buttonType: 'do',
           fullScreenFallbackLocation,
         });
@@ -574,6 +618,7 @@ export const InteractiveStep = forwardRef<
       currentTargetValue,
       targetState,
       targetComment,
+      openGuide,
       postVerify,
       verifyStepResult,
       executeInteractiveAction,
@@ -734,7 +779,17 @@ export const InteractiveStep = forwardRef<
           phase: 'show',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
+          action: {
+            ...toCrossTabInternalAction({
+              targetAction,
+              refTarget,
+              targetValue: currentTargetValue,
+              targetState,
+              targetComment,
+              openGuide,
+            }),
+            refTarget,
+          },
         });
         if (!doIt) {
           // Simple controller steps complete optimistically because no live acknowledgement is available.
@@ -762,6 +817,7 @@ export const InteractiveStep = forwardRef<
               targetValue: currentTargetValue,
               targetState,
               targetComment,
+              openGuide,
               buttonType: 'show',
               fullScreenFallbackLocation,
             });
@@ -796,6 +852,7 @@ export const InteractiveStep = forwardRef<
       currentTargetValue,
       targetState,
       targetComment,
+      openGuide,
       doIt,
       disabled,
       isShowRunning,
@@ -849,7 +906,17 @@ export const InteractiveStep = forwardRef<
           phase: 'do',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
+          action: {
+            ...toCrossTabInternalAction({
+              targetAction,
+              refTarget,
+              targetValue: currentTargetValue,
+              targetState,
+              targetComment,
+              openGuide,
+            }),
+            refTarget,
+          },
         });
         // Simple controller steps complete optimistically because no live acknowledgement is available.
         persistCompletion();
@@ -899,6 +966,7 @@ export const InteractiveStep = forwardRef<
       onComplete,
       stepId,
       targetComment,
+      openGuide,
       revalidate,
     ]);
 

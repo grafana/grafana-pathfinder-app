@@ -86,6 +86,85 @@ describe('InteractiveStep: showMeText label override', () => {
   });
 });
 
+describe('InteractiveStep: formfill validation', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  it('shows the form hint for a mismatch and becomes valid when the value matches', async () => {
+    const input = document.createElement('input');
+    input.name = 'validated-form';
+    document.body.appendChild(input);
+
+    render(
+      <InteractiveStep
+        stepId="validated-form-step"
+        targetAction="formfill"
+        refTarget="input[name='validated-form']"
+        targetValue="expected value"
+        formHint="Please enter the expected value"
+        validateInput
+      >
+        Enter the expected value
+      </InteractiveStep>
+    );
+
+    const step = screen.getByTestId(testIds.interactive.step('validated-form-step'));
+    fireEvent.input(input, { target: { value: 'wrong value' } });
+    await act(async () => jest.advanceTimersByTime(2000));
+    expect(step).toHaveAttribute('data-test-form-state', 'invalid');
+    expect(screen.getByTestId(testIds.interactive.formHintWarning('validated-form-step'))).toHaveTextContent(
+      'Please enter the expected value'
+    );
+
+    fireEvent.input(input, { target: { value: 'expected value' } });
+    await act(async () => jest.advanceTimersByTime(2000));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'completed'));
+    expect(screen.getByTestId(testIds.interactive.stepCompleted('validated-form-step'))).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.interactive.formHintWarning('validated-form-step'))).not.toBeInTheDocument();
+  });
+
+  it('validates a form target that appears after the step mounts', async () => {
+    render(
+      <InteractiveStep
+        stepId="late-form-step"
+        targetAction="formfill"
+        refTarget="input[name='late-validated-form']"
+        targetValue="expected value"
+        formHint="Please enter the expected value"
+        validateInput
+      >
+        Enter the expected value
+      </InteractiveStep>
+    );
+
+    const input = document.createElement('input');
+    input.name = 'late-validated-form';
+    document.body.appendChild(input);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => jest.advanceTimersByTime(50));
+    await act(async () => {});
+
+    const step = screen.getByTestId(testIds.interactive.step('late-form-step'));
+    fireEvent.input(input, { target: { value: 'wrong value' } });
+    await act(async () => {});
+    await act(async () => jest.advanceTimersByTime(2000));
+    expect(step).toHaveAttribute('data-test-form-state', 'invalid');
+    expect(screen.getByTestId(testIds.interactive.formHintWarning('late-form-step'))).toHaveTextContent(
+      'Please enter the expected value'
+    );
+
+    fireEvent.input(input, { target: { value: 'expected value' } });
+    await act(async () => {});
+    await act(async () => jest.advanceTimersByTime(2000));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'completed'));
+  });
+});
+
 describe('InteractiveStep: navigate action type', () => {
   it('renders "Go there" button instead of "Do it" for navigate actions', () => {
     render(
@@ -352,18 +431,28 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     const transport = makeTransport();
     await renderPairedController(
       transport,
-      <InteractiveStep targetAction="button" refTarget="button[type='submit']" stepId="ctrl-do">
+      <InteractiveStep
+        targetAction="navigate"
+        refTarget="/dashboards"
+        openGuide="bundled:destination-guide"
+        stepId="ctrl-do"
+      >
         Step
       </InteractiveStep>
     );
 
-    const button = await screen.findByRole('button', { name: /do it/i });
+    const button = await screen.findByRole('button', { name: /go there/i });
     await waitFor(() => expect(button).not.toBeDisabled());
     fireEvent.click(button);
 
     await waitFor(() =>
       expect(transport.post).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'step-command', phase: 'do', stepId: 'ctrl-do' })
+        expect.objectContaining({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 'ctrl-do',
+          action: expect.objectContaining({ openGuide: 'bundled:destination-guide' }),
+        })
       )
     );
   });
