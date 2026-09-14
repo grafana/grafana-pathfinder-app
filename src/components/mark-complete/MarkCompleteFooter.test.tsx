@@ -46,9 +46,9 @@ const progressKeys: string[] = [];
 const subscribedKeys: string[] = [];
 jest.mock('../../global-state/completion-store', () => ({
   ...jest.requireActual('../../global-state/completion-store'),
-  getGuideProgress: (contentKey: string) => {
+  peekGuidePercentage: (contentKey: string) => {
     progressKeys.push(contentKey);
-    return { completed: 1, total: 4, percentage };
+    return percentage;
   },
   subscribeProgress: (contentKey: string, listener: () => void) => {
     subscribedKeys.push(contentKey);

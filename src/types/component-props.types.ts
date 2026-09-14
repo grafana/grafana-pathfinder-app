@@ -74,6 +74,14 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
   children: React.ReactNode;
   isSequence?: boolean;
   id?: string; // HTML id attribute for section identification
+  /**
+   * The section's runtime id, derived once by `sectionRuntimeId` and stamped
+   * on by the JSON parser. Load-bearing: it is the key an acknowledgement is
+   * recorded under and the key the block index registers the container's end
+   * position under, so a section that derived its own would evidence nothing.
+   * Absent for HTML-parsed content, which has no block path to derive from.
+   */
+  sectionId?: string;
   skippable?: boolean; // Whether this section can be skipped if requirements fail
   autoCollapse?: boolean; // Whether to auto-collapse on completion (default: true, can be overridden by user preference)
 }

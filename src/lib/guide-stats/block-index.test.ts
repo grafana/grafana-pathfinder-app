@@ -132,16 +132,41 @@ describe('computeGuideBlockIndex', () => {
     expect(index.finalCompletablePosition).toBe(4);
   });
 
-  it('maps a container id to the position of its last counted descendant', () => {
+  it('maps a container to its last counted descendant, keyed as the runtime section id', () => {
     const index = computeGuideBlockIndex([markdown(), section([markdown(), interactive()], 'setup'), markdown()]);
 
-    expect(index.containerEndPositions.get('setup')).toBe(3);
+    expect(index.containerEndPositions.get('section-setup')).toBe(3);
+  });
+
+  it('maps a section with no author id under its path, so its acknowledgement can evidence a position', () => {
+    const index = computeGuideBlockIndex([markdown(), section([markdown(), interactive()]), markdown()]);
+
+    expect(index.containerEndPositions.get('section:blocks[1]')).toBe(3);
+  });
+
+  it('omits an id-less section whose path a snippet-ref shifted, rather than crediting another section', () => {
+    // Post-inlining the first section sits where the second one is keyed here,
+    // so registering either would credit the wrong section's end position —
+    // and progress is monotonic, so that could never be corrected downward.
+    const index = computeGuideBlockIndex([
+      { type: 'snippet-ref', blocks: [] },
+      section([markdown(), interactive()]),
+      section([markdown()]),
+    ]);
+
+    expect([...index.containerEndPositions.keys()]).toEqual([]);
+  });
+
+  it('still registers an id-bearing section after a snippet-ref, whose id no splice can shift', () => {
+    const index = computeGuideBlockIndex([{ type: 'snippet-ref', blocks: [] }, section([markdown()], 'setup')]);
+
+    expect(index.containerEndPositions.get('section-setup')).toBe(2);
   });
 
   it('omits containers with no counted descendants from the container-end map', () => {
     const index = computeGuideBlockIndex([section([], 'empty')]);
 
-    expect(index.containerEndPositions.has('empty')).toBe(false);
+    expect(index.containerEndPositions.has('section-empty')).toBe(false);
   });
 
   it('keeps the first position when ids are duplicated', () => {
@@ -158,7 +183,7 @@ describe('computeGuideBlockIndex', () => {
       section([markdown('c'), markdown('d')], 'dup'),
     ]);
 
-    expect(index.containerEndPositions.get('dup')).toBe(2);
+    expect(index.containerEndPositions.get('section-dup')).toBe(2);
   });
 
   it('counts a snippet-ref as one block and does not descend into it', () => {
@@ -172,6 +197,84 @@ describe('computeGuideBlockIndex', () => {
     expect(index.blocks.map((block) => block.id)).toEqual(['before', 'ref', 'after']);
     expect(index.positionsById.has('s3')).toBe(false);
     expect(index.finalCompletablePosition).toBe(0);
+  });
+
+  it('excludes a positionsByStepId entry for every sibling after a snippet-ref, but keeps the ref itself and earlier siblings', () => {
+    const resolveStepId = jest.fn(
+      (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+        `${context.parentSectionId}:${context.index}`
+    );
+
+    const index = computeGuideBlockIndex(
+      [interactive(), { type: 'snippet-ref', blocks: [] }, interactive(), interactive()],
+      { resolveStepId }
+    );
+
+    // Post-inlining the snippet-ref's real expansion size shifts every later
+    // sibling's runtime step id, which this pre-inlining traversal cannot
+    // know without waiting on the snippet CDN — so it must not guess.
+    expect(index.positionsByStepId.size).toBe(2);
+    expect(index.positionsByStepId.get('__standalone__:0')).toBe(1); // before the ref
+    expect(index.positionsByStepId.get('__standalone__:1')).toBe(2); // the ref itself
+    expect(index.positionsByStepId.has('__standalone__:2')).toBe(false); // after the ref
+    expect(index.positionsByStepId.has('__standalone__:3')).toBe(false); // after the ref
+  });
+
+  it('excludes blocks nested inside a sibling that follows a snippet-ref', () => {
+    const resolveStepId = (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+      `${context.parentSectionId}:${context.index}`;
+
+    const index = computeGuideBlockIndex([{ type: 'snippet-ref', blocks: [] }, section([interactive()])], {
+      resolveStepId,
+    });
+
+    // The id-less section's own key is derived from its PRE-inlining sibling
+    // index, which the expansion shifts — so its children must not claim a
+    // step id either, or they claim one the runtime gives another block.
+    expect(index.positionsByStepId.has('section:blocks[1].blocks:0')).toBe(false);
+    expect(index.positionsByStepId.get('__standalone__:0')).toBe(1);
+    expect(index.positionsByStepId.size).toBe(1);
+  });
+
+  it('keeps step ids inside an id-bearing section that follows a snippet-ref', () => {
+    const resolveStepId = (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+      `${context.parentSectionId}:${context.index}`;
+
+    const index = computeGuideBlockIndex([{ type: 'snippet-ref', blocks: [] }, section([interactive()], 'b')], {
+      resolveStepId,
+    });
+
+    // `section-b` is the runtime namespace whatever the splice does to the
+    // outer array, and the child's index is its position inside the section —
+    // so this position is knowable and must not be given up.
+    expect(index.positionsByStepId.get('section-b:0')).toBe(2);
+  });
+
+  it('still excludes an id-less section nested inside an id-bearing one that follows a snippet-ref', () => {
+    const resolveStepId = (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+      `${context.parentSectionId}:${context.index}`;
+
+    const index = computeGuideBlockIndex(
+      [{ type: 'snippet-ref', blocks: [] }, section([section([interactive()])], 'b')],
+      { resolveStepId }
+    );
+
+    // The inner section takes its namespace from a json path that still
+    // carries the shifted outer index.
+    expect(index.positionsByStepId.has('section:blocks[1].blocks[0].blocks:0')).toBe(false);
+    expect(index.positionsByStepId.size).toBe(1);
+  });
+
+  it('does not let a snippet-ref in one section suppress step ids in a sibling section', () => {
+    const resolveStepId = (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+      `${context.parentSectionId}:${context.index}`;
+
+    const index = computeGuideBlockIndex(
+      [section([{ type: 'snippet-ref', blocks: [] }, interactive()], 'a'), section([interactive()], 'b')],
+      { resolveStepId }
+    );
+
+    expect(index.positionsByStepId.has('section-b:0')).toBe(true);
   });
 });
 
