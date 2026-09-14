@@ -129,3 +129,36 @@ describe('module bootstrap arms the durable completion-write hook', () => {
     }
   });
 });
+
+describe('module bootstrap waits for authoritative settings', () => {
+  it('passes the settings refresh to the configured-surface gate', () => {
+    const calls: ts.CallExpression[] = [];
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === 'initializeConfiguredSurfaces'
+      ) {
+        calls.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    findPluginInitBody().forEach(visit);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.arguments[0]!.getText(sourceFile)).toBe('refreshPathfinderPluginConfig()');
+    const callbacks = calls[0]!.arguments[2]!;
+    expect(ts.isObjectLiteralExpression(callbacks)).toBe(true);
+    const properties = (callbacks as ts.ObjectLiteralExpression).properties;
+    expect(properties.map((property) => property.name?.getText(sourceFile))).toEqual([
+      'applySettings',
+      'mountController',
+      'mountExecutor',
+      'mountKiosk',
+      'setupAutoOpen',
+    ]);
+    expect(callbacks.getText(sourceFile)).toContain('installLiveTabExecutor');
+    expect(callbacks.getText(sourceFile)).toContain('GuideReaderOverlay');
+    expect(callbacks.getText(sourceFile)).toContain('KioskModeManager');
+    expect(callbacks.getText(sourceFile)).toContain('setupConfigAutoOpen');
+  });
+});
