@@ -6,7 +6,7 @@ This guide covers what we look for in a pull request. When in doubt, open the is
 
 ## Ways to contribute
 
-- **Report a bug**: open an issue. For problems with an interactive guide, the recording-bug issue template helps us reproduce it.
+- **Report a bug**: open an issue. The optional [structured issue form](.github/ISSUE_TEMPLATE/structured-issue.yml) helps describe the impact and acceptance criteria, or you can open a blank issue.
 - **Suggest an improvement**: open an issue describing the problem you're trying to solve before writing code, especially for anything user-facing or architectural. It saves you building something we'd ask you to rework.
 - **Fix a bug or add a feature**: open a pull request. Read the rest of this guide first.
 
