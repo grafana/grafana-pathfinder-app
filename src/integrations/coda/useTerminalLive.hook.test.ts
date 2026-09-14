@@ -17,11 +17,12 @@ import type { Terminal } from '@xterm/xterm';
 import { CodaError, type CodaSession, type SessionHandlers } from '@grafana/coda-client';
 
 import { useTerminalLive } from './useTerminalLive.hook';
-import { createSession } from './coda-api';
+import { createSession, listVMs } from './coda-api';
 
 jest.mock('./coda-api', () => ({
   ...jest.requireActual('./coda-api'),
   createSession: jest.fn(),
+  listVMs: jest.fn(),
 }));
 
 jest.mock('../../lib/logging', () => ({
@@ -29,6 +30,7 @@ jest.mock('../../lib/logging', () => ({
 }));
 
 const mockedCreateSession = createSession as jest.MockedFunction<typeof createSession>;
+const mockedListVMs = listVMs as jest.MockedFunction<typeof listVMs>;
 const mockedLogger = jest.requireMock('../../lib/logging').logger as {
   error: jest.Mock;
   warn: jest.Mock;
@@ -64,14 +66,14 @@ interface FakeSession {
  * and a same-named public property on a type intersected with it collapses
  * to `never`.
  */
-function fakeSession(sessionId = SESSION_ID): FakeSession {
+function fakeSession(sessionId = SESSION_ID, vmID?: string): FakeSession {
   const handlers: { current: SessionHandlers } = { current: {} };
   const close = jest.fn(async () => {
     handlers.current.onClosed?.();
   });
   const session = {
     sessionId,
-    vmID: undefined,
+    vmID,
     subscribe: jest.fn((h: SessionHandlers) => {
       handlers.current = h;
     }),
@@ -100,9 +102,80 @@ async function connectedHook(fake: FakeSession = fakeSession()) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockedListVMs.mockResolvedValue([]);
 });
 
 describe('useTerminalLive session lifetime', () => {
+  const activeVm = {
+    id: 'vm-1',
+    template: 'vm-aws',
+    state: 'active' as const,
+    owner: 'user-1',
+    expiresAt: '2026-09-14T12:00:00Z',
+    createdAt: '2026-09-14T11:30:00Z',
+  };
+
+  it('does not query VM expiry before the Live session connects', async () => {
+    await connectedHook(fakeSession(SESSION_ID, 'vm-1'));
+
+    expect(mockedListVMs).not.toHaveBeenCalled();
+  });
+
+  it('loads the server-reported VM expiry once after connection', async () => {
+    jest.useFakeTimers();
+    try {
+      mockedListVMs.mockResolvedValue([activeVm]);
+      const fake = fakeSession();
+      const { hook, handlers } = await connectedHook(fake);
+
+      await act(async () => {
+        handlers.current.onConnected?.('vm-1');
+        await Promise.resolve();
+      });
+
+      expect(mockedListVMs).toHaveBeenCalledTimes(1);
+      expect(hook.result.current.vmExpiresAt).toBe(activeVm.expiresAt);
+
+      act(() => {
+        jest.advanceTimersByTime(60_000);
+      });
+      expect(mockedListVMs).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('leaves the connected session usable when the expiry lookup fails', async () => {
+    mockedListVMs.mockRejectedValue(new Error('temporary failure'));
+    const fake = fakeSession();
+    const { hook, handlers } = await connectedHook(fake);
+
+    await act(async () => {
+      handlers.current.onConnected?.('vm-1');
+      await Promise.resolve();
+    });
+
+    expect(mockedListVMs).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.status).toBe('connected');
+    expect(hook.result.current.vmExpiresAt).toBeNull();
+  });
+
+  it('keeps the VM identity when a later status frame omits vmId', async () => {
+    mockedListVMs.mockResolvedValue([activeVm]);
+    const fake = fakeSession();
+    const { hook, handlers } = await connectedHook(fake);
+
+    await act(async () => {
+      handlers.current.onConnected?.('vm-1');
+      await Promise.resolve();
+    });
+    act(() => {
+      handlers.current.onStatus?.({ state: 'active', message: 'Still ready' });
+    });
+
+    expect(hook.result.current.vmExpiresAt).toBe(activeVm.expiresAt);
+  });
+
   it('holds the session id once connected', async () => {
     const { hook, handlers } = await connectedHook();
 
@@ -123,6 +196,7 @@ describe('useTerminalLive session lifetime', () => {
 
     expect(hook.result.current.status).toBe('error');
     expect(hook.result.current.sessionId).toBeNull();
+    expect(hook.result.current.vmExpiresAt).toBeNull();
   });
 
   it('drops the session id when the session closes without an error', async () => {
@@ -135,6 +209,7 @@ describe('useTerminalLive session lifetime', () => {
 
     expect(hook.result.current.status).toBe('disconnected');
     expect(hook.result.current.sessionId).toBeNull();
+    expect(hook.result.current.vmExpiresAt).toBeNull();
   });
 
   it('names an exhausted quota from the error code instead of the generic message', async () => {
@@ -174,6 +249,7 @@ describe('useTerminalLive session lifetime', () => {
     });
 
     expect(hook.result.current.sessionId).toBeNull();
+    expect(hook.result.current.vmExpiresAt).toBeNull();
     expect(close).toHaveBeenCalled();
   });
 
