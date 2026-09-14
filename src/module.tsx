@@ -5,7 +5,8 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { logger } from './lib/logging';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { DocsPluginConfig } from './constants';
+import { PathfinderPluginConfig } from './constants';
+import { initializeConfiguredSurfaces } from './utils/configured-bootstrap';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
 // (and zod, via user-storage) into module.js.
 import { publishPathfinderPluginConfig, refreshPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
@@ -156,11 +157,8 @@ const plugin = new AppPlugin<{}>()
   });
 
 // Override init() to handle auto-open when plugin loads
-plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
-  // Everything here must stay synchronous. `AppPlugin.init` is typed `void` and
-  // Grafana never awaits it, so work behind an await would run after first paint
-  // — after scene construction has already read the published config, and after
-  // the deep-link and link-interception listeners needed to exist.
+plugin.init = function (meta: AppPluginMeta<PathfinderPluginConfig>) {
+  // Grafana does not await init; navigation listeners must register synchronously.
 
   // Arm the durable completion-write hook from the universal plugin bootstrap
   // rather than only the root App page: plugin.init fires once per session for
@@ -189,20 +187,6 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(config))
   );
 
-  // `meta.jsonData` can lag a recent save. Re-publish from the authoritative
-  // read when it lands; subscribers pick it up via the config-updated event.
-  void refreshPathfinderPluginConfig().then((refreshed) => {
-    if (refreshed) {
-      linkInterceptionState.setInterceptionEnabled(refreshed.interceptGlobalDocsLinks);
-      // Skip re-registering when nothing changed — avoids a redundant resolver rebuild.
-      if (refreshed !== config) {
-        setPackageResolverFactory(() =>
-          import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(refreshed))
-        );
-      }
-    }
-  });
-
   // Snapshotted before handlePathfinderDeepLink strips it from the URL.
   const { doc: docsParam, controller: controllerParam } = parsePathfinderDeepLink(window.location.search);
   const controllerPairing = parseControllerPairingHash(window.location.hash);
@@ -212,56 +196,99 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     window.history.replaceState(window.history.state, document.title, cleanUrl.toString());
   }
 
-  // Interactive controller (?doc=<guide>&controller=1): the same overlay, but
-  // step actions stay visible so this tab can drive the originating Grafana tab.
-  // Gated on the enableTwoTabController admin setting and pathfinder.enabled — the
-  // controller drives the user's authenticated Grafana, so it must not mount when
-  // the plugin is disabled or the instance hasn't opted in.
-  if (config.enableTwoTabController && docsParam && controllerParam && controllerPairing && pathfinderEnabled) {
-    if (!document.getElementById('pathfinder-controller-root')) {
-      // Claim the id synchronously, before the dynamic import, so a second
-      // plugin.init can't race past the guard and double-mount.
-      const container = document.createElement('div');
-      container.id = 'pathfinder-controller-root';
-      document.body.appendChild(container);
-      reportPathfinderSurface('controller');
-      import('./components/guide-reader/GuideReaderOverlay')
-        .then(async ({ GuideReaderOverlay }) => {
-          const { createCompatRoot } = await import('./lib/create-root-compat');
-          const root = await createCompatRoot(container);
-          root.render(
-            React.createElement(GuideReaderOverlay, { doc: docsParam, mode: 'controller', controllerPairing })
-          );
-        })
-        .catch((err) => {
-          logger.error('[Pathfinder] Failed to load interactive controller', { error: err });
-          container.remove();
-        });
-    }
-    return;
-  }
+  const controllerRequested = Boolean(docsParam && controllerParam && controllerPairing);
+  void initializeConfiguredSurfaces(
+    refreshPathfinderPluginConfig(),
+    { pathfinderEnabled, controllerRequested, hasDoc: Boolean(docsParam) },
+    {
+      applySettings: (resolved) => {
+        linkInterceptionState.setInterceptionEnabled(resolved.interceptGlobalDocsLinks);
+        setPackageResolverFactory(() =>
+          import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(resolved))
+        );
+      },
+      mountController: () => {
+        if (!docsParam || !controllerPairing) {
+          return;
+        }
+        if (!document.getElementById('pathfinder-controller-root')) {
+          // Claim the mount before importing so repeated init cannot race it.
+          const container = document.createElement('div');
+          container.id = 'pathfinder-controller-root';
+          document.body.appendChild(container);
+          reportPathfinderSurface('controller');
+          import('./components/guide-reader/GuideReaderOverlay')
+            .then(async ({ GuideReaderOverlay }) => {
+              const { createCompatRoot } = await import('./lib/create-root-compat');
+              const root = await createCompatRoot(container);
+              root.render(
+                React.createElement(GuideReaderOverlay, { doc: docsParam, mode: 'controller', controllerPairing })
+              );
+            })
+            .catch((err) => {
+              logger.error('[Pathfinder] Failed to load interactive controller', { error: err });
+              container.remove();
+            });
+        }
+      },
+      mountExecutor: () => {
+        if (!document.getElementById('pathfinder-pairing-banner-root')) {
+          const bannerContainer = document.createElement('div');
+          bannerContainer.id = 'pathfinder-pairing-banner-root';
+          document.body.appendChild(bannerContainer);
+          Promise.all([import('./integrations/cross-tab/PairingRequestBanner'), import('./lib/create-root-compat')])
+            .then(async ([{ PairingRequestBanner }, { createCompatRoot }]) => {
+              const root = await createCompatRoot(bannerContainer);
+              root.render(React.createElement(PairingRequestBanner));
+            })
+            .catch((err) => {
+              logger.error('[Pathfinder] Failed to load pairing banner', { error: err });
+              bannerContainer.remove();
+            });
+        }
+        import('./integrations/cross-tab/live-tab-executor')
+          .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
+          .catch((err) => logger.error('[Pathfinder] Failed to load cross-tab executor', { error: err }));
+      },
+      mountKiosk: (config) => {
+        window.__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
+        document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
 
-  // Live tab only (the controller tab returned early above): load the cross-tab
-  // executor so a controller tab can drive this Grafana DOM. Mount the pairing
-  // banner first so its challenge listener is live before the transport starts.
-  if (config.enableTwoTabController && pathfinderEnabled) {
-    if (!document.getElementById('pathfinder-pairing-banner-root')) {
-      const bannerContainer = document.createElement('div');
-      bannerContainer.id = 'pathfinder-pairing-banner-root';
-      document.body.appendChild(bannerContainer);
-      Promise.all([import('./integrations/cross-tab/PairingRequestBanner'), import('./lib/create-root-compat')])
-        .then(async ([{ PairingRequestBanner }, { createCompatRoot }]) => {
-          const root = await createCompatRoot(bannerContainer);
-          root.render(React.createElement(PairingRequestBanner));
-        })
-        .catch((err) => {
-          logger.error('[Pathfinder] Failed to load pairing banner', { error: err });
-          bannerContainer.remove();
+        if (!document.getElementById('pathfinder-kiosk-root')) {
+          import('./components/kiosk/KioskModeManager')
+            .then(async ({ KioskModeManager }) => {
+              if (document.getElementById('pathfinder-kiosk-root')) {
+                return;
+              }
+              const { createCompatRoot } = await import('./lib/create-root-compat');
+              const container = document.createElement('div');
+              container.id = 'pathfinder-kiosk-root';
+              document.body.appendChild(container);
+              const root = await createCompatRoot(container);
+              root.render(
+                React.createElement(KioskModeManager, {
+                  rulesUrl: config.kioskRulesUrl,
+                })
+              );
+            })
+            .catch((err) => {
+              logger.error('[Pathfinder] Failed to load kiosk mode', { error: err });
+            });
+        }
+      },
+      setupAutoOpen: (config) => {
+        setupConfigAutoOpen({
+          currentPath: getCurrentPath(),
+          featureFlagEnabled: getAutoOpenFeatureFlag(),
+          pluginConfig: config,
         });
+      },
     }
-    import('./integrations/cross-tab/live-tab-executor')
-      .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
-      .catch((err) => logger.error('[Pathfinder] Failed to load cross-tab executor', { error: err }));
+  ).catch((error) => logger.error('[Pathfinder] Failed to initialize configured surfaces', { error }));
+
+  // A controller request must never become a live executor or ordinary docs tab.
+  if (controllerRequested) {
+    return;
   }
 
   const sidebarMountable = pathfinderEnabled;
@@ -279,35 +306,6 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Don't widen to panelMode/kiosk — those must reach the mount blocks below.
   if (docsParam && !sidebarMountable) {
     return;
-  }
-
-  // Mount kiosk mode overlay manager if enabled and no ?doc= param
-  // (skip kiosk in tabs opened via tile deep links so the overlay doesn't reappear)
-  if (config.enableKioskMode && !docsParam) {
-    window.__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
-    document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
-
-    if (!document.getElementById('pathfinder-kiosk-root')) {
-      import('./components/kiosk/KioskModeManager')
-        .then(async ({ KioskModeManager }) => {
-          if (document.getElementById('pathfinder-kiosk-root')) {
-            return;
-          }
-          const { createCompatRoot } = await import('./lib/create-root-compat');
-          const container = document.createElement('div');
-          container.id = 'pathfinder-kiosk-root';
-          document.body.appendChild(container);
-          const root = await createCompatRoot(container);
-          root.render(
-            React.createElement(KioskModeManager, {
-              rulesUrl: config.kioskRulesUrl,
-            })
-          );
-        })
-        .catch((err) => {
-          logger.error('[Pathfinder] Failed to load kiosk mode', { error: err });
-        });
-    }
   }
 
   // Mount floating panel manager — only eagerly when floating mode is already
@@ -352,11 +350,6 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // here would evaluate against the pre-redirect path.
   if (!docsParam && pathfinderEnabled) {
     const currentPath = getCurrentPath();
-    setupConfigAutoOpen({
-      currentPath,
-      featureFlagEnabled: getAutoOpenFeatureFlag(),
-      pluginConfig: config,
-    });
     setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
   }
 };

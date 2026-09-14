@@ -1,10 +1,10 @@
+import { usePathfinderPluginConfig } from '../../hooks';
 import React from 'react';
 import { Button, Alert, useStyles2, Tooltip } from '@grafana/ui';
-import { GrafanaTheme2, usePluginContext } from '@grafana/data';
+import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { config, locationService } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { getConfigWithDefaults } from '../../constants';
 
 interface EnableRecommenderBannerProps {
   className?: string;
@@ -12,8 +12,7 @@ interface EnableRecommenderBannerProps {
 
 export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = ({ className }) => {
   const styles = useStyles2(getStyles);
-  const context = usePluginContext();
-  const configWithDefaults = getConfigWithDefaults(context?.meta?.jsonData || {});
+  const { config: configWithDefaults } = usePathfinderPluginConfig();
   const user = config.bootData?.user;
   const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
 

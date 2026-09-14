@@ -1,13 +1,11 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { usePluginContext } from '@grafana/data';
+import { usePathfinderPluginConfig } from '../../hooks';
 import { CombinedLearningJourneyPanel } from 'components/docs-panel/docs-panel';
-import { getConfigWithDefaults } from '../../constants';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { PANEL_MODE_CHANGE_EVENT } from '../../lib/event-names';
 
 export default function MemoizedContextPanel() {
-  const pluginContext = usePluginContext();
   const [mode, setMode] = useState<PanelMode>(() => panelModeManager.getMode());
 
   // Re-render when panel mode changes (e.g. floating panel falls back to sidebar)
@@ -28,7 +26,7 @@ export default function MemoizedContextPanel() {
     if (mode === 'floating') {
       panelModeManager.setMode('sidebar');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- switching to sidebar happens only on mount
   }, []); // Only on mount
 
   if (mode === 'floating') {
@@ -36,14 +34,12 @@ export default function MemoizedContextPanel() {
     return null;
   }
 
-  return <SidebarContent pluginJsonData={pluginContext?.meta?.jsonData} />;
+  return <SidebarContent />;
 }
 
-function SidebarContent({ pluginJsonData }: { pluginJsonData: Record<string, unknown> | undefined }) {
-  const panel = useMemo(() => {
-    const config = getConfigWithDefaults(pluginJsonData || {});
-    return new CombinedLearningJourneyPanel(config);
-  }, [pluginJsonData]);
+function SidebarContent() {
+  const { config } = usePathfinderPluginConfig();
+  const panel = useMemo(() => new CombinedLearningJourneyPanel(config), [config]);
 
   return (
     <PathfinderFeatureProvider>
