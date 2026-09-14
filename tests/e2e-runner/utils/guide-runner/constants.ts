@@ -6,6 +6,7 @@
  *
  * @see docs/developer/E2E_TESTING.md#timing-and-timeouts
  */
+import { getGuidedStepTimeout } from '../../../../src/constants/interactive-config';
 
 // ============================================
 // DOM Selectors
@@ -51,11 +52,7 @@ export const STEP_DEADLINE_CLEANUP_GRACE_MS = 3000;
  */
 export const TIMEOUT_PER_MULTISTEP_ACTION_MS = 5000;
 
-/**
- * Additional timeout per guided substep (Phase 3).
- * Guided steps run a substep loop; the driver scales this by its action count.
- */
-export const TIMEOUT_PER_GUIDED_SUBSTEP_MS = 30000;
+export const TIMEOUT_PER_GUIDED_SUBSTEP_MS = getGuidedStepTimeout();
 
 /**
  * Timeout for comment box to become visible during guided execution.
@@ -96,11 +93,6 @@ export const GUIDED_FORMFILL_INVALID_PERSIST_MS = 3000;
  * Minimal dwell after hover before waiting for substep advance (Phase 4.2).
  */
 export const GUIDED_HOVER_DWELL_MS = 500;
-
-/**
- * Fraction of per-substep timeout after which we try Skip button if present (Phase 4.3). 0.8 = 80%.
- */
-export const GUIDED_SKIP_AFTER_TIMEOUT_FRACTION = 0.8;
 
 /**
  * Timeout for a guided action's page-load wait after a detected reload/navigation

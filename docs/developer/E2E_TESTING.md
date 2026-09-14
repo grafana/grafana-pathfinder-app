@@ -6,6 +6,19 @@ For prescriptive agent constraints on testing (unit, integration, and E2E), see 
 
 This is the canonical implementation-backed reference for E2E CLI behavior. Verify behavior against this document and the source files below before changing code.
 
+## Guided driver regression tests
+
+The Playwright CI job runs the guided driver fixtures in Chromium. These tests need no Grafana server.
+
+To run them locally:
+
+```bash
+npm exec playwright install chromium
+npm run test:guided-browser
+```
+
+The script sets `PATHFINDER_GUIDED_BROWSER_TESTS=1`. Ordinary Jest runs skip these browser fixtures.
+
 ## Key concepts
 
 - **DOM-based step discovery**: Tests interact with the rendered UI, not raw JSON. The plugin handles conditional logic; the runner iterates whatever steps are visible.
@@ -433,7 +446,26 @@ Or by path:
 npx pathfinder-cli e2e src/bundled-interactives/block-editor-tutorial/content.json
 ```
 
-Guided steps are discovered via `data-targetaction="guided"` and `data-test-substep-total`; after "Do it", the runner drives substeps using only the comment box (`data-test-action`, `data-test-reftarget`, `data-test-target-value`) and step state (`data-test-step-state`, `data-test-substep-index`). Full coverage (button, highlight, formfill, hover, noop, skippable) may require additional guides such as `prometheus-grafana-101` or `loki-grafana-101`.
+The driver registry discovers guided roots through `data-test-step-kind="guided"`.
+Older builds retain the documented root-discovery fallback.
+
+The driver reads `data-test-step-timeout` and `data-test-substep-skippable` before it operates a substep.
+It uses the indexed comment box's action, selector, and value to drive `button`, `highlight`, `formfill`, `hover`, and `noop`.
+
+The plugin enforces authored requirements before each substep. Requirements, lazy target discovery, preparation, and interaction share one deadline.
+Lazy discovery runs at most once per substep. Local and cross-tab execution use the same handler.
+
+The root's `data-test-substep-results` array records every observed settlement.
+The driver retains that root before Start, so section detachment does not erase evidence.
+
+Reports add optional `steps[].substeps` with `index`, `action`, `status`, `duration`, and optional `error`.
+The duration is in milliseconds. Status is `completed`, `skipped`, `timeout`, `cancelled`, or `error`.
+
+Consecutive skips and records before a later failure remain in the report.
+The runner also retains received records when a hard deadline ends the parent step.
+
+Older builds without a results attribute omit substep records. Index jumps do not create inferred passed or skipped records.
+The report schema remains `1.1.0`, and unsupported coverage keeps the PR1 non-gating policy.
 
 ## Framework test guide
 
@@ -483,27 +515,29 @@ The environment is reset **between dependency chains**, not between every guide.
 
 ## Timing and timeouts
 
-| Constant                   | Value            | Purpose                                                                                     |
-| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------- |
-| Base step timeout          | 30s              | Maximum time for a single step                                                              |
-| Multistep bonus            | +5s per action   | Added for each internal action in multisteps                                                |
-| Guided substep bonus       | +30s per substep | Added for each substep in guided blocks                                                     |
-| Runner step backstop       | 2× step + 20s    | Wall-clock limit after normal step operation budgets                                        |
-| Backstop cleanup grace     | 3s per guide     | Page close, inner-work drain, and result publication after a backstop                       |
-| Button enable wait         | 10s              | Wait for sequential dependencies                                                            |
-| Fix button timeout         | 10s              | Per fix operation                                                                           |
-| Max fix attempts           | 3                | Retry limit before giving up                                                                |
-| Requirements settle window | 1s               | Poll budget before an unmet read with no Fix button counts as terminal                      |
-| Panel bootstrap            | 20s or 30s       | Uses 30s after navigation and 20s for same-page panel opening                               |
-| Scroll into view           | 5s               | Bounds scrolling a step into view, so a step completing or detaching there can't hang       |
-| Late completion check      | 2s               | Bounds the pre-scroll recheck for a step that completed or detached since discovery         |
-| Skip sync                  | 5s               | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |
-| Guided reload wait         | 15s              | Bounds waiting for `domcontentloaded` after a detected reload or navigation mid-guided-step |
+| Constant                   | Value          | Purpose                                                                                     |
+| -------------------------- | -------------- | ------------------------------------------------------------------------------------------- |
+| Base step timeout          | 30s            | Maximum time for a single step                                                              |
+| Multistep bonus            | +5s per action | Added for each internal action in multisteps                                                |
+| Guided substep budget      | DOM timeout    | `data-test-step-timeout` for each substep, with a 120s default                              |
+| Guided block overhead      | 30s            | Added to the sum of substep budgets for control setup and status transitions                |
+| Runner step backstop       | 2× step + 20s  | Wall-clock limit after normal step operation budgets                                        |
+| Backstop cleanup grace     | 3s per guide   | Page close, inner-work drain, and result publication after a backstop                       |
+| Button enable wait         | 10s            | Wait for sequential dependencies                                                            |
+| Fix button timeout         | 10s            | Per fix operation                                                                           |
+| Max fix attempts           | 3              | Retry limit before giving up                                                                |
+| Requirements settle window | 1s             | Poll budget before an unmet read with no Fix button counts as terminal                      |
+| Panel bootstrap            | 20s or 30s     | Uses 30s after navigation and 20s for same-page panel opening                               |
+| Scroll into view           | 5s             | Bounds scrolling a step into view, so a step completing or detaching there can't hang       |
+| Late completion check      | 2s             | Bounds the pre-scroll recheck for a step that completed or detached since discovery         |
+| Skip sync                  | 5s             | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |
+| Guided reload wait         | 15s            | Bounds waiting for `domcontentloaded` after a detected reload or navigation mid-guided-step |
 
 Examples:
 
 - A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s).
-- A guided block with 3 substeps gets a 120s timeout (30s base + 3×30s).
+- A guided block with 3 substeps and a 45s authored timeout gets 165s (30s overhead + 3×45s).
+- A guided block with 3 default-timeout substeps gets 390s (30s overhead + 3×120s).
 
 The calculated step timeout remains the operation budget for normal completion and artifact collection. The runner backstop is twice this budget plus 20 seconds.
 

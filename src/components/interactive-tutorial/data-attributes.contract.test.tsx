@@ -228,6 +228,31 @@ describe('E2E Contract: data-test-step-state', () => {
 // data-test-substep-index Tests
 // ============================================================================
 
+describe('E2E contract: guided timing and evidence', () => {
+  it.each([undefined, 30000, 45000, 60000])('exposes the effective timeout before execution (%s)', (stepTimeout) => {
+    render(
+      <InteractiveGuided
+        stepId="guided-timing"
+        stepTimeout={stepTimeout}
+        internalActions={[{ targetAction: 'noop', isSkippable: true }]}
+      />
+    );
+    const element = screen.getByTestId(testIds.interactive.step('guided-timing'));
+    expect(element).toHaveAttribute('data-test-step-timeout', String(stepTimeout ?? 120000));
+    expect(element).toHaveAttribute('data-test-substep-skippable', 'true');
+    expect(element).toHaveAttribute('data-test-substep-results', '[]');
+    expect(element).not.toHaveAttribute('data-test-substep-index');
+  });
+
+  it('marks a required substep as not skippable before execution', () => {
+    render(<InteractiveGuided stepId="guided-required" internalActions={[{ targetAction: 'noop' }]} />);
+    expect(screen.getByTestId(testIds.interactive.step('guided-required'))).toHaveAttribute(
+      'data-test-substep-skippable',
+      'false'
+    );
+  });
+});
+
 describe('E2E Contract: data-test-substep-index', () => {
   it('InteractiveGuided: undefined when not executing', () => {
     render(

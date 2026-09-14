@@ -4,7 +4,8 @@ import {
   STEP_TYPE_KIND_KEYS,
   type StepTypeKind,
 } from '../../../../../src/components/interactive-tutorial/step-type-registry';
-import { DEFAULT_STEP_TIMEOUT_MS, TIMEOUT_PER_GUIDED_SUBSTEP_MS, TIMEOUT_PER_MULTISTEP_ACTION_MS } from '../constants';
+import { getGuidedStepTimeout } from '../../../../../src/constants/interactive-config';
+import { DEFAULT_STEP_TIMEOUT_MS, TIMEOUT_PER_MULTISTEP_ACTION_MS } from '../constants';
 import type { TestableStep } from '../types';
 import { clickSkipButtonAndSync, executeStandardStep, inspectCommonStep, isStepComplete } from './shared';
 import { executeGuidedStep } from './guided';
@@ -39,9 +40,11 @@ async function inspectGuided(page: Page, root: Locator, stepId: string): Promise
   const common = await inspectCommonStep(page, root, stepId);
   const rawTotal = await root.getAttribute('data-test-substep-total');
   const parsedTotal = rawTotal ? Number.parseInt(rawTotal, 10) : Number.NaN;
+  const rawTimeout = await root.getAttribute('data-test-step-timeout');
   return {
     ...common,
     actionCount: Number.isFinite(parsedTotal) && parsedTotal >= 1 ? parsedTotal : 1,
+    substepTimeoutMs: getGuidedStepTimeout(rawTimeout === null ? undefined : Number(rawTimeout)),
   };
 }
 
@@ -88,7 +91,7 @@ const drivers = [
   supportedDriver(
     'guided',
     inspectGuided,
-    (step) => DEFAULT_STEP_TIMEOUT_MS + (step.actionCount > 0 ? step.actionCount * TIMEOUT_PER_GUIDED_SUBSTEP_MS : 0),
+    (step) => DEFAULT_STEP_TIMEOUT_MS + Math.max(1, step.actionCount) * getGuidedStepTimeout(step.substepTimeoutMs),
     executeGuidedStep
   ),
   unsupportedDriver('quiz'),

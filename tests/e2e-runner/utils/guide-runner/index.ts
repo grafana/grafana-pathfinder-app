@@ -27,6 +27,7 @@ export type {
   ArtifactPaths,
   ErrorClassification,
   StepTestResult,
+  StepSubstepResult,
   AllStepsResult,
   OnStepCompleteCallback,
 } from './types';

@@ -116,6 +116,7 @@ function toResultsData(
       skippable: result.skippable,
       classification: result.classification,
       artifacts: result.artifacts,
+      ...(result.substeps !== undefined ? { substeps: result.substeps } : {}),
     })),
     aborted: allStepsResult.aborted,
     abortReason: allStepsResult.abortReason,

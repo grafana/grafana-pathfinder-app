@@ -28,7 +28,7 @@ import { render, act, waitFor } from '@testing-library/react';
 import { getAppEvents } from '@grafana/runtime';
 
 import { installLiveTabExecutor, resetLiveTabExecutorForTests } from './live-tab-executor';
-import { ButtonHandler, FocusHandler } from '../../interactive-engine/action-handlers';
+import { ButtonHandler, FocusHandler, GuidedHandler } from '../../interactive-engine/action-handlers';
 import { checkRequirements, dispatchFix } from '../../requirements-manager';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
@@ -53,7 +53,13 @@ import {
 } from '../../lib/pairing-manager';
 import { generateSessionKeyPair } from '../../security/cross-tab-crypto';
 import { buildControllerPairingHash, parseControllerPairingHash } from '../../utils/pathfinder-search-params';
-import type { CrossTabMessage, CrossTabPayload } from '../../types/cross-tab.types';
+import {
+  toCrossTabInternalAction,
+  type CrossTabAction,
+  type CrossTabMessage,
+  type CrossTabPayload,
+} from '../../types/cross-tab.types';
+import type { GuidedAction, GuidedStepOptions, GuidedSubstepResult } from '../../types/interactive-actions.types';
 
 jest.mock('../../requirements-manager', () => {
   const actual = jest.requireActual('../../requirements-manager');
@@ -65,6 +71,7 @@ jest.mock('../../interactive-engine/action-handlers', () => {
   const makeGuided = () => ({
     resetProgress: jest.fn(),
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
+    cancel: jest.fn(),
   });
   return {
     FocusHandler: jest.fn(makeHandler),
@@ -627,6 +634,128 @@ describe('cross-tab pairing protocol acceptance', () => {
         expect.objectContaining({ refTarget: '#go', targetAction: 'button' }),
         true
       );
+      harness.cleanup();
+    });
+  });
+
+  describe('guided command contract', () => {
+    const authored: GuidedAction = {
+      targetAction: 'formfill',
+      refTarget: '#query',
+      targetValue: 'up',
+      targetState: 'aria-expanded:true',
+      requirements: ['var-ready:true', 'section-completed:intro'],
+      targetComment: 'Enter the query.',
+      isSkippable: true,
+      formHint: 'Use a metric name.',
+      validateInput: true,
+      lazyRender: true,
+      scrollContainer: '#panels',
+    };
+    const action: CrossTabAction = {
+      targetAction: 'guided',
+      refTarget: '',
+      stepTimeout: 45_000,
+      guideId: 'remote-guide',
+      contentKey: 'remote-content',
+      internalActions: [toCrossTabInternalAction(authored)],
+    };
+
+    it('carries signed guided fields and cumulative evidence through both endpoints', async () => {
+      const harness = await pairOverBus();
+      const executeGuidedStep = (GuidedHandler as jest.Mock).mock.results[0]!.value.executeGuidedStep as jest.Mock;
+      const result: GuidedSubstepResult = { index: 0, action: 'formfill', status: 'skipped', durationMs: 15 };
+      executeGuidedStep.mockImplementation(
+        async (substep: GuidedAction, _index, _total, _timeout, _completed, options: GuidedStepOptions) => {
+          await options.checkRequirements!(substep);
+          options.onSettled!(result);
+          return 'skipped';
+        }
+      );
+      const progress = jest.fn();
+      harness.channel.onStepProgress('guided', 'guided-run', progress);
+      const done = harness.channel.awaitStepComplete('guided', 'guided-run').then((ok) => {
+        expect(progress).toHaveBeenLastCalledWith(0, 1, [result]);
+        return ok;
+      });
+      act(() =>
+        harness.channel.post({ kind: 'step-command', phase: 'do', stepId: 'guided', runId: 'guided-run', action })
+      );
+
+      await expect(done).resolves.toBe(true);
+      expect(executeGuidedStep).toHaveBeenCalledWith(
+        authored,
+        0,
+        1,
+        45_000,
+        undefined,
+        expect.objectContaining({ checkRequirements: expect.any(Function), onSettled: expect.any(Function) })
+      );
+      expect(checkRequirements).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requirements: authored.requirements,
+          guideId: 'remote-guide',
+          contentKey: 'remote-content',
+          maxRetries: 0,
+          lazyRender: true,
+          scrollContainer: '#panels',
+        })
+      );
+      expect(progress.mock.calls.map((call) => call[2])).toEqual([[], [result], [result]]);
+      expect(harness.controller.postedPayloads).toContainEqual(
+        expect.objectContaining({ kind: 'step-command', action, sig: expect.any(String) })
+      );
+      harness.cleanup();
+    });
+
+    it('rejects changes to every signed guided field', async () => {
+      const controller = await acceptControllerInManager();
+      const signed = await sign(controller.privateKey, {
+        kind: 'step-command',
+        phase: 'do',
+        stepId: 'guided',
+        runId: 'guided-run',
+        action,
+      });
+      const mutations: CrossTabAction[] = [
+        { ...action, stepTimeout: 60_000 },
+        { ...action, guideId: 'other-guide' },
+        { ...action, contentKey: 'other-content' },
+        ...Object.entries({
+          requirements: ['var-ready:false'],
+          targetComment: 'Different instructions.',
+          isSkippable: false,
+          formHint: 'A different hint.',
+          validateInput: false,
+          lazyRender: false,
+          scrollContainer: '#other-panels',
+        }).map(([key, value]) => ({ ...action, internalActions: [{ ...authored, [key]: value }] })),
+      ];
+      for (const changed of mutations) {
+        const tampered = { ...signed, action: changed };
+        expect(await verifySignedMessage(tampered, LIVE_TAB_ID)).toBe(false);
+      }
+      expect(await verifySignedMessage(signed, LIVE_TAB_ID)).toBe(true);
+    });
+
+    it('rejects a malformed guided value even when the controller signs it', async () => {
+      const harness = await pairOverBus();
+      act(() =>
+        harness.channel.post({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 'malformed-guided',
+          runId: 'guided-run',
+          action: { ...action, internalActions: [{ ...authored, lazyRender: 'true' }] } as unknown as CrossTabAction,
+        })
+      );
+      await waitFor(() =>
+        expect(harness.controller.postedPayloads).toContainEqual(
+          expect.objectContaining({ kind: 'step-command', stepId: 'malformed-guided', sig: expect.any(String) })
+        )
+      );
+      expect((GuidedHandler as jest.Mock).mock.results[0]!.value.executeGuidedStep).not.toHaveBeenCalled();
+      expect(checkRequirements).not.toHaveBeenCalled();
       harness.cleanup();
     });
   });

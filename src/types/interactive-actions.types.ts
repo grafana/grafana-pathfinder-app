@@ -3,7 +3,7 @@
  * Centralized types for internal actions used in multi-step and guided components
  */
 
-import type { ConditionInput } from './requirements.types';
+import type { CheckResultError, ConditionInput } from './requirements.types';
 /**
  * Base internal action interface (flexible)
  * Used for multi-step sequences where action types may vary
@@ -18,19 +18,31 @@ export interface InternalAction {
   targetComment?: string; // Optional comment to display during this step
 }
 
-/**
- * Guided action interface (strict)
- * Used for guided interactions where users manually perform actions
- * Extends InternalAction with stricter types and additional fields
- */
+export const MAX_GUIDED_STEP_TIMEOUT_MS = 600_000;
+
 export interface GuidedAction extends InternalAction {
   targetAction: 'hover' | 'button' | 'highlight' | 'noop' | 'formfill';
-  refTarget?: string; // Required for hover/button/highlight/formfill, optional for noop
-  targetValue?: string; // Value for formfill actions (supports regex patterns)
-  targetComment?: string; // Optional comment to display in tooltip during this step
-  isSkippable?: boolean; // Whether this specific step can be skipped
-  formHint?: string; // Hint shown when form validation fails (for formfill with regex)
-  validateInput?: boolean; // Enable strict validation for formfill (require targetValue match)
+  isSkippable?: boolean;
+  formHint?: string;
+  validateInput?: boolean;
+  lazyRender?: boolean;
+  scrollContainer?: string;
+}
+
+export type GuidedSubstepStatus = 'completed' | 'timeout' | 'cancelled' | 'skipped' | 'error';
+
+export interface GuidedSubstepResult {
+  index: number;
+  action: GuidedAction['targetAction'];
+  status: GuidedSubstepStatus;
+  durationMs: number;
+}
+
+export type GuidedRequirementsCheck = (action: GuidedAction) => Promise<{ pass: boolean; error: CheckResultError[] }>;
+
+export interface GuidedStepOptions {
+  checkRequirements?: GuidedRequirementsCheck;
+  onSettled?: (result: GuidedSubstepResult) => void;
 }
 
 /**

@@ -631,6 +631,33 @@ describe('E2E Contract: Comment Box Attributes', () => {
   // Integration: Combined Attributes
   // ============================================================================
 
+  describe('guided substep metadata', () => {
+    it.each([true, false])('forwards skippability %s and index zero', async (substepSkippable) => {
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Continue.',
+        false,
+        { current: 0, total: 2, completedSteps: [], progress: 'performed' },
+        substepSkippable ? jest.fn() : undefined,
+        jest.fn(),
+        undefined,
+        undefined,
+        { actionType: 'button', substepIndex: 0, substepSkippable, skipAnimations: true }
+      );
+      const box = document.querySelector('.interactive-comment-box');
+      expect(box).toHaveAttribute('data-test-substep-index', '0');
+      expect(box).toHaveAttribute('data-test-substep-skippable', String(substepSkippable));
+      expect(box?.querySelector<HTMLElement>('.interactive-comment-progress-bar')?.style.width).toBe('0%');
+    });
+
+    it('omits guided metadata for other comment boxes', async () => {
+      await navigationManager.highlightWithComment(mockElement, 'A regular highlight.');
+      const box = document.querySelector('.interactive-comment-box');
+      expect(box).not.toHaveAttribute('data-test-substep-index');
+      expect(box).not.toHaveAttribute('data-test-substep-skippable');
+    });
+  });
+
   describe('combined attributes', () => {
     it('sets all relevant attributes together for formfill actions', async () => {
       await navigationManager.highlightWithComment(

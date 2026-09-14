@@ -29,11 +29,23 @@ import {
   useStepChecker,
 } from './index';
 import { registerCompatibilityGuideId, resetGuideIdentityForTests } from '../global-state/guide-identity';
-import { guideResponseStorage } from '../lib/user-storage';
+import { guideResponseStorage, sectionDoneStorage } from '../lib/user-storage';
+import {
+  getContentKey,
+  sanitizeContentKey,
+  resetContentKeyForTests,
+  setActiveTabUrl,
+} from '../global-state/content-key';
+import { fetchRawHtml } from '../docs-retrieval/content-fetcher/fetch-raw';
+import { sectionCompletedCheck } from './checks/section-completed-check';
 
 jest.mock('../lib/user-storage', () => ({
   guideResponseStorage: {
     getResponse: jest.fn(),
+  },
+  sectionDoneStorage: {
+    set: jest.fn(),
+    get: jest.fn(),
   },
 }));
 
@@ -89,6 +101,114 @@ function PostconditionProbe({ testId, requirements }: { testId: string; requirem
 
   return <div data-testid={testId}>{result}</div>;
 }
+
+function ScopedProbe({ postconditions }: { postconditions: boolean }) {
+  const scope = useGuideRequirements();
+  const check = postconditions ? scope.checkPostconditions : scope.checkRequirements;
+  const [passed, setPassed] = useState<boolean>();
+  useEffect(() => {
+    void check({
+      requirements: ['var-accepted:true', 'section-completed:setup'],
+      maxRetries: 0,
+    }).then((result) => setPassed(result.pass));
+  }, [check]);
+  return <div data-testid="scope-result">{`${scope.guideId}:${scope.contentKey}:${passed}`}</div>;
+}
+
+describe('explicit content scope', () => {
+  const getSectionDone = jest.mocked(sectionDoneStorage.get);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetContentKeyForTests();
+    setActiveTabUrl('bundled:live');
+    mockGetResponse.mockResolvedValue(true);
+    getSectionDone.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    resetContentKeyForTests();
+    resetGuideIdentityForTests();
+  });
+
+  it.each([false, true])(
+    'binds guide identity and normalized content scope (postconditions: %s)',
+    async (postconditions) => {
+      const authoredKey = `https://example.com/../guide/${'a'.repeat(220)}`;
+      const expectedKey = sanitizeContentKey(authoredKey);
+      getSectionDone.mockImplementation(async (key) => (key === expectedKey ? true : null));
+      render(
+        <GuideRequirementsProvider guideId="guide-owner" contentKey={authoredKey}>
+          <ScopedProbe postconditions={postconditions} />
+        </GuideRequirementsProvider>
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('scope-result')).toHaveTextContent(`guide-owner:${expectedKey}:true`)
+      );
+      expect(mockGetResponse).toHaveBeenCalledWith('guide-owner', 'accepted');
+      expect(getSectionDone).toHaveBeenCalledWith(expectedKey, 'section-setup');
+      expect(expectedKey).toHaveLength(200);
+      expect(expectedKey).not.toContain('..');
+    }
+  );
+
+  it('reads the section writer namespace after the learning-path content.json ladder', async () => {
+    const requestedUrl = 'https://grafana.com/docs/learning-paths/alerting-first-rule/build-query/';
+    const contentUrl = new URL('content.json', requestedUrl).href;
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(
+      async (url) =>
+        ({
+          ok: true,
+          url: String(url),
+          headers: new Headers({ 'Content-Type': 'text/html' }),
+          text: async () => (String(url) === contentUrl ? '{"id":"guide-owner","blocks":[]}' : '<html>Guide</html>'),
+        }) as Response
+    );
+    try {
+      const fetched = await fetchRawHtml(requestedUrl, {});
+      expect(fetched.finalUrl).toBe(contentUrl);
+      setActiveTabUrl(requestedUrl);
+      const writerKey = getContentKey();
+      expect(writerKey).not.toBe(sanitizeContentKey(fetched.finalUrl!));
+      await sectionDoneStorage.set(writerKey, 'section-setup', true);
+      getSectionDone.mockImplementation(async (key) => (key === writerKey ? true : null));
+
+      render(
+        <GuideHost guideId="guide-owner">
+          <ScopedProbe postconditions={false} />
+        </GuideHost>
+      );
+
+      await waitFor(() => expect(screen.getByTestId('scope-result')).toHaveTextContent(':true'));
+      expect(getSectionDone).toHaveBeenCalledWith(writerKey, 'section-setup');
+      expect(sectionDoneStorage.set).toHaveBeenCalledWith(writerKey, 'section-setup', true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('reads remote section completion from the explicit storage scope', async () => {
+    getSectionDone.mockImplementation(async (key) => (key === 'bundled:remote' ? true : null));
+    expect(await sectionCompletedCheck('section-completed:setup', 'bundled:remote')).toMatchObject({
+      pass: true,
+      context: { sectionId: 'section-setup', source: 'storage' },
+    });
+    expect(getSectionDone).toHaveBeenCalledWith('bundled:remote', 'section-setup');
+  });
+
+  it.each([
+    ['bundled:remote', false],
+    ['', false],
+    ['bundled:live', false],
+    [undefined, true],
+  ] as const)('uses the DOM fallback only for the local content scope (%s)', async (contentKey, pass) => {
+    render(<div id="section-setup" className="completed" />);
+    const result = await sectionCompletedCheck('section-completed:setup', contentKey);
+    expect(result.pass).toBe(pass);
+    expect(result.context).toMatchObject({ source: pass ? 'dom' : 'none' });
+  });
+});
 
 describe('guide identity at step mount', () => {
   beforeEach(() => {
@@ -236,6 +356,6 @@ describe('ContentRenderer guide-identity contract', () => {
       'utf8'
     );
     expect(source).toMatch(/useLayoutEffect\(\s*\(\)\s*=>\s*registerCompatibilityGuideId\(/);
-    expect(source).toMatch(/<GuideRequirementsProvider guideId=\{guideId\}>/);
+    expect(source).toContain('<GuideRequirementsProvider guideId={guideId}>');
   });
 });

@@ -1,10 +1,10 @@
 import { isInteractiveBlockType } from '../../../../src/constants/json-guide-classification';
+import { getGuidedStepTimeout } from '../../../../src/constants/interactive-config';
 import {
   DEFAULT_STEP_TIMEOUT_MS,
   GUIDE_INITIAL_TIMEOUT_MS,
   STEP_OVERHEAD_TIMEOUT_MS,
   STEP_DEADLINE_CLEANUP_GRACE_MS,
-  TIMEOUT_PER_GUIDED_SUBSTEP_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
 } from './constants';
 
@@ -57,7 +57,9 @@ export function estimateGuideTimeoutFromContent(content: string): number {
       const actions = Array.isArray(block.steps) ? block.steps.length : 0;
       const timeout =
         block.type === 'guided'
-          ? DEFAULT_STEP_TIMEOUT_MS + actions * TIMEOUT_PER_GUIDED_SUBSTEP_MS
+          ? DEFAULT_STEP_TIMEOUT_MS +
+            Math.max(1, actions) *
+              getGuidedStepTimeout(typeof block.stepTimeout === 'number' ? block.stepTimeout : undefined)
           : block.type === 'multistep'
             ? DEFAULT_STEP_TIMEOUT_MS + actions * TIMEOUT_PER_MULTISTEP_ACTION_MS
             : DEFAULT_STEP_TIMEOUT_MS;

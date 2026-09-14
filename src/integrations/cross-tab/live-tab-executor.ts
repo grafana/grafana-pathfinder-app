@@ -2,7 +2,7 @@ import { conditionLabel } from '../../lib/condition-input';
 import { config, getAppEvents } from '@grafana/runtime';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
 import { waitForReactUpdates } from '../../lib/async-utils';
-import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
+import { getGuidedStepTimeout, INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
@@ -16,7 +16,7 @@ import {
   NavigateHandler,
   NavigationManager,
 } from '../../interactive-engine';
-import type { GuidedAction } from '../../types/interactive-actions.types';
+import type { GuidedAction, GuidedStepOptions, GuidedSubstepResult } from '../../types/interactive-actions.types';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
 import { checkRequirements, dispatchFix, type RequirementsCheckResult } from '../../requirements-manager';
 import {
@@ -39,8 +39,6 @@ import { logger } from '../../lib/logging';
 import { setFaroUserActionAttributes, USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../../lib/faro';
 import { TELEMETRY_ACTIONS } from '../../lib/telemetry';
 
-// The verbs the guided handler can actually drive — narrower than the receive
-// gate's KNOWN_TARGET_ACTIONS, so runGuided checks against this before casting.
 const GUIDED_VERBS: ReadonlySet<GuidedAction['targetAction']> = new Set([
   'hover',
   'button',
@@ -240,16 +238,35 @@ export function installLiveTabExecutor(
     }
   };
 
-  // Guided is human-driven: highlight each target and wait for the user to perform
-  // it on the live tab, rather than the auto replay a multi-step uses.
-  const runGuided = async (actions: ActionList, onProgress: OnProgress): Promise<boolean> => {
+  const runGuided = async (
+    command: StepCommandMessage,
+    onProgress: OnProgress,
+    onSettled: NonNullable<GuidedStepOptions['onSettled']>
+  ): Promise<boolean> => {
+    const { internalActions: actions = [], stepTimeout, guideId, contentKey } = command.action;
+    const options: GuidedStepOptions = {
+      checkRequirements: (action) =>
+        checkRequirements({
+          requirements: action.requirements ?? '',
+          targetAction: action.targetAction,
+          refTarget: action.refTarget ?? '',
+          targetValue: action.targetValue,
+          lazyRender: action.lazyRender,
+          scrollContainer: action.scrollContainer,
+          guideId,
+          contentKey,
+          stepId: command.stepId,
+          maxRetries: 0,
+        }),
+      onSettled,
+    };
     guidedHandler.resetProgress();
     for (let i = 0; i < actions.length; i++) {
+      if (cancelled) {
+        return false;
+      }
       onProgress(i);
       const action = actions[i]!;
-      // The receive gate accepts any KNOWN_TARGET_ACTIONS verb, which is wider than
-      // the guided verb set — guard the cast so a non-guided verb (e.g. navigate)
-      // fails loud instead of being mistyped into the guided handler (F-1073-nit-cast).
       if (!GUIDED_VERBS.has(action.targetAction as GuidedAction['targetAction'])) {
         logger.warn(`[Pathfinder] cross-tab executor: guided step has non-guided verb "${action.targetAction}"`);
         return false;
@@ -257,9 +274,12 @@ export function installLiveTabExecutor(
       const result = await guidedHandler.executeGuidedStep(
         { ...action, targetAction: action.targetAction as GuidedAction['targetAction'] },
         i,
-        actions.length
+        actions.length,
+        getGuidedStepTimeout(stepTimeout),
+        undefined,
+        options
       );
-      if (result !== 'completed' && result !== 'skipped') {
+      if (cancelled || (result !== 'completed' && result !== 'skipped')) {
         return false;
       }
     }
@@ -272,8 +292,22 @@ export function installLiveTabExecutor(
     }
     const { stepId, runId } = command;
     const internalActions = command.action.internalActions;
+    let substepResults: GuidedSubstepResult[] | undefined = command.action.targetAction === 'guided' ? [] : undefined;
     const postProgress = (index: number) =>
-      transport.post({ kind: 'step-progress', stepId, runId, index, total: internalActions?.length ?? 0 });
+      transport.post({
+        kind: 'step-progress',
+        stepId,
+        runId,
+        index,
+        total: internalActions?.length ?? 0,
+        ...(substepResults ? { substepResults } : {}),
+      });
+    const onSettled = (result: GuidedSubstepResult) => {
+      const next = [...(substepResults ?? [])];
+      next[result.index] = result;
+      substepResults = next;
+      postProgress(result.index);
+    };
     await withFaroUserAction(
       TELEMETRY_ACTIONS.remoteStep,
       {
@@ -289,7 +323,7 @@ export function installLiveTabExecutor(
         try {
           if (internalActions?.length) {
             if (command.action.targetAction === 'guided') {
-              ok = await runGuided(internalActions, postProgress);
+              ok = await runGuided(command, postProgress, onSettled);
             } else {
               await runComposite(internalActions, postProgress);
               ok = true;
@@ -303,11 +337,8 @@ export function installLiveTabExecutor(
           ok = false;
         }
         setFaroUserActionAttributes({ step_ok: ok });
-        // Tell the controller whether a composite actually finished, so it surfaces
-        // failure instead of completing early. Simple steps stay optimistic by design
-        // and report nothing back.
         if (internalActions?.length) {
-          transport.post({ kind: 'step-complete', stepId, runId, ok });
+          transport.post({ kind: 'step-complete', stepId, runId, ok, ...(substepResults ? { substepResults } : {}) });
         }
       },
       USER_ACTION_TIMEOUT_LONG_MS
@@ -391,7 +422,7 @@ export function installLiveTabExecutor(
     if (SIGNED_MESSAGE_KINDS.has(validated.kind)) {
       void (async () => {
         const authorized = await authGate.verifySignedMessage(validated, ownLiveTabId);
-        if (!authorized) {
+        if (cancelled || !authorized) {
           return;
         }
         if (validated.kind === 'step-command') {
@@ -420,6 +451,7 @@ export function installLiveTabExecutor(
 
   return () => {
     cancelled = true;
+    guidedHandler.cancel();
     unsubscribe();
     unsubscribeAccepted();
     transport.stop();

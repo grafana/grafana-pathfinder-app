@@ -49,12 +49,26 @@ Public API:
 - `markStepsCompleted(stepIds, sectionId, reason?)` — atomic bulk write (used by the section's objectives-auto-complete and run-section paths).
 - `resetSteps(stepIds, sectionId)` — atomic tail-reset used by the section's individual-step redo path.
 - `resetSection(sectionId)` — atomic clear used by the section's full-reset path.
+- `registerPendingStepRun(stepId, sectionId, onInvalidate)` — pending controller run registration with `isCurrent()` and `release()` methods.
 - `getGuideProgress(contentKey)` — `{ completed, total, percentage }` snapshot. A guide carrying the `guideCompletionMarkStorage` mark reports `percentage: 100` regardless of step and ack counts, and `refreshGuidePercentage` persists the same, so a later step write cannot move a marked guide back down. Rationale: `docs/design/COMPLETION-MODEL.md`, decision 2.
 - `evictSectionCache(sectionId)` — drop a section's cache + hydration marker without writing storage. Called by `InteractiveSection`'s preview-mode unmount path so a remount under the same preview key starts fresh.
 - `evictContentCache(contentKey)` — drop one content key's cache + hydration state + version counters. Called by per-guide reset paths so subscribers re-render against an empty completion set immediately.
 - `evictAllContentCaches()` — drop every active content key's cache. Counterpart to `interactiveStepStorage.clearAll`.
 
 Hydration is lazy and per-section. Preview-mode content keys (`block-editor://preview/...`, `devtools`) bypass storage writes entirely — the in-memory cache still updates so ephemeral preview UI keeps reacting.
+
+### Pending controller runs
+
+Pending guided controller runs share the completion store lifetime, rather than the component lifetime.
+The registration uses the content key, section ID, and step ID.
+
+A reset invalidates matching runs even when the completion cache is empty.
+A replacement run invalidates the previous run for the same identity.
+Invalidation cancels the controller waiter.
+The component also checks the registration after `await`, because reset can follow an already-resolved reply.
+
+Normal component unmount keeps the registration valid. Settlement releases it.
+Ordinary cross-tab cache refresh does not invalidate a pending run.
 
 ## Reset paths must evict the cache
 

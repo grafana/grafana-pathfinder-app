@@ -312,71 +312,73 @@ export async function reftargetExistsCheck(
  */
 const DEFAULT_DASHBOARD_SCROLL_CONTAINER = '.scrollbar-view';
 
-/**
- * Progressive scroll discovery configuration
- */
 export interface LazyScrollOptions {
   scrollContainerSelector?: string;
   maxScrollAttempts?: number;
   scrollIncrement?: number;
   waitTime?: number;
+  signal?: AbortSignal;
+  deadline?: number;
 }
 
-/**
- * Progressively scroll a container to discover lazy-loaded elements.
- * Useful for Grafana dashboards that virtualize panels off-screen.
- *
- * @param selector - CSS selector for the element to find
- * @param options - Configuration for scroll behavior
- * @returns Promise resolving to the element if found, null otherwise
- */
 export async function scrollUntilElementFound(
   selector: string,
   options: LazyScrollOptions = {}
 ): Promise<HTMLElement | null> {
   const {
     scrollContainerSelector = DEFAULT_DASHBOARD_SCROLL_CONTAINER,
-    maxScrollAttempts = 15, // More attempts since we scroll smaller increments
-    scrollIncrement = 400, // Smaller increments for smoother scrolling
-    waitTime = 350, // Longer wait to allow smooth scroll animation to complete
+    maxScrollAttempts = 15,
+    scrollIncrement = 400,
+    waitTime = 350,
+    signal,
+    deadline = Infinity,
   } = options;
+  const stopped = () => signal?.aborted || Date.now() >= deadline;
+  if (stopped()) {
+    return null;
+  }
 
-  // Find the scroll container
   const scrollContainer = document.querySelector(scrollContainerSelector);
   if (!scrollContainer || !(scrollContainer instanceof HTMLElement)) {
     logger.warn(`[LazyScroll] Scroll container not found: ${scrollContainerSelector}`);
     return null;
   }
 
-  // Resolve grafana: selectors
   const resolvedSelector = resolveSelector(selector);
-
-  // First check if element already exists
-  // Use querySelectorAllEnhanced to support custom selectors like :nth-match(), :contains(), etc.
   const existingResult = querySelectorAllEnhanced(resolvedSelector);
   if (existingResult.elements.length > 0 && existingResult.elements[0] instanceof HTMLElement) {
     return existingResult.elements[0];
   }
 
   for (let attempt = 0; attempt < maxScrollAttempts; attempt++) {
-    // Scroll down with smooth animation for better UX
+    if (stopped()) {
+      return null;
+    }
     scrollContainer.scrollBy({ top: scrollIncrement, behavior: 'smooth' });
 
-    // Wait for smooth scroll animation + lazy render to kick in
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
+    await new Promise<void>((resolve) => {
+      const finish = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', finish);
+        resolve();
+      };
+      const timer = setTimeout(finish, Math.min(waitTime, Math.max(0, deadline - Date.now())));
+      signal?.addEventListener('abort', finish, { once: true });
+      if (signal?.aborted) {
+        finish();
+      }
+    });
 
-    // Check if element now exists using enhanced selector
+    if (stopped()) {
+      return null;
+    }
     const result = querySelectorAllEnhanced(resolvedSelector);
     if (result.elements.length > 0 && result.elements[0] instanceof HTMLElement) {
-      console.log(`[LazyScroll] Found element after ${attempt + 1} scroll(s): ${selector}`);
       return result.elements[0];
     }
 
-    // Check if we've reached the bottom
     const atBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10;
-
     if (atBottom) {
-      console.log(`[LazyScroll] Reached bottom without finding element: ${selector}`);
       break;
     }
   }
