@@ -1,5 +1,4 @@
-import type { TestResultsData } from '../../../src/cli/e2e/e2e-reporter';
-import { contentDigest, createMinimalResultsData } from '../../../src/cli/e2e/e2e-reporter';
+import { type TestResultsData, contentDigest, createMinimalResultsData } from '../../../src/cli/e2e/e2e-reporter';
 import type { E2EChainGuide, E2EChainInput, E2EChainPackageMetadata } from '../../../src/cli/e2e/e2e-runner-contract';
 import { isFatalTransitionError } from './guide-runner/transition-error';
 

@@ -16,6 +16,9 @@ jest.mock('@playwright/test', () => ({
 }));
 
 import {
+  type AllStepsResult,
+  type StepTestResult,
+  type TestableStep,
   calculateGuideTimeout,
   calculateStepDeadline,
   calculateStepTimeout,
@@ -33,7 +36,6 @@ import {
   STEP_DEADLINE_CLEANUP_GRACE_MS,
 } from './guide-runner';
 import { printDetailedSummary } from './console-reporter';
-import type { AllStepsResult, StepTestResult, TestableStep } from './guide-runner';
 
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
   return {
