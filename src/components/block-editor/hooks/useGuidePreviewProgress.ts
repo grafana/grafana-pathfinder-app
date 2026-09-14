@@ -42,12 +42,14 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
         setHasProgress(true);
         return;
       }
-      // MF-3 — preview mode suppresses `kind: 'guide'` in `persistSection`
-      // (no document total → no percentage), so the Reset button would
-      // otherwise be unreachable in preview. Flip on per-step / per-section
-      // completion events whose active content key matches this preview
-      // hook's progress key. Reads `getContentKey()` lazily because the
-      // hook isn't necessarily mounted under the same active tab.
+      // MF-3 — a preview key does now get a `kind: 'guide'` event, but only
+      // once the frozen block index has published for it; until then
+      // `refreshGuidePercentage` returns undefined and nothing announces the
+      // percentage, so the Reset button would be unreachable. Flip on
+      // per-step / per-section completion events whose active content key
+      // matches this preview hook's progress key. Reads `getContentKey()`
+      // lazily because the hook isn't necessarily mounted under the same
+      // active tab.
       if (
         (detail.kind === 'step' || detail.kind === 'section') &&
         detail.completed === true &&

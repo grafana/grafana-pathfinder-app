@@ -21,7 +21,7 @@ import type { FixTypeValue } from '../fix-types';
  */
 export interface FixHandlerNavigationManager {
   expandParentNavigationSection(targetHref: string): Promise<boolean>;
-  fixLocationRequirement(targetPath: string): Promise<void>;
+  fixLocationRequirement(targetPath: string): Promise<boolean>;
   fixNavigationRequirements(): Promise<void>;
 }
 

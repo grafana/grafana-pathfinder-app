@@ -190,16 +190,19 @@ callback because marking a step complete is the step's business and means nothin
 `integrations/coda/gcx-credential-store.ts`, not in either component. Two independent copies would let
 one surface offer a mint the other has already made — and Grafana rejects a duplicate token name, so
 that second mint fails with a message about token names rather than anything a learner can act on.
-Sharing it also means a credential installed from the toolbar completes a `gcx` step that is waiting on
-one.
+The ready credential is visible to every surface on the session, but completion is requester-scoped:
+the snapshot carries the stable step id that started the run, and only that step receives `onReady`.
+A toolbar install has no requester and completes no step.
 
-**Sharing one store makes the reader's identity load-bearing.** `useGcxCredential(onReady, sessionId)`
+**Sharing one store makes the reader's identity load-bearing.**
+`useGcxCredential(onReady, sessionId, requesterId)`
 answers only for the session named, and everything it reports — state, credential, error — is `idle`
 for any other. Without that, a credential installed from the toolbar would render a ready line on a
-step targeting a different VM and complete it. `terminal-connect-step` passes `onReady` only when
-`gcx` is set, and guards its gcx render on the same flag, so an ordinary connect step that only needed
-a **Continue** click is never completed by someone else's credential. It is the additive contract
-holding: a block without `gcx` behaves exactly as it did before the field existed.
+step targeting a different VM. On the same session it reports shared readiness, but fires `onReady`
+only when the snapshot requester matches that hook's stable step id. `terminal-connect-step` passes
+both only when `gcx` is set, and guards its gcx render on the same flag, so an ordinary connect step
+that only needed a **Continue** click is never completed by someone else's credential. It is the
+additive contract holding: a block without `gcx` behaves exactly as it did before the field existed.
 
 **The store is keyed to the session, and a new session clears it.** `TerminalProvider` calls
 `invalidateGcxCredentialForSession` whenever the registered session id changes, because a reconnect

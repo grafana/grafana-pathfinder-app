@@ -22,7 +22,7 @@ import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
-export type AutoDockOutcome = 'sidebar' | 'floating' | 'noop' | 'transient_back';
+export type AutoDockOutcome = 'sidebar' | 'floating' | 'noop' | 'transient_back' | 'transient_navigation';
 
 /**
  * Every `reason` value reported on `UserInteraction.FullScreenExit`, across
@@ -32,6 +32,7 @@ export type AutoDockOutcome = 'sidebar' | 'floating' | 'noop' | 'transient_back'
  */
 export type FullScreenExitReason =
   | 'transient_back'
+  | 'transient_navigation'
   | 'navigation_away_sidebar_occupied'
   | 'navigation_away'
   | 'manual_exit'
@@ -52,16 +53,15 @@ export interface AutoDockInputs {
   /** Captured from `FullScreenPanel`'s active tab — reported as analytics context. */
   guideUrl: string | undefined;
   title: string;
-  /** history action driving the navigation — `'POP'` is the browser Back path. */
+  /** history action driving the navigation — `'POP'` is browser Back and `'PUSH'` includes Grafana nav clicks. */
   action: HistoryAction;
 }
 
 /**
  * Decide and execute the auto-dock side effects after a location change.
  *
- * Returns the outcome ('sidebar' | 'floating' | 'noop') so callers /
- * tests can assert which branch fired without re-creating the guards
- * here.
+ * Returns the outcome so callers and tests can assert which branch fired
+ * without re-creating the guards here.
  */
 export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome {
   // Guard 1: the explicit Exit / Switch-to-floating buttons set mode
@@ -86,34 +86,33 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
   // the FullScreenPanel React tree here, `markAsCompleted` is racing
   // against unmount and the step's persistence write may never happen.
   // A `setTimeout(0)` delay yields the microtask queue so the handler's
-  // pending `await markAsCompleted()` chain can settle first. The Back
-  // branch below relies on the same deferral for a second reason (see there).
+  // pending `await markAsCompleted()` chain can settle first. The transient
+  // quiet-exit branch below relies on the same deferral for a second reason.
   const deferred = (fn: () => void) => setTimeout(fn, 0);
 
-  // Guard 3: browser Back (history POP) out of a transient prose full-screen
-  // launch. The launch picked full screen automatically and never expressed a
-  // durable surface preference, so the return gesture must not force the
-  // extension sidebar open with the prose squeezed in (#1448) — quietly end
-  // the transient session so `getMode()` falls back to the stored preference.
-  // PUSH/REPLACE keep today's dock (an interactive `navigate` step leaving full
-  // screen still needs a panel to continue in); a non-transient POP (a
-  // deliberately-adopted full screen) docks too. history v4 can't tell Back
-  // from Forward — both are POP — which is acceptable for this quiet exit.
+  // Guard 3: Back or ordinary navigation out of a transient prose launch. An
+  // interactive action requests its sidebar handoff before pushing, which
+  // changes mode and exits through Guard 1; fixLocationRequirement uses the
+  // same facade. A PUSH that reaches this branch therefore has no interactive
+  // continuation to preserve and should not force a surface open (#1472).
+  // REPLACE and every non-transient navigation keep the docking behavior.
   //
   // Deferring `endTransientSession` is load-bearing: `FullScreenPanel`'s unmount
   // cleanup must run first, while `getMode()` is still `'fullscreen'`, so it
   // clears `isSidebarMounted`. Ending the session synchronously would flip
   // `getMode()` to the stored preference before the cleanup's mode check and
   // strand the mount flag stale-true with no surface.
-  if (action === 'POP' && panelModeManager.isTransient()) {
+  const transientExitReason =
+    action === 'POP' ? 'transient_back' : action === 'PUSH' ? 'transient_navigation' : undefined;
+  if (transientExitReason && panelModeManager.isTransient()) {
     reportAppInteraction(UserInteraction.FullScreenExit, {
       destination: 'none',
       guide_url: guideUrl || '',
       guide_title: title,
-      reason: 'transient_back' satisfies FullScreenExitReason,
+      reason: transientExitReason satisfies FullScreenExitReason,
     });
     deferred(() => panelModeManager.endTransientSession());
-    return 'transient_back';
+    return transientExitReason;
   }
 
   if (isExtensionSidebarOwnedByOther(myPluginId)) {

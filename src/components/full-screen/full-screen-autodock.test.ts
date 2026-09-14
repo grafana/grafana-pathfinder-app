@@ -52,8 +52,8 @@ function defaultInputs(overrides: Partial<Parameters<typeof dockOnLeavingFullScr
     myPluginId: PLUGIN_ID,
     guideUrl: baseTab.baseUrl,
     title: baseTab.title,
-    // Default to PUSH (an interactive `navigate` step): exercises the dock
-    // branches. The transient-Back branch is opted into per-test.
+    // A non-transient PUSH exercises the regular dock branches. Transient
+    // quiet-exit cases opt in per test.
     action: 'PUSH' as const,
     ...overrides,
   };
@@ -174,7 +174,7 @@ describe('dockOnLeavingFullScreen', () => {
     });
   });
 
-  describe('transient Back branch (browser Back out of a transient prose launch)', () => {
+  describe('transient quiet-exit branch (leaving a transient prose launch)', () => {
     beforeEach(() => {
       (panelModeManager.isTransient as jest.Mock).mockReturnValue(true);
     });
@@ -207,17 +207,31 @@ describe('dockOnLeavingFullScreen', () => {
       });
     });
 
-    it('leaves PUSH (interactive navigate step) on the docking path even mid-session', () => {
+    it('quietly ends a transient session when an ordinary PUSH reaches auto-dock', () => {
       const outcome = dockOnLeavingFullScreen(defaultInputs({ action: 'PUSH' }));
+
+      expect(panelModeManager.endTransientSession).not.toHaveBeenCalled();
       jest.runAllTimers();
 
-      expect(outcome).toBe('sidebar');
-      expect(panelModeManager.endTransientSession).not.toHaveBeenCalled();
-      expect(panelModeManager.setMode).toHaveBeenCalledWith('sidebar');
-      expect(sidebarState.openSidebar).toHaveBeenCalledWith('Interactive learning');
+      expect(outcome).toBe('transient_navigation');
+      expect(panelModeManager.endTransientSession).toHaveBeenCalledTimes(1);
+      expect(panelModeManager.setMode).not.toHaveBeenCalled();
+      expect(sidebarState.openSidebar).not.toHaveBeenCalled();
+      expect(sidebarState.setPendingOpenSource).not.toHaveBeenCalled();
     });
 
-    it('leaves REPLACE on the docking path (POP-only rule)', () => {
+    it('reports a transient navigation separately from browser Back', () => {
+      dockOnLeavingFullScreen(defaultInputs({ action: 'PUSH' }));
+
+      expect(reportAppInteraction).toHaveBeenCalledWith('full_screen_exit', {
+        destination: 'none',
+        guide_url: baseTab.baseUrl,
+        guide_title: baseTab.title,
+        reason: 'transient_navigation',
+      });
+    });
+
+    it('leaves REPLACE on the docking path', () => {
       const outcome = dockOnLeavingFullScreen(defaultInputs({ action: 'REPLACE' }));
       jest.runAllTimers();
 

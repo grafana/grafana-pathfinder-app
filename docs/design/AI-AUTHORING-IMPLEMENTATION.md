@@ -110,7 +110,7 @@ P0 is non-blocking until P4. P1 is the critical path for everything downstream. 
 - `src/cli/utils/schema-options.ts` — Zod-to-Commander bridge.
 - `src/cli/utils/block-registry.ts` — `BLOCK_SCHEMA_MAP` + completeness test.
 - `src/cli/utils/package-io.ts` — read-mutate-validate-write core.
-- Commands: `create`, `add-block`, `add-step`, `add-choice`, `set-manifest`, `inspect`, `edit-block`, `remove-block`.
+- Commands: `create`, `add-block`, `add-step`, `add-choice`, `add-hint`, `set-manifest`, `inspect`, `edit-block`, `remove-block`.
 - Shared output formatting: `--quiet`, `--format json`.
 - `--if-absent` on container `add-block`.
 - Auto-ID assignment for leaf blocks (`<type>-<n>`) and for the package `id` on `create` (`<kebab-of-title>-<6-char-base32-suffix>`).

@@ -1,8 +1,8 @@
 /**
- * Block / step / choice mutators — `appendBlock`, `appendStep`,
- * `appendChoice`, `editBlock`, `removeBlock`. Each mutator operates on a
- * parsed `ContentJson` in place and throws a `PackageIOError` with a stable
- * code on every well-defined failure mode.
+ * Block and child-item mutators — `appendBlock`, `appendStep`, `appendChoice`,
+ * `appendHint`, `editBlock`, `removeBlock`. Each mutator operates on a parsed
+ * `ContentJson` in place and throws a `PackageIOError` with a stable code on
+ * every well-defined failure mode.
  *
  * `resolveAppendTarget` is exported (for use by `move.ts`) but is not part of
  * the package-io public API surface — it stays an internal-to-the-directory
@@ -17,6 +17,8 @@
 import type {
   JsonAssistantBlock,
   JsonBlock,
+  JsonChallengeBlock,
+  JsonChallengeHint,
   JsonConditionalBlock,
   JsonGuidedBlock,
   JsonMultistepBlock,
@@ -227,6 +229,36 @@ export function appendChoice(content: ContentJson, choice: JsonQuizChoice, paren
 }
 
 // ---------------------------------------------------------------------------
+// appendHint
+// ---------------------------------------------------------------------------
+
+/**
+ * Append a progressive hint to a challenge block.
+ */
+export function appendHint(content: ContentJson, hint: JsonChallengeHint, parentId: string): { position: string } {
+  const parent = findBlockById(content, parentId);
+  if (!parent) {
+    throw new PackageIOError({
+      code: 'CONTAINER_NOT_FOUND',
+      message: `Parent "${parentId}" not found`,
+    });
+  }
+  if (parent.type !== 'challenge') {
+    throw new PackageIOError({
+      code: 'WRONG_PARENT_KIND',
+      message: `Parent "${parentId}" is a ${parent.type} — hints can only be added to challenge blocks`,
+    });
+  }
+
+  const challenge = parent as JsonChallengeBlock;
+  const hints = (challenge.hintLevels ??= []);
+  hints.push(hint);
+  return {
+    position: `${pathToBlock(content, parent, 'hintLevels')}[${hints.length - 1}]`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // editBlock
 // ---------------------------------------------------------------------------
 
@@ -253,6 +285,7 @@ export const UNEDITABLE_BLOCK_FIELDS: ReadonlySet<string> = new Set([
   'whenFalse',
   'steps',
   'choices',
+  'hintLevels',
   'id',
 ]);
 
@@ -403,12 +436,12 @@ export function resolveAppendTarget(content: ContentJson, options: AppendBlockOp
     return { array: container.blocks, path: pathToBlock(content, parent, 'blocks') };
   }
 
-  // multistep / guided / quiz are containers but NOT block-containers — they
-  // hold steps or choices, not nested blocks. Reject with a specific code so
-  // the command can suggest add-step / add-choice instead.
+  // These are containers but NOT block-containers — they hold steps, choices,
+  // or hints instead of nested blocks.
+  const childCommand = parent.type === 'quiz' ? 'add-choice' : parent.type === 'challenge' ? 'add-hint' : 'add-step';
   throw new PackageIOError({
     code: 'WRONG_PARENT_KIND',
-    message: `Parent "${options.parentId}" is a ${parent.type} — use add-${parent.type === 'quiz' ? 'choice' : 'step'} instead of add-block`,
+    message: `Parent "${options.parentId}" is a ${parent.type} — use ${childCommand} instead of add-block`,
   });
 }
 
@@ -522,7 +555,7 @@ function findEquivalentLeaf(siblings: JsonBlock[], candidate: JsonBlock): JsonBl
  * if it isn't there" pattern; existing children are preserved by design.
  */
 function scalarFieldsConflict(existing: JsonBlock, candidate: JsonBlock): ConflictDetail | null {
-  const structural = new Set(['blocks', 'whenTrue', 'whenFalse', 'steps', 'choices']);
+  const structural = new Set(['blocks', 'whenTrue', 'whenFalse', 'steps', 'choices', 'hintLevels']);
   const existingRecord = existing as unknown as Record<string, unknown>;
   const candidateRecord = candidate as unknown as Record<string, unknown>;
 

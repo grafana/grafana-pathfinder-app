@@ -23,6 +23,10 @@ export const StorageKeys = {
   SECTION_ACKNOWLEDGED_PREFIX: 'grafana-pathfinder-app-section-acknowledged-', // Dynamic: see buildVersionedSectionStorageKey (issue #842 gate)
   SECTION_DONE_PREFIX: 'grafana-pathfinder-app-section-done-', // Dynamic: see buildVersionedSectionStorageKey (mount-free `section-completed:` check)
   GUIDE_COMPLETION_MARK_PREFIX: 'grafana-pathfinder-app-guide-complete-mark-', // Dynamic: see buildVersionedContentStorageKey (`mark-guide-complete` evidence; keyed by content key alone)
+  // Dynamic: see buildVersionedContentStorageKey, keyed by the recorder's own
+  // `kind:guideSource:guideId` dedupe string (not a content key). Durable
+  // half of completion-recorder.ts's exactly-once guard; survives a reload.
+  COMPLETION_EMITTED_PREFIX: 'grafana-pathfinder-app-completion-emitted-',
   // Full screen mode persistence (for page refreshes during recording)
   FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
   FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',

@@ -1016,7 +1016,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
     };
 
-    import('../context-engine').then(({ onContextChange }) => {
+    import('../lib/context-event-bus').then(({ onContextChange }) => {
       if (!isSubscribed) {
         return; // Component unmounted or state changed before import resolved
       }

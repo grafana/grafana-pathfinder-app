@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
@@ -58,10 +58,22 @@ import {
   TextSelectionState,
 } from '../../integrations/assistant-integration';
 import { substituteVariables } from '../../utils/variable-substitution';
-import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
+import {
+  STANDALONE_SECTION_ID,
+  isBlockEditorPreviewUrl,
+  refreshGuidePercentageOnLoad,
+} from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
+import {
+  evictGuideIndex,
+  getGuideIndexEvictionRevision,
+  publishGuideIndex,
+  subscribeGuideIndexEvictions,
+} from '../../global-state/active-guide-index';
+import { resolveCountedBlockStepId } from '../../global-state/guide-step-id-resolver';
+import { computeGuideBlockIndex } from '../../lib/guide-stats';
 import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 import { MarkCompleteFooter } from '../mark-complete';
@@ -678,18 +690,91 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
     return parseHTMLToComponents(html, baseUrl);
   }, [html, baseUrl]);
 
-  // A guide may reference snippets that resolve asynchronously from the CDN.
-  const guideWithSnippetRefs = useMemo<JsonGuide | null>(() => {
+  // Raw parse of the tree as received — pre-inlining on a direct open,
+  // already-expanded on the launch path (`prepare-guide-launch.ts`). Shared
+  // by the snippet-ref detection below and the frozen block index, so a
+  // guide-shaped `html` is only ever JSON.parsed once here.
+  const rawGuide = useMemo<JsonGuide | null>(() => {
     if (!isJsonGuideContent(html)) {
       return null;
     }
     try {
-      const guide = JSON.parse(html) as JsonGuide;
-      return guideHasSnippetRefs(guide) ? guide : null;
+      return JSON.parse(html) as JsonGuide;
     } catch {
       return null;
     }
   }, [html]);
+
+  // A guide may reference snippets that resolve asynchronously from the CDN.
+  const guideWithSnippetRefs = useMemo<JsonGuide | null>(() => {
+    return rawGuide && guideHasSnippetRefs(rawGuide) ? rawGuide : null;
+  }, [rawGuide]);
+
+  // The frozen block index (docs/design/COMPLETION-MODEL.md, decision 1):
+  // one traversal over the tree available synchronously at first paint,
+  // published once per content key and never recomputed for the life of
+  // that key — `publishGuideIndex` is itself idempotent, so a re-render or
+  // an unrelated prop change is a no-op here. It owns both the denominator
+  // and the numerator's positions so they can never come from two
+  // traversals and disagree.
+  //
+  // The eviction revision is a dependency because this is the only
+  // producer: a reset that evicts the index while this guide stays mounted
+  // would otherwise leave it with no index for the rest of the session, and
+  // no percentage with it.
+  //
+  // Passive effect, not `useMemo`/`useLayoutEffect`, for the same reason
+  // MarkCompleteFooter resolves its key in one: both producers of the
+  // content key publish it from a layout effect, so resolving during
+  // render (or in a child layout effect, which runs first) would publish
+  // the PREVIOUS milestone's key and leave this one with no index at all.
+  const guideIndexEvictionRevision = useSyncExternalStore(
+    subscribeGuideIndexEvictions,
+    getGuideIndexEvictionRevision,
+    getGuideIndexEvictionRevision
+  );
+
+  // The freeze contract's premise — a content key's content is immutable —
+  // holds for a real guide but not for a block-editor preview, whose key
+  // (block-editor://preview/<id>) stays constant for the whole editing
+  // session while the content underneath it changes on every edit. Tracking
+  // the last rawGuide this component published under a given preview key
+  // lets the effect below tell "content actually changed" apart from
+  // "this render was caused by the eviction this same effect just made" —
+  // without that distinction, evicting on every run would notify, which
+  // re-renders, which re-runs the effect, forever.
+  const lastPublishedPreviewGuideRef = useRef<{ contentKey: string; guide: JsonGuide } | null>(null);
+
+  useEffect(() => {
+    if (!rawGuide) {
+      return;
+    }
+    const contentKey = resolveGuideContentKey(baseUrl);
+    if (isBlockEditorPreviewUrl(baseUrl)) {
+      const last = lastPublishedPreviewGuideRef.current;
+      if (last && last.contentKey === contentKey && last.guide !== rawGuide) {
+        // Content changed under the same stable preview key — republish
+        // rather than silently keep serving the index from before this
+        // edit, which is what publishGuideIndex's ordinary idempotency
+        // would otherwise do.
+        evictGuideIndex(contentKey);
+      }
+      lastPublishedPreviewGuideRef.current = { contentKey, guide: rawGuide };
+    }
+    publishGuideIndex({
+      contentKey,
+      index: computeGuideBlockIndex(rawGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
+      denominatorSource: 'live-pre-inlining',
+    });
+    // A percentage persisted under the deleted step-count rule is read back
+    // verbatim by the new position-based one and is systematically higher,
+    // with no version on the record to tell old from new — reopening a
+    // guide with real evidence is the point this becomes recomputable
+    // (old-rule-percentages-reinterpreted). No-ops for a guide with no
+    // evidence at all, so this never fills the capped percentage namespace
+    // with zeros just from being opened.
+    refreshGuidePercentageOnLoad(contentKey);
+  }, [rawGuide, baseUrl, guideIndexEvictionRevision]);
 
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.
@@ -767,9 +852,14 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
 
     elements.forEach((el, idx) => {
       if (el.type === 'interactive-section') {
-        // Predict sectionId using the same logic as InteractiveSection's useMemo:
-        // prefer the explicit HTML id prop, otherwise use the sequential counter.
-        const sectionId = el.props.id ? `section-${el.props.id}` : `section-${++sectionCounter}`;
+        // Same precedence InteractiveSection's own useMemo applies: the
+        // parser-stamped sectionId (sectionRuntimeId) wins outright. Falling
+        // through to the id-based/counter derivation here for an id-less
+        // section double-registers it under a second key the parser-stamped
+        // id has already claimed, inflating the total (section-registry
+        // -third-deriver-double-count).
+        const sectionId =
+          el.props.sectionId ?? (el.props.id ? `section-${el.props.id}` : `section-${++sectionCounter}`);
         const stepCount = countStepsInSection(el);
         registerSectionSteps(sectionId, stepCount, docOrder);
         docOrder++;
@@ -1186,6 +1276,7 @@ function renderParsedElement(
           objectives={element.props.objectives}
           hints={element.props.hints}
           id={element.props.id} // Pass the HTML id attribute
+          sectionId={element.props.sectionId}
           autoCollapse={element.props.autoCollapse}
         >
           {renderChildren(element.children)}

@@ -49,7 +49,8 @@ Public API:
 - `markStepsCompleted(stepIds, sectionId, reason?)` — atomic bulk write (used by the section's objectives-auto-complete and run-section paths).
 - `resetSteps(stepIds, sectionId)` — atomic tail-reset used by the section's individual-step redo path.
 - `resetSection(sectionId)` — atomic clear used by the section's full-reset path.
-- `getGuideProgress(contentKey)` — `{ completed, total, percentage }` snapshot. A guide carrying the `guideCompletionMarkStorage` mark reports `percentage: 100` regardless of step and ack counts, and `refreshGuidePercentage` persists the same, so a later step write cannot move a marked guide back down. Rationale: `docs/design/COMPLETION-MODEL.md`, decision 2.
+- `peekGuidePercentage(contentKey)` — the guide's percentage as an integer 0..100, derived by bridging stored evidence (completed steps and acknowledged sections) into the frozen block index's own position calculation in `src/lib/guide-stats`; the store is the only producer of that number. `0` when no index has been published for the key yet. A guide carrying the `guideCompletionMarkStorage` mark reports `100` whatever the evidence says, and `refreshGuidePercentage` persists the same, so a later step write cannot move a marked guide back down. Rationale: `docs/design/COMPLETION-MODEL.md`, decision 2.
+- `refreshAndNotifyGuideProgress(contentKey)` — recompute, persist and announce the percentage for callers outside the step-write path (an all-passive section acknowledgement, for instance, which `persistSection` never sees).
 - `evictSectionCache(sectionId)` — drop a section's cache + hydration marker without writing storage. Called by `InteractiveSection`'s preview-mode unmount path so a remount under the same preview key starts fresh.
 - `evictContentCache(contentKey)` — drop one content key's cache + hydration state + version counters. Called by per-guide reset paths so subscribers re-render against an empty completion set immediately.
 - `evictAllContentCaches()` — drop every active content key's cache. Counterpart to `interactiveStepStorage.clearAll`.
@@ -84,7 +85,7 @@ Limits — best effort, not transactional:
 
 - Last-write-wins. No merge of conflicting changes between tabs.
 - Tab A writing immediately before tab B writes the same key follows browser-defined ordering; the listener fires after-the-fact in each tab.
-- The `completedCountCache` in `lib/user-storage.ts` is also per-tab — the listener invalidates it via `interactiveStepStorage.invalidateCountCache(contentKey)` so the next `getGuideProgress` re-scans storage.
+- The completed-step and acknowledged-section scan caches in `lib/user-storage.ts` are also per-tab — the listener invalidates them via `interactiveStepStorage.invalidateCountCache(contentKey)` and `sectionAcknowledgementStorage.invalidateAcknowledgementCache(contentKey)` so the next `peekGuidePercentage` re-scans storage.
 
 ## Section reducer — minimal state
 
