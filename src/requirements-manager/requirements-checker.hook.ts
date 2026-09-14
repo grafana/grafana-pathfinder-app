@@ -49,7 +49,7 @@ export class SequentialRequirementsManager {
     return SequentialRequirementsManager.instance;
   }
 
-  registerStep(id: string, isSequence: boolean): void {
+  registerStep(id: string, _isSequence: boolean): void {
     if (!this.steps.has(id)) {
       this.steps.set(id, {
         isEnabled: false,
