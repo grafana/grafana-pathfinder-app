@@ -1,5 +1,7 @@
 name: Structured issue
 description: Describe a bug, improvement, or internal task with clear scope and acceptance criteria
+labels:
+  - needs-review
 body:
   - type: markdown
     attributes:
@@ -56,8 +58,7 @@ body:
         - Bug
         - Enhancement
         - Tech-debt
-        - Test
-        - Docs
+        - Documentation
         - Other
 
   - type: dropdown
