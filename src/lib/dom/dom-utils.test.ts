@@ -516,6 +516,9 @@ describe('scrollUntilElementFound', () => {
     Object.defineProperty(scrollContainer, 'scrollTop', { value: 0, writable: true });
     Object.defineProperty(scrollContainer, 'clientHeight', { value: 500, writable: true });
     Object.defineProperty(scrollContainer, 'scrollHeight', { value: 2000, writable: true });
+    Object.defineProperty(scrollContainer, 'scrollLeft', { value: 0, writable: true });
+    Object.defineProperty(scrollContainer, 'clientWidth', { value: 500, writable: true });
+    Object.defineProperty(scrollContainer, 'scrollWidth', { value: 500, writable: true });
     scrollContainer.scrollBy = jest.fn();
 
     document.body = document.createElement('body');
@@ -561,6 +564,50 @@ describe('scrollUntilElementFound', () => {
     });
 
     expect(result).toBeNull();
+  });
+
+  it('scrolls horizontally when the target is in a virtualized trailing column', async () => {
+    Object.defineProperty(scrollContainer, 'scrollWidth', { value: 1500, writable: true });
+    const target = document.createElement('button');
+    target.id = 'horizontal-target';
+
+    scrollContainer.scrollBy = jest.fn((options?: ScrollToOptions | number) => {
+      const left = typeof options === 'object' ? (options.left ?? 0) : 0;
+      scrollContainer.scrollLeft = Math.min(scrollContainer.scrollLeft + left, 1000);
+      if (left > 0) {
+        container.appendChild(target);
+      }
+    }) as typeof scrollContainer.scrollBy;
+
+    const { scrollUntilElementFound } = await import('./dom-utils');
+    const result = await scrollUntilElementFound('#horizontal-target', { waitTime: 0 });
+
+    expect(result).toBe(target);
+    expect(scrollContainer.scrollBy).toHaveBeenCalledWith({
+      top: 400,
+      left: 400,
+      behavior: 'smooth',
+    });
+  });
+
+  it('leaves a completed axis still while continuing along the other axis', async () => {
+    Object.defineProperty(scrollContainer, 'scrollTop', { value: 1500, writable: true });
+    Object.defineProperty(scrollContainer, 'scrollHeight', { value: 2000, writable: true });
+    Object.defineProperty(scrollContainer, 'scrollWidth', { value: 1500, writable: true });
+
+    scrollContainer.scrollBy = jest.fn((options?: ScrollToOptions | number) => {
+      const left = typeof options === 'object' ? (options.left ?? 0) : 0;
+      scrollContainer.scrollLeft = Math.min(scrollContainer.scrollLeft + left, 1000);
+    }) as typeof scrollContainer.scrollBy;
+
+    const { scrollUntilElementFound } = await import('./dom-utils');
+    await scrollUntilElementFound('#non-existent', { waitTime: 0, maxScrollAttempts: 1 });
+
+    expect(scrollContainer.scrollBy).toHaveBeenCalledWith({
+      top: 0,
+      left: 400,
+      behavior: 'smooth',
+    });
   });
 });
 
