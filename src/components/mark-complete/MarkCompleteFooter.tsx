@@ -32,7 +32,7 @@ import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../
 import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
-import { isBlockEditorPreviewUrl, getGuideProgress, subscribeProgress } from '../../global-state/completion-store';
+import { isBlockEditorPreviewUrl, peekGuidePercentage, subscribeProgress } from '../../global-state/completion-store';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { testIds } from '../../constants/testIds';
 
@@ -95,7 +95,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       (listener: () => void) => (contentKey === undefined ? NO_SUBSCRIPTION : subscribeProgress(contentKey, listener)),
       [contentKey]
     ),
-    useCallback(() => (contentKey === undefined ? 0 : getGuideProgress(contentKey).percentage), [contentKey])
+    useCallback(() => (contentKey === undefined ? 0 : peekGuidePercentage(contentKey)), [contentKey])
   );
 
   // Both producers of the content key publish it from a layout effect — the

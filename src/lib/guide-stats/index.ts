@@ -28,6 +28,8 @@ export {
 
 export { meanOfMemberPercentages, type MemberRollupProgress } from './rollup';
 
+export { sectionRuntimeId } from './section-identity';
+
 export {
   GUIDE_STATS_VERSION,
   rollUpGuideStats,

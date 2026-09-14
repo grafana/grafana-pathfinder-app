@@ -342,9 +342,8 @@ describe('with gcx', () => {
   });
 });
 
-// One store serves the guide step and the terminal toolbar, so an install made
-// anywhere reaches every mounted step. Only a gcx step on the same session has
-// anything to complete on it.
+// One store serves the guide step and terminal toolbar, so readiness is shared
+// by session. Completion stays with the step that requested the install.
 describe('a credential installed elsewhere', () => {
   it('leaves an ordinary connect step alone', async () => {
     mockTerminalStatus = 'connected';
@@ -365,7 +364,7 @@ describe('a credential installed elsewhere', () => {
     expect(screen.getByTestId(testIds.interactive.terminalSkipButton(STEP_ID))).toBeInTheDocument();
   });
 
-  it('completes a gcx step waiting on the same session', async () => {
+  it('shares readiness without completing a gcx step that did not request the run', async () => {
     mockTerminalStatus = 'connected';
     mockSessionId = 's_abc';
     mockProvisionGcx.mockResolvedValue(CREDENTIAL);
@@ -376,24 +375,30 @@ describe('a credential installed elsewhere', () => {
       await runGcxCredential('s_abc');
     });
 
-    expect(onComplete).toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.interactive.gcxReady(STEP_ID))).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.terminalSkipButton(STEP_ID))).toBeInTheDocument();
   });
 
-  it('leaves a gcx step targeting another VM alone', async () => {
-    // A later step whose `vmTemplate` differs reconnects to its own session;
-    // the credential the previous VM took is not its.
+  it('completes only the co-mounted step that requested the install', async () => {
     mockTerminalStatus = 'connected';
-    mockSessionId = 's_other';
+    mockSessionId = 's_abc';
     mockProvisionGcx.mockResolvedValue(CREDENTIAL);
-    const onComplete = jest.fn();
-    renderStep({ gcx: true, onComplete });
+    const onCompleteA = jest.fn();
+    const onCompleteB = jest.fn();
+    render(
+      <>
+        <TerminalConnectStep stepId="step-a" gcx onComplete={onCompleteA} vmTemplate="vm-aws" />
+        <TerminalConnectStep stepId="step-b" gcx onComplete={onCompleteB} vmTemplate="vm-aws-sample-app" />
+      </>
+    );
 
-    await act(async () => {
-      await runGcxCredential('s_abc');
-    });
+    fireEvent.click(screen.getByTestId(testIds.interactive.gcxMintButton('step-a')));
 
-    expect(onComplete).not.toHaveBeenCalled();
-    expect(screen.queryByTestId(testIds.interactive.gcxReady(STEP_ID))).not.toBeInTheDocument();
+    await waitFor(() => expect(onCompleteA).toHaveBeenCalledTimes(1));
+    expect(onCompleteB).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.interactive.gcxReady('step-b'))).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.terminalSkipButton('step-b'))).toBeInTheDocument();
   });
 });
 

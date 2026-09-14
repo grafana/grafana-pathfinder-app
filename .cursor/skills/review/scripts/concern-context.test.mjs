@@ -80,6 +80,15 @@ test('records the docs retrieval and rendering ownership chain', () => {
   assert.match(context.contract_anchor.contract, /fetchContent/);
   assert.match(context.contract_anchor.contract, /ContentRenderer/);
   assert.match(context.contract_anchor.contract, /shouldUseDocsLoader/);
+  assert.match(
+    context.contract_anchor.contract,
+    /package-content URLs are pre-routed by `openLearningJourney` to `openDocsPage`/
+  );
+  assert.match(
+    context.contract_anchor.contract,
+    /`loadTab` takes `loadDocsTabContent` when an explicit `packageInfo` option is supplied/
+  );
+  assert.match(context.contract_anchor.contract, /the tab type is `docs` or `interactive`/);
   assert.match(context.contract_anchor.contract, /loadDocsTabContentResult/);
   assert.match(context.contract_anchor.contract, /loadTabContent/);
   assert.match(context.contract_anchor.contract, /resolveDocsLoadAlignment/);

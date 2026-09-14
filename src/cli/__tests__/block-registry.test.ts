@@ -83,9 +83,12 @@ describe('BLOCK_TYPES ordering', () => {
 });
 
 describe('CONTAINER_BLOCK_TYPES', () => {
-  it.each(['section', 'conditional', 'assistant', 'multistep', 'guided', 'quiz'] as const)('%s is a container', (t) => {
-    expect(isContainerBlockType(t)).toBe(true);
-  });
+  it.each(['section', 'conditional', 'assistant', 'multistep', 'guided', 'quiz', 'challenge'] as const)(
+    '%s is a container',
+    (t) => {
+      expect(isContainerBlockType(t)).toBe(true);
+    }
+  );
 
   it.each(['markdown', 'interactive', 'html', 'image', 'video', 'input', 'terminal', 'code-block'] as const)(
     '%s is not a container',
@@ -175,6 +178,7 @@ const CONTAINER_NON_BLOCK_CHILD_KEYS_MIRROR: Record<string, string[]> = {
   multistep: ['steps'],
   guided: ['steps'],
   quiz: ['choices'],
+  challenge: ['hintLevels'],
 };
 
 describe('CONTAINER_CHILD_KEYS coverage', () => {

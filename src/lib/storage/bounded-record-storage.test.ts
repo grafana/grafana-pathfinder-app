@@ -34,6 +34,33 @@ describe('createBoundedRecordStorage', () => {
     expect(await store.get('a')).toBe(42);
   });
 
+  describe('peekAll', () => {
+    it('returns {} when the underlying record does not exist at all', () => {
+      const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+      expect(store.peekAll()).toEqual({});
+    });
+
+    it('reads back the whole record written through set(), synchronously', async () => {
+      const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+      await store.set('a', 42);
+      await store.set('b', 7);
+      expect(store.peekAll()).toEqual({ a: 42, b: 7 });
+    });
+
+    it('omits a key after clear()', async () => {
+      const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+      await store.set('a', 42);
+      await store.clear('a');
+      expect(store.peekAll()).toEqual({});
+    });
+
+    it('returns {} for malformed JSON rather than throwing', () => {
+      localStorage.setItem(TEST_KEY, '{not json');
+      const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+      expect(store.peekAll()).toEqual({});
+    });
+  });
+
   it('clamps values to [0, 100]', async () => {
     const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
     await store.set('low', -10);
