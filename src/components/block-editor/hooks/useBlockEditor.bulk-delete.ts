@@ -1,5 +1,5 @@
 import type { EditorBlock, JsonBlock } from '../types';
-import { isConditionalBlock, isSectionBlock } from './useBlockEditor.helpers';
+import { isConditionalBlock, isMergeableBlock, isSectionBlock, parseBlockId } from './useBlockEditor.helpers';
 
 export type SelectedBlockLocation =
   | {
@@ -23,8 +23,6 @@ export type SelectedBlockLocation =
       block: JsonBlock;
     };
 
-const MERGEABLE_TYPES = new Set<JsonBlock['type']>(['interactive', 'multistep', 'guided']);
-
 function parseChildIndex(suffix: string, length: number): number | null {
   if (!/^\d+$/.test(suffix)) {
     return null;
@@ -45,32 +43,30 @@ function parseChildIndex(suffix: string, length: number): number | null {
  * the wrong sibling.
  */
 export function resolveSelectedBlock(blocks: EditorBlock[], selectionId: string): SelectedBlockLocation | null {
-  const rootIndex = blocks.findIndex((entry) => entry.id === selectionId);
-  if (rootIndex >= 0) {
-    const entry = blocks[rootIndex];
-    return entry ? { kind: 'root', rootIndex, block: entry.block } : null;
+  const parsed = parseBlockId(selectionId, blocks);
+  if (parsed.block && !parsed.isNested && parsed.rootIndex !== undefined) {
+    return { kind: 'root', rootIndex: parsed.rootIndex, block: parsed.block };
+  }
+  if (
+    parsed.block &&
+    parsed.isNested &&
+    parsed.sectionRootIndex !== undefined &&
+    parsed.sectionId !== undefined &&
+    parsed.nestedIndex !== undefined
+  ) {
+    return {
+      kind: 'section',
+      rootIndex: parsed.sectionRootIndex,
+      parentId: parsed.sectionId,
+      nestedIndex: parsed.nestedIndex,
+      block: parsed.block,
+    };
   }
 
   for (let index = 0; index < blocks.length; index += 1) {
     const entry = blocks[index];
     if (!entry) {
       continue;
-    }
-
-    if (isSectionBlock(entry.block)) {
-      const prefix = `${entry.id}-nested-`;
-      if (selectionId.startsWith(prefix)) {
-        const nestedIndex = parseChildIndex(selectionId.slice(prefix.length), entry.block.blocks.length);
-        if (nestedIndex !== null) {
-          return {
-            kind: 'section',
-            rootIndex: index,
-            parentId: entry.id,
-            nestedIndex,
-            block: entry.block.blocks[nestedIndex]!,
-          };
-        }
-      }
     }
 
     if (isConditionalBlock(entry.block)) {
@@ -186,8 +182,6 @@ export function canMergeSelection(blocks: EditorBlock[], selectionIds: ReadonlyS
   const locations = Array.from(selectionIds, (selectionId) => resolveSelectedBlock(blocks, selectionId));
   return locations.every(
     (location): location is SelectedBlockLocation =>
-      location !== null &&
-      (location.kind === 'root' || location.kind === 'section') &&
-      MERGEABLE_TYPES.has(location.block.type)
+      location !== null && (location.kind === 'root' || location.kind === 'section') && isMergeableBlock(location.block)
   );
 }

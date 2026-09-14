@@ -120,7 +120,7 @@ export function BlockEditorContent({
                     size="sm"
                     onClick={onMergeToMultistep}
                     disabled={!canMergeSelection}
-                    title={!canMergeSelection ? 'Only mergeable blocks can be combined' : undefined}
+                    tooltip={!canMergeSelection ? 'Only mergeable blocks can be combined' : undefined}
                     data-testid={testIds.blockEditor.mergeMultistepButton}
                   >
                     Create multistep
@@ -130,7 +130,7 @@ export function BlockEditorContent({
                     size="sm"
                     onClick={onMergeToGuided}
                     disabled={!canMergeSelection}
-                    title={!canMergeSelection ? 'Only mergeable blocks can be combined' : undefined}
+                    tooltip={!canMergeSelection ? 'Only mergeable blocks can be combined' : undefined}
                     data-testid={testIds.blockEditor.mergeGuidedButton}
                   >
                     Create guided

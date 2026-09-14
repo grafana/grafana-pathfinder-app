@@ -116,6 +116,21 @@ describe('deleteSelectedBlocks', () => {
     act(() => result.current.undo());
     expect(result.current.state.blocks).toHaveLength(3);
   });
+
+  it('ignores stale selections without notifying or adding undo history', () => {
+    const onChange = jest.fn();
+    const guide: JsonGuide = { id: 'g', title: 'T', blocks: [mkInteractive('keep')] };
+    const { result } = renderHook(() => useBlockEditor({ initialGuide: guide, onChange }));
+    const blocksBefore = result.current.state.blocks;
+
+    act(() => result.current.deleteSelectedBlocks(['missing', 'stale']));
+
+    expect(result.current.state.blocks).toBe(blocksBefore);
+    expect(result.current.state.isDirty).toBe(false);
+    expect(result.current.canUndo).toBe(false);
+    expect(result.current.undoLabel).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
 
 describe('useBlockEditor updateNestedBlock', () => {

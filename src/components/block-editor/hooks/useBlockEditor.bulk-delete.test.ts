@@ -108,4 +108,15 @@ describe('canMergeSelection', () => {
     expect(canMergeSelection(blocks, new Set(['root']))).toBe(false);
     expect(canMergeSelection([markdown('root'), interactive('other')], new Set(['root', 'other']))).toBe(false);
   });
+
+  it('excludes mergeable children inside conditional branches', () => {
+    const conditionalBlock = conditional('conditional-1');
+    const candidates = [conditionalBlock, interactive('root')];
+
+    expect(resolveSelectedBlock(candidates, 'conditional-1-true-1')).toMatchObject({
+      kind: 'conditional',
+      block: { type: 'interactive' },
+    });
+    expect(canMergeSelection(candidates, new Set(['conditional-1-true-1', 'root']))).toBe(false);
+  });
 });

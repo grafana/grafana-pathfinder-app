@@ -55,7 +55,9 @@ function operations(selectedBlockIds: Set<string>): BlockOperations {
 
 function renderContent(
   selectedBlockIds: Set<string>,
-  overrides: Partial<Pick<BlockEditorContentProps, 'canMergeSelection' | 'onDeleteSelected'>> = {}
+  overrides: Partial<
+    Pick<BlockEditorContentProps, 'canMergeSelection' | 'onDeleteSelected' | 'onMergeToMultistep' | 'onMergeToGuided'>
+  > = {}
 ) {
   const props: BlockEditorContentProps = {
     viewMode: 'edit',
@@ -93,10 +95,18 @@ describe('BlockEditorContent selection toolbar', () => {
   });
 
   it('keeps merge actions disabled when the selection includes an ineligible block', () => {
-    renderContent(new Set(['one', 'two']), { canMergeSelection: false });
+    const onMergeToMultistep = jest.fn();
+    const onMergeToGuided = jest.fn();
+    renderContent(new Set(['one', 'two']), { canMergeSelection: false, onMergeToMultistep, onMergeToGuided });
 
-    expect(screen.getByTestId(testIds.blockEditor.mergeMultistepButton)).toBeDisabled();
-    expect(screen.getByTestId(testIds.blockEditor.mergeGuidedButton)).toBeDisabled();
+    const multistepButton = screen.getByTestId(testIds.blockEditor.mergeMultistepButton);
+    const guidedButton = screen.getByTestId(testIds.blockEditor.mergeGuidedButton);
+    expect(multistepButton).toHaveAttribute('aria-disabled', 'true');
+    expect(guidedButton).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(multistepButton);
+    fireEvent.click(guidedButton);
+    expect(onMergeToMultistep).not.toHaveBeenCalled();
+    expect(onMergeToGuided).not.toHaveBeenCalled();
     expect(screen.getByTestId(testIds.blockEditor.bulkDeleteButton)).toHaveTextContent('Delete 2 blocks');
   });
 
