@@ -566,6 +566,21 @@ describe('scrollUntilElementFound', () => {
     expect(result).toBeNull();
   });
 
+  it('waits and rechecks once when the container starts at both scroll boundaries', async () => {
+    Object.defineProperty(scrollContainer, 'scrollHeight', { value: 500, writable: true });
+    const target = document.createElement('button');
+    target.id = 'late-target';
+    scrollContainer.scrollBy = jest.fn(() => {
+      setTimeout(() => container.appendChild(target), 0);
+    });
+
+    const { scrollUntilElementFound } = await import('./dom-utils');
+    const result = await scrollUntilElementFound('#late-target', { waitTime: 0 });
+
+    expect(scrollContainer.scrollBy).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'smooth' });
+    expect(result).toBe(target);
+  });
+
   it('scrolls horizontally when the target is in a virtualized trailing column', async () => {
     Object.defineProperty(scrollContainer, 'scrollWidth', { value: 1500, writable: true });
     const target = document.createElement('button');

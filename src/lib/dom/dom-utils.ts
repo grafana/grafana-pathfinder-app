@@ -369,11 +369,6 @@ export async function scrollUntilElementFound(
 
   for (let attempt = 0; attempt < maxScrollAttempts; attempt++) {
     const { atEndY, atEndX } = getScrollBoundaries();
-    if (atEndY && atEndX) {
-      console.log(`[LazyScroll] Reached scroll boundary without finding element: ${selector}`);
-      break;
-    }
-
     // Scroll each axis that still has undiscovered content.
     scrollContainer.scrollBy({
       top: atEndY ? 0 : scrollIncrement,
