@@ -11,6 +11,12 @@ jest.mock('../../../global-state/completion-store');
 jest.mock('../../../lib/user-storage');
 jest.mock('../../../completion-records', () => ({
   resolveCompletionIdentity: jest.requireActual('../../../completion-records').resolveCompletionIdentity,
+  resolveMilestoneCompletionIdentity:
+    jest.requireActual('../../../completion-records').resolveMilestoneCompletionIdentity,
+  resolveBundledGuideCompletionIdentity:
+    jest.requireActual('../../../completion-records').resolveBundledGuideCompletionIdentity,
+  resolveStandaloneGuideCompletionIdentity:
+    jest.requireActual('../../../completion-records').resolveStandaloneGuideCompletionIdentity,
   invalidateEmittedCompletion: jest.fn(),
 }));
 
@@ -79,10 +85,13 @@ describe('resetGuideProgress', () => {
 
   // `markMilestoneDone` records a manifest-less milestone under its slug
   // alone, so a reset keyed on the milestone's full URL would leave the
-  // guard set and silently swallow the second completion.
+  // guard set and silently swallow the second completion. No milestoneSlug
+  // is passed here (the caller found no journey context), so this falls to
+  // the standalone-guide identity — not 'bundled', since a non-bundled
+  // content key was never recorded under that fallback in the first place.
   it('reduces a milestone URL to the slug the milestone was recorded under', async () => {
     await resetGuideProgress('https://grafana.com/docs/learning-journeys/demo/milestone-2/');
 
-    expect(mockInvalidateEmittedCompletion).toHaveBeenCalledWith('bundled', 'milestone-2');
+    expect(mockInvalidateEmittedCompletion).toHaveBeenCalledWith('interactive-tutorials', 'milestone-2');
   });
 });

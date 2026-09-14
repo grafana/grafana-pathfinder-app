@@ -1,7 +1,8 @@
 import {
   invalidateEmittedCompletion,
-  resolveCompletionIdentity,
   resolveMilestoneCompletionIdentity,
+  resolveBundledGuideCompletionIdentity,
+  resolveStandaloneGuideCompletionIdentity,
 } from '../../../completion-records';
 import { evictContentCache } from '../../../global-state/completion-store';
 import { StorageEvents } from '../../../lib/event-names';
@@ -49,17 +50,27 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
   // through the SAME function markMilestoneDone uses, not resolved here
   // independently — a manifest, if present, is never allowed to outrank the
   // slug for a milestone the way it correctly does for an ordinary guide.
+  // Which writer would have recorded this guide decides which shared
+  // identity derivation the reset must match — recordGuideCompletionForSurface
+  // uses the exact same `bundled:` prefix check to choose between
+  // recordBundledGuideCompletion and recordStandaloneGuideCompletion, and
+  // each keys its fallback source differently ('bundled' vs the schema
+  // default). Guessing one fallback for both is what let a standalone
+  // guide's manifest-with-no-repository shape drop its guard
+  // (identity-divergence, guideSource axis).
+  const resolveIdentity = contentKey.startsWith('bundled:')
+    ? resolveBundledGuideCompletionIdentity
+    : resolveStandaloneGuideCompletionIdentity;
   const { guideSource, guideId } = identity?.milestoneSlug
     ? resolveMilestoneCompletionIdentity({
         repository: identity.repository,
         packageManifest: identity.packageManifest,
         milestoneSlug: identity.milestoneSlug,
       })
-    : resolveCompletionIdentity({
+    : resolveIdentity({
         packageManifest: identity?.packageManifest,
         repository: identity?.repository,
-        fallbackId: fallbackGuideIdFromContentKey(contentKey),
-        fallbackSource: 'bundled',
+        guideId: fallbackGuideIdFromContentKey(contentKey),
       });
   invalidateEmittedCompletion(guideSource, guideId);
   window.dispatchEvent(

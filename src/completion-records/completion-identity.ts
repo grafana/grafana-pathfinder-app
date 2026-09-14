@@ -85,3 +85,46 @@ export function resolveMilestoneCompletionIdentity(input: ResolveMilestoneComple
 
   return { guideSource, guideId: input.milestoneSlug };
 }
+
+export interface ResolveGuideCompletionIdentityInput {
+  packageManifest?: Record<string, unknown>;
+  repository?: string;
+  guideId: string;
+}
+
+/**
+ * The ONE identity derivation for a bundled guide's completion record.
+ * `recordGuideCompletionForSurface`'s `bundled:` branch and the reset
+ * path's matching branch both call this rather than
+ * `resolveCompletionIdentity` directly, so the fallback source ('bundled')
+ * cannot drift between them the way it did before this function existed
+ * (identity-divergence, guideSource axis).
+ */
+export function resolveBundledGuideCompletionIdentity(input: ResolveGuideCompletionIdentityInput): CompletionKey {
+  return resolveCompletionIdentity({
+    packageManifest: input.packageManifest,
+    repository: input.repository,
+    fallbackId: input.guideId,
+    fallbackSource: 'bundled',
+  });
+}
+
+/**
+ * The ONE identity derivation for a standalone (non-bundled,
+ * manifest-carrying) guide's completion record. Deliberately takes no
+ * `fallbackSource` at all: `recordStandaloneGuideCompletion` (the writer)
+ * and the reset path's matching branch both call this, so whichever value
+ * `resolveCompletionIdentity`'s own default falls through to is what BOTH
+ * sides get — never a caller-supplied guess that the other caller could
+ * supply differently. That divergence (the writer omitting a fallback,
+ * the reset path guessing `'bundled'`) is exactly what let reset-then-
+ * re-mark drop the durable record for a standalone guide whose manifest
+ * carries an id but no repository.
+ */
+export function resolveStandaloneGuideCompletionIdentity(input: ResolveGuideCompletionIdentityInput): CompletionKey {
+  return resolveCompletionIdentity({
+    packageManifest: input.packageManifest,
+    repository: input.repository,
+    fallbackId: input.guideId,
+  });
+}

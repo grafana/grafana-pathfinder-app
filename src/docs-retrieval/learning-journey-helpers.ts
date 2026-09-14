@@ -31,6 +31,8 @@ import {
   recordJourneyCompletion,
   resolveCompletionIdentity,
   resolveMilestoneCompletionIdentity,
+  resolveBundledGuideCompletionIdentity,
+  resolveStandaloneGuideCompletionIdentity,
   manifestGuideId,
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
@@ -539,11 +541,10 @@ function recordBundledGuideCompletion(guideId: string, context?: CompletionConte
   if (manifestType === 'path' || manifestType === 'journey') {
     return;
   }
-  const identity = resolveCompletionIdentity({
+  const identity = resolveBundledGuideCompletionIdentity({
     packageManifest: context?.packageManifest,
     repository: context?.repository,
-    fallbackId: guideId,
-    fallbackSource: 'bundled',
+    guideId,
   });
   recordGuideCompletion({
     kind: 'guide',
@@ -568,10 +569,10 @@ export function recordStandaloneGuideCompletion(context: CompletionContext): voi
   if (!guideId) {
     return;
   }
-  const identity = resolveCompletionIdentity({
+  const identity = resolveStandaloneGuideCompletionIdentity({
     packageManifest: context.packageManifest,
     repository: context.repository,
-    fallbackId: guideId,
+    guideId,
   });
   recordGuideCompletion({
     kind: 'guide',

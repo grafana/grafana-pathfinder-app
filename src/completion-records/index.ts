@@ -14,10 +14,16 @@ export {
 export {
   resolveCompletionIdentity,
   resolveMilestoneCompletionIdentity,
+  resolveBundledGuideCompletionIdentity,
+  resolveStandaloneGuideCompletionIdentity,
   manifestGuideId,
   manifestGuideSource,
 } from './completion-identity';
-export type { ResolveCompletionIdentityInput, ResolveMilestoneCompletionIdentityInput } from './completion-identity';
+export type {
+  ResolveCompletionIdentityInput,
+  ResolveMilestoneCompletionIdentityInput,
+  ResolveGuideCompletionIdentityInput,
+} from './completion-identity';
 export { armCompletionWriteHook, discardQueuedCompletionWrites } from './completion-write-hook';
 export type {
   CompletionKey,

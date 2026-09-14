@@ -212,6 +212,52 @@ describe('bundled guide reaching 100% (trigger class A)', () => {
     expect(emitted).toHaveLength(0);
   });
 
+  // Reviewer's finding (identity-divergence, guideSource axis, round 3):
+  // recordStandaloneGuideCompletion never passed a fallbackSource, so a
+  // manifest with an id but NO repository fell through to
+  // DEFAULT_GUIDE_SOURCE ('interactive-tutorials'); resetGuideProgress's
+  // non-milestone branch hard-coded 'bundled'. The two diverge on guideSource
+  // for exactly this shape - a manifest with an id and no repository - which
+  // is the mainstream shape for a standalone remote guide, not an edge case.
+  it('re-marking after a reset still emits a second record for a standalone guide whose manifest has an id but no repository', async () => {
+    const manifest = { id: 'remote-guide-no-repo' };
+
+    recordStandaloneGuideCompletion({ packageManifest: manifest, guideTitle: 'Remote guide' });
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ guideSource: 'interactive-tutorials', guideId: 'remote-guide-no-repo' });
+
+    // Mirrors useContentReset: no milestoneSlug (this is not a journey
+    // milestone), and a non-`bundled:` content key, matching how this guide
+    // was actually opened.
+    await resetGuideProgress('https://ex/remote-guide-no-repo/content.json', {
+      packageManifest: manifest,
+    });
+
+    recordStandaloneGuideCompletion({ packageManifest: manifest, guideTitle: 'Remote guide' });
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[1]).toMatchObject({ guideSource: 'interactive-tutorials', guideId: 'remote-guide-no-repo' });
+  });
+
+  // Companion to the omitted-repository case above — an explicit repository
+  // must keep agreeing too, not just the default.
+  it('re-marking after a reset still emits a second record for a standalone guide whose manifest has an explicit repository', async () => {
+    const manifest = { id: 'remote-guide-with-repo', repository: 'app-platform' };
+
+    recordStandaloneGuideCompletion({ packageManifest: manifest, guideTitle: 'Remote guide' });
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ guideSource: 'app-platform', guideId: 'remote-guide-with-repo' });
+
+    await resetGuideProgress('https://ex/remote-guide-with-repo/content.json', {
+      packageManifest: manifest,
+    });
+
+    recordStandaloneGuideCompletion({ packageManifest: manifest, guideTitle: 'Remote guide' });
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[1]).toMatchObject({ guideSource: 'app-platform', guideId: 'remote-guide-with-repo' });
+  });
+
   it('does not emit a guide fact for a journey-shaped remote package (journey trigger owns it)', () => {
     recordStandaloneGuideCompletion({
       packageManifest: { id: 'remote-journey', repository: 'app-platform', type: 'journey' },
