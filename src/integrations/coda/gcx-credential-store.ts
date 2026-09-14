@@ -30,12 +30,14 @@ export type GcxState = 'idle' | 'provisioning' | 'ready' | 'needs-token' | 'fail
 export interface GcxSnapshot {
   /** The session the state describes, so a new VM cannot inherit it. */
   sessionId: string | null;
+  /** The step that started this run; null for toolbar and other session-level runs. */
+  requesterId: string | null;
   state: GcxState;
   credential: GcxCredential | null;
   error: string | null;
 }
 
-const IDLE: GcxSnapshot = { sessionId: null, state: 'idle', credential: null, error: null };
+const IDLE: GcxSnapshot = { sessionId: null, requesterId: null, state: 'idle', credential: null, error: null };
 
 let snapshot: GcxSnapshot = IDLE;
 const listeners = new Set<() => void>();
@@ -127,9 +129,18 @@ async function mintOptions(sessionId: string): Promise<MintTokenOptions> {
  * The session's terminal must already be connected; the backend has no other
  * route to the VM.
  */
-export async function runGcxCredential(sessionId: string | null, token?: string): Promise<void> {
+export async function runGcxCredential(
+  sessionId: string | null,
+  token?: string,
+  requesterId: string | null = null
+): Promise<void> {
   if (!sessionId) {
-    publish({ ...IDLE, state: 'failed', error: 'The sandbox is not connected, so gcx cannot be set up yet.' });
+    publish({
+      ...IDLE,
+      requesterId,
+      state: 'failed',
+      error: 'The sandbox is not connected, so gcx cannot be set up yet.',
+    });
     return;
   }
   if (snapshot.state === 'provisioning') {
@@ -138,7 +149,7 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
 
   generation += 1;
   const run = generation;
-  publish({ sessionId, state: 'provisioning', credential: null, error: null });
+  publish({ sessionId, requesterId, state: 'provisioning', credential: null, error: null });
 
   /**
    * Publish only while this run is still the one the UI is waiting for. A
@@ -147,8 +158,8 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
    * received a credential.
    */
   const settle = (next: GcxSnapshot): boolean => {
-    if (run !== generation || snapshot.sessionId !== sessionId) {
-      logger.warn('[gcx] discarding a settled install for a session that has moved on');
+    if (run !== generation || snapshot.sessionId !== sessionId || snapshot.requesterId !== requesterId) {
+      logger.warn('[gcx] discarding a settled install for a session or requester that has moved on');
       return false;
     }
     publish(next);
@@ -157,7 +168,7 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
 
   try {
     const written = await provisionGcx(sessionId, token ? { token } : await mintOptions(sessionId));
-    if (settle({ sessionId, state: 'ready', credential: written, error: null })) {
+    if (settle({ sessionId, requesterId, state: 'ready', credential: written, error: null })) {
       reportAppInteraction(UserInteraction.GcxCredentialInstalled, { source: token ? 'pasted' : 'minted' });
     }
   } catch (err) {
@@ -165,7 +176,13 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
     if (codaErr.code === ACCOUNT_OUTRANKS_CALLER) {
       // The one refusal an operator can clear, so it keeps its own sentence
       // rather than being folded into the generic mint refusal.
-      const revealed = settle({ sessionId, state: 'needs-token', credential: null, error: codaErr.message });
+      const revealed = settle({
+        sessionId,
+        requesterId,
+        state: 'needs-token',
+        credential: null,
+        error: codaErr.message,
+      });
       if (revealed) {
         recordGcxCredentialDegradation('account-outranks-caller');
       }
@@ -174,7 +191,7 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
     if (codaErr.code === ACCOUNT_CHECK_UNAVAILABLE) {
       // Not a refusal — the preflight reached no answer, so back to `idle` with
       // the mint still on offer rather than to the paste-only branch.
-      const reported = settle({ sessionId, state: 'idle', credential: null, error: codaErr.message });
+      const reported = settle({ sessionId, requesterId, state: 'idle', credential: null, error: codaErr.message });
       if (reported) {
         recordGcxCredentialDegradation('account-check-unavailable');
       }
@@ -185,6 +202,7 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
       // reporting a failure.
       const revealed = settle({
         sessionId,
+        requesterId,
         state: 'needs-token',
         credential: null,
         error: 'Grafana would not let this account mint a token. Paste a service account token instead.',
@@ -200,6 +218,7 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
       // feature-detect the credential route with.
       const reported = settle({
         sessionId,
+        requesterId,
         state: 'failed',
         credential: null,
         error: 'This Grafana’s Coda plugin is too old to install a gcx credential — it needs 1.3.0 or later.',
@@ -212,6 +231,7 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
     logger.warn('[gcx] credential install failed', { code: codaErr.code });
     const reported = settle({
       sessionId,
+      requesterId,
       state: 'needs-token',
       credential: null,
       error: codaErrorCodeMessage(codaErr.code, codaErr.message),

@@ -28,8 +28,6 @@
 
 import React from 'react';
 
-import { markSkipsSectionNumbering } from '../components/interactive-tutorial/skip-section-numbering';
-
 export const memoryStore = new Map<string, unknown>();
 
 /** Configurable return value for `checkRequirementsFromData`. Override per-test
@@ -107,6 +105,16 @@ export function createUserStorageMock() {
         memoryStore.delete(stepsKey(contentKey, sectionId));
       }),
       countAllCompleted: jest.fn(() => 0),
+      listAllCompleted: jest.fn((contentKey: string) => {
+        const ids: string[] = [];
+        const prefix = `section-steps::${contentKey}::`;
+        memoryStore.forEach((value, key) => {
+          if (typeof key === 'string' && key.startsWith(prefix)) {
+            (value as Set<string>).forEach((id) => ids.push(id));
+          }
+        });
+        return ids;
+      }),
       hasProgress: jest.fn(async (contentKey: string) => {
         for (const k of memoryStore.keys()) {
           if (typeof k === 'string' && k.startsWith(`section-steps::${contentKey}::`)) {
@@ -159,6 +167,16 @@ export function createUserStorageMock() {
           }
         });
         return count;
+      }),
+      listAllAcknowledged: jest.fn((contentKey: string) => {
+        const sectionIds: string[] = [];
+        const prefix = ackKey(contentKey, '');
+        memoryStore.forEach((value, key) => {
+          if (key.startsWith(prefix) && value === true) {
+            sectionIds.push(key.slice(prefix.length));
+          }
+        });
+        return sectionIds;
       }),
     },
     /** Mount-free `section-completed:` requirement storage (Phase 2 follow-up
@@ -268,8 +286,7 @@ export function createDatasourceCheckStepMock() {
   return { DatasourceCheckStep: () => null, resetDatasourceCheckStepCounter: jest.fn() };
 }
 export function createInteractiveConditionalMock() {
-  // Mirror production: the real component self-tags as skip-numbering.
-  return { InteractiveConditional: markSkipsSectionNumbering(() => null) };
+  return { InteractiveConditional: () => null };
 }
 
 /** Factory for `jest.mock('../../interactive-engine', ...)`. */
@@ -301,7 +318,7 @@ export function createInteractiveEngineMock() {
     NavigationManager: jest.fn().mockImplementation(() => ({
       clearAllHighlights: jest.fn(),
       fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
-      fixLocationRequirement: jest.fn().mockResolvedValue(undefined),
+      fixLocationRequirement: jest.fn().mockResolvedValue(true),
       expandParentNavigationSection: jest.fn().mockResolvedValue(undefined),
     })),
     ...require('../interactive-engine/outcome-classifier'),

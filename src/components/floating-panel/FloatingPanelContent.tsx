@@ -129,7 +129,6 @@ export function FloatingPanelContent({
               panel={model}
               activeTab={activeTab}
               surface={surface}
-              contentRoot={contentRef}
               hasInteractiveProgress={!!hasInteractiveProgress}
               progressKey={progressKey ?? null}
               onResetGuide={onResetGuide!}

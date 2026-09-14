@@ -117,7 +117,6 @@ import {
   useDevModeLogger,
   usePanelMode,
   useSessionJoinUrlCheck,
-  useLastMilestoneAutoComplete,
   useScrollTracking,
   useGlobalActiveTabExposure,
   useAutoOpenListener,
@@ -1139,11 +1138,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     activeTabCurrentUrl: activeTab?.currentUrl,
     activeTabBaseUrl: activeTab?.baseUrl,
   });
-
-  // Auto-complete the final milestone of a learning journey when the rendered
-  // content has no interactive steps to drive completion from clicks.
-  // Extracted to useLastMilestoneAutoComplete.
-  useLastMilestoneAutoComplete({ stableContent, activeTab, contentRef });
 
   // Initialize interactive elements for the content container (side effects only)
   useInteractiveElements({ containerRef: contentRef });

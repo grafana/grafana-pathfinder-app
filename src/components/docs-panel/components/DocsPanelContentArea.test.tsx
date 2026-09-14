@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { testIds } from '../../../constants/testIds';
 import { DocsPanelContentArea, type DocsPanelContentAreaProps } from './DocsPanelContentArea';
 
@@ -31,6 +31,7 @@ jest.mock('../../../lib/analytics', () => ({
 
 jest.mock('../../../docs-retrieval', () => ({
   recordGuideCompletionForSurface: jest.fn(),
+  journeyProgressFromMilestones: jest.fn(() => 0),
 }));
 
 // Heavy leaf children are irrelevant to these tests — stub them out so the
@@ -46,7 +47,7 @@ jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestone
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
 
 const { reportAppInteraction } = jest.requireMock('../../../lib/analytics');
-const { recordGuideCompletionForSurface } = jest.requireMock('../../../docs-retrieval');
+const { recordGuideCompletionForSurface, journeyProgressFromMilestones } = jest.requireMock('../../../docs-retrieval');
 
 function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPanelContentAreaProps {
   const activeTab: any = {
@@ -204,6 +205,77 @@ describe('DocsPanelContentArea', () => {
         },
         guideTitle: 'My guide',
       });
+    });
+  });
+
+  describe('loading-state milestone bar', () => {
+    // Decision 4 (docs/design/COMPLETION-MODEL.md): the bar shown while a
+    // journey tab is loading must use the shared calculation — earned
+    // progress, not currentMilestone/totalMilestones navigation position —
+    // so a reader never sees two different numbers for the same journey on
+    // adjacent screens.
+    it('sizes the fill from the shared journeyProgressFromMilestones calculation', () => {
+      journeyProgressFromMilestones.mockReturnValue(31);
+      const base = makeProps();
+      const lj = { baseUrl: 'backend-guide:path', totalMilestones: 4, currentMilestone: 2, milestones: [] };
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'learning-journey',
+          isLoading: true,
+          content: {
+            url: base.activeTab!.baseUrl,
+            type: 'learning-journey',
+            content: '',
+            metadata: { learningJourney: lj },
+          },
+        } as any,
+      });
+
+      const { container } = render(<DocsPanelContentArea {...props} />);
+
+      expect(journeyProgressFromMilestones).toHaveBeenCalledWith(lj.baseUrl, lj.milestones);
+      const fill = container.querySelector('.progressFill') as HTMLElement;
+      expect(fill.style.width).toBe('31%');
+    });
+
+    // The bar reads storage during render, so it goes stale once mounted
+    // unless the component re-renders on the completion store's own
+    // announcement — the same revision seam useLearningPaths and the
+    // milestone toolbar already subscribe to (round 5). Without that
+    // subscription here, this test fails: the fill stays at 10%.
+    it('follows new evidence without an unrelated prop change forcing the re-render', () => {
+      journeyProgressFromMilestones.mockReturnValue(10);
+      const base = makeProps();
+      const lj = { baseUrl: 'backend-guide:path', totalMilestones: 4, currentMilestone: 2, milestones: [] };
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'learning-journey',
+          isLoading: true,
+          content: {
+            url: base.activeTab!.baseUrl,
+            type: 'learning-journey',
+            content: '',
+            metadata: { learningJourney: lj },
+          },
+        } as any,
+      });
+
+      const { container } = render(<DocsPanelContentArea {...props} />);
+      const fill = container.querySelector('.progressFill') as HTMLElement;
+      expect(fill.style.width).toBe('10%');
+
+      journeyProgressFromMilestones.mockReturnValue(30);
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('pathfinder:progress', {
+            detail: { kind: 'guide', contentKey: 'irrelevant', percentage: 30, hasProgress: true },
+          })
+        );
+      });
+
+      expect(fill.style.width).toBe('30%');
     });
   });
 

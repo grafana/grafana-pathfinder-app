@@ -54,5 +54,15 @@ export type GuideCompletionFact = CompletionFact & { kind: 'guide' };
 /** A fact whose `kind` is pinned to 'journey' — the only shape `recordJourneyCompletion` accepts. */
 export type JourneyCompletionFact = CompletionFact & { kind: 'journey' };
 
-/** Subscriber signature for the emitter seam (the durable write hook attaches here). */
-export type CompletionListener = (fact: CompletionFact) => void;
+/**
+ * Subscriber signature for the emitter seam (the durable write hook attaches
+ * here).
+ *
+ * Returns `true` only when the listener has DURABLY accepted the fact — the
+ * boundary that survives a page reload, which for the write hook is the
+ * queue's `storage.put`, not a successful POST. The recorder's exactly-once
+ * guard is set on that acceptance alone, so a listener that returns anything
+ * else leaves the completion eligible to be recorded again later. Returning
+ * without throwing is not acceptance.
+ */
+export type CompletionListener = (fact: CompletionFact) => boolean | void;

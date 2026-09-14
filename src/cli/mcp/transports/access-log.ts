@@ -147,6 +147,7 @@ export const KNOWN_TOOL_OPERATIONS: ReadonlySet<string> = new Set([
   'remove-block',
   'add-step',
   'add-choice',
+  'add-hint',
   // pathfinder_manage_guide
   'set-manifest',
   // pathfinder_read_session / pathfinder_read_repository
