@@ -329,6 +329,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // subsequent commands run and the block returns to idle.
   const cancelRequestedRef = useRef(false);
   const setupRunIdRef = useRef(0);
+  const checkRunIdRef = useRef(0);
   // Status the terminal had when the user clicked Start. We use this to
   // ignore a stale 'error' (or any other) status until the terminal has
   // observably transitioned in response to our openTerminal call — otherwise
@@ -448,6 +449,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 
   const resetToIdle = useCallback(() => {
     setupRunIdRef.current++;
+    checkRunIdRef.current++;
     setupStartedRef.current = false;
     provisionedSessionIdRef.current = null;
     setupSessionIdRef.current = null;
@@ -730,6 +732,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 
   const handleCheckMyWork = useCallback(async () => {
     cancelRequestedRef.current = false;
+    const runId = ++checkRunIdRef.current;
     setState('checking');
     setErrorDetail('');
     try {
@@ -738,7 +741,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         stepId,
         maxRetries: 0,
       });
-      if (cancelRequestedRef.current) {
+      if (runId !== checkRunIdRef.current) {
         return;
       }
       if (result.pass) {
@@ -750,7 +753,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         setState('failed-check');
       }
     } catch (err) {
-      if (cancelRequestedRef.current) {
+      if (runId !== checkRunIdRef.current) {
         return;
       }
       // Unexpected pipeline failure (network blip, requirements bug). Surface it

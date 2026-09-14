@@ -494,6 +494,123 @@ describe('ChallengeBlock', () => {
     expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
   });
 
+  it('ignores a cancelled check that later passes after a new Check my work starts', async () => {
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected' });
+
+    const resolvers: Array<(value: Awaited<ReturnType<typeof checkPostconditions>>) => void> = [];
+    mockedCheckPostconditions.mockImplementation(
+      () =>
+        new Promise<Awaited<ReturnType<typeof checkPostconditions>>>((resolve) => {
+          resolvers.push(resolve);
+        })
+    );
+
+    render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-stale-check" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
+    });
+    expect(resolvers).toHaveLength(2);
+
+    await act(async () => {
+      resolvers[0]({ requirements: baseProps.successCriteria, pass: true, error: [] });
+    });
+
+    expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
+
+    await act(async () => {
+      resolvers[1]({ requirements: baseProps.successCriteria, pass: true, error: [] });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
+    });
+  });
+
+  it('ignores a cancelled check rejection after a new Check my work starts', async () => {
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected' });
+
+    const pending: Array<{
+      resolve: (value: Awaited<ReturnType<typeof checkPostconditions>>) => void;
+      reject: (reason: Error) => void;
+    }> = [];
+    mockedCheckPostconditions.mockImplementation(
+      () =>
+        new Promise<Awaited<ReturnType<typeof checkPostconditions>>>((resolve, reject) => {
+          pending.push({ resolve, reject });
+        })
+    );
+
+    render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-stale-check-reject" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
+    });
+    expect(pending).toHaveLength(2);
+
+    await act(async () => {
+      pending[0].reject(new Error('stale pipeline exploded'));
+    });
+
+    expect(screen.queryByText(/stale pipeline exploded/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
+
+    await act(async () => {
+      pending[1].resolve({ requirements: baseProps.successCriteria, pass: true, error: [] });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
+    });
+  });
+
   it('cancel button returns the block to idle without finishing setup', async () => {
     // Setup never resolves so we can observe the Cancel button rendered
     // during 'preparing' and verify the state machine returns to idle.
@@ -760,6 +877,58 @@ describe('ChallengeBlock', () => {
         expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
       });
       expect(screen.queryByText(/checking your work/i)).not.toBeInTheDocument();
+    });
+
+    it('ignores a skipped in-flight check after Check my work is retried', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+
+      const resolvers: Array<(value: Awaited<ReturnType<typeof checkPostconditions>>) => void> = [];
+      mockedCheckPostconditions.mockImplementation(
+        () =>
+          new Promise<Awaited<ReturnType<typeof checkPostconditions>>>((resolve) => {
+            resolvers.push(resolve);
+          })
+      );
+
+      const skipProps = {
+        ...baseProps,
+        mode: 'standard' as const,
+        skippable: true,
+        stepId: 'ch-std-skip-stale-check',
+        successCriteria: 'has-dashboard-named:My Dashboard',
+      };
+      const { rerender } = render(<ChallengeBlock {...skipProps} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+      mockedUseStepCompletion.mockReturnValue({ completed: false, reason: null });
+      rerender(<ChallengeBlock {...skipProps} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
+      });
+      expect(resolvers).toHaveLength(2);
+
+      await act(async () => {
+        resolvers[0]({ requirements: skipProps.successCriteria, pass: true, error: [] });
+      });
+
+      expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
+
+      await act(async () => {
+        resolvers[1]({ requirements: skipProps.successCriteria, pass: true, error: [] });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
+      });
     });
   });
 
