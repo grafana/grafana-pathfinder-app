@@ -2,7 +2,7 @@
  * BlockEditorContent Component
  *
  * Main content area of the block editor containing:
- * - Selection controls for merge operations
+ * - Selection controls for merge and bulk-delete operations
  * - BlockList (edit mode) or BlockPreview (preview mode)
  * - Empty state for new guides
  */
@@ -12,6 +12,7 @@ import { Button } from '@grafana/ui';
 import { BlockJsonEditor } from './BlockJsonEditor';
 import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
+import { ConfirmModal } from './NotificationModals';
 import type {
   EditorBlock,
   BlockType,
@@ -48,6 +49,10 @@ export interface BlockEditorContentProps {
   /** Merge handlers */
   onMergeToMultistep: () => void;
   onMergeToGuided: () => void;
+  /** Whether the current selection is eligible for merge. */
+  canMergeSelection: boolean;
+  /** Delete all selected blocks as one undoable operation. */
+  onDeleteSelected: () => void;
   onClearSelection: () => void;
   /** Empty state actions */
   onLoadTemplate: () => void;
@@ -79,6 +84,8 @@ export function BlockEditorContent({
   styles,
   onMergeToMultistep,
   onMergeToGuided,
+  canMergeSelection,
+  onDeleteSelected,
   onClearSelection,
   onLoadTemplate,
   onOpenTour,
@@ -93,6 +100,9 @@ export function BlockEditorContent({
 }: BlockEditorContentProps) {
   const { isSelectionMode, selectedBlockIds } = operations;
   const selectedCount = selectedBlockIds.size;
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false);
+  const selectedLabel = `${selectedCount} block${selectedCount === 1 ? '' : 's'} selected`;
+  const deleteLabel = `Delete ${selectedCount} block${selectedCount === 1 ? '' : 's'}`;
 
   return (
     <div className={styles.content} data-testid={testIds.blockEditor.content}>
@@ -100,24 +110,42 @@ export function BlockEditorContent({
           active. The trigger lives in BlockEditorHeader. */}
       {viewMode === 'edit' && hasBlocks && isSelectionMode && (
         <div className={styles.selectionControls}>
-          {selectedCount >= 2 ? (
+          {selectedCount >= 1 ? (
             <>
-              <span className={styles.selectionCount}>{selectedCount} blocks selected</span>
+              <span className={styles.selectionCount}>{selectedLabel}</span>
+              {selectedCount >= 2 ? (
+                <>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={onMergeToMultistep}
+                    disabled={!canMergeSelection}
+                    title={!canMergeSelection ? 'Only mergeable blocks can be combined' : undefined}
+                    data-testid={testIds.blockEditor.mergeMultistepButton}
+                  >
+                    Create multistep
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={onMergeToGuided}
+                    disabled={!canMergeSelection}
+                    title={!canMergeSelection ? 'Only mergeable blocks can be combined' : undefined}
+                    data-testid={testIds.blockEditor.mergeGuidedButton}
+                  >
+                    Create guided
+                  </Button>
+                </>
+              ) : (
+                <span style={{ fontSize: '13px', color: '#888' }}>Select at least two mergeable blocks to merge.</span>
+              )}
               <Button
-                variant="primary"
+                variant="destructive"
                 size="sm"
-                onClick={onMergeToMultistep}
-                data-testid={testIds.blockEditor.mergeMultistepButton}
+                onClick={() => setIsDeleteConfirmOpen(true)}
+                data-testid={testIds.blockEditor.bulkDeleteButton}
               >
-                Create multistep
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={onMergeToGuided}
-                data-testid={testIds.blockEditor.mergeGuidedButton}
-              >
-                Create guided
+                {deleteLabel}
               </Button>
               <Button
                 variant="secondary"
@@ -130,9 +158,8 @@ export function BlockEditorContent({
             </>
           ) : (
             <>
-              <span style={{ fontSize: '13px', color: '#888' }}>
-                Tick the checkbox next to each block you want to merge
-              </span>
+              <span className={styles.selectionCount}>{selectedLabel}</span>
+              <span style={{ fontSize: '13px', color: '#888' }}>Select a block to merge or delete it.</span>
               <Button
                 variant="secondary"
                 size="sm"
@@ -145,6 +172,20 @@ export function BlockEditorContent({
           )}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={isDeleteConfirmOpen}
+        title="Delete selected blocks"
+        message={`Delete ${selectedCount} selected block${selectedCount === 1 ? '' : 's'}? You can undo this as one change.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={() => {
+          onDeleteSelected();
+          setIsDeleteConfirmOpen(false);
+        }}
+        onCancel={() => setIsDeleteConfirmOpen(false)}
+      />
 
       {viewMode === 'json' && jsonModeState ? (
         <BlockJsonEditor
