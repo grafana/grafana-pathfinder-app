@@ -508,22 +508,68 @@ describe('GuidedHandler', () => {
   describe('verbs the handler cannot drive', () => {
     // `JsonGuidedBlockSchema` shares its step schema with multistep, so a guide
     // published before the authoring gate existed can still carry these. The
-    // step must report failed rather than reaching a listener that cannot
-    // settle it — see `validate-guide.ts` / `allowUnsupportedGuidedAction`.
-    it.each(['navigate', 'popout', 'multistep', 'guided', 'sequence'] as const)(
-      'reports a guided "%s" step as an error without attaching a listener',
-      async (targetAction) => {
-        const result = await guidedHandler.executeGuidedStep({ targetAction, refTarget: '#target' }, 0, 1, 1000);
+    // step must settle without reaching a listener that cannot settle it — see
+    // `validate-guide.ts` / `allowUnsupportedGuidedAction`.
+    const UNDRIVABLE = ['navigate', 'popout', 'multistep', 'guided', 'sequence'] as const;
 
-        expect(result).toBe('error');
-        expect(logger.warn).toHaveBeenCalledWith(
-          expect.stringContaining('cannot drive'),
-          expect.objectContaining({ targetAction })
-        );
-        // Nothing was highlighted, so the reader was never asked to act.
-        expect(mockNavigationManager.highlightWithComment).not.toHaveBeenCalled();
-      }
-    );
+    let documentListener: jest.SpyInstance;
+
+    beforeEach(() => {
+      // A resolvable target, so a step that settles without touching the
+      // element proves the verb was refused before resolution rather than
+      // merely failing to find anything.
+      document.body.innerHTML = '<button id="target">Go</button>';
+      const target = document.querySelector<HTMLButtonElement>('#target')!;
+      documentListener = jest.spyOn(document, 'addEventListener');
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [target], usedFallback: false });
+    });
+
+    const expectNothingDriven = (targetAction: string) => {
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('cannot drive'),
+        expect.objectContaining({ targetAction })
+      );
+      // The completion, skip, and cancel listeners all bind on `document`.
+      expect(documentListener).not.toHaveBeenCalled();
+      // Nothing was highlighted, so the reader was never asked to act.
+      expect(mockNavigationManager.highlightWithComment).not.toHaveBeenCalled();
+    };
+
+    it.each(UNDRIVABLE)('reports a non-skippable guided "%s" step as an error', async (targetAction) => {
+      const result = await guidedHandler.executeGuidedStep({ targetAction, refTarget: '#target' }, 0, 1, 1000);
+
+      expect(result).toBe('error');
+      expectNothingDriven(targetAction);
+    });
+
+    // An author marking the step skippable is asking for exactly this, and it is
+    // what element resolution already produced for a `navigate` step whose
+    // refTarget is a URL path — the guided run must keep going.
+    it.each(UNDRIVABLE)('skips a skippable guided "%s" step so the run continues', async (targetAction) => {
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction, refTarget: '#target', isSkippable: true },
+        0,
+        1,
+        1000
+      );
+
+      expect(result).toBe('skipped');
+      expectNothingDriven(targetAction);
+    });
+
+    it('credits a skipped undrivable step so the next step paints it as done', async () => {
+      await guidedHandler.executeGuidedStep(
+        { targetAction: 'navigate', refTarget: '/explore', isSkippable: true },
+        0,
+        2,
+        5
+      );
+      await guidedHandler.executeGuidedStep({ targetAction: 'highlight', refTarget: '#target' }, 1, 2, 5);
+
+      expect((mockNavigationManager.highlightWithComment as jest.Mock).mock.calls[0]![3]).toMatchObject({
+        completedSteps: [0],
+      });
+    });
 
     it('does not reject, so the caller sees a result rather than a thrown error', async () => {
       await expect(

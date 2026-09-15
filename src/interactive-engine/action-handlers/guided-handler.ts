@@ -146,14 +146,18 @@ export class GuidedHandler {
       }
 
       // The guided block's step schema admits every authorable verb, so a
-      // pre-gate guide can still carry one the handler cannot wait on. Report
-      // the step failed rather than driving it — `validate-guide.ts` rejects
-      // this shape for anything authored from now on.
+      // pre-gate guide can still carry one the handler cannot wait on
+      // (`validate-guide.ts` rejects the shape for anything authored from now
+      // on). The outcome reproduces what element resolution used to reach: a
+      // `navigate` refTarget is a URL path, never a selector, so a skippable
+      // step skipped and the run carried on while a non-skippable one errored.
+      // Skippable `popout` is the one accepted divergence — it carries no
+      // refTarget at all, so it errored before resolution and now skips.
       if (!isGuidedDomActionType(action.targetAction)) {
         logger.warn(`Guided step ${stepIndex + 1} uses an action the guided handler cannot drive`, {
           targetAction: action.targetAction,
         });
-        return this.finishGuidedStep(arbiter.settle('error'), stepIndex);
+        return this.finishGuidedStep(arbiter.settle(action.isSkippable ? 'skipped' : 'error'), stepIndex);
       }
 
       const refTarget = action.refTarget;
