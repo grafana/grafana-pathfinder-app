@@ -39,6 +39,7 @@ import {
 } from './terminal-storage';
 import { logger } from '../../lib/logging';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { VmExpiryIndicator } from './VmExpiryIndicator';
 
 interface TerminalPanelProps {
   /** Callback when panel is closed via X button */
@@ -66,7 +67,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, sendCommand, error, sessionId } = useTerminalLive({
+  const { status, connect, disconnect, resize, sendCommand, error, sessionId, vmExpiresAt } = useTerminalLive({
     terminalRef: terminalInstanceRef,
   });
 
@@ -429,6 +430,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const canConnect = !isConnecting && status !== 'connected';
   const canDisconnect = status === 'connected';
   const canCancel = isConnecting;
+  const renderVmExpiry = () =>
+    status === 'connected' && vmExpiresAt ? (
+      <VmExpiryIndicator key={vmExpiresAt} expiresAt={vmExpiresAt} className={styles.expiryIndicator} />
+    ) : null;
 
   // Always render terminal div to keep it alive across collapse/expand
   // Use display:none to hide when collapsed instead of unmounting
@@ -454,6 +459,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             <div className={styles.headerLeft}>
               <Icon name="code-branch" size="sm" />
               <span className={styles.title}>Terminal</span>
+              {renderVmExpiry()}
             </div>
             <div className={styles.headerRight}>
               <div className={styles.statusIndicator}>
@@ -505,6 +511,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
           <div className={styles.headerLeft}>
             <Icon name="code-branch" size="sm" />
             <span className={styles.title}>Terminal</span>
+            {isExpanded && renderVmExpiry()}
           </div>
           <div className={styles.headerRight}>
             <div className={styles.statusIndicator}>
@@ -515,7 +522,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               )}
               <span>{getStatusText(status)}</span>
             </div>
-
             {canConnect && (
               <Button
                 size="sm"

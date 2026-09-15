@@ -398,6 +398,7 @@ export const testIds = {
     searchPrev: 'coda-terminal-search-prev',
     searchNext: 'coda-terminal-search-next',
     searchClose: 'coda-terminal-search-close',
+    vmExpiry: 'coda-terminal-vm-expiry',
     gcxButton: 'coda-terminal-gcx',
     gcxMint: 'coda-terminal-gcx-mint',
     gcxToken: 'coda-terminal-gcx-token',
