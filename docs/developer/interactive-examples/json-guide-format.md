@@ -1056,6 +1056,8 @@ A button that provisions a sandbox VM (via Coda) and opens a terminal panel insi
 | `vmScenario` | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
 | `gcx`        | bool   | `false`             | Also install a Grafana credential for the `gcx` CLI       |
 
+Inside a section the block gates on sequential position (`isEligibleForChecking`), which is a behavior change: a published guide with a `terminal-connect` step after any other step now shows "Complete previous step" where it previously offered the connect button unconditionally. The gate hides the whole action area, including the `gcx` controls below. The block takes no `requirements` or `skippable`, so position is its only gate and a blocked step offers no skip: the learner has to complete the step before it.
+
 With `gcx: true` the step also gives the VM a credential, so the `gcx` CLI that ships in every sandbox
 image can talk to this Grafana as the learner:
 

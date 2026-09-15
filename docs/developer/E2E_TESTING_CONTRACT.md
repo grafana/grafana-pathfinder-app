@@ -786,6 +786,11 @@ Lifecycle notes a runner has to honour:
   without `gcx` never renders any of the step-scoped ids above, even while another surface is installing
   a credential into the same session. It completes on its **Continue** button
   (`interactive-terminal-skip-${stepId}`) as it always did.
+- **A sequentially blocked step renders none of the form either.** Inside a section the whole action
+  area — connect button, **Continue**, and every step-scoped id above — sits behind the step's own
+  eligibility gate, so a `terminal-connect` step whose predecessor is incomplete shows only
+  "Complete previous step" at `data-test-step-state="requirements-unmet"`. The block takes no
+  `skippable`, so there is no skip control to fall back on: drive the earlier steps first.
 - **A credential belongs to one session.** After a reconnect the ready line detaches and the form
   returns, because the new VM holds no credential.
 - **A held-back mint brings its own button back.** A mint whose preflight could not reach an answer is
