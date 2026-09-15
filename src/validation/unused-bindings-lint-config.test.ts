@@ -125,38 +125,8 @@ function lintProbe(source: string): LintMessage[] {
   return JSON.parse(stdout);
 }
 
-/**
- * Every binding the grandfather block in `eslint.config.mjs` exempts (#1815).
- *
- * Whoever clears #1815 updates this list in the same pull request: the
- * assertion below is strict equality in both directions, so a new unused
- * binding fails as growth and a fixed one fails as drift until it is removed
- * here.
- */
-const GRANDFATHERED: Record<string, string[]> = {
-  'src/components/interactive-tutorial/code-block-step.tsx': [
-    'onStepReset',
-    'resetTrigger',
-    'sectionTitle',
-    'stepIndex',
-    'totalSteps',
-  ],
-  'src/components/interactive-tutorial/terminal-connect-step.tsx': [
-    'isEligibleForChecking',
-    'onStepReset',
-    'resetTrigger',
-    'sectionTitle',
-    'stepIndex',
-    'totalSteps',
-  ],
-  'src/components/interactive-tutorial/terminal-step.tsx': [
-    'onStepReset',
-    'resetTrigger',
-    'sectionTitle',
-    'stepIndex',
-    'totalSteps',
-  ],
-};
+/** #1815 cleared — no grandfathered exemptions remain. */
+const GRANDFATHERED: Record<string, string[]> = {};
 
 /**
  * Resolves the rule's effective severity for every file under `src/` through
@@ -277,14 +247,11 @@ describe('grandfathered exemptions (#1815)', () => {
     probe = probeGrandfathered();
   }, 180_000);
 
-  it('exempts exactly the enumerated files, so a fourth cannot be added silently', () => {
-    expect(probe.exempted).toEqual(Object.keys(GRANDFATHERED).sort());
+  it('exempts no files — #1815 cleared the entire baseline', () => {
+    expect(probe.exempted).toEqual([]);
   });
 
-  // Strict equality both ways: a new unused binding in one of these files is
-  // growth and must fail; clearing one is progress and must also fail, so the
-  // baseline shrinks with #1815 instead of drifting out of date.
-  it('exempts exactly the enumerated bindings, so the baseline can neither grow nor drift', () => {
+  it('has no grandfathered bindings', () => {
     expect(probe.bindings).toEqual(GRANDFATHERED);
   });
 });

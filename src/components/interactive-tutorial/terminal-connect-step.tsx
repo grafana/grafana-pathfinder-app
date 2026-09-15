@@ -8,13 +8,13 @@
  * `docs/developer/CODA.md` for why a pasted token is the primary path there.
  */
 
-import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
+import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
-import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { GcxReadyLine, GcxSetupPanel } from '../../integrations/coda/GcxSetupPanel';
 import { useGcxCredential } from '../../integrations/coda/useGcxCredential.hook';
@@ -25,7 +25,7 @@ import {
   useCodaTerminalGate,
 } from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 export interface TerminalConnectStepProps {
@@ -48,7 +48,6 @@ export interface TerminalConnectStepProps {
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   resetTrigger?: number;
-  onStepReset?: () => void;
 
   stepIndex?: number;
   totalSteps?: number;
@@ -120,7 +119,6 @@ export const TerminalConnectStep = forwardRef<
       isCurrentlyExecuting = false,
       onStepComplete,
       resetTrigger,
-      onStepReset,
       stepIndex,
       totalSteps,
       sectionId,
@@ -142,6 +140,17 @@ export const TerminalConnectStep = forwardRef<
     const renderedStepId = stepId ?? generatedStepIdRef.current;
 
     const [isConnecting, setIsConnecting] = useState(false);
+
+    const analyticsStepMeta = useMemo(
+      () => ({
+        stepId: stepId ?? renderedStepId,
+        stepIndex,
+        totalSteps,
+        sectionId,
+        sectionTitle,
+      }),
+      [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
+    );
 
     const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
     const isStandalone = !onStepComplete;
@@ -204,9 +213,22 @@ export const TerminalConnectStep = forwardRef<
     );
 
     const handleGcxSkip = useCallback(() => {
-      reportAppInteraction(UserInteraction.GcxSetupSkipped, { state: gcxState });
+      reportAppInteraction(
+        UserInteraction.GcxSetupSkipped,
+        buildInteractiveStepProperties(
+          { state: gcxState, interaction_location: 'terminal_connect_step' },
+          analyticsStepMeta
+        )
+      );
       markComplete();
-    }, [gcxState, markComplete]);
+    }, [gcxState, markComplete, analyticsStepMeta]);
+
+    useEffect(() => {
+      if (resetTrigger && resetTrigger > 0) {
+        resetStep(renderedStepId, sectionId);
+        setIsConnecting(false);
+      }
+    }, [resetTrigger, renderedStepId, sectionId]);
 
     // React to terminal status changes while waiting for connection.
     // Handles: success (connected), failure (error), and cancellation (disconnected).
@@ -253,7 +275,7 @@ export const TerminalConnectStep = forwardRef<
 
     const isTerminalConnected = terminalCtx?.status === 'connected';
     const isTerminalConnecting = isConnecting || terminalCtx?.status === 'connecting';
-    const isEnabled = !disabled && terminalCtx !== null;
+    const isEnabled = !disabled && terminalCtx !== null && isEligibleForChecking;
     // The provider mounts even when the panel that owns `connect` is gated
     // away, so without this the button is enabled and does nothing.
     const sandboxUnavailable = codaUnavailableMessage(
