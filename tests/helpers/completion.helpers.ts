@@ -16,6 +16,7 @@ import { expect, type Page, type Route } from '@playwright/test';
 
 import pluginJson from '../../src/plugin.json';
 import { StorageKeys } from '../../src/lib/storage-keys';
+import { LEASE_TTL_MS } from '../../src/completion-records/completion-write-timing';
 import { testIds } from '../../src/constants/testIds';
 import {
   ALL_FIXTURES,
@@ -189,21 +190,40 @@ export function factsFor(facts: QueuedFact[], guideSource: string, guideId: stri
 }
 
 /**
- * Clear every Pathfinder key this profile holds, so a case starts from a
- * reader who has completed nothing. The suite runs against one admin login,
- * and both the write queue and the recorder's durable exactly-once guard
- * outlive a reload by design.
+ * Arm a one-shot clear of every Pathfinder key, applied before the first page
+ * of this context runs any script.
+ *
+ * A case has to start from a reader who has completed nothing: the suite runs
+ * as one admin login, and both the write queue and the recorder's durable
+ * exactly-once guard outlive a reload by design. One-shot rather than
+ * per-load, because surviving a reload is exactly what one of these cases
+ * asserts — the `sessionStorage` marker is per tab, so it fires on the first
+ * document and never again.
+ *
+ * Armed as an init script rather than run after a navigation, so priming costs
+ * no page load of its own. A load whose only purpose is to clear storage also
+ * starts the write queue's drain, and navigating away mid-drain strands the
+ * drain lease in storage for its full TTL — which the next page then has to
+ * wait out before it can send anything.
  */
-export async function resetPathfinderStorage(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const doomed: string[] = [];
-    for (let index = 0; index < localStorage.length; index++) {
-      const key = localStorage.key(index);
-      if (key && key.startsWith('grafana-pathfinder')) {
-        doomed.push(key);
+async function armPathfinderStorageReset(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      if (sessionStorage.getItem('pathfinder-e2e-storage-reset') === 'done') {
+        return;
       }
+      sessionStorage.setItem('pathfinder-e2e-storage-reset', 'done');
+      const doomed: string[] = [];
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (key && key.startsWith('grafana-pathfinder')) {
+          doomed.push(key);
+        }
+      }
+      doomed.forEach((key) => localStorage.removeItem(key));
+    } catch {
+      // A context without storage access has nothing stale to clear.
     }
-    doomed.forEach((key) => localStorage.removeItem(key));
   });
 }
 
@@ -257,13 +277,11 @@ export async function openDocsPanel(page: Page): Promise<void> {
 }
 
 /**
- * Land on a Grafana page with a clean Pathfinder profile and every stub armed,
- * ready for a `?doc=` launch. Storage can only be cleared once an origin is
- * loaded, so the order here matters.
+ * Arm every stub and the one-shot storage reset, ready for the case's own
+ * first navigation. Navigates nothing itself.
  */
 export async function primeCompletionSession(page: Page): Promise<WriteRouteRecorder> {
-  await page.goto('/');
-  await resetPathfinderStorage(page);
+  await armPathfinderStorageReset(page);
   const recorder = await stubCompletionWriteRoute(page);
   await stubPackageCatalogue(page);
   return recorder;
@@ -368,8 +386,11 @@ export async function markComplete(page: Page): Promise<void> {
  * guessing at a duration.
  */
 export async function waitForWriteAttemptAfter(recorder: WriteRouteRecorder, baseline: number): Promise<void> {
+  // Budgeted past the drain lease's own TTL: only one tab drains at a time, and
+  // a lease stranded by a navigation is recovered by expiry rather than by
+  // release, so a send can legitimately be a whole TTL away.
   await expect
-    .poll(() => recorder.requests.length, { message: 'completion write attempts', timeout: 30_000 })
+    .poll(() => recorder.requests.length, { message: 'completion write attempts', timeout: LEASE_TTL_MS + 20_000 })
     .toBeGreaterThan(baseline);
 }
 

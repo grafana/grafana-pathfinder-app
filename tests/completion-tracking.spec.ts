@@ -200,13 +200,14 @@ test.describe('completion tracking', () => {
      */
     test.fail('the same bundled guide launched by package path', async ({ page }) => {
       await primeCompletionSession(page);
+      await page.goto('/');
       await seedRestoredTab(page, {
         id: 'restored-bundled-package-path',
         title: BUNDLED_GUIDE_TITLE,
         baseUrl: `bundled:${BUNDLED_GUIDE_ID}/content.json`,
         type: 'interactive',
       });
-      await page.goto('/');
+      await page.reload();
       await openDocsPanel(page);
 
       await markComplete(page);
