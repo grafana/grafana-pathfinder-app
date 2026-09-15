@@ -194,28 +194,29 @@ describe('TerminalStep', () => {
 
     expect(screen.queryByText('Step 1 of 3')).not.toBeInTheDocument();
   });
-});
 
-describe('TerminalStep: a section reset', () => {
-  it('suppresses its own store write, since the section already wrote one', () => {
-    const { rerender } = render(<TerminalStep command="ls" stepId="t-1" onStepComplete={jest.fn()} resetTrigger={0} />);
+  describe('a section reset', () => {
+    it('suppresses its own store write, since the section already wrote one', () => {
+      const { rerender } = render(
+        <TerminalStep command="ls" stepId="t-1" onStepComplete={jest.fn()} resetTrigger={0} />
+      );
 
-    act(() => {
-      rerender(<TerminalStep command="ls" stepId="t-1" onStepComplete={jest.fn()} resetTrigger={1} />);
+      act(() => {
+        rerender(<TerminalStep command="ls" stepId="t-1" onStepComplete={jest.fn()} resetTrigger={1} />);
+      });
+
+      expect(mockResetStep).not.toHaveBeenCalled();
+      expect(mockCheckerResetStep).toHaveBeenCalledWith({ skipStoreWrite: true });
     });
 
-    expect(mockResetStep).not.toHaveBeenCalled();
-    expect(mockCheckerResetStep).toHaveBeenCalledWith({ skipStoreWrite: true });
-  });
+    it('writes the store itself when there is no section to own it', () => {
+      const { rerender } = render(<TerminalStep command="ls" stepId="t-2" resetTrigger={0} />);
 
-  it('writes the store itself when there is no section to own it', () => {
-    mockResetStep.mockClear();
-    const { rerender } = render(<TerminalStep command="ls" stepId="t-2" resetTrigger={0} />);
+      act(() => {
+        rerender(<TerminalStep command="ls" stepId="t-2" resetTrigger={1} />);
+      });
 
-    act(() => {
-      rerender(<TerminalStep command="ls" stepId="t-2" resetTrigger={1} />);
+      expect(mockResetStep).toHaveBeenCalledWith('t-2', undefined);
     });
-
-    expect(mockResetStep).toHaveBeenCalledWith('t-2', undefined);
   });
 });
