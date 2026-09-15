@@ -17,7 +17,7 @@ import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-side
 import { REQUEST_FLOATING_GUIDE_EVENT, REQUEST_FULLSCREEN_GUIDE_EVENT } from '../../lib/event-names';
 import { locationService } from '@grafana/runtime';
 import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
-import type { RawContent } from '../../types/content.types';
+import type { PreparedRawContent } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
 
@@ -103,8 +103,9 @@ jest.mock('../../lib/storage/extension-sidebar', () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-const rawContent: RawContent = {
+const rawContent: PreparedRawContent = {
   content: '{"id":"g","title":"g","blocks":[]}',
+  countingSource: { kind: 'pre-inlining', guideJson: '{"id":"g","title":"g","blocks":[]}' },
   metadata: { title: 'g' },
   type: 'interactive',
   url: 'bundled:first-dashboard',

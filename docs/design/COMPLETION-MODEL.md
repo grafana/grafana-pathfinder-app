@@ -133,6 +133,20 @@ which means either instrumenting it (an authoring change, see
 or inferring engagement from scroll and dwell, which we rejected as softer than
 evidence.
 
+**Which tree the denominator is counted from.** A `snippet-ref` is one block
+however many it resolves to, so the count is the PRE-inlining one. Two opening
+paths do not present the same tree: a direct open renders the pre-inlining tree
+and expands snippets afterwards, while `prepare-guide-launch.ts` expands before
+a surface is committed and hands the renderer the expanded tree. Counting
+whichever tree arrived gave the same guide a different denominator per path, and
+freezing the index preserved whichever one the reader's first path produced.
+The prepared payload therefore carries the pre-inlining tree it was expanded
+from (`lib/guide-counting-source.ts`), and the content-load seam counts that
+tree on both paths — the whole index from that one traversal, not a corrected
+denominator beside post-expansion positions. An expanded payload that lost that
+tree still renders; it publishes no index at all, because a count taken from the
+expanded tree is not the canonical one and the freeze would keep it.
+
 **Implementation note for the debugger.** The numerator in `guide-stats/progress.ts`
 is the _furthest evidenced position_, not a count of completed steps. The two
 coincide because positions are monotonic and reaching position `n` implies

@@ -5,7 +5,7 @@
 import { RefObject } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { LearningJourneyTab, PackageOpenInfo } from '../../types/content-panel.types';
-import { RawContent } from '../../types/content.types';
+import { PreparedRawContent, RawContent } from '../../types/content.types';
 import type { LaunchSource } from '../../recovery';
 
 /**
@@ -36,14 +36,14 @@ export interface OpenDocsOptions {
    * identical finalization, so alignment / journey / package parity holds.
    * One-shot memory state — never persisted to tab storage.
    */
-  preparedContent?: RawContent;
+  preparedContent?: PreparedRawContent;
 }
 
 /** @see OpenDocsOptions */
 export interface OpenLearningJourneyOptions {
   source?: LaunchSource;
   /** @see OpenDocsOptions.preparedContent */
-  preparedContent?: RawContent;
+  preparedContent?: PreparedRawContent;
   /** @see OpenDocsOptions.packageInfo */
   packageInfo?: PackageOpenInfo;
 }

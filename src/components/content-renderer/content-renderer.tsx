@@ -3,7 +3,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
 
-import { RawContent, ContentParseResult } from '../../types/content.types';
+import { RawContent, ContentParseResult, GuideCountingSource } from '../../types/content.types';
 import { logger } from '../../lib/logging';
 import {
   parseHTMLToComponents,
@@ -74,6 +74,7 @@ import {
 } from '../../global-state/active-guide-index';
 import { resolveCountedBlockStepId } from '../../global-state/guide-step-id-resolver';
 import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { selectCountingTree } from '../../lib/guide-counting-source';
 import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 import { MarkCompleteFooter } from '../mark-complete';
@@ -508,6 +509,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       <GuideRequirementsProvider guideId={guideId}>
         <ContentWithVariables
           processedContent={processedContent}
+          countingSource={content.countingSource}
           contentType={content.type}
           baseUrl={content.url}
           title={content.metadata.title}
@@ -529,6 +531,8 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 /** Inner component that has access to GuideResponseContext for variable substitution */
 interface ContentWithVariablesProps {
   processedContent: string;
+  /** @see RawContent.countingSource */
+  countingSource?: GuideCountingSource;
   contentType: 'learning-journey' | 'single-doc' | 'interactive';
   baseUrl: string;
   title: string;
@@ -546,6 +550,7 @@ interface ContentWithVariablesProps {
 
 function ContentWithVariables({
   processedContent,
+  countingSource,
   contentType,
   baseUrl,
   title,
@@ -636,6 +641,7 @@ function ContentWithVariables({
       {beforeContent}
       <ContentProcessor
         html={processedContent}
+        countingSource={countingSource}
         contentType={contentType}
         baseUrl={baseUrl}
         onReady={onContentReady}
@@ -657,6 +663,8 @@ function ContentWithVariables({
 
 interface ContentProcessorProps {
   html: string;
+  /** @see RawContent.countingSource — absent when `html` is itself the pre-inlining tree. */
+  countingSource?: GuideCountingSource;
   contentType: 'learning-journey' | 'single-doc' | 'interactive';
   theme?: GrafanaTheme2;
   baseUrl: string;
@@ -667,7 +675,13 @@ interface ContentProcessorProps {
   fullScreenFallbackLocation?: string;
 }
 
-function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation }: ContentProcessorProps) {
+function ContentProcessor({
+  html,
+  countingSource,
+  baseUrl,
+  responses,
+  fullScreenFallbackLocation,
+}: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Reset interactive counters only when content changes (not on every render)
@@ -710,13 +724,37 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
     return rawGuide && guideHasSnippetRefs(rawGuide) ? rawGuide : null;
   }, [rawGuide]);
 
+  // The tree the canonical index is counted from. `rawGuide` is the tree that
+  // RENDERS, which on the prepared-launch path arrives already snippet-expanded
+  // and therefore holds more blocks than the counting rule gives it — a
+  // `snippet-ref` is one position however many blocks it resolves to. `null`
+  // means a known-expanded payload arrived without the pre-inlining tree it was
+  // expanded from, which is the one case with nothing honest to count.
+  const countingGuide = useMemo<JsonGuide | null>(() => {
+    if (!rawGuide) {
+      return null;
+    }
+    const selection = selectCountingTree(html, countingSource);
+    if (!selection.available) {
+      return null;
+    }
+    if (selection.guideJson === html) {
+      return rawGuide;
+    }
+    try {
+      return JSON.parse(selection.guideJson) as JsonGuide;
+    } catch {
+      return null;
+    }
+  }, [rawGuide, html, countingSource]);
+
   // The frozen block index (docs/design/COMPLETION-MODEL.md, decision 1):
-  // one traversal over the tree available synchronously at first paint,
-  // published once per content key and never recomputed for the life of
-  // that key — `publishGuideIndex` is itself idempotent, so a re-render or
-  // an unrelated prop change is a no-op here. It owns both the denominator
-  // and the numerator's positions so they can never come from two
-  // traversals and disagree.
+  // one traversal over the PRE-inlining tree — `countingGuide`, not whichever
+  // render tree arrived — published once per content key and never
+  // recomputed for the life of that key. `publishGuideIndex` is itself
+  // idempotent, so a re-render or an unrelated prop change is a no-op here.
+  // It owns both the denominator and the numerator's positions so they can
+  // never come from two traversals and disagree.
   //
   // The eviction revision is a dependency because this is the only
   // producer: a reset that evicts the index while this guide stays mounted
@@ -750,6 +788,18 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
       return;
     }
     const contentKey = resolveGuideContentKey(baseUrl);
+    if (!countingGuide) {
+      // Rendering survives; a canonical index does not get invented from the
+      // expanded tree, because that denominator is not the canonical one and
+      // the freeze would keep it for the life of this content key.
+      logger.warn(
+        '[ContentRenderer] Expanded guide carries no usable pre-inlining tree; no canonical index published',
+        {
+          content_key: contentKey,
+        }
+      );
+      return;
+    }
     if (isBlockEditorPreviewUrl(baseUrl)) {
       const last = lastPublishedPreviewGuideRef.current;
       if (last && last.contentKey === contentKey && last.guide !== rawGuide) {
@@ -763,7 +813,7 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
     }
     publishGuideIndex({
       contentKey,
-      index: computeGuideBlockIndex(rawGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
+      index: computeGuideBlockIndex(countingGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
       denominatorSource: 'live-pre-inlining',
     });
     // A percentage persisted under the deleted step-count rule is read back
@@ -774,7 +824,7 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
     // evidence at all, so this never fills the capped percentage namespace
     // with zeros just from being opened.
     refreshGuidePercentageOnLoad(contentKey);
-  }, [rawGuide, baseUrl, guideIndexEvictionRevision]);
+  }, [rawGuide, countingGuide, baseUrl, guideIndexEvictionRevision]);
 
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.
