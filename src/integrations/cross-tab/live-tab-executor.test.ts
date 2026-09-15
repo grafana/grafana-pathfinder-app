@@ -1,6 +1,8 @@
 import { waitFor } from '@testing-library/react';
 import { getAppEvents } from '@grafana/runtime';
 import { installLiveTabExecutor, resetLiveTabExecutorForTests, DEFAULT_PACING } from './live-tab-executor';
+import { GUIDED_ACTION_TYPES, GUIDED_DOM_ACTION_TYPES } from '../../types/interactive-actions.types';
+import { INTERACTIVE_ACTION_TYPES } from '../../types/interactive.types';
 import { FocusHandler, ButtonHandler, NavigateHandler, GuidedHandler } from '../../interactive-engine/action-handlers';
 import { checkRequirements, dispatchFix } from '../../requirements-manager';
 import { sidebarState } from '../../global-state/sidebar';
@@ -339,6 +341,83 @@ describe('installLiveTabExecutor', () => {
         expect.objectContaining({ kind: 'step-complete', stepId: 'g1', runId: 'run-g1', ok: true })
       )
     );
+    uninstall();
+  });
+
+  // The cross-tab receive gate keeps its own hand-written guided verb list,
+  // deliberately not derived from GUIDED_ACTION_TYPES: deriving a wire contract
+  // from a local action union lets a refactor widen what one tab accepts from
+  // another (decision §5 on #1525). These cases pin the two in agreement
+  // behaviourally, so drift fails here instead of reaching the guided handler
+  // with a verb it has no listener for.
+  const guidedSubstepCommand = (stepId: string, targetAction: string) => ({
+    source: 'pathfinder' as const,
+    senderId: 'controller',
+    timestamp: 0,
+    kind: 'step-command' as const,
+    phase: 'do' as const,
+    stepId,
+    runId: `run-${stepId}`,
+    action: {
+      targetAction: 'guided',
+      refTarget: '',
+      internalActions: [{ targetAction, refTarget: '#a' }],
+    },
+  });
+
+  const guidedStepMock = () => (GuidedHandler as jest.Mock).mock.results[0]?.value.executeGuidedStep as jest.Mock;
+
+  // A message refused at the envelope validator produces no reply at all, so a
+  // negative assertion needs the executor's async handling to have drained
+  // first — there is no positive signal to wait on.
+  const flushExecutor = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+  it.each([...GUIDED_DOM_ACTION_TYPES])('relays a guided "%s" substep to the guided handler', async (targetAction) => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+    transport.emit(guidedSubstepCommand('g-ok', targetAction));
+
+    await waitFor(() => expect(guidedStepMock()).toHaveBeenCalledTimes(1));
+    expect(guidedStepMock().mock.calls[0]![0]).toEqual(expect.objectContaining({ targetAction }));
+    uninstall();
+  });
+
+  it.each(INTERACTIVE_ACTION_TYPES.filter((a) => !GUIDED_ACTION_TYPES.includes(a as never)))(
+    'never hands the guided handler a substep carrying the non-guided verb "%s"',
+    async (targetAction) => {
+      const transport = new FakeCrossTabTransport('live-self');
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+      transport.emit(guidedSubstepCommand('g-bad', targetAction));
+
+      // Refusal is legitimate at either layer — the envelope validator drops the
+      // message outright for a verb outside the receive gate, and runGuided
+      // refuses the rest. What must never happen is the verb reaching the
+      // handler, or the step being reported complete.
+      await flushExecutor();
+      expect(guidedStepMock()).not.toHaveBeenCalled();
+      expect(transport.postedMessages).not.toContainEqual(
+        expect.objectContaining({ kind: 'step-complete', stepId: 'g-bad', ok: true })
+      );
+      uninstall();
+    }
+  );
+
+  // Pre-existing gap, pinned so it is visible rather than surprising: `noop` is a
+  // verb the guided handler drives, but it is absent from the receive gate's
+  // KNOWN_TARGET_ACTIONS, so a guided block containing a noop step cannot be
+  // relayed cross-tab at all. Unrelated to the guided authoring gate in
+  // validate-guide.ts; fixing it means changing a wire contract.
+  it('drops a guided noop substep at the receive gate, so it never reaches the handler', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+    transport.emit(guidedSubstepCommand('g-noop', 'noop'));
+
+    await flushExecutor();
+    expect(transport.postedMessages).toEqual([]);
+    expect(guidedStepMock()).not.toHaveBeenCalled();
     uninstall();
   });
 
