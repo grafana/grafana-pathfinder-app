@@ -396,7 +396,7 @@ export class GuidedHandler {
    */
   private async findTargetElementWithRetry(
     selector: string,
-    actionType: 'hover' | 'button' | 'highlight' | 'formfill',
+    actionType: GuidedDomActionType,
     timeout: number,
     retryInterval: number,
     skipRetryOnFailure = false
@@ -458,10 +458,7 @@ export class GuidedHandler {
    * Buttons support both CSS selectors and text matching with intelligent detection
    * Formfill targets form elements (input, textarea, select)
    */
-  private async findTargetElement(
-    selector: string,
-    actionType: 'hover' | 'button' | 'highlight' | 'formfill'
-  ): Promise<HTMLElement> {
+  private async findTargetElement(selector: string, actionType: GuidedDomActionType): Promise<HTMLElement> {
     let targetElements: HTMLElement[];
 
     // Resolve grafana: prefix if present
@@ -562,7 +559,7 @@ export class GuidedHandler {
    */
   private async highlightTarget(
     element: HTMLElement,
-    actionType: 'hover' | 'button' | 'highlight' | 'formfill',
+    actionType: GuidedDomActionType,
     stepIndex: number,
     totalSteps: number,
     customComment?: string,
@@ -628,7 +625,7 @@ export class GuidedHandler {
   /**
    * Generate user-friendly message for each action type
    */
-  private getActionMessage(actionType: 'hover' | 'button' | 'highlight' | 'formfill'): string {
+  private getActionMessage(actionType: GuidedDomActionType): string {
     // Step number is now shown in checkbox list, so just show the instruction
     switch (actionType) {
       case 'hover':
