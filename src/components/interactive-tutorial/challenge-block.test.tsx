@@ -499,11 +499,18 @@ describe('ChallengeBlock', () => {
     setBackend(post);
     mockTerminalCtx({ status: 'connected' });
 
-    const resolvers: Array<(value: Awaited<ReturnType<typeof checkPostconditions>>) => void> = [];
+    let resolveFirst: (value: Awaited<ReturnType<typeof checkPostconditions>>) => void = () => undefined;
+    let resolveSecond: (value: Awaited<ReturnType<typeof checkPostconditions>>) => void = () => undefined;
+    let checkOrdinal = 0;
     mockedCheckPostconditions.mockImplementation(
       () =>
         new Promise<Awaited<ReturnType<typeof checkPostconditions>>>((resolve) => {
-          resolvers.push(resolve);
+          if (checkOrdinal === 0) {
+            resolveFirst = resolve;
+          } else {
+            resolveSecond = resolve;
+          }
+          checkOrdinal += 1;
         })
     );
 
@@ -533,17 +540,17 @@ describe('ChallengeBlock', () => {
     await waitFor(() => {
       expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
     });
-    expect(resolvers).toHaveLength(2);
+    expect(checkOrdinal).toBe(2);
 
     await act(async () => {
-      resolvers[0]({ requirements: baseProps.successCriteria, pass: true, error: [] });
+      resolveFirst({ requirements: baseProps.successCriteria, pass: true, error: [] });
     });
 
     expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
     expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
 
     await act(async () => {
-      resolvers[1]({ requirements: baseProps.successCriteria, pass: true, error: [] });
+      resolveSecond({ requirements: baseProps.successCriteria, pass: true, error: [] });
     });
 
     await waitFor(() => {
@@ -556,14 +563,18 @@ describe('ChallengeBlock', () => {
     setBackend(post);
     mockTerminalCtx({ status: 'connected' });
 
-    const pending: Array<{
-      resolve: (value: Awaited<ReturnType<typeof checkPostconditions>>) => void;
-      reject: (reason: Error) => void;
-    }> = [];
+    let rejectFirst: (reason: Error) => void = () => undefined;
+    let resolveSecond: (value: Awaited<ReturnType<typeof checkPostconditions>>) => void = () => undefined;
+    let checkOrdinal = 0;
     mockedCheckPostconditions.mockImplementation(
       () =>
         new Promise<Awaited<ReturnType<typeof checkPostconditions>>>((resolve, reject) => {
-          pending.push({ resolve, reject });
+          if (checkOrdinal === 0) {
+            rejectFirst = reject;
+          } else {
+            resolveSecond = resolve;
+          }
+          checkOrdinal += 1;
         })
     );
 
@@ -593,17 +604,17 @@ describe('ChallengeBlock', () => {
     await waitFor(() => {
       expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
     });
-    expect(pending).toHaveLength(2);
+    expect(checkOrdinal).toBe(2);
 
     await act(async () => {
-      pending[0].reject(new Error('stale pipeline exploded'));
+      rejectFirst(new Error('stale pipeline exploded'));
     });
 
     expect(screen.queryByText(/stale pipeline exploded/i)).not.toBeInTheDocument();
     expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
 
     await act(async () => {
-      pending[1].resolve({ requirements: baseProps.successCriteria, pass: true, error: [] });
+      resolveSecond({ requirements: baseProps.successCriteria, pass: true, error: [] });
     });
 
     await waitFor(() => {
@@ -883,11 +894,18 @@ describe('ChallengeBlock', () => {
       mockTerminalCtx({ status: 'disconnected' });
       mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
 
-      const resolvers: Array<(value: Awaited<ReturnType<typeof checkPostconditions>>) => void> = [];
+      let resolveFirst: (value: Awaited<ReturnType<typeof checkPostconditions>>) => void = () => undefined;
+      let resolveSecond: (value: Awaited<ReturnType<typeof checkPostconditions>>) => void = () => undefined;
+      let checkOrdinal = 0;
       mockedCheckPostconditions.mockImplementation(
         () =>
           new Promise<Awaited<ReturnType<typeof checkPostconditions>>>((resolve) => {
-            resolvers.push(resolve);
+            if (checkOrdinal === 0) {
+              resolveFirst = resolve;
+            } else {
+              resolveSecond = resolve;
+            }
+            checkOrdinal += 1;
           })
       );
 
@@ -913,17 +931,17 @@ describe('ChallengeBlock', () => {
       await waitFor(() => {
         expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
       });
-      expect(resolvers).toHaveLength(2);
+      expect(checkOrdinal).toBe(2);
 
       await act(async () => {
-        resolvers[0]({ requirements: skipProps.successCriteria, pass: true, error: [] });
+        resolveFirst({ requirements: skipProps.successCriteria, pass: true, error: [] });
       });
 
       expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
       expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
 
       await act(async () => {
-        resolvers[1]({ requirements: skipProps.successCriteria, pass: true, error: [] });
+        resolveSecond({ requirements: skipProps.successCriteria, pass: true, error: [] });
       });
 
       await waitFor(() => {
