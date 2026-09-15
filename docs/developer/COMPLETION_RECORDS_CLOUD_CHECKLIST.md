@@ -20,23 +20,51 @@ Throughout, `PF` is the plugin's resources prefix:
 const PF = '/api/plugins/grafana-pathfinder-app/resources';
 ```
 
+### 0. Check the installed plugin version first
+
+```js
+await fetch('/api/plugins/grafana-pathfinder-app/settings')
+  .then((r) => r.json())
+  .then((s) => s.info.version);
+```
+
+**Require 2.17.0 or newer.** Every route below is served by the plugin's **installed** server component, and Graft serves reader-facing files only — it cannot replace that, so whatever version the stack has installed is what answers. On anything older the routes do not exist and Grafana answers a plain **HTTP 404**, not a capability envelope: the `completionCount` helper below would then throw on `body.capability?.available` with a message about capability that has nothing to do with the real problem.
+
+So if step 1 returns a 404 rather than JSON with a `capability` field, the installed plugin predates the route. That is a release problem, not a capability problem. Stop and report the installed version.
+
 ## Every assertion is a count delta, never an absolute count
 
 `GET /completion-records/my` collates records by `(guideSource, guideId)` and reports a running `count` per pair. There is no route that deletes a durable completion record, and nothing expires them, so those counts only ever go up — per reader, per stack, forever. The second time you run this checklist the counts are already non-zero, and they stay non-zero for every later run.
 
 So **read the count before the action, read it after, and assert the difference.** A step that expects a count of exactly 1 passes the first time anyone runs it and fails for everyone afterwards. Please do not "fix" a delta assertion into an absolute one.
 
-This helper reads the count for one pair, and answers `0` for a pair that has no record yet:
+## Paste these helpers into the console first
+
+Three of them. `completionSnapshot` reads the whole collated array as a lookup, because a step often has to take a baseline before it knows which pair a guide records under; `completionCount` narrows that to one pair and answers `0` for a pair with no record yet; `queuedFacts` reads the client's own write queue, which is where you find out what pair a completion actually used.
 
 ```js
-async function completionCount(guideSource, guideId, { refresh = false } = {}) {
+async function completionSnapshot({ refresh = false } = {}) {
   const url = `${PF}/completion-records/my${refresh ? '?refresh=1' : ''}`;
   const body = await fetch(url).then((r) => r.json());
   if (!body.capability?.available) {
     throw new Error(`capability unavailable: ${body.capability?.reason ?? 'unknown'}`);
   }
-  const entry = body.completions?.find((c) => c.guideSource === guideSource && c.guideId === guideId);
-  return entry ? entry.count : 0;
+  return Object.fromEntries((body.completions ?? []).map((c) => [`${c.guideSource}\t${c.guideId}`, c.count]));
+}
+
+async function completionCount(guideSource, guideId, options) {
+  return (await completionSnapshot(options))[`${guideSource}\t${guideId}`] ?? 0;
+}
+
+// The client's queued-but-unsent completion facts. `guideId` narrows to one
+// guide — after a failed earlier step there can be several queued at once.
+function queuedFacts(guideId) {
+  const QUEUE = 'grafana-pathfinder-app-completion-write-queue-v2:';
+  return Object.keys(localStorage)
+    .filter((key) => key.startsWith(QUEUE) && key.includes(':item:'))
+    .map((key) => ({ key, item: JSON.parse(localStorage.getItem(key)) }))
+    .map(({ key, item }) => ({ key, id: item.id, ...item.body }))
+    .filter((fact) => guideId === undefined || fact.guideId === guideId);
 }
 ```
 
@@ -51,12 +79,17 @@ await fetch(`${PF}/completion-records/capability`).then((r) => r.json());
 
 **Require `available: true` before you do anything else.** If it is `false`, stop here and report the `reason` token — it names which part of the layer is missing, and each one needs a different person to fix it:
 
-| `reason`                   | What it means                                                                                        |
-| -------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `identity-unavailable`     | No acceptable caller token: absent, expired, or issued for another stack. Re-authenticate and retry. |
-| `identity-unverifiable`    | The stack supplies nothing to verify a token against — no app URL, or no server-derived namespace.   |
-| `signing-keys-unreachable` | No signing-keys endpoint answered at all. Points at the configured address, not at you.              |
-| `backend-unavailable`      | Identity is fine; the record kind is not served on this stack, or the upstream LIST did not answer.  |
+| `reason`                   | What it means                                                                                                        |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `identity-unavailable`     | No acceptable caller token: absent, expired, or issued for another stack. Re-authenticate and retry.                 |
+| `identity-unverifiable`    | The stack supplies nothing to verify a token against — no app URL, or no server-derived namespace.                   |
+| `signing-keys-unreachable` | No signing-keys endpoint answered at all. Points at the configured address, not at you.                              |
+| `obo-unavailable`          | No provisioned on-behalf-of credential, so the proxy cannot call upstream as you. Check this first on a new stack.   |
+| `backend-unavailable`      | The structural gate failed. It collapses five causes — see below; check the aggregation toggle before anything else. |
+
+`backend-unavailable` is the one token that does not name its own cause. It is returned for any of: the aggregation feature toggle **`aggregation.pathfinderbackend-ext-grafana-app.enabled`** being off, no app URL configured, no server-derived namespace, an unusable Grafana config, or an upstream LIST that did not answer.
+
+**On a stack that has never served this before, the toggle is much the most likely of the five** — start there rather than hunting a missing record kind.
 
 A `503` rather than a capability envelope is a transient hiccup, not an unavailable capability: wait for the `Retry-After` hint and try again.
 
@@ -64,30 +97,48 @@ Do not continue past a `false`. Every later step reads through the same gate, an
 
 ## 2. A completion becomes a durable record
 
-1. Pick a guide and note the `(guideSource, guideId)` pair it records under. The pair is the guide's manifest `repository` and `id`; for a bundled guide it is `bundled` and the guide's id.
-2. Read the baseline: `const before = await completionCount(guideSource, guideId);`
-3. In the sidebar, open that guide and complete it — click **Mark complete** at its foot.
+**Do not work out the `(guideSource, guideId)` pair by hand.** It is not simply the manifest's `repository` and `id`: the same guide launched by package path rather than by bare id records a different `guideId`, App Platform guides are forced to `app-platform`, and a milestone is keyed on its own slug and never on the owning path's id. Guess it wrong and you see no delta and report a working system as broken. Read it off the completion the client actually built instead.
+
+1. Take a baseline of the whole collated array, since you do not yet know the pair: `const before = await completionSnapshot();`
+2. In the sidebar, open a guide and complete it — click **Mark complete** at its foot.
+3. Read the pair off the queued fact, promptly — the queue removes an item once it is sent:
+
+```js
+const [fact] = queuedFacts();
+const { guideSource, guideId } = fact;
+({ guideSource, guideId });
+```
+
+If the queue is already empty the fact has drained, which is the good case. Fall back to diffing the whole array:
+
+```js
+const after = await completionSnapshot({ refresh: true });
+Object.entries(after).filter(([pair, count]) => count !== (before[pair] ?? 0));
+// → exactly one entry, `"<guideSource>\t<guideId>": <before + 1>`
+```
+
 4. Poll for the record to appear. The read route answers from a per-namespace cache with a five-minute TTL, so a single read will often miss a completion that did land. `?refresh=1` forces an upstream read, and is itself rate-limited to one forced read per namespace per 30 seconds, so poll at that spacing rather than tighter:
 
 ```js
-async function waitForDelta(guideSource, guideId, before, expected, timeoutMs = 180_000) {
+async function waitForDelta(guideSource, guideId, baselineCount, expected, timeoutMs = 180_000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const now = await completionCount(guideSource, guideId, { refresh: true });
-    if (now - before >= expected) {
+    if (now - baselineCount >= expected) {
       return now;
     }
     if (Date.now() > deadline) {
-      throw new Error(`record never arrived: count stayed at ${now}, baseline ${before}`);
+      throw new Error(`record never arrived: count stayed at ${now}, baseline ${baselineCount}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 30_000));
   }
 }
 
-const after = await waitForDelta(guideSource, guideId, before, 1);
+const baseline = before[`${guideSource}\t${guideId}`] ?? 0;
+const after = await waitForDelta(guideSource, guideId, baseline, 1);
 ```
 
-**Pass:** `after - before === 1`.
+**Pass:** `after - baseline === 1`.
 
 A timeout here means **the record never arrived**. Treat it as a failure and report it — not as a flake to re-run until it passes. The poll above already allows for the cache, the forced-read rate limit, and the write queue's own backoff; if three minutes of that is not enough, something is wrong.
 
@@ -95,19 +146,26 @@ A timeout here means **the record never arrived**. Treat it as a failure and rep
 
 The client retries a completion whose POST it could not confirm, replaying it under the same stable idempotency key. The backend derives the record name from that key, so a replay must collapse into the one record rather than adding a second.
 
-1. Read the baseline for a guide you have **not** completed on this stack: `const before = await completionCount(guideSource, guideId);`
+1. Take a whole-array baseline: `const before = await completionSnapshot();`
 2. In devtools, set the network to **Offline** (Network panel → throttling → Offline).
-3. Complete the guide. The completion cannot leave the browser, so it stays in the client's queue.
-4. Copy the queued fact out of `localStorage`, still offline:
+3. Complete a guide you have **not** completed on this stack. The completion cannot leave the browser, so it stays in the client's queue.
+4. Copy that guide's queued fact out of `localStorage`, still offline. Filter by the guide id rather than taking the first item — a failed earlier step can leave others queued:
 
 ```js
-const QUEUE = 'grafana-pathfinder-app-completion-write-queue-v2:';
-const key = Object.keys(localStorage).find((k) => k.startsWith(QUEUE) && k.includes(':item:'));
-const saved = { key, value: localStorage.getItem(key) };
+const [fact] = queuedFacts(); // one guide completed while offline, so one fact
+const { guideSource, guideId } = fact;
+const saved = { key: fact.key, value: localStorage.getItem(fact.key) };
+// If several are queued, narrow it: queuedFacts('<the guide id>')
 saved; // keep this in the console — you re-write it in step 6
 ```
 
 5. Set the network back to **Online** and wait for the delta with the poll from step 2. It should be `+1`.
+
+```js
+const baseline = before[`${guideSource}\t${guideId}`] ?? 0;
+await waitForDelta(guideSource, guideId, baseline, 1);
+```
+
 6. Force the resend: write the saved item back under its original key and reload the page. The queue drains it again, under the same idempotency key as before.
 
 ```js
@@ -115,27 +173,64 @@ localStorage.setItem(saved.key, saved.value);
 location.reload();
 ```
 
-7. Wait long enough for the resend to be attempted — the queue drains on load — then read the count again.
+7. **Confirm the replay actually left the browser, before you read any count.** This is the step's whole point and the one place a wrong result is worse than no result: a replay that never sent produces the same count as a replay that was correctly deduped, so without a positive check a silent no-op reads as a pass and reports the idempotency guarantee as verified when nothing was tested.
 
-**Pass:** the count is still `before + 1`. The whole sequence, original send plus replay, produced exactly one record.
+   The queue removes an item once it has been sent successfully, so the saved key going `null` is the confirmation:
 
-**Fail:** `before + 2`. That is a double-count, and it is the failure this step exists to catch.
+```js
+async function waitForResend(savedKey, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (localStorage.getItem(savedKey) === null) {
+      return;
+    }
+    if (Date.now() > deadline) {
+      throw new Error('the replay never left the browser — the queue item is still there');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+}
+
+await waitForResend(saved.key);
+```
+
+Cross-check it visually if you like: a second `POST .../resources/completion-records` in the Network panel.
+
+**Expect this to take around half a minute.** Only one tab drains at a time, under a 30-second lease, and a page that navigates away strands its lease to expire rather than releasing it — so the first send after a reload commonly waits out the full lease. The browser suite measures this at a consistent ~34 seconds. Do not shorten the timeout to under a minute, and do not conclude anything from a count read before `waitForResend` returns.
+
+8. Now read the count again.
+
+**Pass:** the count is still `baseline + 1`. The whole sequence — original send plus a confirmed replay — produced exactly one record.
+
+**Fail, two different ways:**
+
+- `baseline + 2` — a double-count. This is the failure the step exists to catch.
+- `waitForResend` times out — the replay never sent, so the guarantee is untested, not verified. Report it as an inconclusive step, not a pass.
 
 ## 4. A whole path records only when every milestone is complete
 
 A path has a record of its own, separate from its milestones'. It must appear when the last milestone completes, and not before.
 
-1. Pick a path with at least three milestones that you have not progressed on this stack. Note the path's own `(guideSource, guideId)` pair — its manifest `repository` and `id`.
-2. Read the baseline for the **path's** pair: `const before = await completionCount(pathSource, pathId);`
+1. Pick a path with at least three milestones that you have not progressed on this stack.
+2. Take a whole-array baseline: `const before = await completionSnapshot();` — as in step 2, do not derive the path's pair by hand.
 3. Complete every milestone except the last, using **Mark complete and continue**.
-4. Read the path's count again, with `?refresh=1`.
+4. Read the array again with `?refresh=1` and diff it against `before`.
 
-   **Pass:** unchanged — `count - before === 0`. A path record before the last milestone is a failure, and it is the more damaging direction of the two: it reports readers as finished when they are not.
+   **Pass:** the only new or increased entries are the milestones you completed, each keyed on its own slug. **No new entry keyed on the path itself.** A path record before the last milestone is a failure, and the more damaging direction of the two: it reports readers as finished when they are not.
 
-5. Complete the last milestone.
-6. Wait for the path's delta with the poll from step 2.
+5. Complete the last milestone. Read the path's own pair off the queue while it is still there — the path's record is a second, separate fact emitted alongside the last milestone's:
 
-   **Pass:** `count - before === 1`.
+```js
+queuedFacts(); // the last milestone's fact, plus the path's own
+```
+
+The path's fact is the one whose `guideId` is the path's id rather than a milestone slug. Take `pathSource` and `pathId` from it, and `const baseline = before[`${pathSource}\t${pathId}`] ?? 0;`. If the queue has already drained, diff the array as in step 2 — the path's entry is the new one that is not a milestone slug.
+
+6. Wait for the path's delta with the poll from step 2: `await waitForDelta(pathSource, pathId, baseline, 1);`
+
+   **Pass:** `count - baseline === 1`.
+
+   **Fail:** `waitForDelta` throws, meaning the path record never arrived even though every milestone is complete — a path that can never be reported finished. Report it with the milestone records you did see in the same `/completion-records/my` response, since those say whether the milestones themselves landed.
 
 Each milestone also records separately, keyed on its own slug. Those are worth spot-checking in the same `/completion-records/my` response, again as deltas.
 
