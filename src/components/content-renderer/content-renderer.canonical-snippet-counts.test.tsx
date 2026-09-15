@@ -13,7 +13,7 @@
  * under test.
  */
 import React, { useLayoutEffect } from 'react';
-import { act, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 
 import { evictAllGuideIndexes, getGuideIndex } from '../../global-state/active-guide-index';
 import { resetContentKeyForTests } from '../../global-state/content-key';
@@ -110,6 +110,12 @@ async function renderGuide(content: RawContent) {
   return result;
 }
 
+/** The reader closes the guide, then the index store starts the next opening path clean. */
+function closeAndReset() {
+  cleanup();
+  act(() => evictAllGuideIndexes());
+}
+
 /** The launch path: fetch once, expand, hand the result to the renderer. */
 async function prepared(guide: JsonGuide, url = GUIDE_URL): Promise<PreparedRawContent> {
   (loadDocsTabContentResult as jest.Mock).mockResolvedValue({ content: rawContent(guide, url) });
@@ -151,7 +157,7 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     await renderGuide(rawContent(guide));
     const directTotal = totalAt();
 
-    act(() => evictAllGuideIndexes());
+    closeAndReset();
     const preparedContent = await prepared(guide);
     await renderGuide(preparedContent);
     const preparedTotal = totalAt();
@@ -168,7 +174,7 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     await renderGuide(rawContent(guide));
     const direct = getGuideIndex(GUIDE_URL)?.index;
 
-    act(() => evictAllGuideIndexes());
+    closeAndReset();
     await renderGuide(await prepared(guide));
     const fromLaunch = getGuideIndex(GUIDE_URL)?.index;
 
@@ -182,7 +188,7 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     await renderGuide(rawContent(guide));
     expect(getGuideIndex(GUIDE_URL)?.denominatorSource).toBe('live-pre-inlining');
 
-    act(() => evictAllGuideIndexes());
+    closeAndReset();
     await renderGuide(await prepared(guide));
     expect(getGuideIndex(GUIDE_URL)?.denominatorSource).toBe('live-pre-inlining');
   });
@@ -194,7 +200,7 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     await renderGuide(rawContent(guide));
     const direct = guideProgress(getGuideIndex(GUIDE_URL)!.index, evidence);
 
-    act(() => evictAllGuideIndexes());
+    closeAndReset();
     await renderGuide(await prepared(guide));
     const fromLaunch = guideProgress(getGuideIndex(GUIDE_URL)!.index, evidence);
 
@@ -219,7 +225,7 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     await renderGuide(rawContent(guide));
     const direct = getGuideIndex(GUIDE_URL)!.index;
 
-    act(() => evictAllGuideIndexes());
+    closeAndReset();
     await renderGuide(await prepared(guide));
     const fromLaunch = getGuideIndex(GUIDE_URL)!.index;
 
@@ -242,7 +248,7 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     await renderGuide(rawContent(guide));
     expect(totalAt()).toBe(3);
 
-    act(() => evictAllGuideIndexes());
+    closeAndReset();
     const preparedContent = await prepared(guide);
     await renderGuide(preparedContent);
 
@@ -271,7 +277,7 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     await renderGuide(rawContent(guide));
     expect(getGuideIndex(GUIDE_URL)?.index).toEqual(canonical);
 
-    act(() => evictAllGuideIndexes());
+    closeAndReset();
     await renderGuide(await prepared(guide));
 
     expect(totalAt()).toBe(2);
@@ -296,7 +302,7 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     await renderGuide(rawContent(guide));
     expect(totalAt()).toBe(2);
 
-    act(() => evictAllGuideIndexes());
+    closeAndReset();
     await renderGuide(await prepared(guide));
 
     expect(totalAt()).toBe(2);
@@ -309,7 +315,7 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     await renderGuide(rawContent(guide));
     expect(totalAt()).toBe(2);
 
-    act(() => evictAllGuideIndexes());
+    closeAndReset();
     (loadDocsTabContentResult as jest.Mock).mockResolvedValue({ content: rawContent(guide) });
     const result = await prepareGuideLaunch(GUIDE_URL, { title: guide.title, source: 'home_page' });
     if (!result.ok) {
