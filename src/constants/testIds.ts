@@ -43,6 +43,8 @@ export const testIds = {
     fullScreenButton: 'docs-panel-full-screen-button',
     openControllerTabButton: 'docs-panel-open-controller-tab-button',
     milestoneMoreActionsButton: 'docs-panel-milestone-more-actions-button',
+    nextMilestoneButton: 'docs-panel-next-milestone-button',
+    previousMilestoneButton: 'docs-panel-previous-milestone-button',
     resetGuideButton: 'docs-panel-reset-guide-button',
   },
 
