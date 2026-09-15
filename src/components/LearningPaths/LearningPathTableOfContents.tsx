@@ -129,7 +129,12 @@ export function LearningPathTableOfContents({
           </div>
         </div>
       )}
-      <div className={styles.container} data-testid={testIds.learningPaths.tableOfContents}>
+      <div
+        className={styles.container}
+        data-testid={testIds.learningPaths.tableOfContents}
+        // Testing contract: readable at 0%, where the ring below is hidden.
+        data-test-path-percent={progress}
+      >
         <div className={styles.header}>
           <h2 className={styles.heading}>
             <Icon name="list-ul" size="md" className={styles.headingIcon} />

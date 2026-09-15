@@ -219,9 +219,29 @@ A My learning layout or selector refactor must preserve these values or update t
 The course/learning-path cover page exposes stable testids for its hero and table-of-contents so E2E tests can assert cover-page rendering and launch the path without depending on text or DOM structure:
 
 - **`learning-paths-cover-hero`** (`testIds.learningPaths.coverHero`): the cover page's hero section boundary (title, description, module count, duration, badge preview).
+- **`learning-paths-toc`** (`testIds.learningPaths.tableOfContents`): the table of contents boundary, and the element that carries the path progress attribute below.
 - **`learning-paths-toc-cta`** (`testIds.learningPaths.tableOfContentsCta`): the table of contents' get-started/resume action.
 
 A cover-page layout or selector refactor must preserve these values or update the E2E selectors and this document in the same change.
+
+---
+
+## Path progress contract
+
+The path's rolled-up percentage is exposed declaratively on the table-of-contents root, alongside `testIds.learningPaths.tableOfContents`:
+
+- **`data-test-path-percent`**: the path's progress as an integer 0-100 — the mean of its resolvable milestones' own percentages (`docs/design/COMPLETION-MODEL.md`, decision 4).
+
+The attribute exists because the progress ring beside it is hidden at 0%, and 0% is the value a test most often needs to assert: it is what a reader who only paged through the path has earned. Reading the ring's rendered text would make "no progress" indistinguishable from "no ring".
+
+Milestone navigation is addressed by testid rather than by the buttons' translated `aria-label`:
+
+- **`docs-panel-next-milestone-button`** (`testIds.docsPanel.nextMilestoneButton`): advance to the next milestone.
+- **`docs-panel-previous-milestone-button`** (`testIds.docsPanel.previousMilestoneButton`): return to the previous milestone, and from milestone 1 to the cover page.
+
+Both are disabled at the ends of the path, which is how a test knows it has walked the whole of it. The loading-state toolbar renders the same two controls without testids: they are permanently disabled placeholders, so a test never has a reason to address them.
+
+The source-level tripwire for the two testids lives in `src/components/docs-panel/docs-panel.contract.test.tsx`.
 
 ---
 
