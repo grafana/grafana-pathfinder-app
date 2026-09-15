@@ -230,9 +230,17 @@ A cover-page layout or selector refactor must preserve these values or update th
 
 The path's rolled-up percentage is exposed declaratively on the table-of-contents root, alongside `testIds.learningPaths.tableOfContents`:
 
-- **`data-test-path-percent`**: the path's progress as an integer 0-100 — the mean of its resolvable milestones' own percentages (`docs/design/COMPLETION-MODEL.md`, decision 4).
+- **`data-test-path-percent`**: the path's progress as an integer 0-100 — the mean of its resolvable milestones' own percentages (`docs/design/COMPLETION-MODEL.md`, decision 4). **Absent until the path's stored progress has been read.**
 
 The attribute exists because the progress ring beside it is hidden at 0%, and 0% is the value a test most often needs to assert: it is what a reader who only paged through the path has earned. Reading the ring's rendered text would make "no progress" indistinguishable from "no ring".
+
+Its absence before the stored progress arrives is deliberate, and load-bearing. In that window the cover page's completed-milestone set is still empty, so every path renders 0% whatever the reader has earned — an assertion made there cannot fail. A test therefore waits for the attribute to exist rather than reading a provisional value; there is no "not loaded yet" value to confuse with a real 0.
+
+The guide-level equivalent is on the Mark complete footer:
+
+- **`data-test-progress-state`** on `mark-complete-footer` (`testIds.markComplete.footer`): `pending` until the footer has read the guide's stored completion mark, `ready` afterwards.
+
+Same reason. Until that read resolves the footer has no content key, so `mark-complete-percentage` reads a hard-coded `0% complete` for every guide, and a click on `mark-complete-button` is silently dropped. Both the percentage and the click are only meaningful at `ready`. Select on this attribute rather than the control's disabled state: Grafana's `Button` expresses that with `aria-disabled`, and this contract does not select on ARIA.
 
 Milestone navigation is addressed by testid rather than by the buttons' translated `aria-label`:
 

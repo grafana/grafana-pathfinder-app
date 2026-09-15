@@ -184,6 +184,39 @@ export async function readQueuedFacts(page: Page): Promise<QueuedFact[]> {
     .sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
 }
 
+/**
+ * The progress this profile has persisted, read straight out of the two
+ * namespaces every surface derives a percentage from.
+ *
+ * The displayed percentage is one layer; this is the layer beneath it. A case
+ * asserting that something earned nothing wants both, because a rendered 0
+ * can also mean "not read yet" while a stored record cannot.
+ */
+export async function readStoredProgress(page: Page): Promise<{
+  /** Percentage per guide content key. */
+  interactiveCompletion: Record<string, number>;
+  /** Completed milestone slugs per journey base URL. */
+  milestoneCompletion: Record<string, string[]>;
+}> {
+  return page.evaluate(
+    ({ interactiveKey, milestoneKey }) => {
+      const parse = <T>(key: string, fallback: T): T => {
+        try {
+          const raw = localStorage.getItem(key);
+          return raw ? (JSON.parse(raw) as T) : fallback;
+        } catch {
+          return fallback;
+        }
+      };
+      return {
+        interactiveCompletion: parse<Record<string, number>>(interactiveKey, {}),
+        milestoneCompletion: parse<Record<string, string[]>>(milestoneKey, {}),
+      };
+    },
+    { interactiveKey: StorageKeys.INTERACTIVE_COMPLETION, milestoneKey: StorageKeys.MILESTONE_COMPLETION }
+  );
+}
+
 /** The queued facts for one guide identity. */
 export function factsFor(facts: QueuedFact[], guideSource: string, guideId: string): QueuedFact[] {
   return facts.filter((fact) => fact.body.guideSource === guideSource && fact.body.guideId === guideId);
@@ -307,24 +340,49 @@ export async function launchDoc(page: Page, docParam: string, options?: { asPath
 /**
  * The path's rolled-up percentage, from the declarative attribute on the path
  * table of contents. Read from the attribute rather than the ring, which the
- * cover page hides at 0% — the value a case most needs to assert.
+ * cover page hides at 0%, and that is the value a case most needs to assert.
+ *
+ * Waits for the attribute to exist. It is absent until the path's stored
+ * progress has been read, and during that window the cover page's own
+ * completed-milestone set is empty — so every path reads 0% whatever the reader
+ * has actually earned. Reading through that window would make "earned nothing"
+ * indistinguishable from "has not looked yet", which is exactly the confusion
+ * the navigation case has to be able to tell apart.
  */
 export async function pathPercentage(page: Page): Promise<number> {
-  const raw = await page.getByTestId(testIds.learningPaths.tableOfContents).getAttribute('data-test-path-percent');
+  const toc = page.locator(`[data-testid="${testIds.learningPaths.tableOfContents}"][data-test-path-percent]`).first();
+  await toc.waitFor({ state: 'attached', timeout: 30_000 });
+  const raw = await toc.getAttribute('data-test-path-percent');
   if (raw === null) {
     throw new Error('Path table of contents exposes no data-test-path-percent');
   }
   return Number(raw);
 }
 
-/** The percentage the Mark complete footer currently reports, as an integer. */
+/**
+ * The percentage the Mark complete footer reports, as an integer.
+ *
+ * Waits for the footer to report its progress as `ready` first. Until the
+ * stored mark has been read the footer resolves no content key, so its
+ * percentage is a hard-coded 0 rather than the guide's — and an assertion made
+ * inside that window cannot fail.
+ */
 export async function footerPercentage(page: Page): Promise<number> {
+  await waitForFooterHydrated(page);
   const text = await page.getByTestId(testIds.markComplete.percentage).first().innerText();
   const match = /(\d+)%/.exec(text);
   if (!match) {
     throw new Error(`Mark complete footer reported no percentage: ${JSON.stringify(text)}`);
   }
   return Number(match[1]);
+}
+
+/** Wait for the footer to have read the stored mark, so its percentage means something. */
+export async function waitForFooterHydrated(page: Page): Promise<void> {
+  await page
+    .locator(`[data-testid="${testIds.markComplete.footer}"][data-test-progress-state="ready"]`)
+    .first()
+    .waitFor({ state: 'attached', timeout: 30_000 });
 }
 
 /**
@@ -365,14 +423,12 @@ export async function markMilestoneCompleteAndContinue(page: Page): Promise<void
 export async function markComplete(page: Page): Promise<void> {
   const button = page.getByTestId(testIds.markComplete.button).first();
   await button.waitFor({ state: 'visible', timeout: 30_000 });
-  await page.waitForFunction(
-    (selector) => {
-      const element = document.querySelector(selector);
-      return element instanceof HTMLButtonElement && !element.disabled;
-    },
-    `[data-testid="${testIds.markComplete.button}"]`,
-    { timeout: 30_000 }
-  );
+  // A click before the stored mark has been read is silently dropped — the
+  // handler has no content key to write under. The footer's own progress state
+  // is the signal; the control's disabled state is not, because Grafana's
+  // Button expresses it with `aria-disabled`, which this contract does not
+  // select on.
+  await waitForFooterHydrated(page);
   await button.click();
   await page.getByTestId(testIds.markComplete.completed).first().waitFor({ state: 'visible', timeout: 30_000 });
 }

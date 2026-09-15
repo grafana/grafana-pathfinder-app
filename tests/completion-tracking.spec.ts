@@ -47,6 +47,7 @@ import {
   pathPercentage,
   primeCompletionSession,
   readQueuedFacts,
+  readStoredProgress,
   seedRestoredTab,
   stubAppPlatformGuide,
   waitForQueuedFacts,
@@ -58,6 +59,9 @@ import {
  * The value a completion must be keyed on when nothing truer resolves.
  */
 const DEFAULT_GUIDE_SOURCE = 'interactive-tutorials';
+
+/** What a guide launch is allowed to take, matching `launchDoc` and `openDocsPanel`. */
+const PANEL_READY_TIMEOUT_MS = 30_000;
 
 // Each case walks several guide loads and, for a path, several milestones. The
 // default per-test budget is a single interaction's worth.
@@ -76,12 +80,16 @@ test.describe('completion tracking', () => {
     await launchDoc(page, fixtureContentUrl(PATH_FIXTURE), { asPath: true });
 
     await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible();
-    expect(await pathPercentage(page)).toBe(0);
+    // Every read below goes through a helper that waits for the surface to have
+    // read its stored progress first. Both surfaces report 0 before that, for
+    // every guide and every path, so an assertion made inside that window
+    // cannot fail — which would make this case prove nothing at all.
+    await expect.poll(() => pathPercentage(page), { message: 'path percentage on the cover' }).toBe(0);
 
     for (let milestone = 1; milestone <= PATH_MILESTONE_COUNT; milestone++) {
       await page.getByTestId(testIds.docsPanel.nextMilestoneButton).click();
       await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible();
-      expect(await footerPercentage(page)).toBe(0);
+      await expect.poll(() => footerPercentage(page), { message: `milestone ${milestone} forward` }).toBe(0);
     }
 
     // The last milestone is the end of the path: there is nowhere further to
@@ -91,14 +99,24 @@ test.describe('completion tracking', () => {
     for (let milestone = PATH_MILESTONE_COUNT - 1; milestone >= 1; milestone--) {
       await page.getByTestId(testIds.docsPanel.previousMilestoneButton).click();
       await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible();
-      expect(await footerPercentage(page)).toBe(0);
+      await expect.poll(() => footerPercentage(page), { message: `milestone ${milestone} back` }).toBe(0);
     }
 
     await page.getByTestId(testIds.docsPanel.previousMilestoneButton).click();
     await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible();
-    expect(await pathPercentage(page)).toBe(0);
+    await expect.poll(() => pathPercentage(page), { message: 'path percentage after the walk' }).toBe(0);
 
     expect(await readQueuedFacts(page)).toEqual([]);
+
+    // The layer beneath the two percentages: nothing was persisted for any
+    // milestone either. A rendered 0 can mean "not read yet"; a stored record
+    // cannot, so this is what makes the case fail if navigation ever starts
+    // crediting again.
+    const stored = await readStoredProgress(page);
+    for (const milestone of PATH_MILESTONES) {
+      expect(Object.keys(stored.interactiveCompletion)).not.toContain(fixtureContentUrl(milestone));
+    }
+    expect(Object.values(stored.milestoneCompletion).flat()).toEqual([]);
   });
 
   /**
@@ -274,6 +292,10 @@ test.describe('completion tracking', () => {
      * `repository` that pre-empts the fallback — for a CDN package, the
      * manifest schema's own default. Should that stop being true, the hard
      * coded fallback becomes the answer and this case turns red.
+     *
+     * The guard for the branch itself is a unit expected-failure, in
+     * `src/docs-retrieval/learning-journey-helpers.completion-boundary.test.ts`,
+     * because no DOM-reachable launch gets there.
      */
     test('the whole-path record for a path whose manifest declares no repository', async ({ page }) => {
       await primeCompletionSession(page);
@@ -317,11 +339,16 @@ test.describe('completion tracking', () => {
     const attemptsBeforeReload = recorder.requests.length;
 
     await page.reload();
-    await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible();
+    // A full reload has to boot the plugin, restore the tab and re-read the
+    // stored mark, so these wait as long as the first launch does rather than
+    // on the default expect budget.
+    await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible({ timeout: PANEL_READY_TIMEOUT_MS });
     // The guide reopens already marked, and the reloaded session drains the
     // persisted queue: both halves of the load that could mint a second fact
     // have run by the time these two conditions hold.
-    await expect(page.getByTestId(testIds.markComplete.completed).first()).toBeVisible();
+    await expect(page.getByTestId(testIds.markComplete.completed).first()).toBeVisible({
+      timeout: PANEL_READY_TIMEOUT_MS,
+    });
     await waitForWriteAttemptAfter(recorder, attemptsBeforeReload);
 
     const after = await readQueuedFacts(page);
