@@ -15,6 +15,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { useStepChecker } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { GcxReadyLine, GcxSetupPanel } from '../../integrations/coda/GcxSetupPanel';
 import { useGcxCredential } from '../../integrations/coda/useGcxCredential.hook';
@@ -95,6 +96,15 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
   }),
+  requirementMessage: css({
+    padding: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    backgroundColor: theme.colors.warning.transparent,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.warning.border}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
 });
 
 const SANDBOX_SUBJECT = 'This step connects to a Coda sandbox VM';
@@ -155,6 +165,16 @@ export const TerminalConnectStep = forwardRef<
     const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
     const isStandalone = !onStepComplete;
     const isCompleted = storedCompleted;
+
+    const checker = useStepChecker({
+      requirements: '',
+      objectives: '',
+      targetAction: 'noop',
+      refTarget: '',
+      stepId: renderedStepId,
+      isEligibleForChecking,
+      sectionId,
+    });
 
     const markComplete = useCallback(() => {
       if (isCompleted) {
@@ -223,12 +243,24 @@ export const TerminalConnectStep = forwardRef<
       markComplete();
     }, [gcxState, markComplete, analyticsStepMeta]);
 
+    const persistReset = useCallback(() => {
+      if (isStandalone) {
+        resetStep(renderedStepId, sectionId);
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
+
+    // Runs in EVERY child of the section, so the store write is suppressed for
+    // section steps: the section's own `resetSteps(tailStepIds)` already owns
+    // it, and a per-child write would wipe preceding completions.
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
-        resetStep(renderedStepId, sectionId);
+        persistReset();
         setIsConnecting(false);
+        if (checker.resetStep) {
+          checker.resetStep({ skipStoreWrite: true });
+        }
       }
-    }, [resetTrigger, renderedStepId, sectionId]);
+    }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep and persistReset are stable but including checker rebuilds every render
 
     // React to terminal status changes while waiting for connection.
     // Handles: success (connected), failure (error), and cancellation (disconnected).
@@ -275,7 +307,7 @@ export const TerminalConnectStep = forwardRef<
 
     const isTerminalConnected = terminalCtx?.status === 'connected';
     const isTerminalConnecting = isConnecting || terminalCtx?.status === 'connecting';
-    const isEnabled = !disabled && terminalCtx !== null && isEligibleForChecking;
+    const isEnabled = checker.isEnabled && !disabled && terminalCtx !== null;
     // The provider mounts even when the panel that owns `connect` is gated
     // away, so without this the button is enabled and does nothing.
     const sandboxUnavailable = codaUnavailableMessage(
@@ -335,6 +367,10 @@ export const TerminalConnectStep = forwardRef<
 
         {gcx && gcxCredential && (
           <GcxReadyLine credential={gcxCredential} testId={testIds.interactive.gcxReady(renderedStepId)} />
+        )}
+
+        {!isEnabled && !isCompleted && checker.explanation && (
+          <div className={styles.requirementMessage}>{checker.explanation}</div>
         )}
 
         {isEnabled && !isCompleted && !isTerminalConnected && sandboxUnavailable && (

@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TerminalStep } from './terminal-step';
 
 // Mock Grafana UI components
@@ -29,21 +29,33 @@ jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
 }));
 
+// The real module pulls @grafana/runtime in, and that reaches into @grafana/ui
+// internals this suite's partial mock does not carry.
+const mockReportAppInteraction = jest.fn();
+jest.mock('../../lib/analytics', () => ({
+  reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+  UserInteraction: { DoItButtonClick: 'do_it_button_click' },
+  buildInteractiveStepProperties: jest.fn((props: unknown) => props),
+}));
+
 // Mock useStepChecker
+const mockCheckerResetStep = jest.fn();
 jest.mock('../../requirements-manager', () => ({
   useStepChecker: () => ({
     isEnabled: true,
     isChecking: false,
     explanation: null,
+    resetStep: (...args: unknown[]) => mockCheckerResetStep(...args),
   }),
   validateInteractiveRequirements: jest.fn(),
 }));
 
 // Mock the completion store (unit tests don't drive persistence here)
+const mockResetStep = jest.fn();
 jest.mock('../../global-state/completion-store', () => ({
   useStepCompletion: jest.fn(() => ({ completed: false, reason: null })),
   markStepCompleted: jest.fn(),
-  resetStep: jest.fn(),
+  resetStep: (...args: unknown[]) => mockResetStep(...args),
   STANDALONE_SECTION_ID: '__standalone__',
 }));
 
@@ -147,6 +159,10 @@ describe('TerminalStep', () => {
     await waitFor(() => {
       expect(mockWriteText).toHaveBeenCalledWith('echo hello');
     });
+    expect(mockReportAppInteraction).toHaveBeenCalledWith(
+      'do_it_button_click',
+      expect.objectContaining({ interaction_location: 'terminal_step', completion_method: 'copy' })
+    );
   });
 
   it('sends command to terminal when Exec is clicked', async () => {
@@ -157,6 +173,10 @@ describe('TerminalStep', () => {
     await waitFor(() => {
       expect(mockSendCommand).toHaveBeenCalledWith('echo hello');
     });
+    expect(mockReportAppInteraction).toHaveBeenCalledWith(
+      'do_it_button_click',
+      expect.objectContaining({ interaction_location: 'terminal_step', completion_method: 'exec' })
+    );
   });
 
   it('calls openTerminal when Connect terminal is clicked', () => {
@@ -173,5 +193,29 @@ describe('TerminalStep', () => {
     render(<TerminalStep command="ls" stepIndex={0} totalSteps={3} />);
 
     expect(screen.queryByText('Step 1 of 3')).not.toBeInTheDocument();
+  });
+});
+
+describe('TerminalStep: a section reset', () => {
+  it('suppresses its own store write, since the section already wrote one', () => {
+    const { rerender } = render(<TerminalStep command="ls" stepId="t-1" onStepComplete={jest.fn()} resetTrigger={0} />);
+
+    act(() => {
+      rerender(<TerminalStep command="ls" stepId="t-1" onStepComplete={jest.fn()} resetTrigger={1} />);
+    });
+
+    expect(mockResetStep).not.toHaveBeenCalled();
+    expect(mockCheckerResetStep).toHaveBeenCalledWith({ skipStoreWrite: true });
+  });
+
+  it('writes the store itself when there is no section to own it', () => {
+    mockResetStep.mockClear();
+    const { rerender } = render(<TerminalStep command="ls" stepId="t-2" resetTrigger={0} />);
+
+    act(() => {
+      rerender(<TerminalStep command="ls" stepId="t-2" resetTrigger={1} />);
+    });
+
+    expect(mockResetStep).toHaveBeenCalledWith('t-2', undefined);
   });
 });

@@ -62,15 +62,29 @@ const mockReportAppInteraction = jest.fn();
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
   UserInteraction: { GcxCredentialInstalled: 'gcx_credential_installed', GcxSetupSkipped: 'gcx_setup_skipped' },
+  buildInteractiveStepProperties: jest.fn((props: unknown) => props),
+}));
+
+// Mirrors `createBlockedState` / `createEnabledState`: an ineligible step is
+// blocked with the sequential explanation, an eligible one is enabled.
+const mockCheckerResetStep = jest.fn();
+jest.mock('../../requirements-manager', () => ({
+  useStepChecker: ({ isEligibleForChecking }: { isEligibleForChecking: boolean }) => ({
+    isEnabled: isEligibleForChecking !== false,
+    isChecking: false,
+    explanation: isEligibleForChecking === false ? 'Complete previous step' : undefined,
+    resetStep: (...args: unknown[]) => mockCheckerResetStep(...args),
+  }),
 }));
 
 jest.mock('../../lib/telemetry', () => ({ recordGcxCredentialDegradation: jest.fn() }));
 
 const mockMarkStepCompleted = jest.fn();
+const mockResetStep = jest.fn();
 jest.mock('../../global-state/completion-store', () => ({
   useStepCompletion: jest.fn(() => ({ completed: false, reason: null })),
   markStepCompleted: (...args: unknown[]) => mockMarkStepCompleted(...args),
-  resetStep: jest.fn(),
+  resetStep: (...args: unknown[]) => mockResetStep(...args),
   STANDALONE_SECTION_ID: '__standalone__',
 }));
 
@@ -315,7 +329,10 @@ describe('with gcx', () => {
     fireEvent.click(screen.getByTestId(testIds.interactive.gcxSkipButton(STEP_ID)));
 
     expect(onComplete).toHaveBeenCalled();
-    expect(mockReportAppInteraction).toHaveBeenCalledWith('gcx_setup_skipped', { state: 'needs-token' });
+    expect(mockReportAppInteraction).toHaveBeenCalledWith(
+      'gcx_setup_skipped',
+      expect.objectContaining({ state: 'needs-token', interaction_location: 'terminal_connect_step' })
+    );
   });
 
   it('does not offer Continue while the credential is still outstanding', async () => {
@@ -426,5 +443,44 @@ describe('the executeStep handle', () => {
     render(<TerminalConnectStep stepId={STEP_ID} ref={ref} />);
 
     await expect(ref.current!.executeStep()).resolves.toBe(true);
+  });
+});
+
+describe('sequential gating', () => {
+  it('explains why a blocked step offers nothing instead of dead-ending silently', () => {
+    renderStep({ isEligibleForChecking: false });
+
+    expect(screen.getByText('Complete previous step')).toBeInTheDocument();
+    expect(screen.queryByText('Try in terminal')).not.toBeInTheDocument();
+  });
+
+  it('offers the connect button once the prerequisite clears', () => {
+    renderStep({ isEligibleForChecking: true });
+
+    expect(screen.queryByText('Complete previous step')).not.toBeInTheDocument();
+    expect(screen.getByText('Try in terminal')).toBeInTheDocument();
+  });
+});
+
+describe('a section reset', () => {
+  it('suppresses its own store write, since the section already wrote one', () => {
+    const { rerender } = render(<TerminalConnectStep stepId={STEP_ID} onStepComplete={jest.fn()} resetTrigger={0} />);
+
+    act(() => {
+      rerender(<TerminalConnectStep stepId={STEP_ID} onStepComplete={jest.fn()} resetTrigger={1} />);
+    });
+
+    expect(mockResetStep).not.toHaveBeenCalled();
+    expect(mockCheckerResetStep).toHaveBeenCalledWith({ skipStoreWrite: true });
+  });
+
+  it('writes the store itself when there is no section to own it', () => {
+    const { rerender } = render(<TerminalConnectStep stepId={STEP_ID} resetTrigger={0} />);
+
+    act(() => {
+      rerender(<TerminalConnectStep stepId={STEP_ID} resetTrigger={1} />);
+    });
+
+    expect(mockResetStep).toHaveBeenCalledWith(STEP_ID, undefined);
   });
 });

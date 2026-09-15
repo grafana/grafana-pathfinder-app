@@ -197,15 +197,24 @@ export const CodeBlockStep = forwardRef<
       sectionId,
     });
 
+    const persistReset = useCallback(() => {
+      if (isStandalone) {
+        resetStep(renderedStepId, sectionId);
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
+
+    // Runs in EVERY child of the section, so the store write is suppressed for
+    // section steps: the section's own `resetSteps(tailStepIds)` already owns
+    // it, and a per-child write would wipe preceding completions.
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
-        resetStep(renderedStepId, sectionId);
+        persistReset();
         setInsertError(null);
         if (checker.resetStep) {
           checker.resetStep({ skipStoreWrite: true });
         }
       }
-    }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep is stable but including checker rebuilds every render
+    }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep and persistReset are stable but including checker rebuilds every render
 
     const markComplete = useCallback(() => {
       if (isCompleted) {
