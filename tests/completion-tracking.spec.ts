@@ -61,9 +61,12 @@ import {
  */
 const DEFAULT_GUIDE_SOURCE = 'interactive-tutorials';
 
-// Each case walks several guide loads and, for a path, several milestones. The
-// default per-test budget is a single interaction's worth.
-test.describe.configure({ timeout: 120_000 });
+// Each case walks several guide loads and, for a path, several milestones, so
+// the default per-test budget is a single interaction's worth. Sized against
+// the longest case rather than guessed: the reload case can spend two
+// `TIMEOUTS.UI_READY` panel waits plus a `waitForWriteAttemptAfter` that
+// budgets past the drain lease's TTL, which alone sums close to two minutes.
+test.describe.configure({ timeout: 180_000 });
 
 test.describe('completion tracking', () => {
   /**
