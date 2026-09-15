@@ -621,7 +621,7 @@ jobs:
           echo "$table" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment PR with results
-        if: ${{ github.event.number != null && steps.results.outputs.table != '' && github.event.pull_request.head.repo.fork != true }}
+        if: ${{ github.event.number != null && steps.results.outputs.table != '' }}
         uses: thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b # v3.0.1
         with:
           comment-tag: gf-playwright-test-results
