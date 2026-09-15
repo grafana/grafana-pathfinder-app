@@ -19,6 +19,7 @@
 
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
+import { TIMEOUTS } from './constants';
 import {
   APP_PLATFORM_GUIDE,
   APP_PLATFORM_REPOSITORY,
@@ -60,9 +61,6 @@ import {
  */
 const DEFAULT_GUIDE_SOURCE = 'interactive-tutorials';
 
-/** What a guide launch is allowed to take, matching `launchDoc` and `openDocsPanel`. */
-const PANEL_READY_TIMEOUT_MS = 30_000;
-
 // Each case walks several guide loads and, for a path, several milestones. The
 // default per-test budget is a single interaction's worth.
 test.describe.configure({ timeout: 120_000 });
@@ -79,32 +77,42 @@ test.describe('completion tracking', () => {
     await primeCompletionSession(page);
     await launchDoc(page, fixtureContentUrl(PATH_FIXTURE), { asPath: true });
 
-    await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible();
+    await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
     // Every read below goes through a helper that waits for the surface to have
     // read its stored progress first. Both surfaces report 0 before that, for
     // every guide and every path, so an assertion made inside that window
     // cannot fail — which would make this case prove nothing at all.
-    await expect.poll(() => pathPercentage(page), { message: 'path percentage on the cover' }).toBe(0);
+    await expect
+      .poll(() => pathPercentage(page), { message: 'path percentage on the cover', timeout: TIMEOUTS.UI_READY })
+      .toBe(0);
 
     for (let milestone = 1; milestone <= PATH_MILESTONE_COUNT; milestone++) {
       await page.getByTestId(testIds.docsPanel.nextMilestoneButton).click();
-      await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible();
-      await expect.poll(() => footerPercentage(page), { message: `milestone ${milestone} forward` }).toBe(0);
+      await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+      await expect
+        .poll(() => footerPercentage(page), { message: `milestone ${milestone} forward`, timeout: TIMEOUTS.UI_READY })
+        .toBe(0);
     }
 
     // The last milestone is the end of the path: there is nowhere further to
     // page to, which is what makes this a walk of the WHOLE path.
-    await expect(page.getByTestId(testIds.docsPanel.nextMilestoneButton)).toBeDisabled();
+    await expect(page.getByTestId(testIds.docsPanel.nextMilestoneButton)).toBeDisabled({
+      timeout: TIMEOUTS.UI_READY,
+    });
 
     for (let milestone = PATH_MILESTONE_COUNT - 1; milestone >= 1; milestone--) {
       await page.getByTestId(testIds.docsPanel.previousMilestoneButton).click();
-      await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible();
-      await expect.poll(() => footerPercentage(page), { message: `milestone ${milestone} back` }).toBe(0);
+      await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+      await expect
+        .poll(() => footerPercentage(page), { message: `milestone ${milestone} back`, timeout: TIMEOUTS.UI_READY })
+        .toBe(0);
     }
 
     await page.getByTestId(testIds.docsPanel.previousMilestoneButton).click();
-    await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible();
-    await expect.poll(() => pathPercentage(page), { message: 'path percentage after the walk' }).toBe(0);
+    await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+    await expect
+      .poll(() => pathPercentage(page), { message: 'path percentage after the walk', timeout: TIMEOUTS.UI_READY })
+      .toBe(0);
 
     expect(await readQueuedFacts(page)).toEqual([]);
 
@@ -129,7 +137,7 @@ test.describe('completion tracking', () => {
     await primeCompletionSession(page);
     await launchDoc(page, fixtureContentUrl(STANDALONE_GUIDE));
 
-    await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible();
+    await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
     expect(await footerPercentage(page)).toBe(0);
 
     const position = fixtureCompletablePosition(STANDALONE_GUIDE, 1);
@@ -143,34 +151,62 @@ test.describe('completion tracking', () => {
     await completeInteractiveStep(page, 0);
 
     await expect
-      .poll(() => footerPercentage(page), { message: 'footer percentage after one completed step' })
+      .poll(() => footerPercentage(page), {
+        message: 'footer percentage after one completed step',
+        timeout: TIMEOUTS.UI_READY,
+      })
       .toBe(expectedPercent);
   });
 
   /**
    * Decision 4: a path's percentage is the arithmetic mean of its milestones'
-   * percentages, equally weighted. One finished milestone of four is 25% —
-   * which is a different number from anything a count of visited milestones
-   * would produce.
+   * percentages, equally weighted.
+   *
+   * The mean is taken over one FINISHED and one PARTLY finished milestone, and
+   * the second one is the point. One finished milestone of four reads 25% — but
+   * so does a count of completed milestones, which is the model decision 6
+   * replaced, so an assertion at 25% cannot tell the two apart. A partly
+   * finished second milestone can: the mean moves, while any count of completed
+   * milestones stays where it was.
    */
-  test('a path reads the mean of its milestones after one of four is finished', async ({ page }) => {
+  test('a path reads the mean of its milestones, including a partly finished one', async ({ page }) => {
     await primeCompletionSession(page);
     await launchDoc(page, fixtureContentUrl(PATH_FIXTURE), { asPath: true });
 
-    await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible();
+    await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
     expect(await pathPercentage(page)).toBe(0);
 
+    // Milestone 1 all the way, which continues to milestone 2.
     await page.getByTestId(testIds.docsPanel.nextMilestoneButton).click();
-    await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible();
-    // Marking a milestone complete continues to milestone 2, so the walk back
-    // to the cover is two steps.
+    await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
     await markMilestoneCompleteAndContinue(page);
-    await page.getByTestId(testIds.docsPanel.previousMilestoneButton).click();
-    await page.getByTestId(testIds.docsPanel.previousMilestoneButton).click();
 
-    await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible();
-    const expectedMean = Math.floor(100 / PATH_MILESTONE_COUNT);
-    await expect.poll(() => pathPercentage(page), { message: 'path percentage' }).toBe(expectedMean);
+    // Milestone 2 one step's worth, derived from its own counted blocks.
+    const partialMilestone = PATH_MILESTONES[1]!;
+    const partialPercent = expectedPercentAtPosition(partialMilestone, fixtureCompletablePosition(partialMilestone, 1));
+    await completeInteractiveStep(page, 0);
+    await expect
+      .poll(() => footerPercentage(page), { message: 'partly finished milestone', timeout: TIMEOUTS.UI_READY })
+      .toBe(partialPercent);
+
+    // Back to the cover, one milestone at a time. Milestone 1 is marked, so its
+    // completed indicator is a condition milestone 2's footer cannot satisfy —
+    // which is what makes this a wait rather than a second click into the same
+    // surface.
+    await page.getByTestId(testIds.docsPanel.previousMilestoneButton).click();
+    await expect(page.getByTestId(testIds.markComplete.completed).first()).toBeVisible({
+      timeout: TIMEOUTS.UI_READY,
+    });
+    await page.getByTestId(testIds.docsPanel.previousMilestoneButton).click();
+    await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+
+    const expectedMean = Math.floor((100 + partialPercent) / PATH_MILESTONE_COUNT);
+    // The whole point of the partial milestone: guard that this case is asking
+    // a question a completed-milestone count answers differently.
+    expect(expectedMean).not.toBe(Math.floor(100 / PATH_MILESTONE_COUNT));
+    await expect
+      .poll(() => pathPercentage(page), { message: 'path percentage', timeout: TIMEOUTS.UI_READY })
+      .toBe(expectedMean);
   });
 
   /**
@@ -259,9 +295,9 @@ test.describe('completion tracking', () => {
       await primeCompletionSession(page);
       await launchDoc(page, fixtureContentUrl(PATH_FIXTURE), { asPath: true });
 
-      await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible();
+      await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
       await page.getByTestId(testIds.docsPanel.nextMilestoneButton).click();
-      await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible();
+      await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
 
       await markComplete(page);
 
@@ -301,15 +337,18 @@ test.describe('completion tracking', () => {
       await primeCompletionSession(page);
       await launchDoc(page, fixtureContentUrl(NO_REPOSITORY_PATH), { asPath: true });
 
-      await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible();
+      await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
       await page.getByTestId(testIds.docsPanel.nextMilestoneButton).click();
 
       const milestoneIds = NO_REPOSITORY_PATH.milestones!;
       for (let index = 0; index < milestoneIds.length; index++) {
-        await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible();
+        await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
         await markComplete(page);
         await expect
-          .poll(async () => (await readQueuedFacts(page)).length, { message: 'facts after each milestone' })
+          .poll(async () => (await readQueuedFacts(page)).length, {
+            message: 'facts after each milestone',
+            timeout: TIMEOUTS.UI_READY,
+          })
           .toBeGreaterThan(index);
       }
 
@@ -324,9 +363,15 @@ test.describe('completion tracking', () => {
   });
 
   /**
-   * The write-side guarantee is exactly-once per identity, and it is durable:
-   * a guide already recorded before a reload must not re-dispatch its 100%
-   * signal into a second fact on the next load.
+   * No producer on the load path mints a second fact for a guide that is
+   * already recorded: the guide reopens marked, its 100% signal is re-derived,
+   * and the queue still holds one fact for it.
+   *
+   * Stated narrowly on purpose. The durable half of the exactly-once guard is
+   * what would catch a load-path producer that DID re-dispatch, and that half
+   * is guarded by `completion-recorder.test.ts` — nothing on the load path
+   * re-dispatches today, so this case cannot see it break on its own. What it
+   * does guard is the appearance of such a producer.
    */
   test('reloading after a completion does not queue a second fact', async ({ page }) => {
     const recorder = await primeCompletionSession(page);
@@ -336,23 +381,65 @@ test.describe('completion tracking', () => {
     const before = await waitForQueuedFacts(page, 1);
     expect(before).toHaveLength(1);
     await waitForWriteAttemptAfter(recorder, 0);
+
+    // The queued event's own id is the idempotency key on the wire — that is
+    // what makes a replayed POST dedupe to one durable record. Pinned here
+    // because the route absent regime keeps the item, so both halves are
+    // readable at once.
+    expect(recorder.requests[0]).toMatchObject({ idempotencyKey: before[0]!.id });
+
     const attemptsBeforeReload = recorder.requests.length;
 
     await page.reload();
     // A full reload has to boot the plugin, restore the tab and re-read the
     // stored mark, so these wait as long as the first launch does rather than
     // on the default expect budget.
-    await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible({ timeout: PANEL_READY_TIMEOUT_MS });
+    await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
     // The guide reopens already marked, and the reloaded session drains the
     // persisted queue: both halves of the load that could mint a second fact
     // have run by the time these two conditions hold.
     await expect(page.getByTestId(testIds.markComplete.completed).first()).toBeVisible({
-      timeout: PANEL_READY_TIMEOUT_MS,
+      timeout: TIMEOUTS.UI_READY,
     });
     await waitForWriteAttemptAfter(recorder, attemptsBeforeReload);
 
     const after = await readQueuedFacts(page);
     expect(factsFor(after, FIXTURE_REPOSITORY, STANDALONE_GUIDE.id)).toHaveLength(1);
     expect(after).toHaveLength(1);
+  });
+
+  /**
+   * The success path, which no other case here can see.
+   *
+   * Every other case runs with the write route absent, where a fact is supposed
+   * to STAY queued — so the half where a record actually lands, and the queue
+   * is supposed to let go of it, is invisible from all of them. Two regressions
+   * live only on this side: a sent item that is never removed and re-POSTs the
+   * same record forever, and a 2xx misclassified as retryable.
+   */
+  test('a successful write empties the queue', async ({ page }) => {
+    const recorder = await primeCompletionSession(page, { writeStatus: 201 });
+    await launchDoc(page, fixtureContentUrl(STANDALONE_GUIDE));
+
+    await markComplete(page);
+    await waitForWriteAttemptAfter(recorder, 0);
+
+    await expect
+      .poll(async () => (await readQueuedFacts(page)).length, {
+        message: 'queued facts after a successful write',
+        timeout: TIMEOUTS.UI_READY,
+      })
+      .toBe(0);
+
+    // One completion, one POST. Asserted after the queue has drained, so a
+    // sent-but-not-removed item shows up here as a re-POST rather than passing.
+    expect(recorder.requests).toHaveLength(1);
+    expect(recorder.requests[0]).toMatchObject({
+      guideSource: FIXTURE_REPOSITORY,
+      guideId: STANDALONE_GUIDE.id,
+      completionPercent: 100,
+    });
+    expect(recorder.requests[0]!.idempotencyKey).toEqual(expect.any(String));
+    expect(recorder.requests[0]!.idempotencyKey).not.toBe('');
   });
 });

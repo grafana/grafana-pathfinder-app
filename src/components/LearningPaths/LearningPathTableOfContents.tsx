@@ -132,9 +132,10 @@ export function LearningPathTableOfContents({
       <div
         className={styles.container}
         data-testid={testIds.learningPaths.tableOfContents}
-        // Testing contract: readable at 0%, where the ring below is hidden, and
-        // absent until the stored progress is in — an empty completedSlugs set
-        // reads as 0% for every path.
+        // Testing contract: readable at 0%, where the ring below is hidden.
+        // Gated on progressLoaded to keep a reader off the first frame — see
+        // E2E_TESTING_CONTRACT.md, which owns why this gate is sufficient
+        // rather than necessary.
         data-test-path-percent={progressLoaded ? progress : undefined}
       >
         <div className={styles.header}>

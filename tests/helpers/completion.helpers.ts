@@ -62,14 +62,22 @@ export interface WriteRouteRecorder {
 }
 
 /**
- * Serve the write route as absent (404) and record every POST.
+ * Serve the write route with `status` and record every POST.
  *
- * 404 is the reserved structural "route not served here" signal, and the
- * client's documented response to it is to stand the network drain down for
- * the session while STILL persisting later facts to localStorage. That is what
- * makes the whole chain up to the network boundary observable from a local
- * stack: the fact is computed, built, and queued with its identity, and
- * nothing removes it from the queue afterwards the way a 201 would.
+ * Two regimes matter, and a case picks one:
+ *
+ *   - **404, the default** — the reserved structural "route not served here"
+ *     signal. The client's documented response is to stand the network drain
+ *     down for the session while STILL persisting later facts to localStorage,
+ *     which is what makes the chain up to the network boundary observable from
+ *     a local stack: the fact is computed, built and queued with its identity,
+ *     and nothing removes it afterwards the way a success would.
+ *   - **201** — the success path, where the queue is supposed to drop the sent
+ *     item. That is the half a 404 regime can never see, so it needs a case of
+ *     its own; see `writeStatus` on `primeCompletionSession`.
+ *
+ * The 201 body mirrors the real route's (`{"name": "<derived record name>"}`),
+ * which the backend derives from the idempotency key.
  */
 export async function stubCompletionWriteRoute(page: Page, status = 404): Promise<WriteRouteRecorder> {
   const recorder: WriteRouteRecorder = { requests: [] };
@@ -83,10 +91,11 @@ export async function stubCompletionWriteRoute(page: Page, status = 404): Promis
     if (payload && typeof payload === 'object') {
       recorder.requests.push(payload as Record<string, unknown>);
     }
+    const created = status >= 200 && status < 300;
     await route.fulfill({
       status,
       contentType: 'application/json',
-      body: JSON.stringify({ error: 'not-found' }),
+      body: JSON.stringify(created ? { name: `completion-${recorder.requests.length}` } : { error: 'not-found' }),
     });
   });
 
@@ -312,10 +321,17 @@ export async function openDocsPanel(page: Page): Promise<void> {
 /**
  * Arm every stub and the one-shot storage reset, ready for the case's own
  * first navigation. Navigates nothing itself.
+ *
+ * `writeStatus` chooses the write route's regime — 404 (route absent) by
+ * default, so facts stay in the queue where they can be read; pass 201 for a
+ * case that needs the success path.
  */
-export async function primeCompletionSession(page: Page): Promise<WriteRouteRecorder> {
+export async function primeCompletionSession(
+  page: Page,
+  options: { writeStatus?: number } = {}
+): Promise<WriteRouteRecorder> {
   await armPathfinderStorageReset(page);
-  const recorder = await stubCompletionWriteRoute(page);
+  const recorder = await stubCompletionWriteRoute(page, options.writeStatus);
   await stubPackageCatalogue(page);
   return recorder;
 }
