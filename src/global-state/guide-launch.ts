@@ -22,13 +22,13 @@
  */
 
 import type { PackageOpenInfo } from '../types/content-panel.types';
-import type { RawContent } from '../types/content.types';
+import type { PreparedRawContent } from '../types/content.types';
 
 export interface StagedLaunchPayload {
   /** URL the payload was prepared for — redemption requires an exact match. */
   url: string;
   /** @see OpenDocsOptions.preparedContent */
-  preparedContent: RawContent;
+  preparedContent: PreparedRawContent;
   /** @see OpenDocsOptions.packageInfo */
   packageInfo?: PackageOpenInfo;
 }
