@@ -14,12 +14,17 @@ import { createInteractionName, UserInteraction } from '../../lib/analytics';
 import { type CompletionResult, outcomeFromCompletionResult } from '../outcome-classifier';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { parseTargetState, resolveStateSource, satisfiesTargetState } from '../../lib/dom/toggle-state';
-import { GuidedAction } from '../../types/interactive-actions.types';
+import {
+  type AuthoredGuidedAction,
+  type GuidedDomActionType,
+  isGuidedDomActionType,
+} from '../../types/interactive-actions.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { matchFormValue } from '../auto-completion/action-matcher';
 import { applyE2ECommentBoxAttributes } from '../e2e-attributes';
 import { commentForTargetState } from './toggle-click';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 
 export type { CompletionResult };
 
@@ -76,7 +81,7 @@ export class GuidedHandler {
     this.completedSteps = [];
   }
   async executeGuidedStep(
-    action: GuidedAction,
+    action: AuthoredGuidedAction,
     stepIndex: number,
     totalSteps: number,
     timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout,
@@ -126,7 +131,7 @@ export class GuidedHandler {
   }
 
   private async runGuidedStep(
-    action: GuidedAction,
+    action: AuthoredGuidedAction,
     stepIndex: number,
     totalSteps: number,
     timeout: number,
@@ -140,8 +145,19 @@ export class GuidedHandler {
         return await this.executeNoopStep(action, stepIndex, totalSteps, timeout);
       }
 
+      // The guided block's step schema admits every authorable verb, so a
+      // pre-gate guide can still carry one the handler cannot wait on. Report
+      // the step failed rather than driving it — `validate-guide.ts` rejects
+      // this shape for anything authored from now on.
+      if (!isGuidedDomActionType(action.targetAction)) {
+        logger.warn(`Guided step ${stepIndex + 1} uses an action the guided handler cannot drive`, {
+          targetAction: action.targetAction,
+        });
+        return this.finishGuidedStep(arbiter.settle('error'), stepIndex);
+      }
+
       const refTarget = action.refTarget;
-      const targetAction = action.targetAction as 'hover' | 'button' | 'highlight' | 'formfill';
+      const targetAction = action.targetAction;
 
       if (!refTarget) {
         throw new Error(`Non-noop action ${targetAction} requires a refTarget`);
@@ -167,7 +183,7 @@ export class GuidedHandler {
 
       await this.prepareElement(targetElement);
       // Attach before highlighting so click activation cannot beat the listener.
-      this.createCompletionListener(action, targetElement, timeout, arbiter, onActionCompleted);
+      this.createCompletionListener(action, targetAction, targetElement, timeout, arbiter, onActionCompleted);
       if (action.isSkippable) {
         this.createSkipListener(stepIndex, arbiter);
       }
@@ -218,7 +234,7 @@ export class GuidedHandler {
    * Shows a comment box and waits for user to click "Continue" or skip
    */
   private async executeNoopStep(
-    action: GuidedAction,
+    action: AuthoredGuidedAction,
     stepIndex: number,
     totalSteps: number,
     timeout: number
@@ -625,7 +641,8 @@ export class GuidedHandler {
   }
 
   private createCompletionListener(
-    action: GuidedAction,
+    action: AuthoredGuidedAction,
+    actionType: GuidedDomActionType,
     targetElement: HTMLElement,
     timeout: number,
     arbiter: GuidedStepArbiter,
@@ -633,7 +650,6 @@ export class GuidedHandler {
   ): void {
     this.currentAbortController = new AbortController();
     const signal = this.currentAbortController.signal;
-    const actionType = action.targetAction as 'hover' | 'button' | 'highlight' | 'formfill';
     // Do not click an already-satisfied toggle away from its target state.
     if (actionType === 'button' || actionType === 'highlight') {
       const target = parseTargetState(action.targetState);
@@ -721,7 +737,7 @@ export class GuidedHandler {
   }
 
   private async attachCompletionListener(
-    actionType: 'hover' | 'button' | 'highlight' | 'formfill',
+    actionType: GuidedDomActionType,
     element: HTMLElement,
     signal: AbortSignal,
     arbiter: GuidedStepArbiter,
@@ -739,7 +755,8 @@ export class GuidedHandler {
       case 'formfill':
         return this.waitForFormfill(element, signal, targetValue, formHint, validateInput);
       default:
-        throw new Error(`Unsupported guided action type: ${actionType}`);
+        assertExhaustive(actionType);
+        return 'error';
     }
   }
 

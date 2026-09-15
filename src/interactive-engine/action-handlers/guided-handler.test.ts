@@ -4,6 +4,7 @@ import { NavigationManager } from '../navigation-manager';
 import { querySelectorAllEnhanced } from '../../lib/dom';
 import { withFaroUserAction } from '../../lib/faro';
 import type { InteractiveElementData } from '../../types/interactive.types';
+import { logger } from '../../lib/logging';
 
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
@@ -501,6 +502,33 @@ describe('GuidedHandler', () => {
       // Cleanup spies
       addEventListenerSpy.mockRestore();
       removeEventListenerSpy.mockRestore();
+    });
+  });
+
+  describe('verbs the handler cannot drive', () => {
+    // `JsonGuidedBlockSchema` shares its step schema with multistep, so a guide
+    // published before the authoring gate existed can still carry these. The
+    // step must report failed rather than reaching a listener that cannot
+    // settle it — see `validate-guide.ts` / `allowUnsupportedGuidedAction`.
+    it.each(['navigate', 'popout', 'multistep', 'guided', 'sequence'] as const)(
+      'reports a guided "%s" step as an error without attaching a listener',
+      async (targetAction) => {
+        const result = await guidedHandler.executeGuidedStep({ targetAction, refTarget: '#target' }, 0, 1, 1000);
+
+        expect(result).toBe('error');
+        expect(logger.warn).toHaveBeenCalledWith(
+          expect.stringContaining('cannot drive'),
+          expect.objectContaining({ targetAction })
+        );
+        // Nothing was highlighted, so the reader was never asked to act.
+        expect(mockNavigationManager.highlightWithComment).not.toHaveBeenCalled();
+      }
+    );
+
+    it('does not reject, so the caller sees a result rather than a thrown error', async () => {
+      await expect(
+        guidedHandler.executeGuidedStep({ targetAction: 'navigate', refTarget: '/explore' }, 0, 1, 1000)
+      ).resolves.toBe('error');
     });
   });
 
