@@ -7,6 +7,9 @@
  * runtime. Narrowing the shared step schema is not an option — a `popout` step
  * inside a *multistep* is valid and pinned by `validate-guide.test.ts` — so the
  * restriction lives here, as a post-Zod check over guided blocks only.
+ *
+ * Snippet bodies carry the same block list without a guide root, so the walk is
+ * exposed over `JsonBlock[]` and the guide entry point is a thin wrapper.
  */
 import type { JsonBlock, JsonGuide, JsonStep } from '../types/json-guide.types';
 import { GUIDED_ACTION_TYPES, isGuidedActionType } from '../types/interactive-actions.types';
@@ -23,12 +26,11 @@ const SUPPORTED = GUIDED_ACTION_TYPES.join(', ');
  * Recurses through the containers that can nest a guided block: `section` and
  * `assistant` (`blocks`), and `conditional` (`whenTrue` / `whenFalse`).
  */
-export function validateGuidedActions(guide: JsonGuide): GuidedActionIssue[] {
+export function validateGuidedActionsInBlocks(blocks: readonly JsonBlock[]): GuidedActionIssue[] {
   const issues: GuidedActionIssue[] = [];
 
   function visitGuidedStep(step: JsonStep, path: Array<string | number>): void {
-    // Runs only after Zod succeeded, so `action` is populated and already
-    // normalized from its camelCase alias.
+    // Runs only after Zod succeeded, so `action` is populated.
     if (isGuidedActionType(step.action)) {
       return;
     }
@@ -59,7 +61,11 @@ export function validateGuidedActions(guide: JsonGuide): GuidedActionIssue[] {
     }
   }
 
-  guide.blocks.forEach((block, i) => visitBlock(block, ['blocks', i]));
+  blocks.forEach((block, i) => visitBlock(block, ['blocks', i]));
 
   return issues;
+}
+
+export function validateGuidedActions(guide: JsonGuide): GuidedActionIssue[] {
+  return validateGuidedActionsInBlocks(guide.blocks);
 }

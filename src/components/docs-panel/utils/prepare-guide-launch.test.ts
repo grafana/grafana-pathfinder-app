@@ -218,6 +218,29 @@ describe('prepareGuideLaunch', () => {
       }
     });
 
+    it('launches a published guide whose guided step carries a non-guided verb, so the rest still renders', async () => {
+      const guide: JsonGuide = {
+        id: 'explore-logs',
+        title: 'Explore logs',
+        blocks: [
+          { type: 'markdown', content: 'Follow along.' },
+          {
+            type: 'guided',
+            content: 'Open Explore',
+            steps: [{ action: 'navigate', reftarget: '/explore' }],
+          },
+        ],
+      } as unknown as JsonGuide;
+      fetchResolves(guide);
+
+      const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(JSON.parse(result.launch.preparedContent.content)).toEqual(guide);
+      }
+    });
+
     it('returns a failure result when a nested section is missing its blocks', async () => {
       fetchResolves({
         id: 'g',

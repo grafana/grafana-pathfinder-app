@@ -367,10 +367,22 @@ describe('installLiveTabExecutor', () => {
 
   const guidedStepMock = () => (GuidedHandler as jest.Mock).mock.results[0]?.value.executeGuidedStep as jest.Mock;
 
-  // A message refused at the envelope validator produces no reply at all, so a
-  // negative assertion needs the executor's async handling to have drained
-  // first — there is no positive signal to wait on.
-  const flushExecutor = () => new Promise((resolve) => setTimeout(resolve, 50));
+  const guidedVerbsHandled = () =>
+    guidedStepMock().mock.calls.map((call) => (call[0] as { targetAction: string }).targetAction);
+
+  // A verb refused at the envelope validator produces no reply, so there is no
+  // reply of its own to await. Emitting a known-good command behind it and
+  // awaiting THAT reply is the positive signal: a refusal is synchronous inside
+  // `emit`, and an accepted command is queued serially ahead of the drain, so
+  // either way the executor has finished with the message under test.
+  const drainExecutor = async (transport: FakeCrossTabTransport) => {
+    transport.emit(guidedSubstepCommand('g-drain', 'button'));
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-complete', stepId: 'g-drain', ok: true })
+      )
+    );
+  };
 
   it.each([...GUIDED_DOM_ACTION_TYPES])('relays a guided "%s" substep to the guided handler', async (targetAction) => {
     const transport = new FakeCrossTabTransport('live-self');
@@ -395,8 +407,8 @@ describe('installLiveTabExecutor', () => {
       // message outright for a verb outside the receive gate, and runGuided
       // refuses the rest. What must never happen is the verb reaching the
       // handler, or the step being reported complete.
-      await flushExecutor();
-      expect(guidedStepMock()).not.toHaveBeenCalled();
+      await drainExecutor(transport);
+      expect(guidedVerbsHandled()).toEqual(['button']);
       expect(transport.postedMessages).not.toContainEqual(
         expect.objectContaining({ kind: 'step-complete', stepId: 'g-bad', ok: true })
       );
@@ -415,9 +427,9 @@ describe('installLiveTabExecutor', () => {
 
     transport.emit(guidedSubstepCommand('g-noop', 'noop'));
 
-    await flushExecutor();
-    expect(transport.postedMessages).toEqual([]);
-    expect(guidedStepMock()).not.toHaveBeenCalled();
+    await drainExecutor(transport);
+    expect(guidedVerbsHandled()).toEqual(['button']);
+    expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ stepId: 'g-noop' }));
     uninstall();
   });
 
