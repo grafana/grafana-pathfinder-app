@@ -1,3 +1,4 @@
+import { usePathfinderPluginConfig } from '../../hooks';
 /**
  * Session State Management for Collaborative Learning
  *
@@ -5,9 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
-import { usePluginContext } from '@grafana/data';
 import { SessionManager } from './session-manager';
-import { getConfigWithDefaults } from '../../constants';
 import type {
   SessionConfig,
   SessionInfo,
@@ -72,7 +71,7 @@ interface SessionProviderProps {
  * Wrap your app with this to enable session management
  */
 export function SessionProvider({ children }: SessionProviderProps) {
-  const pluginContext = usePluginContext();
+  const { config: pluginConfig } = usePathfinderPluginConfig();
   const [sessionManager] = useState(() => new SessionManager());
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [sessionRole, setSessionRole] = useState<SessionRole>(null);
@@ -84,15 +83,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Get PeerJS config from plugin settings
   const getPeerjsConfig = useCallback(() => {
-    const jsonData = pluginContext?.meta?.jsonData ?? {};
-    const pluginConfig = getConfigWithDefaults(jsonData);
     return {
       host: pluginConfig.peerjsHost,
       port: pluginConfig.peerjsPort,
       key: pluginConfig.peerjsKey,
       secure: pluginConfig.peerjsSecure,
     };
-  }, [pluginContext]);
+  }, [pluginConfig]);
 
   // Subscribe to real-time attendee list updates (presenter only)
   useEffect(() => {

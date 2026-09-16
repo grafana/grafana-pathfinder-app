@@ -409,7 +409,7 @@ list of supported `model.*` operations.
 
 ### Configuration
 
-- **Plugin Config**: `DocsPluginConfig` interface
+- **Plugin Config**: `PathfinderPluginConfig` interface
 - **API Endpoints**: Recommendation service, docs base URL
 - **Feature Flags**: OpenFeature integration
 - **Dev Mode**: Developer tools access control

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { usePathfinderPluginConfig } from '../../hooks';
+import { useCallback, useEffect, useRef } from 'react';
 
-import { AppEvents, usePluginContext } from '@grafana/data';
+import { AppEvents } from '@grafana/data';
 import { getAppEvents } from '@grafana/runtime';
 
-import { getConfigWithDefaults } from '../../constants';
 import { evaluatePatchConfidence } from '../../integrations/assistant-integration/ai-fix-confidence';
 import { collectDomContext, tagFromSelector } from '../../integrations/assistant-integration/ai-fix-dom-context';
 import { AI_FIX_REQUEST_EVENT, type AiFixRequestDetail } from '../../integrations/assistant-integration/ai-fix-event';
@@ -42,11 +42,8 @@ function AiFixOrchestrator({ activeTab, onPatchApplied }: AiFixOrchestratorProps
   const contentKey = activeTab?.id ?? 'pathfinder-ai-fix-orchestrator';
   const { generate, patch, error, reset, isAssistantAvailable } = useAiFixGeneration(contentKey);
 
-  const pluginContext = usePluginContext();
-  const aiAutoHealEnabled = useMemo(
-    () => getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableAiAutoHeal,
-    [pluginContext?.meta?.jsonData]
-  );
+  const { config: pluginConfig } = usePathfinderPluginConfig();
+  const aiAutoHealEnabled = pluginConfig.enableAiAutoHeal;
 
   const pendingRequestRef = useRef<PendingAiFixRequest | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

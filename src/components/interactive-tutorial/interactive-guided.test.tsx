@@ -26,6 +26,11 @@ jest.mock('@grafana/ui', () => ({
 }));
 
 // ─── Mock @grafana/data ──────────────────────────────────────────────────────
+jest.mock('../../hooks', () => ({
+  ...jest.requireActual('../../hooks'),
+  usePathfinderPluginConfig: () => ({ config: {}, isResolved: true }),
+}));
+
 jest.mock('@grafana/data', () => ({
   usePluginContext: () => ({ meta: { jsonData: {} } }),
 }));

@@ -32,7 +32,6 @@ const UNDESCRIBED_ESLINT_DISABLE_BASELINE = new Set([
   'src/components/interactive-tutorial/hooks/use-section-persistence.ts::react-hooks/exhaustive-deps#1',
   'src/components/interactive-tutorial/interactive-quiz.tsx::react-hooks/exhaustive-deps#1',
   'src/components/interactive-tutorial/datasource-check-step.tsx::react-hooks/exhaustive-deps#1',
-  'src/components/App/ContextPanel.tsx::react-hooks/exhaustive-deps#1',
   'src/components/full-screen/FullScreenPanel.tsx::react-hooks/exhaustive-deps#1',
   'src/components/block-editor/hooks/useBackendGuides.ts::react-hooks/exhaustive-deps#1',
   'src/requirements-manager/step-checker.hook.ts::react-hooks/exhaustive-deps#1',

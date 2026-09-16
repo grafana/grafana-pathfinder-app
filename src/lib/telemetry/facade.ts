@@ -138,6 +138,25 @@ export function recordSandboxUnavailable(reason: SandboxUnavailableReason, block
 }
 
 /**
+ * Which rung of the settings-store ladder a config read landed on:
+ * `PathfinderSettings` resource → plugin `jsonData` → defaults.
+ *
+ * Every rung below `resource` is a stack running on the legacy store, and they
+ * are operationally different problems — a kind that was never deployed, a
+ * first-run stack with no resource yet, and an admin whose role cannot read it
+ * all produce identical UI. Without a count, "the migration is done" and "the
+ * migration silently never applied anywhere" look the same.
+ *
+ * A closed set of rungs. No namespace, stack id, user or setting value.
+ */
+export type SettingsStoreOutcome =
+  'resource' | 'not-created' | 'kind-not-served' | 'api-unavailable' | 'empty-spec' | 'forbidden' | 'read-error';
+
+export function recordSettingsStoreResolved(outcome: SettingsStoreOutcome): void {
+  pushFaroEvent(TELEMETRY_EVENTS.settingsStoreResolved, { outcome });
+}
+
+/**
  * A gcx credential install did not mint, with the rung that stopped it.
  *
  * `mint-forbidden` is the ordinary answer rather than a fault —
