@@ -95,6 +95,33 @@ describe('completion recorder — emitter seam', () => {
     expect(seen[0]).toMatchObject({ kind: 'journey', guideId: 'linux-journey' });
   });
 
+  // Migration read-both on the WRITE path. A package-path completion persisted by
+  // 2.17.0 lives under the suffixed id; the normalized writer must still see it so
+  // a reload-to-100% does not mint a duplicate durable record.
+  it('does not re-emit when a legacy suffixed completion is already recorded', () => {
+    persistedEmitted.set('guide:bundled:intro/content.json', true);
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact({ guideId: 'intro' }));
+
+    expect(seen).toHaveLength(0);
+  });
+
+  // ...but an explicit reset clears BOTH spellings, so a genuine re-completion
+  // after reset still fires exactly once under the canonical id.
+  it('re-emits after a reset lifts the legacy suffixed guard', () => {
+    persistedEmitted.set('guide:bundled:intro/content.json', true);
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    invalidateEmittedCompletion('bundled', 'intro');
+    recordGuideCompletion(guideFact({ guideId: 'intro' }));
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ kind: 'guide', guideId: 'intro' });
+  });
+
   it('unsubscribe stops delivery', () => {
     const seen: CompletionFact[] = [];
     const unsubscribe = onCompletionRecorded(acceptInto(seen));
