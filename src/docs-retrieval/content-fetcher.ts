@@ -230,7 +230,10 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
           return { content: rawContent };
         }
 
-        const validationResult = validateGuide(parsed, { allowDuplicateHeading: true });
+        const validationResult = validateGuide(parsed, {
+          allowDuplicateHeading: true,
+          allowUnsupportedGuidedAction: true,
+        });
 
         if (!validationResult.isValid) {
           // Use the first error message for the main error

@@ -89,7 +89,7 @@ To teach a user how to do something in Grafana, add an **Interactive** block. Th
 
 The **Pick element** button activates a click-anywhere selector picker — point at the element you want the guide to highlight, click it, and the editor fills in the most stable selector it can find. The Selector Health badge next to the field gives you a green/yellow/red signal on how robust the selector is, and the **Test** button flashes the matched element on the page so you can confirm it's the right one.
 
-For automated sequences, use a **Multistep** block (the system performs each step in order when the user clicks Do it). For sequences the user must perform themselves, use a **Guided** block (the system highlights each step and waits for the user to act).
+For automated sequences, use a **Multistep** block (the system performs each step in order when the user clicks Do it). For sequences the user must perform themselves, use a **Guided** block (the system highlights each step and waits for the user to act). A guided block's step actions are narrower than a multistep's: `navigate` and `popout` aren't offered, because neither gives the reader anything to do.
 
 ### 4. Group steps with sections
 
@@ -206,7 +206,9 @@ The raw JSON of the guide. You can edit it directly here for fine-grained tweaks
 
 ![JSON view mode](/media/docs/pathfinder/block-editor-json-view.png)
 
-If your edit produces invalid JSON, or a guide that fails validation, the editor refuses to switch back to Edit mode until you fix it. Validation includes one rule that is easy to trip over: the first block must not start with a heading that repeats the guide title.
+If your edit produces invalid JSON, or a guide that fails validation, the editor refuses to switch back to Edit mode until you fix it. One rule here is easy to trip over: the first block must not start with a heading that repeats the guide title.
+
+A `guided` block whose steps use the `navigate` or `popout` actions is a different case. Those actions don't work in a guided block, but the editor still loads the guide, so you can open one that was published before the rule existed and repair it. The step is flagged as a warning on import, and as an error in Edit mode, and you can't export the guide or open a pull request for it until you fix the step.
 
 ## The pop out button
 
