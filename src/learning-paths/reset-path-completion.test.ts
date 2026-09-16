@@ -134,12 +134,14 @@ describe('resetPath — App Platform path (no url)', () => {
       return true;
     });
 
-    await markMilestoneDone(PATH_KEY, GUIDES[0]!, GUIDES, {
+    const memberUrls = GUIDES.map((id) => `backend-guide:${id}`);
+    await markMilestoneDone(PATH_KEY, GUIDES[0]!, memberUrls[0]!, memberUrls, {
       packageManifest: { id: PATH_ID, repository: 'app-platform' },
     });
     unsubscribe();
 
-    await expect(milestoneCompletionStorage.getCompleted(PATH_KEY)).resolves.toEqual(new Set([GUIDES[0]]));
+    const interactives = await interactiveCompletionStorage.getAll();
+    expect(memberUrls.filter((url) => interactives[url] === 100)).toEqual([memberUrls[0]]);
     expect(facts.filter((fact) => fact.kind === 'journey')).toEqual([]);
   });
 

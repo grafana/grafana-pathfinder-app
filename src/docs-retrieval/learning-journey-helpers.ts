@@ -17,7 +17,9 @@ import {
   learningProgressStorage,
   interactiveCompletionStorage,
 } from '../lib/user-storage';
+import { sanitizeContentKey } from '../global-state/content-key';
 import { resolvePathMemberPercentages, type PathMember } from '../global-state/path-member-join';
+import { dispatchProgress } from '../global-state/progress-events';
 import { meanOfMemberPercentages } from '../lib/guide-stats';
 import { markGuideCompleted, findPathByUrl } from '../lib/guide-completion-bridge';
 import {
@@ -132,11 +134,56 @@ export interface MilestonePercentage {
 }
 
 /**
+ * One-shot in-memory guard so a burst of renders backfilling the same
+ * milestone doesn't fire a redundant `interactiveCompletionStorage.set` per
+ * render while the first write is still in flight. Keyed by the same
+ * sanitized content key the write lands under; never cleared, since a
+ * successful backfill never needs to run twice for a given session.
+ */
+const backfilledMilestoneKeys = new Set<string>();
+
+/** Test-only reset, mirroring `resetContentKeyForTests` — clears the guard so
+ *  each test starts from the same baseline instead of inheriting another
+ *  test's backfilled keys. */
+export function resetMilestoneBackfillGuardForTests(): void {
+  backfilledMilestoneKeys.clear();
+}
+
+/**
+ * Migrates a legacy `milestoneCompletionStorage` completion into
+ * `interactiveCompletionStorage`, once, so the two mechanisms this journey
+ * predates converge onto the one the read side now relies on exclusively.
+ *
+ * Safe by construction: it only ever writes 100 (the maximum), only for a
+ * milestone the legacy store already reports done, and only when the new
+ * store doesn't already hold that value — so it can't lower or overwrite
+ * real progress, and repeated calls across a session are no-ops after the
+ * first. Fire-and-forget: the caller's own render already reflects the
+ * legacy completion this tick (it reads `milestoneCompletionStorage`
+ * directly too), so this write is purely about converging storage for
+ * readers that don't.
+ */
+function backfillLegacyMilestoneCompletion(contentKey: string, alreadyPersisted: number | undefined): void {
+  if (alreadyPersisted === 100 || backfilledMilestoneKeys.has(contentKey)) {
+    return;
+  }
+  backfilledMilestoneKeys.add(contentKey);
+  void interactiveCompletionStorage.set(contentKey, 100).then(() => {
+    dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+  });
+}
+
+/**
  * Each unlocked milestone's own percentage, in journey order — the per-member
  * half of {@link journeyProgressFromMilestones}, exposed so a surface that
  * paints one mark per milestone (the toolbar's segmented bar) reads the very
  * numbers the journey percentage is the mean of, rather than a second opinion
  * such as navigation position.
+ *
+ * Also the one place legacy `milestoneCompletionStorage` data (pre-dates the
+ * guide-ID-keyed store) gets folded into `interactiveCompletionStorage`: both
+ * the cover page and the toolbar call this, so a journey backfills the first
+ * time either screen reads it.
  */
 export function journeyMilestonePercentages(
   baseUrl: string,
@@ -151,19 +198,26 @@ export function journeyMilestonePercentages(
   // The milestone URLs resolve alias-keyed records the canonical base URL
   // alone would miss — the same argument the cover page's async read passes,
   // so both screens see one set of completed milestones.
-  const completedMemberIds = Array.from(
-    milestoneCompletionStorage.getCompletedSync(
-      baseUrl,
-      milestones.map((m) => m.url)
-    )
+  const legacyCompletedSlugs = milestoneCompletionStorage.getCompletedSync(
+    baseUrl,
+    milestones.map((m) => m.url)
   );
+  const persistedPercentages = interactiveCompletionStorage.peekAll();
   const { members: resolved } = resolvePathMemberPercentages(members, {
-    completedMemberIds,
+    completedMemberIds: Array.from(legacyCompletedSlugs),
     // interactiveCompletionStorage, and only that — journeyCompletionStorage
     // holds no record under backend-guide: for a partially progressed
     // member, so joining against it would exclude every one of them.
-    persistedPercentages: interactiveCompletionStorage.peekAll(),
+    persistedPercentages,
   });
+
+  for (const milestone of unlocked) {
+    const slug = getMilestoneSlug(milestone.url);
+    if (slug && legacyCompletedSlugs.has(slug)) {
+      const contentKey = sanitizeContentKey(milestone.url);
+      backfillLegacyMilestoneCompletion(contentKey, persistedPercentages[contentKey]);
+    }
+  }
 
   return unlocked.map((milestone, index) => ({ milestone, percent: resolved[index]?.percent }));
 }
@@ -237,8 +291,8 @@ export function isLastMilestone(content: RawContent): boolean {
  * locked-inclusive display count.
  *
  * This is NOT the journey completion threshold. Completion is whole-set
- * membership of the current milestone ids — see `resolveExpectedMilestoneIds`
- * and `journey-threshold-membership` — never a count, which stale slugs from a
+ * membership of the current milestone URLs — see `markMilestoneDone` and
+ * `journey-threshold-membership` — never a count, which stale URLs from a
  * renamed or reordered path can cross while current milestones are outstanding.
  */
 export function countUnlockedMilestones(milestones: Milestone[]): number {
@@ -676,7 +730,8 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
     void markMilestoneDone(
       journeyBase,
       slug,
-      resolveExpectedMilestoneIds(metadata?.learningJourney),
+      currentUrl!,
+      metadata?.learningJourney?.milestones.map((m) => m.url),
       completionContext
     );
     // The recommendation card reads journeyCompletionStorage directly
@@ -724,42 +779,32 @@ export async function getAllJourneyCompletionsAsync(): Promise<Record<string, nu
 // ============================================================================
 
 /**
- * The slugs of every milestone the current journey manifest declares. This is
- * the authoritative expected set for whole-journey completion: milestone
- * builders number the list 1..N (no cover page), and each milestone's slug
- * matches the slug stored when it completes (`getMilestoneSlug(currentUrl)`).
- * Passing this set — rather than a bare count — to {@link markMilestoneDone}
- * is what lets a revised journey reject stale/renamed/removed milestone slugs
- * instead of letting them satisfy a count-only threshold with a false record.
- */
-export function resolveExpectedMilestoneIds(lj?: Pick<LearningJourneyMetadata, 'milestones'>): string[] {
-  if (!lj?.milestones) {
-    return [];
-  }
-  const ids = lj.milestones.map((m) => getMilestoneSlug(m.url)).filter((slug): slug is string => Boolean(slug));
-  return Array.from(new Set(ids));
-}
-
-/**
  * Marks a learning journey milestone as completed.
- * - Persists the milestone slug in milestoneCompletionStorage
+ * - Persists the milestone's own percentage (100) in
+ *   `interactiveCompletionStorage`, keyed by its sanitized URL — the same
+ *   content-key scheme `journeyMilestonePercentages`/`resolvePathMemberPercentages`
+ *   read back, so the toolbar segment and My Learning's rollup never disagree
+ *   with what this just recorded.
  * - Calls markGuideCompleted (learning-paths/badge-coordinator) to bridge to the badge/progress system
- * - When `expectedMilestoneIds` is provided and EVERY one is present in stored
+ * - When `expectedMilestoneUrls` is provided and EVERY one is present in stored
  *   progress, awards the path badge and fires the whole-journey record. Membership
- *   (not a bare count) is required so stored slugs from an earlier revision of the
- *   journey cannot satisfy the threshold and write a false durable journey record.
- *   Resolve the set with {@link resolveExpectedMilestoneIds} at the call site.
+ *   (not a bare count) is required so stale/renamed/removed milestone URLs left
+ *   over from an earlier journey revision cannot satisfy the threshold and write
+ *   a false durable journey record.
  */
 export async function markMilestoneDone(
   journeyBaseUrl: string,
   milestoneSlug: string,
-  expectedMilestoneIds?: readonly string[],
+  milestoneUrl: string,
+  expectedMilestoneUrls?: readonly string[],
   context?: CompletionContext
 ): Promise<void> {
   if (!milestoneSlug) {
     return;
   }
-  await milestoneCompletionStorage.markCompleted(journeyBaseUrl, milestoneSlug);
+  const contentKey = sanitizeContentKey(milestoneUrl);
+  await interactiveCompletionStorage.set(contentKey, 100);
+  dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
   // Local-cache/UX duty (badges, streak) — unchanged.
   await markGuideCompleted(milestoneSlug);
 
@@ -788,13 +833,14 @@ export async function markMilestoneDone(
   });
 
   // Whole-journey completion: award the path badge and fire the journey trigger
-  // only when every CURRENTLY-expected milestone slug is present. URL-based paths
+  // only when every CURRENTLY-expected milestone URL is complete. URL-based paths
   // have guides: [] in static data, so the normal badge flow cannot detect
-  // completion here. Membership (not `completed.size >= count`) rejects stale,
-  // renamed, or removed milestone slugs left over from an earlier journey revision.
-  if (expectedMilestoneIds && expectedMilestoneIds.length > 0) {
-    const completed = await milestoneCompletionStorage.getCompleted(journeyBaseUrl);
-    if (expectedMilestoneIds.every((id) => completed.has(id))) {
+  // completion here. Membership (not a bare count) rejects stale, renamed, or
+  // removed milestone URLs left over from an earlier journey revision.
+  if (expectedMilestoneUrls && expectedMilestoneUrls.length > 0) {
+    const completions = await interactiveCompletionStorage.getAll();
+    const allMilestonesDone = expectedMilestoneUrls.every((url) => (completions[sanitizeContentKey(url)] ?? 0) >= 100);
+    if (allMilestonesDone) {
       if (journeyBaseUrl.startsWith('backend-guide:')) {
         await journeyCompletionStorage.set(journeyBaseUrl, 100);
       }
@@ -829,11 +875,4 @@ export async function markMilestoneDone(
       }
     }
   }
-}
-
-/**
- * Checks if a milestone has already been completed.
- */
-export async function isMilestoneCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<boolean> {
-  return milestoneCompletionStorage.isCompleted(journeyBaseUrl, milestoneSlug);
 }
