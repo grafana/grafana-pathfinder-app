@@ -219,9 +219,43 @@ A My learning layout or selector refactor must preserve these values or update t
 The course/learning-path cover page exposes stable testids for its hero and table-of-contents so E2E tests can assert cover-page rendering and launch the path without depending on text or DOM structure:
 
 - **`learning-paths-cover-hero`** (`testIds.learningPaths.coverHero`): the cover page's hero section boundary (title, description, module count, duration, badge preview).
+- **`learning-paths-toc`** (`testIds.learningPaths.tableOfContents`): the table of contents boundary, and the element that carries the path progress attribute below.
 - **`learning-paths-toc-cta`** (`testIds.learningPaths.tableOfContentsCta`): the table of contents' get-started/resume action.
 
 A cover-page layout or selector refactor must preserve these values or update the E2E selectors and this document in the same change.
+
+---
+
+## Path progress contract
+
+The path's rolled-up percentage is exposed declaratively on the table-of-contents root, alongside `testIds.learningPaths.tableOfContents`:
+
+- **`data-test-path-percent`**: the path's progress as an integer 0-100 — the mean of its resolvable milestones' own percentages (`docs/design/COMPLETION-MODEL.md`, decision 4). **Absent until the path's stored progress has been read.**
+
+The attribute exists because the progress ring beside it is hidden at 0%, and 0% is the value a test most often needs to assert: it is what a reader who only paged through the path has earned. Reading the ring's rendered text would make "no progress" indistinguishable from "no ring".
+
+Its absence before the cover page has finished loading is deliberate: a test waits for the attribute to exist rather than reading a provisional value, so there is no "not loaded yet" value to confuse with a real 0.
+
+The gate is the cover page's own `progressLoaded`, which tracks its async read of stored milestone progress. Strictly that read is a **sufficient** signal rather than the necessary one: the percentage itself comes from `journeyProgressFromMilestones`, whose two reads are synchronous, so the rendered value is already correct at first paint. What `progressLoaded` buys is a defined point after mount at which the surface is settled — enough to keep a test off the first frame, where a percentage read alongside a still-initialising panel has repeatedly turned out to be a constant. If that async read is ever removed, give the attribute another gate rather than emitting it unconditionally.
+
+The guide-level equivalent is on the Mark complete footer, and there the gate **is** the necessary one:
+
+- **`data-test-progress-state`** on `mark-complete-footer` (`testIds.markComplete.footer`): `pending` until the footer has read the guide's stored completion mark, `ready` afterwards.
+
+Until that read resolves the footer has no content key, so `mark-complete-percentage` reads a hard-coded `0% complete` for every guide, and a click on `mark-complete-button` is silently dropped by the handler. Both the percentage and the click are only meaningful at `ready`, and an assertion made before it cannot fail.
+
+Read the footer's readiness from this attribute rather than inferring it from the control beside it. The control is not always there to read: once the guide is marked, the button is replaced by the completed indicator, so "has the footer hydrated" has no single element to ask. A declarative state attribute holds in both shapes.
+
+That is about **selecting** elements, which this contract does by `data-test-*` and testid and not by ARIA attributes. Asserting a control's own disabled state with the framework's matcher is a different thing and is fine — `expect(locator).toBeDisabled()` resolves the standard disabled semantics including `aria-disabled`, which is how Grafana's `Button` expresses it. The suite uses exactly that to assert there is no next milestone at the end of a path.
+
+Milestone navigation is addressed by testid rather than by the buttons' translated `aria-label`:
+
+- **`docs-panel-next-milestone-button`** (`testIds.docsPanel.nextMilestoneButton`): advance to the next milestone.
+- **`docs-panel-previous-milestone-button`** (`testIds.docsPanel.previousMilestoneButton`): return to the previous milestone, and from milestone 1 to the cover page.
+
+Both are disabled at the ends of the path, which is how a test knows it has walked the whole of it. The loading-state toolbar renders the same two controls without testids: they are permanently disabled placeholders, so a test never has a reason to address them.
+
+The source-level tripwire for the two testids lives in `src/components/docs-panel/docs-panel.contract.test.tsx`.
 
 ---
 
