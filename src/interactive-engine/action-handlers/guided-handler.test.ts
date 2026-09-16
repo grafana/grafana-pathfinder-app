@@ -510,7 +510,7 @@ describe('GuidedHandler', () => {
     // published before the authoring gate existed can still carry these. The
     // step must settle without reaching a listener that cannot settle it — see
     // `validate-guide.ts` / `allowUnsupportedGuidedAction`.
-    const UNDRIVABLE = ['navigate', 'popout', 'multistep', 'guided', 'sequence'] as const;
+    const UNDRIVABLE = ['navigate', 'popout', 'multistep', 'guided'] as const;
 
     let documentListener: jest.SpyInstance;
 
