@@ -58,15 +58,18 @@ jest.mock('../lib/user-storage', () => ({
   interactiveStepStorage: { clearAllForContent: jest.fn().mockResolvedValue(undefined) },
 }));
 
-jest.mock('../lib/guide-completion-bridge', () => ({
-  __esModule: true,
-  markGuideCompleted: (...a: unknown[]) => markGuideCompletedMock(...a),
-  findPathByUrl: (url: string) => {
-    const normalized = url.replace(/\/+$/, '');
-    const paths = getPathsDataMock().paths as Array<{ url?: string }>;
-    return paths.find((p) => p.url && normalized === p.url.replace(/\/+$/, ''));
-  },
-}));
+jest.mock('../lib/guide-completion-bridge', () => {
+  // Delegates to the shipped matching rule so these badge-award assertions
+  // exercise it rather than a second copy; only the data source is faked.
+  const { matchesPathUrl }: typeof import('../learning-paths/paths-data') =
+    jest.requireActual('../learning-paths/paths-data');
+  return {
+    __esModule: true,
+    markGuideCompleted: (...a: unknown[]) => markGuideCompletedMock(...a),
+    findPathByUrl: (url: string) =>
+      (getPathsDataMock().paths as Array<{ url?: string }>).find((path) => matchesPathUrl(path, url)),
+  };
+});
 
 jest.mock('../global-state/completion-store', () => ({
   __esModule: true,

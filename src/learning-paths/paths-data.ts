@@ -40,7 +40,13 @@ export function getPathsData(): PathsDataSet {
 }
 
 // Matches ignoring a trailing slash on either side (docs URLs are inconsistent about it).
+export function matchesPathUrl(path: Pick<LearningPath, 'url'>, url: string): boolean {
+  if (!path.url) {
+    return false;
+  }
+  return url.replace(/\/+$/, '') === path.url.replace(/\/+$/, '');
+}
+
 export function findPathByUrl(url: string): LearningPath | undefined {
-  const normalized = url.replace(/\/+$/, '');
-  return getPathsData().paths.find((path) => path.url && normalized === path.url.replace(/\/+$/, ''));
+  return getPathsData().paths.find((path) => matchesPathUrl(path, url));
 }

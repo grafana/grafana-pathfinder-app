@@ -43,7 +43,7 @@ export {
 } from './streak-tracker';
 
 // Path data (runtime platform selection)
-export { getPathsData, findPathByUrl } from './paths-data';
+export { getPathsData } from './paths-data';
 export type { PathsDataSet } from './paths-data';
 
 // Guide-completion coordinator (badge eval + analytics + event dispatch)
