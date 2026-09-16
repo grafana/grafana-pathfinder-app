@@ -39,7 +39,9 @@ import {
   assertRatchet,
   buildModuleGraph,
   findOrphanedModules,
+  getOffGraphImportedNodes,
   collectSourceFiles,
+  collectExcludedToolingFiles,
   loadTsconfigPaths,
   readJsoncFile,
   stripJsonComments,
@@ -444,6 +446,25 @@ describe('collectSourceFiles', () => {
   });
 });
 
+describe('collectExcludedToolingFiles', () => {
+  it('returns exactly the .ts / .tsx files collectSourceFiles skips under EXCLUDED_TOP_LEVEL', () => {
+    const tooling = collectExcludedToolingFiles();
+    expect(tooling.length).toBeGreaterThan(0);
+    for (const file of tooling) {
+      expect(file).toMatch(/\.(ts|tsx)$/);
+      expect(file.endsWith('.d.ts')).toBe(false);
+      const topLevel = path.relative(SRC_DIR, file).split(path.sep)[0];
+      expect(EXCLUDED_TOP_LEVEL.has(topLevel ?? '')).toBe(true);
+    }
+    expect(tooling.filter((file) => collectSourceFiles().includes(file))).toEqual([]);
+  });
+
+  it('reaches nested files under src/cli', () => {
+    const tooling = collectExcludedToolingFiles().map((file) => toPosixPath(path.relative(SRC_DIR, file)));
+    expect(tooling).toContain('cli/commands/validate.ts');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // path normalization helpers
 // ---------------------------------------------------------------------------
@@ -669,17 +690,21 @@ describe('findOrphanedModules', () => {
     ]);
   });
 
-  it('ignores a root that is not a node in the graph', () => {
-    const graph = graphFromAdjacency({ a: [] });
-    expect(findOrphanedModules(graph, ['nonexistent-root'], [])).toEqual({
-      orphaned: ['a'],
-      testOnlyReachable: [],
-    });
-  });
-
   it('ignores a test-imported node that the app already reaches', () => {
     const graph = graphFromAdjacency({ root: ['a'], a: [] });
     expect(findOrphanedModules(graph, ['root'], ['a'])).toEqual({ orphaned: [], testOnlyReachable: [] });
+  });
+});
+
+describe('getOffGraphImportedNodes', () => {
+  it('resolves imports made from src/cli tooling, which collectSourceFiles never walks', () => {
+    // src/cli/commands/build-snippets.ts is the only importer of this node
+    // outside the production graph — no test file imports it.
+    expect(getOffGraphImportedNodes()).toContain('validation/guided-action-validator.ts');
+  });
+
+  it('resolves imports made from a test file', () => {
+    expect(getOffGraphImportedNodes()).toContain('validation/package-io.ts');
   });
 });
 

@@ -77,25 +77,41 @@ export function isTestFile(filePath: string): boolean {
   );
 }
 
-export function collectSourceFiles(): string[] {
+function collectFilesUnder(root: string, shouldEnterDir: (dir: string) => boolean): string[] {
   const files: string[] = [];
   function walk(dir: string) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        const relDir = path.relative(SRC_DIR, fullPath);
-        const topLevel = relDir.split(path.sep)[0];
-        if (topLevel && EXCLUDED_TOP_LEVEL.has(topLevel)) {
-          continue;
+        if (shouldEnterDir(fullPath)) {
+          walk(fullPath);
         }
-        walk(fullPath);
       } else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
         files.push(fullPath);
       }
     }
   }
-  walk(SRC_DIR);
+  walk(root);
   return files;
+}
+
+export function collectSourceFiles(): string[] {
+  return collectFilesUnder(SRC_DIR, (dir) => {
+    const topLevel = path.relative(SRC_DIR, dir).split(path.sep)[0];
+    return !topLevel || !EXCLUDED_TOP_LEVEL.has(topLevel);
+  });
+}
+
+/**
+ * The source files under the EXCLUDED_TOP_LEVEL tooling dirs (`cli/`,
+ * `test-utils/`, …) that collectSourceFiles() deliberately skips. Never graph
+ * nodes, but they do import graph nodes.
+ */
+export function collectExcludedToolingFiles(): string[] {
+  return fs
+    .readdirSync(SRC_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && EXCLUDED_TOP_LEVEL.has(entry.name))
+    .flatMap((entry) => collectFilesUnder(path.join(SRC_DIR, entry.name), () => true));
 }
 
 export function getRootLevelSourceFiles(): string[] {
@@ -590,9 +606,11 @@ export function findCycles(graph: ModuleGraph = buildModuleGraph()): string[][] 
 // buildModuleGraph() already gives us every non-test production file and its
 // intra-src edges. A node the app entrypoints never reach is either dead, or
 // reached some other way this graph structurally can't see: buildModuleGraph
-// excludes test files as both nodes and edge targets, so a file imported only
-// from a test has no inbound edge at all. That second case gets its own
-// bucket rather than reading as an orphan. See #1743.
+// excludes test files as both nodes and edge targets, and collectSourceFiles
+// never walks the EXCLUDED_TOP_LEVEL tooling dirs (cli/, test-utils/), so a
+// file imported only from a test or from that tooling has no inbound edge at
+// all. That second case gets its own bucket rather than reading as an orphan.
+// See #1743.
 
 /** src-relative posix paths the production module graph is walked forward from. */
 export const APP_ENTRY_ROOTS = ['module.tsx'];
@@ -613,60 +631,63 @@ function bfsReachable(adjacency: ReadonlyMap<string, Set<string>>, roots: readon
 }
 
 export interface OrphanScan {
-  /** Nodes reached from neither APP_ENTRY_ROOTS nor any test import — the real candidates. */
+  /** Nodes reached from neither APP_ENTRY_ROOTS nor any off-graph importer — the real candidates. */
   orphaned: string[];
-  /** Nodes not reached from APP_ENTRY_ROOTS, but reached transitively from a test file's import. */
+  /**
+   * Nodes not reached from APP_ENTRY_ROOTS, but reached transitively from an
+   * off-graph importer: a test file, or tooling under EXCLUDED_TOP_LEVEL
+   * (`cli/`, `test-utils/`).
+   */
   testOnlyReachable: string[];
 }
 
 /**
- * Every file-node a test file imports directly. buildModuleGraph() excludes
- * test files as both nodes and edge targets, so this edge is otherwise
- * invisible to the production graph — computed separately here rather than
- * folded into ModuleGraph so findOrphanedModules stays unit-testable against
- * a synthetic graph without touching the real filesystem.
+ * Every file-node imported from outside the production module graph — by a
+ * test file, or by tooling under EXCLUDED_TOP_LEVEL (`cli/`, `test-utils/`).
+ * buildModuleGraph() drops both kinds of edge, so they are otherwise
+ * invisible — computed separately here rather than folded into ModuleGraph so
+ * findOrphanedModules stays unit-testable against a synthetic graph without
+ * touching the real filesystem.
  */
-export function getTestImportedNodes(): string[] {
-  return getAllFileImports()
-    .filter(({ file }) => isTestFile(file))
-    .flatMap(({ file, imports }) => {
-      const fileDir = path.dirname(file);
-      return imports
-        .map((imp) => resolveImportToFileNode(fileDir, imp))
-        .filter((target): target is string => target !== null);
-    });
+export function getOffGraphImportedNodes(): string[] {
+  const tsconfigPaths = getProjectTsconfigPaths();
+  const testImporters = getAllFileImports().filter(({ file }) => isTestFile(file));
+  const toolingImporters = collectExcludedToolingFiles().map((file) => ({
+    file,
+    imports: extractRelativeImports(fs.readFileSync(file, 'utf-8'), {
+      fileDir: path.dirname(file),
+      tsconfigPaths,
+    }),
+  }));
+  return [...testImporters, ...toolingImporters].flatMap(({ file, imports }) => {
+    const fileDir = path.dirname(file);
+    return imports
+      .map((imp) => resolveImportToFileNode(fileDir, imp))
+      .filter((target): target is string => target !== null);
+  });
 }
 
 /**
  * Forward reachability over the production import graph, rooted at `roots`.
- * Nodes not reached that way are then checked against `testImportedNodes`
- * (real edges getAllFileImports() sees but buildModuleGraph() drops), so a
- * file exercised only by a test — never by the app — reports as
+ * Nodes not reached that way are then checked against `offGraphImportedNodes`
+ * (real edges buildModuleGraph() drops), so a file exercised only by a test
+ * or by CLI / test-utils tooling — never by the app — reports as
  * testOnlyReachable rather than orphaned.
  */
 export function findOrphanedModules(
   graph: ModuleGraph = buildModuleGraph(),
   roots: readonly string[] = APP_ENTRY_ROOTS,
-  testImportedNodes: readonly string[] = getTestImportedNodes()
+  offGraphImportedNodes: readonly string[] = getOffGraphImportedNodes()
 ): OrphanScan {
-  const nodeSet = new Set(graph.nodes);
-  const reachedFromApp = bfsReachable(
-    graph.adjacency,
-    roots.filter((root) => nodeSet.has(root))
-  );
+  const reachedFromApp = bfsReachable(graph.adjacency, roots);
   const unreached = graph.nodes.filter((node) => !reachedFromApp.has(node));
-  if (unreached.length === 0) {
-    return { orphaned: [], testOnlyReachable: [] };
-  }
-
   const unreachedSet = new Set(unreached);
-  const testRoots = testImportedNodes.filter((node) => unreachedSet.has(node));
-
-  const reachedFromTestRoots = bfsReachable(graph.adjacency, testRoots);
+  const offGraphRoots = offGraphImportedNodes.filter((node) => unreachedSet.has(node));
+  const reachedFromOffGraph = bfsReachable(graph.adjacency, offGraphRoots);
 
   return {
-    orphaned: unreached.filter((node) => !reachedFromTestRoots.has(node)).sort(),
-    testOnlyReachable: unreached.filter((node) => reachedFromTestRoots.has(node)).sort(),
+    orphaned: unreached.filter((node) => !reachedFromOffGraph.has(node)).sort(),
+    testOnlyReachable: unreached.filter((node) => reachedFromOffGraph.has(node)).sort(),
   };
 }
 

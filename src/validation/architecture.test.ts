@@ -319,9 +319,10 @@ const ALLOWED_PERCENTAGE_CALCULATIONS = new Set(ALLOWED_PERCENTAGE_CALCULATION_E
 
 /**
  * Known orphaned modules: production files buildModuleGraph() cannot reach
- * forward from APP_ENTRY_ROOTS (module.tsx), and no test imports either. This
- * list should only shrink. Baseline populated when the ratchet was added —
- * see #1923 for the paydown plan covering every entry below.
+ * forward from APP_ENTRY_ROOTS (module.tsx), and that no test file and no
+ * CLI / test-utils tooling file imports either. This list should only shrink.
+ * Baseline populated when the ratchet was added — see #1923 for the paydown
+ * plan covering every entry below.
  */
 const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
@@ -364,11 +365,14 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
 
 /**
  * Known test-only-reachable modules: production files buildModuleGraph()
- * cannot reach forward from APP_ENTRY_ROOTS, but at least one test file
- * imports them directly (a real edge buildModuleGraph structurally can't see,
- * since it excludes test files as both nodes and edge targets). Distinct from
- * an orphan — nothing here is dead, it just never ships in the bundle. This
- * list should only shrink. See #1923 for the paydown plan.
+ * cannot reach forward from APP_ENTRY_ROOTS, but at least one test file or
+ * CLI / test-utils tooling file imports them directly (a real edge
+ * buildModuleGraph structurally can't see, since it excludes test files as
+ * both nodes and edge targets and never walks the EXCLUDED_TOP_LEVEL tooling
+ * dirs). Distinct from an orphan — nothing here is dead, it just never ships
+ * in the bundle. A permanently test-only entry may carry the `by-design`
+ * marker; every entry in today's baseline points at #1923 instead, where the
+ * paydown plan decides which of them are debt and which are permanent.
  */
 const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
@@ -383,13 +387,13 @@ const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] =
   },
   {
     violation: 'validation/import-graph.ts',
-    reason: 'The ratchet machinery itself — imported only by architecture.test.ts and import-graph.test.ts.',
+    reason:
+      'The ratchet machinery itself — imported by architecture.test.ts, import-graph.test.ts, and one production node (validation/cli-build-contract.ts, itself test-only-reachable).',
     tracking: '#1923',
   },
   {
     violation: 'validation/package-io.ts',
-    reason:
-      'Imported by its sibling package-io.test.ts and, invisibly to this graph, by src/cli/** (EXCLUDED_TOP_LEVEL) — not actually test-only, just doubly invisible to the scan.',
+    reason: 'Imported by its sibling package-io.test.ts and by src/cli/** tooling — never reached from the app.',
     tracking: '#1923',
   },
   {
@@ -404,8 +408,7 @@ const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] =
   },
   {
     violation: 'validation/validate-package.ts',
-    reason:
-      'Imported by its sibling tests and, invisibly to this graph, by src/cli/** (EXCLUDED_TOP_LEVEL) — not actually test-only, just doubly invisible to the scan.',
+    reason: 'Imported by its sibling tests and by src/cli/** tooling — never reached from the app.',
     tracking: '#1923',
   },
 ];
@@ -418,7 +421,7 @@ const ARCHITECTURE_ALLOWLISTS = {
   ALLOWED_CYCLES: { entries: ALLOWED_CYCLES, allowByDesign: false },
   ALLOWED_PERCENTAGE_CALCULATIONS: { entries: ALLOWED_PERCENTAGE_CALCULATION_ENTRIES, allowByDesign: true },
   ALLOWED_ORPHANED_MODULES: { entries: ALLOWED_ORPHANED_MODULES_ENTRIES, allowByDesign: false },
-  ALLOWED_TEST_ONLY_REACHABLE: { entries: ALLOWED_TEST_ONLY_REACHABLE_ENTRIES, allowByDesign: false },
+  ALLOWED_TEST_ONLY_REACHABLE: { entries: ALLOWED_TEST_ONLY_REACHABLE_ENTRIES, allowByDesign: true },
 } as const;
 
 /**
@@ -721,10 +724,10 @@ describe('Import graph: orphaned modules', () => {
       ALLOWED_ORPHANED_MODULES,
       'orphaned modules',
       'ALLOWED_ORPHANED_MODULES_ENTRIES',
-      `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx) and is not imported by any ` +
-        `test file either. This is usually one of: a genuinely dead file (delete it, and drag any doc reference ` +
-        `with it), or a barrel (index.ts) whose only consumers deep-import the internal files instead (either ` +
-        `repoint a consumer through the barrel, or delete the unused barrel). ` +
+      `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx), and no test file and no ` +
+        `CLI / test-utils tooling file imports it either. This is usually one of: a genuinely dead file (delete ` +
+        `it, and drag any doc reference with it), or a barrel (index.ts) whose only consumers deep-import the ` +
+        `internal files instead (either repoint a consumer through the barrel, or delete the unused barrel). ` +
         `If neither applies and the file is architecturally justified anyway, add a structured entry to ` +
         `ALLOWED_ORPHANED_MODULES_ENTRIES with a substantive reason and accountability reference.`
     );
@@ -736,12 +739,14 @@ describe('Import graph: orphaned modules', () => {
       ALLOWED_TEST_ONLY_REACHABLE,
       'test-only-reachable modules',
       'ALLOWED_TEST_ONLY_REACHABLE_ENTRIES',
-      `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx), but at least one test file ` +
-        `imports it directly — buildModuleGraph() excludes test files as both nodes and edge targets, so that ` +
-        `edge is structurally invisible to the orphan check above. This file is not dead, it simply never ships ` +
-        `in the bundle. If that is deliberate (e.g. governance/validation tooling that only ever runs under ` +
-        `test or the CLI), add a structured entry to ALLOWED_TEST_ONLY_REACHABLE_ENTRIES with a substantive ` +
-        `reason and accountability reference. Otherwise, wire it into a real entry point or delete it.`
+      `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx), but a test file or a ` +
+        `CLI / test-utils tooling file imports it directly — buildModuleGraph() excludes test files as both ` +
+        `nodes and edge targets and never walks the EXCLUDED_TOP_LEVEL tooling dirs, so that edge is ` +
+        `structurally invisible to the orphan check above. This file is not dead, it simply never ships in the ` +
+        `bundle. If that is deliberate (e.g. governance/validation tooling that only ever runs under test or ` +
+        `the CLI), add a structured entry to ALLOWED_TEST_ONLY_REACHABLE_ENTRIES with a substantive reason and ` +
+        `accountability reference — 'by-design' is accepted here for a permanent case. Otherwise, wire it into ` +
+        `a real entry point or delete it.`
     );
   });
 });
