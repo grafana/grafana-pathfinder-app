@@ -115,6 +115,69 @@ export function getPackageRenderType(manifest?: Record<string, unknown>): Packag
   return 'interactive';
 }
 
+// ============ TRACKS ============
+
+/**
+ * One named, independently-ordered guide sequence within a path/journey's
+ * `tracks` list (Path Tracks RFC). Unlike `milestones`, a track's `guides`
+ * list is its own complete ordering — not a subset or reordering of
+ * `milestones` — so a track may include guides `milestones` never had, omit
+ * ones it has, and interleave role-specific content anywhere in the sequence.
+ * @coupling Zod schema: ManifestTrackSchema in package.schema.ts
+ */
+export interface ManifestTrack {
+  trackId: string;
+  label: string;
+  guides: string[];
+}
+
+/**
+ * Safely reads a manifest-shaped value's `tracks` array, tolerating an
+ * untyped/untrusted source (a raw JSON manifest, a network payload) the same
+ * way `milestones` readers already do ad hoc. The one place every tracks
+ * consumer should read through, so a malformed entry is dropped consistently
+ * instead of each call site inventing its own guard.
+ */
+export function getManifestTracks(source?: { tracks?: unknown } | null): ManifestTrack[] {
+  if (!source || !Array.isArray(source.tracks)) {
+    return [];
+  }
+  return source.tracks.filter(isManifestTrack);
+}
+
+function isManifestTrack(value: unknown): value is ManifestTrack {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.trackId === 'string' &&
+    typeof candidate.label === 'string' &&
+    Array.isArray(candidate.guides) &&
+    candidate.guides.every((guide) => typeof guide === 'string')
+  );
+}
+
+/** Flattens every guide ID referenced by any track, in declared order. */
+export function getAllTrackGuideIds(tracks: ManifestTrack[]): string[] {
+  return tracks.flatMap((track) => track.guides);
+}
+
+/**
+ * The full member set of a path/journey — `milestones` plus every guide
+ * referenced by any `tracks` entry, deduplicated. For traversal concerns
+ * (graph reachability, E2E chain expansion, orphan detection) where a guide
+ * counts as "part of this path" regardless of which sequence names it.
+ * Not for rendering: the cover page keeps `milestones` and each track's
+ * `guides` as separate ordered lists, since order and sequence membership
+ * (not flattened reachability) is exactly what a track's own tab must show.
+ */
+export function getManifestMemberIds(source?: { milestones?: string[]; tracks?: unknown } | null): string[] {
+  const milestones = source?.milestones ?? [];
+  const trackGuides = getAllTrackGuideIds(getManifestTracks(source));
+  return [...new Set([...milestones, ...trackGuides])];
+}
+
 // ============ SHARED METADATA ============
 
 /**
@@ -132,6 +195,7 @@ export interface PackageMetadataFields {
   author?: Author;
   startingLocation?: string;
   milestones?: string[];
+  tracks?: ManifestTrack[];
   depends?: DependencyList;
   recommends?: DependencyList;
   suggests?: DependencyList;
@@ -160,6 +224,7 @@ export interface ManifestJson {
   repository?: string;
 
   milestones?: string[];
+  tracks?: ManifestTrack[];
 
   description?: string;
   /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
@@ -327,7 +392,7 @@ export interface GraphNode extends PackageMetadataFields {
 
 /** Edge types in the dependency graph */
 export type GraphEdgeType =
-  'depends' | 'recommends' | 'suggests' | 'provides' | 'conflicts' | 'replaces' | 'milestones';
+  'depends' | 'recommends' | 'suggests' | 'provides' | 'conflicts' | 'replaces' | 'milestones' | 'tracks';
 
 /**
  * An edge in the dependency graph.

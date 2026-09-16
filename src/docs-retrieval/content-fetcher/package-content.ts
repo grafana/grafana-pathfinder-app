@@ -5,9 +5,9 @@
 // milestone resolution. Lives in its own module so the resolver singleton has a
 // single home; `fetchContent` itself stays in the orchestrator and is imported
 // here (one-directional — the orchestrator never imports back).
-import { ContentFetchResult, LearningJourneyMetadata, Milestone } from '../../types/content.types';
+import { ContentFetchResult, CoverPageTrack, LearningJourneyMetadata, Milestone } from '../../types/content.types';
 import type { ResolvedNavLink } from '../../types/context.types';
-import { getPackageRenderType } from '../../types/package.types';
+import { getManifestTracks, getPackageRenderType, type ManifestTrack } from '../../types/package.types';
 import { fetchContent } from '../content-fetcher';
 import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
@@ -44,47 +44,46 @@ export function derivePathSlug(manifestId: string): string {
 }
 
 /**
- * Resolve manifest milestone IDs into rich Milestone objects via the injected
- * PackageResolver. Each milestone ID is resolved to obtain its contentUrl (used
- * as the navigation URL) and its manifest title.
+ * Resolve a bare package ID list into rich Milestone objects via the injected
+ * PackageResolver. Each ID is resolved to obtain its contentUrl (used as the
+ * navigation URL) and its manifest title. Shared by {@link resolvePackageMilestones}
+ * (the always-present Foundations sequence) and {@link resolvePackageTracks}
+ * (Path Tracks RFC) so the two never diverge on how a guide ID becomes a
+ * cover-page row.
  *
- * Unresolvable milestones (not yet published, or a transient resolver
- * failure) are kept in the list as locked placeholders rather than dropped —
- * a path's members can land at different times (RFC CUSTOM-GUIDE-PACKAGES.md
- * §6.5), so silently vanishing entries would misrepresent the path's real
- * size and break "N of totalMilestones" counters. Traversal (getNextMilestoneUrl
- * / getPreviousMilestoneUrl) skips locked entries.
- *
- * @param milestoneIds - Bare package IDs from a path manifest's `milestones` array
- * @param pathSlug - Optional path slug for building website URLs
- * @returns Milestone[] suitable for LearningJourneyMetadata and Recommendation.milestones
+ * Unresolvable IDs (not yet published, or a transient resolver failure) are
+ * kept in the list as locked placeholders rather than dropped — a path's
+ * members can land at different times (RFC CUSTOM-GUIDE-PACKAGES.md §6.5), so
+ * silently vanishing entries would misrepresent the path's real size and
+ * break "N of total" counters. Traversal (getNextMilestoneUrl /
+ * getPreviousMilestoneUrl) skips locked entries.
  */
-export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?: string): Promise<Milestone[]> {
+async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string): Promise<Milestone[]> {
   const resolver = await getPackageResolver();
-  if (!resolver || milestoneIds.length === 0) {
+  if (!resolver || guideIds.length === 0) {
     return [];
   }
 
   const settled = await Promise.allSettled(
-    milestoneIds.map((id) => resolver.resolve(id, { loadContent: 'metadata-only' }))
+    guideIds.map((id) => resolver.resolve(id, { loadContent: 'metadata-only' }))
   );
 
   const milestones: Milestone[] = [];
 
-  for (let i = 0; i < milestoneIds.length; i++) {
+  for (let i = 0; i < guideIds.length; i++) {
     const result = settled[i]!;
-    const id = milestoneIds[i]!;
+    const id = guideIds[i]!;
     const number = i + 1;
 
     if (result.status === 'rejected') {
-      logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone ${id}`, { reason: result.reason });
+      logger.warn(`[resolveGuideIdsToMilestones] Locking unresolvable guide ${id}`, { reason: result.reason });
       milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
-      logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone: ${id}`);
+      logger.warn(`[resolveGuideIdsToMilestones] Locking unresolvable guide: ${id}`);
       milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
@@ -109,6 +108,35 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
   }
 
   return milestones;
+}
+
+/**
+ * Resolve manifest milestone IDs into rich Milestone objects.
+ *
+ * @param milestoneIds - Bare package IDs from a path manifest's `milestones` array
+ * @param pathSlug - Optional path slug for building website URLs
+ * @returns Milestone[] suitable for LearningJourneyMetadata and Recommendation.milestones
+ */
+export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?: string): Promise<Milestone[]> {
+  return resolveGuideIdsToMilestones(milestoneIds, pathSlug);
+}
+
+/**
+ * Resolve a manifest's `tracks` (Path Tracks RFC) into cover-page-ready
+ * tracks, each with its own guides resolved through the same per-ID logic
+ * `resolvePackageMilestones` uses for the Foundations sequence.
+ *
+ * @param tracks - A manifest's raw `tracks` entries
+ * @param pathSlug - Optional path slug for building each guide's website URL
+ */
+export async function resolvePackageTracks(tracks: ManifestTrack[], pathSlug?: string): Promise<CoverPageTrack[]> {
+  return Promise.all(
+    tracks.map(async (track) => ({
+      trackId: track.trackId,
+      label: track.label,
+      milestones: await resolveGuideIdsToMilestones(track.guides, pathSlug),
+    }))
+  );
 }
 
 /**
@@ -299,6 +327,14 @@ export async function fetchPackageContent(
       };
 
       if (currentMilestone === 0) {
+        // Track resolution only runs for the cover page — it's the only
+        // surface that renders more than one sequence — so every other
+        // milestone fetch in the journey skips this extra resolver round-trip.
+        const manifestTracks = getManifestTracks(packageManifest);
+        if (manifestTracks.length > 0) {
+          learningJourney.tracks = await resolvePackageTracks(manifestTracks, pathSlug);
+        }
+
         // skipReadyToBegin: true — the React cover-page TOC (LearningPathTableOfContents)
         // renders its own Start/Resume CTA against real progress data; the
         // legacy HTML button always says "Ready to Begin" and always targets

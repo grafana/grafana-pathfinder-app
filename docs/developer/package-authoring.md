@@ -57,26 +57,27 @@ The content file is what the block editor produces. It contains only the fields 
 
 The manifest carries metadata, dependencies, and targeting as flat top-level fields. All fields except `id` and `type` are optional.
 
-| Field              | Type                                 | Required                      | Default                   | Description                                                                |
-| ------------------ | ------------------------------------ | ----------------------------- | ------------------------- | -------------------------------------------------------------------------- |
-| `schemaVersion`    | `string`                             | No                            | `"1.1.0"`                 | Schema version                                                             |
-| `id`               | `string`                             | **Yes**                       | —                         | Bare package identifier — must match `content.json`                        |
-| `type`             | `"guide"` \| `"path"` \| `"journey"` | **Yes**                       | —                         | Package type                                                               |
-| `repository`       | `string`                             | No                            | `"interactive-tutorials"` | Provenance — which repository this package belongs to                      |
-| `milestones`       | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages                                         |
-| `description`      | `string`                             | Recommended                   | —                         | Full description for display and search                                    |
-| `language`         | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                              |
-| `category`         | `string`                             | Recommended                   | —                         | Content category for taxonomy (e.g., `"data-sources"`, `"dashboards"`)     |
-| `author`           | `{ name?, team? }`                   | Recommended                   | —                         | Content author or owning team                                              |
-| `startingLocation` | `string`                             | Recommended                   | `"/"`                     | URL path where the guide expects to begin execution                        |
-| `depends`          | `DependencyList`                     | No                            | —                         | Hard prerequisites — must be completed first                               |
-| `recommends`       | `DependencyList`                     | No                            | —                         | Soft prerequisites — recommended but not required                          |
-| `suggests`         | `DependencyList`                     | No                            | —                         | Related content for enrichment                                             |
-| `provides`         | `string[]`                           | No                            | —                         | Virtual capabilities this guide provides on completion                     |
-| `conflicts`        | `string[]`                           | No                            | —                         | Packages this one conflicts with (mutually exclusive)                      |
-| `replaces`         | `string[]`                           | No                            | —                         | Packages this one supersedes entirely                                      |
-| `targeting`        | `{ match? }`                         | No                            | —                         | Advisory recommendation targeting (see [targeting](#targeting))            |
-| `testEnvironment`  | `TestEnvironment`                    | Recommended                   | `{ tier: "cloud" }`       | Test infrastructure requirements (see [testEnvironment](#testenvironment)) |
+| Field              | Type                                 | Required                      | Default                   | Description                                                                                 |
+| ------------------ | ------------------------------------ | ----------------------------- | ------------------------- | ------------------------------------------------------------------------------------------- |
+| `schemaVersion`    | `string`                             | No                            | `"1.1.0"`                 | Schema version                                                                              |
+| `id`               | `string`                             | **Yes**                       | —                         | Bare package identifier — must match `content.json`                                         |
+| `type`             | `"guide"` \| `"path"` \| `"journey"` | **Yes**                       | —                         | Package type                                                                                |
+| `repository`       | `string`                             | No                            | `"interactive-tutorials"` | Provenance — which repository this package belongs to                                       |
+| `milestones`       | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages — the always-present default sequence ("Foundations")    |
+| `tracks`           | `Track[]`                            | No — `path`/`journey` only    | —                         | Named, independently-ordered guide sequences alongside `milestones` (see [tracks](#tracks)) |
+| `description`      | `string`                             | Recommended                   | —                         | Full description for display and search                                                     |
+| `language`         | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                                               |
+| `category`         | `string`                             | Recommended                   | —                         | Content category for taxonomy (e.g., `"data-sources"`, `"dashboards"`)                      |
+| `author`           | `{ name?, team? }`                   | Recommended                   | —                         | Content author or owning team                                                               |
+| `startingLocation` | `string`                             | Recommended                   | `"/"`                     | URL path where the guide expects to begin execution                                         |
+| `depends`          | `DependencyList`                     | No                            | —                         | Hard prerequisites — must be completed first                                                |
+| `recommends`       | `DependencyList`                     | No                            | —                         | Soft prerequisites — recommended but not required                                           |
+| `suggests`         | `DependencyList`                     | No                            | —                         | Related content for enrichment                                                              |
+| `provides`         | `string[]`                           | No                            | —                         | Virtual capabilities this guide provides on completion                                      |
+| `conflicts`        | `string[]`                           | No                            | —                         | Packages this one conflicts with (mutually exclusive)                                       |
+| `replaces`         | `string[]`                           | No                            | —                         | Packages this one supersedes entirely                                                       |
+| `targeting`        | `{ match? }`                         | No                            | —                         | Advisory recommendation targeting (see [targeting](#targeting))                             |
+| `testEnvironment`  | `TestEnvironment`                    | Recommended                   | `{ tier: "cloud" }`       | Test infrastructure requirements (see [testEnvironment](#testenvironment))                  |
 
 ### Extension fields
 
@@ -91,6 +92,22 @@ A stamped manifest carries a top-level `stats` key, which reaches `repository.js
 ### Package IDs must not collide across repositories
 
 A bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The resolver tries repositories in order (bundled → recommender or CDN → App Platform) and the first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. Only published App Platform guides participate in bare-ID resolution; direct `backend-guide:` loading also serves drafts so authors can use preview links and restore an open tab. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.
+
+---
+
+## Tracks
+
+`tracks` (Path Tracks RFC) declares named, independently-ordered guide sequences for one path/journey, one per audience or role — additive alongside the always-present `milestones` default ("Foundations"). Each entry is:
+
+```jsonc
+{ "trackId": "builder", "label": "Builder", "guides": ["welcome-to-grafana", "builder-advanced-panels"] }
+```
+
+- `trackId` (`string`, required) — a stable identifier, unique within one manifest's `tracks` list.
+- `label` (`string`, required) — the human-facing name shown on the cover page's tab for this track.
+- `guides` (`string[]`, required) — the track's own complete ordered sequence of bare package IDs. **Not** a subset or reordering of `milestones`: a track may include guides `milestones` never had, omit guides `milestones` has, and interleave role-specific content anywhere in the sequence.
+
+`milestones` is never itself represented as a `tracks` entry, and `tracks` is valid only when `type` is `path` or `journey` (the same type-gate `milestones` uses). On the cover page, each declared track gets its own tab alongside Foundations; when a manifest declares no `tracks`, the cover page renders exactly as it did before — a single flat list, no tabs.
 
 ---
 

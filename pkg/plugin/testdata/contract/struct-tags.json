@@ -202,6 +202,13 @@
       "omitempty": true
     },
     {
+      "field": "Tracks",
+      "json": "tracks",
+      "type": "[]struct",
+      "wire": "array<object>",
+      "omitempty": true
+    },
+    {
       "field": "Category",
       "json": "category",
       "type": "string",
@@ -244,6 +251,29 @@
       "type": "string",
       "wire": "string",
       "omitempty": true
+    }
+  ],
+  "customGuideManifest.tracks": [
+    {
+      "field": "TrackID",
+      "json": "trackId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Label",
+      "json": "label",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Guides",
+      "json": "guides",
+      "type": "[]string",
+      "wire": "array<string>",
+      "omitempty": false
     }
   ],
   "customGuideRepositoryEntry": [

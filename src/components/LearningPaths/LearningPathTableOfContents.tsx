@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { useStyles2, Icon } from '@grafana/ui';
+import { useStyles2, Icon, TabsBar, Tab } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
-import type { Milestone } from '../../types/content.types';
+import type { CoverPageTrack, Milestone } from '../../types/content.types';
 import type { PathGuide } from '../../types/learning-paths.types';
 import { milestoneCompletionStorage } from '../../lib/user-storage';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
@@ -14,6 +14,9 @@ import { ProgressRing } from './ProgressRing';
 import { BadgeIcon } from './BadgeIcon';
 import { getTableOfContentsStyles } from './learning-paths.styles';
 
+/** Tab id for the always-present default sequence — never a real trackId. */
+const FOUNDATIONS_TAB_ID = 'foundations';
+
 export interface LearningPathTableOfContentsProps {
   milestones: Milestone[];
   baseUrl: string;
@@ -23,6 +26,15 @@ export interface LearningPathTableOfContentsProps {
   title?: string;
   /** Package manifest description, when known — shown as the hero summary above the module list. */
   description?: string;
+  /**
+   * Named, independently-ordered guide sequences from the manifest's `tracks`
+   * field (Path Tracks RFC), each already resolved to Milestone rows the same
+   * way `milestones` is. When present and non-empty, each track gets its own
+   * tab alongside the default Foundations sequence (`milestones`); when
+   * absent or empty, rendering is unchanged from before tracks existed —
+   * a single flat list, no tabs.
+   */
+  tracks?: CoverPageTrack[];
 }
 
 export function LearningPathTableOfContents({
@@ -31,6 +43,7 @@ export function LearningPathTableOfContents({
   pathId,
   title,
   description,
+  tracks,
 }: LearningPathTableOfContentsProps) {
   const styles = useStyles2(getTableOfContentsStyles);
   const [completedSlugs, setCompletedSlugs] = useState<Set<string>>(new Set());
@@ -41,12 +54,25 @@ export function LearningPathTableOfContents({
   const [progressLoaded, setProgressLoaded] = useState(false);
   const badge = pathId ? getBadgeForPath(pathId) : undefined;
 
+  const hasTracks = tracks !== undefined && tracks.length > 0;
+  const [activeTabId, setActiveTabId] = useState<string>(FOUNDATIONS_TAB_ID);
+  // Every sequential lock/unlock, progress, and time-estimate calculation
+  // below reuses the exact Foundations mechanism (milestoneCompletionStorage
+  // + journeyProgressFromMilestones) against whichever sequence is active —
+  // there is no track-specific completion model yet. When the progress
+  // mechanisms this app carries today (records/milestones/interactive) are
+  // consolidated into one, revisit whether a track needs its own.
+  const activeMilestones =
+    hasTracks && activeTabId !== FOUNDATIONS_TAB_ID
+      ? (tracks!.find((track) => track.trackId === activeTabId)?.milestones ?? milestones)
+      : milestones;
+
   useEffect(() => {
     let cancelled = false;
     void milestoneCompletionStorage
       .getCompleted(
         baseUrl,
-        milestones.map((milestone) => milestone.url)
+        activeMilestones.map((milestone) => milestone.url)
       )
       .then((slugs) => {
         if (!cancelled) {
@@ -57,7 +83,7 @@ export function LearningPathTableOfContents({
     return () => {
       cancelled = true;
     };
-  }, [baseUrl, milestones]);
+  }, [baseUrl, activeMilestones]);
 
   // "Get started" targets the first unlocked milestone at 0% progress; once
   // underway, "Resume" targets the actual next incomplete one so returning to
@@ -65,9 +91,9 @@ export function LearningPathTableOfContents({
   // Every later milestone is sequentially locked — it isn't reachable yet
   // regardless of its own publish-lock state, which stays authoritative for
   // "unpublished" (locked even once its turn comes).
-  const cursor = milestones.findIndex((m) => !m.isLocked && !completedSlugs.has(getMilestoneSlug(m.url)));
+  const cursor = activeMilestones.findIndex((m) => !m.isLocked && !completedSlugs.has(getMilestoneSlug(m.url)));
 
-  const guides: PathGuide[] = milestones.map((milestone, index) => {
+  const guides: PathGuide[] = activeMilestones.map((milestone, index) => {
     const completed = completedSlugs.has(getMilestoneSlug(milestone.url));
     return {
       id: String(milestone.number),
@@ -87,9 +113,9 @@ export function LearningPathTableOfContents({
   // different numbers for the same journey. A reader who only navigated
   // without completing anything sees this at 0%, honestly, even after
   // visiting every milestone.
-  const progress = journeyProgressFromMilestones(baseUrl, milestones);
+  const progress = journeyProgressFromMilestones(baseUrl, activeMilestones);
 
-  const ctaTarget = cursor >= 0 ? milestones[cursor] : undefined;
+  const ctaTarget = cursor >= 0 ? activeMilestones[cursor] : undefined;
   const ctaLabel = progress === 0 ? t('coverPage.getStarted', 'Get started') : t('coverPage.resume', 'Resume');
 
   // Sum of authored per-milestone estimates — only when every milestone has
@@ -97,8 +123,8 @@ export function LearningPathTableOfContents({
   // A partial sum across e.g. 3 of 10 authored milestones would understate
   // the real total rather than approximate it.
   const totalEstimatedMinutes =
-    milestones.length > 0 && milestones.every((m) => typeof m.estimatedMinutes === 'number')
-      ? milestones.reduce((sum, m) => sum + m.estimatedMinutes!, 0)
+    activeMilestones.length > 0 && activeMilestones.every((m) => typeof m.estimatedMinutes === 'number')
+      ? activeMilestones.reduce((sum, m) => sum + m.estimatedMinutes!, 0)
       : undefined;
 
   return (
@@ -110,7 +136,7 @@ export function LearningPathTableOfContents({
           <div className={styles.heroMeta}>
             <span className={styles.heroMetaItem}>
               <Icon name="list-ul" size="sm" />
-              {t('coverPage.moduleCount', '{{count}} modules', { count: milestones.length })}
+              {t('coverPage.moduleCount', '{{count}} modules', { count: activeMilestones.length })}
             </span>
             {totalEstimatedMinutes != null && (
               <span className={styles.heroMetaItem}>
@@ -128,6 +154,25 @@ export function LearningPathTableOfContents({
             )}
           </div>
         </div>
+      )}
+      {hasTracks && (
+        <TabsBar data-testid={testIds.learningPaths.tracksTabs}>
+          <Tab
+            label={t('coverPage.foundationsTab', 'Foundations')}
+            active={activeTabId === FOUNDATIONS_TAB_ID}
+            onChangeTab={() => setActiveTabId(FOUNDATIONS_TAB_ID)}
+            data-testid={testIds.learningPaths.tracksTab(FOUNDATIONS_TAB_ID)}
+          />
+          {tracks!.map((track) => (
+            <Tab
+              key={track.trackId}
+              label={track.label}
+              active={activeTabId === track.trackId}
+              onChangeTab={() => setActiveTabId(track.trackId)}
+              data-testid={testIds.learningPaths.tracksTab(track.trackId)}
+            />
+          ))}
+        </TabsBar>
       )}
       <div
         className={styles.container}

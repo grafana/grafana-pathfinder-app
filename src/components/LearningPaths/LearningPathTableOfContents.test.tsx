@@ -1,12 +1,33 @@
 import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { LearningPathTableOfContents } from './LearningPathTableOfContents';
 import { interactiveCompletionStorage, milestoneCompletionStorage } from '../../lib/user-storage';
-import type { Milestone } from '../../types/content.types';
+import type { CoverPageTrack, Milestone } from '../../types/content.types';
 
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: (_t, p) => String(p) }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+  TabsBar: ({ children, ...rest }: { children: React.ReactNode }) => (
+    <div role="tablist" {...rest}>
+      {children}
+    </div>
+  ),
+  Tab: ({
+    label,
+    active,
+    onChangeTab,
+    'data-testid': testId,
+  }: {
+    label: string;
+    active?: boolean;
+    onChangeTab?: () => void;
+    'data-testid'?: string;
+  }) => (
+    <button type="button" role="tab" aria-selected={active} data-testid={testId} onClick={onChangeTab}>
+      {label}
+    </button>
+  ),
+  TabContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   // `@grafana/runtime`'s own module init reaches for these two, and the real
   // percentage calculation this file exercises imports it transitively
   // (docs-retrieval -> security -> dev-mode -> @grafana/runtime).
@@ -318,6 +339,108 @@ describe('LearningPathTableOfContents', () => {
       // Only "Two" is locked; "Three" is done and "One" is the current cursor.
       expect(screen.getAllByText('Locked')).toHaveLength(1);
       expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(1);
+    });
+  });
+
+  describe('tracks (Path Tracks RFC)', () => {
+    const builderMilestones: Milestone[] = [
+      { number: 1, title: 'Builder one', url: `${baseUrl}builder-one/content.json`, isActive: false },
+    ];
+    const sellerMilestones: Milestone[] = [
+      { number: 1, title: 'Seller one', url: `${baseUrl}seller-one/content.json`, isActive: false },
+      { number: 2, title: 'Seller two', url: `${baseUrl}seller-two/content.json`, isActive: false },
+    ];
+    const tracks: CoverPageTrack[] = [
+      { trackId: 'builder', label: 'Builder', milestones: builderMilestones },
+      { trackId: 'seller', label: 'Seller', milestones: sellerMilestones },
+    ];
+
+    // Regression: no `tracks` prop (the case every caller used before Path
+    // Tracks existed) must render byte-for-byte what it always did — a single
+    // flat list, no tab bar at all.
+    it('renders no tab bar and the plain flat list when tracks is omitted', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
+
+      await waitFor(() => expect(getCompletedMock).toHaveBeenCalled());
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      expect(screen.queryByText('Foundations')).not.toBeInTheDocument();
+      expect(screen.getByText('Set up')).toBeInTheDocument();
+      expect(screen.getByText('Explore')).toBeInTheDocument();
+    });
+
+    it('renders no tab bar when tracks is an empty array', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={[]} />);
+
+      await waitFor(() => expect(getCompletedMock).toHaveBeenCalled());
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    });
+
+    it('renders a Foundations tab plus one tab per declared track', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      await waitFor(() => expect(getCompletedMock).toHaveBeenCalled());
+      expect(screen.getByRole('tablist')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Foundations' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Builder' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Seller' })).toBeInTheDocument();
+    });
+
+    it('shows the Foundations sequence by default, with Foundations active', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      expect(screen.getByRole('tab', { name: 'Foundations' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByText('Set up')).toBeInTheDocument();
+      expect(screen.getByText('Explore')).toBeInTheDocument();
+      expect(screen.queryByText('Builder one')).not.toBeInTheDocument();
+    });
+
+    it("switches the module list, hero module count, and progress lookup to the active track's own guides", async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+
+      expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByText('Seller one')).toBeInTheDocument();
+      expect(screen.getByText('Seller two')).toBeInTheDocument();
+      expect(screen.queryByText('Set up')).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(getCompletedMock).toHaveBeenLastCalledWith(
+          baseUrl,
+          sellerMilestones.map((m) => m.url)
+        )
+      );
+    });
+
+    it('reuses the Foundations sequential lock/unlock mechanism for a track', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+
+      await waitFor(() => expect(screen.getAllByText('Locked')).toHaveLength(1));
+      expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(1);
+    });
+
+    it('reflects the hero module count for the active tab, not the Foundations count', async () => {
+      setCompletedSlugs(new Set());
+      render(
+        <LearningPathTableOfContents
+          milestones={milestones}
+          baseUrl={baseUrl}
+          tracks={tracks}
+          title="Alerting enablement"
+        />
+      );
+
+      expect(await screen.findByText('2 modules')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
+      expect(await screen.findByText('1 modules')).toBeInTheDocument();
     });
   });
 });

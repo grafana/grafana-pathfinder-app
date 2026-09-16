@@ -121,6 +121,22 @@ export interface LearningJourneyMetadata {
    * canonical docs page rather than the CDN content URL.
    */
   websiteUrl?: string;
+
+  /**
+   * Named, independently-ordered guide sequences declared on the manifest's
+   * `tracks` field (Path Tracks RFC), each resolved to cover-page-ready
+   * Milestone rows the same way the default `milestones` above are. Present
+   * only for the cover page (currentMilestone === 0) — the only surface that
+   * ever renders more than one sequence.
+   */
+  tracks?: CoverPageTrack[];
+}
+
+/** One resolved track: a manifest track's own guides, resolved to rows. */
+export interface CoverPageTrack {
+  trackId: string;
+  label: string;
+  milestones: Milestone[];
 }
 
 export interface SingleDocMetadata {
