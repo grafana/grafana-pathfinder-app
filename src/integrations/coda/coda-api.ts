@@ -34,6 +34,7 @@ import {
   type ExecResult,
   type GcxCredential,
   type MintTokenOptions,
+  type VM,
 } from '@grafana/coda-client';
 
 export {
@@ -177,6 +178,10 @@ export function getCapabilities() {
  */
 export function createSession(vmOpts?: TerminalVMOptions) {
   return client.createSession(vmOpts);
+}
+
+export function listVMs(): Promise<VM[]> {
+  return client.listVMs();
 }
 
 export function deleteSession(sessionId: string) {

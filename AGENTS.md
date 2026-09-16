@@ -127,3 +127,7 @@ Use `/create-experiment`. Experiments are remote-configured through MTFF, alloca
 Namespace every `npx` example under `pathfinder-cli@...` — for a hypothetical `pathfinder-example` package, write `npx pathfinder-cli@... example`. This keeps us from being namesquatted.
 
 - Security issues should be reported via [Grafana's security issue reporting page](https://grafana.com/legal/report-a-security-issue/) and not directly in this repository.
+
+## Filing issues
+
+When filing an issue (including deferred review follow-ups), fill out the fields in `.github/ISSUE_TEMPLATE/structured-issue.yml`, especially User impact / flow change and Acceptance criteria, and apply the `needs-review` label plus appropriate type, area, and severity labels.

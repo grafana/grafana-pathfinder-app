@@ -22,12 +22,10 @@ export interface TermsAndConditionsProps extends PluginConfigPageProps<AppPlugin
 
 const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
   const styles = useStyles2(getStyles);
-  // Seeded through `useSeededDraft`, which reads the store this tab writes to.
-  // `enabled`/`pinned` stay unread here: echoing a stale snapshot of them is what
-  // unpinned the plugin (`aa1c2efd`). saveTenantSettings reads them at write time.
   const { draft, edit } = useSeededDraft(buildStateFromConfig);
   const isRecommenderEnabled = draft.acceptedTermsAndConditions;
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveFailed, setSaveFailed] = useState(false);
 
   const onToggleRecommender = (event: ChangeEvent<HTMLInputElement>) => {
     edit({ acceptedTermsAndConditions: event.target.checked });
@@ -36,22 +34,17 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
   const onSubmit = async (event: React.SubmitEvent) => {
     event.preventDefault();
     setIsSaving(true);
+    setSaveFailed(false);
 
     try {
-      // Only the fields this tab owns. saveTenantSettings reads current settings
-      // authoritatively first, so the `plugin.meta` snapshot this form was seeded
-      // from can no longer write stale values back over another tab's save.
       await saveTenantSettings({
         pluginId: plugin.meta.id,
         changes: {
           acceptedTermsAndConditions: isRecommenderEnabled,
-          // Persist the current terms version when enabling; leave it to the
-          // authoritative read when disabling.
           ...(isRecommenderEnabled ? { termsVersion: TERMS_VERSION } : {}),
         },
       });
 
-      // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
       setTimeout(() => {
         try {
           window.location.reload();
@@ -60,18 +53,21 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
         }
       }, 100);
 
-      // Reset saving state - let Grafana's plugin context system handle the refresh
       setIsSaving(false);
     } catch (error) {
       logger.error('Error saving Terms and Conditions', { error });
       setIsSaving(false);
-      // Re-throw to let user know something went wrong
-      throw error;
+      setSaveFailed(true);
     }
   };
 
   return (
     <form onSubmit={onSubmit}>
+      {saveFailed && (
+        <Alert title="Could not save settings" severity="error">
+          Your edits are still here. Try saving again. If the problem continues, reload the page and try again.
+        </Alert>
+      )}
       <FieldSet label="Recommender service" className={styles.termsFieldSet}>
         <Alert title="Data usage information" severity={isRecommenderEnabled ? 'info' : 'warning'}>
           {isRecommenderEnabled

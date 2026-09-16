@@ -51,6 +51,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   const styles = useStyles2(getStyles);
   const { draft: state, changes, edit, config: resolvedConfig } = useSeededDraft(buildStateFromConfig);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const validateNumber = (value: string, min: number, max: number, fieldName: string): number | null => {
@@ -131,6 +132,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     }
 
     setIsSaving(true);
+    setSaveFailed(false);
 
     try {
       await saveTenantSettings({
@@ -150,7 +152,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     } catch (error) {
       logger.error('Error saving Interactive Features', { error });
       setIsSaving(false);
-      throw error;
+      setSaveFailed(true);
     }
   };
 
@@ -159,6 +161,11 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
 
   return (
     <form onSubmit={onSubmit}>
+      {saveFailed && (
+        <Alert title="Could not save settings" severity="error">
+          Your edits are still here. Try saving again. If the problem continues, reload the page and try again.
+        </Alert>
+      )}
       <FieldSet label="Interactive guide features" className={styles.fieldSet}>
         <Alert
           title="Experimental feature"

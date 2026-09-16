@@ -105,14 +105,74 @@ it.each([403, 409, 422, 500, 503])('propagates real creation failures (%i)', asy
   await expect(savePathfinderSettings({})).rejects.toMatchObject({ status });
 });
 
-it.each([403, 404, 405, 409, 422, 500, 501, 503])(
-  'never changes stores after an existing resource update fails (%i)',
-  async (status) => {
-    fetchMock.mockReturnValueOnce(error(status));
-    await expect(savePathfinderSettings({}, base)).rejects.toMatchObject({ status });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  }
-);
+it.each([400, 401, 403, 409, 422])('does not retry a rejected update (%i)', async (status) => {
+  fetchMock.mockReturnValueOnce(error(status));
+  await expect(savePathfinderSettings({}, base)).rejects.toMatchObject({ status });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+describe('existing resource update recovery', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it.each([404, 405, 500, 501, 502, 503, 504])('recovers a transient update failure (%i)', async (status) => {
+    fetchMock.mockReturnValueOnce(error(status)).mockReturnValueOnce(of({ data: {} }));
+    const save = savePathfinderSettings({ enableLiveSessions: false }, base);
+    await jest.advanceTimersByTimeAsync(250);
+    await expect(save).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [first, second] = fetchMock.mock.calls;
+    expect(first[0]).toMatchObject({
+      method: 'PUT',
+      data: { metadata: { resourceVersion: '42' }, spec: { enableLiveSessions: false } },
+    });
+    expect(second[0]).toEqual(first[0]);
+  });
+
+  it.each([404, 405, 500, 501, 502, 503, 504])('bounds retries without switching stores (%i)', async (status) => {
+    fetchMock.mockReturnValue(error(status));
+    const rejected = expect(savePathfinderSettings({}, base)).rejects.toMatchObject({ status });
+    await jest.runAllTimersAsync();
+    await rejected;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls.every(([request]) => request.method === 'PUT')).toBe(true);
+  });
+
+  it('stops if a retry conflicts, rather than rebasing a stale spec over a newer write', async () => {
+    fetchMock.mockReturnValueOnce(error(503)).mockReturnValueOnce(error(409));
+    const rejected = expect(savePathfinderSettings({}, base)).rejects.toMatchObject({ status: 409 });
+    await jest.runAllTimersAsync();
+    await rejected;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0].data.metadata.resourceVersion).toBe('42');
+  });
+
+  it('keeps a recovered tenant save authoritative on the next read', async () => {
+    let spec = base.spec;
+    let attempts = 0;
+    fetchMock.mockImplementation(({ method, url, data }) => {
+      if (url.startsWith('/api/plugins/')) {
+        if (method !== 'GET') {
+          throw new Error('An existing resource must not write to legacy settings');
+        }
+        return of({ data: { jsonData: { stackId: '123', enableLiveSessions: true } } });
+      }
+      if (method === 'PUT') {
+        if (attempts++ === 0) {
+          return error(503);
+        }
+        spec = data.spec;
+        return of({ data: {} });
+      }
+      return of({ data: { metadata: { resourceVersion: '42' }, spec } });
+    });
+    const save = saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { enableLiveSessions: false } });
+    await jest.runAllTimersAsync();
+    await save;
+    expect((await fetchPathfinderSettingsSnapshot())?.config.enableLiveSessions).toBe(false);
+    expect(attempts).toBe(2);
+  });
+});
 
 it('preserves OSS plugin settings without materializing system defaults', async () => {
   jest.mocked(isBackendApiAvailable).mockReturnValue(false);

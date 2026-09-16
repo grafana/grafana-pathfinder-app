@@ -1009,6 +1009,7 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
 | `requirements` | string[] | ❌       | Conditions that must be met for this step                              |
 | `objectives`   | string[] | ❌       | Conditions that auto-complete this step when already satisfied         |
 | `skippable`    | boolean  | ❌       | Allow skipping                                                         |
+| `hint`         | string   | ❌       | Hint shown when step cannot be completed                               |
 
 #### Terminal Block
 
@@ -1028,6 +1029,7 @@ A shell command shown with copy-to-clipboard and an "Execute" button that runs t
 | `command`      | string   | ✅       | The shell command                                           |
 | `requirements` | string[] | ❌       | Conditions that must be met (commonly `is-terminal-active`) |
 | `skippable`    | boolean  | ❌       | Allow skipping                                              |
+| `hint`         | string   | ❌       | Hint shown when step cannot be completed                    |
 
 Terminal blocks only render in the docs panel when the administrator has enabled the Coda terminal integration.
 
@@ -1191,10 +1193,10 @@ Coda mode:
 | `hintLevels`      | `{ text: string }[]`     | ❌       | `[]`      | Progressive hints revealed on demand                                               |
 | `failureMessage`  | string                   | ❌       | —         | Message shown when the success check fails, replacing the checker's own error text |
 | `requirements`    | string[]                 | ❌       | —         | Prerequisite conditions for the challenge                                          |
-| `objectives`      | string[]                 | ❌       | —         | Conditions that auto-complete this block when already satisfied                    |
+| `objectives`      | string[]                 | ❌       | —         | Conditions evaluated and surfaced as an informational note                         |
 | `skippable`       | boolean                  | ❌       | `false`   | Allow skipping                                                                     |
 
-`requirements`, `objectives`, and `skippable` are accepted by the schema, but the challenge runtime does not receive them yet — the block always renders, never contributes to objective tracking, and shows no skip control. Do not rely on them to gate a challenge or to credit an objective.
+`requirements` and `skippable` gate challenge execution and offer a skip control using the unified step checker runtime. The block also gates on sequential position (`isEligibleForChecking`), which is a behavior change: a published guide with a challenge after any other step now shows "Complete previous step" where it previously showed "Start challenge" unconditionally. `objectives` are evaluated and surfaced as an informational note, but only `successCriteria` (via Check my work) can complete a challenge.
 
 `hintLevels` is an array of objects, not an array of strings. Each entry is `{ "text": "..." }` with non-empty text, and hints are revealed one at a time in array order. Hints appear only once the challenge is ready to attempt or has failed a check, so a learner stuck waiting on VM provisioning cannot reach them.
 

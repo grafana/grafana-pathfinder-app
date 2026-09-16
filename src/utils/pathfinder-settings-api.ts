@@ -40,6 +40,8 @@ export interface PathfinderSettingsSnapshot {
 }
 
 const UNAVAILABLE_STATUSES = new Set([404, 405, 501]);
+const RETRYABLE_UPDATE_STATUSES = new Set([404, 405, 500, 501, 502, 503, 504]);
+const UPDATE_RETRY_DELAYS_MS = [250, 750];
 
 function statusOf(err: unknown): number | undefined {
   const e = err as { status?: number; statusCode?: number; data?: { statusCode?: number } };
@@ -165,22 +167,28 @@ export async function savePathfinderSettings(
   }
 
   const spec = { schemaVersion: SETTINGS_SCHEMA_VERSION, ...base?.spec, ...configToSpec(next) };
-  try {
-    await lastValueFrom(
-      getBackendSrv().fetch({
-        url: base ? itemUrl(config.namespace) : collectionUrl(config.namespace),
-        method: base ? 'PUT' : 'POST',
-        data: requestBody(spec, base?.resourceVersion),
-        showErrorAlert: false,
-      })
-    );
-    return true;
-  } catch (err) {
-    const status = statusOf(err);
-    // Once a resource exists, a failed update must never switch stores or recreate it.
-    if (!base && status && UNAVAILABLE_STATUSES.has(status)) {
-      return false;
+  const request = {
+    url: base ? itemUrl(config.namespace) : collectionUrl(config.namespace),
+    method: base ? 'PUT' : 'POST',
+    data: requestBody(spec, base?.resourceVersion),
+    showErrorAlert: false,
+  };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await lastValueFrom(getBackendSrv().fetch(request));
+      return true;
+    } catch (err) {
+      const status = statusOf(err);
+      if (base && status && RETRYABLE_UPDATE_STATUSES.has(status) && attempt < UPDATE_RETRY_DELAYS_MS.length) {
+        // Reuse the read version: even an ambiguous prior success cannot overwrite a concurrent edit.
+        await new Promise((resolve) => setTimeout(resolve, UPDATE_RETRY_DELAYS_MS[attempt]));
+        continue;
+      }
+      // Existing resources remain authoritative when service recovers; a legacy write would be hidden.
+      if (!base && status && UNAVAILABLE_STATUSES.has(status)) {
+        return false;
+      }
+      throw err;
     }
-    throw err;
   }
 }

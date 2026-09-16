@@ -67,6 +67,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const s = useStyles2(getStyles);
   const { draft: state, changes, edit: editDraft, config: resolvedConfig } = useSeededDraft(buildStateFromConfig);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [portError, setPortError] = useState<string | undefined>(undefined);
 
   const devModeEnabledForUser = isDevModeEnabled(resolvedConfig);
@@ -204,6 +205,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const onSubmit = async (event: React.SubmitEvent) => {
     event.preventDefault();
     setIsSaving(true);
+    setSaveFailed(false);
 
     try {
       await saveTenantSettings({
@@ -221,11 +223,17 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     } catch (error) {
       logger.error('Error saving configuration', { error });
       setIsSaving(false);
+      setSaveFailed(true);
     }
   };
 
   return (
     <form onSubmit={onSubmit} data-testid={testIds.appConfig.form}>
+      {saveFailed && (
+        <Alert title="Could not save settings" severity="error">
+          Your edits are still here. Try saving again. If the problem continues, reload the page and try again.
+        </Alert>
+      )}
       <FieldSet label="Plugin configuration" className={s.marginTopXl}>
         {showAdvancedConfig && (
           <>

@@ -19,8 +19,10 @@ import { interactiveCompletionStorage, journeyCompletionStorage } from '../lib/u
 
 import { markStepCompleted, resetCompletionStoreForTests } from './completion-store';
 import { resetContentKeyForTests, setActiveTabUrl } from './content-key';
-import { registerSectionSteps, resetRegistry } from './section-registry';
+import { resetRegistry } from './section-registry';
+import { publishGuideIndex } from './active-guide-index';
 import { resolvePathMemberPercentages, type PathMember } from './path-member-join';
+import { computeGuideBlockIndex } from '../lib/guide-stats';
 
 const SECTION_ID = 'section-one';
 const STEP_IDS = ['step-1', 'step-2', 'step-3', 'step-4'];
@@ -37,7 +39,14 @@ async function readerProgresses(launchUrl: string, completedSteps: number): Prom
   resetRegistry();
   resetCompletionStoreForTests();
   setActiveTabUrl(launchUrl);
-  registerSectionSteps(SECTION_ID, STEP_IDS.length, 0);
+  // The frozen index content-renderer.tsx publishes at content-load —
+  // four "do it" blocks, ids matching STEP_IDS, so completion-store's
+  // evidence bridge resolves a real position.
+  publishGuideIndex({
+    contentKey: launchUrl,
+    index: computeGuideBlockIndex(STEP_IDS.map((id) => ({ type: 'interactive', id }))),
+    denominatorSource: 'live-pre-inlining',
+  });
   for (const stepId of STEP_IDS.slice(0, completedSteps)) {
     markStepCompleted(stepId, SECTION_ID, 'manual');
   }

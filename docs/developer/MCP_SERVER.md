@@ -119,20 +119,20 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 12 tools, registered in `src/cli/mcp/tools/`. Each module starts with `Contract: mcp-native | cli-routed`. MCP-native tools own their behavior and Zod schema. CLI-routed tools are a thin wrap of a CLI `runX` (agents copy `opts` from `pathfinder_help`); session/stateless transport around those runners is shared plumbing, not a second command interface.
 
-| Tool                                   | Contract   | Module                  | Wraps                                                                                              |
-| -------------------------------------- | ---------- | ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `pathfinder_authoring_start`           | mcp-native | `authoring-start.ts`    | (static context block)                                                                             |
-| `pathfinder_help`                      | mcp-native | `help.ts`               | A bound CLI command's interface, rendered from that command's schema                               |
-| `pathfinder_validate`                  | mcp-native | `validate.ts`           | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7); not CLI `validate` options          |
-| `pathfinder_read_session`              | mcp-native | `session-read-tools.ts` | Session reads; explicit top-level Zod schema                                                       |
-| `pathfinder_finalize_for_app_platform` | mcp-native | `finalize.ts`           | `runValidate` + handoff payload; accepts `{artifact}` OR `{sessionToken}`; deletes on success (P7) |
-| `pathfinder_read_repository`           | mcp-native | `repository-tools.ts`   | CDN reads; explicit top-level Zod schema (P6)                                                      |
-| `pathfinder_launch_package`            | mcp-native | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                         |
-| `pathfinder_get_schema`                | cli-routed | `schema-tools.ts`       | CLI `schema` help-derived `opts` (`list` / `all` / `name` / `includeVersion`)                      |
-| `pathfinder_create_package`            | cli-routed | `artifact-tools.ts`     | CLI `create` help-derived `opts` — mints a sessionToken + returns the seed artifact                |
-| `pathfinder_manage_block`              | cli-routed | `mutation-tools.ts`     | Tree writes via `operation: add-block\|edit-block\|remove-block\|add-step\|add-choice` (CLI names) |
-| `pathfinder_manage_guide`              | cli-routed | `mutation-tools.ts`     | Guide writes via `operation: set-manifest` (CLI name)                                              |
-| `pathfinder_inspect`                   | cli-routed | `inspect.ts`            | CLI `inspect` help-derived `opts` + `{artifact}` OR `{sessionToken}`                               |
+| Tool                                   | Contract   | Module                  | Wraps                                                                                                        |
+| -------------------------------------- | ---------- | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `pathfinder_authoring_start`           | mcp-native | `authoring-start.ts`    | (static context block)                                                                                       |
+| `pathfinder_help`                      | mcp-native | `help.ts`               | A bound CLI command's interface, rendered from that command's schema                                         |
+| `pathfinder_validate`                  | mcp-native | `validate.ts`           | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7); not CLI `validate` options                    |
+| `pathfinder_read_session`              | mcp-native | `session-read-tools.ts` | Session reads; explicit top-level Zod schema                                                                 |
+| `pathfinder_finalize_for_app_platform` | mcp-native | `finalize.ts`           | `runValidate` + handoff payload; accepts `{artifact}` OR `{sessionToken}`; deletes on success (P7)           |
+| `pathfinder_read_repository`           | mcp-native | `repository-tools.ts`   | CDN reads; explicit top-level Zod schema (P6)                                                                |
+| `pathfinder_launch_package`            | mcp-native | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                                   |
+| `pathfinder_get_schema`                | cli-routed | `schema-tools.ts`       | CLI `schema` help-derived `opts` (`list` / `all` / `name` / `includeVersion`)                                |
+| `pathfinder_create_package`            | cli-routed | `artifact-tools.ts`     | CLI `create` help-derived `opts` — mints a sessionToken + returns the seed artifact                          |
+| `pathfinder_manage_block`              | cli-routed | `mutation-tools.ts`     | Tree writes via `operation: add-block\|edit-block\|remove-block\|add-step\|add-choice\|add-hint` (CLI names) |
+| `pathfinder_manage_guide`              | cli-routed | `mutation-tools.ts`     | Guide writes via `operation: set-manifest` (CLI name)                                                        |
+| `pathfinder_inspect`                   | cli-routed | `inspect.ts`            | CLI `inspect` help-derived `opts` + `{artifact}` OR `{sessionToken}`                                         |
 
 [p6-launch-bug]: https://github.com/grafana/grafana-pathfinder-app/issues/855
 

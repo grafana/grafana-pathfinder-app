@@ -245,6 +245,9 @@ function countChildren(block: JsonBlock): number {
   if (block.type === 'quiz') {
     return ((block as unknown as { choices?: unknown[] }).choices ?? []).length;
   }
+  if (block.type === 'challenge') {
+    return ((block as unknown as { hintLevels?: unknown[] }).hintLevels ?? []).length;
+  }
   return 0;
 }
 
