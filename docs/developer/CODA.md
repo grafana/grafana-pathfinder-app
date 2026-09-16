@@ -79,6 +79,10 @@ fields:     [ { name: "event", type: string } ]   // JSON-encoded SessionEvent
 
 `seq` is reserved on `SessionEvent` for future ordering; it is not emitted in v1.
 
+The terminal header shows the active VM's server-reported remaining lifetime when `GET /v1/vms`
+returns a valid `expiresAt`. When the upstream omits it, the backend returns the zero time and the
+indicator stays hidden rather than presenting an unverified expiry.
+
 An `error` frame's `code` is what turns "Failed to create VM, please try again" into "you already have
 the maximum number of sandbox VMs" (`vm_quota_exceeded`). It was added after v1.0 and is optional, so
 an unrecognised code and an absent one both fall back to displaying `error` — never fatal, since new

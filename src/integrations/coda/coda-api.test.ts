@@ -11,7 +11,14 @@ import { of } from 'rxjs';
 import { getBackendSrv } from '@grafana/runtime';
 import { CodaError } from '@grafana/coda-client';
 
-import { codaErrorCodeMessage, execInSession, isMintForbidden, isRoleForbidden, provisionGcx } from './coda-api';
+import {
+  codaErrorCodeMessage,
+  execInSession,
+  isMintForbidden,
+  isRoleForbidden,
+  listVMs,
+  provisionGcx,
+} from './coda-api';
 
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
@@ -39,6 +46,27 @@ describe('execInSession', () => {
       url: expect.stringContaining('/sessions/s_1/exec'),
       data: { command: 'true', readyFile: '/tmp/ready', timeoutMs: 5000 },
     });
+  });
+});
+
+describe('listVMs', () => {
+  it('returns the caller VM list from the v1 endpoint', async () => {
+    const vms = [
+      {
+        id: 'vm-1',
+        template: 'vm-aws',
+        state: 'active',
+        owner: 'user-1',
+        expiresAt: '2026-09-14T12:00:00Z',
+        createdAt: '2026-09-14T11:30:00Z',
+      },
+    ];
+    const fetch = mockFetch({ data: { vms } });
+
+    await expect(listVMs()).resolves.toEqual(vms);
+    expect(fetch).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'GET', url: expect.stringMatching(/\/vms$/) })
+    );
   });
 });
 
