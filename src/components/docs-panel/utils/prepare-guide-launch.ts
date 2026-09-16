@@ -11,8 +11,10 @@
  *
  * `preparedContent` re-serializes the expanded guide back into the fetched
  * `RawContent`, so the renderer takes its synchronous parse path and issues no
- * post-mount snippet requests. It is one-shot memory state — carried through a
- * launch handoff and consumed once, never persisted to tab storage.
+ * post-mount snippet requests, and carries the PRE-inlining guide alongside it
+ * as the tree the canonical block index is counted from. It is one-shot memory
+ * state — carried through a launch handoff and consumed once, never persisted
+ * to tab storage.
  *
  * Fetched content is guide-SHAPED but not guaranteed valid: `wrapContentAsJsonGuide`
  * admits already-JSON content on a shallow `id && title && Array.isArray(blocks)`
@@ -24,12 +26,13 @@
  */
 
 import { fetchPackageInfoFromUrl, isPackageContentUrl } from '../../../docs-retrieval';
+import { createPreparedContent } from '../../../lib/guide-counting-source';
 import { logger } from '../../../lib/logging';
 import { normalizeTelemetryUrl } from '../../../lib/telemetry';
 import { inlineSnippetRefsInGuideWithStatus } from '../../../snippet-engine';
 import type { LaunchSource } from '../../../recovery';
 import type { PackageOpenInfo } from '../../../types/content-panel.types';
-import type { RawContent } from '../../../types/content.types';
+import type { PreparedRawContent } from '../../../types/content.types';
 import type { JsonGuide } from '../../../types/json-guide.types';
 import { validateGuide } from '../../../validation';
 
@@ -47,8 +50,11 @@ export interface PreparedGuideLaunch {
   /** Routing discriminator — `isLearningJourneyUrl`, shared with the auto-open listener. */
   type: 'learning-journey' | 'docs';
   source: LaunchSource;
-  /** Snippet-expanded content, ready for the renderer's synchronous parse path. */
-  preparedContent: RawContent;
+  /**
+   * Snippet-expanded content, ready for the renderer's synchronous parse path,
+   * carrying the pre-inlining tree the canonical block index is counted from.
+   */
+  preparedContent: PreparedRawContent;
   /** True when any reachable step drives the live Grafana UI (or a snippet failed to resolve). */
   requiresGrafanaUi: boolean;
   /** Preserved so journey/package rendering (milestone toolbar) survives the handoff. */
@@ -120,7 +126,11 @@ export async function prepareGuideLaunch(
   const { guide: expandedGuide, unresolvedSnippetIds } = await inlineSnippetRefsInGuideWithStatus(guide);
   const needsGrafanaUi = requiresGrafanaUi(expandedGuide) || unresolvedSnippetIds.length > 0;
 
-  const preparedContent: RawContent = { ...rawContent, content: JSON.stringify(expandedGuide) };
+  // The expanded tree renders; the parsed pre-inlining tree counts. Handing
+  // over only the expanded one gave a snippet-bearing guide a bigger
+  // denominator than the counting rule allows, frozen for the life of the
+  // content key (#1665).
+  const preparedContent = createPreparedContent({ fetched: rawContent, countingGuide: guide, expandedGuide });
 
   return {
     ok: true,

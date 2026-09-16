@@ -68,9 +68,11 @@ export const TRANSPARENT_CONTAINER_BLOCK_TYPES = [
  * `snippet-ref` counts as one and its resolved contents inherit that single
  * position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in
  * before the parser sees the guide, so the denominator here is the
- * PRE-INLINING count and a consumer must index the pre-inlining tree. Mapping
- * an inlined block back to its ref is not available: the splice carries no
- * provenance field, so there is nothing to map back from.
+ * PRE-INLINING count and a consumer must index the pre-inlining tree — which
+ * is why a payload whose body is already expanded carries that tree alongside
+ * it (`src/lib/guide-counting-source.ts`). Mapping an inlined block back to
+ * its ref is not available: the splice carries no provenance field, so there
+ * is nothing to map back from.
  */
 export const OPAQUE_PARENT_BLOCK_TYPES = [
   'multistep',
