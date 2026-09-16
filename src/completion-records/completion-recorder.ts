@@ -1,5 +1,6 @@
 import { logger } from '../lib/logging';
 import { completionEmittedStorage } from '../lib/user-storage';
+import { normalizeGuideId } from './completion-identity';
 
 import type {
   CompletionFact,
@@ -97,13 +98,34 @@ export function onCompletionRecorded(listener: CompletionListener): () => void {
  * resets — otherwise a reader who resets and re-completes gets no durable
  * record, no badge and no path progress on the second completion, because
  * `record()` above would still see the identity as already emitted.
+ *
+ * Clears both the normalized key (guideId after normalizeGuideId) AND the
+ * legacy suffixed key (guideId + '/content.json' if not already present) to
+ * handle guides that may have been recorded under either identity shape.
+ *
+ * MIGRATION GUARANTEE — do not remove the legacy read: durable records written
+ * under the suffixed id shipped in plugin 2.17.0 and have been live on Cloud for
+ * weeks. There is no route that deletes a durable record, so this read-both
+ * behaviour must stay until someone deliberately retires it after those records
+ * have aged out. Reading only the normalized key would silently orphan them.
  */
 export function invalidateEmittedCompletion(guideSource: string, guideId: string): void {
+  const normalizedId = normalizeGuideId(guideId);
+  const legacySuffixedId = normalizedId.endsWith('/content.json') ? normalizedId : `${normalizedId}/content.json`;
+
   const kinds: readonly CompletionKind[] = ['guide', 'journey'];
   for (const kind of kinds) {
-    const key = dedupeKey(kind, guideSource, guideId);
-    emitted.delete(key);
-    void completionEmittedStorage.clear(key);
+    // Clear the normalized key
+    const normalizedKey = dedupeKey(kind, guideSource, normalizedId);
+    emitted.delete(normalizedKey);
+    void completionEmittedStorage.clear(normalizedKey);
+
+    // Clear the legacy suffixed key if different from normalized
+    if (legacySuffixedId !== normalizedId) {
+      const legacyKey = dedupeKey(kind, guideSource, legacySuffixedId);
+      emitted.delete(legacyKey);
+      void completionEmittedStorage.clear(legacyKey);
+    }
   }
 }
 

@@ -34,6 +34,7 @@ import {
   resolveBundledGuideCompletionIdentity,
   resolveStandaloneGuideCompletionIdentity,
   manifestGuideId,
+  normalizeGuideId,
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
@@ -500,6 +501,16 @@ function isBackendGuideJourney(journeyBaseUrl: string): boolean {
   return journeyBaseUrl.startsWith('backend-guide:');
 }
 
+/**
+ * Extract the guide id from a bundled journey base URL: strip the `bundled:`
+ * prefix, then defer to the single shared `normalizeGuideId` for the
+ * `/content.json` suffix so the writer records the SAME identity the reset path
+ * derives. Do not inline the suffix strip here — that divergence is the bug.
+ */
+function guideIdFromBundledJourneyBase(journeyBaseUrl: string): string {
+  return normalizeGuideId(journeyBaseUrl.replace('bundled:', ''));
+}
+
 function persistJourneyCompletionPercentage(journeyBaseUrl: string, percentage: number): string | undefined {
   if (isBackendGuideJourney(journeyBaseUrl)) {
     return undefined;
@@ -510,7 +521,7 @@ function persistJourneyCompletionPercentage(journeyBaseUrl: string, percentage: 
 
   // Update learning paths progress when a bundled guide reaches 100%
   if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
-    const guideId = journeyBaseUrl.replace('bundled:', '');
+    const guideId = guideIdFromBundledJourneyBase(journeyBaseUrl);
     markGuideCompleted(guideId);
     return guideId;
   }
@@ -530,7 +541,7 @@ export async function setJourneyCompletionPercentageAsync(
 
   // Update learning paths progress when a bundled guide reaches 100%
   if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
-    const guideId = journeyBaseUrl.replace('bundled:', '');
+    const guideId = guideIdFromBundledJourneyBase(journeyBaseUrl);
     await markGuideCompleted(guideId);
     recordBundledGuideCompletion(guideId, context);
   }
