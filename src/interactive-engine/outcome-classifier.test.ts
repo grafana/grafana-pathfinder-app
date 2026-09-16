@@ -1,10 +1,9 @@
-import type { SequenceRunResult, UserActionOutcome } from '../lib/telemetry';
+import type { UserActionOutcome } from '../lib/telemetry';
 import {
   type CompletionResult,
   type LoopExitReason,
   outcomeFromCompletionResult,
   outcomeFromLoopExit,
-  outcomeFromSequenceRun,
 } from './outcome-classifier';
 
 describe('outcome-classifier', () => {
@@ -19,19 +18,6 @@ describe('outcome-classifier', () => {
 
     it.each(cases)('maps %s -> %s', (result, expected) => {
       expect(outcomeFromCompletionResult(result)).toBe(expected);
-    });
-  });
-
-  describe('outcomeFromSequenceRun', () => {
-    const cases: Array<[SequenceRunResult | undefined, UserActionOutcome]> = [
-      [undefined, 'ok'],
-      ['completed', 'ok'],
-      ['requirements_exhausted', 'requirements_exhausted'],
-      ['action_error', 'action_error'],
-    ];
-
-    it.each(cases)('maps %s -> %s', (result, expected) => {
-      expect(outcomeFromSequenceRun(result)).toBe(expected);
     });
   });
 
