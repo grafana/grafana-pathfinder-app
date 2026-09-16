@@ -307,7 +307,10 @@ export const TerminalConnectStep = forwardRef<
 
     const isTerminalConnected = terminalCtx?.status === 'connected';
     const isTerminalConnecting = isConnecting || terminalCtx?.status === 'connecting';
-    const isEnabled = checker.isEnabled && !disabled && terminalCtx !== null;
+    // `useStepChecker` resolves in a post-mount effect; with empty requirements its
+    // verdict is just eligibility, so trust the prop for the pre-verdict frame.
+    const gateOpen = checker.status === 'idle' ? isEligibleForChecking : checker.isEnabled;
+    const isEnabled = gateOpen && !disabled && terminalCtx !== null;
     // The provider mounts even when the panel that owns `connect` is gated
     // away, so without this the button is enabled and does nothing.
     const sandboxUnavailable = codaUnavailableMessage(

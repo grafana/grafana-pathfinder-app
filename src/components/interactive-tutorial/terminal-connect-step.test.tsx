@@ -66,15 +66,22 @@ jest.mock('../../lib/analytics', () => ({
 }));
 
 // Mirrors `createBlockedState` / `createEnabledState`: an ineligible step is
-// blocked with the sequential explanation, an eligible one is enabled.
+// blocked with the sequential explanation, an eligible one is enabled. The
+// override stands in for the `idle` state the real FSM starts in, before its
+// post-mount effect resolves a verdict.
 const mockCheckerResetStep = jest.fn();
+let mockCheckerStatusOverride: string | null = null;
 jest.mock('../../requirements-manager', () => ({
-  useStepChecker: ({ isEligibleForChecking }: { isEligibleForChecking: boolean }) => ({
-    isEnabled: isEligibleForChecking !== false,
-    isChecking: false,
-    explanation: isEligibleForChecking === false ? 'Complete previous step' : undefined,
-    resetStep: (...args: unknown[]) => mockCheckerResetStep(...args),
-  }),
+  useStepChecker: ({ isEligibleForChecking }: { isEligibleForChecking: boolean }) => {
+    const status = mockCheckerStatusOverride ?? (isEligibleForChecking === false ? 'blocked' : 'enabled');
+    return {
+      status,
+      isEnabled: status === 'enabled',
+      isChecking: status === 'checking',
+      explanation: status === 'blocked' ? 'Complete previous step' : undefined,
+      resetStep: (...args: unknown[]) => mockCheckerResetStep(...args),
+    };
+  },
 }));
 
 jest.mock('../../lib/telemetry', () => ({ recordGcxCredentialDegradation: jest.fn() }));
@@ -155,6 +162,7 @@ beforeEach(() => {
   mockSessionId = null;
   mockIsTerminalRegistered = true;
   mockSandboxUnavailable = null;
+  mockCheckerStatusOverride = null;
   mockCanMint = true;
   mockProvisionGcx.mockReset();
   mockBackendFetch.mockReset();
@@ -459,6 +467,20 @@ describe('sequential gating', () => {
 
     expect(screen.queryByText('Complete previous step')).not.toBeInTheDocument();
     expect(screen.getByText('Try in terminal')).toBeInTheDocument();
+  });
+
+  it('offers the connect button before the checker reports a verdict', () => {
+    mockCheckerStatusOverride = 'idle';
+    renderStep({ isEligibleForChecking: true });
+
+    expect(screen.getByText('Try in terminal')).toBeInTheDocument();
+  });
+
+  it('withholds the connect button before the verdict when the prerequisite is unmet', () => {
+    mockCheckerStatusOverride = 'idle';
+    renderStep({ isEligibleForChecking: false });
+
+    expect(screen.queryByText('Try in terminal')).not.toBeInTheDocument();
   });
 });
 
