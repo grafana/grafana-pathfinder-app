@@ -2,4 +2,5 @@
 # file is ~4s warm, prettier ~2s. `npm run typecheck` (25s) and
 # `npm run test:governance` (27s) are whole-project; a 52s commit encourages
 # bypassing the hook with --no-verify, so they stay in the full check and CI.
+set -e
 npx lint-staged
