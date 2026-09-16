@@ -5,6 +5,8 @@ import * as path from 'path';
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const HUSKY_DIR = '.husky';
 const EXECUTABLE_MODE = '100755';
+const PRE_COMMIT_HOOK = `${HUSKY_DIR}/pre-commit`;
+const LINT_STAGED_COMMAND = 'lint-staged';
 const LINTED_EXTENSIONS = ['ts', 'tsx', 'js', 'mjs'];
 const LINTER_COMMAND_PATTERN = /\beslint\b/;
 const SET_E_PREFIX = /^set\s+-e/;
@@ -28,8 +30,8 @@ function parseLsFilesRow(line: string): TrackedHook {
 }
 
 function isHookPath(relPath: string): boolean {
-  // Git hook names carry no extension, so a sibling like `common.sh` or `README.md` is not exec'd.
-  return path.dirname(relPath) === HUSKY_DIR && path.extname(relPath) === '';
+  // Git hook names carry no dot, so a sibling like `common.sh` or `.gitignore` is not exec'd.
+  return path.dirname(relPath) === HUSKY_DIR && !path.basename(relPath).includes('.');
 }
 
 function listTrackedHooks(): TrackedHook[] {
@@ -50,11 +52,11 @@ function listTrackedHooks(): TrackedHook[] {
     .filter((hook) => isHookPath(hook.relPath));
 }
 
-function firstNonBlankNonCommentLine(body: string): string | undefined {
-  return body.split('\n').find((line) => {
-    const trimmed = line.trim();
-    return trimmed.length > 0 && !trimmed.startsWith('#');
-  });
+function commandLines(body: string): string[] {
+  return body
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
 }
 
 function startsWithSetE(line: string | undefined): boolean {
@@ -97,6 +99,10 @@ function extensionsWithoutLinting(lintStaged: Record<string, string | string[]>)
 
 describe('git hooks: .husky/ hook text is an owned contract, executed directly by git', () => {
   const hooks = listTrackedHooks();
+  const hookBodies = hooks.map((hook) => ({
+    relPath: hook.relPath,
+    lines: commandLines(fs.readFileSync(path.join(REPO_ROOT, hook.relPath), 'utf-8')),
+  }));
 
   it('should find at least one tracked hook to check', () => {
     expect(hooks.length).toBeGreaterThan(0);
@@ -116,12 +122,7 @@ describe('git hooks: .husky/ hook text is an owned contract, executed directly b
   });
 
   it('should start every hook body with `set -e` (after any leading comments/blank lines)', () => {
-    const offenders = hooks
-      .map((hook) => ({
-        relPath: hook.relPath,
-        firstLine: firstNonBlankNonCommentLine(fs.readFileSync(path.join(REPO_ROOT, hook.relPath), 'utf-8')),
-      }))
-      .filter((hook) => !startsWithSetE(hook.firstLine));
+    const offenders = hookBodies.filter((hook) => !startsWithSetE(hook.lines[0]));
 
     if (offenders.length > 0) {
       throw new Error(
@@ -129,8 +130,22 @@ describe('git hooks: .husky/ hook text is an owned contract, executed directly b
           `rather than blocking the commit. This matters under \`core.hooksPath=.husky\` (the legacy layout), ` +
           `where git execs the hook file directly with no wrapper to enforce this.\n\n` +
           `The following hooks do not start with \`set -e\` as their first non-comment, non-blank line:\n` +
-          offenders.map((hook) => `  - ${hook.relPath} (found: ${hook.firstLine ?? '<empty file>'})`).join('\n') +
+          offenders.map((hook) => `  - ${hook.relPath} (found: ${hook.lines[0] ?? '<empty file>'})`).join('\n') +
           `\n\nFix: add a \`set -e\` line before the first command, after any leading comments.`
+      );
+    }
+  });
+
+  it('should invoke lint-staged from the pre-commit hook', () => {
+    const preCommit = hookBodies.find((hook) => hook.relPath === PRE_COMMIT_HOOK);
+    const invokesLintStaged = preCommit?.lines.some((line) => line.includes(LINT_STAGED_COMMAND)) ?? false;
+
+    if (!invokesLintStaged) {
+      throw new Error(
+        `${PRE_COMMIT_HOOK} must run \`${LINT_STAGED_COMMAND}\`. Without it the hook still passes every other ` +
+          `check here while doing nothing at commit time — the silent no-op #1817 was about.\n\n` +
+          `Found: ${preCommit === undefined ? '<no tracked pre-commit hook>' : JSON.stringify(preCommit.lines)}\n\n` +
+          `Fix: restore the \`npx ${LINT_STAGED_COMMAND}\` line, or update this ratchet if the hook moved.`
       );
     }
   });
@@ -149,12 +164,25 @@ describe('git hooks: .husky/ hook text is an owned contract, executed directly b
   });
 
   describe('detectors', () => {
-    it('should treat a hook with only comments before set -e as compliant', () => {
-      expect(firstNonBlankNonCommentLine('# a comment\n\n# another\nset -e\nnpx lint-staged\n')).toBe('set -e');
+    it('should drop leading comments and blank lines from a hook body', () => {
+      expect(commandLines('# a comment\n\n# another\nset -e\nnpx lint-staged\n')).toEqual([
+        'set -e',
+        'npx lint-staged',
+      ]);
     });
 
-    it('should report undefined for a hook with no non-comment lines', () => {
-      expect(firstNonBlankNonCommentLine('# just a comment\n')).toBeUndefined();
+    it('should return no commands for a hook that is only comments', () => {
+      expect(commandLines('# just a comment\n')).toEqual([]);
+    });
+
+    it.each<[string, boolean]>([
+      ['.husky/pre-commit', true],
+      ['.husky/.gitignore', false],
+      ['.husky/common.sh', false],
+      ['.husky/README.md', false],
+      ['.husky/_/husky.sh', false],
+    ])('should classify %p as a hook: %p', (relPath, expected) => {
+      expect(isHookPath(relPath)).toBe(expected);
     });
 
     it.each(['set -e', '  set -e  ', 'set -eu', 'set -euo pipefail'])('should accept %p', (line) => {
