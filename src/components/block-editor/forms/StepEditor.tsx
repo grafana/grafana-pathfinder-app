@@ -40,6 +40,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES, TARGET_STATE_OPTIONS, parseAuthoredTargetState } from '../constants';
 import { useActionRecorder } from '../../../utils/devtools';
+import { isGuidedActionType } from '../../../types/interactive-actions.types';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import { ConditionChipsField } from './ConditionChipsField';
 import {
@@ -206,6 +207,12 @@ const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE
   value: a.value as JsonInteractiveAction,
   label: a.label,
 }));
+const GUIDED_ACTION_OPTIONS = ACTION_OPTIONS.filter((option) => isGuidedActionType(option.value));
+
+/** The actions a step may be given: a guided block only offers verbs its handler can detect. */
+export function stepActionOptions(isGuided: boolean): Array<ComboboxOption<JsonInteractiveAction>> {
+  return isGuided ? GUIDED_ACTION_OPTIONS : ACTION_OPTIONS;
+}
 
 type PopoutTargetMode = (typeof POPOUT_TARGET_MODES)[number]['value'];
 const POPOUT_TARGET_OPTIONS: Array<ComboboxOption<PopoutTargetMode>> = POPOUT_TARGET_MODES.map((m) => ({
@@ -560,6 +567,9 @@ export function StepEditor({
   // REACT: memoize onStepRecorded to prevent effect re-runs on every render (R12)
   const handleStepRecorded = useCallback(
     (step: { action: string; selector: string; value?: string }) => {
+      if (isGuided && !isGuidedActionType(step.action as JsonInteractiveAction)) {
+        return;
+      }
       // Convert recorded step to JsonStep and add to steps
       const jsonStep: JsonStep = {
         action: step.action as JsonInteractiveAction,
@@ -568,7 +578,7 @@ export function StepEditor({
       };
       onChange([...steps, jsonStep]);
     },
-    [onChange, steps]
+    [onChange, steps, isGuided]
   );
 
   // Multi-step grouping is disabled for StepEditor recording because:
@@ -762,7 +772,7 @@ export function StepEditor({
                       <div className={styles.addStepRow}>
                         <Field label="Action" style={{ marginBottom: 0, flex: '0 0 150px' }}>
                           <Combobox
-                            options={ACTION_OPTIONS}
+                            options={stepActionOptions(isGuided)}
                             value={editAction}
                             onChange={(opt) => {
                               setEditAction(opt.value);
@@ -1072,7 +1082,7 @@ export function StepEditor({
           <div className={styles.addStepRow}>
             <Field label="Action" style={{ marginBottom: 0, flex: '0 0 150px' }}>
               <Combobox
-                options={ACTION_OPTIONS}
+                options={stepActionOptions(isGuided)}
                 value={newAction}
                 onChange={(opt) => {
                   setNewAction(opt.value);

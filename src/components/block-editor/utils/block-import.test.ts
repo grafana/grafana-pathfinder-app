@@ -97,6 +97,44 @@ describe('parseAndValidateGuide', () => {
     });
   });
 
+  describe('unsupported guided action', () => {
+    const guidedBlock = { type: 'guided', content: 'Explore', steps: [{ action: 'navigate', reftarget: '/explore' }] };
+    const guide = JSON.stringify({ id: 'test', title: 'Test', blocks: [guidedBlock] }, null, 2);
+
+    it('rejects the guide by default', () => {
+      const result = parseAndValidateGuide(guide);
+      expect(result.isValid).toBe(false);
+      expect(result.guide).toBeNull();
+    });
+
+    it('opens the guide for repair and reports the step to fix', () => {
+      const result = parseAndValidateGuide(guide, { allowUnsupportedGuidedAction: true });
+      expect(result.isValid).toBe(true);
+      expect(result.guide?.blocks).toHaveLength(1);
+      expect(result.unsupportedGuidedActions).toHaveLength(1);
+      expect(result.unsupportedGuidedActions?.[0]?.path).toEqual(['blocks', 0, 'steps', 0, 'action']);
+      expect(result.unsupportedGuidedActions?.[0]?.line).toBeGreaterThan(0);
+      expect(result.warnings.some((w) => w.includes('navigate'))).toBe(false);
+    });
+
+    it('still rejects a guide that has another error as well', () => {
+      const withoutTitle = JSON.stringify({ id: 'test', blocks: [guidedBlock] });
+      const result = parseAndValidateGuide(withoutTitle, { allowUnsupportedGuidedAction: true });
+      expect(result.isValid).toBe(false);
+      expect(result.guide).toBeNull();
+    });
+
+    it('still rejects a guide whose other error is a duplicate heading', () => {
+      const duplicate = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [{ type: 'markdown', content: '# Test' }, guidedBlock],
+      });
+      const result = parseAndValidateGuide(duplicate, { allowUnsupportedGuidedAction: true });
+      expect(result.isValid).toBe(false);
+    });
+  });
+
   describe('required top-level fields', () => {
     it('should reject guide without id', () => {
       const guide = JSON.stringify({ title: 'Test', blocks: [] });

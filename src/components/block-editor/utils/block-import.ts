@@ -23,6 +23,17 @@ export interface ImportValidationResult {
   errors: PositionedError[];
   warnings: string[];
   guide: JsonGuide | null;
+  /** Guided steps the author must change before the guide can be saved. Only set with `allowUnsupportedGuidedAction`. */
+  unsupportedGuidedActions?: PositionedError[];
+}
+
+export interface ImportOptions {
+  /**
+   * Admit a guide whose only errors are guided steps carrying an unsupported verb, reporting
+   * them in `unsupportedGuidedActions`. The block editor is the only in-product way to repair
+   * such a guide, so its import must be able to open it; save still refuses it.
+   */
+  allowUnsupportedGuidedAction?: boolean;
 }
 
 /**
@@ -86,7 +97,7 @@ export function validateFile(file: File): { isValid: boolean; errors: string[] }
  * @param jsonString - JSON string to parse
  * @returns Validation result with parsed guide if valid
  */
-export function parseAndValidateGuide(jsonString: string): ImportValidationResult {
+export function parseAndValidateGuide(jsonString: string, options: ImportOptions = {}): ImportValidationResult {
   const result = validateGuideFromString(jsonString);
 
   // Enrich errors with line/column positions using jsonc-parser
@@ -94,6 +105,22 @@ export function parseAndValidateGuide(jsonString: string): ImportValidationResul
     result.errors.map((e) => ({ message: e.message, path: e.path })),
     jsonString
   );
+
+  const onlyUnsupportedGuidedActions =
+    result.errors.length > 0 && result.errors.every((e) => e.code === 'unsupported_guided_action');
+  if (options.allowUnsupportedGuidedAction && onlyUnsupportedGuidedActions) {
+    const tolerant = validateGuideFromString(jsonString, { allowUnsupportedGuidedAction: true });
+    if (tolerant.isValid) {
+      const repairMessages = new Set(result.errors.map((e) => e.message));
+      return {
+        isValid: true,
+        errors: [],
+        warnings: tolerant.warnings.filter((w) => !repairMessages.has(w.message)).map((w) => w.message),
+        guide: tolerant.guide,
+        unsupportedGuidedActions: errorsWithPositions,
+      };
+    }
+  }
 
   return {
     isValid: result.isValid,
@@ -109,7 +136,7 @@ export function parseAndValidateGuide(jsonString: string): ImportValidationResul
  * @param file - File to import
  * @returns Promise resolving to validation result
  */
-export async function importGuideFromFile(file: File): Promise<ImportValidationResult> {
+export async function importGuideFromFile(file: File, options: ImportOptions = {}): Promise<ImportValidationResult> {
   // Validate file first
   const fileValidation = validateFile(file);
   if (!fileValidation.isValid) {
@@ -136,5 +163,5 @@ export async function importGuideFromFile(file: File): Promise<ImportValidationR
   }
 
   // Parse and validate JSON
-  return parseAndValidateGuide(content);
+  return parseAndValidateGuide(content, options);
 }

@@ -13,6 +13,7 @@ import type { JsonGuide } from '../types';
 import { BACKEND_TRACKING_STORAGE_KEY } from '../constants';
 import { logger } from '../../../lib/logging';
 import { notify } from '../notify';
+import { validateGuidedActions } from '../../../validation/guided-action-validator';
 
 /**
  * Normalize a guide id or title into a Kubernetes-style resource name:
@@ -232,6 +233,12 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
 
         if (!guide.blocks || guide.blocks.length === 0) {
           notify('error', 'Cannot save guide', 'Add at least one block before saving.');
+          return;
+        }
+
+        const [unsupportedGuidedAction] = validateGuidedActions(guide);
+        if (unsupportedGuidedAction) {
+          notify('error', 'Cannot save guide', unsupportedGuidedAction.message);
           return;
         }
 

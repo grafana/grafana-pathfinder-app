@@ -101,6 +101,29 @@ describe('useBackendSaveFlow — performSaveDraft', () => {
     );
   });
 
+  it('rejects a guided step with an unsupported action without calling saveGuide', async () => {
+    const editor = {
+      getGuide: () =>
+        guide({
+          blocks: [{ type: 'guided', content: 'Go', steps: [{ action: 'navigate', reftarget: '/explore' }] }],
+        } as Partial<JsonGuide>),
+    };
+    const backendGuides = makeBackendGuides();
+    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    expect(backendGuides.saveGuide).not.toHaveBeenCalled();
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'alert-error',
+        payload: ['Cannot save guide', expect.stringContaining('guided steps cannot use "navigate"')],
+      })
+    );
+  });
+
   it('rejects an empty guide without calling saveGuide', async () => {
     const editor = { getGuide: () => guide({ blocks: [] }) };
     const backendGuides = makeBackendGuides();

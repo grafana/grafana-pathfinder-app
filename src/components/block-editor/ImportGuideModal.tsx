@@ -9,8 +9,15 @@ import { Button, Modal, Alert, useStyles2, TextArea, RadioButtonGroup } from '@g
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css, cx } from '@emotion/css';
 import type { JsonGuide } from './types';
-import { importGuideFromFile, parseAndValidateGuide, type ImportValidationResult } from './utils/block-import';
+import {
+  importGuideFromFile,
+  parseAndValidateGuide,
+  type ImportOptions,
+  type ImportValidationResult,
+} from './utils/block-import';
 import { testIds } from '../../constants/testIds';
+
+const IMPORT_OPTIONS: ImportOptions = { allowUnsupportedGuidedAction: true };
 
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
@@ -202,7 +209,7 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
   const processFile = useCallback(async (file: File) => {
     setState((prev) => ({ ...prev, isProcessing: true }));
 
-    const result = await importGuideFromFile(file);
+    const result = await importGuideFromFile(file, IMPORT_OPTIONS);
 
     setState((prev) => ({
       ...prev,
@@ -229,7 +236,7 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
     }
 
     // Parse and validate the JSON
-    const result = parseAndValidateGuide(trimmed);
+    const result = parseAndValidateGuide(trimmed, IMPORT_OPTIONS);
 
     setState((prev) => ({
       ...prev,
@@ -473,6 +480,24 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
             </ul>
           </Alert>
         )}
+
+        {state.result?.isValid && state.result.unsupportedGuidedActions?.length ? (
+          <Alert
+            title="Fix these steps before saving"
+            severity="warning"
+            data-testid="import-unsupported-guided-actions"
+          >
+            <p>
+              This guide opens so you can repair it, but saving is blocked until every step below uses an action a
+              guided block supports.
+            </p>
+            <ul className={styles.warningList}>
+              {state.result.unsupportedGuidedActions.map((issue, index) => (
+                <li key={index}>{issue.line ? `Line ${issue.line}: ${issue.message}` : issue.message}</li>
+              ))}
+            </ul>
+          </Alert>
+        ) : null}
 
         {/* Warnings */}
         {state.result?.isValid && state.result.warnings.length > 0 && (
