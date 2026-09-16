@@ -108,7 +108,7 @@ tracks?: Track[];
 
 **This is additive only.** A manifest with no `tracks` behaves exactly as it always has: a single flat, milestones-driven module list, with no tabs. Adding `tracks` never changes the meaning or required-ness of `milestones` (Rule 1 and Rule 2 above are unaffected).
 
-The `tracks` field is valid when `type` is `"path"` or `"journey"` — the same type-gate `milestones` uses (`package.schema.ts` Rule 3). Each `trackId` must be unique within one manifest's `tracks` list (Rule 4).
+The `tracks` field is valid when `type` is `"path"` or `"journey"` — the same type-gate `milestones` uses (`package.schema.ts` Rule 3). Each `trackId` must be unique within one manifest's `tracks` list, and may not be `"foundations"` — that id is reserved for the default Foundations sequence the cover page falls back to (Rule 4).
 
 **Cover-page rendering.** When a manifest declares `tracks`, the package-backed cover page (`LearningPathTableOfContents`) renders one tab per declared track, plus a "Foundations" tab for the default `milestones` sequence. Whichever tab is active reuses the same per-module row rendering as Foundations — hero card, sequential lock/unlock, and time estimates — recomputed against that tab's own guide list. Lock/unlock and completion state reuse the Foundations mechanism (`milestoneCompletionStorage` + `journeyProgressFromMilestones`) per track; there is no track-specific progress model. When this app's progress mechanisms are consolidated into one, revisit whether a track needs its own.
 

@@ -103,7 +103,7 @@ A bare package `id` must be unique across **every** repository a stack can see �
 { "trackId": "builder", "label": "Builder", "guides": ["welcome-to-grafana", "builder-advanced-panels"] }
 ```
 
-- `trackId` (`string`, required) — a stable identifier, unique within one manifest's `tracks` list.
+- `trackId` (`string`, required) — a stable identifier, unique within one manifest's `tracks` list. Cannot be `"foundations"` — that id is reserved for the default sequence's cover-page tab.
 - `label` (`string`, required) — the human-facing name shown on the cover page's tab for this track.
 - `guides` (`string[]`, required) — the track's own complete ordered sequence of bare package IDs. **Not** a subset or reordering of `milestones`: a track may include guides `milestones` never had, omit guides `milestones` has, and interleave role-specific content anywhere in the sequence.
 
