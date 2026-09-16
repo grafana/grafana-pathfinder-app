@@ -7,6 +7,9 @@ const HUSKY_DIR = '.husky';
 const EXECUTABLE_MODE = '100755';
 const LINTED_EXTENSIONS = ['ts', 'tsx', 'js', 'mjs'];
 const LINTER_COMMAND_PATTERN = /\beslint\b/;
+const SET_E_PREFIX = /^set\s+-e/;
+const BRACE_LIST_GLOB = /^\*\.\{([^{}]*)\}$/;
+const SINGLE_EXTENSION_GLOB = /^\*\.([a-zA-Z0-9]+)$/;
 
 interface TrackedHook {
   relPath: string;
@@ -54,49 +57,8 @@ function firstNonBlankNonCommentLine(body: string): string | undefined {
   });
 }
 
-function enablesErrexit(line: string | undefined): boolean {
-  if (line === undefined) {
-    return false;
-  }
-  const [command, ...args] = line.trim().split(/\s+/);
-  return command === 'set' && args.some((arg) => /^-[a-zA-Z]+$/.test(arg) && arg.includes('e'));
-}
-
-function escapeRegExp(literal: string): string {
-  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function globToRegExp(glob: string): RegExp {
-  let source = '';
-  let index = 0;
-  while (index < glob.length) {
-    const char = glob.charAt(index);
-    if (char === '{') {
-      const close = glob.indexOf('}', index);
-      const alternatives = glob.slice(index + 1, close).split(',');
-      source += `(?:${alternatives.map(escapeRegExp).join('|')})`;
-      index = close + 1;
-    } else if (char === '*' && glob[index + 1] === '*') {
-      source += '.*';
-      index += glob[index + 2] === '/' ? 3 : 2;
-    } else if (char === '*') {
-      source += '[^/]*';
-      index += 1;
-    } else if (char === '?') {
-      source += '[^/]';
-      index += 1;
-    } else {
-      source += escapeRegExp(char);
-      index += 1;
-    }
-  }
-  return new RegExp(`^${source}$`);
-}
-
-function lintStagedGlobMatches(glob: string, relPath: string): boolean {
-  // lint-staged matches a slash-free pattern against the basename, not the whole path.
-  const subject = glob.includes('/') ? relPath : path.posix.basename(relPath);
-  return globToRegExp(glob).test(subject);
+function startsWithSetE(line: string | undefined): boolean {
+  return line !== undefined && SET_E_PREFIX.test(line.trim());
 }
 
 function readLintStagedConfig(): Record<string, string | string[]> {
@@ -113,14 +75,24 @@ function readLintStagedConfig(): Record<string, string | string[]> {
   return (packageJson as { 'lint-staged': Record<string, string | string[]> })['lint-staged'];
 }
 
+function extensionsMatchedBy(glob: string): string[] {
+  const [, braceList] = BRACE_LIST_GLOB.exec(glob) ?? [];
+  if (braceList !== undefined) {
+    return braceList.split(',').map((extension) => extension.trim());
+  }
+  const [, extension] = SINGLE_EXTENSION_GLOB.exec(glob) ?? [];
+  return extension === undefined ? [] : [extension];
+}
+
 function extensionsWithoutLinting(lintStaged: Record<string, string | string[]>): string[] {
-  return LINTED_EXTENSIONS.filter((extension) => {
-    const probe = `src/example.${extension}`;
-    return !Object.entries(lintStaged).some(([glob, commands]) => {
-      const commandList = Array.isArray(commands) ? commands : [commands];
-      return lintStagedGlobMatches(glob, probe) && commandList.some((command) => LINTER_COMMAND_PATTERN.test(command));
-    });
-  });
+  const linted = new Set(
+    Object.entries(lintStaged)
+      .filter(([, commands]) =>
+        (Array.isArray(commands) ? commands : [commands]).some((command) => LINTER_COMMAND_PATTERN.test(command))
+      )
+      .flatMap(([glob]) => extensionsMatchedBy(glob))
+  );
+  return LINTED_EXTENSIONS.filter((extension) => !linted.has(extension));
 }
 
 describe('git hooks: .husky/ hook text is an owned contract, executed directly by git', () => {
@@ -143,20 +115,20 @@ describe('git hooks: .husky/ hook text is an owned contract, executed directly b
     }
   });
 
-  it('should enable errexit in every hook body (after any leading comments/blank lines)', () => {
+  it('should start every hook body with `set -e` (after any leading comments/blank lines)', () => {
     const offenders = hooks
       .map((hook) => ({
         relPath: hook.relPath,
         firstLine: firstNonBlankNonCommentLine(fs.readFileSync(path.join(REPO_ROOT, hook.relPath), 'utf-8')),
       }))
-      .filter((hook) => !enablesErrexit(hook.firstLine));
+      .filter((hook) => !startsWithSetE(hook.firstLine));
 
     if (offenders.length > 0) {
       throw new Error(
-        `Without errexit, a hook keeps running after an earlier command in it fails — it fails open ` +
+        `Without \`set -e\`, a hook keeps running after an earlier command in it fails — it fails open ` +
           `rather than blocking the commit. This matters under \`core.hooksPath=.husky\` (the legacy layout), ` +
           `where git execs the hook file directly with no wrapper to enforce this.\n\n` +
-          `The following hooks do not enable errexit on their first non-comment, non-blank line:\n` +
+          `The following hooks do not start with \`set -e\` as their first non-comment, non-blank line:\n` +
           offenders.map((hook) => `  - ${hook.relPath} (found: ${hook.firstLine ?? '<empty file>'})`).join('\n') +
           `\n\nFix: add a \`set -e\` line before the first command, after any leading comments.`
       );
@@ -185,29 +157,29 @@ describe('git hooks: .husky/ hook text is an owned contract, executed directly b
       expect(firstNonBlankNonCommentLine('# just a comment\n')).toBeUndefined();
     });
 
-    it.each(['set -e', '  set -e  ', 'set -eu', 'set -euo pipefail', 'set -x -e'])(
-      'should accept %p as enabling errexit',
-      (line) => {
-        expect(enablesErrexit(line)).toBe(true);
-      }
-    );
+    it.each(['set -e', '  set -e  ', 'set -eu', 'set -euo pipefail'])('should accept %p', (line) => {
+      expect(startsWithSetE(line)).toBe(true);
+    });
 
-    it.each<string | undefined>(['npx lint-staged', 'set -u', 'set +e', 'set -o pipefail', undefined])(
-      'should reject %p as enabling errexit',
-      (line) => {
-        expect(enablesErrexit(line)).toBe(false);
-      }
-    );
+    it.each<string | undefined>([
+      'npx lint-staged',
+      'set -u',
+      'set +e',
+      'set -o pipefail',
+      'set -o errexit',
+      undefined,
+    ])('should reject %p', (line) => {
+      expect(startsWithSetE(line)).toBe(false);
+    });
 
-    it.each<[string, boolean]>([
-      ['*.{ts,tsx,js,mjs}', true],
-      ['*.{ts,tsx}', true],
-      ['*.ts', true],
-      ['**/*.{ts,tsx}', true],
-      ['*.{js,mjs}', false],
-      ['*.{json,yaml,md}', false],
-    ])('should match %p against a .ts probe as %p', (glob, expected) => {
-      expect(lintStagedGlobMatches(glob, 'src/example.ts')).toBe(expected);
+    it.each<[string, string[]]>([
+      ['*.{ts,tsx,js,mjs}', ['ts', 'tsx', 'js', 'mjs']],
+      ['*.{json,yaml,md}', ['json', 'yaml', 'md']],
+      ['*.ts', ['ts']],
+      ['*.{ts,tsx', []],
+      ['src/**/*.ts', []],
+    ])('should read %p as covering %p', (glob, expected) => {
+      expect(extensionsMatchedBy(glob)).toEqual(expected);
     });
 
     it('should report an extension whose only matching entry does not invoke eslint', () => {
