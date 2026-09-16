@@ -48,7 +48,10 @@ The `description` field on each step appears as a tooltip/instruction when that 
 
 ## Supported action types
 
-Guided mode supports these action types within its steps:
+Guided mode accepts `hover`, `button`, `highlight`, `formfill`, and `noop` steps.
+`navigate` and `popout` are rejected — see
+[Actions a guided step accepts](./json-guide-format.md#actions-a-guided-step-accepts)
+for the full table and the reason. The three most common ones:
 
 ### Hover
 
@@ -327,6 +330,8 @@ Unlike automated steps, guided interactions do not block the page. Users can int
 
 ### Limitations
 
-- **Form fill actions**: not supported in guided mode
-- **Navigate actions**: incompatible with guided model (user would leave the page)
+- **Navigate and popout actions**: rejected in a guided block — neither produces an
+  interaction the block can wait on. `pathfinder-cli validate` and the block editor
+  fail the guide; put the action in a sibling `interactive` block, or move the step
+  into a `multistep` block.
 - **Nested guided**: guided steps inside guided steps are not supported

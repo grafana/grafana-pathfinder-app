@@ -36,6 +36,7 @@ import {
   getContentTypeForAnalytics,
   AnalyticsContentType,
 } from '../../lib/analytics';
+import { rewriteGuideTrees } from '../../lib/guide-counting-source';
 import { logger } from '../../lib/logging';
 import { withGuideOpenAction, type GuideLoadOutcome } from '../../lib/telemetry';
 import { usePanelReadyMeasurement } from './hooks/usePanelReadyMeasurement';
@@ -535,10 +536,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
             // The cover-page component now owns the start/continue CTA, so skip
             // the legacy injected "Ready to Begin" button here (matches the
             // `skipReadyToBegin` default fetchContent's own callers already use).
-            content = {
-              ...content,
-              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney, true),
-            };
+            content = rewriteGuideTrees(content, (guideJson) =>
+              injectJourneyExtrasIntoJsonGuide(guideJson, learningJourney, true)
+            );
           }
 
           content = {

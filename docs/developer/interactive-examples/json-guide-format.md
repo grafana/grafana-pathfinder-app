@@ -643,15 +643,15 @@ Highlights elements and **waits for user** to perform actions.
 }
 ```
 
-| Field           | Type       | Required | Description                                     |
-| --------------- | ---------- | -------- | ----------------------------------------------- |
-| `content`       | string     | ✅       | Description shown to user                       |
-| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform           |
-| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)         |
-| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal |
-| `requirements`  | string[]   | ❌       | Requirements for the block                      |
-| `objectives`    | string[]   | ❌       | Conditions that auto-complete it                |
-| `skippable`     | boolean    | ❌       | Allow skipping                                  |
+| Field           | Type       | Required | Description                                                                     |
+| --------------- | ---------- | -------- | ------------------------------------------------------------------------------- |
+| `content`       | string     | ✅       | Description shown to user                                                       |
+| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform; excludes `navigate` and `popout` actions |
+| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)                                         |
+| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal                                 |
+| `requirements`  | string[]   | ❌       | Requirements for the block                                                      |
+| `objectives`    | string[]   | ❌       | Conditions that auto-complete it                                                |
+| `skippable`     | boolean    | ❌       | Allow skipping                                                                  |
 
 Steps accept `targetstate` here too, with the meaning adjusted for a step the
 user performs: a control already in the requested state completes immediately
@@ -1056,6 +1056,8 @@ A button that provisions a sandbox VM (via Coda) and opens a terminal panel insi
 | `vmScenario` | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
 | `gcx`        | bool   | `false`             | Also install a Grafana credential for the `gcx` CLI       |
 
+Inside a section the block gates on sequential position (`isEligibleForChecking`), which is a behavior change: a published guide with a `terminal-connect` step after any other step now shows "Complete previous step" where it previously offered the connect button unconditionally. The gate hides the whole action area, including the `gcx` controls below. The block takes no `requirements` or `skippable`, so position is its only gate and a blocked step offers no skip: the learner has to complete the step before it.
+
 With `gcx: true` the step also gives the VM a credential, so the `gcx` CLI that ships in every sandbox
 image can talk to this Grafana as the learner:
 
@@ -1262,7 +1264,9 @@ If a ref cannot be resolved — unknown ID, catalog fetch failure — it is repl
 
 ### Step Structure
 
-Steps used in `multistep` and `guided` blocks share this structure:
+Steps used in `multistep` and `guided` blocks share this structure. One field
+differs by parent: `guided` accepts a narrower set of actions than `multistep`
+does — see [Actions a guided step accepts](#actions-a-guided-step-accepts).
 
 ```json
 {
@@ -1278,21 +1282,42 @@ Steps used in `multistep` and `guided` blocks share this structure:
 }
 ```
 
-| Field             | Type     | Required | Default             | Description                                                                 |
-| ----------------- | -------- | -------- | ------------------- | --------------------------------------------------------------------------- |
-| `action`          | string   | ✅       | —                   | Action type: `highlight`, `button`, `formfill`, `navigate`, `hover`, `noop` |
-| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop`)                         |
-| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex patterns)                      |
-| `requirements`    | string[] | ❌       | —                   | Requirements for this specific step                                         |
-| `tooltip`         | string   | ❌       | —                   | Tooltip shown during multistep execution                                    |
-| `description`     | string   | ❌       | —                   | Description shown in guided steps panel                                     |
-| `skippable`       | boolean  | ❌       | `false`             | Whether this step can be skipped (guided only)                              |
-| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails                                       |
-| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                                |
-| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers              |
-| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled          |
+| Field             | Type     | Required | Default             | Description                                                                                                                            |
+| ----------------- | -------- | -------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `action`          | string   | ✅       | —                   | Action type: `highlight`, `button`, `formfill`, `navigate`, `hover`, `noop`, `popout`. `guided` blocks exclude `navigate` and `popout` |
+| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop`)                                                                                    |
+| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex patterns)                                                                                 |
+| `requirements`    | string[] | ❌       | —                   | Requirements for this specific step                                                                                                    |
+| `tooltip`         | string   | ❌       | —                   | Tooltip shown during multistep execution                                                                                               |
+| `description`     | string   | ❌       | —                   | Description shown in guided steps panel                                                                                                |
+| `skippable`       | boolean  | ❌       | `false`             | Whether this step can be skipped (guided only)                                                                                         |
+| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails                                                                                                  |
+| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                                                                                           |
+| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers                                                                         |
+| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled                                                                     |
 
 **Note:** The `tooltip` property is primarily used in `multistep` blocks (shown during automated execution), while `description` is used in `guided` blocks (shown in the steps panel as instructions for the user).
+
+#### Actions a guided step accepts
+
+A `guided` step waits for the reader to act and then detects that they did, so
+it only accepts actions that produce a detectable interaction:
+
+| Action      | `multistep` | `guided` |
+| ----------- | ----------- | -------- |
+| `highlight` | ✅          | ✅       |
+| `button`    | ✅          | ✅       |
+| `formfill`  | ✅          | ✅       |
+| `hover`     | ✅          | ✅       |
+| `noop`      | ✅          | ✅       |
+| `navigate`  | ✅          | ❌       |
+| `popout`    | ✅          | ❌       |
+
+`navigate` and `popout` happen without the reader doing anything, so there is no
+interaction for a guided step to wait on. `pathfinder-cli validate` and the block
+editor reject them inside a `guided` block. Use a separate `interactive` block
+for the action, or move the step into a `multistep` block, which performs its
+steps automatically.
 
 ---
 

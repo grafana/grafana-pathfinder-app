@@ -187,7 +187,11 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
   },
   {
     file: 'components/LearningJourneyMilestoneToolbar.tsx',
-    references: ['testIds.docsPanel.milestoneMoreActionsButton'],
+    references: [
+      'testIds.docsPanel.milestoneMoreActionsButton',
+      'testIds.docsPanel.nextMilestoneButton',
+      'testIds.docsPanel.previousMilestoneButton',
+    ],
   },
 ];
 

@@ -17,7 +17,7 @@ import { logger } from '../../lib/logging';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { getInteractiveConfig } from '../../constants/interactive-config';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
-import { GuidedAction } from '../../types/interactive-actions.types';
+import { type AuthoredGuidedAction, isGuidedDomActionType } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
@@ -88,7 +88,7 @@ function SafeHTML({ html, className }: { html: string; className?: string }) {
 }
 
 interface InteractiveGuidedProps {
-  internalActions: GuidedAction[];
+  internalActions: AuthoredGuidedAction[];
 
   // State management (passed by parent section)
   stepId?: string;
@@ -510,6 +510,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           return;
         }
 
+        // A pre-gate guide can carry a verb no detector matches; the handler
+        // reports that step failed, so there is nothing to auto-detect here.
+        if (!isGuidedDomActionType(currentAction.targetAction)) {
+          return;
+        }
+
         // Non-noop actions require refTarget
         const selector = currentAction.refTarget;
         if (!selector) {
@@ -563,7 +569,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         const matches = matchesStepAction(
           detectedAction,
           {
-            targetAction: currentAction.targetAction as 'button' | 'highlight' | 'hover' | 'formfill',
+            targetAction: currentAction.targetAction,
             refTarget: selector,
             targetValue: currentAction.targetValue,
           },

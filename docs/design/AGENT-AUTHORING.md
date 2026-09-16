@@ -184,6 +184,8 @@ pathfinder-cli add-step <dir> --parent <id> [flags]
 
 Flags are derived from `JsonStepSchema`. The `--parent` flag is required and must reference a block of type `multistep` or `guided`.
 
+A `guided` parent accepts a narrower set of actions than a `multistep` one: `navigate` and `popout` are rejected, because a guided step waits for the reader to act and neither of those produces an interaction to wait on. Use a sibling `interactive` block for the action, or a `multistep` parent, which performs its steps automatically.
+
 **Output on success:**
 
 ```
