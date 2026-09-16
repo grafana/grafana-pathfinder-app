@@ -38,6 +38,7 @@ import {
   isTestFile,
   assertRatchet,
   buildModuleGraph,
+  findOrphanedModules,
   collectSourceFiles,
   loadTsconfigPaths,
   readJsoncFile,
@@ -636,6 +637,49 @@ describe('buildModuleGraph', () => {
     for (const [node, edges] of graph.adjacency) {
       expect(edges.has(node)).toBe(false);
     }
+  });
+});
+
+describe('findOrphanedModules', () => {
+  it('reaches every node forward from the given roots and reports nothing orphaned', () => {
+    const graph = graphFromAdjacency({ root: ['a'], a: ['b'], b: [] });
+    expect(findOrphanedModules(graph, ['root'], [])).toEqual({ orphaned: [], testOnlyReachable: [] });
+  });
+
+  it('reports a node no root and no test reaches as orphaned', () => {
+    const graph = graphFromAdjacency({ root: ['a'], a: [], dead: [] });
+    expect(findOrphanedModules(graph, ['root'], [])).toEqual({ orphaned: ['dead'], testOnlyReachable: [] });
+  });
+
+  it('classifies a node reached only via a test import as testOnlyReachable, not orphaned', () => {
+    const graph = graphFromAdjacency({ root: ['a'], a: [], testOnly: [] });
+    expect(findOrphanedModules(graph, ['root'], ['testOnly'])).toEqual({
+      orphaned: [],
+      testOnlyReachable: ['testOnly'],
+    });
+  });
+
+  it('follows edges transitively from a test-reached node into other unreached nodes', () => {
+    // testOnly -> chained: chained has no direct test import, but is only reachable
+    // once testOnly is treated as a root, so it must be swept into the same bucket.
+    const graph = graphFromAdjacency({ root: ['a'], a: [], testOnly: ['chained'], chained: [] });
+    expect(findOrphanedModules(graph, ['root'], ['testOnly']).testOnlyReachable.sort()).toEqual([
+      'chained',
+      'testOnly',
+    ]);
+  });
+
+  it('ignores a root that is not a node in the graph', () => {
+    const graph = graphFromAdjacency({ a: [] });
+    expect(findOrphanedModules(graph, ['nonexistent-root'], [])).toEqual({
+      orphaned: ['a'],
+      testOnlyReachable: [],
+    });
+  });
+
+  it('ignores a test-imported node that the app already reaches', () => {
+    const graph = graphFromAdjacency({ root: ['a'], a: [] });
+    expect(findOrphanedModules(graph, ['root'], ['a'])).toEqual({ orphaned: [], testOnlyReachable: [] });
   });
 });
 

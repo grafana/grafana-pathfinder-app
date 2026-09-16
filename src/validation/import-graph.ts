@@ -583,6 +583,93 @@ export function findCycles(graph: ModuleGraph = buildModuleGraph()): string[][] 
     .map((component) => [...component].sort());
 }
 
+// ---------------------------------------------------------------------------
+// Orphaned modules (production import graph)
+// ---------------------------------------------------------------------------
+//
+// buildModuleGraph() already gives us every non-test production file and its
+// intra-src edges. A node the app entrypoints never reach is either dead, or
+// reached some other way this graph structurally can't see: buildModuleGraph
+// excludes test files as both nodes and edge targets, so a file imported only
+// from a test has no inbound edge at all. That second case gets its own
+// bucket rather than reading as an orphan. See #1743.
+
+/** src-relative posix paths the production module graph is walked forward from. */
+export const APP_ENTRY_ROOTS = ['module.tsx'];
+
+function bfsReachable(adjacency: ReadonlyMap<string, Set<string>>, roots: readonly string[]): Set<string> {
+  const reached = new Set<string>(roots);
+  const queue = [...roots];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const next of adjacency.get(current) ?? []) {
+      if (!reached.has(next)) {
+        reached.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return reached;
+}
+
+export interface OrphanScan {
+  /** Nodes reached from neither APP_ENTRY_ROOTS nor any test import — the real candidates. */
+  orphaned: string[];
+  /** Nodes not reached from APP_ENTRY_ROOTS, but reached transitively from a test file's import. */
+  testOnlyReachable: string[];
+}
+
+/**
+ * Every file-node a test file imports directly. buildModuleGraph() excludes
+ * test files as both nodes and edge targets, so this edge is otherwise
+ * invisible to the production graph — computed separately here rather than
+ * folded into ModuleGraph so findOrphanedModules stays unit-testable against
+ * a synthetic graph without touching the real filesystem.
+ */
+export function getTestImportedNodes(): string[] {
+  return getAllFileImports()
+    .filter(({ file }) => isTestFile(file))
+    .flatMap(({ file, imports }) => {
+      const fileDir = path.dirname(file);
+      return imports
+        .map((imp) => resolveImportToFileNode(fileDir, imp))
+        .filter((target): target is string => target !== null);
+    });
+}
+
+/**
+ * Forward reachability over the production import graph, rooted at `roots`.
+ * Nodes not reached that way are then checked against `testImportedNodes`
+ * (real edges getAllFileImports() sees but buildModuleGraph() drops), so a
+ * file exercised only by a test — never by the app — reports as
+ * testOnlyReachable rather than orphaned.
+ */
+export function findOrphanedModules(
+  graph: ModuleGraph = buildModuleGraph(),
+  roots: readonly string[] = APP_ENTRY_ROOTS,
+  testImportedNodes: readonly string[] = getTestImportedNodes()
+): OrphanScan {
+  const nodeSet = new Set(graph.nodes);
+  const reachedFromApp = bfsReachable(
+    graph.adjacency,
+    roots.filter((root) => nodeSet.has(root))
+  );
+  const unreached = graph.nodes.filter((node) => !reachedFromApp.has(node));
+  if (unreached.length === 0) {
+    return { orphaned: [], testOnlyReachable: [] };
+  }
+
+  const unreachedSet = new Set(unreached);
+  const testRoots = testImportedNodes.filter((node) => unreachedSet.has(node));
+
+  const reachedFromTestRoots = bfsReachable(graph.adjacency, testRoots);
+
+  return {
+    orphaned: unreached.filter((node) => !reachedFromTestRoots.has(node)).sort(),
+    testOnlyReachable: unreached.filter((node) => reachedFromTestRoots.has(node)).sort(),
+  };
+}
+
 /**
  * A grandfathered architectural violation. Beyond the violation key, each
  * carries a justification and an accountability reference so a new exception

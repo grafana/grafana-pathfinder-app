@@ -25,8 +25,10 @@ import {
   TIER_MAP,
   ARCHITECTURE_BY_DESIGN,
   assertRatchet,
+  buildModuleGraph,
   collectSourceFiles,
   findCycles,
+  findOrphanedModules,
   validateAllowedArchitectureEntries,
   getAllFileImports,
   getRootLevelSourceFiles,
@@ -315,12 +317,108 @@ const ALLOWED_PERCENTAGE_CALCULATION_ENTRIES: readonly AllowedArchitectureEntry[
 ];
 const ALLOWED_PERCENTAGE_CALCULATIONS = new Set(ALLOWED_PERCENTAGE_CALCULATION_ENTRIES.map((entry) => entry.violation));
 
+/**
+ * Known orphaned modules: production files buildModuleGraph() cannot reach
+ * forward from APP_ENTRY_ROOTS (module.tsx), and no test imports either. This
+ * list should only shrink. Baseline populated when the ratchet was added —
+ * see #1923 for the paydown plan covering every entry below.
+ */
+const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'components/SkeletonLoader/skeleton.styles.ts',
+    reason: 'Superseded duplicate — SkeletonLoader.tsx imports the newer styles/skeleton.styles.ts instead.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/UserProfileBar/index.ts',
+    reason: 'Barrel with no importer — the sole consumer deep-imports UserProfileBar/UserProfileBar directly.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/block-editor/forms/index.ts',
+    reason: 'Barrel with no importer — BlockFormModal.tsx deep-imports every form file directly.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/block-editor/hooks/index.ts',
+    reason: 'Barrel with no importer — BlockEditor.tsx deep-imports every hook file directly.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/docs-panel/MinimizedSidebarIcon.tsx',
+    reason: 'Dead component — only self-references remain anywhere in src/ (also named in a developer README).',
+    tracking: '#1923',
+  },
+  {
+    violation: 'constants/selectors.ts',
+    reason: 'No code importer anywhere in src/ — referenced only in two developer READMEs.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'lib/index.ts',
+    reason: 'Barrel with no importer — both re-exports (analytics, hash.util) are imported directly by consumers.',
+    tracking: '#1923',
+  },
+];
+const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((entry) => entry.violation));
+
+/**
+ * Known test-only-reachable modules: production files buildModuleGraph()
+ * cannot reach forward from APP_ENTRY_ROOTS, but at least one test file
+ * imports them directly (a real edge buildModuleGraph structurally can't see,
+ * since it excludes test files as both nodes and edge targets). Distinct from
+ * an orphan — nothing here is dead, it just never ships in the bundle. This
+ * list should only shrink. See #1923 for the paydown plan.
+ */
+const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'types/backend-api.schema.ts',
+    reason: 'Imported only by its sibling backend-api-contract.test.ts.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/cli-build-contract.ts',
+    reason: 'Imported only by its sibling cli-build-contract.test.ts / .unit.test.ts.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/import-graph.ts',
+    reason: 'The ratchet machinery itself — imported only by architecture.test.ts and import-graph.test.ts.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/package-io.ts',
+    reason:
+      'Imported by its sibling package-io.test.ts and, invisibly to this graph, by src/cli/** (EXCLUDED_TOP_LEVEL) — not actually test-only, just doubly invisible to the scan.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/test-helpers.ts',
+    reason: 'Imported only by its sibling validate-guide.security.test.ts.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/unicode-format-characters.ts',
+    reason: 'Imported only by its sibling unicode-format-characters.test.ts.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/validate-package.ts',
+    reason:
+      'Imported by its sibling tests and, invisibly to this graph, by src/cli/** (EXCLUDED_TOP_LEVEL) — not actually test-only, just doubly invisible to the scan.',
+    tracking: '#1923',
+  },
+];
+const ALLOWED_TEST_ONLY_REACHABLE = new Set(ALLOWED_TEST_ONLY_REACHABLE_ENTRIES.map((entry) => entry.violation));
+
 const ARCHITECTURE_ALLOWLISTS = {
   ALLOWED_VERTICAL_VIOLATIONS: { entries: ALLOWED_VERTICAL_VIOLATION_ENTRIES, allowByDesign: true },
   ALLOWED_LATERAL_VIOLATIONS: { entries: ALLOWED_LATERAL_VIOLATION_ENTRIES, allowByDesign: false },
   ALLOWED_BARREL_VIOLATIONS: { entries: ALLOWED_BARREL_VIOLATION_ENTRIES, allowByDesign: true },
   ALLOWED_CYCLES: { entries: ALLOWED_CYCLES, allowByDesign: false },
   ALLOWED_PERCENTAGE_CALCULATIONS: { entries: ALLOWED_PERCENTAGE_CALCULATION_ENTRIES, allowByDesign: true },
+  ALLOWED_ORPHANED_MODULES: { entries: ALLOWED_ORPHANED_MODULES_ENTRIES, allowByDesign: false },
+  ALLOWED_TEST_ONLY_REACHABLE: { entries: ALLOWED_TEST_ONLY_REACHABLE_ENTRIES, allowByDesign: false },
 } as const;
 
 /**
@@ -577,6 +675,8 @@ describe('Import graph: circular dependencies', () => {
       'ALLOWED_BARREL_VIOLATIONS',
       'ALLOWED_CYCLES',
       'ALLOWED_PERCENTAGE_CALCULATIONS',
+      'ALLOWED_ORPHANED_MODULES',
+      'ALLOWED_TEST_ONLY_REACHABLE',
     ]);
     const errors = Object.entries(ARCHITECTURE_ALLOWLISTS).flatMap(([name, { entries, allowByDesign }]) =>
       validateAllowedArchitectureEntries(entries, { allowByDesign }).map((error) => `${name}: ${error}`)
@@ -603,6 +703,46 @@ describe('Import graph: circular dependencies', () => {
         },
       ])
     ).toEqual([`first.ts: 'tracking' must point to an issue; '${ARCHITECTURE_BY_DESIGN}' is not allowed here.`]);
+  });
+});
+
+describe('Import graph: orphaned modules', () => {
+  const scan = findOrphanedModules(buildModuleGraph());
+
+  it('reports the current orphan / test-only-reachable footprint', () => {
+    console.log(
+      `[architecture-ratchet] orphans: orphaned=${scan.orphaned.length} testOnlyReachable=${scan.testOnlyReachable.length}`
+    );
+  });
+
+  it('should not introduce new orphaned modules beyond the ratchet allowlist', () => {
+    assertRatchet(
+      new Set(scan.orphaned),
+      ALLOWED_ORPHANED_MODULES,
+      'orphaned modules',
+      'ALLOWED_ORPHANED_MODULES_ENTRIES',
+      `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx) and is not imported by any ` +
+        `test file either. This is usually one of: a genuinely dead file (delete it, and drag any doc reference ` +
+        `with it), or a barrel (index.ts) whose only consumers deep-import the internal files instead (either ` +
+        `repoint a consumer through the barrel, or delete the unused barrel). ` +
+        `If neither applies and the file is architecturally justified anyway, add a structured entry to ` +
+        `ALLOWED_ORPHANED_MODULES_ENTRIES with a substantive reason and accountability reference.`
+    );
+  });
+
+  it('should not introduce new test-only-reachable modules beyond the ratchet allowlist', () => {
+    assertRatchet(
+      new Set(scan.testOnlyReachable),
+      ALLOWED_TEST_ONLY_REACHABLE,
+      'test-only-reachable modules',
+      'ALLOWED_TEST_ONLY_REACHABLE_ENTRIES',
+      `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx), but at least one test file ` +
+        `imports it directly — buildModuleGraph() excludes test files as both nodes and edge targets, so that ` +
+        `edge is structurally invisible to the orphan check above. This file is not dead, it simply never ships ` +
+        `in the bundle. If that is deliberate (e.g. governance/validation tooling that only ever runs under ` +
+        `test or the CLI), add a structured entry to ALLOWED_TEST_ONLY_REACHABLE_ENTRIES with a substantive ` +
+        `reason and accountability reference. Otherwise, wire it into a real entry point or delete it.`
+    );
   });
 });
 
@@ -673,7 +813,9 @@ describe('Architecture ratchet progress', () => {
         ` lateral=${ALLOWED_LATERAL_VIOLATIONS.size}` +
         ` barrel=${ALLOWED_BARREL_VIOLATIONS.size}` +
         ` cycles=${ALLOWED_CYCLES.length}` +
-        ` percentageCalculations=${ALLOWED_PERCENTAGE_CALCULATIONS.size}`
+        ` percentageCalculations=${ALLOWED_PERCENTAGE_CALCULATIONS.size}` +
+        ` orphanedModules=${ALLOWED_ORPHANED_MODULES.size}` +
+        ` testOnlyReachable=${ALLOWED_TEST_ONLY_REACHABLE.size}`
     );
   });
 });
