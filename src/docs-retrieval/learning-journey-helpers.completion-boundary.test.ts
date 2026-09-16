@@ -824,6 +824,40 @@ describe('milestone opened directly (surface base is the milestone, not the jour
       completionPercent: 100,
     });
   });
+
+  it('still fires the journey record when a locked/unresolvable member (empty url) is among the milestones', async () => {
+    seedMilestoneComplete(FIRST);
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'linux-path', title: 'Linux', url: COVER, badgeId: 'linux-badge' }],
+    });
+
+    recordGuideCompletionForSurface({
+      baseUrl: MILESTONE,
+      contentUrl: MILESTONE,
+      currentUrl: MILESTONE,
+      contentType: 'learning-journey',
+      metadata: {
+        title: 'Install Alloy',
+        packageManifest: { id: 'linux-journey', repository: 'app-platform', type: 'journey' },
+        learningJourney: {
+          currentMilestone: 2,
+          totalMilestones: 3,
+          baseUrl: COVER,
+          milestones: [
+            { number: 1, title: 'Select platform', url: FIRST, isActive: false },
+            { number: 2, title: 'Install Alloy', url: MILESTONE, isActive: true },
+            { number: 3, title: 'Unpublished member', url: '', isActive: false, isLocked: true },
+          ],
+        },
+      },
+      guideTitle: 'Install Alloy',
+    });
+    await flush();
+
+    expect(awardBadgeMock).toHaveBeenCalledWith('linux-badge');
+    const journey = emitted.filter((f) => f.kind === 'journey');
+    expect(journey).toHaveLength(1);
+  });
 });
 
 describe('surface emitter carries the resolved repository end-to-end (repository-identity-authority)', () => {

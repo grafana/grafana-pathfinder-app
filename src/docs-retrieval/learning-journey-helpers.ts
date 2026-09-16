@@ -731,7 +731,7 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
       journeyBase,
       slug,
       currentUrl!,
-      metadata?.learningJourney?.milestones.map((m) => m.url),
+      metadata?.learningJourney?.milestones.filter((m) => !m.isLocked).map((m) => m.url),
       completionContext
     );
     // The recommendation card reads journeyCompletionStorage directly
