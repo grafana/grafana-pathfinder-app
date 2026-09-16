@@ -18,11 +18,13 @@ import { act, cleanup, render } from '@testing-library/react';
 import { evictAllGuideIndexes, getGuideIndex } from '../../global-state/active-guide-index';
 import { resetContentKeyForTests } from '../../global-state/content-key';
 import { resolveCountedBlockStepId } from '../../global-state/guide-step-id-resolver';
+import { injectJourneyExtrasIntoJsonGuide } from '../../docs-retrieval/content-fetcher/cover-page';
+import { rewriteGuideTrees } from '../../lib/guide-counting-source';
 import { computeGuideBlockIndex, guideProgress } from '../../lib/guide-stats';
 import { logger } from '../../lib/logging';
 import { getSnippetResolver } from '../../snippet-engine/caching-snippet-resolver';
 import type { SnippetResolver } from '../../snippet-engine/types';
-import type { PreparedRawContent, RawContent } from '../../types/content.types';
+import type { LearningJourneyMetadata, Milestone, PreparedRawContent, RawContent } from '../../types/content.types';
 import type { JsonBlock, JsonGuide } from '../../types/json-guide.types';
 import { loadDocsTabContentResult } from '../docs-panel/utils/docs-tab-loader';
 import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
@@ -51,6 +53,27 @@ const SNIPPET_BLOCKS: JsonBlock[] = [
   { type: 'markdown', content: 'Snippet block two' },
 ];
 
+/** A snippet whose own body holds a reference — the inliner is single-pass. */
+const NESTED_REF_SNIPPET_BLOCKS: JsonBlock[] = [
+  { type: 'snippet-ref', snippetId: 'inner-snippet' },
+  { type: 'markdown', content: 'Beside the nested reference' },
+];
+
+const milestone = (number: number): Milestone => ({
+  number,
+  title: `Milestone ${number}`,
+  url: `https://grafana.com/docs/learning-journeys/snippets/step-${number}/`,
+  isActive: false,
+});
+
+/** Milestone 0, so the journey rewrite appends its trailing extras block. */
+const coverMetadata: LearningJourneyMetadata = {
+  currentMilestone: 0,
+  totalMilestones: 2,
+  milestones: [milestone(1), milestone(2)],
+  baseUrl: 'https://grafana.com/docs/learning-journeys/snippets/',
+};
+
 function resolvesTo(blocks: JsonBlock[]): SnippetResolver {
   return {
     resolve: jest.fn(async (id: string) => ({
@@ -69,6 +92,26 @@ const failingResolver: SnippetResolver = {
     error: { code: 'not-found' as const, message: 'no catalog in tests' },
   })),
 };
+
+/** Resolves the outer id to a body holding a further reference; the inner id to plain blocks. */
+const nestedRefResolver: SnippetResolver = {
+  resolve: jest.fn(async (id: string) => ({
+    ok: true as const,
+    id,
+    source: 'online-cdn' as const,
+    snippet: {
+      id,
+      title: id,
+      description: 'test snippet',
+      blocks: id === SNIPPET_ID ? NESTED_REF_SNIPPET_BLOCKS : SNIPPET_BLOCKS,
+    },
+  })),
+};
+
+/** What `docs-panel.tsx` does to a milestone-0 journey payload before it renders. */
+function withJourneyExtras(content: RawContent): RawContent {
+  return rewriteGuideTrees(content, (guideJson) => injectJourneyExtrasIntoJsonGuide(guideJson, coverMetadata, true));
+}
 
 /** One reference expanding into two blocks, beside one ordinary sibling. */
 function refPlusSibling(): JsonGuide {
@@ -329,13 +372,17 @@ describe('canonical snippet counts across direct and prepared launches', () => {
   });
 
   // The first publication for a content key wins for the life of that key, so
-  // an order that let the expanded tree in first would have frozen 3.
+  // an order that let the expanded tree in first would have frozen 3. Each path
+  // gets a fresh store: without the reset the second assertion would only
+  // re-prove `publishGuideIndex` idempotency and would hold even if the direct
+  // path counted 3.
   it('cannot establish a different total by opening the launch path first', async () => {
     const guide = refPlusSibling();
 
     await renderGuide(await prepared(guide));
     expect(totalAt()).toBe(2);
 
+    closeAndReset();
     await renderGuide(rawContent(guide));
     expect(totalAt()).toBe(2);
   });
@@ -374,5 +421,47 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     expect(getGuideIndex(GUIDE_URL)).toBeUndefined();
     expect(container.textContent).toContain('Ordinary sibling');
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('no usable pre-inlining tree'), expect.anything());
+  });
+
+  // `docs-panel.tsx` injects the cover-page extras into a milestone-0 journey
+  // AFTER the launch handoff, and that injection appends a counted block. A
+  // loader that rewrote only the render tree would leave the prepared path
+  // counting a pre-injection denominator and reopen the cross-path split —
+  // exactly what `rewriteGuideTrees` exists to prevent, here through the real
+  // journey rewrite rather than a synthetic one.
+  it('agrees after a structural loader rewrite lands on both trees', async () => {
+    const guide = refPlusSibling();
+
+    await renderGuide(withJourneyExtras(rawContent(guide)));
+    const directTotal = totalAt();
+
+    closeAndReset();
+    const preparedContent = await prepared(guide);
+    await renderGuide(withJourneyExtras(preparedContent));
+
+    // Two counted positions plus the appended extras block.
+    expect(directTotal).toBe(3);
+    expect(totalAt()).toBe(3);
+  });
+
+  // `spliceBlocks` pushes a resolved snippet's blocks in without re-splicing
+  // them, so a reference inside a snippet body survives into the render tree.
+  // It is still one position in the counting tree, and the renderer's own
+  // overlay resolves the survivor without touching the frozen index.
+  it('agrees on a reference nested inside a snippet body, which expands once', async () => {
+    mockGetSnippetResolver.mockReturnValue(nestedRefResolver);
+    const guide = refPlusSibling();
+
+    await renderGuide(rawContent(guide));
+    expect(totalAt()).toBe(2);
+
+    closeAndReset();
+    const preparedContent = await prepared(guide);
+    await renderGuide(preparedContent);
+
+    const renderBlocks = JSON.parse(preparedContent.content).blocks as JsonBlock[];
+    expect(renderBlocks).toHaveLength(3);
+    expect(renderBlocks.some((block) => block.type === 'snippet-ref')).toBe(true);
+    expect(totalAt()).toBe(2);
   });
 });
