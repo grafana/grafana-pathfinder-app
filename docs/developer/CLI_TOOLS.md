@@ -153,7 +153,8 @@ The validator performs these checks in order:
 3. **Unknown fields** - Warns on unrecognized fields (forward compatibility)
 4. **Condition syntax** - Validates requirements/objectives mini-grammar
 5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (the title is rendered separately). This is an error, so the command fails; remove the heading from the block.
-6. **Snippet references** - When `--snippets-catalog` is supplied, every `snippet-ref` ID must be a key in that catalog
+6. **Guided step actions** - A `guided` block's steps must not use `navigate` or `popout`; the block waits for the reader to act and neither verb produces an interaction to wait on. This is an error, so the command fails. See [actions a guided step accepts](./interactive-examples/json-guide-format.md#actions-a-guided-step-accepts)
+7. **Snippet references** - When `--snippets-catalog` is supplied, every `snippet-ref` ID must be a key in that catalog
 
 Example output with condition warnings:
 
@@ -456,7 +457,7 @@ node dist/cli/cli/index.js build-snippets <dir> [options]
 
 ### How it works
 
-The command reads every `*.json` file in `<dir>` except `index.json`, validates each against the snippet schema, and builds a catalog mapping each snippet `id` to its `id`, `title`, `description`, and optional `category`, `tags`, and `schemaVersion`. It enforces two rules: each file name must equal the `id` inside it (the resolver fetches `<id>.json`), and ids must be unique. If any body fails validation, a file name does not match its id, or an id is duplicated, no output is written and the command exits non-zero.
+The command reads every `*.json` file in `<dir>` except `index.json`, validates each against the snippet schema, and builds a catalog mapping each snippet `id` to its `id`, `title`, `description`, and optional `category`, `tags`, and `schemaVersion`. It enforces three rules: each file name must equal the `id` inside it (the resolver fetches `<id>.json`), ids must be unique, and a `guided` block in a snippet body must not use the `navigate` or `popout` actions (the same rule `validate` applies to a guide). If any body fails validation, a file name does not match its id, an id is duplicated, or a guided step uses an unsupported action, no output is written and the command exits non-zero.
 
 Snippet bodies live in the content repository alongside package content, not in this plugin repo. A convenience npm script wraps the command — append the snippet directory:
 

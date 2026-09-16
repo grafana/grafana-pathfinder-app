@@ -1,8 +1,9 @@
 import { guideLaunchStore, type StagedLaunchPayload } from './guide-launch';
-import type { RawContent } from '../types/content.types';
+import type { PreparedRawContent } from '../types/content.types';
 
-const rawContent: RawContent = {
+const rawContent: PreparedRawContent = {
   content: '{"id":"g","title":"g","blocks":[]}',
+  countingSource: { kind: 'pre-inlining', guideJson: '{"id":"g","title":"g","blocks":[]}' },
   metadata: { title: 'g' },
   type: 'interactive',
   url: 'bundled:first-dashboard',

@@ -87,7 +87,10 @@ export function validateFile(file: File): { isValid: boolean; errors: string[] }
  * @returns Validation result with parsed guide if valid
  */
 export function parseAndValidateGuide(jsonString: string): ImportValidationResult {
-  const result = validateGuideFromString(jsonString);
+  // The one error this repair surface must not block on: an already-published
+  // guide carrying it is what the author opens the editor to fix. `guide-lint.ts`
+  // still flags the step and `block-export.ts` / `github-pr.ts` still refuse to ship it.
+  const result = validateGuideFromString(jsonString, { allowUnsupportedGuidedAction: true });
 
   // Enrich errors with line/column positions using jsonc-parser
   const errorsWithPositions = addPositionsToErrors(

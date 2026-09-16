@@ -17,7 +17,7 @@ import {
   type PendingGuidePanel,
 } from './pendingGuideRouter';
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
-import type { RawContent } from '../../types/content.types';
+import type { PreparedRawContent } from '../../types/content.types';
 
 function makePanel(state: { tabs: Array<{ id: string }>; activeTabId: string } = { tabs: [], activeTabId: '' }) {
   return {
@@ -231,8 +231,9 @@ describe('consumePendingGuideOnMount', () => {
   // sidebar mode). Mounting FloatingPanelInner itself is not feasible in
   // Jest (Scenes + theme provider), so this exercises the shared consume
   // step against the real panelModeManager singleton.
-  const preparedContent: RawContent = {
+  const preparedContent: PreparedRawContent = {
     content: '{"id":"g","title":"g","blocks":[]}',
+    countingSource: { kind: 'pre-inlining', guideJson: '{"id":"g","title":"g","blocks":[]}' },
     metadata: { title: 'g' },
     type: 'interactive',
     url: 'bundled:first-dashboard',
