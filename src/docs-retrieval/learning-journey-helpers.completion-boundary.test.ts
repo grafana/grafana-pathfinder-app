@@ -523,10 +523,12 @@ describe('whole-journey completion (trigger class D — the new journey_complete
   // omits fallbackSource, so the schema default 'interactive-tutorials' wins
   // (matching standalone guides).
   it('keys a journey manifest with an id and no repository on the schema default', async () => {
-    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
+    const urls = journeyUrls('base', ['m1', 'm2', 'm3']);
+    seedMilestoneComplete(urls[0]!);
+    seedMilestoneComplete(urls[1]!);
     getPathsDataMock.mockReturnValue({ paths: [] });
 
-    await markMilestoneDone('base', 'm3', ['m1', 'm2', 'm3'], {
+    await markMilestoneDone('base', 'm3', urls[2]!, urls, {
       packageManifest: { id: 'linux-journey', type: 'journey' },
     });
 
