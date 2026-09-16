@@ -237,6 +237,7 @@ export function LearningJourneyMilestoneToolbar({
             tooltip={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')}
             tooltipPlacement="top"
             disabled={!panel.canNavigatePrevious() || activeTab.isLoading}
+            data-testid={testIds.docsPanel.previousMilestoneButton}
           />
           <div className={styles.titleBlock}>
             <div className={styles.milestoneTitle} title={activeTab.title}>
@@ -262,6 +263,7 @@ export function LearningJourneyMilestoneToolbar({
             tooltip={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')}
             tooltipPlacement="top"
             disabled={!panel.canNavigateNext() || activeTab.isLoading}
+            data-testid={testIds.docsPanel.nextMilestoneButton}
           />
           {!compact && (
             <Dropdown overlay={kebabMenu} placement="bottom-end">

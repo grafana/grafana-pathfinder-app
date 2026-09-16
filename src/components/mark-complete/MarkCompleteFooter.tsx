@@ -228,7 +228,13 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       : t('markComplete.guideButton', 'Mark complete');
 
   return (
-    <div className={styles.footer} data-testid={testIds.markComplete.footer}>
+    <div
+      className={styles.footer}
+      data-testid={testIds.markComplete.footer}
+      // Testing contract: `pending` until the stored mark has been read, while
+      // the percentage below still reads 0 for every guide.
+      data-test-progress-state={hydrated ? 'ready' : 'pending'}
+    >
       <div className={styles.progress}>
         <div className={styles.track}>
           <div className={styles.fill} style={{ width: `${displayPercentage}%` }} />
