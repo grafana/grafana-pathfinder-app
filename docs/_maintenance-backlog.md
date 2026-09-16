@@ -8,12 +8,12 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 - 2026-05-21: No CONCERNS.md concern covers `src/snippet-engine/`. Consider adding one or extending `package-engine` / `docs-retrieval-and-rendering` to include the new tier-1 engine. Rationale: prevent-doc-drift cannot edit `docs/design/CONCERNS.md`; surfacing here for a human review pass. Blocked: the maintain-docs hard constraint also excludes `docs/design/`, so this requires a human design review.
 
-- 2026-09-15: `docs/developer/engines/context-engine.md` — Refresh ownership after #1832 and #1898: the event bus implementation and its test now live in `src/lib/`, while `src/context-engine/context-event-bus.ts` remains a compatibility facade; requirement consumers use the shared `src/lib/grafana-api.ts` helpers rather than ContextService plugin/dashboard methods. Update the event-bus location, Key files, API consumer descriptions, and test path together in a documentation maintenance pass. Rationale: this document is outside the narrow #1898 code diff.
-
 ## Validated docs
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
 
+- **2026-09-16**: `docs/developer/engines/context-engine.md` — Corrected event-bus implementation and test ownership, documented the context-engine compatibility facade and shared Grafana API helpers, and removed stale `ContextService` method claims. Validated against the context engine, shared event bus and Grafana API modules, and requirements-manager consumers. Supersedes the 2026-06-16 structural scan and 2026-02-20 entry.
+- **2026-09-16**: `docs/developer/CLI_TOOLS.md` — Added the `add-hint` command, its challenge-parent and non-empty-text constraints, and its shared CLI/MCP command contract. Validated against the command manifest, Commander registration, package mutator, schemas, and MCP operation registry. Supersedes the 2026-06-16 entry.
 - **2026-08-26**: `docs/developer/interactive-examples/authoring-interactive-journeys.md` — Corrected the authoring entry points, public-repository scope, action versus block types, and optional-manifest package model. Validated against the current JSON guide schemas and types, package/custom-guide/API references, block-editor workflow, and external contributor README.
 - **2026-08-12**: `docs/developer/RELEASE_PROCESS.md` — Corrected dev deployment, CLI publish triggers, runtime dependencies, MCP smoke testing, Node base-image guidance, and plugin-tarball isolation. Validated against current release/publish workflows, `Dockerfile.cli`, `scripts/cli-build-utils.js`, and package scripts.
 - **2026-08-19**: `docs/developer/learning-paths/README.md` — Revalidated after the private-path split and Discover more launch changes. Documented private-path routing, schema-validated manifest propagation, and the lazy package-resolver registry lifecycle. Supersedes the 2026-08-12 entry.

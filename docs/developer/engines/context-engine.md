@@ -11,7 +11,7 @@ The Context Engine (`src/context-engine/`) analyzes the user's current Grafana s
 **Constraints**:
 
 - Debouncing is handled at the hook level (`useContextPanel`), not the service level, to provide a single unified control point for all refresh triggers
-- State that must persist across React component lifecycles (event buffer, EchoSrv initialization flag, inferred datasource/visualization types, change listeners) lives as module-scoped state in `context-event-bus.ts` — `ContextService` itself is intentionally stateless for these concerns, owning only the external-recommender error cache
+- State that must persist across React component lifecycles (event buffer, EchoSrv initialization flag, inferred datasource/visualization types, change listeners) lives as module-scoped state in `src/lib/context-event-bus.ts` — `ContextService` itself is intentionally stateless for these concerns, owning only the external-recommender error cache
 - External recommender communication requires HTTPS and domain allowlist validation; dev mode is the only exception (from Security Measures section below)
 - User identifiers are always hashed (SHA-256 for Cloud, generic placeholders for OSS) — no PII leaves the plugin (from Privacy Protection section below)
 
@@ -38,11 +38,13 @@ The Context Engine monitors user activity in Grafana by tracking location change
 ### Core Components
 
 - **`context.service.ts`** - Orchestrator for context data collection, tag generation, and recommendation fetching
-- **`context-event-bus.ts`** - Module-singleton owning the EchoSrv subscription, inferred datasource/visualization state, and change-listener set
+- **`src/lib/context-event-bus.ts`** - Shared module-singleton owning the EchoSrv subscription, inferred datasource/visualization state, and change-listener set
+- **`src/context-engine/context-event-bus.ts`** - Compatibility facade that re-exports the shared event bus for existing context-engine consumers
+- **`src/lib/grafana-api.ts`** - Shared Grafana API helpers used by the context engine and requirements manager
 - **`context.hook.ts`** - React hook providing context state management and debouncing
 - **`context.init.ts`** - Plugin lifecycle initialization for the event bus
 - **`index.ts`** - Public API exports for the context engine
-- **`context-event-bus.test.ts`** - Unit tests for the event bus (idempotent backend registration, event routing, listener wiring, buffer replay)
+- **`src/lib/context-event-bus.test.ts`** - Unit tests for the event bus (idempotent backend registration, event routing, listener wiring, buffer replay)
 - **`context-security.test.ts`** - Security test suite (URL validation, sanitization, fallback behavior)
 - **`context.service.completion.test.ts`** - Completion percentage storage selection tests (verifies learning paths use journeyCompletionStorage, interactives use interactiveCompletionStorage)
 
@@ -62,23 +64,24 @@ The Context Engine monitors user activity in Grafana by tracking location change
 - Provides three-tier fallback system: external service, bundled interactives, and static links
 - Uses type-specific completion storage: `journeyCompletionStorage` for learning paths, `interactiveCompletionStorage` for interactive guides
 - Handles error states with user-friendly messages and automatic fallback
-- Manages event buffering to preserve context when plugin is closed and reopened
+- Consumes the shared event buffer to preserve context when the plugin is closed and reopened
 - Implements security measures including HTTPS validation, domain allowlisting, and XSS protection
 
 **Public Methods**:
 
 - `getContextData()` - Collects full Grafana context (path, datasources, dashboard info, tags, platform)
 - `fetchRecommendations(contextData, pluginConfig)` - Fetches recommendations with three-tier fallback
-- `fetchDataSources()` - Fetches all configured datasources via `/api/datasources`
-- `fetchPlugins()` - Fetches all installed plugins via `/api/plugins` (used by requirements manager for `has-plugin:` checks)
-- `fetchDashboardsByName(name)` - Searches dashboards by title via `/api/search` (used by requirements manager for `has-dashboard-named:` and `dashboard-exists` checks)
 - `getLastRecommenderError()` - Returns last external recommender error state (type, timestamp, message) for debugging
 
-The EchoSrv subscription, inferred datasource/visualization values, and change-listener subscription API used to live as static methods on `ContextService`. They were extracted into `context-event-bus.ts` (see below) and are now imported directly by consumers.
+Grafana API requests shared with requirement checks are not `ContextService` methods. `src/lib/grafana-api.ts` exports `fetchDataSources()`, `fetchPlugins()`, and `fetchDashboardsByName()`. The context service uses `fetchDataSources()` for context collection; requirement checks import the shared helpers directly for `has-datasources`, `datasource-configured:`, `has-plugin:`, `plugin-enabled:`, and `has-dashboard-named:` checks.
+
+The EchoSrv subscription, inferred datasource/visualization values, and change-listener subscription API used to live as static methods on `ContextService`. Their implementation now lives in `src/lib/context-event-bus.ts`; `src/context-engine/context-event-bus.ts` preserves the context-engine import surface as a compatibility re-export.
 
 ### `context-event-bus`
 
-**Location**: `src/context-engine/context-event-bus.ts`
+**Implementation**: `src/lib/context-event-bus.ts`
+
+**Compatibility facade**: `src/context-engine/context-event-bus.ts`
 
 **Purpose**: Owns the EchoSrv subscription that watches Grafana's user-interaction stream for "what's the user currently working with?" signals (datasource selection, panel/visualization picker, query execution) and exposes the inferred values plus a change-listener API. Module-scoped state ensures the EchoSrv backend is registered exactly once per page load and every caller (UI hook, requirements checker, assistant tool) observes the same values.
 
@@ -241,7 +244,7 @@ The service maintains an in-memory event buffer to preserve context across plugi
 - Missed events during plugin downtime - recovers from recent events
 - Initialization on plugin startup - calls `initializeFromRecentEvents()` to restore state
 
-**Implementation**: Module-scoped state in `context-event-bus.ts` persists across React component lifecycles. The bus is a module-singleton — there is no per-instance state.
+**Implementation**: Module-scoped state in `src/lib/context-event-bus.ts` persists across React component lifecycles. The bus is a module-singleton — there is no per-instance state.
 
 ## Integration Points
 
@@ -405,10 +408,13 @@ Configuration is managed through plugin settings (`DocsPluginConfig`):
 **Core Implementation**:
 
 - `src/context-engine/context.service.ts` - Orchestrator class with recommendation, tag generation, and context-data collection logic
-- `src/context-engine/context-event-bus.ts` - Module-singleton owning EchoSrv subscription and inferred datasource/visualization state
+- `src/lib/context-event-bus.ts` - Shared module-singleton owning EchoSrv subscription and inferred datasource/visualization state
+- `src/context-engine/context-event-bus.ts` - Compatibility re-export for the context-engine public surface
+- `src/lib/grafana-api.ts` - Shared datasource, plugin, and dashboard API helpers
 - `src/context-engine/context.hook.ts` - React hook for UI integration
 - `src/context-engine/context.init.ts` - Plugin lifecycle initialization
-- `src/context-engine/context-event-bus.test.ts` - Event bus unit tests
+- `src/lib/context-event-bus.test.ts` - Event bus unit tests
+- `src/lib/grafana-api.test.ts` - Shared Grafana API helper tests
 - `src/context-engine/context-security.test.ts` - Security test suite
 - `src/context-engine/context.service.completion.test.ts` - Completion storage selection tests
 - `src/types/context.types.ts` - TypeScript type definitions
@@ -428,6 +434,7 @@ Configuration is managed through plugin settings (`DocsPluginConfig`):
 
 ## See Also
 
+- `.cursor/rules/systemPatterns.mdc` - Compact tier boundaries and subsystem map
 - `docs/developer/components/docs-panel/` - Context panel component documentation
 - `docs/architecture.dot` - Overall system architecture
 - `docs/developer/utils/README.md` - TimeoutManager and utility documentation

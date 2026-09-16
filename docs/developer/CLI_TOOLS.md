@@ -1,7 +1,8 @@
 # Pathfinder CLI tools
 
-The `pathfinder-cli` is a command-line interface for working with interactive JSON guides and packages in the Grafana Pathfinder application. It provides these commands:
+The `pathfinder-cli` is a command-line interface for working with interactive JSON guides and packages in the Grafana Pathfinder application. This reference covers these commands:
 
+- **add-hint** — Appends a progressive hint to a challenge block
 - **validate** — Validates guide definitions and package directories against schemas and best practices
 - **build-repository** — Generates `repository.json` from a package tree
 - **build-stats** — Writes the computed completion block stats into every package's `manifest.json`
@@ -10,7 +11,25 @@ The `pathfinder-cli` is a command-line interface for working with interactive JS
 - **schema** — Exports Zod validation schemas as JSON Schema for cross-language consumers
 - **e2e** — Runs end-to-end tests on guides in a live Grafana instance (see [E2E testing](./E2E_TESTING.md))
 
-This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
+Run `pathfinder-cli --help` for the complete live command list. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md). For the MCP tools that reuse CLI command contracts, see the [MCP server guide](./MCP_SERVER.md#tool-surface).
+
+---
+
+## Add-hint command
+
+Appends one progressive hint to an existing challenge block's `hintLevels` array. The package directory must already exist, `--parent` must resolve to a challenge block ID, and `--text` must contain at least one character.
+
+```bash
+pathfinder-cli add-hint <dir> --parent <id> --text <text>
+```
+
+For example:
+
+```bash
+pathfinder-cli add-hint my-guide --parent repair-dashboard --text "Check the dashboard variables."
+```
+
+`add-hint` is declared in the shared command manifest and rendered on the command line with `<dir>` as its positional argument. The same command schema and runner back `pathfinder_manage_block` with `operation: "add-hint"`; the MCP supplies the package directory through its artifact bridge, so its `opts` bag contains `parent` and `text`. See the [MCP tool surface](./MCP_SERVER.md#tool-surface) for the transport-level contract.
 
 ---
 
