@@ -1,15 +1,14 @@
-import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
+import { AppPlugin, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
 import React, { lazy, Suspense, useEffect } from 'react';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { logger } from './lib/logging';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { PathfinderPluginConfig } from './constants';
 import { initializeConfiguredSurfaces } from './utils/configured-bootstrap';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
 // (and zod, via user-storage) into module.js.
-import { publishPathfinderPluginConfig, refreshPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
+import { waitForPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
 // Direct file import, not the ./docs-retrieval barrel: the barrel statically
 // imports the whole content-fetcher orchestrator (zod, dompurify, the bundled
 // guide index), which would land in module.js. createCompositeResolver is
@@ -157,7 +156,7 @@ const plugin = new AppPlugin<{}>()
   });
 
 // Override init() to handle auto-open when plugin loads
-plugin.init = function (meta: AppPluginMeta<PathfinderPluginConfig>) {
+plugin.init = function () {
   // Grafana does not await init; navigation listeners must register synchronously.
 
   // Arm the durable completion-write hook from the universal plugin bootstrap
@@ -175,17 +174,10 @@ plugin.init = function (meta: AppPluginMeta<PathfinderPluginConfig>) {
     .then(({ armCompletionWriteHook }) => armCompletionWriteHook())
     .catch((err) => logger.error('[Pathfinder] Failed to arm completion-write hook', { error: err }));
 
-  const config = publishPathfinderPluginConfig(meta?.jsonData || {});
-  linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
-
-  // Deferred: setPackageResolverFactory only stores this thunk, so the dynamic
-  // import — and its zod/CDN/etc. dependencies — isn't fetched until something
-  // actually calls getPackageResolver(), not on every page load. No
-  // webpackPrefetch here: by the time it's read, it's needed promptly (inside
-  // fetchPackageContent's Promise.all), not at idle-time priority.
-  setPackageResolverFactory(() =>
-    import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(config))
-  );
+  setPackageResolverFactory(async () => {
+    const config = await waitForPathfinderPluginConfig();
+    return (await import('./package-engine/composite-resolver')).createCompositeResolver(config);
+  });
 
   // Snapshotted before handlePathfinderDeepLink strips it from the URL.
   const { doc: docsParam, controller: controllerParam } = parsePathfinderDeepLink(window.location.search);
@@ -198,7 +190,7 @@ plugin.init = function (meta: AppPluginMeta<PathfinderPluginConfig>) {
 
   const controllerRequested = Boolean(docsParam && controllerParam && controllerPairing);
   void initializeConfiguredSurfaces(
-    refreshPathfinderPluginConfig(),
+    waitForPathfinderPluginConfig(),
     { pathfinderEnabled, controllerRequested, hasDoc: Boolean(docsParam) },
     {
       applySettings: (resolved) => {

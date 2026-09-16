@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { usePluginContext } from '@grafana/data';
+import { useEffect, useState } from 'react';
 import { PathfinderPluginConfig, ResolvedPathfinderConfig, getConfigWithDefaults } from '../constants';
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { logger } from '../lib/logging';
@@ -14,6 +13,7 @@ export interface PathfinderPluginConfigState {
   config: ResolvedPathfinderConfig;
   /** `false` means "not known yet", which is distinct from an explicit all-defaults config. */
   isResolved: boolean;
+  hasError?: boolean;
 }
 
 let unresolvedState: PathfinderPluginConfigState | undefined;
@@ -95,44 +95,54 @@ export function publishPathfinderPluginConfig(jsonData: PathfinderPluginConfig):
 }
 
 let refreshInFlight: Promise<ResolvedPathfinderConfig | undefined> | null = null;
+let refreshFailed = false;
 
-/**
- * Single-flight read of the saved settings across every store. Grafana's
- * `meta.jsonData` snapshot can lag a save, so this is the authoritative value —
- * but nothing waits on it: failure leaves whatever was already published in
- * place.
- */
 export function refreshPathfinderPluginConfig(): Promise<ResolvedPathfinderConfig | undefined> {
-  refreshInFlight ??= resolvePathfinderSettings()
-    .then((resolved) => publishPathfinderPluginConfig(resolved))
-    .catch((error) => {
-      logger.warn('Failed to read plugin settings; keeping the plugin meta snapshot', { error });
-      return undefined;
-    });
+  if (!refreshInFlight) {
+    refreshFailed = false;
+    refreshInFlight = resolvePathfinderSettings()
+      .then((resolved) => publishPathfinderPluginConfig(resolved))
+      .catch((error) => {
+        refreshInFlight = null;
+        refreshFailed = true;
+        logger.warn('Failed to read plugin settings; a later refresh can retry', { error });
+        document.dispatchEvent(new CustomEvent(PATHFINDER_CONFIG_UPDATED_EVENT));
+        return undefined;
+      });
+    document.dispatchEvent(new CustomEvent(PATHFINDER_CONFIG_UPDATED_EVENT));
+  }
 
   return refreshInFlight;
 }
 
-function resolveState(contextState: PathfinderPluginConfigState | undefined): PathfinderPluginConfigState {
+// Startup keeps waiting after a failed read so a later successful refresh can finish mounting.
+export function waitForPathfinderPluginConfig(): Promise<ResolvedPathfinderConfig> {
+  if (window.__pathfinderPluginConfig) {
+    return Promise.resolve(window.__pathfinderPluginConfig);
+  }
+  return new Promise((resolve) => {
+    const onConfig = () => {
+      const config = window.__pathfinderPluginConfig;
+      if (config) {
+        document.removeEventListener(PATHFINDER_CONFIG_UPDATED_EVENT, onConfig);
+        resolve(config);
+      }
+    };
+    document.addEventListener(PATHFINDER_CONFIG_UPDATED_EVENT, onConfig);
+    void refreshPathfinderPluginConfig();
+  });
+}
+
+function resolveState(): PathfinderPluginConfigState {
   const published = window.__pathfinderPluginConfig;
   if (published) {
     return { config: published, isResolved: true };
   }
-  return contextState ?? unresolved();
+  return refreshFailed ? { ...unresolved(), hasError: true } : unresolved();
 }
 
 export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
-  const pluginContext = usePluginContext();
-  const pluginMeta = pluginContext?.meta;
-  const contextState = useMemo<PathfinderPluginConfigState | undefined>(
-    () =>
-      pluginMeta
-        ? { config: getConfigWithDefaults(withPerUserSettings(pluginMeta.jsonData || {})), isResolved: true }
-        : undefined,
-    [pluginMeta]
-  );
-
-  const [state, setState] = useState<PathfinderPluginConfigState>(() => resolveState(contextState));
+  const [state, setState] = useState<PathfinderPluginConfigState>(() => resolveState());
 
   useEffect(() => {
     let cancelled = false;
@@ -141,9 +151,13 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
       if (cancelled) {
         return;
       }
-      const next = resolveState(contextState);
+      const next = resolveState();
       setState((previous) =>
-        previous.isResolved === next.isResolved && configEquals(previous.config, next.config) ? previous : next
+        previous.isResolved === next.isResolved &&
+        previous.hasError === next.hasError &&
+        configEquals(previous.config, next.config)
+          ? previous
+          : next
       );
     };
 
@@ -155,7 +169,7 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
       cancelled = true;
       document.removeEventListener(PATHFINDER_CONFIG_UPDATED_EVENT, sync);
     };
-  }, [contextState]);
+  }, []);
 
   return state;
 }
@@ -165,6 +179,7 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
  */
 export function __resetPathfinderPluginConfigForTests(): void {
   refreshInFlight = null;
+  refreshFailed = false;
   unresolvedState = undefined;
   delete window.__pathfinderPluginConfig;
 }

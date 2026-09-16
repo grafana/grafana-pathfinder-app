@@ -131,6 +131,9 @@ describe('module bootstrap arms the durable completion-write hook', () => {
 });
 
 describe('module bootstrap waits for authoritative settings', () => {
+  it('does not publish plugin metadata as an authoritative settings snapshot', () => {
+    expect(sourceFile.getText()).not.toContain('publishPathfinderPluginConfig');
+  });
   it('passes the settings refresh to the configured-surface gate', () => {
     const calls: ts.CallExpression[] = [];
     const visit = (node: ts.Node): void => {
@@ -145,7 +148,7 @@ describe('module bootstrap waits for authoritative settings', () => {
     };
     findPluginInitBody().forEach(visit);
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.arguments[0]!.getText(sourceFile)).toBe('refreshPathfinderPluginConfig()');
+    expect(calls[0]!.arguments[0]!.getText(sourceFile)).toBe('waitForPathfinderPluginConfig()');
     const callbacks = calls[0]!.arguments[2]!;
     expect(ts.isObjectLiteralExpression(callbacks)).toBe(true);
     const properties = (callbacks as ts.ObjectLiteralExpression).properties;

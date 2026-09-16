@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { usePluginContext } from '@grafana/data';
 import { getConfigWithDefaults } from '../constants';
+import { initializeConfiguredSurfaces } from '../utils/configured-bootstrap';
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { fetchPluginSettings } from '../utils/utils.plugin';
 import { fetchPathfinderSettingsSnapshot } from '../utils/pathfinder-settings-api';
@@ -10,6 +11,7 @@ import {
   publishPathfinderPluginConfig,
   refreshPathfinderPluginConfig,
   usePathfinderPluginConfig,
+  waitForPathfinderPluginConfig,
 } from './usePathfinderPluginConfig';
 
 // The two stores are mocked, not `resolveTenantSettings` itself, so these tests
@@ -264,21 +266,21 @@ describe('usePathfinderPluginConfig', () => {
     expect(result.current.config.devMode).toBe(true);
   });
 
-  it('falls back to the plugin context when nothing is published yet', () => {
+  it('does not treat plugin metadata as authoritative while the read is pending', () => {
     mockPluginContext.mockReturnValue({ meta: { jsonData: { enableLiveSessions: true } } });
 
     const { result } = renderHook(() => usePathfinderPluginConfig());
 
-    expect(result.current.isResolved).toBe(true);
-    expect(result.current.config.enableLiveSessions).toBe(true);
+    expect(result.current.isResolved).toBe(false);
+    expect(result.current.config.enableLiveSessions).toBe(false);
   });
 
-  it('treats an empty jsonData on a present meta as resolved', () => {
+  it('keeps empty plugin metadata unresolved', () => {
     mockPluginContext.mockReturnValue({ meta: {} });
 
     const { result } = renderHook(() => usePathfinderPluginConfig());
 
-    expect(result.current.isResolved).toBe(true);
+    expect(result.current.isResolved).toBe(false);
   });
 
   it('keeps state stable when equal plugin metadata is recreated on each render', async () => {
@@ -294,25 +296,31 @@ describe('usePathfinderPluginConfig', () => {
     });
 
     const { result, rerender } = renderHook(() => usePathfinderPluginConfig());
-    const first = result.current;
     await settleRefresh();
+    const first = result.current;
     rerender();
 
     expect(result.current).toBe(first);
-    expect(result.current.config.enableLiveSessions).toBe(true);
+    expect(result.current.config.enableLiveSessions).toBe(false);
+    expect(result.current.hasError).toBe(true);
     expect(contextReads).toBeLessThan(10);
   });
 
-  it('updates resolution status when equal default values arrive from plugin metadata', async () => {
+  it('only marks equal default values resolved after an authoritative read succeeds', async () => {
     mockFetchPluginSettings.mockRejectedValue(new Error('403'));
     const { result, rerender } = renderHook(() => usePathfinderPluginConfig());
     await settleRefresh();
     expect(result.current.isResolved).toBe(false);
+    expect(result.current.hasError).toBe(true);
 
     mockPluginContext.mockReturnValue({ meta: { jsonData: {} } });
     rerender();
+    expect(result.current.isResolved).toBe(false);
 
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings());
+    await settleRefresh();
     expect(result.current.isResolved).toBe(true);
+    expect(result.current.hasError).toBeUndefined();
     expect(result.current.config).toEqual(getConfigWithDefaults({}));
   });
 
@@ -395,5 +403,57 @@ describe('getConfigWithDefaults idempotence', () => {
   ])('is idempotent for %s', (_label, input) => {
     const once = getConfigWithDefaults(input);
     expect(getConfigWithDefaults(once)).toEqual(once);
+  });
+});
+
+describe('recovery after a failed settings read', () => {
+  it('retries on a later mount, sharing that retry across concurrent callers', async () => {
+    mockFetchPluginSettings.mockRejectedValueOnce(new Error('temporary outage'));
+    const first = renderHook(() => usePathfinderPluginConfig());
+    await waitFor(() => expect(first.result.current.hasError).toBe(true));
+    expect(readGlobal()).toBeUndefined();
+    expect(first.result.current.isResolved).toBe(false);
+    first.unmount();
+
+    mockFetchTenant.mockResolvedValue(tenantSnapshot({ enableTwoTabController: true }));
+    const second = renderHook(() => usePathfinderPluginConfig());
+    const third = renderHook(() => usePathfinderPluginConfig());
+    await waitFor(() => expect(second.result.current.isResolved).toBe(true));
+    expect(third.result.current.isResolved).toBe(true);
+    expect(second.result.current.config.enableTwoTabController).toBe(true);
+    expect(mockFetchPluginSettings).toHaveBeenCalledTimes(2);
+    expect(mockFetchTenant).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps startup pending until a successful retry, then mounts configured surfaces once', async () => {
+    mockFetchPluginSettings.mockRejectedValueOnce(new Error('temporary outage'));
+    const effects = {
+      applySettings: jest.fn(),
+      mountController: jest.fn(),
+      mountExecutor: jest.fn(),
+      mountKiosk: jest.fn(),
+      setupAutoOpen: jest.fn(),
+    };
+    const initialized = initializeConfiguredSurfaces(
+      waitForPathfinderPluginConfig(),
+      { pathfinderEnabled: true, controllerRequested: false, hasDoc: false },
+      effects
+    );
+    await refreshPathfinderPluginConfig();
+    document.dispatchEvent(
+      new CustomEvent(PATHFINDER_CONFIG_UPDATED_EVENT, { detail: { enableTwoTabController: true } })
+    );
+    expect(effects.mountExecutor).not.toHaveBeenCalled();
+    expect(readGlobal()).toBeUndefined();
+
+    mockFetchTenant.mockResolvedValue(tenantSnapshot({ enableTwoTabController: true, enableKioskMode: true }));
+    await refreshPathfinderPluginConfig();
+    await initialized;
+    expect(effects.mountExecutor).toHaveBeenCalledTimes(1);
+    expect(effects.mountKiosk).toHaveBeenCalledTimes(1);
+    expect(effects.applySettings).toHaveBeenCalledWith(expect.objectContaining({ enableTwoTabController: true }));
+    publishPathfinderPluginConfig({ enableTwoTabController: false });
+    expect(effects.mountExecutor).toHaveBeenCalledTimes(1);
+    expect(await waitForPathfinderPluginConfig()).toBe(readGlobal());
   });
 });
