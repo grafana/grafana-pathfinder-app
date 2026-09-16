@@ -695,6 +695,14 @@ describe('findOrphanedModules', () => {
     const graph = graphFromAdjacency({ root: ['a'], a: [] });
     expect(findOrphanedModules(graph, ['root'], ['a'])).toEqual({ orphaned: [], testOnlyReachable: [] });
   });
+
+  it('orphans every app node when the entry root matches nothing, rather than reporting a clean scan', () => {
+    const graph = graphFromAdjacency({ renamed: ['a'], a: ['b'], b: [], testOnly: [] });
+    expect(findOrphanedModules(graph, ['module.tsx'], ['testOnly'])).toEqual({
+      orphaned: ['a', 'b', 'renamed'],
+      testOnlyReachable: ['testOnly'],
+    });
+  });
 });
 
 describe('getOffGraphImportedNodes', () => {

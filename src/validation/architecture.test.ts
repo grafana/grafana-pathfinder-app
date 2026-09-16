@@ -371,9 +371,9 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
  * edge buildModuleGraph structurally can't see, since it excludes test files
  * as both nodes and edge targets and covers nothing under those roots).
  * Distinct from an orphan — nothing here is dead, it just never ships
- * in the bundle. A permanently test-only entry may carry the `by-design`
- * marker; every entry in today's baseline points at #1923 instead, where the
- * paydown plan decides which of them are debt and which are permanent.
+ * in the bundle. This list should only shrink; every entry points at #1923,
+ * where the paydown plan decides which of them are debt and which are
+ * permanent.
  */
 const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
@@ -424,7 +424,7 @@ const ARCHITECTURE_ALLOWLISTS = {
   ALLOWED_CYCLES: { entries: ALLOWED_CYCLES, allowByDesign: false },
   ALLOWED_PERCENTAGE_CALCULATIONS: { entries: ALLOWED_PERCENTAGE_CALCULATION_ENTRIES, allowByDesign: true },
   ALLOWED_ORPHANED_MODULES: { entries: ALLOWED_ORPHANED_MODULES_ENTRIES, allowByDesign: false },
-  ALLOWED_TEST_ONLY_REACHABLE: { entries: ALLOWED_TEST_ONLY_REACHABLE_ENTRIES, allowByDesign: true },
+  ALLOWED_TEST_ONLY_REACHABLE: { entries: ALLOWED_TEST_ONLY_REACHABLE_ENTRIES, allowByDesign: false },
 } as const;
 
 /**
@@ -750,8 +750,7 @@ describe('Import graph: orphaned modules', () => {
         `structurally invisible to the orphan check above. This file is not dead, it simply never ships in the ` +
         `bundle. If that is deliberate (e.g. governance/validation tooling that only ever runs under test or ` +
         `the CLI), add a structured entry to ALLOWED_TEST_ONLY_REACHABLE_ENTRIES with a substantive reason and ` +
-        `accountability reference — 'by-design' is accepted here for a permanent case. Otherwise, wire it into ` +
-        `a real entry point or delete it.`
+        `a tracking issue (#1923). Otherwise, wire it into a real entry point or delete it.`
     );
   });
 });
