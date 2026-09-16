@@ -1,6 +1,12 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CodeBlockStep } from './code-block-step';
+import {
+  STANDALONE_SECTION_ID,
+  markStepCompleted,
+  resetCompletionStoreForTests,
+  useStepCompletion,
+} from '../../global-state/completion-store';
 
 const mockClearAndInsertCode = jest.fn();
 jest.mock('../../interactive-engine', () => ({
@@ -87,5 +93,69 @@ describe('CodeBlockStep: full-screen sidebar handoff on Insert', () => {
       expect(mockClearAndInsertCode).toHaveBeenCalled();
     });
     expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
+  });
+});
+
+describe('CodeBlockStep: a section reset', () => {
+  function Probe({ stepId, sectionId }: { stepId: string; sectionId: string }) {
+    const { completed } = useStepCompletion(stepId, sectionId);
+    return <span data-testid="probe">{completed ? 'stored' : 'cleared'}</span>;
+  }
+
+  beforeEach(() => {
+    resetCompletionStoreForTests();
+  });
+
+  // The section broadcasts one `resetTrigger` to every child, but clears only
+  // the redone step and its tail. A per-child store write would delete the
+  // completions the section deliberately kept.
+  it('keeps a preceding step complete when the section broadcasts a redo of a later step', () => {
+    markStepCompleted('cb-1', 'sec-1', 'manual');
+    const props = {
+      code: 'query_range(up)',
+      refTarget: '#editor',
+      stepId: 'cb-1',
+      sectionId: 'sec-1',
+      onStepComplete: jest.fn(),
+    };
+
+    const { rerender } = render(
+      <>
+        <CodeBlockStep {...props} resetTrigger={0} />
+        <Probe stepId="cb-1" sectionId="sec-1" />
+      </>
+    );
+    expect(screen.getByTestId('probe')).toHaveTextContent('stored');
+
+    rerender(
+      <>
+        <CodeBlockStep {...props} resetTrigger={1} />
+        <Probe stepId="cb-1" sectionId="sec-1" />
+      </>
+    );
+
+    expect(screen.getByTestId('probe')).toHaveTextContent('stored');
+  });
+
+  it('clears its own entry when standalone, since no section owns the write', () => {
+    markStepCompleted('cb-2', undefined, 'manual');
+    const props = { code: 'query_range(up)', refTarget: '#editor', stepId: 'cb-2' };
+
+    const { rerender } = render(
+      <>
+        <CodeBlockStep {...props} resetTrigger={0} />
+        <Probe stepId="cb-2" sectionId={STANDALONE_SECTION_ID} />
+      </>
+    );
+    expect(screen.getByTestId('probe')).toHaveTextContent('stored');
+
+    rerender(
+      <>
+        <CodeBlockStep {...props} resetTrigger={1} />
+        <Probe stepId="cb-2" sectionId={STANDALONE_SECTION_ID} />
+      </>
+    );
+
+    expect(screen.getByTestId('probe')).toHaveTextContent('cleared');
   });
 });
