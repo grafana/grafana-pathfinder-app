@@ -11,20 +11,21 @@ import { z } from 'zod';
 
 import { GuideStatsSummarySchema } from './guide-stats.schema';
 import { JsonBlockSchema, CURRENT_SCHEMA_VERSION } from './json-guide.schema';
-import type {
-  Author,
-  DependencyClause,
-  DependencyGraph,
-  DependencyList,
-  GraphEdge,
-  GraphEdgeType,
-  GraphNode,
-  GuideTargeting,
-  ManifestTrack,
-  PackageType,
-  RepositoryEntry,
-  RepositoryJson,
-  TestEnvironment,
+import {
+  FOUNDATIONS_TRACK_ID,
+  type Author,
+  type DependencyClause,
+  type DependencyGraph,
+  type DependencyList,
+  type GraphEdge,
+  type GraphEdgeType,
+  type GraphNode,
+  type GuideTargeting,
+  type ManifestTrack,
+  type PackageType,
+  type RepositoryEntry,
+  type RepositoryJson,
+  type TestEnvironment,
 } from './package.types';
 
 // ============ PACKAGE ID FORMAT ============
@@ -254,12 +255,20 @@ export const ManifestJsonSchema = ManifestJsonObjectSchema.superRefine((manifest
     });
   }
 
-  // Rule 4: trackId must be unique — each track is independently addressable
-  // (cover-page tab selection, CRD projection), and a duplicate id makes that
+  // Rule 4: trackId must be unique, and may not collide with the reserved
+  // Foundations sentinel — each track is independently addressable (cover-page
+  // tab selection, CRD projection), and a duplicate or reserved id makes that
   // lookup ambiguous.
   if (hasTracks) {
     const seenTrackIds = new Set<string>();
     manifest.tracks!.forEach((track, index) => {
+      if (track.trackId === FOUNDATIONS_TRACK_ID) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `"tracks" trackId cannot be "${FOUNDATIONS_TRACK_ID}" — that id is reserved for the default Foundations sequence`,
+          path: ['tracks', index, 'trackId'],
+        });
+      }
       if (seenTrackIds.has(track.trackId)) {
         ctx.addIssue({
           code: 'custom',

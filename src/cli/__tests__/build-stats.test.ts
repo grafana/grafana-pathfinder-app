@@ -34,9 +34,16 @@ function readManifest(dir: string, id: string): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(path.join(dir, id, 'manifest.json'), 'utf-8'));
 }
 
+interface TrackOptions {
+  trackId: string;
+  label: string;
+  guides: string[];
+}
+
 interface GuideOptions {
   type?: 'guide' | 'path' | 'journey';
   milestones?: string[];
+  tracks?: TrackOptions[];
   blocks?: unknown[];
   manifestExtras?: Record<string, unknown>;
 }
@@ -51,6 +58,7 @@ function writeGuide(root: string, id: string, options: GuideOptions = {}): void 
     id,
     type: options.type ?? 'guide',
     ...(options.milestones ? { milestones: options.milestones } : {}),
+    ...(options.tracks ? { tracks: options.tracks } : {}),
     ...options.manifestExtras,
   });
 }
@@ -198,6 +206,40 @@ describe('buildStats', () => {
     expect(readManifest(tmpDir, 'journey').stats).toMatchObject({ blockCount: 3, completableBlockCount: 2 });
   });
 
+  it('rolls a guide referenced only by a track into the path stats denominator', async () => {
+    writeGuide(tmpDir, 'milestone-one', { blocks: [markdown, interactive] });
+    writeGuide(tmpDir, 'track-only-guide', { blocks: [interactive] });
+    writeGuide(tmpDir, 'the-path', {
+      type: 'path',
+      milestones: ['milestone-one'],
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['milestone-one', 'track-only-guide'] }],
+      blocks: [],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual([]);
+    expect(readManifest(tmpDir, 'the-path').stats).toMatchObject({
+      blockCount: 3,
+      completableBlockCount: 2,
+    });
+  });
+
+  it('counts a guide named by both milestones and a track only once', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown, interactive] });
+    writeGuide(tmpDir, 'the-path', {
+      type: 'path',
+      milestones: ['leaf'],
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['leaf'] }],
+      blocks: [],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual([]);
+    expect(readManifest(tmpDir, 'the-path').stats).toMatchObject({ blockCount: 2 });
+  });
+
   it('counts a metapackage own body ahead of its milestones', async () => {
     writeGuide(tmpDir, 'the-milestone', { blocks: [interactive] });
     writeGuide(tmpDir, 'the-path', {
@@ -219,7 +261,7 @@ describe('buildStats', () => {
 
     const result = await buildStats(tmpDir);
 
-    expect(result.errors).toEqual(['the-path: milestone "nowhere" not found in the package tree']);
+    expect(result.errors).toEqual(['the-path: milestone or track guide "nowhere" not found in the package tree']);
     expect(readManifest(tmpDir, 'the-path').stats).toBeUndefined();
   });
 
@@ -229,7 +271,7 @@ describe('buildStats', () => {
 
     const result = await buildStats(tmpDir);
 
-    expect(result.errors).toEqual(['zzz-path: milestone "nowhere" not found in the package tree']);
+    expect(result.errors).toEqual(['zzz-path: milestone or track guide "nowhere" not found in the package tree']);
     expect(result.written).toEqual([]);
     expect(readManifest(tmpDir, 'aaa-guide').stats).toBeUndefined();
     expect(readManifest(tmpDir, 'zzz-path').stats).toBeUndefined();
@@ -276,7 +318,7 @@ describe('buildStats', () => {
     const result = await buildStats(tmpDir);
 
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toContain('the-path: milestone "leaf" is reachable twice (also via "mid")');
+    expect(result.errors[0]).toContain('the-path: milestone or track guide "leaf" is reachable twice (also via "mid")');
   });
 
   it('errors when a guide-typed manifest carries milestones', async () => {
@@ -292,6 +334,33 @@ describe('buildStats', () => {
 
     expect(result.errors.some((error) => error.includes('cannot carry milestones'))).toBe(true);
     expect(readManifest(tmpDir, 'sneaky').stats).toBeUndefined();
+  });
+
+  it('errors when a guide-typed manifest carries tracks', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown, markdown, markdown] });
+    writeGuide(tmpDir, 'sneaky', {
+      type: 'guide',
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['leaf'] }],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors.some((error) => error.includes('cannot carry tracks'))).toBe(true);
+    expect(readManifest(tmpDir, 'sneaky').stats).toBeUndefined();
+  });
+
+  it('errors on a guide listed twice within one track rather than summing it twice', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown, interactive] });
+    writeGuide(tmpDir, 'the-path', {
+      type: 'path',
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['leaf', 'leaf'] }],
+      blocks: [],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual(['the-path: track "seller" lists guide "leaf" more than once']);
+    expect(readManifest(tmpDir, 'the-path').stats).toBeUndefined();
   });
 
   it('reports a missing milestone once, however many parents reference it', async () => {
@@ -363,7 +432,7 @@ describe('buildStats', () => {
 
     const result = await buildStats(tmpDir);
 
-    expect(result.errors.some((error) => error.includes('milestone cycle'))).toBe(true);
+    expect(result.errors.some((error) => error.includes('milestone/track cycle'))).toBe(true);
   });
 
   it('errors on an ID mismatch between content and manifest', async () => {

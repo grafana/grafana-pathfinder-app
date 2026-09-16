@@ -4,6 +4,7 @@ import { t } from '@grafana/i18n';
 
 import type { CoverPageTrack, Milestone } from '../../types/content.types';
 import type { PathGuide } from '../../types/learning-paths.types';
+import { FOUNDATIONS_TRACK_ID } from '../../types/package.types';
 import { milestoneCompletionStorage } from '../../lib/user-storage';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
 import { journeyProgressFromMilestones } from '../../docs-retrieval';
@@ -14,8 +15,8 @@ import { ProgressRing } from './ProgressRing';
 import { BadgeIcon } from './BadgeIcon';
 import { getTableOfContentsStyles } from './learning-paths.styles';
 
-/** Tab id for the always-present default sequence — never a real trackId. */
-const FOUNDATIONS_TAB_ID = 'foundations';
+/** Tab id for the always-present default sequence — never a real trackId (schema-enforced). */
+const FOUNDATIONS_TAB_ID = FOUNDATIONS_TRACK_ID;
 
 export interface LearningPathTableOfContentsProps {
   milestones: Milestone[];

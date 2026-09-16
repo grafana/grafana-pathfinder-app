@@ -387,6 +387,23 @@ describe('ManifestJsonSchema — tracks (Path Tracks RFC)', () => {
     );
     expect(trackIdIssue).toBeDefined();
   });
+
+  it('should reject "foundations" as a trackId — reserved for the default sequence', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [{ trackId: 'foundations', label: 'Foundations again', guides: ['guide-c'] }],
+    });
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+    const reservedIssue = result.error.issues.find(
+      (issue) => issue.path[0] === 'tracks' && issue.path[1] === 0 && issue.path[2] === 'trackId'
+    );
+    expect(reservedIssue).toBeDefined();
+  });
 });
 
 // ============ DependencyClauseSchema ============

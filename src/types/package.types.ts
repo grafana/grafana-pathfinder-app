@@ -132,6 +132,16 @@ export interface ManifestTrack {
 }
 
 /**
+ * Reserved `trackId` sentinel meaning "the default milestones sequence is
+ * active" — the cover page's Foundations tab. An author-supplied track must
+ * not collide with it, since the cover page distinguishes "Foundations
+ * active" from "a named track is active" by comparing against this value.
+ * @coupling Schema: ManifestJsonSchema Rule 4 in package.schema.ts
+ * @coupling UI: LearningPathTableOfContents.tsx's Foundations tab id
+ */
+export const FOUNDATIONS_TRACK_ID = 'foundations';
+
+/**
  * Safely reads a manifest-shaped value's `tracks` array, tolerating an
  * untyped/untrusted source (a raw JSON manifest, a network payload) the same
  * way `milestones` readers already do ad hoc. The one place every tracks
