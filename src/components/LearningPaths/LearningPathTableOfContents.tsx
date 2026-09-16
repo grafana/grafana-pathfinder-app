@@ -68,6 +68,21 @@ export function LearningPathTableOfContents({
       ? (tracks!.find((track) => track.trackId === activeTabId)?.milestones ?? milestones)
       : milestones;
 
+  // Adjusting state during render (React's endorsed pattern for resetting
+  // state in response to a changed value — see "You Might Not Need an
+  // Effect"): re-guards progressLoaded the moment activeMilestones changes
+  // (e.g. a tab switch), not only on the initial mount. Without this,
+  // completedSlugs still reflects the PREVIOUS tab until the effect below's
+  // fetch resolves, and leaving progressLoaded true across that window would
+  // keep the CTA and the current-row click live against stale data, sending
+  // a reader who just switched tabs to the wrong module. Setting it inside
+  // the effect itself would trigger a cascading-render lint error.
+  const [loadedForMilestones, setLoadedForMilestones] = useState(activeMilestones);
+  if (loadedForMilestones !== activeMilestones) {
+    setLoadedForMilestones(activeMilestones);
+    setProgressLoaded(false);
+  }
+
   useEffect(() => {
     let cancelled = false;
     void milestoneCompletionStorage

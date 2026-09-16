@@ -196,7 +196,7 @@ JQ
 # hatch) so nothing is lost on the way in.
 build_manifest() {
   jq --arg repo "$REPOSITORY" '
-    ["id","type","repository","description","milestones","author","category","depends"] as $typed
+    ["id","type","repository","description","milestones","tracks","author","category","depends"] as $typed
     | . as $m
     | ($m | with_entries(. as $e | select(($typed | index($e.key)) == null and $e.value != null))) as $rest
     | (($m.author // {}) | with_entries(select(.value != null))) as $allAuthor
@@ -215,6 +215,7 @@ build_manifest() {
     + (if $m.category != null then {category: $m.category} else {} end)
     + (if ($author | length) > 0 then {author: $author} else {} end)
     + (if $isMeta and (($m.milestones // []) | length) > 0 then {milestones: $m.milestones} else {} end)
+    + (if $isMeta and (($m.tracks // []) | length) > 0 then {tracks: $m.tracks} else {} end)
     + (if ($depends | length) > 0 then {depends: $depends} else {} end)
     + (if ($extra | length) > 0 then {additionalFields: $extra} else {} end)
   ' "$1"

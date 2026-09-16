@@ -416,6 +416,47 @@ describe('LearningPathTableOfContents', () => {
       );
     });
 
+    // Regression (Cursor Bugbot on PR #1927): switching tabs re-fires the
+    // completion fetch for the new tab's own guides, but until that
+    // resolves, completedSlugs still reflects the PREVIOUS tab. If
+    // progressLoaded stayed true across that window, the CTA and the
+    // current-row click would stay live against stale data and could send a
+    // reader who just switched tabs to the wrong module.
+    it('disables the CTA and clickable row again on tab switch, until the new tab completion data lands', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      // Let the initial (Foundations) fetch resolve before switching tabs.
+      expect(await screen.findByText('Get started')).toBeInTheDocument();
+
+      let resolveSellerCompleted: (slugs: Set<string>) => void = () => {};
+      getCompletedMock.mockReturnValue(
+        new Promise((resolve) => {
+          resolveSellerCompleted = resolve;
+        })
+      );
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+
+      // Titles switch immediately from the static track data...
+      expect(screen.getByText('Seller one')).toBeInTheDocument();
+      // ...but nothing is clickable again until the new tab's own progress is known.
+      expect(screen.queryByText('Get started')).not.toBeInTheDocument();
+      expect(screen.queryByText('Resume')).not.toBeInTheDocument();
+      expect(document.querySelector('[data-journey-start]')).not.toBeInTheDocument();
+
+      await act(async () => {
+        getCompletedSyncMock.mockReturnValue(new Set());
+        resolveSellerCompleted(new Set());
+      });
+
+      expect(await screen.findByText('Get started')).toBeInTheDocument();
+      expect(document.querySelector('[data-journey-start]')).toHaveAttribute(
+        'data-milestone-url',
+        sellerMilestones[0]!.url
+      );
+    });
+
     it('reuses the Foundations sequential lock/unlock mechanism for a track', async () => {
       setCompletedSlugs(new Set());
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);

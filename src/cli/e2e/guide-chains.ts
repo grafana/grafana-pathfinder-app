@@ -453,6 +453,20 @@ function planRootPackageExecution(
       errors.push(`Cycle across depends and milestones: ${cycle.join(' → ')}`);
     }
   }
+  // Catches a cycle that only closes once tracks edges join depends and/or
+  // milestones — e.g. a track referencing a package that depends back on the
+  // path — which none of the single- or dual-type checks above would see.
+  for (const cycle of detectCycles(
+    packageSet,
+    [...dependencyEdges, ...milestoneEdges, ...trackEdges],
+    new Set<GraphEdgeType>(['depends', 'milestones', 'tracks'])
+  )) {
+    const key = cycleKey(cycle);
+    if (!reportedCycleKeys.has(key)) {
+      reportedCycleKeys.add(key);
+      errors.push(`Cycle across depends, milestones, and tracks: ${cycle.join(' → ')}`);
+    }
+  }
 
   const leavesMemo = new Map<string, string[]>();
   const packageLeaves = (id: string): string[] => {
