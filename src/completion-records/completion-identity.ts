@@ -45,6 +45,19 @@ export function normalizeGuideId(guideId: string): string {
   return guideId;
 }
 
+/**
+ * Every guide-id spelling that must be READ for one guide, honouring the bundled
+ * dual-shape migration: the canonical (normalized) id, plus the legacy
+ * `/content.json`-suffixed id that plugin 2.17.0 wrote. WRITE only the canonical
+ * id (`normalizeGuideId`); READ every variant this returns, so a completion
+ * already stored under the suffixed id is still found — never re-fired as a
+ * duplicate durable record, never orphaned. The canonical id is always first.
+ */
+export function bundledGuideIdReadVariants(guideId: string): [canonical: string, legacySuffixed: string] {
+  const normalized = normalizeGuideId(guideId);
+  return [normalized, `${normalized}${PACKAGE_CONTENT_SUFFIX}`];
+}
+
 /** Default repository when neither an explicit source nor a manifest resolves one. */
 const DEFAULT_GUIDE_SOURCE = 'interactive-tutorials';
 

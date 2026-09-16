@@ -1,6 +1,6 @@
 import { logger } from '../lib/logging';
 import { completionEmittedStorage } from '../lib/user-storage';
-import { normalizeGuideId } from './completion-identity';
+import { bundledGuideIdReadVariants } from './completion-identity';
 
 import type {
   CompletionFact,
@@ -64,8 +64,18 @@ export function recordJourneyCompletion(fact: JourneyCompletionFact): void {
 
 function record(fact: CompletionFact): void {
   try {
-    const key = dedupeKey(fact.kind, fact.guideSource, fact.guideId);
-    if (emitted.has(key) || completionEmittedStorage.isEmitted(key)) {
+    // WRITE the canonical (normalized) key, but READ every legacy spelling too:
+    // a package-path completion already persisted under the suffixed id (shipped
+    // in 2.17.0) must be seen here, or the reload-to-100% path would mint a
+    // second durable Cloud record. This is the migration read-both on the WRITE
+    // path — the reset path reads both via `invalidateEmittedCompletion`.
+    const variants = bundledGuideIdReadVariants(fact.guideId);
+    const key = dedupeKey(fact.kind, fact.guideSource, variants[0]);
+    const alreadyEmitted = variants.some((id) => {
+      const k = dedupeKey(fact.kind, fact.guideSource, id);
+      return emitted.has(k) || completionEmittedStorage.isEmitted(k);
+    });
+    if (alreadyEmitted) {
       emitted.add(key);
       return;
     }
@@ -99,9 +109,9 @@ export function onCompletionRecorded(listener: CompletionListener): () => void {
  * record, no badge and no path progress on the second completion, because
  * `record()` above would still see the identity as already emitted.
  *
- * Clears both the normalized key (guideId after normalizeGuideId) AND the
- * legacy suffixed key (guideId + '/content.json' if not already present) to
- * handle guides that may have been recorded under either identity shape.
+ * Clears every spelling `bundledGuideIdReadVariants` yields — the normalized key
+ * AND the legacy `/content.json`-suffixed key — so a guide recorded under either
+ * identity shape is fully forgotten.
  *
  * MIGRATION GUARANTEE — do not remove the legacy read: durable records written
  * under the suffixed id shipped in plugin 2.17.0 and have been live on Cloud for
@@ -110,21 +120,13 @@ export function onCompletionRecorded(listener: CompletionListener): () => void {
  * have aged out. Reading only the normalized key would silently orphan them.
  */
 export function invalidateEmittedCompletion(guideSource: string, guideId: string): void {
-  const normalizedId = normalizeGuideId(guideId);
-  const legacySuffixedId = normalizedId.endsWith('/content.json') ? normalizedId : `${normalizedId}/content.json`;
-
+  const variants = bundledGuideIdReadVariants(guideId);
   const kinds: readonly CompletionKind[] = ['guide', 'journey'];
   for (const kind of kinds) {
-    // Clear the normalized key
-    const normalizedKey = dedupeKey(kind, guideSource, normalizedId);
-    emitted.delete(normalizedKey);
-    void completionEmittedStorage.clear(normalizedKey);
-
-    // Clear the legacy suffixed key if different from normalized
-    if (legacySuffixedId !== normalizedId) {
-      const legacyKey = dedupeKey(kind, guideSource, legacySuffixedId);
-      emitted.delete(legacyKey);
-      void completionEmittedStorage.clear(legacyKey);
+    for (const id of variants) {
+      const key = dedupeKey(kind, guideSource, id);
+      emitted.delete(key);
+      void completionEmittedStorage.clear(key);
     }
   }
 }

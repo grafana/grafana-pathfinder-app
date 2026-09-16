@@ -412,6 +412,8 @@ describe('useLearningPaths — resetPath reports a partial failure once', () => 
       await result.current.resetPath('bundled-path');
     });
 
+    // Reset reads BOTH id spellings (bundled dual-shape migration), so each
+    // (kind, source, id) also clears the legacy `/content.json`-suffixed key.
     const invalidatedKeys = mockCompletionEmittedClear.mock.calls.map(([key]) => key);
     expect(new Set(invalidatedKeys)).toEqual(
       new Set([
@@ -427,6 +429,18 @@ describe('useLearningPaths — resetPath reports a partial failure once', () => 
         'journey:app-platform:bundled-guide',
         'guide:interactive-tutorials:bundled-guide',
         'journey:interactive-tutorials:bundled-guide',
+        'guide:bundled:bundled-path/content.json',
+        'journey:bundled:bundled-path/content.json',
+        'guide:app-platform:bundled-path/content.json',
+        'journey:app-platform:bundled-path/content.json',
+        'guide:interactive-tutorials:bundled-path/content.json',
+        'journey:interactive-tutorials:bundled-path/content.json',
+        'guide:bundled:bundled-guide/content.json',
+        'journey:bundled:bundled-guide/content.json',
+        'guide:app-platform:bundled-guide/content.json',
+        'journey:app-platform:bundled-guide/content.json',
+        'guide:interactive-tutorials:bundled-guide/content.json',
+        'journey:interactive-tutorials:bundled-guide/content.json',
       ])
     );
   });
