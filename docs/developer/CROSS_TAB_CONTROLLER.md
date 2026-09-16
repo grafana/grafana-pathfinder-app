@@ -297,10 +297,6 @@ badge.
   directly rather than emitting one command; quiz grading is local (so it still
   works in the controller); terminal / challenge need a shared VM session and are
   out of scope.
-- **Rejected at the receive gate:** a guided block containing a `noop` step —
-  `noop` is missing from `KNOWN_TARGET_ACTIONS`, so the whole command is dropped
-  before it reaches the handler (pinned by `live-tab-executor.test.ts`; closing
-  the gap means changing the wire contract).
 - Completion sync rides the existing `completion-store` cross-tab storage event
   when the same guide is open in the live tab; otherwise it is not yet propagated.
 

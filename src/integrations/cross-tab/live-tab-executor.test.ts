@@ -416,20 +416,18 @@ describe('installLiveTabExecutor', () => {
     }
   );
 
-  // Pre-existing gap, pinned so it is visible rather than surprising: `noop` is a
-  // verb the guided handler drives, but it is absent from the receive gate's
-  // KNOWN_TARGET_ACTIONS, so a guided block containing a noop step cannot be
-  // relayed cross-tab at all. Unrelated to the guided authoring gate in
-  // validate-guide.ts; fixing it means changing a wire contract.
-  it('drops a guided noop substep at the receive gate, so it never reaches the handler', async () => {
+  it('relays a guided noop substep to the guided handler and reports the step complete', async () => {
     const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(guidedSubstepCommand('g-noop', 'noop'));
 
-    await drainExecutor(transport);
-    expect(guidedVerbsHandled()).toEqual(['button']);
-    expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ stepId: 'g-noop' }));
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-complete', stepId: 'g-noop', ok: true })
+      )
+    );
+    expect(guidedVerbsHandled()).toEqual(['noop']);
     uninstall();
   });
 

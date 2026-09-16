@@ -48,9 +48,10 @@ export type WireMirrors<A, B> = SetsEqual<A, B> &
   SetsEqual<RequiredKeysOf<A>, RequiredKeysOf<B>>;
 
 // Deliberate re-statement (not an alias) of CheckResultError /
-// RequirementsCheckResult: this is a wire contract, and the two tabs on a
-// channel may run different plugin versions, so the internal type must not be
-// able to reshape the wire silently. A compile-time guard in
+// RequirementsCheckResult: this is a wire contract, so the internal type must
+// not be able to reshape the wire silently. Both tabs are the same build (see
+// the same-build note below), so this guards against accidental drift, not
+// against a peer running another version. A compile-time guard in
 // cross-tab.types.test.ts forces a conscious update here when they diverge.
 export interface RemoteRequirementError {
   verdict?: 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
@@ -221,12 +222,15 @@ export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Se
 // Recognized interactive action verbs. Kept as a literal set (not derived
 // from InteractiveAction) so the receive gate stays decoupled from the
 // action type — #1063 swaps the wire action to a structural CrossTabAction.
+// `noop` touches no DOM on the live tab; it is here so a guided block with an
+// informational step can be relayed (#1909).
 const KNOWN_TARGET_ACTIONS: ReadonlySet<string> = new Set([
   'button',
   'highlight',
   'formfill',
   'navigate',
   'hover',
+  'noop',
   'guided',
   'multistep',
 ]);
