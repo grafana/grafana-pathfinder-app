@@ -640,7 +640,7 @@ export interface OrphanScan {
    * off-graph importer: a test file, or tooling under
    * OFF_GRAPH_IMPORTER_ROOTS.
    */
-  testOnlyReachable: string[];
+  offGraphReachable: string[];
 }
 
 /**
@@ -674,7 +674,7 @@ export function getOffGraphImportedNodes(): string[] {
  * Nodes not reached that way are then checked against `offGraphImportedNodes`
  * (real edges buildModuleGraph() drops), so a file exercised only by a test
  * or by tooling under OFF_GRAPH_IMPORTER_ROOTS — never by the app — reports
- * as testOnlyReachable rather than orphaned.
+ * as offGraphReachable rather than orphaned.
  */
 export function findOrphanedModules(
   graph: ModuleGraph = buildModuleGraph(),
@@ -689,7 +689,7 @@ export function findOrphanedModules(
 
   return {
     orphaned: unreached.filter((node) => !reachedFromOffGraph.has(node)).sort(),
-    testOnlyReachable: unreached.filter((node) => reachedFromOffGraph.has(node)).sort(),
+    offGraphReachable: unreached.filter((node) => reachedFromOffGraph.has(node)).sort(),
   };
 }
 

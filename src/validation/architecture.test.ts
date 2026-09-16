@@ -365,7 +365,7 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
 const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((entry) => entry.violation));
 
 /**
- * Known test-only-reachable modules: production files buildModuleGraph()
+ * Known off-graph-reachable modules: production files buildModuleGraph()
  * cannot reach forward from APP_ENTRY_ROOTS, but at least one test file or
  * tooling file under OFF_GRAPH_IMPORTER_ROOTS imports them directly (a real
  * edge buildModuleGraph structurally can't see, since it excludes test files
@@ -375,7 +375,7 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
  * where the paydown plan decides which of them are debt and which are
  * permanent.
  */
-const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
+const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
     violation: 'types/backend-api.schema.ts',
     reason: 'Imported only by validation/backend-api-contract.test.ts, the Go-to-TypeScript contract check.',
@@ -389,13 +389,13 @@ const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] =
   {
     violation: 'validation/import-graph.ts',
     reason:
-      'The ratchet machinery itself — imported by several validation/*.test.ts files and by one production node, validation/cli-build-contract.ts, which is itself test-only-reachable.',
+      'The ratchet machinery itself — imported by several validation/*.test.ts files and by one production node, validation/cli-build-contract.ts, which is itself off-graph-reachable.',
     tracking: '#1923',
   },
   {
     violation: 'validation/package-io.ts',
     reason:
-      'No test file imports it: the importers are six src/cli/** tooling files plus validation/validate-package.ts, itself test-only-reachable.',
+      'Imported by six src/cli/** tooling files and by validation/validate-package.ts, itself off-graph-reachable — no test file and no app code path reaches it.',
     tracking: '#1923',
   },
   {
@@ -415,7 +415,7 @@ const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] =
     tracking: '#1923',
   },
 ];
-const ALLOWED_TEST_ONLY_REACHABLE = new Set(ALLOWED_TEST_ONLY_REACHABLE_ENTRIES.map((entry) => entry.violation));
+const ALLOWED_OFF_GRAPH_REACHABLE = new Set(ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES.map((entry) => entry.violation));
 
 const ARCHITECTURE_ALLOWLISTS = {
   ALLOWED_VERTICAL_VIOLATIONS: { entries: ALLOWED_VERTICAL_VIOLATION_ENTRIES, allowByDesign: true },
@@ -424,7 +424,7 @@ const ARCHITECTURE_ALLOWLISTS = {
   ALLOWED_CYCLES: { entries: ALLOWED_CYCLES, allowByDesign: false },
   ALLOWED_PERCENTAGE_CALCULATIONS: { entries: ALLOWED_PERCENTAGE_CALCULATION_ENTRIES, allowByDesign: true },
   ALLOWED_ORPHANED_MODULES: { entries: ALLOWED_ORPHANED_MODULES_ENTRIES, allowByDesign: false },
-  ALLOWED_TEST_ONLY_REACHABLE: { entries: ALLOWED_TEST_ONLY_REACHABLE_ENTRIES, allowByDesign: false },
+  ALLOWED_OFF_GRAPH_REACHABLE: { entries: ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES, allowByDesign: false },
 } as const;
 
 /**
@@ -682,7 +682,7 @@ describe('Import graph: circular dependencies', () => {
       'ALLOWED_CYCLES',
       'ALLOWED_PERCENTAGE_CALCULATIONS',
       'ALLOWED_ORPHANED_MODULES',
-      'ALLOWED_TEST_ONLY_REACHABLE',
+      'ALLOWED_OFF_GRAPH_REACHABLE',
     ]);
     const errors = Object.entries(ARCHITECTURE_ALLOWLISTS).flatMap(([name, { entries, allowByDesign }]) =>
       validateAllowedArchitectureEntries(entries, { allowByDesign }).map((error) => `${name}: ${error}`)
@@ -715,9 +715,9 @@ describe('Import graph: circular dependencies', () => {
 describe('Import graph: orphaned modules', () => {
   const scan = findOrphanedModules(buildModuleGraph());
 
-  it('reports the current orphan / test-only-reachable footprint', () => {
+  it('reports the current orphan / off-graph-reachable footprint', () => {
     console.log(
-      `[architecture-ratchet] orphans: orphaned=${scan.orphaned.length} testOnlyReachable=${scan.testOnlyReachable.length}`
+      `[architecture-ratchet] orphans: orphaned=${scan.orphaned.length} offGraphReachable=${scan.offGraphReachable.length}`
     );
   });
 
@@ -737,19 +737,19 @@ describe('Import graph: orphaned modules', () => {
     );
   });
 
-  it('should not introduce new test-only-reachable modules beyond the ratchet allowlist', () => {
+  it('should not introduce new off-graph-reachable modules beyond the ratchet allowlist', () => {
     assertRatchet(
-      new Set(scan.testOnlyReachable),
-      ALLOWED_TEST_ONLY_REACHABLE,
-      'test-only-reachable modules',
-      'ALLOWED_TEST_ONLY_REACHABLE_ENTRIES',
+      new Set(scan.offGraphReachable),
+      ALLOWED_OFF_GRAPH_REACHABLE,
+      'off-graph-reachable modules',
+      'ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES',
       `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx), but a test file or a ` +
         `tooling file under OFF_GRAPH_IMPORTER_ROOTS (src/cli/, src/test-utils/, the repo-root tests/ tree) ` +
         `imports it directly — buildModuleGraph() excludes test files as both nodes and edge targets and ` +
         `covers nothing under those roots, so that edge is ` +
         `structurally invisible to the orphan check above. This file is not dead, it simply never ships in the ` +
         `bundle. If that is deliberate (e.g. governance/validation tooling that only ever runs under test or ` +
-        `the CLI), add a structured entry to ALLOWED_TEST_ONLY_REACHABLE_ENTRIES with a substantive reason and ` +
+        `the CLI), add a structured entry to ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES with a substantive reason and ` +
         `a tracking issue (#1923). Otherwise, wire it into a real entry point or delete it.`
     );
   });
@@ -824,7 +824,7 @@ describe('Architecture ratchet progress', () => {
         ` cycles=${ALLOWED_CYCLES.length}` +
         ` percentageCalculations=${ALLOWED_PERCENTAGE_CALCULATIONS.size}` +
         ` orphanedModules=${ALLOWED_ORPHANED_MODULES.size}` +
-        ` testOnlyReachable=${ALLOWED_TEST_ONLY_REACHABLE.size}`
+        ` offGraphReachable=${ALLOWED_OFF_GRAPH_REACHABLE.size}`
     );
   });
 });

@@ -665,42 +665,42 @@ describe('buildModuleGraph', () => {
 describe('findOrphanedModules', () => {
   it('reaches every node forward from the given roots and reports nothing orphaned', () => {
     const graph = graphFromAdjacency({ root: ['a'], a: ['b'], b: [] });
-    expect(findOrphanedModules(graph, ['root'], [])).toEqual({ orphaned: [], testOnlyReachable: [] });
+    expect(findOrphanedModules(graph, ['root'], [])).toEqual({ orphaned: [], offGraphReachable: [] });
   });
 
-  it('reports a node no root and no test reaches as orphaned', () => {
+  it('reports a node no root and no off-graph importer reaches as orphaned', () => {
     const graph = graphFromAdjacency({ root: ['a'], a: [], dead: [] });
-    expect(findOrphanedModules(graph, ['root'], [])).toEqual({ orphaned: ['dead'], testOnlyReachable: [] });
+    expect(findOrphanedModules(graph, ['root'], [])).toEqual({ orphaned: ['dead'], offGraphReachable: [] });
   });
 
-  it('classifies a node reached only via a test import as testOnlyReachable, not orphaned', () => {
-    const graph = graphFromAdjacency({ root: ['a'], a: [], testOnly: [] });
-    expect(findOrphanedModules(graph, ['root'], ['testOnly'])).toEqual({
+  it('classifies a node reached only via an off-graph import as offGraphReachable, not orphaned', () => {
+    const graph = graphFromAdjacency({ root: ['a'], a: [], offGraph: [] });
+    expect(findOrphanedModules(graph, ['root'], ['offGraph'])).toEqual({
       orphaned: [],
-      testOnlyReachable: ['testOnly'],
+      offGraphReachable: ['offGraph'],
     });
   });
 
-  it('follows edges transitively from a test-reached node into other unreached nodes', () => {
-    // testOnly -> chained: chained has no direct test import, but is only reachable
-    // once testOnly is treated as a root, so it must be swept into the same bucket.
-    const graph = graphFromAdjacency({ root: ['a'], a: [], testOnly: ['chained'], chained: [] });
-    expect(findOrphanedModules(graph, ['root'], ['testOnly']).testOnlyReachable.sort()).toEqual([
+  it('follows edges transitively from an off-graph-reached node into other unreached nodes', () => {
+    // offGraph -> chained: chained has no direct off-graph importer, but is only
+    // reachable once offGraph is treated as a root, so it joins the same bucket.
+    const graph = graphFromAdjacency({ root: ['a'], a: [], offGraph: ['chained'], chained: [] });
+    expect(findOrphanedModules(graph, ['root'], ['offGraph']).offGraphReachable.sort()).toEqual([
       'chained',
-      'testOnly',
+      'offGraph',
     ]);
   });
 
-  it('ignores a test-imported node that the app already reaches', () => {
+  it('ignores an off-graph-imported node that the app already reaches', () => {
     const graph = graphFromAdjacency({ root: ['a'], a: [] });
-    expect(findOrphanedModules(graph, ['root'], ['a'])).toEqual({ orphaned: [], testOnlyReachable: [] });
+    expect(findOrphanedModules(graph, ['root'], ['a'])).toEqual({ orphaned: [], offGraphReachable: [] });
   });
 
   it('orphans every app node when the entry root matches nothing, rather than reporting a clean scan', () => {
-    const graph = graphFromAdjacency({ renamed: ['a'], a: ['b'], b: [], testOnly: [] });
-    expect(findOrphanedModules(graph, ['module.tsx'], ['testOnly'])).toEqual({
+    const graph = graphFromAdjacency({ renamed: ['a'], a: ['b'], b: [], offGraph: [] });
+    expect(findOrphanedModules(graph, ['module.tsx'], ['offGraph'])).toEqual({
       orphaned: ['a', 'b', 'renamed'],
-      testOnlyReachable: ['testOnly'],
+      offGraphReachable: ['offGraph'],
     });
   });
 });
