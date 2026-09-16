@@ -17,7 +17,7 @@ You need:
 Throughout, `PF` is the plugin's resources prefix:
 
 ```js
-const PF = '/api/plugins/grafana-pathfinder-app/resources';
+var PF = '/api/plugins/grafana-pathfinder-app/resources';
 ```
 
 ### 0. Check the installed plugin version first
@@ -40,7 +40,11 @@ So **read the count before the action, read it after, and assert the difference.
 
 ## Paste these helpers into the console first
 
-Three of them. `completionSnapshot` reads the whole collated array as a lookup, because a step often has to take a baseline before it knows which pair a guide records under; `completionCount` narrows that to one pair and answers `0` for a pair with no record yet; `queuedFacts` reads the client's own write queue, which is where you find out what pair a completion actually used.
+Four of them. `completionSnapshot` reads the whole collated array as a lookup, because a step often has to take a baseline before it knows which pair a guide records under; `completionCount` narrows that to one pair and answers `0` for a pair with no record yet; `waitForDelta` polls for a count to move, at the spacing the forced-read rate limit allows; `queuedFacts` reads the client's own write queue, which is where you find out what pair a completion actually used.
+
+Every step below draws on this one block, so **this is the block to re-paste if the console's context is ever cleared** — which step 3 does deliberately, when it reloads the page.
+
+The snippets declare their working values with `var`, not `const`, and that is deliberate: later steps re-derive the same names (`before`, `guideSource`, `guideId`, `baseline`) and a `const` would throw `Identifier has already been declared` in a console that has already seen them. Please leave them as `var`.
 
 ```js
 async function completionSnapshot({ refresh = false } = {}) {
@@ -54,6 +58,25 @@ async function completionSnapshot({ refresh = false } = {}) {
 
 async function completionCount(guideSource, guideId, options) {
   return (await completionSnapshot(options))[`${guideSource}\t${guideId}`] ?? 0;
+}
+
+// Polls a pair's count until it has risen by `expected`. The read route answers
+// from a per-namespace cache with a five-minute TTL, so a single read will often
+// miss a completion that did land; `?refresh=1` forces an upstream read and is
+// itself rate-limited to one per namespace per 30 seconds, which is why the poll
+// spacing is 30 seconds and not tighter.
+async function waitForDelta(guideSource, guideId, baselineCount, expected, timeoutMs = 180_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const now = await completionCount(guideSource, guideId, { refresh: true });
+    if (now - baselineCount >= expected) {
+      return now;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`record never arrived: count stayed at ${now}, baseline ${baselineCount}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 30_000));
+  }
 }
 
 // The client's queued-but-unsent completion facts. `guideId` narrows to one
@@ -99,43 +122,29 @@ Do not continue past a `false`. Every later step reads through the same gate, an
 
 **Do not work out the `(guideSource, guideId)` pair by hand.** It is not simply the manifest's `repository` and `id`: the same guide launched by package path rather than by bare id records a different `guideId`, App Platform guides are forced to `app-platform`, and a milestone is keyed on its own slug and never on the owning path's id. Guess it wrong and you see no delta and report a working system as broken. Read it off the completion the client actually built instead.
 
-1. Take a baseline of the whole collated array, since you do not yet know the pair: `const before = await completionSnapshot();`
+1. Take a baseline of the whole collated array, since you do not yet know the pair: `var before = await completionSnapshot();`
 2. In the sidebar, open a guide and complete it — click **Mark complete** at its foot.
 3. Read the pair off the queued fact, promptly — the queue removes an item once it is sent:
 
 ```js
-const [fact] = queuedFacts();
-const { guideSource, guideId } = fact;
+var [fact] = queuedFacts();
+var { guideSource, guideId } = fact;
 ({ guideSource, guideId });
 ```
 
 If the queue is already empty the fact has drained, which is the good case. Fall back to diffing the whole array:
 
 ```js
-const after = await completionSnapshot({ refresh: true });
-Object.entries(after).filter(([pair, count]) => count !== (before[pair] ?? 0));
+var drained = await completionSnapshot({ refresh: true });
+Object.entries(drained).filter(([pair, seen]) => seen !== (before[pair] ?? 0));
 // → exactly one entry, `"<guideSource>\t<guideId>": <before + 1>`
 ```
 
-4. Poll for the record to appear. The read route answers from a per-namespace cache with a five-minute TTL, so a single read will often miss a completion that did land. `?refresh=1` forces an upstream read, and is itself rate-limited to one forced read per namespace per 30 seconds, so poll at that spacing rather than tighter:
+4. Poll for the record to appear, with `waitForDelta` from the helper block. It allows for the read cache and the forced-read rate limit, so give it time rather than reading once:
 
 ```js
-async function waitForDelta(guideSource, guideId, baselineCount, expected, timeoutMs = 180_000) {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const now = await completionCount(guideSource, guideId, { refresh: true });
-    if (now - baselineCount >= expected) {
-      return now;
-    }
-    if (Date.now() > deadline) {
-      throw new Error(`record never arrived: count stayed at ${now}, baseline ${baselineCount}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 30_000));
-  }
-}
-
-const baseline = before[`${guideSource}\t${guideId}`] ?? 0;
-const after = await waitForDelta(guideSource, guideId, baseline, 1);
+var baseline = before[`${guideSource}\t${guideId}`] ?? 0;
+var after = await waitForDelta(guideSource, guideId, baseline, 1);
 ```
 
 **Pass:** `after - baseline === 1`.
@@ -146,15 +155,15 @@ A timeout here means **the record never arrived**. Treat it as a failure and rep
 
 The client retries a completion whose POST it could not confirm, replaying it under the same stable idempotency key. The backend derives the record name from that key, so a replay must collapse into the one record rather than adding a second.
 
-1. Take a whole-array baseline: `const before = await completionSnapshot();`
+1. Take a whole-array baseline: `var before = await completionSnapshot();`
 2. In devtools, set the network to **Offline** (Network panel → throttling → Offline).
 3. Complete a guide you have **not** completed on this stack. The completion cannot leave the browser, so it stays in the client's queue.
 4. Copy that guide's queued fact out of `localStorage`, still offline. Filter by the guide id rather than taking the first item — a failed earlier step can leave others queued:
 
 ```js
-const [fact] = queuedFacts(); // one guide completed while offline, so one fact
-const { guideSource, guideId } = fact;
-const saved = { key: fact.key, value: localStorage.getItem(fact.key) };
+var [fact] = queuedFacts(); // one guide completed while offline, so one fact
+var { guideSource, guideId } = fact;
+var saved = { key: fact.key, value: localStorage.getItem(fact.key) };
 // If several are queued, narrow it: queuedFacts('<the guide id>')
 saved; // keep this in the console — you re-write it in step 6
 ```
@@ -162,26 +171,48 @@ saved; // keep this in the console — you re-write it in step 6
 5. Set the network back to **Online** and wait for the delta with the poll from step 2. It should be `+1`.
 
 ```js
-const baseline = before[`${guideSource}\t${guideId}`] ?? 0;
+var baseline = before[`${guideSource}\t${guideId}`] ?? 0;
 await waitForDelta(guideSource, guideId, baseline, 1);
 ```
 
-6. Force the resend: write the saved item back under its original key and reload the page. The queue drains it again, under the same idempotency key as before.
+6. Force the resend. **The reload on the next line wipes the console's JS context** — `PF`, every helper, `saved`, `guideSource`, `guideId` and `baseline` all go with it — so stash what steps 7 and 8 need somewhere that survives it first. `sessionStorage` is the right place: it lives through a reload in the same tab, and no longer.
 
 ```js
+sessionStorage.setItem(
+  'pathfinder-checklist-replay',
+  JSON.stringify({ savedKey: saved.key, guideSource, guideId, baseline })
+);
 localStorage.setItem(saved.key, saved.value);
 location.reload();
 ```
 
-7. **Confirm the replay actually left the browser, before you read any count.** This is the step's whole point and the one place a wrong result is worse than no result: a replay that never sent produces the same count as a replay that was correctly deduped, so without a positive check a silent no-op reads as a pass and reports the idempotency guarantee as verified when nothing was tested.
+7. **Re-paste two things before you run anything else in this step**, because the reload cleared them:
+
+   - the `const PF = ...` line from [before you start](#before-you-start), and
+   - the whole [helper block](#paste-these-helpers-into-the-console-first).
+
+   Skip this and every snippet below fails with a `ReferenceError`, at exactly the moment this step is trying to tell you something. Re-declaring them is safe here: the reload gave you a fresh context.
+
+   Then restore the stash:
+
+```js
+var replay = JSON.parse(sessionStorage.getItem('pathfinder-checklist-replay') ?? 'null');
+if (!replay) {
+  throw new Error('no stashed replay state — start step 3 again from the beginning');
+}
+var { savedKey, guideSource, guideId, baseline } = replay;
+replay;
+```
+
+8. **Confirm the replay actually left the browser, before you read any count.** This is the step's whole point and the one place a wrong result is worse than no result: a replay that never sent produces the same count as a replay that was correctly deduped, so without a positive check a silent no-op reads as a pass and reports the idempotency guarantee as verified when nothing was tested.
 
    The queue removes an item once it has been sent successfully, so the saved key going `null` is the confirmation:
 
 ```js
-async function waitForResend(savedKey, timeoutMs = 120_000) {
+async function waitForResend(key, timeoutMs = 120_000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    if (localStorage.getItem(savedKey) === null) {
+    if (localStorage.getItem(key) === null) {
       return;
     }
     if (Date.now() > deadline) {
@@ -191,20 +222,26 @@ async function waitForResend(savedKey, timeoutMs = 120_000) {
   }
 }
 
-await waitForResend(saved.key);
+await waitForResend(savedKey);
 ```
 
 Cross-check it visually if you like: a second `POST .../resources/completion-records` in the Network panel.
 
 **Expect this to take around half a minute.** Only one tab drains at a time, under a 30-second lease, and a page that navigates away strands its lease to expire rather than releasing it — so the first send after a reload commonly waits out the full lease. The browser suite measures this at a consistent ~34 seconds. Do not shorten the timeout to under a minute, and do not conclude anything from a count read before `waitForResend` returns.
 
-8. Now read the count again.
+9. Read the count again, and clear the stash so a later run of this checklist cannot pick up this one's state.
 
-**Pass:** the count is still `baseline + 1`. The whole sequence — original send plus a confirmed replay — produced exactly one record.
+```js
+var count = await completionCount(guideSource, guideId, { refresh: true });
+sessionStorage.removeItem('pathfinder-checklist-replay');
+({ baseline, count, delta: count - baseline });
+```
+
+**Pass:** `delta` is `1`. The whole sequence — original send plus a confirmed replay — produced exactly one record.
 
 **Fail, two different ways:**
 
-- `baseline + 2` — a double-count. This is the failure the step exists to catch.
+- `delta` is `2` — a double-count. This is the failure the step exists to catch.
 - `waitForResend` times out — the replay never sent, so the guarantee is untested, not verified. Report it as an inconclusive step, not a pass.
 
 ## 4. A whole path records only when every milestone is complete
@@ -212,25 +249,41 @@ Cross-check it visually if you like: a second `POST .../resources/completion-rec
 A path has a record of its own, separate from its milestones'. It must appear when the last milestone completes, and not before.
 
 1. Pick a path with at least three milestones that you have not progressed on this stack.
-2. Take a whole-array baseline: `const before = await completionSnapshot();` — as in step 2, do not derive the path's pair by hand.
+2. Take a whole-array baseline: `var before = await completionSnapshot();` — as in step 2, do not derive the path's pair by hand.
 3. Complete every milestone except the last, using **Mark complete and continue**.
 4. Read the array again with `?refresh=1` and diff it against `before`.
 
    **Pass:** the only new or increased entries are the milestones you completed, each keyed on its own slug. **No new entry keyed on the path itself.** A path record before the last milestone is a failure, and the more damaging direction of the two: it reports readers as finished when they are not.
 
-5. Complete the last milestone. Read the path's own pair off the queue while it is still there — the path's record is a second, separate fact emitted alongside the last milestone's:
+5. Complete the last milestone. Read the path's own pair off the queue while it is still there — the path's record is a second, separate fact emitted alongside the last milestone's. The path's fact is the one whose `guideId` is the path's id rather than a milestone slug:
 
 ```js
 queuedFacts(); // the last milestone's fact, plus the path's own
 ```
 
-The path's fact is the one whose `guideId` is the path's id rather than a milestone slug. Take `pathSource` and `pathId` from it, and `const baseline = before[`${pathSource}\t${pathId}`] ?? 0;`. If the queue has already drained, diff the array as in step 2 — the path's entry is the new one that is not a milestone slug.
+Take the path's pair from that fact and set the baseline for it:
 
-6. Wait for the path's delta with the poll from step 2: `await waitForDelta(pathSource, pathId, baseline, 1);`
+```js
+// Pick the path's own entry out of the list above — the one whose guideId is
+// the path's id, not a milestone slug — and change the index to match.
+var pathFact = queuedFacts()[0];
+var { guideSource: pathSource, guideId: pathId } = pathFact;
+var baseline = before[`${pathSource}\t${pathId}`] ?? 0;
+({ pathSource, pathId, baseline });
+```
 
-   **Pass:** `count - baseline === 1`.
+If the queue has already drained, diff the array as in step 2 — the path's entry is the new one that is not a milestone slug.
 
-   **Fail:** `waitForDelta` throws, meaning the path record never arrived even though every milestone is complete — a path that can never be reported finished. Report it with the milestone records you did see in the same `/completion-records/my` response, since those say whether the milestones themselves landed.
+6. Wait for the path's delta with the poll from step 2:
+
+```js
+var count = await waitForDelta(pathSource, pathId, baseline, 1);
+({ baseline, count, delta: count - baseline });
+```
+
+**Pass:** `delta` is `1`.
+
+**Fail:** `waitForDelta` throws, meaning the path record never arrived even though every milestone is complete — a path that can never be reported finished. Report it with the milestone records you did see in the same `/completion-records/my` response, since those say whether the milestones themselves landed.
 
 Each milestone also records separately, keyed on its own slug. Those are worth spot-checking in the same `/completion-records/my` response, again as deltas.
 
