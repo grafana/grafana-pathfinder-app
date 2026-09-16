@@ -103,15 +103,17 @@ export function collectSourceFiles(): string[] {
 }
 
 /**
- * The source files under the EXCLUDED_TOP_LEVEL tooling dirs (`cli/`,
- * `test-utils/`, …) that collectSourceFiles() deliberately skips. Never graph
- * nodes, but they do import graph nodes.
+ * Repo-relative roots holding source that imports production modules but is
+ * never a graph node: the EXCLUDED_TOP_LEVEL tooling dirs collectSourceFiles()
+ * skips, plus the repo-root Playwright tree.
  */
-export function collectExcludedToolingFiles(): string[] {
-  return fs
-    .readdirSync(SRC_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && EXCLUDED_TOP_LEVEL.has(entry.name))
-    .flatMap((entry) => collectFilesUnder(path.join(SRC_DIR, entry.name), () => true));
+export const OFF_GRAPH_IMPORTER_ROOTS = [...EXCLUDED_TOP_LEVEL].map((dir) => `src/${dir}`).concat('tests');
+
+/** The source files under OFF_GRAPH_IMPORTER_ROOTS. */
+export function collectOffGraphImporterFiles(): string[] {
+  return OFF_GRAPH_IMPORTER_ROOTS.map((root) => path.resolve(REPO_ROOT, root))
+    .filter((dir) => fs.existsSync(dir))
+    .flatMap((dir) => collectFilesUnder(dir, () => true));
 }
 
 export function getRootLevelSourceFiles(): string[] {
@@ -606,11 +608,11 @@ export function findCycles(graph: ModuleGraph = buildModuleGraph()): string[][] 
 // buildModuleGraph() already gives us every non-test production file and its
 // intra-src edges. A node the app entrypoints never reach is either dead, or
 // reached some other way this graph structurally can't see: buildModuleGraph
-// excludes test files as both nodes and edge targets, and collectSourceFiles
-// never walks the EXCLUDED_TOP_LEVEL tooling dirs (cli/, test-utils/), so a
-// file imported only from a test or from that tooling has no inbound edge at
-// all. That second case gets its own bucket rather than reading as an orphan.
-// See #1743.
+// excludes test files as both nodes and edge targets, and the graph covers
+// nothing under OFF_GRAPH_IMPORTER_ROOTS (src/cli/, src/test-utils/, the
+// repo-root tests/ tree), so a file imported only from a test or from that
+// tooling has no inbound edge at all. That second case gets its own bucket
+// rather than reading as an orphan. See #1743.
 
 /** src-relative posix paths the production module graph is walked forward from. */
 export const APP_ENTRY_ROOTS = ['module.tsx'];
@@ -635,24 +637,24 @@ export interface OrphanScan {
   orphaned: string[];
   /**
    * Nodes not reached from APP_ENTRY_ROOTS, but reached transitively from an
-   * off-graph importer: a test file, or tooling under EXCLUDED_TOP_LEVEL
-   * (`cli/`, `test-utils/`).
+   * off-graph importer: a test file, or tooling under
+   * OFF_GRAPH_IMPORTER_ROOTS.
    */
   testOnlyReachable: string[];
 }
 
 /**
  * Every file-node imported from outside the production module graph — by a
- * test file, or by tooling under EXCLUDED_TOP_LEVEL (`cli/`, `test-utils/`).
- * buildModuleGraph() drops both kinds of edge, so they are otherwise
- * invisible — computed separately here rather than folded into ModuleGraph so
- * findOrphanedModules stays unit-testable against a synthetic graph without
- * touching the real filesystem.
+ * test file, or by tooling under OFF_GRAPH_IMPORTER_ROOTS. buildModuleGraph()
+ * drops both kinds of edge, so they are otherwise invisible — computed
+ * separately here rather than folded into ModuleGraph so findOrphanedModules
+ * stays unit-testable against a synthetic graph without touching the real
+ * filesystem.
  */
 export function getOffGraphImportedNodes(): string[] {
   const tsconfigPaths = getProjectTsconfigPaths();
   const testImporters = getAllFileImports().filter(({ file }) => isTestFile(file));
-  const toolingImporters = collectExcludedToolingFiles().map((file) => ({
+  const toolingImporters = collectOffGraphImporterFiles().map((file) => ({
     file,
     imports: extractRelativeImports(fs.readFileSync(file, 'utf-8'), {
       fileDir: path.dirname(file),
@@ -671,8 +673,8 @@ export function getOffGraphImportedNodes(): string[] {
  * Forward reachability over the production import graph, rooted at `roots`.
  * Nodes not reached that way are then checked against `offGraphImportedNodes`
  * (real edges buildModuleGraph() drops), so a file exercised only by a test
- * or by CLI / test-utils tooling — never by the app — reports as
- * testOnlyReachable rather than orphaned.
+ * or by tooling under OFF_GRAPH_IMPORTER_ROOTS — never by the app — reports
+ * as testOnlyReachable rather than orphaned.
  */
 export function findOrphanedModules(
   graph: ModuleGraph = buildModuleGraph(),

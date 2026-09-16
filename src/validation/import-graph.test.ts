@@ -41,7 +41,7 @@ import {
   findOrphanedModules,
   getOffGraphImportedNodes,
   collectSourceFiles,
-  collectExcludedToolingFiles,
+  collectOffGraphImporterFiles,
   loadTsconfigPaths,
   readJsoncFile,
   stripJsonComments,
@@ -446,22 +446,23 @@ describe('collectSourceFiles', () => {
   });
 });
 
-describe('collectExcludedToolingFiles', () => {
-  it('returns exactly the .ts / .tsx files collectSourceFiles skips under EXCLUDED_TOP_LEVEL', () => {
-    const tooling = collectExcludedToolingFiles();
-    expect(tooling.length).toBeGreaterThan(0);
-    for (const file of tooling) {
+describe('collectOffGraphImporterFiles', () => {
+  const offGraphFiles = collectOffGraphImporterFiles();
+
+  it('returns source files that collectSourceFiles never walks', () => {
+    const sourceFiles = new Set(collectSourceFiles());
+    expect(offGraphFiles.length).toBeGreaterThan(0);
+    for (const file of offGraphFiles) {
       expect(file).toMatch(/\.(ts|tsx)$/);
       expect(file.endsWith('.d.ts')).toBe(false);
-      const topLevel = path.relative(SRC_DIR, file).split(path.sep)[0];
-      expect(EXCLUDED_TOP_LEVEL.has(topLevel ?? '')).toBe(true);
+      expect(sourceFiles.has(file)).toBe(false);
     }
-    expect(tooling.filter((file) => collectSourceFiles().includes(file))).toEqual([]);
   });
 
-  it('reaches nested files under src/cli', () => {
-    const tooling = collectExcludedToolingFiles().map((file) => toPosixPath(path.relative(SRC_DIR, file)));
-    expect(tooling).toContain('cli/commands/validate.ts');
+  it('reaches nested files under src/cli and under the repo-root tests/ tree', () => {
+    const relative = offGraphFiles.map((file) => toPosixPath(path.relative(REPO_ROOT, file)));
+    expect(relative).toContain('src/cli/commands/validate.ts');
+    expect(relative).toContain('tests/helpers/completion.helpers.ts');
   });
 });
 
@@ -697,14 +698,21 @@ describe('findOrphanedModules', () => {
 });
 
 describe('getOffGraphImportedNodes', () => {
-  it('resolves imports made from src/cli tooling, which collectSourceFiles never walks', () => {
-    // src/cli/commands/build-snippets.ts is the only importer of this node
-    // outside the production graph — no test file imports it.
-    expect(getOffGraphImportedNodes()).toContain('validation/guided-action-validator.ts');
-  });
+  const offGraphNodes = getOffGraphImportedNodes();
 
   it('resolves imports made from a test file', () => {
-    expect(getOffGraphImportedNodes()).toContain('validation/package-io.ts');
+    // Sole off-graph importer: src/validation/unicode-format-characters.test.ts.
+    expect(offGraphNodes).toContain('validation/unicode-format-characters.ts');
+  });
+
+  it('resolves imports made from src/cli tooling, which collectSourceFiles never walks', () => {
+    // Sole off-graph importer: src/cli/commands/build-snippets.ts.
+    expect(offGraphNodes).toContain('validation/guided-action-validator.ts');
+  });
+
+  it('resolves imports made from the repo-root tests/ tree', () => {
+    // Sole off-graph importer: tests/helpers/completion.helpers.ts.
+    expect(offGraphNodes).toContain('completion-records/completion-write-timing.ts');
   });
 });
 

@@ -320,7 +320,8 @@ const ALLOWED_PERCENTAGE_CALCULATIONS = new Set(ALLOWED_PERCENTAGE_CALCULATION_E
 /**
  * Known orphaned modules: production files buildModuleGraph() cannot reach
  * forward from APP_ENTRY_ROOTS (module.tsx), and that no test file and no
- * CLI / test-utils tooling file imports either. This list should only shrink.
+ * tooling file under OFF_GRAPH_IMPORTER_ROOTS imports either. This list
+ * should only shrink.
  * Baseline populated when the ratchet was added — see #1923 for the paydown
  * plan covering every entry below.
  */
@@ -366,10 +367,10 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
 /**
  * Known test-only-reachable modules: production files buildModuleGraph()
  * cannot reach forward from APP_ENTRY_ROOTS, but at least one test file or
- * CLI / test-utils tooling file imports them directly (a real edge
- * buildModuleGraph structurally can't see, since it excludes test files as
- * both nodes and edge targets and never walks the EXCLUDED_TOP_LEVEL tooling
- * dirs). Distinct from an orphan — nothing here is dead, it just never ships
+ * tooling file under OFF_GRAPH_IMPORTER_ROOTS imports them directly (a real
+ * edge buildModuleGraph structurally can't see, since it excludes test files
+ * as both nodes and edge targets and covers nothing under those roots).
+ * Distinct from an orphan — nothing here is dead, it just never ships
  * in the bundle. A permanently test-only entry may carry the `by-design`
  * marker; every entry in today's baseline points at #1923 instead, where the
  * paydown plan decides which of them are debt and which are permanent.
@@ -377,7 +378,7 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
 const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
     violation: 'types/backend-api.schema.ts',
-    reason: 'Imported only by its sibling backend-api-contract.test.ts.',
+    reason: 'Imported only by validation/backend-api-contract.test.ts, the Go-to-TypeScript contract check.',
     tracking: '#1923',
   },
   {
@@ -388,12 +389,13 @@ const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] =
   {
     violation: 'validation/import-graph.ts',
     reason:
-      'The ratchet machinery itself — imported by architecture.test.ts, import-graph.test.ts, and one production node (validation/cli-build-contract.ts, itself test-only-reachable).',
+      'The ratchet machinery itself — imported by several validation/*.test.ts files and by one production node, validation/cli-build-contract.ts, which is itself test-only-reachable.',
     tracking: '#1923',
   },
   {
     violation: 'validation/package-io.ts',
-    reason: 'Imported by its sibling package-io.test.ts and by src/cli/** tooling — never reached from the app.',
+    reason:
+      'No test file imports it: the importers are six src/cli/** tooling files plus validation/validate-package.ts, itself test-only-reachable.',
     tracking: '#1923',
   },
   {
@@ -408,7 +410,8 @@ const ALLOWED_TEST_ONLY_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] =
   },
   {
     violation: 'validation/validate-package.ts',
-    reason: 'Imported by its sibling tests and by src/cli/** tooling — never reached from the app.',
+    reason:
+      'Imported by its sibling validate-package.test.ts / bundled-repository.test.ts and by src/cli/** tooling — never reached from the app.',
     tracking: '#1923',
   },
 ];
@@ -724,10 +727,11 @@ describe('Import graph: orphaned modules', () => {
       ALLOWED_ORPHANED_MODULES,
       'orphaned modules',
       'ALLOWED_ORPHANED_MODULES_ENTRIES',
-      `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx), and no test file and no ` +
-        `CLI / test-utils tooling file imports it either. This is usually one of: a genuinely dead file (delete ` +
-        `it, and drag any doc reference with it), or a barrel (index.ts) whose only consumers deep-import the ` +
-        `internal files instead (either repoint a consumer through the barrel, or delete the unused barrel). ` +
+      `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx), and no test file and ` +
+        `nothing under OFF_GRAPH_IMPORTER_ROOTS (src/cli/, src/test-utils/, the repo-root tests/ tree) ` +
+        `imports it either. This is usually one of: a genuinely dead file (delete it, and drag any doc ` +
+        `reference with it), or a barrel (index.ts) whose only consumers deep-import the internal files ` +
+        `instead (either repoint a consumer through the barrel, or delete the unused barrel). ` +
         `If neither applies and the file is architecturally justified anyway, add a structured entry to ` +
         `ALLOWED_ORPHANED_MODULES_ENTRIES with a substantive reason and accountability reference.`
     );
@@ -740,8 +744,9 @@ describe('Import graph: orphaned modules', () => {
       'test-only-reachable modules',
       'ALLOWED_TEST_ONLY_REACHABLE_ENTRIES',
       `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx), but a test file or a ` +
-        `CLI / test-utils tooling file imports it directly — buildModuleGraph() excludes test files as both ` +
-        `nodes and edge targets and never walks the EXCLUDED_TOP_LEVEL tooling dirs, so that edge is ` +
+        `tooling file under OFF_GRAPH_IMPORTER_ROOTS (src/cli/, src/test-utils/, the repo-root tests/ tree) ` +
+        `imports it directly — buildModuleGraph() excludes test files as both nodes and edge targets and ` +
+        `covers nothing under those roots, so that edge is ` +
         `structurally invisible to the orphan check above. This file is not dead, it simply never ships in the ` +
         `bundle. If that is deliberate (e.g. governance/validation tooling that only ever runs under test or ` +
         `the CLI), add a structured entry to ALLOWED_TEST_ONLY_REACHABLE_ENTRIES with a substantive reason and ` +
