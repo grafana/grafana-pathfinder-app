@@ -423,7 +423,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
    * Update manager with unified state for cross-step propagation
    */
   const updateManager = useCallback(
-    (newState: typeof state) => {
+    (newState: LegacyStateShape | typeof state) => {
       if (managerRef.current) {
         managerRef.current.updateStep(stepId, {
           isEnabled: newState.isEnabled,
@@ -782,6 +782,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       isSkipped: false,
       completionReason: 'manual',
       explanation: 'Completed',
+      isSequentialBlock: false,
     });
     writeStoreCompletion('manual');
   }, [state, updateManager, writeStoreCompletion]);
@@ -802,6 +803,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       isSkipped: true,
       completionReason: 'skipped',
       explanation: 'Skipped due to requirements',
+      isSequentialBlock: false,
     });
     writeStoreCompletion('skipped');
 
@@ -854,6 +856,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         retryCount: 0,
         maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
         isRetrying: false,
+        isSequentialBlock: false,
       });
 
       // Recheck requirements after reset
