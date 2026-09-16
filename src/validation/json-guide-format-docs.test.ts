@@ -6,16 +6,22 @@
  * json-guide-format.md. Block types are read out of the schema at runtime, so
  * adding a variant to the union fails this test until the reference documents
  * it.
+ *
+ * The "Actions a guided step accepts" table is checked the same way against
+ * `GUIDED_ACTION_TYPES`: every step action must have a row, marked accepted for
+ * `guided` exactly when the tuple contains it.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { JsonBlockSchema } from '../types/json-guide.schema';
+import { GUIDED_ACTION_TYPES } from '../types/interactive-actions.types';
+import { JsonBlockSchema, JsonInteractiveActionSchema } from '../types/json-guide.schema';
 
 const DOC_RELATIVE_PATH = 'docs/developer/interactive-examples/json-guide-format.md';
 const DOC_PATH = path.resolve(__dirname, '../..', DOC_RELATIVE_PATH);
 const SUMMARY_HEADING = '### Block Types Summary';
+const GUIDED_ACTIONS_HEADING = '#### Actions a guided step accepts';
 
 /** Bump deliberately: a short count means the union shrank or Zod's internals moved. */
 const EXPECTED_BLOCK_TYPE_COUNT = 21;
@@ -54,10 +60,10 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** The summary table alone — other field tables also carry rows like `| \`section\``. */
-function summaryTableSection(markdown: string): string {
+/** The table under `heading` alone — other field tables also carry rows like `| \`section\``. */
+function tableSection(markdown: string, heading: string): string {
   const lines = markdown.split('\n');
-  const start = lines.findIndex((line) => line.trim() === SUMMARY_HEADING);
+  const start = lines.findIndex((line) => line.trim() === heading);
   if (start === -1) {
     return '';
   }
@@ -68,7 +74,18 @@ function summaryTableSection(markdown: string): string {
 
 const blockTypes = blockTypesFromSchema();
 const doc = fs.readFileSync(DOC_PATH, 'utf-8');
-const summaryTable = summaryTableSection(doc);
+const summaryTable = tableSection(doc, SUMMARY_HEADING);
+const guidedActionsTable = tableSection(doc, GUIDED_ACTIONS_HEADING);
+const stepActions = [...JsonInteractiveActionSchema.options].sort();
+const guidedActions: readonly string[] = GUIDED_ACTION_TYPES;
+
+function guidedActionsRow(action: string): string[] | undefined {
+  const row = guidedActionsTable.split('\n').find((line) => line.startsWith(`| \`${action}\``));
+  return row
+    ?.split('|')
+    .slice(1, -1)
+    .map((cell) => cell.trim());
+}
 const headings = doc
   .split('\n')
   .filter((line) => line.startsWith('#### '))
@@ -115,6 +132,36 @@ describe('JSON guide format reference', () => {
         hasHeading ||
           `Block type "${blockType}" has no "#### " section. Add one to ${DOC_RELATIVE_PATH} describing its fields.`
       ).toBe(true);
+    });
+  });
+
+  describe('actions a guided step accepts', () => {
+    const header = guidedActionsTable.split('\n').find((line) => line.startsWith('| Action'));
+    const guidedColumn = header
+      ?.split('|')
+      .slice(1, -1)
+      .map((cell) => cell.trim())
+      .indexOf('`guided`');
+
+    it('locates the table and its guided column', () => {
+      expect(
+        (guidedColumn !== undefined && guidedColumn > 0) ||
+          `No "${GUIDED_ACTIONS_HEADING}" table with a \`guided\` column found in ${DOC_RELATIVE_PATH}.`
+      ).toBe(true);
+    });
+
+    describe.each(stepActions)('%s', (action) => {
+      it('is marked accepted for guided exactly when GUIDED_ACTION_TYPES contains it', () => {
+        const row = guidedActionsRow(action);
+        const accepted = guidedActions.includes(action);
+        const expected = accepted ? '✅' : '❌';
+        expect(
+          row?.[guidedColumn ?? -1] === expected ||
+            (row
+              ? `Action "${action}" is ${accepted ? '' : 'not '}in GUIDED_ACTION_TYPES, so its \`guided\` cell in the "${GUIDED_ACTIONS_HEADING}" table in ${DOC_RELATIVE_PATH} must be ${expected}.`
+              : `Action "${action}" has no row in the "${GUIDED_ACTIONS_HEADING}" table in ${DOC_RELATIVE_PATH}.`)
+        ).toBe(true);
+      });
     });
   });
 });
