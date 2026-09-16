@@ -58,10 +58,14 @@ jest.mock('../lib/user-storage', () => ({
   interactiveStepStorage: { clearAllForContent: jest.fn().mockResolvedValue(undefined) },
 }));
 
-jest.mock('../learning-paths', () => ({
+jest.mock('../lib/guide-completion-bridge', () => ({
   __esModule: true,
   markGuideCompleted: (...a: unknown[]) => markGuideCompletedMock(...a),
-  getPathsData: () => getPathsDataMock(),
+  findPathByUrl: (url: string) => {
+    const normalized = url.replace(/\/+$/, '');
+    const paths = getPathsDataMock().paths as Array<{ url?: string }>;
+    return paths.find((p) => p.url && normalized === p.url.replace(/\/+$/, ''));
+  },
 }));
 
 jest.mock('../global-state/completion-store', () => ({

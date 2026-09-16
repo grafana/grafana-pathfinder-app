@@ -38,3 +38,9 @@ export function getPathsData(): PathsDataSet {
     guideMetadata: raw.guideMetadata as Record<string, GuideMetadataEntry>,
   };
 }
+
+// Matches ignoring a trailing slash on either side (docs URLs are inconsistent about it).
+export function findPathByUrl(url: string): LearningPath | undefined {
+  const normalized = url.replace(/\/+$/, '');
+  return getPathsData().paths.find((path) => path.url && normalized === path.url.replace(/\/+$/, ''));
+}

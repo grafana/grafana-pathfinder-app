@@ -159,18 +159,6 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
       'The step checker coordinates interactive completion state and is one edge of the tracked requirements/interactive engine cycle.',
     tracking: '#1359',
   },
-  {
-    violation: 'context-engine/context.service.ts -> docs-retrieval',
-    reason:
-      'Context assembly resolves documentation content through the docs retrieval engine while the engine boundary is paid down.',
-    tracking: '#1763',
-  },
-  {
-    violation: 'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
-    reason:
-      'Learning-journey document helpers delegate progress mutation to the learning-path coordinator rather than duplicating persistence logic.',
-    tracking: '#1763',
-  },
 ];
 const ALLOWED_LATERAL_VIOLATIONS = new Set(ALLOWED_LATERAL_VIOLATION_ENTRIES.map((entry) => entry.violation));
 

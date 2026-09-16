@@ -39,7 +39,6 @@ const UNDESCRIBED_ESLINT_DISABLE_BASELINE = new Set([
   'src/components/block-editor/hooks/useBlockPersistence.ts::react-hooks/exhaustive-deps#1',
   'src/components/block-editor/GitHubPRModal.tsx::react-hooks/exhaustive-deps#1',
   'src/components/block-editor/LintBadge.tsx::react-hooks/exhaustive-deps#1',
-  'src/docs-retrieval/learning-journey-helpers.ts::no-restricted-imports#1',
   'src/global-state/completion-store.ts::react-hooks/exhaustive-deps#1',
   'src/components/floating-panel/FloatingPanelManager.tsx::react-hooks/exhaustive-deps#1',
   'src/integrations/assistant-integration/AssistantCustomizable.tsx::react-hooks/set-state-in-effect#1',
