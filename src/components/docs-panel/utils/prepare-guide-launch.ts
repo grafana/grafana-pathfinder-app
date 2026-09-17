@@ -1,3 +1,5 @@
+import { beginGuideLoad, finishGuideLoad, markGuideLoadStage } from '../../../lib/telemetry/guide-load';
+import { diagnoseGuideError } from '../../../lib/guide-diagnostics';
 /**
  * One-shot launch preparation: fetch a guide's content once, expand its snippet
  * refs, and classify whether it drives the Grafana UI — all BEFORE a display
@@ -87,61 +89,91 @@ export async function prepareGuideLaunch(
   url: string,
   context: PrepareGuideLaunchContext
 ): Promise<PrepareGuideLaunchResult> {
-  // Mirror loadDocsTabContent's package derivation so the single fetch here is
-  // identical to the one the destination loader would otherwise perform.
-  let packageInfo = context.packageInfo;
-  if (!packageInfo && isPackageContentUrl(url)) {
-    packageInfo = await fetchPackageInfoFromUrl(url);
-  }
-
-  const result = await loadDocsTabContentResult(url, { packageInfo });
-  if (!result.content) {
-    return { ok: false, error: result.error || 'Failed to load content', errorCode: 'fetch-failed' };
-  }
-
-  const rawContent = result.content;
-
-  let guide: JsonGuide;
+  const loadContext = beginGuideLoad(url);
   try {
-    guide = JSON.parse(rawContent.content) as JsonGuide;
-  } catch {
-    logger.error('[PrepareGuideLaunch] Guide content could not be parsed', {
-      content_url: normalizeTelemetryUrl(url),
+    // Mirror loadDocsTabContent's package derivation so the single fetch here is
+    // identical to the one the destination loader would otherwise perform.
+    let packageInfo = context.packageInfo;
+    if (!packageInfo && isPackageContentUrl(url)) {
+      packageInfo = await fetchPackageInfoFromUrl(url, loadContext);
+    }
+
+    const result = await loadDocsTabContentResult(url, { packageInfo, loadContext });
+    if (!result.content) {
+      finishGuideLoad(
+        loadContext,
+        'error',
+        result.diagnostic ?? { source: loadContext.source, stage: 'fetch', reason: 'unexpected-error' }
+      );
+      return { ok: false, error: result.error || 'Failed to load content', errorCode: 'fetch-failed' };
+    }
+
+    markGuideLoadStage(loadContext, 'prepare');
+    const rawContent = result.content;
+
+    let guide: JsonGuide;
+    try {
+      guide = JSON.parse(rawContent.content) as JsonGuide;
+    } catch {
+      finishGuideLoad(loadContext, 'error', { source: loadContext.source, stage: 'decode', reason: 'invalid-json' });
+      logger.error('[PrepareGuideLaunch] Guide content could not be parsed', {
+        content_url: normalizeTelemetryUrl(url),
+      });
+      return { ok: false, error: 'Guide content could not be parsed', errorCode: 'unparseable' };
+    }
+
+    const validation = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
+    if (!validation.isValid) {
+      finishGuideLoad(loadContext, 'error', {
+        source: loadContext.source,
+        stage: 'validate',
+        reason: 'schema-invalid',
+        validationCount: validation.errors.length,
+      });
+      logger.error('[PrepareGuideLaunch] Guide content failed schema validation', {
+        content_url: normalizeTelemetryUrl(url),
+        validation_error_count: validation.errors.length,
+        validation_error_codes: [...new Set(validation.errors.map((error) => error.code))].sort(),
+      });
+      return { ok: false, error: 'Guide content failed schema validation', errorCode: 'schema-invalid' };
+    }
+
+    // Expand the parsed guide, never `validation.guide`: only the root schema is
+    // loose, so the validated copy has dropped unknown fields nested in blocks.
+    const { guide: expandedGuide, unresolvedSnippetIds } = await inlineSnippetRefsInGuideWithStatus(guide);
+    if (unresolvedSnippetIds.length > 0) {
+      finishGuideLoad(loadContext, 'degraded', {
+        source: loadContext.source,
+        stage: 'prepare',
+        reason: 'snippet-unavailable',
+      });
+    }
+    const needsGrafanaUi = requiresGrafanaUi(expandedGuide) || unresolvedSnippetIds.length > 0;
+
+    // The expanded tree renders; the parsed pre-inlining tree counts. Handing
+    // over only the expanded one gave a snippet-bearing guide a bigger
+    // denominator than the counting rule allows, frozen for the life of the
+    // content key (#1665).
+    const preparedContent = createPreparedContent({
+      fetched: { ...rawContent, loadContext },
+      countingGuide: guide,
+      expandedGuide,
     });
-    return { ok: false, error: 'Guide content could not be parsed', errorCode: 'unparseable' };
+
+    return {
+      ok: true,
+      launch: {
+        url,
+        title: context.title,
+        type: isLearningJourneyUrl(url) ? 'learning-journey' : 'docs',
+        source: context.source,
+        preparedContent,
+        requiresGrafanaUi: needsGrafanaUi,
+        packageInfo,
+      },
+    };
+  } catch (error) {
+    finishGuideLoad(loadContext, 'error', diagnoseGuideError(error, loadContext.source, 'prepare'));
+    return { ok: false, error: 'Guide could not be prepared', errorCode: 'fetch-failed' };
   }
-
-  const validation = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
-  if (!validation.isValid) {
-    logger.error('[PrepareGuideLaunch] Guide content failed schema validation', {
-      content_url: normalizeTelemetryUrl(url),
-      validation_error_count: validation.errors.length,
-      validation_error_codes: [...new Set(validation.errors.map((error) => error.code))].sort(),
-    });
-    return { ok: false, error: 'Guide content failed schema validation', errorCode: 'schema-invalid' };
-  }
-
-  // Expand the parsed guide, never `validation.guide`: only the root schema is
-  // loose, so the validated copy has dropped unknown fields nested in blocks.
-  const { guide: expandedGuide, unresolvedSnippetIds } = await inlineSnippetRefsInGuideWithStatus(guide);
-  const needsGrafanaUi = requiresGrafanaUi(expandedGuide) || unresolvedSnippetIds.length > 0;
-
-  // The expanded tree renders; the parsed pre-inlining tree counts. Handing
-  // over only the expanded one gave a snippet-bearing guide a bigger
-  // denominator than the counting rule allows, frozen for the life of the
-  // content key (#1665).
-  const preparedContent = createPreparedContent({ fetched: rawContent, countingGuide: guide, expandedGuide });
-
-  return {
-    ok: true,
-    launch: {
-      url,
-      title: context.title,
-      type: isLearningJourneyUrl(url) ? 'learning-journey' : 'docs',
-      source: context.source,
-      preparedContent,
-      requiresGrafanaUi: needsGrafanaUi,
-      packageInfo,
-    },
-  };
 }

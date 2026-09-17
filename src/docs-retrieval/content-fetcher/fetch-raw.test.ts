@@ -154,7 +154,9 @@ describe('fetchRawHtml — trust re-validation and error classification', () => 
   });
 
   it('classifies an aborted/timeout fetch as timeout', async () => {
-    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('The operation was aborted due to timeout'));
+    (global.fetch as jest.Mock).mockRejectedValueOnce(
+      new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    );
 
     const result = await fetchRawHtml(DOC_URL, {});
     expect(result.error?.errorType).toBe('timeout');

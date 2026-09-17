@@ -98,9 +98,11 @@ jest.mock('../../lib/user-storage', () => ({
 }));
 
 jest.mock('../../lib/analytics', () => ({
+  createInteractionName: (name: string) => `pathfinder_${name}`,
   setupScrollTracking: jest.fn(),
   reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
   UserInteraction: {
+    DocsPanelInteraction: 'docs_panel_interaction',
     AlignmentPromptShown: 'alignment_prompt_shown',
     AlignmentPromptConfirmed: 'alignment_prompt_confirmed',
     AlignmentPromptDismissed: 'alignment_prompt_dismissed',
@@ -383,7 +385,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
         title: 'Test Guide',
         baseUrl: 'bundled:launch/content.json',
         currentUrl: 'bundled:fetched/content.json',
-        content: fetchedContent,
+        content: { ...fetchedContent, loadContext: expect.objectContaining({ loadId: expect.any(String) }) },
         isLoading: false,
         error: null,
         type: 'learning-journey',
@@ -464,7 +466,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
         title: 'Test Guide',
         baseUrl: 'https://grafana.com/docs/grafana/latest/',
         currentUrl: 'https://grafana.com/docs/grafana/latest/',
-        content: fetchedContent,
+        content: { ...fetchedContent, loadContext: expect.objectContaining({ loadId: expect.any(String) }) },
         isLoading: false,
         error: null,
         type: 'docs',
@@ -1061,7 +1063,11 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
       await new Promise((r) => setTimeout(r, 0));
 
-      expect(mockWithGuideOpenAction).toHaveBeenCalledWith('bundled:connections-guide', expect.any(Function));
+      expect(mockWithGuideOpenAction).toHaveBeenCalledWith(
+        'bundled:connections-guide',
+        expect.any(Function),
+        expect.objectContaining({ loadId: expect.any(String) })
+      );
       await expect(mockWithGuideOpenAction.mock.results[0]!.value).resolves.toBe('completed');
     });
 

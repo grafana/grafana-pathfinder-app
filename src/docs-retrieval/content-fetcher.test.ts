@@ -82,6 +82,7 @@ describe('content.json → unstyled.html ladder', () => {
       url: journeyUrl,
       tierUsed: 'unstyled-html',
       errorType: 'content-json-unavailable',
+      diagnostic: { source: 'docs', stage: 'decode', reason: 'json-null' },
     });
     expect(mockRecordContentFetch).toHaveBeenCalledWith({
       url: journeyUrl,
@@ -168,6 +169,7 @@ describe('content.json → unstyled.html ladder', () => {
       url: genericUrl,
       tierUsed: 'unstyled-html',
       errorType: 'content-json-unavailable',
+      diagnostic: { source: 'cdn', stage: 'fetch', reason: 'http-error', statusCode: 404 },
     });
   });
 
@@ -387,6 +389,8 @@ describe('null content handling for learning journeys', () => {
       tier: 'unstyled-html',
       durationMs: expect.any(Number),
       outcome: 'error',
+      diagnostic: { source: 'docs', stage: 'fetch', reason: 'http-error', statusCode: 404 },
+      loadContext: undefined,
     });
   });
 });
@@ -525,5 +529,23 @@ describe('fetchContent records a failed pathfinder_content_fetch measurement on 
   it('records outcome error for an untrusted source', async () => {
     await fetchContent('https://evil.com/docs/malicious/');
     expect(mockRecordContentFetch).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error' }));
+  });
+});
+
+describe('malformed native guide JSON', () => {
+  it('rejects malformed JSON instead of treating it as successful HTML', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      url: 'https://interactive-learning.grafana.net/packages/test/content.json',
+      text: async () => '{"private": malformed',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+    });
+    const result = await fetchContent('https://interactive-learning.grafana.net/packages/test/content.json');
+    expect(result.content).toBeNull();
+    expect(result.diagnostic).toEqual({ source: 'cdn', stage: 'decode', reason: 'invalid-json' });
+    expect(mockRecordContentFetch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ outcome: 'error', diagnostic: result.diagnostic })
+    );
   });
 });

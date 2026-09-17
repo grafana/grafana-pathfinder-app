@@ -1,3 +1,5 @@
+import { markGuideLoadStage, identifyGuideLoad } from '../lib/telemetry/guide-load';
+import { diagnoseGuideError, guideSource } from '../lib/guide-diagnostics';
 // Unified content fetcher - replaces docs-fetcher.ts and single-docs-fetcher.ts
 // This version ONLY fetches content and extracts basic metadata
 // All DOM processing is moved to React components
@@ -14,12 +16,7 @@ import { fetchBundledInteractive } from './content-fetcher/bundled';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
 import { logger } from '../lib/logging';
-import {
-  normalizeTelemetryUrl,
-  recordContentFetch,
-  recordContentFetchFallback,
-  type ContentFetchTier,
-} from '../lib/telemetry';
+import { recordContentFetch, recordContentFetchFallback, type ContentFetchTier } from '../lib/telemetry';
 
 // Re-exported to keep the barrel surface stable: `injectJourneyExtrasIntoJsonGuide`
 // is consumed by `components/docs-panel`, and `simpleMarkdownToHtml` by the
@@ -61,233 +58,272 @@ function wrapContentAsJsonGuide(content: string, url: string, title: string): st
  * Determines content type and fetches accordingly
  */
 export async function fetchContent(url: string, options: ContentFetchOptions = {}): Promise<ContentFetchResult> {
+  identifyGuideLoad(options.loadContext, url);
   const fetchStart = performance.now();
   let tier: ContentFetchTier = 'other';
-  const recordFetch = (outcome: 'ok' | 'error') =>
-    recordContentFetch({ url, tier, durationMs: performance.now() - fetchStart, outcome });
+  const execute = async (): Promise<ContentFetchResult> => {
+    try {
+      if (!url || typeof url !== 'string' || url.trim() === '') {
+        logger.error('fetchContent called with invalid URL', { url });
 
-  try {
-    // Validate URL
-    if (!url || typeof url !== 'string' || url.trim() === '') {
-      logger.error('fetchContent called with invalid URL', { url });
-      recordFetch('error');
-      return { content: null, error: 'Invalid URL provided', errorType: 'other' };
-    }
+        return { content: null, error: 'Invalid URL provided', errorType: 'other' };
+      }
 
-    // Handle bundled interactive content
-    if (url.startsWith('bundled:')) {
-      tier = 'bundled';
-      const result = await fetchBundledInteractive(url);
-      recordFetch(result.error ? 'error' : 'ok');
-      return result;
-    }
-    // Handle custom guides stored in backend CRDs
-    if (url.startsWith('backend-guide:')) {
-      tier = 'backend-guide';
-      const result = await fetchBackendInteractive(url);
-      recordFetch(result.error ? 'error' : 'ok');
-      return result;
-    }
+      if (url.startsWith('bundled:')) {
+        tier = 'bundled';
+        const result = await fetchBundledInteractive(url);
 
-    // SECURITY: Validate URL is from a trusted source before fetching
-    // Defense-in-depth: Even if callers validate, fetchContent provides final check
-    // In production: Only Grafana docs, interactive learning domains, and bundled content
-    // In dev mode: Also allows localhost and GitHub raw URLs for testing
-    const isDevMode = isDevModeEnabledGlobal();
-    const isTrustedSource = isTrustedFinalUrl(url);
+        return result;
+      }
+      if (url.startsWith('backend-guide:')) {
+        tier = 'backend-guide';
+        const result = await fetchBackendInteractive(url, options.loadContext);
 
-    if (!isTrustedSource) {
-      const errorMessage = isDevMode
-        ? 'Only Grafana.com documentation, interactive learning URLs, localhost URLs, and GitHub raw URLs (dev mode) can be loaded'
-        : 'Only Grafana.com documentation and interactive learning URLs can be loaded';
+        return result;
+      }
 
-      recordFetch('error');
-      return {
-        content: null,
-        error: errorMessage,
-        errorType: 'other',
-      };
-    }
+      // SECURITY: Validate URL is from a trusted source before fetching
+      // Defense-in-depth: Even if callers validate, fetchContent provides final check
+      // In production: Only Grafana docs, interactive learning domains, and bundled content
+      // In dev mode: Also allows localhost and GitHub raw URLs for testing
+      const isDevMode = isDevModeEnabledGlobal();
+      const isTrustedSource = isTrustedFinalUrl(url);
 
-    // Parse hash fragment from URL
-    const hashFragment = parseHashFragment(url);
-    const cleanUrl = removeHashFragment(url);
+      if (!isTrustedSource) {
+        const errorMessage = isDevMode
+          ? 'Only Grafana.com documentation, interactive learning URLs, localhost URLs, and GitHub raw URLs (dev mode) can be loaded'
+          : 'Only Grafana.com documentation and interactive learning URLs can be loaded';
 
-    // SECURITY: Enforce HTTPS to prevent MITM attacks
-    if (!enforceHttps(cleanUrl)) {
-      recordFetch('error');
-      return {
-        content: null,
-        error: 'Only HTTPS URLs are allowed for security',
-        errorType: 'other',
-      };
-    }
+        return {
+          content: null,
+          error: errorMessage,
+          errorType: 'other',
+          diagnostic: { source: guideSource(url), stage: 'fetch', reason: 'blocked-url' },
+        };
+      }
 
-    // Determine content type based on URL patterns
-    const contentType = determineContentType(url);
-    // Whether fetchRawHtml actually attempted the content.json ↔ unstyled.html
-    // ladder for this URL. `contentType === 'learning-journey'` only matches
-    // grafana.com path patterns (/tutorials/, /milestone-N/, ...) — generic
-    // guides on the interactive-learning hostnames get the same ladder via a
-    // separate branch in fetchRawHtml, so they must be included here too.
-    const triedContentJsonLadder = contentType === 'learning-journey' || isInteractiveLearningUrl(url);
+      const hashFragment = parseHashFragment(url);
+      const cleanUrl = removeHashFragment(url);
 
-    // fetchRawHtml resolves the content.json ↔ unstyled.html ladder
-    // internally (tryGrafanaDocsContentLadder) — the tier isn't knowable
-    // from the requested URL alone, only from its result.
-    const fetchResult = await fetchRawHtml(cleanUrl, options);
-    if (!fetchResult.html) {
-      // Generate user-friendly error message based on error type
-      const userFriendlyError = generateUserFriendlyError(fetchResult.error, cleanUrl);
-      // Terminal ladder failure: both content.json and unstyled.html were
-      // tried — classify as the deepest tier attempted, not `other`.
-      if (triedContentJsonLadder) {
-        tier = 'unstyled-html';
+      // SECURITY: Enforce HTTPS to prevent MITM attacks
+      if (!enforceHttps(cleanUrl)) {
+        return {
+          content: null,
+          error: 'Only HTTPS URLs are allowed for security',
+          errorType: 'other',
+        };
+      }
+
+      const contentType = determineContentType(url);
+      // Whether fetchRawHtml actually attempted the content.json ↔ unstyled.html
+      // ladder for this URL. `contentType === 'learning-journey'` only matches
+      // grafana.com path patterns (/tutorials/, /milestone-N/, ...) — generic
+      // guides on the interactive-learning hostnames get the same ladder via a
+      // separate branch in fetchRawHtml, so they must be included here too.
+      const triedContentJsonLadder = contentType === 'learning-journey' || isInteractiveLearningUrl(url);
+
+      // fetchRawHtml resolves the content.json ↔ unstyled.html ladder
+      // internally (tryGrafanaDocsContentLadder) — the tier isn't knowable
+      // from the requested URL alone, only from its result.
+      const fetchResult = await fetchRawHtml(cleanUrl, options);
+      if (!fetchResult.html) {
+        // Generate user-friendly error message based on error type
+        const userFriendlyError = generateUserFriendlyError(fetchResult.error, cleanUrl);
+        // Terminal ladder failure: both content.json and unstyled.html were
+        // tried — classify as the deepest tier attempted, not `other`.
+        if (triedContentJsonLadder) {
+          tier = 'unstyled-html';
+          recordContentFetchFallback({
+            url,
+            tierUsed: 'unstyled-html',
+            ...(options.loadContext && { loadContext: options.loadContext }),
+            errorType: fetchResult.error?.errorType || 'other',
+          });
+        }
+
+        return {
+          content: null,
+          error: userFriendlyError,
+          errorType: fetchResult.error?.errorType || 'other',
+          statusCode: fetchResult.error?.statusCode,
+          diagnostic: fetchResult.error?.diagnostic,
+        };
+      }
+
+      // Use the final URL (after redirects) if available, otherwise use the requested URL
+      const finalUrl = fetchResult.finalUrl || cleanUrl;
+
+      // Determine if this is native JSON content (content.json) that doesn't need wrapping
+      const isNativeJson = fetchResult.isNativeJson || false;
+      tier = isNativeJson ? 'content-json' : 'unstyled-html';
+
+      // These URLs always try content.json first (see tryGrafanaDocsContentLadder
+      // / the isInteractiveLearningUrl branch in fetch-raw.ts) — landing on the
+      // HTML tier for one of them means that ladder fell back.
+      if (triedContentJsonLadder && tier === 'unstyled-html') {
         recordContentFetchFallback({
           url,
+          ...(options.loadContext && { loadContext: options.loadContext }),
           tierUsed: 'unstyled-html',
-          errorType: fetchResult.error?.errorType || 'other',
+          errorType: 'content-json-unavailable',
+          ...(fetchResult.fallback && { diagnostic: fetchResult.fallback }),
         });
       }
-      recordFetch('error');
-      return {
-        content: null,
-        error: userFriendlyError,
-        errorType: fetchResult.error?.errorType || 'other',
-        statusCode: fetchResult.error?.statusCode,
-      };
-    }
 
-    // Use the final URL (after redirects) if available, otherwise use the requested URL
-    const finalUrl = fetchResult.finalUrl || cleanUrl;
+      markGuideLoadStage(options.loadContext, 'decode');
+      const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType, isNativeJson);
 
-    // Determine if this is native JSON content (content.json) that doesn't need wrapping
-    const isNativeJson = fetchResult.isNativeJson || false;
-    tier = isNativeJson ? 'content-json' : 'unstyled-html';
+      let jsonContent: string;
 
-    // These URLs always try content.json first (see tryGrafanaDocsContentLadder
-    // / the isInteractiveLearningUrl branch in fetch-raw.ts) — landing on the
-    // HTML tier for one of them means that ladder fell back.
-    if (triedContentJsonLadder && tier === 'unstyled-html') {
-      recordContentFetchFallback({ url, tierUsed: 'unstyled-html', errorType: 'content-json-unavailable' });
-    }
+      if (isNativeJson) {
+        try {
+          const parsed = JSON.parse(fetchResult.html);
 
-    const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType, isNativeJson);
+          // Check if the server returned null as a signal to fetch unstyled.html
+          // JSON.parse("null") returns the JavaScript value null
+          if (parsed === null) {
+            tier = 'unstyled-html';
+            recordContentFetchFallback({
+              url,
+              ...(options.loadContext && { loadContext: options.loadContext }),
+              tierUsed: 'unstyled-html',
+              errorType: 'content-json-null',
+            });
+            const htmlUrl = finalUrl.replace('/content.json', '/unstyled.html');
+            const htmlFetchResult = await fetchRawHtml(htmlUrl, options);
 
-    let jsonContent: string;
+            if (!htmlFetchResult.html) {
+              return {
+                content: null,
+                error: 'Content not available. The server returned null and no HTML fallback exists.',
+                diagnostic: htmlFetchResult.error?.diagnostic,
+                statusCode: htmlFetchResult.error?.statusCode,
+                errorType: 'not-found',
+              };
+            }
 
-    if (isNativeJson) {
-      // Native JSON content - use directly without wrapping
-      // Validate it's a proper JSON guide structure
-      try {
-        const parsed = JSON.parse(fetchResult.html);
+            const htmlMetadata = await extractMetadata(htmlFetchResult.html, htmlUrl, contentType, false);
+            let processedHtml = htmlFetchResult.html;
 
-        // Check if the server returned null as a signal to fetch unstyled.html
-        // JSON.parse("null") returns the JavaScript value null
-        if (parsed === null) {
-          tier = 'unstyled-html';
-          recordContentFetchFallback({ url, tierUsed: 'unstyled-html', errorType: 'content-json-null' });
-          const htmlUrl = finalUrl.replace('/content.json', '/unstyled.html');
-          const htmlFetchResult = await fetchRawHtml(htmlUrl, options);
+            if (contentType === 'learning-journey' && htmlMetadata.learningJourney) {
+              // Defaults to skipped: the React cover-page TOC now renders its own
+              // progress-aware Start/Resume CTA; an explicit `false` still opts
+              // back into the legacy HTML button if a caller ever needs it.
+              processedHtml = generateJourneyContentWithExtras(
+                processedHtml,
+                htmlMetadata.learningJourney,
+                options.skipReadyToBegin ?? true
+              );
+            }
 
-          if (!htmlFetchResult.html) {
-            recordFetch('error');
+            jsonContent = wrapContentAsJsonGuide(processedHtml, htmlUrl, htmlMetadata.title);
+
+            // Create content with HTML metadata
+            const rawContent: RawContent = {
+              content: jsonContent,
+              metadata: htmlMetadata,
+              type: contentType,
+              url: htmlUrl,
+              lastFetched: new Date().toISOString(),
+              hashFragment,
+              isNativeJson: false,
+            };
+
+            return { content: rawContent };
+          }
+
+          const validationResult = validateGuide(parsed, {
+            allowDuplicateHeading: true,
+            allowUnsupportedGuidedAction: true,
+          });
+
+          if (!validationResult.isValid) {
+            const errorMessage = validationResult.errors[0]?.message || 'Schema validation failed';
+
             return {
               content: null,
-              error: 'Content not available. The server returned null and no HTML fallback exists.',
-              errorType: 'not-found',
+              error: `Invalid guide: ${errorMessage}`,
+              errorType: 'other',
+              diagnostic: {
+                source: guideSource(url),
+                stage: 'validate',
+                reason: 'schema-invalid',
+                validationCount: validationResult.errors.length,
+              },
             };
           }
-
-          const htmlMetadata = await extractMetadata(htmlFetchResult.html, htmlUrl, contentType, false);
-          let processedHtml = htmlFetchResult.html;
-
-          if (contentType === 'learning-journey' && htmlMetadata.learningJourney) {
-            // Defaults to skipped: the React cover-page TOC now renders its own
-            // progress-aware Start/Resume CTA; an explicit `false` still opts
-            // back into the legacy HTML button if a caller ever needs it.
-            processedHtml = generateJourneyContentWithExtras(
-              processedHtml,
-              htmlMetadata.learningJourney,
-              options.skipReadyToBegin ?? true
-            );
-          }
-
-          jsonContent = wrapContentAsJsonGuide(processedHtml, htmlUrl, htmlMetadata.title);
-
-          // Create content with HTML metadata
-          const rawContent: RawContent = {
-            content: jsonContent,
-            metadata: htmlMetadata,
-            type: contentType,
-            url: htmlUrl,
-            lastFetched: new Date().toISOString(),
-            hashFragment,
-            isNativeJson: false,
-          };
-
-          recordFetch('ok');
-          return { content: rawContent };
-        }
-
-        const validationResult = validateGuide(parsed, {
-          allowDuplicateHeading: true,
-          allowUnsupportedGuidedAction: true,
-        });
-
-        if (!validationResult.isValid) {
-          // Use the first error message for the main error
-          const errorMessage = validationResult.errors[0]?.message || 'Schema validation failed';
-          recordFetch('error');
+          jsonContent = fetchResult.html; // Valid JSON guide
+        } catch {
           return {
             content: null,
-            error: `Invalid guide: ${errorMessage}`,
+            error: 'The guide contains invalid JSON.',
             errorType: 'other',
+            diagnostic: { source: guideSource(url), stage: 'decode', reason: 'invalid-json' },
           };
         }
-        jsonContent = fetchResult.html; // Valid JSON guide
-      } catch {
-        // Invalid JSON - treat as HTML and wrap
-        logger.warn('Failed to parse native JSON, treating as HTML', { content_url: normalizeTelemetryUrl(url), tier });
-        jsonContent = wrapContentAsJsonGuide(fetchResult.html, finalUrl, metadata.title);
-      }
-    } else {
-      // HTML content - apply learning journey extras then wrap
-      let processedHtml = resolveRelativeUrls(fetchResult.html, finalUrl);
-      if (contentType === 'learning-journey' && metadata.learningJourney) {
-        processedHtml = generateJourneyContentWithExtras(
-          processedHtml,
-          metadata.learningJourney,
-          options.skipReadyToBegin ?? true
-        );
+      } else {
+        // HTML content - apply learning journey extras then wrap
+        let processedHtml = resolveRelativeUrls(fetchResult.html, finalUrl);
+        if (contentType === 'learning-journey' && metadata.learningJourney) {
+          processedHtml = generateJourneyContentWithExtras(
+            processedHtml,
+            metadata.learningJourney,
+            options.skipReadyToBegin ?? true
+          );
+        }
+
+        jsonContent = wrapContentAsJsonGuide(processedHtml, finalUrl, metadata.title);
       }
 
-      // Wrap content as JSON guide for unified rendering pipeline
-      jsonContent = wrapContentAsJsonGuide(processedHtml, finalUrl, metadata.title);
+      const rawContent: RawContent = {
+        content: jsonContent,
+        metadata,
+        type: contentType,
+        url: finalUrl, // Use final URL to correctly resolve relative links
+        lastFetched: new Date().toISOString(),
+        hashFragment,
+        isNativeJson,
+      };
+
+      return { content: rawContent };
+    } catch (error) {
+      logger.error('Failed to fetch guide content', { reason: diagnoseGuideError(error, guideSource(url)).reason });
+
+      return {
+        content: null,
+        error: error instanceof SyntaxError ? 'The guide contains invalid JSON.' : 'Failed to load guide content.',
+        errorType: 'other',
+        diagnostic: diagnoseGuideError(error, guideSource(url)),
+      };
     }
-
-    // Create unified content object
-    const rawContent: RawContent = {
-      content: jsonContent,
-      metadata,
-      type: contentType,
-      url: finalUrl, // Use final URL to correctly resolve relative links
-      lastFetched: new Date().toISOString(),
-      hashFragment,
-      isNativeJson,
-    };
-
-    recordFetch('ok');
-    return { content: rawContent };
-  } catch (error) {
-    logger.error(`Failed to fetch content from ${normalizeTelemetryUrl(url)}`, { error });
-    recordFetch('error');
-    return {
-      content: null,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      errorType: 'other',
+  };
+  const result = await execute();
+  if (!result.content && !result.diagnostic) {
+    result.diagnostic = {
+      source: guideSource(url),
+      stage: 'fetch',
+      reason: result.statusCode
+        ? 'http-error'
+        : result.errorType === 'not-found'
+          ? 'not-found'
+          : result.errorType === 'timeout'
+            ? 'timeout'
+            : 'unexpected-error',
+      statusCode: result.statusCode,
     };
   }
+  recordContentFetch({
+    url,
+    tier,
+    durationMs: performance.now() - fetchStart,
+    outcome: result.content ? 'ok' : 'error',
+    diagnostic: result.diagnostic,
+    loadContext: options.loadContext,
+  });
+  if (result.content && options.loadContext) {
+    result.content = { ...result.content, loadContext: options.loadContext };
+  }
+  return result;
 }
 
 /**

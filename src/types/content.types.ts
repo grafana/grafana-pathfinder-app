@@ -1,9 +1,12 @@
+import type { GuideDiagnostic, GuideLoadContext } from './guide-diagnostics.types';
+
 // Unified content types for the new retrieval architecture
 // This replaces the separate interfaces in docs-fetcher.ts and single-docs-fetcher.ts
 
 export type ContentType = 'learning-journey' | 'single-doc' | 'interactive';
 
 export interface RawContent {
+  loadContext?: GuideLoadContext;
   /** Raw content - always a JSON guide string */
   content: string;
 
@@ -188,6 +191,7 @@ export interface ConclusionImage {
 
 // Content fetching interfaces
 export interface ContentFetchOptions {
+  loadContext?: GuideLoadContext;
   /** Whether to use authentication headers */
   useAuth?: boolean;
 
@@ -205,6 +209,7 @@ export interface ContentFetchOptions {
 }
 
 export interface ContentFetchResult {
+  diagnostic?: GuideDiagnostic;
   /** The raw content, or null if fetch failed */
   content: RawContent | null;
 

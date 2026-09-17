@@ -1,3 +1,4 @@
+import type { GuideDiagnostic } from '../types/guide-diagnostics.types';
 /**
  * Composite Package Resolver
  *
@@ -80,6 +81,7 @@ export class CompositePackageResolver implements PackageResolver {
 
   private async resolveUncached(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
     let lastFailure: PackageResolution | undefined;
+    let attemptedDiagnostic: GuideDiagnostic | undefined;
 
     for (const resolver of this.resolvers) {
       const result = await resolver.resolve(packageId, options);
@@ -87,8 +89,15 @@ export class CompositePackageResolver implements PackageResolver {
         return result;
       }
       lastFailure = result;
+      const diagnostic = result.error.diagnostic;
+      if (diagnostic && diagnostic.reason !== 'namespace-unavailable' && diagnostic.reason !== 'backend-unavailable') {
+        attemptedDiagnostic = diagnostic;
+      }
     }
 
+    if (lastFailure && !lastFailure.ok && attemptedDiagnostic) {
+      return { ...lastFailure, error: { ...lastFailure.error, diagnostic: attemptedDiagnostic } };
+    }
     return (
       lastFailure ?? {
         ok: false,

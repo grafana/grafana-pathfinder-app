@@ -1,4 +1,6 @@
 import {
+  recordGuideRequest,
+  recordGuideRender,
   recordContentFetch,
   recordContentFetchFallback,
   recordCustomGuideCatalogueUnavailable,
@@ -13,6 +15,7 @@ import { pushFaroEvent, pushFaroMeasurement, withFaroUserAction, USER_ACTION_TIM
 
 jest.mock('./faro-adapter', () => ({
   pushFaroEvent: jest.fn(),
+  pushFaroUserAction: jest.fn(),
   pushFaroMeasurement: jest.fn(),
   withFaroUserAction: jest.fn((_name: string, _attrs: unknown, work: () => unknown) => work()),
   USER_ACTION_TIMEOUT_MEDIUM_MS: 60_000,
@@ -136,4 +139,28 @@ describe('measurement and event domain operations', () => {
       reason: 'obo-unavailable',
     });
   });
+});
+
+it('emits private guide diagnostics without private identifiers, bodies or messages', () => {
+  recordGuideRequest({
+    context: { loadId: 'load', source: 'app-platform', guideRef: 'opaque' },
+    url: 'backend-guide:private-resource',
+    role: 'content',
+    durationMs: 10,
+    diagnostic: { source: 'app-platform', stage: 'validate', reason: 'schema-invalid', validationCount: 2 },
+  });
+  const payload = mockPushFaroEvent.mock.calls[0]![1];
+  expect(payload.content_url).toMatch(/^private-guide:/);
+  expect(payload.validation_count).toBe('2');
+  expect(JSON.stringify(payload)).not.toContain('private-resource');
+  recordGuideRender({ loadId: 'load', source: 'app-platform', guideRef: 'opaque' }, 'error', 10, {
+    source: 'app-platform',
+    stage: 'fetch',
+    reason: 'http-error',
+    statusCode: 404,
+  });
+  expect(mockPushFaroEvent).toHaveBeenLastCalledWith(
+    'pathfinder_guide_render',
+    expect.objectContaining({ http_status: '404', stage: 'fetch' })
+  );
 });

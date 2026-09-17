@@ -1,3 +1,5 @@
+import { identifyGuideLoad } from '../../lib/telemetry/guide-load';
+import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 // Package content integration (Phase 4g).
 //
 // Holds the module-level PackageResolver singleton injected by Tier 3/4 wiring
@@ -77,14 +79,14 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
     const number = i + 1;
 
     if (result.status === 'rejected') {
-      logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone ${id}`, { reason: result.reason });
+      logger.warn('[resolvePackageMilestones] Locking unresolvable milestone');
       milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
-      logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone: ${id}`);
+      logger.warn('[resolvePackageMilestones] Locking unresolvable milestone');
       milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
@@ -135,13 +137,13 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
     const id = packageIds[i]!;
 
     if (result.status === 'rejected') {
-      logger.warn(`[resolvePackageNavLinks] Error resolving package ${id}`, { reason: result.reason });
+      logger.warn('[resolvePackageNavLinks] Error resolving package');
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
-      logger.warn(`[resolvePackageNavLinks] Skipping unresolvable package: ${id}`);
+      logger.warn('[resolvePackageNavLinks] Skipping unresolvable package');
       continue;
     }
 
@@ -232,8 +234,10 @@ export async function fetchPackageContent(
   packageManifest?: Record<string, unknown>,
   preResolvedMilestones?: Milestone[],
   repository?: string,
-  preFetchedContent?: ContentFetchResult
+  preFetchedContent?: ContentFetchResult,
+  loadContext?: GuideLoadContext
 ): Promise<ContentFetchResult> {
+  identifyGuideLoad(loadContext, contentUrl);
   const renderType = getPackageRenderType(packageManifest);
   const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
 
@@ -252,10 +256,10 @@ export async function fetchPackageContent(
   // parallel. These are independent: the page body doesn't need milestones
   // and milestones don't need the page body. The baseUrl branch awaits
   // getPackageResolver() itself (rather than a resolver fetched ahead of this
-  // array) so a cold resolver's chunk fetch overlaps fetchContent(contentUrl)
+  // array) so a cold resolver's chunk fetch overlaps fetchContent(contentUrl, { loadContext })
   // instead of serializing in front of it.
   const [result, resolvedMilestones, baseUrlResolution] = await Promise.all([
-    preFetchedContent ?? fetchContent(contentUrl),
+    preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
     manifestId
       ? getPackageResolver().then((resolver) =>
@@ -316,6 +320,7 @@ export async function fetchPackageContent(
     ...result,
     content: {
       ...result.content,
+      ...(loadContext && { loadContext }),
       content: contentString,
       type: renderType,
       metadata: {
@@ -348,7 +353,8 @@ export async function fetchPackageContent(
 export async function fetchPackageById(
   packageId: string,
   packageManifest?: Record<string, unknown>,
-  repository?: string
+  repository?: string,
+  loadContext?: GuideLoadContext
 ): Promise<ContentFetchResult> {
   const resolver = await getPackageResolver();
   if (!resolver) {
@@ -364,12 +370,13 @@ export async function fetchPackageById(
   // tab restore), so a draft opened by bare id is only caught here. The baseUrl
   // hydration resolve() in fetchPackageContent stays unverified — it runs on
   // every milestone fetch and its id is already known-good.
-  const resolution = await resolver.resolve(packageId, { loadContent: false, verifyPublished: true });
+  const resolution = await resolver.resolve(packageId, { loadContent: false, verifyPublished: true, loadContext });
 
   if (!resolution.ok) {
     return {
       content: null,
-      error: `Failed to resolve package: ${packageId}`,
+      error: 'Failed to resolve package',
+      diagnostic: resolution.error.diagnostic,
       errorType: resolution.error.code === 'not-found' ? 'not-found' : 'other',
     };
   }
@@ -388,6 +395,7 @@ export async function fetchPackageById(
     packageManifest,
     undefined,
     repository ?? resolution.repository,
-    preFetched
+    preFetched,
+    loadContext
   );
 }

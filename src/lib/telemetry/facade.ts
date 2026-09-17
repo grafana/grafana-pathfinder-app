@@ -1,6 +1,19 @@
+import { guideSource } from '../guide-diagnostics';
+import type {
+  GuideDiagnostic,
+  GuideLoadContext,
+  GuideRenderOutcome,
+  GuideRequestRole,
+} from '../../types/guide-diagnostics.types';
 // Typed domain operations — call sites use these, never the vendor-specific
 // pushFaro* primitives, so the backing SDK stays an adapter concern.
-import { pushFaroEvent, pushFaroMeasurement, withFaroUserAction, USER_ACTION_TIMEOUT_MEDIUM_MS } from './faro-adapter';
+import {
+  pushFaroEvent,
+  pushFaroMeasurement,
+  pushFaroUserAction,
+  withFaroUserAction,
+  USER_ACTION_TIMEOUT_MEDIUM_MS,
+} from './faro-adapter';
 import { normalizeTelemetryUrl } from './url';
 import { createInteractionName, UserInteraction } from '../analytics';
 import {
@@ -18,7 +31,14 @@ import {
 
 // Loaders resolve on failure (errors live in tab state), so the resolved
 // outcome — not promise settlement — stamps the action.
-export function withGuideOpenAction(url: string, work: () => Promise<GuideLoadOutcome>): Promise<GuideLoadOutcome> {
+export function withGuideOpenAction(
+  url: string,
+  work: () => Promise<GuideLoadOutcome>,
+  context?: GuideLoadContext
+): Promise<GuideLoadOutcome> {
+  if (context) {
+    return work();
+  }
   return withFaroUserAction(
     createInteractionName(UserInteraction.DocsPanelInteraction),
     { action: 'open_guide', content_url: normalizeTelemetryUrl(url) },
@@ -47,23 +67,35 @@ export function recordContentFetch(params: {
   tier: ContentFetchTier;
   durationMs: number;
   outcome: ContentFetchOutcome;
+  diagnostic?: GuideDiagnostic;
+  loadContext?: GuideLoadContext;
 }): void {
   pushFaroMeasurement(
     TELEMETRY_MEASUREMENTS.contentFetch,
     { content_fetch_ms: params.durationMs },
-    { tier: params.tier, outcome: params.outcome, content_url: normalizeTelemetryUrl(params.url) }
+    {
+      tier: params.tier,
+      outcome: params.outcome,
+      content_url: normalizeTelemetryUrl(params.url),
+      ...guideDiagnosticAttributes(params.diagnostic),
+      ...(params.loadContext && { load_id: params.loadContext.loadId }),
+    }
   );
 }
 
 export function recordContentFetchFallback(params: {
   url: string;
   tierUsed: ContentFetchTier;
+  diagnostic?: GuideDiagnostic;
+  loadContext?: GuideLoadContext;
   errorType: string;
 }): void {
   pushFaroEvent(TELEMETRY_EVENTS.contentFetchFallback, {
     content_url: normalizeTelemetryUrl(params.url),
     tier_used: params.tierUsed,
+    ...(params.loadContext && { load_id: params.loadContext.loadId }),
     error_type: params.errorType,
+    ...guideDiagnosticAttributes(params.diagnostic),
   });
 }
 
@@ -157,4 +189,83 @@ export type GcxCredentialDegradation =
 
 export function recordGcxCredentialDegradation(reason: GcxCredentialDegradation): void {
   pushFaroEvent(TELEMETRY_EVENTS.gcxCredentialDegraded, { reason });
+}
+
+export function guideDiagnosticAttributes(diagnostic?: GuideDiagnostic): Record<string, string> {
+  return diagnostic
+    ? {
+        source: diagnostic.source,
+        stage: diagnostic.stage,
+        reason: diagnostic.reason,
+        ...(diagnostic.statusCode !== undefined && { http_status: String(diagnostic.statusCode) }),
+        ...(diagnostic.validationCount !== undefined && { validation_count: String(diagnostic.validationCount) }),
+      }
+    : {};
+}
+
+export function recordGuideRequest(params: {
+  context?: GuideLoadContext;
+  url: string;
+  role: GuideRequestRole;
+  durationMs: number;
+  statusCode?: number;
+  diagnostic?: GuideDiagnostic;
+}): void {
+  pushFaroEvent(TELEMETRY_EVENTS.guideRequest, {
+    load_id: params.context?.loadId,
+    guide_ref: params.context?.guideRef,
+    source: guideSource(params.url),
+    content_url:
+      params.context?.source === 'app-platform'
+        ? `private-guide:${params.context.guideRef}`
+        : normalizeTelemetryUrl(params.url),
+    role: params.role,
+    duration_ms: Math.round(params.durationMs),
+    http_status: params.statusCode,
+    outcome: params.diagnostic ? 'error' : 'ok',
+    ...guideDiagnosticAttributes(params.diagnostic),
+  });
+}
+
+export function recordGuideRender(
+  context: GuideLoadContext,
+  outcome: GuideRenderOutcome,
+  durationMs: number,
+  diagnostic?: GuideDiagnostic
+): void {
+  if (outcome !== 'degraded' && outcome !== 'awaiting-user') {
+    pushFaroUserAction(createInteractionName(UserInteraction.DocsPanelInteraction), {
+      action: 'open_guide',
+      phase: 'render',
+      load_id: context.loadId,
+      guide_ref: context.guideRef,
+      outcome: outcome === 'rendered' ? 'ok' : outcome,
+      duration_ms: Math.round(durationMs),
+      ...guideDiagnosticAttributes(diagnostic),
+    });
+  }
+  pushFaroEvent(TELEMETRY_EVENTS.guideRender, {
+    load_id: context.loadId,
+    guide_ref: context.guideRef,
+    source: context.source,
+    outcome,
+    duration_ms: Math.round(durationMs),
+    ...guideDiagnosticAttributes(diagnostic),
+  });
+}
+
+export function recordPackageIndex(attributes: {
+  outcome: 'ok' | 'error' | 'degraded' | 'suppressed';
+  reason?: string;
+  http_status?: number;
+  cache?: string;
+  cache_age_ms?: number;
+  manifest_failures?: number;
+  manifest_http_error_count?: number;
+  manifest_timeout_count?: number;
+  manifest_invalid_json_count?: number;
+  manifest_other_error_count?: number;
+  budget_exhausted?: boolean;
+}): void {
+  pushFaroEvent(TELEMETRY_EVENTS.packageIndex, attributes);
 }

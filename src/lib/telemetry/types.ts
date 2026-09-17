@@ -32,6 +32,9 @@ export type CompletionWriteDegradation =
   | 'drain-failed';
 
 export const TELEMETRY_EVENTS = {
+  guideRequest: 'pathfinder_guide_request',
+  guideRender: 'pathfinder_guide_render',
+  packageIndex: 'pathfinder_package_index',
   recommenderFallback: 'pathfinder_recommender_fallback',
   contentFetchFallback: 'pathfinder_content_fetch_fallback',
   requirementsExhausted: 'pathfinder_requirements_exhausted',
