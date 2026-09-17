@@ -121,7 +121,6 @@ jest.mock('../../global-state/link-interception', () => ({
 }));
 
 jest.mock('../../lib/telemetry', () => ({
-  withGuideOpenAction: jest.fn(async (_url: string, work: () => Promise<unknown>) => work()),
   recordPanelReady: jest.fn(),
 }));
 

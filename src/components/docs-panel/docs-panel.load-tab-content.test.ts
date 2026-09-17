@@ -1,10 +1,4 @@
-/**
- * Tests for CombinedLearningJourneyPanel.loadTabContent's empty-URL handling.
- *
- * An empty/corrupted tab URL previously returned 'completed' without loading
- * or failing the tab, which withGuideOpenAction then mapped to a successful
- * `pathfinder_guide_open` outcome. Fixed to fail the tab and report 'error'.
- */
+// Empty or corrupted tab URLs must fail the tab and report an error.
 
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before any import that triggers docs-panel.tsx

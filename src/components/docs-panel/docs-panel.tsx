@@ -47,7 +47,7 @@ import {
 } from '../../lib/analytics';
 import { rewriteGuideTrees } from '../../lib/guide-counting-source';
 import { logger } from '../../lib/logging';
-import { withGuideOpenAction, type GuideLoadOutcome } from '../../lib/telemetry';
+import type { GuideLoadOutcome } from '../../lib/telemetry';
 import { usePanelReadyMeasurement } from './hooks/usePanelReadyMeasurement';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import {
@@ -502,27 +502,20 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (options?.source) {
       this._pendingLaunchSource = options.source;
     }
-    // Loaders resolve on failure (failTab stores the error in tab state), so
-    // their returned outcome — not promise settlement — stamps the action.
-    await withGuideOpenAction(
-      url,
-      async () => {
-        const tab = this.state.tabs.find((t) => t.id === tabId);
-        const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
-        if (needsDocsLoader) {
-          return this.loadDocsTabContent(
-            tabId,
-            url,
-            options?.skipReadyToBegin,
-            options?.packageInfo,
-            options?.prefetched,
-            loadContext
-          );
-        }
-        return this.loadTabContent(tabId, url, options?.prefetched, loadContext);
-      },
-      loadContext
-    );
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+    if (needsDocsLoader) {
+      await this.loadDocsTabContent(
+        tabId,
+        url,
+        options?.skipReadyToBegin,
+        options?.packageInfo,
+        options?.prefetched,
+        loadContext
+      );
+    } else {
+      await this.loadTabContent(tabId, url, options?.prefetched, loadContext);
+    }
   }
 
   private async loadTabContent(

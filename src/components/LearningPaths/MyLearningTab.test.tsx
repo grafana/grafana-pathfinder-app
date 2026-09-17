@@ -13,6 +13,8 @@
 
 import React from 'react';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { finishGuideLoad } from '../../lib/telemetry/guide-load';
+import { recordGuideRender } from '../../lib/telemetry/facade';
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { pushFaroLog } from '../../lib/telemetry/bridge';
@@ -24,6 +26,12 @@ import {
   milestoneCompletionStorage,
 } from '../../lib/user-storage';
 import { discardQueuedCompletionWrites, invalidateAllEmittedCompletions } from '../../completion-records';
+
+jest.mock('../../lib/telemetry/facade', () => ({
+  ...jest.requireActual('../../lib/telemetry/facade'),
+  recordGuideRender: jest.fn(),
+  recordGuideRequest: jest.fn(),
+}));
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
@@ -193,6 +201,13 @@ beforeEach(() => {
   resolvePackageNavLinksMock.mockResolvedValue([]);
 });
 
+afterEach(() => {
+  for (const [, context] of prepareMock.mock.calls) {
+    finishGuideLoad(context.loadContext, 'cancelled');
+  }
+  jest.useRealTimers();
+});
+
 describe('MyLearningTab launch flow', () => {
   it('shows a pending affordance on the launching card and re-enables after resolve', async () => {
     const { promise, resolve } = deferred();
@@ -213,19 +228,44 @@ describe('MyLearningTab launch flow', () => {
     expect(continueButton).not.toHaveTextContent('Opening…');
   });
 
-  it('drops a launch that resolves after unmount instead of opening the guide', async () => {
+  it('cancels an unmounted launch before preparation resolves and suppresses late outcomes', async () => {
+    jest.useFakeTimers();
     const { promise, resolve } = deferred();
     prepareMock.mockReturnValue(promise);
     const onOpenGuide = jest.fn();
 
     const { unmount } = render(<MyLearningTab onOpenGuide={onOpenGuide} />);
     fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+    const loadContext = prepareMock.mock.calls[0]![1].loadContext;
     unmount();
+    expect(recordGuideRender).toHaveBeenCalledWith(loadContext, 'cancelled', expect.any(Number), undefined);
+    act(() => jest.advanceTimersByTime(60_000));
 
     await act(async () => resolve(okResult));
+    finishGuideLoad(loadContext, 'error', { source: 'docs', stage: 'prepare', reason: 'unexpected-error' });
+    expect(recordGuideRender).toHaveBeenCalledTimes(1);
 
     expect(onOpenGuide).not.toHaveBeenCalled();
     expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('hands the attempt to the destination without cancelling it when the launcher unmounts', async () => {
+    const { promise, resolve } = deferred();
+    prepareMock.mockReturnValue(promise);
+    const onOpenGuide = jest.fn();
+    const { unmount } = render(<MyLearningTab onOpenGuide={onOpenGuide} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+    const loadContext = prepareMock.mock.calls[0]![1].loadContext;
+    if (!okResult.ok) {
+      throw new Error('Expected successful fixture');
+    }
+    const launch = { ...okResult.launch, preparedContent: { ...okResult.launch.preparedContent, loadContext } };
+    await act(async () => resolve({ ok: true, launch }));
+    expect(onOpenGuide).toHaveBeenCalledWith(launch);
+    unmount();
+    expect(recordGuideRender).not.toHaveBeenCalled();
+    finishGuideLoad(loadContext, 'rendered');
+    expect(recordGuideRender).toHaveBeenCalledWith(loadContext, 'rendered', expect.any(Number), undefined);
   });
 
   it('surfaces a failed prepare as an error alert without opening a guide', async () => {
@@ -623,6 +663,7 @@ describe('MyLearningTab — online course package cover launch', () => {
     expect(prepareMock).toHaveBeenCalledWith('bundled:core-grafana-concepts-lj/content.json', {
       title: 'Core Grafana concepts',
       source: 'home_page',
+      loadContext: expect.objectContaining({ loadId: expect.any(String) }),
       packageInfo: {
         packageId: 'core-grafana-concepts-lj',
         packageManifest: {
@@ -661,6 +702,7 @@ describe('MyLearningTab — online course package cover launch', () => {
     expect(prepareMock).toHaveBeenCalledWith('bundled:core-grafana-concepts-lj/content.json', {
       title: 'Core Grafana concepts',
       source: 'home_page',
+      loadContext: expect.objectContaining({ loadId: expect.any(String) }),
       packageInfo: {
         packageId: 'core-grafana-concepts-lj',
         packageManifest: {
@@ -781,6 +823,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
       title: 'Alerting enablement',
       source: 'home_page',
+      loadContext: expect.objectContaining({ loadId: expect.any(String) }),
       packageInfo: {
         packageId: 'ap-path',
         packageManifest: {
@@ -819,6 +862,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
       title: 'Alerting enablement',
       source: 'home_page',
+      loadContext: expect.objectContaining({ loadId: expect.any(String) }),
       packageInfo: {
         packageId: 'ap-path',
         packageManifest: {
@@ -846,6 +890,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     expect(prepareMock).toHaveBeenCalledWith('bundled:bundled-guide', {
       title: expect.any(String),
       source: 'home_page',
+      loadContext: expect.objectContaining({ loadId: expect.any(String) }),
       packageInfo: undefined,
     });
   });

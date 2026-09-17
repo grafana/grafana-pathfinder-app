@@ -1,4 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
+import { testIds } from '../src/constants/testIds';
+import { TIMEOUTS } from './constants';
 import { gunzipSync } from 'node:zlib';
 
 interface FaroEvent {
@@ -67,6 +69,7 @@ test('correlates private and CDN failures with committed rendering without leaki
       : route.fulfill({ status: 404, body: 'Not found' })
   );
   await page.goto('/a/grafana-pathfinder-app/docs?doc=api:private-missing');
+  await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
 
   const openGuide = async (url: string) => {
     await page.evaluate(

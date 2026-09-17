@@ -1,4 +1,5 @@
 import { beginGuideLoad, finishGuideLoad, markGuideLoadStage } from '../../../lib/telemetry/guide-load';
+import type { GuideLoadContext } from '../../../types/guide-diagnostics.types';
 import { diagnoseGuideError } from '../../../lib/guide-diagnostics';
 /**
  * One-shot launch preparation: fetch a guide's content once, expand its snippet
@@ -74,6 +75,7 @@ export type PrepareGuideLaunchResult =
   { ok: true; launch: PreparedGuideLaunch } | { ok: false; error: string; errorCode: PrepareGuideLaunchErrorCode };
 
 interface PrepareGuideLaunchContext {
+  loadContext?: GuideLoadContext;
   title: string;
   source: LaunchSource;
   /** Pre-resolved package context (recommender path); otherwise derived from the URL. */
@@ -89,7 +91,7 @@ export async function prepareGuideLaunch(
   url: string,
   context: PrepareGuideLaunchContext
 ): Promise<PrepareGuideLaunchResult> {
-  const loadContext = beginGuideLoad(url);
+  const loadContext = context.loadContext ?? beginGuideLoad(url);
   try {
     // Mirror loadDocsTabContent's package derivation so the single fetch here is
     // identical to the one the destination loader would otherwise perform.
