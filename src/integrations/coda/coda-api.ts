@@ -203,3 +203,15 @@ export function execInSession(sessionId: string, req: ExecRequest) {
 export function provisionGcx(sessionId: string, options: MintTokenOptions & { token?: string } = {}) {
   return provisionGcxCredential(client, sessionId, options);
 }
+
+/** Compatibility adapter for the workspace URL contract, independent of the installed client version. */
+export function codaWorkspaceUrl(vmId: string, path?: string, line?: number): string {
+  const query = new URLSearchParams({ vmId });
+  if (path) {
+    query.set('path', path);
+  }
+  if (line && Number.isSafeInteger(line) && line > 0) {
+    query.set('line', String(line));
+  }
+  return `/a/grafana-coda-app/workspace?${query.toString()}`;
+}

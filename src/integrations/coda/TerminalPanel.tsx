@@ -37,6 +37,7 @@ import {
   clearScrollback,
   getLastVmOpts,
 } from './terminal-storage';
+import { WorkspaceLink } from './WorkspaceLink';
 import { logger } from '../../lib/logging';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { VmExpiryIndicator } from './VmExpiryIndicator';
@@ -67,7 +68,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, sendCommand, error, sessionId, vmExpiresAt } = useTerminalLive({
+  const { status, connect, disconnect, resize, sendCommand, error, sessionId, vmId, vmExpiresAt } = useTerminalLive({
     terminalRef: terminalInstanceRef,
   });
 
@@ -75,8 +76,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const terminalCtx = useTerminalContext();
   const gcxCredential = useGcxCredential(undefined, sessionId);
   useEffect(() => {
-    terminalCtx?._register({ status, sessionId, error, connect, disconnect, sendCommand });
-  }, [terminalCtx, status, sessionId, error, connect, disconnect, sendCommand]);
+    terminalCtx?._register({ status, sessionId, vmId, error, connect, disconnect, sendCommand });
+  }, [terminalCtx, status, sessionId, vmId, error, connect, disconnect, sendCommand]);
 
   // Sync: when something calls context.openTerminal, the context sets its
   // isExpanded flag. Mirror that into the panel's local state so we actually
@@ -557,6 +558,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
                 Disconnect
               </Button>
             )}
+
+            <WorkspaceLink connected={status === 'connected'} vmId={vmId} className={styles.headerButton} />
 
             {/* Needs a live session: the backend writes over the SSH channel
                 the stream already owns. */}
