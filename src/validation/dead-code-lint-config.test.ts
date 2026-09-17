@@ -138,7 +138,7 @@ process.stdout.write(JSON.stringify(results));
 
 type LintMessage = { ruleId: string | null; severity: number; message: string; fatal?: boolean };
 
-function lintProbes(sources: Record<string, string>): Record<string, LintMessage[]> {
+function lintProbes<K extends string>(sources: Record<K, string>): Record<K, LintMessage[]> {
   const stdout = execFileSync(process.execPath, ['--input-type=module', '-e', RUNNER], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',

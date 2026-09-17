@@ -34,12 +34,19 @@ process.stdout.write(JSON.stringify(results));
 
 type LintMessage = { ruleId: string | null; severity: number; message: string; fatal?: boolean };
 
+type ProbeName =
+  | 'windowAsAnyCast'
+  | 'nestedIdentifierCast'
+  | 'nestedStringLiteralCast'
+  | 'computedWindowAsAnyCast'
+  | 'typedAccessAndUnrelated';
+
 /**
- * Runs every named probe through one ESLint instance in one child process.
- * Each probe pays for its own `projectService` build, so batching keeps that
- * cost paid once per test run instead of once per `it()`.
+ * Runs every named probe through one ESLint instance in one child process,
+ * since each instance pays to build a fresh `projectService`. Batching keeps
+ * that cost paid once per suite instead of once per `it()`.
  */
-function lintProbes(sources: Record<string, string>): Record<string, LintMessage[]> {
+function lintProbes<K extends string>(sources: Record<K, string>): Record<K, LintMessage[]> {
   const stdout = execFileSync(process.execPath, ['--input-type=module', '-e', RUNNER], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
@@ -50,7 +57,7 @@ function lintProbes(sources: Record<string, string>): Record<string, LintMessage
 }
 
 describe('window-global lint contract', () => {
-  let results: Record<string, LintMessage[]>;
+  let results: Record<ProbeName, LintMessage[]>;
 
   beforeAll(() => {
     results = lintProbes({
