@@ -49,13 +49,19 @@ describe('CodeBlockStep: hints', () => {
       />
     );
 
-    expect(await screen.findByText('Open the Explore query editor before inserting this query.')).toBeInTheDocument();
+    // The unmet requirement retries for real (maxRetries: 3 * retryDelay: 300ms, see
+    // INTERACTIVE_CONFIG) before settling into the blocked state, so this needs the same
+    // generous timeout as the retry-chain assertions in step-checker.hook.test.ts rather
+    // than RTL's 1000ms default, which leaves too little margin under CI load.
+    expect(
+      await screen.findByText('Open the Explore query editor before inserting this query.', {}, { timeout: 10000 })
+    ).toBeInTheDocument();
   });
 
   it('falls back to the generic requirement message when no hint is authored', async () => {
     render(<CodeBlockStep code="query_range(up)" refTarget="#editor" requirements={UNSATISFIABLE_REQUIREMENT} />);
 
-    expect(await screen.findByText(/Navigate to the .* page first/)).toBeInTheDocument();
+    expect(await screen.findByText(/Navigate to the .* page first/, {}, { timeout: 10000 })).toBeInTheDocument();
   });
 });
 
