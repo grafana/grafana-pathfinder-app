@@ -38,7 +38,7 @@
   "docsPanel": {
     "closeSidebar": "사이드바 닫기",
     "closeTab": "{{title}} 닫기",
-    "dock": "고정",
+    "dock": "사이드바로 되돌리기",
     "documentation": "문서",
     "fullScreen": "전체 화면",
     "giveFeedback": "피드백 보내기",
@@ -61,7 +61,7 @@
     "open": "열기",
     "openControllerInNewTab": "대화형 창에서 열기",
     "openInNewTab": "이 페이지를 새 탭에서 열기",
-    "popOut": "새 창으로 열기",
+    "popOut": "플로팅 패널로 분리",
     "previousMilestone": "이전 마일스톤",
     "previousMilestoneTooltip": "이전 마일스톤 (Alt + ←)",
     "recommendations": "추천",
