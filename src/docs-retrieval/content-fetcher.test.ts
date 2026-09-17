@@ -522,7 +522,8 @@ describe('fetchContent records a failed pathfinder_content_fetch measurement on 
   });
 
   it('records outcome error for an invalid URL', async () => {
-    await fetchContent('');
+    const result = await fetchContent('');
+    expect(result.diagnostic).toEqual({ source: 'other', stage: 'fetch', reason: 'invalid-url' });
     expect(mockRecordContentFetch).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error' }));
   });
 
@@ -548,4 +549,13 @@ describe('malformed native guide JSON', () => {
       expect.objectContaining({ outcome: 'error', diagnostic: result.diagnostic })
     );
   });
+});
+
+it('classifies an insecure documentation URL as blocked without requesting it', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch');
+  fetchMock.mockClear();
+  const result = await fetchContent('http://grafana.com/docs/grafana/latest/');
+  expect(result.diagnostic).toEqual({ source: 'docs', stage: 'fetch', reason: 'blocked-url' });
+  expect(fetchMock).not.toHaveBeenCalled();
+  fetchMock.mockRestore();
 });

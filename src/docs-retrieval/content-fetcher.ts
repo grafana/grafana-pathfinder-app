@@ -66,7 +66,12 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       if (!url || typeof url !== 'string' || url.trim() === '') {
         logger.error('fetchContent called with invalid URL', { url });
 
-        return { content: null, error: 'Invalid URL provided', errorType: 'other' };
+        return {
+          content: null,
+          error: 'Invalid URL provided',
+          errorType: 'other',
+          diagnostic: { source: guideSource(url), stage: 'fetch', reason: 'invalid-url' },
+        };
       }
 
       if (url.startsWith('bundled:')) {
@@ -111,6 +116,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
           content: null,
           error: 'Only HTTPS URLs are allowed for security',
           errorType: 'other',
+          diagnostic: { source: guideSource(url), stage: 'fetch', reason: 'blocked-url' },
         };
       }
 

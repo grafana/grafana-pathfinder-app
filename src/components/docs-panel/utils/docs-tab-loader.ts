@@ -43,6 +43,7 @@ export async function loadDocsTabContentResult(
       content: null,
       error: UNRESOLVED_PACKAGE_ERROR,
       errorType: 'not-found',
+      diagnostic: { source: options.loadContext?.source ?? 'other', stage: 'resolve', reason: 'not-found' },
     };
   }
 
@@ -51,6 +52,7 @@ export async function loadDocsTabContentResult(
       content: null,
       error: 'Invalid URL provided',
       errorType: 'other',
+      diagnostic: { source: options.loadContext?.source ?? 'other', stage: 'resolve', reason: 'invalid-url' },
     };
   }
 

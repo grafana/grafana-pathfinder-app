@@ -5,12 +5,18 @@ import { GuideRenderBoundary } from './GuideRenderBoundary';
 import { beginGuideLoad, finishGuideLoad } from '../../lib/telemetry/guide-load';
 import { recordGuideRender } from '../../lib/telemetry/facade';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
+import { getSnippetResolver } from '../../snippet-engine/caching-snippet-resolver';
 import type { RawContent } from '../../types/content.types';
 
 jest.mock('../../lib/telemetry/facade', () => ({
   ...jest.requireActual('../../lib/telemetry/facade'),
   recordGuideRender: jest.fn(),
 }));
+
+jest.mock('../../lib/telemetry/guide-load', () => {
+  const actual = jest.requireActual('../../lib/telemetry/guide-load');
+  return { ...actual, finishGuideLoad: jest.fn(actual.finishGuideLoad) };
+});
 
 function content(blocks: unknown[]): RawContent {
   return {
@@ -24,6 +30,7 @@ function content(blocks: unknown[]): RawContent {
 }
 
 beforeEach(() => jest.clearAllMocks());
+afterEach(() => jest.restoreAllMocks());
 
 it('reports a committed render once and calls readiness only after valid content', async () => {
   const raw = content([{ type: 'markdown', content: 'Visible guide text' }]);
@@ -93,4 +100,40 @@ it('catches React crashes without sending the error message or guide content', (
     finishGuideLoad(raw.loadContext, 'cancelled');
     consoleError.mockRestore();
   }
+});
+
+it('does not reuse snippet degradation when content changes on the same renderer', async () => {
+  jest.spyOn(getSnippetResolver(), 'resolve').mockResolvedValue({
+    ok: false,
+    id: 'unavailable',
+    error: { code: 'not-found', message: 'Private snippet details' },
+  });
+  const raw = content([
+    { type: 'snippet-ref', snippetId: 'unavailable' },
+    { type: 'markdown', content: 'Original content' },
+  ]);
+  const view = render(<ContentRenderer content={raw} />);
+  await waitFor(() =>
+    expect(finishGuideLoad).toHaveBeenCalledWith(raw.loadContext, 'degraded', {
+      source: 'app-platform',
+      stage: 'render',
+      reason: 'snippet-unavailable',
+    })
+  );
+  jest.mocked(finishGuideLoad).mockClear();
+  view.rerender(
+    <ContentRenderer
+      content={{
+        ...raw,
+        content: JSON.stringify({
+          id: 'private-id',
+          title: 'Private title',
+          blocks: [{ type: 'markdown', content: 'Replacement without snippets' }],
+        }),
+      }}
+    />
+  );
+  await screen.findByText('Replacement without snippets');
+  expect(finishGuideLoad).toHaveBeenCalledWith(raw.loadContext, 'rendered');
+  expect(finishGuideLoad).not.toHaveBeenCalledWith(raw.loadContext, 'degraded', expect.anything());
 });

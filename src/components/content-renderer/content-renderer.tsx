@@ -879,7 +879,8 @@ function ContentProcessor({
   }, [guideWithSnippetRefs, baseUrl, overlayKey, baseParseResult]);
 
   const overlayMatchesCurrent = snippetOverlay?.key === overlayKey;
-  const parseResult = overlayMatchesCurrent && snippetOverlay ? snippetOverlay.result : baseParseResult;
+  const currentSnippetOverlay = overlayMatchesCurrent ? snippetOverlay : null;
+  const parseResult = currentSnippetOverlay?.result ?? baseParseResult;
   const isResolvingSnippets = guideWithSnippetRefs !== null && !overlayMatchesCurrent;
 
   const readyReported = useRef<string | null>(null);
@@ -894,16 +895,16 @@ function ContentProcessor({
     } else if (parseResult.data.elements.length === 0) {
       finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'empty-content' });
     } else {
-      if (parseResult.warnings.length > 0 && !snippetOverlay?.degraded) {
+      if (parseResult.warnings.length > 0 && !currentSnippetOverlay?.degraded) {
         finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'parse-error' });
       }
-      if (snippetOverlay?.degraded) {
+      if (currentSnippetOverlay?.degraded) {
         finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'snippet-unavailable' });
       }
       finishGuideLoad(loadContext, 'rendered');
       onReady?.();
     }
-  }, [parseResult, isResolvingSnippets, alignmentPaused, overlayKey, loadContext, onReady, snippetOverlay]);
+  }, [parseResult, isResolvingSnippets, alignmentPaused, overlayKey, loadContext, onReady, currentSnippetOverlay]);
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {

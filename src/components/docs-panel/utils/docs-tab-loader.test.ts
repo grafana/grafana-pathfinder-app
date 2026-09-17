@@ -92,6 +92,7 @@ describe('loadDocsTabContentResult', () => {
       content: null,
       error: UNRESOLVED_PACKAGE_ERROR,
       errorType: 'not-found',
+      diagnostic: { source: 'other', stage: 'resolve', reason: 'not-found' },
     });
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
@@ -115,4 +116,9 @@ describe('loadDocsTabContentResult', () => {
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
   });
+});
+
+it('classifies an empty docs URL before attempting a fetch', async () => {
+  const result = await loadDocsTabContentResult('  ');
+  expect(result.diagnostic).toEqual({ source: 'other', stage: 'resolve', reason: 'invalid-url' });
 });

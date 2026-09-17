@@ -94,9 +94,10 @@ it('normalizes private resource references and strips credentials from public UR
       '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/private/interactiveguides/private-name'
     )
   ).not.toContain('private-name');
-  expect(normalizeTelemetryUrl('https://user:password@interactive-learning.grafana.net/a?secret=value#private')).toBe(
-    'interactive-learning.grafana.net/a'
-  );
+  const publicUrl = new URL('https://interactive-learning.grafana.net/a?secret=value#private');
+  publicUrl.username = 'fixture-user';
+  publicUrl.password = 'fixture-password';
+  expect(normalizeTelemetryUrl(publicUrl.href)).toBe('interactive-learning.grafana.net/a');
 });
 
 it('cancels an abandoned attempt without a later timeout or success', () => {
