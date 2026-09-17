@@ -22,6 +22,7 @@ import {
   ensureNonEmptyCoverContent,
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
+import { isJourneyCoverPage } from './learning-journey-helpers';
 import {
   fetchCustomGuideRepository,
   invalidateCustomGuideRepositoryCache,
@@ -896,6 +897,45 @@ describe('fetchPackageContent path-type enrichment', () => {
     const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
 
     expect(result.content!.metadata.learningJourney!.tracks).toBeUndefined();
+  });
+
+  // Regression (human review on PR #1927, "track-guide-loads-as-cover-page",
+  // HIGH): a guide referenced only by a track — never by milestones, which
+  // the RFC explicitly allows — has no milestones index, so currentMilestone
+  // fell back to 0 and isJourneyCoverPage misclassified it as the path's own
+  // cover page instead of as itself.
+  it('does not classify a track-exclusive guide as the cover page', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    // The resolver mock maps any id to `bundled:<id>/content.json`, so the
+    // loaded contentUrl below must match a real bundled fixture (used
+    // elsewhere in this file) both to load successfully AND to resolve, as
+    // a track member, to that same URL.
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['first-dashboard'] }],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content).not.toBeNull();
+    expect(isJourneyCoverPage(result.content!)).toBe(false);
+    expect(result.content!.metadata.learningJourney!.currentMilestone).not.toBe(0);
   });
 
   // `repository-identity-authority`: without the fallback, opening the same

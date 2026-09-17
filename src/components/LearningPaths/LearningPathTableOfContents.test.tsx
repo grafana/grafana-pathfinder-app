@@ -388,6 +388,27 @@ describe('LearningPathTableOfContents', () => {
       expect(screen.getByRole('tab', { name: 'Seller' })).toBeInTheDocument();
     });
 
+    // Regression (human review on PR #1927, "foundations-sentinel-unenforced-
+    // at-runtime", MEDIUM): getManifestTracks (the shared utility every
+    // tracks consumer reads through) now drops a reserved-id or duplicate
+    // trackId before it ever reaches this component, so the tab bar this
+    // component renders from its (already-clean) `tracks` prop never shows
+    // two tabs simultaneously marked active — never a "duplicate/dead tab".
+    it('marks exactly one tab active at a time, whichever tab is selected', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
+      expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1);
+      expect(screen.getByRole('tab', { name: 'Builder' })).toHaveAttribute('aria-selected', 'true');
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+      expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1);
+      expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'true');
+    });
+
     it('shows the Foundations sequence by default, with Foundations active', async () => {
       setCompletedSlugs(new Set());
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);

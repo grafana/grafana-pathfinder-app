@@ -1,4 +1,10 @@
-import { getPackageRenderType, getManifestTracks, getAllTrackGuideIds, getManifestMemberIds } from './package.types';
+import {
+  getPackageRenderType,
+  getManifestTracks,
+  getAllTrackGuideIds,
+  getManifestMemberIds,
+  FOUNDATIONS_TRACK_ID,
+} from './package.types';
 
 describe('getPackageRenderType', () => {
   it('returns interactive for guide-type manifests', () => {
@@ -58,6 +64,36 @@ describe('getManifestTracks', () => {
           { trackId: 'dev', guides: ['x'] /* missing label */ },
           'not-an-object',
           { trackId: 'broken', label: 'Broken', guides: ['a', 7] /* non-string guide */ },
+        ],
+      })
+    ).toEqual([{ trackId: 'builder', label: 'Builder', guides: ['a'] }]);
+  });
+
+  // Regression (human review on PR #1927, "foundations-sentinel-unenforced-
+  // at-runtime", MEDIUM): the reserved trackId and cross-track uniqueness
+  // checks previously only ran in ManifestJsonSchema's superRefine, which
+  // only the CLI's `validate` command exercises — every runtime loader, and
+  // scripts/upsert-learning-path.sh (no Zod validation at all), could reach
+  // the cover page with a track named "foundations" or a duplicate trackId.
+  // Enforcing here, the one place every tracks consumer reads through, makes
+  // that true on every path.
+  it('drops a track that reuses the reserved Foundations trackId', () => {
+    expect(
+      getManifestTracks({
+        tracks: [
+          { trackId: FOUNDATIONS_TRACK_ID, label: 'Foundations again', guides: ['a'] },
+          { trackId: 'builder', label: 'Builder', guides: ['b'] },
+        ],
+      })
+    ).toEqual([{ trackId: 'builder', label: 'Builder', guides: ['b'] }]);
+  });
+
+  it('drops a duplicate trackId, keeping the first occurrence', () => {
+    expect(
+      getManifestTracks({
+        tracks: [
+          { trackId: 'builder', label: 'Builder', guides: ['a'] },
+          { trackId: 'builder', label: 'Builder (duplicate)', guides: ['b'] },
         ],
       })
     ).toEqual([{ trackId: 'builder', label: 'Builder', guides: ['a'] }]);

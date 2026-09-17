@@ -275,14 +275,22 @@ export async function fetchPackageContent(
   const milestoneIds = needsMilestones ? getManifestMilestoneIds(packageManifest) : [];
   const shouldResolveMilestones =
     needsMilestones && (!preResolvedMilestones || preResolvedMilestones.length === 0) && milestoneIds.length > 0;
+  // Resolved unconditionally, not only for the cover page: currentMilestone
+  // below must know whether the loaded URL belongs to a track before it can
+  // safely conclude "not in milestones" means "this is the cover page" — a
+  // guide referenced only by a track (never by milestones, which the RFC
+  // explicitly allows) would otherwise be misclassified as index 0 and
+  // render as the path's cover instead of as itself.
+  const manifestTracks = needsMilestones ? getManifestTracks(packageManifest) : [];
+  const shouldResolveTracks = needsMilestones && manifestTracks.length > 0;
 
-  // Run content fetch, milestone resolution, and baseUrl resolution in
-  // parallel. These are independent: the page body doesn't need milestones
-  // and milestones don't need the page body. The baseUrl branch awaits
-  // getPackageResolver() itself (rather than a resolver fetched ahead of this
-  // array) so a cold resolver's chunk fetch overlaps fetchContent(contentUrl)
-  // instead of serializing in front of it.
-  const [result, resolvedMilestones, baseUrlResolution] = await Promise.all([
+  // Run content fetch, milestone resolution, track resolution, and baseUrl
+  // resolution in parallel. These are independent: the page body doesn't
+  // need milestones/tracks and milestones/tracks don't need the page body.
+  // The baseUrl branch awaits getPackageResolver() itself (rather than a
+  // resolver fetched ahead of this array) so a cold resolver's chunk fetch
+  // overlaps fetchContent(contentUrl) instead of serializing in front of it.
+  const [result, resolvedMilestones, baseUrlResolution, resolvedTracks] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
     manifestId
@@ -290,6 +298,7 @@ export async function fetchPackageContent(
           resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
         )
       : Promise.resolve(undefined),
+    shouldResolveTracks ? resolvePackageTracks(manifestTracks, pathSlug) : Promise.resolve(undefined),
   ]);
 
   if (!result.content) {
@@ -303,13 +312,20 @@ export async function fetchPackageContent(
 
   if (needsMilestones) {
     const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
+    const tracks = resolvedTracks ?? [];
 
     if (milestones && milestones.length > 0) {
       const milestoneIndex = milestones.findIndex((m) => m.url === contentUrl);
-      const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
+      // A guide referenced only by a track — never by milestones, which the
+      // RFC explicitly allows a track to do — has no milestones index, but
+      // must not be treated as "not found, so this is the cover page." Check
+      // every resolved track's own guides before falling back to that.
+      const isTrackMember =
+        milestoneIndex < 0 && tracks.some((track) => track.milestones.some((m) => m.url === contentUrl));
+      const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : isTrackMember ? -1 : 0;
 
       let baseUrl = contentUrl;
-      if (milestoneIndex >= 0 && baseUrlResolution && baseUrlResolution.ok) {
+      if ((milestoneIndex >= 0 || isTrackMember) && baseUrlResolution && baseUrlResolution.ok) {
         baseUrl = baseUrlResolution.contentUrl;
       }
 
@@ -327,12 +343,8 @@ export async function fetchPackageContent(
       };
 
       if (currentMilestone === 0) {
-        // Track resolution only runs for the cover page — it's the only
-        // surface that renders more than one sequence — so every other
-        // milestone fetch in the journey skips this extra resolver round-trip.
-        const manifestTracks = getManifestTracks(packageManifest);
-        if (manifestTracks.length > 0) {
-          learningJourney.tracks = await resolvePackageTracks(manifestTracks, pathSlug);
+        if (tracks.length > 0) {
+          learningJourney.tracks = tracks;
         }
 
         // skipReadyToBegin: true — the React cover-page TOC (LearningPathTableOfContents)

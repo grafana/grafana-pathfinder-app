@@ -15,7 +15,13 @@ import { ProgressRing } from './ProgressRing';
 import { BadgeIcon } from './BadgeIcon';
 import { getTableOfContentsStyles } from './learning-paths.styles';
 
-/** Tab id for the always-present default sequence — never a real trackId (schema-enforced). */
+/**
+ * Tab id for the always-present default sequence — never a real trackId.
+ * Enforced in `getManifestTracks` (package.types.ts), the one place every
+ * tracks consumer reads through, so this holds for every manifest this
+ * component ever receives `tracks` from — not only ones that passed through
+ * the CLI's `validate` command.
+ */
 const FOUNDATIONS_TAB_ID = FOUNDATIONS_TRACK_ID;
 
 export interface LearningPathTableOfContentsProps {
