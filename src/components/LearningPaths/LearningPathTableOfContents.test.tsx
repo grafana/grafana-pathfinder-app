@@ -158,6 +158,32 @@ describe('LearningPathTableOfContents', () => {
     expect(document.querySelector('[data-journey-start]')).toHaveAttribute('data-milestone-url', milestones[1]!.url);
   });
 
+  // Regression (Cursor Bugbot on PR #1927, "Row click sends fallback ordinal
+  // id"): the module list's React key falls back to an ordinal (e.g. "2")
+  // when a Milestone carries no real manifest id (the `milestones` fixture
+  // above never sets one) — GuideList must never forward that fallback as
+  // data-milestone-id, since an ordinal would never match a real manifest id
+  // and would misclassify the next load as the cover page.
+  it('never sends a fallback ordinal id as data-milestone-id when milestones carry no real id', async () => {
+    setCompletedSlugs(new Set(['set-up']));
+    render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
+
+    await screen.findByText('Resume');
+    expect(document.querySelector('[data-journey-start]')).not.toHaveAttribute('data-milestone-id');
+  });
+
+  it('sends the real manifest guide id as data-milestone-id when milestones carry one', async () => {
+    const milestonesWithIds: Milestone[] = [
+      { id: 'set-up', number: 1, title: 'Set up', url: `${baseUrl}set-up/content.json`, isActive: false },
+      { id: 'explore', number: 2, title: 'Explore', url: `${baseUrl}explore/content.json`, isActive: false },
+    ];
+    setCompletedSlugs(new Set(['set-up']));
+    render(<LearningPathTableOfContents milestones={milestonesWithIds} baseUrl={baseUrl} />);
+
+    await screen.findByText('Resume');
+    expect(document.querySelector('[data-journey-start]')).toHaveAttribute('data-milestone-id', 'explore');
+  });
+
   it('shows a Get started CTA targeting the first milestone, with no progress ring, at 0%', async () => {
     setCompletedSlugs(new Set());
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);

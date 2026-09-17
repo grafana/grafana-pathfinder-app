@@ -137,12 +137,17 @@ export function LearningPathTableOfContents({
   const guides: PathGuide[] = activeMilestones.map((milestone, index) => {
     const completed = completedSlugs.has(getMilestoneSlug(milestone.url));
     return {
-      // The real manifest guide id when resolveGuideIdsToMilestones set one
-      // (every real usage) — GuideList threads this through data-milestone-id
-      // so fetchPackageContent can classify the next load by direct lookup
-      // instead of a resolved-URL comparison. Falls back to the React-key-only
-      // ordinal for a fixture/edge case that never set Milestone.id.
+      // React-key-only — falls back to the ordinal for a fixture/edge case
+      // that never set Milestone.id. Never sent as a click-target id (see
+      // guideId below): an ordinal like "3" would never match a real
+      // manifest id and would misclassify the next load as the cover page.
       id: milestone.id ?? String(milestone.number),
+      // The real manifest guide id, only when resolveGuideIdsToMilestones set
+      // one (every real usage) — undefined otherwise, never the ordinal
+      // fallback above. GuideList threads this through data-milestone-id so
+      // fetchPackageContent can classify the next load by direct lookup
+      // instead of a resolved-URL comparison.
+      guideId: milestone.id,
       title: milestone.title,
       description: milestone.description,
       estimatedMinutes: milestone.estimatedMinutes,

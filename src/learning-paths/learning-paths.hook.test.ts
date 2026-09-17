@@ -322,6 +322,10 @@ describe('useLearningPaths — App Platform path ingestion', () => {
     const [member] = result.current.getPathGuides('fe-alerting-path');
     expect(member!.title).toBe('toString');
     expect(member!.url).toBeUndefined();
+    // guideId (the real click-target id, separate from the React-key `id` —
+    // see PathGuide's own doc comment) must always be set here, since this
+    // producer never falls back to an ordinal.
+    expect(member!.guideId).toBe('toString');
   });
 
   it('does not fetch when no namespace is available', async () => {
