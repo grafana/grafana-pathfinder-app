@@ -33,7 +33,6 @@ test('correlates private and CDN failures with committed rendering without leaki
       get: () => boot,
       set: (value) => {
         value.settings.buildInfo.env = 'development';
-        value.settings.namespace = 'stacks-telemetry-test';
         value.settings.featureToggles['aggregation.pathfinderbackend-ext-grafana-app.enabled'] = true;
         boot = value;
       },
