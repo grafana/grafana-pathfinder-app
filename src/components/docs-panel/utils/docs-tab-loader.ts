@@ -7,6 +7,12 @@ export const UNRESOLVED_PACKAGE_ERROR = 'Package content is not available yet. P
 interface LoadDocsTabContentOptions {
   skipReadyToBegin?: boolean;
   packageInfo?: PackageOpenInfo;
+  /**
+   * The manifest guide id `url` resolved from, when the click target already
+   * carried one. Passed straight through to fetchPackageContent — see its
+   * own `explicitGuideId` doc comment.
+   */
+  explicitGuideId?: string;
 }
 
 export async function loadDocsTabContentResult(
@@ -14,7 +20,7 @@ export async function loadDocsTabContentResult(
   options: LoadDocsTabContentOptions = {}
 ): Promise<ContentFetchResult> {
   const normalizedUrl = url.trim();
-  const { skipReadyToBegin, packageInfo } = options;
+  const { skipReadyToBegin, packageInfo, explicitGuideId } = options;
 
   if (packageInfo) {
     if (normalizedUrl) {
@@ -22,7 +28,9 @@ export async function loadDocsTabContentResult(
         normalizedUrl,
         packageInfo.packageManifest,
         packageInfo.resolvedMilestones,
-        packageInfo.repository
+        packageInfo.repository,
+        undefined,
+        explicitGuideId
       );
     }
 

@@ -171,6 +171,19 @@ export interface SingleDocMetadata {
 
 // Re-export existing interfaces that are still relevant
 export interface Milestone {
+  /**
+   * The raw manifest guide id this row was resolved from (a `milestones` or
+   * track `guides` entry) — the same id `getManifestMemberIds`/
+   * `getAllTrackGuideIds` operate on. Threaded through click targets
+   * (GuideList's current row, the cover page's CTA) so `fetchPackageContent`
+   * can classify a load by a direct id lookup against the manifest instead
+   * of inferring it from a resolved-URL comparison. Optional rather than
+   * required so the many existing fixtures/call sites that build a
+   * `Milestone` without caring about tracks (this field's only consumer)
+   * don't need an unrelated update; every producer inside package-content.ts
+   * (`resolveGuideIdsToMilestones`, the only place a real one is built) sets it.
+   */
+  id?: string;
   number: number;
   title: string;
   /** Author-provided estimate from the member's own manifest. Absent when not authored — never a guessed default. */

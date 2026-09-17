@@ -35,6 +35,8 @@ describe('loadDocsTabContentResult', () => {
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
       packageManifest,
       undefined,
+      undefined,
+      undefined,
       undefined
     );
     expect(mockFetchPackageById).not.toHaveBeenCalled();
@@ -53,7 +55,32 @@ describe('loadDocsTabContentResult', () => {
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
       packageManifest,
       undefined,
-      'app-platform'
+      'app-platform',
+      undefined,
+      undefined
+    );
+  });
+
+  // Regression: the manifest guide id a click target already carried
+  // (GuideList's current row, the cover-page CTA) must reach
+  // fetchPackageContent so it can classify the load structurally instead of
+  // comparing resolved URLs.
+  it('threads explicitGuideId through to fetchPackageContent', async () => {
+    mockFetchPackageContent.mockResolvedValueOnce({ content: null, error: 'x', errorType: 'other' });
+
+    const packageManifest = { id: 'alerting-101', type: 'path', milestones: ['step-1'] };
+    await loadDocsTabContentResult('https://interactive-learning.grafana.net/packages/step-1/content.json', {
+      packageInfo: { packageId: 'alerting-101', packageManifest },
+      explicitGuideId: 'step-1',
+    });
+
+    expect(mockFetchPackageContent).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/step-1/content.json',
+      packageManifest,
+      undefined,
+      undefined,
+      undefined,
+      'step-1'
     );
   });
 

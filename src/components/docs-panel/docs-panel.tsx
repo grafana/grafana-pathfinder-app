@@ -51,6 +51,8 @@ import {
   fetchContent,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
+  getNextMilestoneIdFromContent,
+  getPreviousMilestoneIdFromContent,
   getJourneyProgress,
   setJourneyCompletionPercentage,
   setPackageResolver,
@@ -483,6 +485,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       packageInfo?: PackageOpenInfo;
       prefetched?: RawContent;
       source?: LaunchSource;
+      /**
+       * The manifest guide id `url` resolved from, when the click target
+       * already carried one (GuideList's current row, the cover-page CTA —
+       * see link-handler.hook.ts). Threaded to fetchPackageContent so it can
+       * classify this load by a direct id lookup against the manifest
+       * instead of comparing resolved URLs.
+       */
+      explicitGuideId?: string;
     }
   ): Promise<void> {
     if (options?.source) {
@@ -499,7 +509,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           url,
           options?.skipReadyToBegin,
           options?.packageInfo,
-          options?.prefetched
+          options?.prefetched,
+          options?.explicitGuideId
         );
       }
       return this.loadTabContent(tabId, url, options?.prefetched);
@@ -668,7 +679,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       if (nextUrl) {
         // Unified dispatcher: package-backed journeys need the docs
         // loader so the next milestone re-resolves the manifest.
-        this.loadTab(activeTab.id, nextUrl);
+        // explicitGuideId: the toolbar arrows are a click just like
+        // GuideList's row or the cover CTA — the target milestone's own id
+        // is already known here, so this load classifies by direct lookup
+        // too, not the URL-comparison fallback (undefined only when the
+        // target is a locked placeholder with no real id).
+        this.loadTab(activeTab.id, nextUrl, { explicitGuideId: getNextMilestoneIdFromContent(activeTab.content) });
       }
     }
   }
@@ -678,7 +694,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (activeTab && activeTab.content) {
       const prevUrl = getPreviousMilestoneUrlFromContent(activeTab.content);
       if (prevUrl) {
-        this.loadTab(activeTab.id, prevUrl);
+        // explicitGuideId is undefined when Previous falls back to the cover
+        // page (see getPreviousMilestoneIdFromContent) — correct, since the
+        // cover page has no guide id of its own and must stay on the
+        // no-explicit-id default (isCoverPageLoad true).
+        this.loadTab(activeTab.id, prevUrl, {
+          explicitGuideId: getPreviousMilestoneIdFromContent(activeTab.content),
+        });
       }
     }
   }
@@ -817,7 +839,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     url: string,
     skipReadyToBegin?: boolean,
     packageInfoArg?: PackageOpenInfo,
-    prefetched?: RawContent
+    prefetched?: RawContent,
+    explicitGuideId?: string
   ): Promise<GuideLoadOutcome> {
     // No early return for empty URLs — loadDocsTabContentResult handles all
     // edge cases (empty URL with packageInfo falls back to fetchPackageById;
@@ -848,7 +871,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
       const result = prefetched
         ? { content: prefetched }
-        : await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
+        : await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo, explicitGuideId });
 
       // Check if fetch succeeded or failed
       if (result.content) {

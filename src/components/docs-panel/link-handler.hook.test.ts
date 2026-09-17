@@ -111,8 +111,39 @@ describe('useLinkClickHandler', () => {
       fireEvent.click(startButton);
 
       // Verify the unified dispatcher was used (so packaged journeys
-      // route through the docs loader internally).
-      expect(mockModel.loadTab).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1');
+      // route through the docs loader internally). No data-milestone-id on
+      // this button, so explicitGuideId is undefined — still forwarded, not
+      // omitted, so a stale value from JS an earlier call never leaks through.
+      expect(mockModel.loadTab).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1', {
+        explicitGuideId: undefined,
+      });
+    });
+
+    // Regression: GuideList's current row and the cover-page CTA both tag
+    // their click target with the manifest guide id it resolved from, so
+    // fetchPackageContent can classify the next load by direct lookup
+    // instead of comparing resolved URLs.
+    it("threads the clicked element's data-milestone-id through to loadTab", () => {
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const startButton = document.createElement('button');
+      startButton.setAttribute('data-journey-start', 'true');
+      startButton.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone1');
+      startButton.setAttribute('data-milestone-id', 'builder-track-guide-2');
+      contentDiv.appendChild(startButton);
+
+      fireEvent.click(startButton);
+
+      expect(mockModel.loadTab).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1', {
+        explicitGuideId: 'builder-track-guide-2',
+      });
     });
 
     // Regression test: the cover-page CTA and GuideList's clickable current

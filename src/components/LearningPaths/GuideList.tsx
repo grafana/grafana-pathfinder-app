@@ -60,6 +60,7 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
               ? {
                   'data-journey-start': 'true',
                   'data-milestone-url': guide.url,
+                  'data-milestone-id': guide.id,
                   'data-interaction-location': 'module_row_click',
                   role: 'button',
                   tabIndex: 0,

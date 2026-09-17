@@ -529,6 +529,7 @@ describe('resolvePackageMilestones', () => {
 
     expect(result).toHaveLength(3);
     expect(result[0]).toEqual({
+      id: 'step-one',
       number: 1,
       title: 'Title for step-one',
       url: 'bundled:step-one/content.json',
@@ -969,6 +970,85 @@ describe('fetchPackageContent path-type enrichment', () => {
     // through milestoneCompletionStorage under its own identity — the path's
     // own resolved base URL, not this guide's own contentUrl.
     expect(result.content!.metadata.trackMemberBaseUrl).toBe('bundled:test-path/content.json');
+  });
+
+  // Regression (captain-approved structural fix on PR #1927, round 5):
+  // classification was inferred from comparing resolved URLs across 4
+  // review rounds, and each round's fix flipped which case it broke
+  // (guide-loads-as-cover-page -> -1 sentinel -> skipped completion write ->
+  // failed-resolve misclassified as cover -> an ordinary cover misclassified
+  // as a track member). Fixed structurally: `explicitGuideId` — the manifest
+  // guide id the click target already carried (GuideList's current row, the
+  // cover page's CTA) — makes the decision a direct id lookup against
+  // `milestones`/`tracks`, not a URL comparison. This single test exercises
+  // all three classifications against the SAME manifest so this exact
+  // regression class cannot round-trip again: a real cover-page load (no
+  // explicitGuideId — the load behind no click, e.g. the initial open), a
+  // track-exclusive guide load (explicitGuideId set to a track's own guide
+  // id), and an ordinary Foundations milestone load (explicitGuideId set to
+  // a milestone id).
+  it('classifies cover-page, track-exclusive, and ordinary-milestone loads correctly together against one manifest', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    // Every contentUrl fetchPackageContent is CALLED WITH below must be a
+    // real bundled fixture (fetchContent loads it for real) — everything
+    // else (milestone/track resolution, baseUrlResolution) goes through the
+    // mock resolver above regardless of whether the id is a real fixture.
+    const manifest = {
+      id: 'welcome-to-grafana',
+      type: 'path',
+      milestones: ['loki-grafana-101', 'prometheus-grafana-101'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['first-dashboard'] }],
+    };
+
+    // 1. Cover-page load: no explicitGuideId, contentUrl is the path's own
+    // resolved base URL — the load with no click behind it.
+    const coverResult = await fetchPackageContent('bundled:welcome-to-grafana/content.json', manifest);
+    expect(coverResult.content!.metadata.learningJourney).toBeDefined();
+    expect(coverResult.content!.metadata.learningJourney!.currentMilestone).toBe(0);
+    expect(coverResult.content!.metadata.trackMemberBaseUrl).toBeUndefined();
+
+    // 2. Track-exclusive guide load: explicitGuideId is the track's own
+    // guide id — never listed in `milestones` — so this must classify as a
+    // track member by direct lookup, not as the cover page.
+    const trackResult = await fetchPackageContent(
+      'bundled:first-dashboard/content.json',
+      manifest,
+      undefined,
+      undefined,
+      undefined,
+      'first-dashboard'
+    );
+    expect(trackResult.content!.metadata.learningJourney).toBeUndefined();
+    expect(trackResult.content!.metadata.trackMemberBaseUrl).toBe('bundled:welcome-to-grafana/content.json');
+
+    // 3. Ordinary Foundations milestone load: explicitGuideId is a real
+    // `milestones` entry, so this must classify as milestone index 0 (the
+    // first step) by direct lookup, not by comparing contentUrl to anything.
+    const milestoneResult = await fetchPackageContent(
+      'bundled:loki-grafana-101/content.json',
+      manifest,
+      undefined,
+      undefined,
+      undefined,
+      'loki-grafana-101'
+    );
+    expect(milestoneResult.content!.metadata.learningJourney).toBeDefined();
+    expect(milestoneResult.content!.metadata.learningJourney!.currentMilestone).toBe(1);
+    expect(milestoneResult.content!.metadata.trackMemberBaseUrl).toBeUndefined();
   });
 
   // Regression (review round on PR #1927, "track-only guide baseUrl resolver

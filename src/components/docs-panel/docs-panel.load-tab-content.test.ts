@@ -59,6 +59,8 @@ jest.mock('../../docs-retrieval', () => ({
   ContentRenderer: jest.fn(),
   getNextMilestoneUrlFromContent: jest.fn(),
   getPreviousMilestoneUrlFromContent: jest.fn(),
+  getNextMilestoneIdFromContent: jest.fn(),
+  getPreviousMilestoneIdFromContent: jest.fn(),
   getJourneyProgress: jest.fn(),
   setJourneyCompletionPercentage: jest.fn(),
   getMilestoneSlug: jest.fn(),
@@ -224,6 +226,12 @@ jest.mock('../../hooks', () => ({}));
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
+import {
+  getNextMilestoneUrlFromContent,
+  getPreviousMilestoneUrlFromContent,
+  getNextMilestoneIdFromContent,
+  getPreviousMilestoneIdFromContent,
+} from '../../docs-retrieval';
 import type { PreparedRawContent } from '../../types/content.types';
 
 // ---------------------------------------------------------------------------
@@ -281,6 +289,70 @@ describe('CombinedLearningJourneyPanel.loadTab — empty tab URL', () => {
 
     const tab = (panel as any).state.tabs.find((t: any) => t.id === 'broken-tab');
     expect(tab.error).toBeTruthy();
+  });
+});
+
+// Regression (code-review self-check on PR #1927, round 5): the toolbar's
+// Next/Previous arrows and Alt+arrow shortcuts are a click just like
+// GuideList's row or the cover CTA — the target milestone's id is already
+// known at the call site, so it must reach loadTab's explicitGuideId instead
+// of leaving this, the most common navigation action, on the URL-comparison
+// fallback fetchPackageContent's structural fix was meant to retire.
+describe('CombinedLearningJourneyPanel — milestone toolbar navigation threads explicitGuideId', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('navigateToNextMilestone passes the next milestone id as explicitGuideId', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const tab = { ...makeTab('journey-tab'), content: { url: 'x', metadata: {} } };
+    panel.setState({ tabs: [tab as any], activeTabId: 'journey-tab' });
+
+    (getNextMilestoneUrlFromContent as jest.Mock).mockReturnValue('https://example.com/next/');
+    (getNextMilestoneIdFromContent as jest.Mock).mockReturnValue('milestone-two');
+    const loadTabSpy = jest.spyOn(panel, 'loadTab').mockResolvedValue(undefined);
+
+    await panel.navigateToNextMilestone();
+
+    expect(loadTabSpy).toHaveBeenCalledWith('journey-tab', 'https://example.com/next/', {
+      explicitGuideId: 'milestone-two',
+    });
+  });
+
+  it('navigateToPreviousMilestone passes the previous milestone id as explicitGuideId', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const tab = { ...makeTab('journey-tab'), content: { url: 'x', metadata: {} } };
+    panel.setState({ tabs: [tab as any], activeTabId: 'journey-tab' });
+
+    (getPreviousMilestoneUrlFromContent as jest.Mock).mockReturnValue('https://example.com/prev/');
+    (getPreviousMilestoneIdFromContent as jest.Mock).mockReturnValue('milestone-one');
+    const loadTabSpy = jest.spyOn(panel, 'loadTab').mockResolvedValue(undefined);
+
+    await panel.navigateToPreviousMilestone();
+
+    expect(loadTabSpy).toHaveBeenCalledWith('journey-tab', 'https://example.com/prev/', {
+      explicitGuideId: 'milestone-one',
+    });
+  });
+
+  // Previous falling back to the cover page has no guide id of its own
+  // (getPreviousMilestoneIdFromContent returns undefined) — explicitGuideId
+  // must be forwarded as undefined, not omitted, so the load still lands on
+  // the correct no-explicit-id cover-page default.
+  it('navigateToPreviousMilestone forwards an undefined explicitGuideId when falling back to the cover page', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const tab = { ...makeTab('journey-tab'), content: { url: 'x', metadata: {} } };
+    panel.setState({ tabs: [tab as any], activeTabId: 'journey-tab' });
+
+    (getPreviousMilestoneUrlFromContent as jest.Mock).mockReturnValue('https://example.com/cover/');
+    (getPreviousMilestoneIdFromContent as jest.Mock).mockReturnValue(undefined);
+    const loadTabSpy = jest.spyOn(panel, 'loadTab').mockResolvedValue(undefined);
+
+    await panel.navigateToPreviousMilestone();
+
+    expect(loadTabSpy).toHaveBeenCalledWith('journey-tab', 'https://example.com/cover/', {
+      explicitGuideId: undefined,
+    });
   });
 });
 

@@ -137,7 +137,12 @@ export function LearningPathTableOfContents({
   const guides: PathGuide[] = activeMilestones.map((milestone, index) => {
     const completed = completedSlugs.has(getMilestoneSlug(milestone.url));
     return {
-      id: String(milestone.number),
+      // The real manifest guide id when resolveGuideIdsToMilestones set one
+      // (every real usage) — GuideList threads this through data-milestone-id
+      // so fetchPackageContent can classify the next load by direct lookup
+      // instead of a resolved-URL comparison. Falls back to the React-key-only
+      // ordinal for a fixture/edge case that never set Milestone.id.
+      id: milestone.id ?? String(milestone.number),
       title: milestone.title,
       description: milestone.description,
       estimatedMinutes: milestone.estimatedMinutes,
@@ -258,6 +263,7 @@ export function LearningPathTableOfContents({
                 className={styles.ctaButton}
                 data-journey-start="true"
                 data-milestone-url={ctaTarget.url}
+                {...(ctaTarget.id != null && { 'data-milestone-id': ctaTarget.id })}
                 data-interaction-location={progress === 0 ? 'get_started_cta' : 'resume_cta'}
                 data-testid={testIds.learningPaths.tableOfContentsCta}
               >

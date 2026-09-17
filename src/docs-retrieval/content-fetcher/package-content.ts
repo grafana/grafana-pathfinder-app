@@ -7,7 +7,12 @@
 // here (one-directional — the orchestrator never imports back).
 import { ContentFetchResult, CoverPageTrack, LearningJourneyMetadata, Milestone } from '../../types/content.types';
 import type { ResolvedNavLink } from '../../types/context.types';
-import { getManifestTracks, getPackageRenderType, type ManifestTrack } from '../../types/package.types';
+import {
+  getAllTrackGuideIds,
+  getManifestTracks,
+  getPackageRenderType,
+  type ManifestTrack,
+} from '../../types/package.types';
 import { fetchContent } from '../content-fetcher';
 import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
@@ -77,14 +82,14 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
 
     if (result.status === 'rejected') {
       logger.warn(`[resolveGuideIdsToMilestones] Locking unresolvable guide ${id}`, { reason: result.reason });
-      milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
+      milestones.push({ id, number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
       logger.warn(`[resolveGuideIdsToMilestones] Locking unresolvable guide: ${id}`);
-      milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
+      milestones.push({ id, number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
 
@@ -96,6 +101,7 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
     const startingLocation = resolution.manifest?.startingLocation;
 
     milestones.push({
+      id,
       number,
       title,
       url: resolution.contentUrl,
@@ -254,13 +260,15 @@ export function ensureNonEmptyCoverContent(jsonContent: string): string {
  * @param preResolvedMilestones - Optional milestones already resolved by the caller (avoids redundant resolution)
  * @param repository - Resolved source repository, stamped onto `metadata.repository` so completion keys on the true source rather than the manifest default; falls back to the baseUrl resolution's own repository when omitted
  * @param preFetchedContent - Optional content the caller already fetched (avoids re-issuing an identical request)
+ * @param explicitGuideId - The manifest guide id this load's click target already carried (GuideList's current row, the cover page's CTA — threaded through link-handler.hook.ts / docs-panel.tsx). When present, classification is a direct id lookup against `milestones`/`tracks` instead of comparing resolved URLs — see the comment on `milestoneIndex` below. Absent for loads with no click behind them (the initial cover-page open, a deep link, a bookmark), which fall back to the same URL-comparison heuristic this replaced for the common case.
  */
 export async function fetchPackageContent(
   contentUrl: string,
   packageManifest?: Record<string, unknown>,
   preResolvedMilestones?: Milestone[],
   repository?: string,
-  preFetchedContent?: ContentFetchResult
+  preFetchedContent?: ContentFetchResult,
+  explicitGuideId?: string
 ): Promise<ContentFetchResult> {
   const renderType = getPackageRenderType(packageManifest);
   const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
@@ -320,34 +328,48 @@ export async function fetchPackageContent(
     const tracks = resolvedTracks ?? [];
 
     if (milestones && milestones.length > 0) {
-      const milestoneIndex = milestones.findIndex((m) => m.url === contentUrl);
-      // Two independent signals, either one enough to positively rule out
-      // the cover page — because each can independently fail on its own
-      // resolve, and this load's real classification must survive either
-      // one failing alone:
-      //  1. contentUrl matches a track's own resolved guide URL. Alone,
-      //     this misclassified a track-only guide as the cover page
-      //     whenever ITS OWN re-resolve (via resolvePackageTracks, run
-      //     fresh on every applicable fetch) failed or returned a
-      //     differently-shaped URL (a locked placeholder's url is '', not
-      //     this guide's real one) — the bug the positive check below was
-      //     added to fix.
-      //  2. baseUrlResolution (this SAME request's own resolve of the
-      //     path's manifestId) succeeded and gave a URL that is NOT this
-      //     load's contentUrl. Alone, this misclassified the REAL cover
-      //     page as an unresolvable track member whenever THIS resolve
-      //     failed/rejected — since a rejected/failed resolve looks
-      //     identical to "positively confirmed not the cover" if that
-      //     absence of confirmation is read as a mismatch.
+      // Structural classification: a direct id lookup against the manifest's
+      // own `milestones`/`tracks` arrays, not a comparison of resolved URLs.
+      // Four review rounds broke a different case each time under the old
+      // URL-comparison approach (guide-loads-as-cover-page, a -1 sentinel,
+      // a skipped completion write, a resolve failure misclassified as the
+      // cover, then an ordinary cover misclassified as a track member) —
+      // every one of those was a symptom of inferring identity from a
+      // side-channel (a resolved URL) instead of checking the identity
+      // itself. `explicitGuideId` IS that identity, threaded straight from
+      // the click target (GuideList's current row, the cover page's CTA —
+      // see Milestone.id's own doc comment) through link-handler.hook.ts and
+      // docs-panel.tsx, so this is a plain string membership check against
+      // `milestoneIds`/`manifestTracks` — both raw manifest data, already in
+      // scope, no resolve involved.
+      const milestoneIndex = explicitGuideId
+        ? milestoneIds.indexOf(explicitGuideId)
+        : milestones.findIndex((m) => m.url === contentUrl);
+
+      // Only reachable with no `explicitGuideId` to check structurally
+      // against — a load with no click behind it (the initial cover-page
+      // open, a deep link, a bookmark). Two independent signals, either one
+      // enough to positively rule out the cover page, because each can
+      // independently fail on its own resolve:
+      //  1. contentUrl matches a track's own resolved guide URL. Alone, this
+      //     misclassified a track-only guide as the cover page whenever ITS
+      //     OWN re-resolve (via resolvePackageTracks, run fresh on every
+      //     applicable fetch) failed or returned a differently-shaped URL
+      //     (a locked placeholder's url is '', not this guide's real one).
+      //  2. baseUrlResolution (this SAME request's own resolve of the path's
+      //     manifestId) succeeded and gave a URL that is NOT this load's
+      //     contentUrl. Alone, this misclassified the REAL cover page as an
+      //     unresolvable track member whenever THIS resolve failed/rejected.
       // Neither signal is reliable alone; together, each covers the other's
-      // failure mode. When NEITHER can confirm a track member (both
-      // resolves failed, or agree with contentUrl), this defaults to being
-      // the cover page — the same default this branch used before tracks
-      // existed.
+      // failure mode. When neither can confirm a track member, this defaults
+      // to being the cover page — the same default this branch used before
+      // tracks existed.
       const isConfirmedTrackMember =
         milestoneIndex < 0 &&
-        (tracks.some((track) => track.milestones.some((m) => m.url === contentUrl)) ||
-          (baseUrlResolution?.ok && baseUrlResolution.contentUrl !== contentUrl));
+        (explicitGuideId
+          ? getAllTrackGuideIds(manifestTracks).includes(explicitGuideId)
+          : tracks.some((track) => track.milestones.some((m) => m.url === contentUrl)) ||
+            (baseUrlResolution?.ok && baseUrlResolution.contentUrl !== contentUrl));
       const isCoverPageLoad = milestoneIndex < 0 && !isConfirmedTrackMember;
 
       // A guide that is neither a milestone nor the cover page isn't part of
