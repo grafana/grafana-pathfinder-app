@@ -287,6 +287,38 @@ export default defineConfig([
   },
 
   // ---------------------------------------------------------------------------
+  // Unused bindings (Epic #603)
+  // `@grafana/eslint-config` turns this rule off in favour of TypeScript's
+  // `noUnusedLocals`, which this repo does inherit. But that flag is a *locals*
+  // flag: it is structurally blind to unused function parameters
+  // (`noUnusedParameters` is a separate flag, unset in our config chain) and no
+  // compiler flag at all reports an unused `catch` binding. A `@ts-expect-error`
+  // also silences the compiler while leaving this rule intact. A leading
+  // underscore is the escape hatch for a binding that must exist but is
+  // deliberately unread; `ignoreRestSiblings` keeps omit-style destructures
+  // (`const { drop, ...rest } = obj`) legal, since the sibling's only job is to
+  // stay out of `rest`. `src/validation/unused-bindings-lint-config.test.ts`
+  // fails if a later config block downgrades the rule at the probe's own path,
+  // and separately resolves the effective severity for every file under `src/`
+  // so a block that narrows the rule away from any other subtree fails too.
+  // ---------------------------------------------------------------------------
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'after-used',
+          argsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
+
+  // ---------------------------------------------------------------------------
   // Phase 5: Import boundary rules (Epic #603)
   // Encode the tier model as lint rules. Known violations have targeted
   // suppression comments referencing ALLOWED_*_VIOLATIONS in

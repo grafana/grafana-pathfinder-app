@@ -148,6 +148,24 @@ describe('BlockList', () => {
     jest.clearAllMocks();
   });
 
+  it('keeps the DnD sensor setup stable when selection mode toggles', () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const blocks: EditorBlock[] = [createMarkdownBlock('1', 'First block')];
+      const { rerender } = render(<BlockList blocks={blocks} {...defaultProps} />);
+
+      rerender(<BlockList blocks={blocks} operations={{ ...defaultOperations, isSelectionMode: true }} />);
+
+      expect(
+        consoleError.mock.calls.some((args) =>
+          args.some((value) => String(value).includes('final argument passed to useEffect changed size'))
+        )
+      ).toBe(false);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   describe('rendering', () => {
     it('renders a list of blocks', () => {
       const blocks: EditorBlock[] = [

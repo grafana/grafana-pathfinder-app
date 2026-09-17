@@ -18,8 +18,12 @@ import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel
 import { pushFaroLog } from '../../lib/telemetry/bridge';
 import { reportAppInteraction } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
-import { learningProgressStorage, milestoneCompletionStorage } from '../../lib/user-storage';
-import { discardQueuedCompletionWrites } from '../../completion-records';
+import {
+  guideCompletionMarkStorage,
+  learningProgressStorage,
+  milestoneCompletionStorage,
+} from '../../lib/user-storage';
+import { discardQueuedCompletionWrites, invalidateAllEmittedCompletions } from '../../completion-records';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
@@ -30,6 +34,7 @@ jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
 // reset reaches it at all.
 jest.mock('../../completion-records', () => ({
   discardQueuedCompletionWrites: jest.fn(),
+  invalidateAllEmittedCompletions: jest.fn(),
 }));
 
 // Not mocking `lib/logging`: the assertion below is about what the real
@@ -119,6 +124,7 @@ jest.mock('../../lib/user-storage', () => ({
   interactiveStepStorage: { clearAll: jest.fn() },
   interactiveCompletionStorage: { clearAll: jest.fn() },
   milestoneCompletionStorage: { clearAll: jest.fn() },
+  guideCompletionMarkStorage: { clearAllWithPrefix: jest.fn() },
 }));
 jest.mock('../../global-state/completion-store', () => ({ evictAllContentCaches: jest.fn() }));
 
@@ -856,6 +862,16 @@ describe('MyLearningTab — reset all learning progress', () => {
     confirmSpy.mockRestore();
   });
 
+  it('drops every guide completion mark, so a marked guide comes back unmarked', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(guideCompletionMarkStorage.clearAllWithPrefix).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
   it('leaves milestone checklists alone when the confirmation is declined', async () => {
     const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
 
@@ -874,6 +890,19 @@ describe('MyLearningTab — reset all learning progress', () => {
     fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
 
     await waitFor(() => expect(discardQueuedCompletionWrites).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
+  // Reset-then-re-mark defect: without this, a guide re-completed after
+  // "Reset all learning progress" dedupes against a completion this reset
+  // just erased and gets no durable record.
+  it('lifts the completion-recorder dedupe guard for every guide', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(invalidateAllEmittedCompletions).toHaveBeenCalledTimes(1));
     confirmSpy.mockRestore();
   });
 

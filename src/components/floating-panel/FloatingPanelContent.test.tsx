@@ -129,6 +129,5 @@ describe('FloatingPanelContent model forwarding', () => {
 
     expect(linkHandlerInput).toEqual(expect.objectContaining({ model, activeTab: tab }));
     expect(toolbarProps).toEqual(expect.objectContaining({ panel: model, activeTab: tab, surface: 'fullscreen' }));
-    expect(toolbarProps.contentRoot).toBe(linkHandlerInput.contentRef);
   });
 });

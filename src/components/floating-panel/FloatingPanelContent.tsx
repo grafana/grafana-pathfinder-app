@@ -129,7 +129,6 @@ export function FloatingPanelContent({
               panel={model}
               activeTab={activeTab}
               surface={surface}
-              contentRoot={contentRef}
               hasInteractiveProgress={!!hasInteractiveProgress}
               progressKey={progressKey ?? null}
               onResetGuide={onResetGuide!}
@@ -170,6 +169,7 @@ export function FloatingPanelContent({
             });
             onGuideComplete?.();
           }}
+          onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}
         />
       </div>
     </AlignmentPendingContext.Provider>

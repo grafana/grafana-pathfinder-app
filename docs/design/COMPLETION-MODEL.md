@@ -35,12 +35,12 @@ argument.
 
 ## The model on one page
 
-| Level     | Progress is                                                    | Reaches 100% by                                                                             |
-| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**                             |
-| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Mark complete and continue**                                                |
-| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9 — the join ships; the rollup that consumes it does not) |
-| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be)                          |
+| Level     | Progress is                                                    | Reaches 100% by                                                    |
+| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**    |
+| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Mark complete and continue**                       |
+| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9)                               |
+| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be) |
 
 **A vocabulary warning before you read further.** "Journey" in decision 5 means a
 level _above_ paths — a path of paths. That is not what "journey" means in the
@@ -133,6 +133,20 @@ which means either instrumenting it (an authoring change, see
 or inferring engagement from scroll and dwell, which we rejected as softer than
 evidence.
 
+**Which tree the denominator is counted from.** A `snippet-ref` is one block
+however many it resolves to, so the count is the PRE-inlining one. Two opening
+paths do not present the same tree: a direct open renders the pre-inlining tree
+and expands snippets afterwards, while `prepare-guide-launch.ts` expands before
+a surface is committed and hands the renderer the expanded tree. Counting
+whichever tree arrived gave the same guide a different denominator per path, and
+freezing the index preserved whichever one the reader's first path produced.
+The prepared payload therefore carries the pre-inlining tree it was expanded
+from (`lib/guide-counting-source.ts`), and the content-load seam counts that
+tree on both paths — the whole index from that one traversal, not a corrected
+denominator beside post-expansion positions. An expanded payload that lost that
+tree still renders; it publishes no index at all, because a count taken from the
+expanded tree is not the canonical one and the freeze would keep it.
+
 **Implementation note for the debugger.** The numerator in `guide-stats/progress.ts`
 is the _furthest evidenced position_, not a count of completed steps. The two
 coincide because positions are monotonic and reaching position `n` implies
@@ -140,6 +154,25 @@ coincide because positions are monotonic and reaching position `n` implies
 preamble that emits no evidence is never individually completable. If you are
 chasing a percentage that looks too high, look at `containerEndPositions` and at
 which block a section acknowledgement credited, not at a completed-step count.
+
+**Transitional behaviour: a percentage persisted under the previous counting
+rule.** Before this decision, a guide's persisted percentage was
+`completedSteps / totalDocumentSteps`; this decision makes it `position /
+totalBlockCount`, which is systematically lower for the same real evidence —
+a guide that read 100% under the old rule can read well under 100% under this
+one for identical completed steps. The stored record carries no version, so
+nothing can tell an old-rule value from a new-rule one by inspection. Rather
+than migrate or version the namespace, the content-load seam
+(`content-renderer.tsx`) recomputes and re-persists a guide's percentage
+under the current rule whenever its frozen index publishes and real evidence
+already exists (`refreshGuidePercentageOnLoad`) — so reopening a guide is
+what heals it. A guide with real evidence that is never reopened keeps
+reporting its old-rule value until it is. This is deliberately not a proof:
+a guide read only through a surface that never re-triggers the content-load
+seam stays stale for as long as that holds, and the direction of the error
+is always the same (a stale value reads too high, never too low), which is
+what makes a path or journey able to read complete off a member that has not
+actually recomputed.
 
 ### Decision 2 — every guide and every milestone ends in a Mark complete button
 
@@ -175,13 +208,30 @@ there is not one substantive tail in the library; below 0.50, 35 of 43 are
 substantive). Do not re-derive a rendering predicate from it without re-opening
 this decision.
 
-**Where the code stands.** `progress.ts` already models the evidence kind this
-button produces — `mark-guide-complete`, which evidences the whole guide
-regardless of `blockId` — but there is **no producer for it anywhere in the
-repo**. Only the per-section `#842` acknowledgement exists. Until the button
-ships, no guide in the library can reach 100% under this model, and 100% is what
-triggers badge awards, durable completion records, path progress and the
-"continue learning" CTA.
+**Where the code stands.** `components/mark-complete/` renders the control for
+every guide and every milestone from inside `ContentRenderer`, so all four
+reading surfaces and the block-editor preview carry it from one site. The mark
+persists per content key in `guideCompletionMarkStorage`, beside the per-section
+`#842` acknowledgement rather than in place of it, and every reset path clears
+it so a guide the reader resets comes back unmarked and clickable. Reaching 100%
+is what triggers badge awards, durable completion records, path progress and the
+"continue learning" CTA, so before this control existed no guide in the library
+could trigger any of them under this model.
+
+What the mark is wired to, precisely: the completion store treats it as
+authoritative for the guide percentage — `peekGuidePercentage` and
+`refreshGuidePercentage` both report 100 for a marked guide regardless of the
+evidence, so a later step write cannot move it back down and every reader
+of the percentage agrees. What it is **not** yet wired to is the evidence
+arithmetic in `progress.ts`: that module models the `mark-guide-complete`
+evidence kind — the one that evidences the whole guide regardless of `blockId` —
+but nothing converts the stored mark into a `CompletionSignal`, and
+`guideProgress` / `furthestEvidencedPosition` still have no production caller.
+Connecting the two is the later derivation work item, not this one.
+
+A path's cover page is the one place the control is absent, and that is not the
+predicate this decision deleted: a table of contents is neither a guide nor a
+milestone, and marking one complete would record a guide nobody read.
 
 **Evidence.** A narrow predicate was measured against the library and fires for
 the wrong population: an earlier candidate — "prose-only, or no sections" — fires
@@ -262,11 +312,13 @@ in twenty seconds has demonstrated nothing about the eight milestones, and a
 model that credited them would report a path as complete on the strength of a
 reader looking for its last page.
 
-**What this changes.** Today's learning-path completion is milestone-click-based:
-`calculatePathProgress` in `src/learning-paths/learning-paths.hook.ts` counts
-milestones present in a completed-guides list, and `milestoneCompletionStorage`
-records milestone slugs. Under this model a milestone reaches 100% the same way a
-guide does, and navigation past it does not. This is exactly the baseline the
+**What this changes.** Learning-path completion used to be
+milestone-click-based: the path rollup in
+`src/learning-paths/learning-paths.hook.ts` counted milestones present in a
+completed-guides list, and `milestoneCompletionStorage` records milestone slugs.
+It is now `calculatePathRollup`, the mean of its members' own percentages, so a
+milestone reaches 100% the same way a guide does and navigation past it does
+not. This is exactly the baseline the
 rejected alternative argues against discarding, so the change is deliberate and
 its cost is known: the
 existing milestone-click series is not comparable to what comes after it, and any
@@ -313,14 +365,16 @@ it, but that is an evidence population and not a firing condition.
 **Its frequency and per-reader state are open.** See
 [open questions](#open-questions).
 
-### Decision 9 — an unresolvable path member is excluded from the mean and counted (the join is built; the rollup that consumes it is not)
+### Decision 9 — an unresolvable path member is excluded from the mean and counted
 
-**What is built, and what is not.** `src/global-state/path-member-join.ts` and
-its exports ship with this decision; no production code resolves a member
-percentage yet. `calculatePathProgress` remains a completed-count fraction and
-is what every UI consumer still reads. The percentage half lands with the
-rollup, so read the exports below as staged rather than live, and the
-present-tense rules as what the join does when asked.
+**What is built.** `src/global-state/path-member-join.ts` and the rollups that
+consume it both ship: `calculatePathRollup`
+(`src/learning-paths/learning-paths.hook.ts`) and
+`journeyMilestonePercentages` / `journeyProgressFromMilestones`
+(`src/docs-retrieval/learning-journey-helpers.ts`) resolve each member's own
+percentage through this join and average them with `meanOfMemberPercentages`.
+Every UI consumer reads that number, so the rules below are live rather than
+staged.
 
 **Decision.** Decision 4's mean joins each member to its persisted percentage by
 content key, and that key is stored nowhere: a member is keyed by the sanitized
@@ -524,8 +578,9 @@ that matters for KPIs.
 
 **Known starting point:** 51.5% of the library has no other way to register
 anything, so for that population click rate _is_ completion rate. There is no
-prior click-rate number, because the button has no producer in the repo yet —
-this bet's baseline is measured after it ships, not before.
+prior click-rate number, because the button had no producer in the repo before
+the control shipped — this bet's baseline is measured from that point on, not
+before it.
 
 **If falsified:** the button is not the completion mechanism we thought it was.
 The live alternatives are the "check my setup" idea (see open questions), which
@@ -673,6 +728,40 @@ milestone-click series does not convert. It is not answered here.
 
 This document does not close, edit, or comment on that PR. Whether it is closed or
 updated is Jay's call.
+
+## Rolling this back
+
+The Mark complete control writes two things: the mark itself, in the per-guide
+`guide-complete-mark-*` namespace this model introduced, and a 100 in
+`interactiveCompletionStorage`, the percentage namespace that predates it and
+that `context.service.ts` reads for recommendation cards and context.
+
+**The 100 is deliberate and survives a rollback.** It is the reader's own
+statement that they finished the guide, recorded in the namespace every other
+reader of "how far through is this guide" already consults. Removing the control
+does not make that statement untrue, so the value is kept rather than treated as
+residue. The consequence to be clear-eyed about: on a prose-only guide, which is
+the majority of the library, nothing else would ever overwrite it — the only
+other writer, `refreshGuidePercentage`, is reached from step- and section-driven
+paths a prose-only guide never takes. A reader who wants it gone after a rollback
+has "Reset all learning progress" and nothing narrower, because the per-guide
+reset affordance is itself gated on the mark counting as progress.
+
+**The mark keys are swept by all three reset scopes, and only while the code is
+present.** Resetting one guide clears its mark
+(`docs-panel/hooks/resetGuideProgress.ts`); resetting a path clears its members'
+(`learning-paths.hook.ts`); "Reset all learning progress" clears the whole
+namespace (`MyLearningTab.tsx`). A rollback removes those sweepers along with the
+writer, so marks written beforehand stay in localStorage unread — inert, but not
+reachable by any in-app control. `syncFromGrafanaStorage`'s `keysToSync` is a
+fixed list of exact keys and cannot express a prefix, so the Grafana-side copies
+are not reachable either.
+
+**The namespace is uncapped**, matching `sectionAcknowledgementStorage`, the
+per-content-key namespace it was modelled on and sits beside. The two bounded
+percentage namespaces are a different shape — one shared record each, which is
+what `createBoundedRecordStorage` bounds — and giving the mark that shape would
+cost the exact-key cross-tab match the store's storage listener depends on.
 
 ## What is safe to change vs load-bearing
 

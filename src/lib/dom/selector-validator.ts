@@ -3,8 +3,7 @@
  * Acts as a safety net to ensure all selector quality rules are applied
  */
 
-export type ActionType =
-  'highlight' | 'button' | 'formfill' | 'navigate' | 'hover' | 'sequence' | 'multistep' | 'guided';
+export type ActionType = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover' | 'multistep' | 'guided';
 
 export interface ValidatedSelector {
   selector: string;
@@ -136,7 +135,7 @@ function validateActionType(
   const hasCSS = hasCssSyntax(selector);
 
   // Plain text selectors should use button action
-  if (isPlainText && action !== 'button' && action !== 'sequence' && action !== 'multistep' && action !== 'guided') {
+  if (isPlainText && action !== 'button' && action !== 'multistep' && action !== 'guided') {
     return {
       correctedAction: 'button',
       warning: `Plain text selector "${selector}" should use "button" action, not "${action}"`,
@@ -255,7 +254,7 @@ export function validateAndCleanSelector(selector: string, action: ActionType): 
       if (matches.length === 0) {
         warnings.push(`WARNING: Selector matches 0 elements - may need manual review`);
       }
-    } catch (error) {
+    } catch {
       // Selector might use custom pseudo-selectors - that's ok
       // The enhanced selector will handle it at runtime
     }

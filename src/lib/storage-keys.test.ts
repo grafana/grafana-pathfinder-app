@@ -10,7 +10,12 @@
  * When ADDING a new key, add it here too. When CHANGING an existing value, stop
  * and consider the migration implications before updating this test.
  */
-import { StorageKeys, buildAssistantStorageKey } from './storage-keys';
+import {
+  StorageKeys,
+  buildAssistantStorageKey,
+  buildVersionedContentStorageKey,
+  buildVersionedSectionStorageKey,
+} from './storage-keys';
 
 describe('StorageKeys — stable string contract', () => {
   it('matches the locked key values exactly', () => {
@@ -21,12 +26,15 @@ describe('StorageKeys — stable string contract', () => {
       TABS: 'grafana-pathfinder-app-tabs',
       ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
       INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-',
+      CONTENT_PROGRESS_V2_PREFIX: 'grafana-pathfinder-app-content-progress-v2:',
       WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview',
       WYSIWYG_PREVIEW_JSON: 'grafana-pathfinder-app-wysiwyg-preview-json',
       E2E_TEST_GUIDE: 'grafana-pathfinder-app-e2e-test-guide',
       SECTION_COLLAPSE_PREFIX: 'grafana-pathfinder-app-section-collapse-',
       SECTION_ACKNOWLEDGED_PREFIX: 'grafana-pathfinder-app-section-acknowledged-',
       SECTION_DONE_PREFIX: 'grafana-pathfinder-app-section-done-',
+      GUIDE_COMPLETION_MARK_PREFIX: 'grafana-pathfinder-app-guide-complete-mark-',
+      COMPLETION_EMITTED_PREFIX: 'grafana-pathfinder-app-completion-emitted-',
       FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
       FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
       FULLSCREEN_BUNDLING_ACTION: 'grafana-pathfinder-app-fullscreen-bundling-action',
@@ -42,6 +50,7 @@ describe('StorageKeys — stable string contract', () => {
       HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
       INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',
       FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
+      DEV_MODE_OPT_IN: 'grafana-pathfinder-app-dev-mode-opt-in',
 
       // UI / panel state
       SUGGESTIONS: 'grafana-pathfinder-app-suggestions',
@@ -81,5 +90,10 @@ describe('StorageKeys — stable string contract', () => {
 
   it('builds the assistant customization key from the prefix', () => {
     expect(buildAssistantStorageKey('my-content', 'asst-1')).toBe('pathfinder-assistant-my-content-asst-1');
+  });
+
+  it('builds collision-safe versioned storage keys', () => {
+    expect(buildVersionedContentStorageKey('progress:', 'guide-a')).toBe('progress:7:guide-a');
+    expect(buildVersionedSectionStorageKey('steps:', 'guide-a', 'section-1')).toBe('steps:7:guide-a:section-1');
   });
 });

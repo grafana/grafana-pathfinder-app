@@ -9,8 +9,9 @@
  * *Reaching the artifact* still needs asserting only where a command's published field
  * names are hand-authored rather than spread from the schema they write — `create` seeds
  * two files from fields it declares itself, and `set-manifest` flattens nested manifest
- * paths into their own flag names. Checking `add-block`, `add-step`, `add-choice`, and
- * `edit-block` the same way would be tautological: those commands build their schema by
+ * paths into their own flag names. Checking `add-block`, `add-step`, `add-choice`,
+ * `add-hint`, and `edit-block` the same way would be tautological: those commands build
+ * their schema by
  * copying `.shape` straight off the block schema they write, so "does the published name
  * exist in the destination" can never fail — it's the same object compared to itself.
  * Their real risk (calling the runner with an unwired field, or invalid input not being

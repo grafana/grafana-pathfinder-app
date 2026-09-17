@@ -192,6 +192,7 @@ describe('MCP server', () => {
         'remove-block',
         'add-step',
         'add-choice',
+        'add-hint',
       ]);
       expect(schema.properties?.resource).toBeUndefined();
       expect(schema.required).toContain('operation');
@@ -200,6 +201,7 @@ describe('MCP server', () => {
       expect(manage!.description).toMatch(/remove-block/);
       expect(manage!.description).toMatch(/add-step/);
       expect(manage!.description).toMatch(/add-choice/);
+      expect(manage!.description).toMatch(/add-hint/);
       expect(schema.properties?.opts?.description).toMatch(/pathfinder_help/);
       expect(schema.required).toEqual(expect.arrayContaining(['operation', 'opts']));
       for (const oldOpt of ['type', 'parentId', 'branch', 'id', 'cascade']) {
@@ -819,6 +821,7 @@ describe('MCP server', () => {
         'add-block',
         'add-step',
         'add-choice',
+        'add-hint',
         'set-manifest',
         'inspect',
         'edit-block',
@@ -992,6 +995,41 @@ describe('MCP server', () => {
         (b) => b.id === 'q-1'
       );
       expect(quiz?.choices?.length).toBe(1);
+    } finally {
+      await close();
+    }
+  });
+
+  it('appends a progressive hint to a challenge via pathfinder_manage_block add-hint', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const created = await callTool(client, 'pathfinder_create_package', {
+        opts: { title: 'challenge test', type: 'guide' },
+      });
+      const withChallenge = await callTool(client, 'pathfinder_manage_block', {
+        operation: 'add-block',
+        artifact: created.artifact!,
+        opts: {
+          type: 'challenge',
+          id: 'repair-dashboard',
+          mode: 'standard',
+          title: 'Repair the dashboard',
+          brief: 'Find and fix the broken dashboard.',
+          successCriteria: 'is-admin',
+        },
+      });
+      expect(withChallenge.status).toBe('ok');
+
+      const hinted = await callTool(client, 'pathfinder_manage_block', {
+        operation: 'add-hint',
+        artifact: withChallenge.artifact!,
+        opts: { parent: 'repair-dashboard', text: 'Check the dashboard variables.' },
+      });
+      expect(hinted.status).toBe('ok');
+      const challenge = (
+        hinted.artifact!.content.blocks as Array<{ id: string; hintLevels?: Array<{ text: string }> }>
+      ).find((block) => block.id === 'repair-dashboard');
+      expect(challenge?.hintLevels).toEqual([{ text: 'Check the dashboard variables.' }]);
     } finally {
       await close();
     }

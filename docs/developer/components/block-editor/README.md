@@ -31,6 +31,7 @@ The Block Editor exists to:
 - **Nested Blocks**: Support for sections and conditional branches
 - **Block Forms**: Type-specific forms for configuring block properties
 - **Preview Mode**: Test guides before exporting
+- **Selection actions**: Select any root or nested block for a confirmed bulk delete (one undoable change), or merge eligible steps into multistep or guided blocks
 
 ### Recording Mode
 

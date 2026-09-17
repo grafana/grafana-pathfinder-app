@@ -3,8 +3,8 @@
  *
  * Manages block selection state for multi-select operations.
  *
- * Note: Merge operations (handleMergeToMultistep, handleMergeToGuided) stay
- * in BlockEditor because they need access to editor.state.blocks.
+ * Note: Merge and bulk-delete operations stay in BlockEditor because they need
+ * access to editor.state.blocks.
  */
 
 import { useState, useCallback } from 'react';

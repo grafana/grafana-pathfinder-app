@@ -97,7 +97,7 @@ The constants directory is organized into specialized files that separate concer
 **Critical Dependencies**:
 
 - **CSS Animations**: The `highlighting` timing constants must stay synchronized with CSS animation durations in `src/styles/interactive.styles.ts`. Changes to one require changes to the other.
-- **Plugin Configuration**: Values can be overridden via `DocsPluginConfig` interface in `src/constants.ts`
+- **Plugin Configuration**: Values can be overridden via `PathfinderPluginConfig` interface in `src/constants.ts`
 - **Action Handlers**: All action handlers depend on delay configurations from this file
 - **Requirements Manager**: Timeout and retry logic directly uses these constants
 
@@ -170,15 +170,9 @@ The constants directory is organized into specialized files that separate concer
 - Support dynamic ID generation for repeated elements (tabs, cards, steps)
 - Enable cross-component test coordination with consistent naming
 
-**Key Exports**:
-
-- `testIds.docsPanel` - Main container, tabs, close button, loading/error states
-- `testIds.contextPanel` - Recommendations, user profile bar, custom guides, other docs sections
-- `testIds.devTools` - Preview banner, full-screen mode, minimized sidebar
-- `testIds.interactive` - Sections, steps, buttons (show me, do it, skip, redo), requirements, quizzes, conditionals
-- `testIds.appConfig` - Configuration form fields (recommender URL, interactive features, timeouts)
-- `testIds.termsAndConditions` - Terms toggle, submit button, content area
-- `testIds.blockEditor` - Modals, palette, form controls, section editing
+**Key Exports**: see `src/constants/testIds.ts` for the current namespaces — not
+duplicated here, since a hand-copied list drifts from the code the moment a
+namespace is added (this one was missing `testIds.markComplete`).
 
 **Naming Convention**:
 
@@ -227,7 +221,7 @@ The constants directory is organized into specialized files that separate concer
 - Network timeouts: `DEFAULT_CONTENT_FETCH_TIMEOUT`, `DEFAULT_RECOMMENDER_TIMEOUT`
 - Dev mode defaults: `DEFAULT_DEV_MODE`, `DEFAULT_DEV_MODE_USER_IDS`
 - PeerJS defaults for live sessions: `DEFAULT_PEERJS_HOST`, `DEFAULT_PEERJS_PORT`, `DEFAULT_PEERJS_KEY`
-- `DocsPluginConfig` - Configuration interface for plugin settings
+- `PathfinderPluginConfig` - Configuration interface for plugin settings
 - Helper functions: `getConfigWithDefaults()`, `isRecommenderEnabled()`, `getRecommenderServiceUrl()`, etc.
 - `ROUTES` enum for routing
 - `TERMS_VERSION` - Terms and conditions version

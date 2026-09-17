@@ -268,7 +268,6 @@ export interface RecordModeOverlayProps {
 export function RecordModeOverlay({
   onStop,
   stepCount,
-  isRecording = true,
   sectionName,
   startingUrl,
   pendingMultiStepCount = 0,

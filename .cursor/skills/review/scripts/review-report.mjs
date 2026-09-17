@@ -17,11 +17,9 @@ const ACTION_LABELS = new Map([
   ['nit', 'Suggested'],
 ]);
 const SECTIONS = [
-  ['follow_up', 'Follow-ups'],
-  ['suggestion', 'Suggestions'],
-  ['nit', 'Nits'],
+  ['Follow-ups', ['follow_up']],
+  ['Suggestions & nits', ['suggestion', 'nit']],
 ];
-const FOLLOW_UP_PREAMBLE = 'These are tracked separately and do not block merge.';
 const SEVERITY_RANK = new Map([
   ['critical', 0],
   ['high', 1],
@@ -417,34 +415,22 @@ function assembleBody(context) {
       '',
       `Reason: ${assessment.reason}`,
       '',
-      'This review states no merge contract; treat merge readiness as unknown.'
+      'This review makes no mergeability claim; treat merge readiness as unknown.'
     );
     if (grouped.blocking.length > 0) {
-      sections.push('', '## Blocking findings so far', '', grouped.blocking.map(renderFinding).join('\n\n'));
+      sections.push('', 'Blockers so far:', '', grouped.blocking.map(renderFinding).join('\n\n'));
     }
   } else if (grouped.blocking.length > 0) {
-    sections.push(
-      '## Merge contract',
-      '',
-      `Fix ${grouped.blocking.length === 1 ? 'this item' : 'these items'} and this PR is mergeable.`,
-      '',
-      grouped.blocking.map(renderFinding).join('\n\n')
-    );
+    sections.push('Blockers:', '', grouped.blocking.map(renderFinding).join('\n\n'));
   } else {
     sections.push('No blocking issues. This PR is mergeable.');
   }
-  for (const [disposition, heading] of SECTIONS) {
-    const findings = grouped[disposition];
+  for (const [heading, dispositions] of SECTIONS) {
+    const findings = dispositions.flatMap((disposition) => grouped[disposition]);
     if (findings.length === 0) {
       continue;
     }
-    sections.push(
-      '',
-      `## ${heading}`,
-      '',
-      ...(disposition === 'follow_up' ? [FOLLOW_UP_PREAMBLE, ''] : []),
-      findings.map(renderFinding).join('\n\n')
-    );
+    sections.push('', `${heading}:`, '', findings.map(renderFinding).join('\n\n'));
   }
   if (assessment.status === 'complete') {
     const base = {

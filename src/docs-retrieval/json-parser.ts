@@ -13,6 +13,7 @@ import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
 import { renderMarkdown } from '@grafana/data';
 import DOMPurify from 'dompurify';
 import { assertExhaustive } from '../lib/assert-exhaustive';
+import { sectionRuntimeId } from '../lib/guide-stats';
 import {
   hasAssistantEnabled,
   type JsonGuide,
@@ -123,7 +124,7 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
   }
 
   // Zod validation replaces manual checks
-  const validationResult = validateGuide(guide, { allowDuplicateHeading: true });
+  const validationResult = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
   if (!validationResult.isValid) {
     return {
       isValid: false,
@@ -533,12 +534,10 @@ function convertHtmlBlock(block: JsonHtmlBlock, path: string, baseUrl?: string):
 }
 
 function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: string): ConversionResult {
-  // Convert child blocks to step elements. The runtime `InteractiveSection`
-  // prefixes author-supplied ids with `section-` when computing DOM ids;
-  // use the same convention here so derived step IDs match the runtime
-  // section's perspective. If the section has no author id, fall back to
-  // the section path — stable across reparses of the same JSON.
-  const sectionParentId = block.id ? `section-${block.id}` : `section:${path}`;
+  // One derivation, shared with the block index and handed to the rendered
+  // section below, so the id an acknowledgement is stored under is the id the
+  // numerator looks the container up by.
+  const sectionParentId = sectionRuntimeId(block.id, path);
   const children: ParsedElement[] = [];
 
   for (let i = 0; i < block.blocks.length; i++) {
@@ -560,6 +559,7 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
         title: block.title,
         isSequence: true, // Sections are always sequences
         id: block.id,
+        sectionId: sectionParentId,
         requirements,
         objectives,
         autoCollapse: block.autoCollapse,
@@ -1054,6 +1054,8 @@ function convertTerminalConnectBlock(
 
 function convertChallengeBlock(block: JsonChallengeBlock, _path: string, stepContext?: StepContext): ConversionResult {
   const briefElements = parseMarkdownToElements(block.brief);
+  const requirements = block.requirements?.length ? block.requirements : undefined;
+  const objectives = executableObjectives(block.objectives);
   const stepId = resolveStepId(block.id, stepContext, 'challenge', block.title);
 
   return {
@@ -1072,6 +1074,9 @@ function convertChallengeBlock(block: JsonChallengeBlock, _path: string, stepCon
         successCriteria: block.successCriteria,
         hintLevels: block.hintLevels,
         failureMessage: block.failureMessage,
+        requirements,
+        objectives,
+        skippable: block.skippable ?? false,
       },
       children: briefElements,
     },

@@ -31,7 +31,8 @@ Once you open Interactive learning:
 2. **Open content in tabs** – Click "View" or "Start" to open content in a new tab
 3. **Navigate guides** – Use the milestone navigation at the bottom to move through learning paths
 4. **Try interactive features** – Click "Show Me" to see where things are, or "Do It" to have Interactive learning guide you through actions
-5. **Manage your tabs** – Close tabs you're done with, or keep them open for reference
+5. **Mark your progress** – Every guide ends with a **Mark complete** button (**Mark complete and continue** on a milestone) that takes you to 100% and records the guide as finished
+6. **Manage your tabs** – Close tabs you're done with, or keep them open for reference
 
 ## Keyboard shortcuts
 

@@ -17,6 +17,7 @@
 import type { z } from 'zod';
 
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { REQUIREMENT_TOKEN_CATALOGUE } from '../../types/requirements.types';
 import { describeField, fieldHelpText, isRepresentableField } from '../utils/schema-options';
 import { spellParams, type ParamSpelling } from '../utils/param-spelling';
 import type { HelpJson, HelpJsonFlag } from '../utils/output';
@@ -46,6 +47,15 @@ export interface SurfaceView {
    * per surface — keeps the description one declaration with one rendering each.
    */
   describe?(field: SpecField, stated: string): string;
+  /**
+   * Does this reader receive the whole requirement vocabulary inline?
+   *
+   * The other half of `describe`'s trade-off. An operator can run
+   * `pathfinder-cli requirements list`, so the command line points at it and
+   * stays short; an agent has no such tool and no shell, so it is handed the
+   * list rather than two examples it will mistake for the whole of it.
+   */
+  publishesRequirementVocabulary?: boolean;
 }
 
 /**
@@ -63,6 +73,21 @@ export function carriesRequirementTokens(paramName: string): boolean {
 
 /** A short, stable sample of the vocabulary, for surfaces that can only illustrate it. */
 export const REQUIREMENT_TOKEN_EXAMPLES = 'is-admin, on-page:/dashboards';
+
+/**
+ * Does this reader get the vocabulary attached to this spec's interface?
+ *
+ * Both halves have to hold: the reader has no way to print it for itself, and
+ * the interface actually publishes a parameter that takes tokens. Checked
+ * against field names rather than the view's spelling, since
+ * `carriesRequirementTokens` is a fact about the schema field.
+ */
+function publishesVocabulary(spec: CommandSpec, view: SurfaceView): boolean {
+  return (
+    view.publishesRequirementVocabulary === true &&
+    specFields(spec).some((entry) => isPublished(entry, view) && carriesRequirementTokens(entry.name))
+  );
+}
 
 /**
  * What one reader is told about a field: what the schema states, with parameter
@@ -156,9 +181,22 @@ export function renderInterface(spec: CommandSpec, view: SurfaceView): HelpJson 
     }
   }
 
-  const result: HelpJson = { command: spec.name, summary: spec.summary, required, optional };
+  const result: HelpJson = {
+    command: spec.name,
+    summary: spec.summary,
+    required,
+    optional,
+    // Stated even when empty: a reader that finds the key absent cannot tell
+    // "nothing is required" from "this renderer does not report requiredness",
+    // and would fall back to reading the buckets — the misreading this exists
+    // to remove.
+    requiredParams: requiredNames(spec, view),
+  };
   if (addressing.length > 0) {
     result.addressing = addressing;
+  }
+  if (publishesVocabulary(spec, view)) {
+    result.requirementTokens = REQUIREMENT_TOKEN_CATALOGUE;
   }
   return result;
 }

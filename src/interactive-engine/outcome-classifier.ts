@@ -1,4 +1,4 @@
-import type { SequenceRunResult, UserActionOutcome } from '../lib/telemetry';
+import type { UserActionOutcome } from '../lib/telemetry';
 
 export type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped' | 'error';
 
@@ -21,13 +21,6 @@ const LOOP_EXIT_OUTCOMES: Record<LoopExitReason, UserActionOutcome> = {
 
 export function outcomeFromCompletionResult(result: CompletionResult): UserActionOutcome {
   return COMPLETION_RESULT_OUTCOMES[result];
-}
-
-export function outcomeFromSequenceRun(result: SequenceRunResult | undefined): UserActionOutcome {
-  if (result === undefined || result === 'completed') {
-    return 'ok';
-  }
-  return result;
 }
 
 export function outcomeFromLoopExit(reason: LoopExitReason): UserActionOutcome {

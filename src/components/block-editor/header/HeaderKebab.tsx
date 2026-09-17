@@ -102,7 +102,7 @@ export function HeaderKebab({
       <Menu.Item label="New guide" icon="file-blank" onClick={onNewGuide} testId={testIds.blockEditor.newGuideButton} />
       {showSelectionItem && (
         <Menu.Item
-          label={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
+          label={isSelectionMode ? 'Exit selection mode' : 'Select blocks'}
           icon="check-square"
           onClick={onToggleSelectionMode}
           testId={testIds.blockEditor.toggleSelectionButton}

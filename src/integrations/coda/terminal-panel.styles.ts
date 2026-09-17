@@ -92,6 +92,14 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.secondary,
   }),
 
+  expiryIndicator: css({
+    label: 'coda-terminal-expiry-indicator',
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.warning.text,
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+  }),
+
   statusDot: css({
     label: 'coda-terminal-status-dot',
     width: 8,

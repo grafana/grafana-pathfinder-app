@@ -244,7 +244,6 @@ export const BLOCK_FIELD_VALIDATORS: Record<string, Record<string, FieldValidato
   },
   interactive: {
     reftarget: [assertCssSelector],
-    verify: [assertCssSelector],
     scrollContainer: [assertCssSelector],
   },
   input: {
