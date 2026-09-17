@@ -142,6 +142,27 @@ export function codaErrorCodeMessage(code: CodaErrorCode | undefined, fallback: 
     case 'coda_unavailable':
     case 'upstream_failed':
       return 'The sandbox service could not be reached. Wait a moment and try again.';
+    case 'file_permission_denied':
+    case 'file_not_found':
+    case 'file_conflict':
+    case 'file_too_large':
+    case 'directory_too_large':
+    case 'file_unsupported':
+    case 'file_metadata_unsupported':
+    case 'file_operation_failed':
+    case 'workspace_unavailable':
+    case 'file_timeout':
+    case 'too_many_sessions':
+    case 'host_identity_unverified':
+    case 'vm_expired':
+    case 'vm_failed':
+    case 'instance_disposing':
+    case 'stream_stalled':
+    case 'protocol_mismatch':
+    case 'mint_account_role_mismatch':
+    case 'recovery_exhausted':
+      // These error codes fall through to the fallback message
+      return fallback;
     case undefined:
     case 'invalid_request':
     case 'invalid_ready_file':
