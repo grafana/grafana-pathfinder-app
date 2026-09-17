@@ -327,6 +327,11 @@ const ALLOWED_PERCENTAGE_CALCULATIONS = new Set(ALLOWED_PERCENTAGE_CALCULATION_E
  */
 const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
+    violation: 'completion-records/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
     violation: 'components/SkeletonLoader/skeleton.styles.ts',
     reason: 'Superseded duplicate — SkeletonLoader.tsx imports the newer styles/skeleton.styles.ts instead.',
     tracking: '#1923',
@@ -334,6 +339,11 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
     violation: 'components/UserProfileBar/index.ts',
     reason: 'Barrel with no importer — the sole consumer deep-imports UserProfileBar/UserProfileBar directly.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/block-editor/forms/condition-helpers/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
     tracking: '#1923',
   },
   {
@@ -347,8 +357,23 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1923',
   },
   {
+    violation: 'components/block-editor/lint/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/block-editor/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
     violation: 'components/docs-panel/MinimizedSidebarIcon.tsx',
     reason: 'Dead component — only self-references remain anywhere in src/ (also named in a developer README).',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/docs-panel/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
     tracking: '#1923',
   },
   {
@@ -359,6 +384,66 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
     violation: 'lib/index.ts',
     reason: 'Barrel with no importer — both re-exports (analytics, hash.util) are imported directly by consumers.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'requirements-manager/fix-handlers/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'snippet-engine/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/collaboration.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/component-props.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/hooks.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/index.ts',
+    reason: 'Barrel re-exporting the types/ directory — every importer uses `import type` against it.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/json-snippet.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/learning-paths.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/link-interception.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/storage.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/window-globals.ts',
+    reason: 'Pure type module — its sole importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'utils/devtools/dev-tools.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
     tracking: '#1923',
   },
 ];
@@ -379,6 +464,13 @@ const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] =
   {
     violation: 'types/backend-api.schema.ts',
     reason: 'Imported only by validation/backend-api-contract.test.ts, the Go-to-TypeScript contract check.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/v1-recommender.types.ts',
+    reason:
+      'Every production importer uses `import type`, but v1-recommender.types.test.ts value-imports ' +
+      'isPackageRecommendation directly, so it has a real edge only from a test file.',
     tracking: '#1923',
   },
   {
@@ -713,7 +805,7 @@ describe('Import graph: circular dependencies', () => {
 });
 
 describe('Import graph: orphaned modules', () => {
-  const scan = findOrphanedModules(buildModuleGraph());
+  const scan = findOrphanedModules(buildModuleGraph({ excludeTypeOnly: true }));
 
   it('reports the current orphan / off-graph-reachable footprint', () => {
     console.log(

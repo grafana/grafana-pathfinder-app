@@ -385,9 +385,20 @@ export function extractImportRecords(content: string, aliasContext?: AliasResolu
   return [...records.values()];
 }
 
-export function extractRelativeImports(content: string, aliasContext?: AliasResolutionContext): string[] {
+/**
+ * Pass `{ excludeTypeOnly: true }` for reachability analysis (orphan
+ * detection): a type-only edge is erased at compile time and never causes a
+ * module to evaluate, so it must not count as a live import there. The
+ * default (type-only included) stays for tier/cycle checks, which treat a
+ * type reference across a boundary as a real architectural coupling.
+ */
+export function extractRelativeImports(
+  content: string,
+  aliasContext?: AliasResolutionContext,
+  options?: { excludeTypeOnly?: boolean }
+): string[] {
   return extractImportRecords(content, aliasContext)
-    .filter((record) => record.relative)
+    .filter((record) => record.relative && !(options?.excludeTypeOnly && record.typeOnly))
     .map((record) => record.specifier);
 }
 
@@ -414,6 +425,7 @@ export function getSourceTier(relPath: string, topLevelDir: string | null): numb
 }
 
 let cachedFileImports: FileImports[] | undefined;
+let cachedValueOnlyFileImports: FileImports[] | undefined;
 let cachedTsconfigPaths: TsconfigPathsConfig | undefined;
 
 function getProjectTsconfigPaths(): TsconfigPathsConfig {
@@ -423,26 +435,41 @@ function getProjectTsconfigPaths(): TsconfigPathsConfig {
   return cachedTsconfigPaths;
 }
 
-export function getAllFileImports(): FileImports[] {
-  if (cachedFileImports) {
-    return cachedFileImports;
-  }
+function computeAllFileImports(excludeTypeOnly: boolean): FileImports[] {
   const tsconfigPaths = getProjectTsconfigPaths();
   const files = collectSourceFiles();
-  cachedFileImports = files.map((file) => {
+  return files.map((file) => {
     const relPath = toPosixPath(path.relative(SRC_DIR, file));
     const topLevelDir = getTopLevelDir(relPath);
     const content = fs.readFileSync(file, 'utf-8');
     const fileDir = path.dirname(file);
-    const imports = extractRelativeImports(content, { fileDir, tsconfigPaths });
+    const imports = extractRelativeImports(content, { fileDir, tsconfigPaths }, { excludeTypeOnly });
     return { file, relPath, topLevelDir, imports };
   });
+}
+
+/**
+ * Pass `{ excludeTypeOnly: true }` for reachability analysis (orphan
+ * detection) — see extractRelativeImports. Tier/cycle checks keep the
+ * default cache, which includes type-only edges.
+ */
+export function getAllFileImports(options?: { excludeTypeOnly?: boolean }): FileImports[] {
+  if (options?.excludeTypeOnly) {
+    if (!cachedValueOnlyFileImports) {
+      cachedValueOnlyFileImports = computeAllFileImports(true);
+    }
+    return cachedValueOnlyFileImports;
+  }
+  if (!cachedFileImports) {
+    cachedFileImports = computeAllFileImports(false);
+  }
   return cachedFileImports;
 }
 
 /** Reset the cached file imports and tsconfig paths. Useful for testing. */
 export function resetCache(): void {
   cachedFileImports = undefined;
+  cachedValueOnlyFileImports = undefined;
   cachedTsconfigPaths = undefined;
 }
 
@@ -481,10 +508,12 @@ export interface ModuleGraph {
 /**
  * Builds the file-level import graph over production source (test files are
  * excluded as both nodes and edge targets). Self-edges are dropped. Edges to
- * unresolvable / external / test targets are dropped.
+ * unresolvable / external / test targets are dropped. Pass
+ * `{ excludeTypeOnly: true }` for reachability analysis (orphan detection) —
+ * see extractRelativeImports; tier/cycle checks keep the default.
  */
-export function buildModuleGraph(): ModuleGraph {
-  const all = getAllFileImports();
+export function buildModuleGraph(options?: { excludeTypeOnly?: boolean }): ModuleGraph {
+  const all = getAllFileImports(options);
   const adjacency = new Map<string, Set<string>>();
 
   for (const { file, relPath, imports } of all) {
@@ -613,6 +642,11 @@ export function findCycles(graph: ModuleGraph = buildModuleGraph()): string[][] 
 // repo-root tests/ tree), so a file imported only from a test or from that
 // tooling has no inbound edge at all. That second case gets its own bucket
 // rather than reading as an orphan. See #1743.
+//
+// This is a static scan: a computed specifier (`import('./' + name)`,
+// require.context) resolves to no string literal, so a file reached only
+// that way still reads as orphaned. There is no such pattern in this repo
+// today; if one is added, it needs a baseline entry like any other.
 
 /** src-relative posix paths the production module graph is walked forward from. */
 export const APP_ENTRY_ROOTS = ['module.tsx'];
@@ -649,17 +683,20 @@ export interface OrphanScan {
  * drops both kinds of edge, so they are otherwise invisible — computed
  * separately here rather than folded into ModuleGraph so findOrphanedModules
  * stays unit-testable against a synthetic graph without touching the real
- * filesystem.
+ * filesystem. Value imports only (see extractRelativeImports): a file
+ * referenced solely via `import type` from a test or from tooling isn't
+ * actually exercised by either, so it must not be rescued out of `orphaned`.
  */
 export function getOffGraphImportedNodes(): string[] {
   const tsconfigPaths = getProjectTsconfigPaths();
-  const testImporters = getAllFileImports().filter(({ file }) => isTestFile(file));
+  const testImporters = getAllFileImports({ excludeTypeOnly: true }).filter(({ file }) => isTestFile(file));
   const toolingImporters = collectOffGraphImporterFiles().map((file) => ({
     file,
-    imports: extractRelativeImports(fs.readFileSync(file, 'utf-8'), {
-      fileDir: path.dirname(file),
-      tsconfigPaths,
-    }),
+    imports: extractRelativeImports(
+      fs.readFileSync(file, 'utf-8'),
+      { fileDir: path.dirname(file), tsconfigPaths },
+      { excludeTypeOnly: true }
+    ),
   }));
   return [...testImporters, ...toolingImporters].flatMap(({ file, imports }) => {
     const fileDir = path.dirname(file);
@@ -677,7 +714,7 @@ export function getOffGraphImportedNodes(): string[] {
  * as offGraphReachable rather than orphaned.
  */
 export function findOrphanedModules(
-  graph: ModuleGraph = buildModuleGraph(),
+  graph: ModuleGraph = buildModuleGraph({ excludeTypeOnly: true }),
   roots: readonly string[] = APP_ENTRY_ROOTS,
   offGraphImportedNodes: readonly string[] = getOffGraphImportedNodes()
 ): OrphanScan {

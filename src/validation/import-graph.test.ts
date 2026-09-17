@@ -126,6 +126,21 @@ describe('extractRelativeImports', () => {
     ].join('\n');
     expect(extractRelativeImports(content)).toEqual(['./actual']);
   });
+
+  it('includes a type-only import by default', () => {
+    const content = `import type { Config } from './types';`;
+    expect(extractRelativeImports(content)).toEqual(['./types']);
+  });
+
+  it('drops a type-only import when excludeTypeOnly is set', () => {
+    const content = `import type { Config } from './types';`;
+    expect(extractRelativeImports(content, undefined, { excludeTypeOnly: true })).toEqual([]);
+  });
+
+  it('keeps a mixed value/type import when excludeTypeOnly is set, since one value usage makes the whole edge live', () => {
+    const content = [`import { useConfig } from './config';`, `import type { Config } from './config';`].join('\n');
+    expect(extractRelativeImports(content, undefined, { excludeTypeOnly: true })).toEqual(['./config']);
+  });
 });
 
 // ---------------------------------------------------------------------------
