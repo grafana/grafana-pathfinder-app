@@ -949,8 +949,6 @@ export const InteractiveStep = forwardRef<
           return `Navigate to ${refTarget}`;
         case 'hover':
           return `Hover over element`;
-        case 'sequence':
-          return `Run sequence`;
         case 'noop':
           return `Instructional step`;
         case 'popout':

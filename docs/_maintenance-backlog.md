@@ -10,6 +10,8 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 - 2026-09-15: `docs/developer/engines/context-engine.md` — Refresh ownership after #1832 and #1898: the event bus implementation and its test now live in `src/lib/`, while `src/context-engine/context-event-bus.ts` remains a compatibility facade; requirement consumers use the shared `src/lib/grafana-api.ts` helpers rather than ContextService plugin/dashboard methods. Update the event-bus location, Key files, API consumer descriptions, and test path together in a documentation maintenance pass. Rationale: this document is outside the narrow #1898 code diff.
 
+- 2026-09-16: Refresh the retired `sequence` executor references in `docs/developer/engines/interactive-engine.md` (module list, `interactiveSequence()` API, and Sequence manager section), `docs/developer/engines/requirements-manager.md`, and `docs/developer/utils/README.md` after #1525 PR 2. The DOM-scraping SequenceManager is removed; current section, multistep, and guided execution remain. Rationale: these documents are outside the code diff and need a scoped maintenance pass.
+
 ## Validated docs
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->

@@ -8,16 +8,20 @@
  * (`positionsById` / `positionsByStepId`) come from this one traversal, so
  * they can never disagree with each other or drift across a render.
  *
- * Why frozen: a live count is unstable twice over. `prepare-guide-launch.ts`
- * hands the renderer an already-expanded tree, so the pre-inlining tree is
- * gone before `ContentRenderer` ever sees it on that path; and on the
- * direct-open path, `content-renderer.tsx` parses the pre-inlining tree
+ * Why frozen: `content-renderer.tsx` parses the pre-inlining tree
  * synchronously for first paint, then swaps in a post-inlining overlay
- * asynchronously once the snippet CDN answers. A naive live count gives a
- * different answer depending on how the reader arrived, and a different
- * answer before and after the overlay lands, milliseconds apart, in one
- * session — progress is monotonic, so an earlier measurement can never be
- * corrected downward. Freezing the index at first paint removes both.
+ * asynchronously once the snippet CDN answers, so a live count would give a
+ * different answer before and after the overlay lands, milliseconds apart, in
+ * one session — progress is monotonic, so an earlier measurement can never be
+ * corrected downward. Freezing the index at first paint removes that.
+ *
+ * Freezing does NOT make two different trees equivalent, and it never did:
+ * `prepare-guide-launch.ts` hands the renderer an already-expanded tree, so
+ * for a while the same guide could freeze a bigger total on that path than on
+ * a direct open, for the life of the content key. That is closed upstream of
+ * this store — an expanded payload carries the pre-inlining tree it was
+ * expanded from (`lib/guide-counting-source.ts`) and the seam counts that —
+ * not by anything here.
  *
  * Lives in `global-state/` (Tier 1) so the completion store (also Tier 1)
  * can read it without importing into a higher tier. `docs-retrieval` and

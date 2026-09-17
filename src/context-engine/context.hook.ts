@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+// eslint-disable-next-line no-restricted-imports -- [ratchet] Shared resolved settings dependency tracked in PR #1691.
+import { usePathfinderPluginConfig } from '../hooks';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { locationService } from '@grafana/runtime';
-import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
 import { getDetectedDatasourceType, getDetectedVisualizationType, onContextChange } from './context-event-bus';
 import { ContextData, Recommendation, UseContextPanelOptions, UseContextPanelReturn } from '../types/context.types';
@@ -13,11 +14,7 @@ import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/sugg
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
 
-  // Get plugin configuration with stable reference
-  const pluginContext = usePluginContext();
-  const pluginConfig = useMemo(() => {
-    return pluginContext?.meta?.jsonData || {};
-  }, [pluginContext?.meta?.jsonData]);
+  const { config: pluginConfig } = usePathfinderPluginConfig();
 
   // State
   const [contextData, setContextData] = useState<ContextData>({

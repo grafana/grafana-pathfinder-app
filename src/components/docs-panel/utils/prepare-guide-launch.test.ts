@@ -86,6 +86,44 @@ describe('prepareGuideLaunch', () => {
     }
   });
 
+  // The expanded tree renders; the pre-inlining tree counts. A prepared
+  // payload that dropped the second one gave a snippet-bearing guide a bigger
+  // denominator than the counting rule allows (#1665).
+  it('preserves the pre-inlining guide as the counting source alongside the expanded body', async () => {
+    const snippetBlocks = [
+      { type: 'markdown' as const, content: 'one' },
+      { type: 'markdown' as const, content: 'two' },
+    ];
+    const guide: JsonGuide = {
+      id: 'g',
+      title: 'g',
+      blocks: [
+        { type: 'snippet-ref', snippetId: 'two-block-snippet' },
+        { type: 'markdown', content: 'sibling' },
+      ],
+    };
+    fetchResolves(guide);
+    mockInline.mockImplementation((input: JsonGuide) =>
+      realInlineSnippetRefs(input, {
+        resolve: async (id: string) => ({
+          ok: true as const,
+          id,
+          source: 'online-cdn' as const,
+          snippet: { id, title: id, description: 'd', blocks: snippetBlocks },
+        }),
+      })
+    );
+
+    const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const { preparedContent } = result.launch;
+      expect(JSON.parse(preparedContent.content).blocks).toHaveLength(3);
+      expect(JSON.parse(preparedContent.countingSource.guideJson)).toEqual(guide);
+    }
+  });
+
   it('classifies a guide with a Grafana-driving action as requiring the Grafana UI', async () => {
     fetchResolves({
       id: 'g',
@@ -208,6 +246,29 @@ describe('prepareGuideLaunch', () => {
         title: 'Create your first dashboard',
         blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nBuild your first dashboard.' }],
       };
+      fetchResolves(guide);
+
+      const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(JSON.parse(result.launch.preparedContent.content)).toEqual(guide);
+      }
+    });
+
+    it('launches a published guide whose guided step carries a non-guided verb, so the rest still renders', async () => {
+      const guide: JsonGuide = {
+        id: 'explore-logs',
+        title: 'Explore logs',
+        blocks: [
+          { type: 'markdown', content: 'Follow along.' },
+          {
+            type: 'guided',
+            content: 'Open Explore',
+            steps: [{ action: 'navigate', reftarget: '/explore' }],
+          },
+        ],
+      } as unknown as JsonGuide;
       fetchResolves(guide);
 
       const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });

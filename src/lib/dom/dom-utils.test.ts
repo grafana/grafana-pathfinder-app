@@ -130,7 +130,7 @@ describe('extractInteractiveDataFromElement', () => {
     expect(result).toBeNull();
   });
 
-  it.each(['', 'unknown', 'quiz'])('rejects the unknown "%s" target action', (targetAction) => {
+  it.each(['', 'unknown', 'quiz', 'sequence'])('rejects the unknown "%s" target action', (targetAction) => {
     const element = document.createElement('div');
     element.setAttribute('data-targetaction', targetAction);
 

@@ -6,9 +6,7 @@
  * Every assertion is written against `docs/design/COMPLETION-MODEL.md` —
  * decisions 1 (progress is evidenced position over block count), 2 (every guide
  * ends in Mark complete), 3 (an all-prose guide is 0 or 100), 4 (a path is the
- * mean of its milestones) and 6 (navigation earns nothing) — not against what
- * the code currently produces. Where the two disagree the case is marked
- * `test.fail()` with the divergence named, and the assertion is left alone.
+ * mean of its milestones) and 6 (navigation earns nothing).
  *
  * The server half is out of scope here. The write route, the forwarded-identity
  * check and the durable record kind are unchanged and already released; what
@@ -235,27 +233,13 @@ test.describe('completion tracking', () => {
     });
 
     /**
-     * EXPECTED FAILURE — completion-identity divergence, guideId axis.
-     *
-     * `bundled:<id>` and `bundled:<id>/content.json` are both live launch
-     * shapes for the SAME bundled guide (`src/global-state/path-member-join.ts`
-     * documents both), so both must record one identity. They do not:
-     *
-     *   - the writer, `persistJourneyCompletionPercentage` in
-     *     `src/docs-retrieval/learning-journey-helpers.ts`, derives `guideId`
-     *     with `journeyBaseUrl.replace('bundled:', '')` and no further
-     *     stripping, so the package-path launch records `<id>/content.json`;
-     *   - `fallbackGuideIdFromContentKey` in
-     *     `src/components/docs-panel/hooks/resetGuideProgress.ts` strips a
-     *     trailing `/content.json`, so the reset path lifts the exactly-once
-     *     guard under `<id>`.
-     *
-     * The two therefore disagree for this guide, and the warehouse holds it
-     * under two keys. Left red deliberately: the fix is an identity decision,
-     * and guessing at an identity is what produced the earlier instances of
-     * this class.
+     * `bundled:<id>` and `bundled:<id>/content.json` are both live launch shapes
+     * for the SAME bundled guide (`src/global-state/path-member-join.ts`
+     * documents both), so both must record one identity. The writer and the
+     * reset path now derive that id through the single shared `normalizeGuideId`,
+     * so a package-path launch records the bare `<id>` like the bare launch does.
      */
-    test.fail('the same bundled guide launched by package path', async ({ page }) => {
+    test('the same bundled guide launched by package path', async ({ page }) => {
       await primeCompletionSession(page);
       await page.goto('/');
       await seedRestoredTab(page, {

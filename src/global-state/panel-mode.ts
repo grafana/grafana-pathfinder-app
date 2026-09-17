@@ -8,7 +8,7 @@ import { pushFaroUserAction } from '../lib/telemetry/bridge';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
 import { GRAFANA_DRIVING_ACTIONS } from '../constants/interactive-actions';
 import type { PackageOpenInfo } from '../types/content-panel.types';
-import type { RawContent } from '../types/content.types';
+import type { PreparedRawContent } from '../types/content.types';
 import type { LaunchSource } from '../recovery';
 
 export type PanelMode = 'sidebar' | 'floating' | 'fullscreen';
@@ -50,7 +50,7 @@ export interface PendingGuide {
    * launch). One-shot memory state — consumed with the pending guide, never
    * persisted to tab storage.
    */
-  preparedContent?: RawContent;
+  preparedContent?: PreparedRawContent;
   /**
    * Launch source of the ORIGINAL launch, carried so alignment semantics
    * survive the surface handoff — a `home_page` launch needs the same

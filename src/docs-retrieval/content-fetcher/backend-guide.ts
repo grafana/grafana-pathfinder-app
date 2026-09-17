@@ -79,7 +79,7 @@ export function buildBackendGuideContent(
     blocks: decodeAppPlatformGuideBlocks(guideResource.spec.blocks as JsonBlock[]),
   };
 
-  const validationResult = validateGuide(guide, { allowDuplicateHeading: true });
+  const validationResult = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
   if (!validationResult.isValid) {
     const errorMessage = validationResult.errors[0]?.message || 'Schema validation failed';
     return {

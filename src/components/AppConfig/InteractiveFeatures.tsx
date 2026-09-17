@@ -4,7 +4,7 @@ import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/da
 import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
 import {
-  DocsPluginConfig,
+  PathfinderPluginConfig,
   DEFAULT_ENABLE_AUTO_DETECTION,
   DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   DEFAULT_GUIDED_STEP_TIMEOUT,
@@ -13,12 +13,13 @@ import {
   DEFAULT_KIOSK_RULES_URL,
   DEFAULT_ENABLE_AI_AUTO_HEAL,
   DEFAULT_ENABLE_TWO_TAB_CONTROLLER,
-  getConfigWithDefaults,
+  ResolvedPathfinderConfig,
 } from '../../constants';
-import { updatePluginSettings } from '../../utils/utils.plugin';
+import { saveTenantSettings } from './save-settings';
+import { useSeededDraft } from './use-seeded-draft';
 import { logger } from '../../lib/logging';
 
-type JsonData = DocsPluginConfig;
+type JsonData = PathfinderPluginConfig;
 
 type State = {
   enableAutoDetection: boolean;
@@ -31,25 +32,26 @@ type State = {
   enableTwoTabController: boolean;
 };
 
+function buildStateFromConfig(config: ResolvedPathfinderConfig): State {
+  return {
+    enableAutoDetection: config.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
+    requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
+    guidedStepTimeout: config.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
+    disableAutoCollapse: config.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
+    enableKioskMode: config.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE,
+    kioskRulesUrl: config.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,
+    enableAiAutoHeal: config.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL,
+    enableTwoTabController: config.enableTwoTabController ?? DEFAULT_ENABLE_TWO_TAB_CONTROLLER,
+  };
+}
+
 export interface InteractiveFeaturesProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
 
 const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   const styles = useStyles2(getStyles);
-  const { enabled, pinned, jsonData } = plugin.meta;
-
-  // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
-  // After save, page reload brings fresh jsonData - no sync needed
-  const [state, setState] = useState<State>(() => ({
-    enableAutoDetection: jsonData?.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
-    requirementsCheckTimeout: jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
-    guidedStepTimeout: jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
-    disableAutoCollapse: jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
-    enableKioskMode: jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE,
-    kioskRulesUrl: jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,
-    enableAiAutoHeal: jsonData?.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL,
-    enableTwoTabController: jsonData?.enableTwoTabController ?? DEFAULT_ENABLE_TWO_TAB_CONTROLLER,
-  }));
+  const { draft: state, changes, edit, config: resolvedConfig } = useSeededDraft(buildStateFromConfig);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const validateNumber = (value: string, min: number, max: number, fieldName: string): number | null => {
@@ -71,45 +73,45 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   };
 
   const onToggleAutoDetection = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({ ...state, enableAutoDetection: event.target.checked });
+    edit({ enableAutoDetection: event.target.checked });
   };
 
   const onToggleDisableAutoCollapse = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({ ...state, disableAutoCollapse: event.target.checked });
+    edit({ disableAutoCollapse: event.target.checked });
   };
 
   const onChangeRequirementsTimeout = (event: ChangeEvent<HTMLInputElement>) => {
     const value = validateNumber(event.target.value, 1000, 10000, 'requirementsTimeout');
     if (value !== null) {
-      setState({ ...state, requirementsCheckTimeout: value });
+      edit({ requirementsCheckTimeout: value });
     }
   };
 
   const onChangeGuidedTimeout = (event: ChangeEvent<HTMLInputElement>) => {
     const value = validateNumber(event.target.value, 5000, 120000, 'guidedTimeout');
     if (value !== null) {
-      setState({ ...state, guidedStepTimeout: value });
+      edit({ guidedStepTimeout: value });
     }
   };
 
   const onToggleKioskMode = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({ ...state, enableKioskMode: event.target.checked });
+    edit({ enableKioskMode: event.target.checked });
   };
 
   const onChangeKioskRulesUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({ ...state, kioskRulesUrl: event.target.value.trim() });
+    edit({ kioskRulesUrl: event.target.value.trim() });
   };
 
   const onToggleEnableAiAutoHeal = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({ ...state, enableAiAutoHeal: event.target.checked });
+    edit({ enableAiAutoHeal: event.target.checked });
   };
 
   const onToggleEnableTwoTabController = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({ ...state, enableTwoTabController: event.target.checked });
+    edit({ enableTwoTabController: event.target.checked });
   };
 
   const onResetDefaults = () => {
-    setState({
+    edit({
       enableAutoDetection: DEFAULT_ENABLE_AUTO_DETECTION,
       requirementsCheckTimeout: DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
       guidedStepTimeout: DEFAULT_GUIDED_STEP_TIMEOUT,
@@ -125,37 +127,19 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   const onSubmit = async (event: React.SubmitEvent) => {
     event.preventDefault();
 
-    // Check for validation errors
     if (Object.keys(validationErrors).length > 0) {
       return;
     }
 
     setIsSaving(true);
+    setSaveFailed(false);
 
     try {
-      // Preserve ALL existing jsonData fields first (including provisioned fields
-      // like stackId that aren't in DocsPluginConfig), then apply defaults for
-      // known fields, then override with this form's fields.
-      const newJsonData = {
-        ...(jsonData || {}),
-        ...getConfigWithDefaults(jsonData || {}),
-        enableAutoDetection: state.enableAutoDetection,
-        requirementsCheckTimeout: state.requirementsCheckTimeout,
-        guidedStepTimeout: state.guidedStepTimeout,
-        disableAutoCollapse: state.disableAutoCollapse,
-        enableKioskMode: state.enableKioskMode,
-        kioskRulesUrl: state.kioskRulesUrl,
-        enableAiAutoHeal: state.enableAiAutoHeal,
-        enableTwoTabController: state.enableTwoTabController,
-      };
-
-      await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
-        jsonData: newJsonData,
+      await saveTenantSettings({
+        pluginId: plugin.meta.id,
+        changes,
       });
 
-      // Reload page to apply new settings
       setTimeout(() => {
         try {
           window.location.reload();
@@ -168,22 +152,20 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     } catch (error) {
       logger.error('Error saving Interactive Features', { error });
       setIsSaving(false);
-      throw error;
+      setSaveFailed(true);
     }
   };
 
-  const hasChanges =
-    state.enableAutoDetection !== (jsonData?.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION) ||
-    state.requirementsCheckTimeout !== (jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT) ||
-    state.guidedStepTimeout !== (jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT) ||
-    state.disableAutoCollapse !== (jsonData?.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE) ||
-    state.enableKioskMode !== (jsonData?.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE) ||
-    state.kioskRulesUrl !== (jsonData?.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL) ||
-    state.enableAiAutoHeal !== (jsonData?.enableAiAutoHeal ?? DEFAULT_ENABLE_AI_AUTO_HEAL) ||
-    state.enableTwoTabController !== (jsonData?.enableTwoTabController ?? DEFAULT_ENABLE_TWO_TAB_CONTROLLER);
+  const saved = buildStateFromConfig(resolvedConfig);
+  const hasChanges = (Object.keys(saved) as Array<keyof State>).some((key) => state[key] !== saved[key]);
 
   return (
     <form onSubmit={onSubmit}>
+      {saveFailed && (
+        <Alert title="Could not save settings" severity="error">
+          Your edits are still here. Try saving again. If the problem continues, reload the page and try again.
+        </Alert>
+      )}
       <FieldSet label="Interactive guide features" className={styles.fieldSet}>
         <Alert
           title="Experimental feature"
@@ -263,8 +245,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               Fine-tune timing parameters for interactive guide behavior
             </Text>
           </div>
-
-          {/* Requirements Check Timeout */}
           <Field
             label="Requirements check timeout"
             description="Maximum time to wait for requirement validation. Range: 1000-10000ms"
@@ -284,8 +264,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               max={10000}
             />
           </Field>
-
-          {/* Guided Step Timeout */}
           <Field
             label="Guided step timeout"
             description="Maximum time to wait for user to complete guided steps. Range: 5000-120000ms (5s-2min)"

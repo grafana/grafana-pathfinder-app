@@ -1,7 +1,7 @@
+import { usePathfinderPluginConfig } from '../../hooks';
 import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
-import { usePluginContext } from '@grafana/data';
 import { getAppEvents } from '@grafana/runtime';
 
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
@@ -16,9 +16,8 @@ import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { getInteractiveConfig } from '../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
-import { GuidedAction } from '../../types/interactive-actions.types';
+import { type AuthoredGuidedAction, isGuidedDomActionType } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
@@ -89,7 +88,7 @@ function SafeHTML({ html, className }: { html: string; className?: string }) {
 }
 
 interface InteractiveGuidedProps {
-  internalActions: GuidedAction[];
+  internalActions: AuthoredGuidedAction[];
 
   // State management (passed by parent section)
   stepId?: string;
@@ -265,12 +264,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       }
     }, [isStandalone, renderedStepId, sectionId]);
 
-    // Get plugin configuration for auto-detection settings
-    const pluginContext = usePluginContext();
-    const interactiveConfig = useMemo(() => {
-      const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-      return getInteractiveConfig(config);
-    }, [pluginContext?.meta?.jsonData]);
+    const { config: pluginConfig } = usePathfinderPluginConfig();
+    const interactiveConfig = useMemo(() => getInteractiveConfig(pluginConfig), [pluginConfig]);
 
     // Create guided handler instance
     const guidedHandler = useMemo(() => {
@@ -515,6 +510,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           return;
         }
 
+        // A pre-gate guide can carry a verb no detector matches; the handler
+        // reports that step failed, so there is nothing to auto-detect here.
+        if (!isGuidedDomActionType(currentAction.targetAction)) {
+          return;
+        }
+
         // Non-noop actions require refTarget
         const selector = currentAction.refTarget;
         if (!selector) {
@@ -568,7 +569,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         const matches = matchesStepAction(
           detectedAction,
           {
-            targetAction: currentAction.targetAction as 'button' | 'highlight' | 'hover' | 'formfill',
+            targetAction: currentAction.targetAction,
             refTarget: selector,
             targetValue: currentAction.targetValue,
           },

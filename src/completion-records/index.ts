@@ -18,6 +18,7 @@ export {
   resolveStandaloneGuideCompletionIdentity,
   manifestGuideId,
   manifestGuideSource,
+  normalizeGuideId,
 } from './completion-identity';
 export type {
   ResolveCompletionIdentityInput,
