@@ -5,7 +5,13 @@
  * precedence over any repository embedded in the manifest, because the manifest
  * schema defaults an absent repository to `interactive-tutorials`.
  */
-import { resolveCompletionIdentity, manifestGuideId, manifestGuideSource } from './completion-identity';
+import {
+  resolveCompletionIdentity,
+  resolveJourneyCompletionIdentity,
+  resolveStandaloneGuideCompletionIdentity,
+  manifestGuideId,
+  manifestGuideSource,
+} from './completion-identity';
 
 describe('resolveCompletionIdentity', () => {
   it('keys on manifest.repository / manifest.id when present', () => {
@@ -96,5 +102,57 @@ describe('manifestGuideSource', () => {
     expect(manifestGuideSource({ repository: '' })).toBeUndefined();
     expect(manifestGuideSource({ repository: 42 })).toBeUndefined();
     expect(manifestGuideSource()).toBeUndefined();
+  });
+});
+
+describe('resolveJourneyCompletionIdentity', () => {
+  it('keys on manifest repository / manifest id when both present', () => {
+    expect(
+      resolveJourneyCompletionIdentity({
+        packageManifest: { id: 'linux-journey', repository: 'app-platform', type: 'journey' },
+        guideId: 'ignored',
+      })
+    ).toEqual({ guideSource: 'app-platform', guideId: 'linux-journey' });
+  });
+
+  it('gives the explicit/resolved repository precedence over the manifest value', () => {
+    expect(
+      resolveJourneyCompletionIdentity({
+        packageManifest: { id: 'linux-journey', repository: 'interactive-tutorials', type: 'journey' },
+        repository: 'online-cdn',
+        guideId: 'ignored',
+      })
+    ).toEqual({ guideSource: 'online-cdn', guideId: 'linux-journey' });
+  });
+
+  it('defaults guideSource to interactive-tutorials when manifest has id but no repository (schema default)', () => {
+    // This is the fix: journey manifests with id but no repository land on
+    // 'interactive-tutorials', not 'bundled'. Same contract as standalone guides.
+    expect(
+      resolveJourneyCompletionIdentity({
+        packageManifest: { id: 'linux-journey', type: 'journey' },
+        guideId: 'ignored',
+      })
+    ).toEqual({ guideSource: 'interactive-tutorials', guideId: 'linux-journey' });
+  });
+
+  it('falls back to guideId when manifest has no id', () => {
+    expect(
+      resolveJourneyCompletionIdentity({
+        packageManifest: { type: 'journey' },
+        repository: 'app-platform',
+        guideId: 'curated-path-id',
+      })
+    ).toEqual({ guideSource: 'app-platform', guideId: 'curated-path-id' });
+  });
+
+  it('matches resolveStandaloneGuideCompletionIdentity behavior (parity check)', () => {
+    const input = {
+      packageManifest: { id: 'test-id', type: 'journey' },
+      guideId: 'fallback',
+    };
+    expect(resolveJourneyCompletionIdentity(input)).toEqual(
+      resolveStandaloneGuideCompletionIdentity(input)
+    );
   });
 });

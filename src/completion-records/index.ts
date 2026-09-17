@@ -16,6 +16,7 @@ export {
   resolveMilestoneCompletionIdentity,
   resolveBundledGuideCompletionIdentity,
   resolveStandaloneGuideCompletionIdentity,
+  resolveJourneyCompletionIdentity,
   manifestGuideId,
   manifestGuideSource,
 } from './completion-identity';

@@ -128,3 +128,23 @@ export function resolveStandaloneGuideCompletionIdentity(input: ResolveGuideComp
     fallbackId: input.guideId,
   });
 }
+
+/**
+ * The ONE identity derivation for a journey's own completion record.
+ * The journey-completion branch of `markMilestoneDone` (the writer) and any
+ * future reset path both call this rather than `resolveCompletionIdentity`
+ * directly. Deliberately takes no `fallbackSource` at all: journey manifests
+ * follow the same contract as standalone guides — if a manifest carries an
+ * `id` but no `repository`, the schema default `'interactive-tutorials'` is
+ * semantically correct, NOT `'bundled'`. That divergence (the writer
+ * supplying `'bundled'`, a reset path omitting it or guessing differently)
+ * is exactly the class of identity-divergence bug the shared derivations
+ * were introduced to close.
+ */
+export function resolveJourneyCompletionIdentity(input: ResolveGuideCompletionIdentityInput): CompletionKey {
+  return resolveCompletionIdentity({
+    packageManifest: input.packageManifest,
+    repository: input.repository,
+    fallbackId: input.guideId,
+  });
+}

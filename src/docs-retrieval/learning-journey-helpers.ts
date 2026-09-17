@@ -29,10 +29,10 @@ import { markGuideCompleted } from '../learning-paths';
 import {
   recordGuideCompletion,
   recordJourneyCompletion,
-  resolveCompletionIdentity,
   resolveMilestoneCompletionIdentity,
   resolveBundledGuideCompletionIdentity,
   resolveStandaloneGuideCompletionIdentity,
+  resolveJourneyCompletionIdentity,
   manifestGuideId,
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
@@ -808,11 +808,10 @@ export async function markMilestoneDone(
       // contract), and a URL-keyed fact would become a permanently wrong durable key.
       const stableJourneyId = manifestGuideId(context?.packageManifest) ?? path?.id;
       if (stableJourneyId) {
-        const journeyIdentity = resolveCompletionIdentity({
+        const journeyIdentity = resolveJourneyCompletionIdentity({
           packageManifest: context?.packageManifest,
           repository: context?.repository,
-          fallbackId: stableJourneyId,
-          fallbackSource: 'bundled',
+          guideId: stableJourneyId,
         });
         recordJourneyCompletion({
           kind: 'journey',
