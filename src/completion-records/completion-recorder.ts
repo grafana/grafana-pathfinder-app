@@ -1,5 +1,6 @@
 import { logger } from '../lib/logging';
 import { completionEmittedStorage } from '../lib/user-storage';
+import { bundledGuideIdReadVariants } from './completion-identity';
 
 import type {
   CompletionFact,
@@ -63,8 +64,18 @@ export function recordJourneyCompletion(fact: JourneyCompletionFact): void {
 
 function record(fact: CompletionFact): void {
   try {
-    const key = dedupeKey(fact.kind, fact.guideSource, fact.guideId);
-    if (emitted.has(key) || completionEmittedStorage.isEmitted(key)) {
+    // WRITE the canonical (normalized) key, but READ every legacy spelling too:
+    // a package-path completion already persisted under the suffixed id (shipped
+    // in 2.17.0) must be seen here, or the reload-to-100% path would mint a
+    // second durable Cloud record. This is the migration read-both on the WRITE
+    // path — the reset path reads both via `invalidateEmittedCompletion`.
+    const variants = bundledGuideIdReadVariants(fact.guideId);
+    const key = dedupeKey(fact.kind, fact.guideSource, variants[0]);
+    const alreadyEmitted = variants.some((id) => {
+      const k = dedupeKey(fact.kind, fact.guideSource, id);
+      return emitted.has(k) || completionEmittedStorage.isEmitted(k);
+    });
+    if (alreadyEmitted) {
       emitted.add(key);
       return;
     }
@@ -97,13 +108,26 @@ export function onCompletionRecorded(listener: CompletionListener): () => void {
  * resets — otherwise a reader who resets and re-completes gets no durable
  * record, no badge and no path progress on the second completion, because
  * `record()` above would still see the identity as already emitted.
+ *
+ * Clears every spelling `bundledGuideIdReadVariants` yields — the normalized key
+ * AND the legacy `/content.json`-suffixed key — so a guide recorded under either
+ * identity shape is fully forgotten.
+ *
+ * MIGRATION GUARANTEE — do not remove the legacy read: durable records written
+ * under the suffixed id shipped in plugin 2.17.0 and have been live on Cloud for
+ * weeks. There is no route that deletes a durable record, so this read-both
+ * behaviour must stay until someone deliberately retires it after those records
+ * have aged out. Reading only the normalized key would silently orphan them.
  */
 export function invalidateEmittedCompletion(guideSource: string, guideId: string): void {
+  const variants = bundledGuideIdReadVariants(guideId);
   const kinds: readonly CompletionKind[] = ['guide', 'journey'];
   for (const kind of kinds) {
-    const key = dedupeKey(kind, guideSource, guideId);
-    emitted.delete(key);
-    void completionEmittedStorage.clear(key);
+    for (const id of variants) {
+      const key = dedupeKey(kind, guideSource, id);
+      emitted.delete(key);
+      void completionEmittedStorage.clear(key);
+    }
   }
 }
 

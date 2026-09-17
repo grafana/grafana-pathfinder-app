@@ -5,7 +5,12 @@
  * precedence over any repository embedded in the manifest, because the manifest
  * schema defaults an absent repository to `interactive-tutorials`.
  */
-import { resolveCompletionIdentity, manifestGuideId, manifestGuideSource } from './completion-identity';
+import {
+  resolveCompletionIdentity,
+  manifestGuideId,
+  manifestGuideSource,
+  normalizeGuideId,
+} from './completion-identity';
 
 describe('resolveCompletionIdentity', () => {
   it('keys on manifest.repository / manifest.id when present', () => {
@@ -96,5 +101,32 @@ describe('manifestGuideSource', () => {
     expect(manifestGuideSource({ repository: '' })).toBeUndefined();
     expect(manifestGuideSource({ repository: 42 })).toBeUndefined();
     expect(manifestGuideSource()).toBeUndefined();
+  });
+});
+
+describe('normalizeGuideId', () => {
+  it('strips trailing /content.json from a guide ID', () => {
+    expect(normalizeGuideId('first-dashboard/content.json')).toBe('first-dashboard');
+  });
+
+  it('returns the guide ID unchanged if already clean (no suffix)', () => {
+    expect(normalizeGuideId('first-dashboard')).toBe('first-dashboard');
+  });
+
+  it('returns empty string unchanged', () => {
+    expect(normalizeGuideId('')).toBe('');
+  });
+
+  it('returns "/content.json" unchanged when that is the entire input', () => {
+    expect(normalizeGuideId('/content.json')).toBe('/content.json');
+  });
+
+  it('strips only one trailing /content.json suffix even if doubled', () => {
+    expect(normalizeGuideId('some-guide/content.json/content.json')).toBe('some-guide/content.json');
+  });
+
+  it('handles guide IDs containing colons without stripping them', () => {
+    expect(normalizeGuideId('backend-guide:some-id/content.json')).toBe('backend-guide:some-id');
+    expect(normalizeGuideId('backend-guide:some-id')).toBe('backend-guide:some-id');
   });
 });

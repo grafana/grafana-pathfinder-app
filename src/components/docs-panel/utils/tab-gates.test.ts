@@ -30,10 +30,21 @@ describe('resolveTabGates', () => {
     mockUser({ id: 1, orgRole: 'Viewer', isGrafanaAdmin: false });
   });
 
-  it('allows Dev Tools only when dev mode names the current user', () => {
-    expect(resolveTabGates({ devMode: true, devModeUserIds: [1] }).allowDevTools).toBe(true);
-    expect(resolveTabGates({ devMode: true, devModeUserIds: [2] }).allowDevTools).toBe(false);
-    expect(resolveTabGates({ devMode: false, devModeUserIds: [1] }).allowDevTools).toBe(false);
+  it('allows Dev Tools only when both the tenant gate and this user opted in', () => {
+    expect(resolveTabGates({ devMode: true, devModeOptIn: true }).allowDevTools).toBe(true);
+    // Tenant gate on, this user has not opted in.
+    expect(resolveTabGates({ devMode: true, devModeOptIn: false }).allowDevTools).toBe(false);
+    // This user opted in, but an admin has the instance gate off — the admin wins.
+    expect(resolveTabGates({ devMode: false, devModeOptIn: true }).allowDevTools).toBe(false);
+  });
+
+  it('ignores the legacy allow-list on a config that skipped the resolve layer', () => {
+    // Pre-migration jsonData handed straight to the gate: `devModeUserIds` is
+    // deprecated and no longer consulted here. In the app the config always
+    // arrives via publishPathfinderPluginConfig, which folds a legacy entry into
+    // `devModeOptIn` first (see usePathfinderPluginConfig); this pins the
+    // behaviour of the raw path so the gate never re-grows a second code path.
+    expect(resolveTabGates({ devMode: true, devModeUserIds: [1] }).allowDevTools).toBe(false);
   });
 
   it('denies Dev Tools for an undefined config', () => {

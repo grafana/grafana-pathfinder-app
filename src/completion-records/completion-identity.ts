@@ -16,6 +16,48 @@
 
 import type { CompletionKey } from './types';
 
+/**
+ * The package launch shape appends this to a bundled guide's id (the package
+ * resolver hands the context panel `bundled:<id>/content.json`). Named to mirror
+ * `PACKAGE_CONTENT_SUFFIX` in `global-state/path-member-join.ts`, which groups the
+ * same two shapes for local progress.
+ *
+ * THIS IS THE SINGLE PLACE that knows about the suffix for completion identity.
+ * Every path that turns a bundled content key into a guide id — the journey
+ * percentage writer and the reset path — goes through `normalizeGuideId`; do not
+ * reintroduce a second inline `/content.json` strip elsewhere.
+ */
+const PACKAGE_CONTENT_SUFFIX = '/content.json';
+
+/**
+ * Normalize a guide id to its bare, canonical form by stripping a trailing
+ * `/content.json`. Both `bundled:<id>` and `bundled:<id>/content.json` are valid
+ * launch shapes for the same bundled guide and must record ONE identity.
+ * Edge cases: returns the input unchanged if empty or exactly `/content.json`.
+ */
+export function normalizeGuideId(guideId: string): string {
+  if (!guideId || guideId === PACKAGE_CONTENT_SUFFIX) {
+    return guideId;
+  }
+  if (guideId.endsWith(PACKAGE_CONTENT_SUFFIX)) {
+    return guideId.slice(0, -PACKAGE_CONTENT_SUFFIX.length);
+  }
+  return guideId;
+}
+
+/**
+ * Every guide-id spelling that must be READ for one guide, honouring the bundled
+ * dual-shape migration: the canonical (normalized) id, plus the legacy
+ * `/content.json`-suffixed id that plugin 2.17.0 wrote. WRITE only the canonical
+ * id (`normalizeGuideId`); READ every variant this returns, so a completion
+ * already stored under the suffixed id is still found — never re-fired as a
+ * duplicate durable record, never orphaned. The canonical id is always first.
+ */
+export function bundledGuideIdReadVariants(guideId: string): [canonical: string, legacySuffixed: string] {
+  const normalized = normalizeGuideId(guideId);
+  return [normalized, `${normalized}${PACKAGE_CONTENT_SUFFIX}`];
+}
+
 /** Default repository when neither an explicit source nor a manifest resolves one. */
 const DEFAULT_GUIDE_SOURCE = 'interactive-tutorials';
 

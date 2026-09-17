@@ -30,7 +30,11 @@ import { markMilestoneDone, getMilestoneSlug } from '../docs-retrieval/learning-
 import { invalidateCustomGuideRepositoryCache } from '../lib/custom-guide-repository-client';
 import { StorageKeys } from '../lib/storage-keys';
 import { interactiveCompletionStorage } from '../lib/user-storage';
-import { useLearningPaths } from './learning-paths.hook';
+// Import via the barrel, not the bare hook file: this is what registers the
+// guide-completion bridge that `markMilestoneDone` (docs-retrieval) now calls
+// through, mirroring the real app where a content-owning surface component
+// pulls in the learning-paths barrel before any completion write happens.
+import { useLearningPaths } from '.';
 
 const EMPTY_PROGRESS = {
   completedGuides: [],

@@ -8,6 +8,7 @@
 
 import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -15,7 +16,7 @@ import { css } from '@emotion/css';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { clearAndInsertCode, useInteractiveElements } from '../../interactive-engine';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { panelModeManager, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
 import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
@@ -41,7 +42,6 @@ export interface CodeBlockStepProps {
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   resetTrigger?: number;
-  onStepReset?: () => void;
 
   stepIndex?: number;
   totalSteps?: number;
@@ -126,7 +126,6 @@ export const CodeBlockStep = forwardRef<
       isCurrentlyExecuting = false,
       onStepComplete,
       resetTrigger,
-      onStepReset,
       stepIndex,
       totalSteps,
       sectionId,
@@ -143,6 +142,17 @@ export const CodeBlockStep = forwardRef<
       generatedStepIdRef.current = `code-block-step-${codeBlockStepCounter}`;
     }
     const renderedStepId = stepId ?? generatedStepIdRef.current;
+
+    const analyticsStepMeta = useMemo(
+      () => ({
+        stepId: stepId ?? renderedStepId,
+        stepIndex,
+        totalSteps,
+        sectionId,
+        sectionTitle,
+      }),
+      [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
+    );
 
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isInsertRunning, setIsInsertRunning] = useState(false);
@@ -184,8 +194,27 @@ export const CodeBlockStep = forwardRef<
       stepId: renderedStepId,
       isEligibleForChecking,
       skippable,
-      sectionId, // Lets the checker write skip / objectives transitions to the store
+      sectionId,
     });
+
+    const persistReset = useCallback(() => {
+      if (isStandalone) {
+        resetStep(renderedStepId, sectionId);
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
+
+    // Runs in EVERY child of the section, so the store write is suppressed for
+    // section steps: the section's own `resetSteps(tailStepIds)` already owns
+    // it, and a per-child write would wipe preceding completions.
+    useEffect(() => {
+      if (resetTrigger && resetTrigger > 0) {
+        persistReset();
+        setInsertError(null);
+        if (checker.resetStep) {
+          checker.resetStep({ skipStoreWrite: true });
+        }
+      }
+    }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep and persistReset are stable but including checker rebuilds every render
 
     const markComplete = useCallback(() => {
       if (isCompleted) {
@@ -204,14 +233,15 @@ export const CodeBlockStep = forwardRef<
       if (isShowRunning) {
         return;
       }
+      reportAppInteraction(
+        UserInteraction.ShowMeButtonClick,
+        buildInteractiveStepProperties(
+          { target_action: 'code-block', ref_target: refTarget, interaction_location: 'code_block_step' },
+          analyticsStepMeta
+        )
+      );
       setIsShowRunning(true);
       try {
-        // Highlight the target Monaco editor using the interactive engine.
-        // Threading fullScreenFallbackLocation lets executeInteractiveAction's
-        // own gate dock + navigate first when in full screen — mirrors
-        // handleInsert's handOffFromFullScreenIfNeeded below, but for real
-        // this time: "highlight" is a Grafana-driving action, so the gate
-        // handles it automatically instead of needing its own explicit call.
         await executeInteractiveAction({
           targetAction: 'highlight',
           refTarget,
@@ -223,7 +253,7 @@ export const CodeBlockStep = forwardRef<
       } finally {
         setIsShowRunning(false);
       }
-    }, [refTarget, isShowRunning, executeInteractiveAction, fullScreenFallbackLocation]);
+    }, [refTarget, isShowRunning, executeInteractiveAction, fullScreenFallbackLocation, analyticsStepMeta]);
 
     // "Insert" targets a live Monaco editor unconditionally — full screen has
     // none behind it (mirrors requires-grafana-ui.ts's `code-block` case) — so
@@ -238,6 +268,13 @@ export const CodeBlockStep = forwardRef<
     }, [fullScreenFallbackLocation]);
 
     const handleInsert = useCallback(async () => {
+      reportAppInteraction(
+        UserInteraction.DoItButtonClick,
+        buildInteractiveStepProperties(
+          { target_action: 'code-block', ref_target: refTarget, interaction_location: 'code_block_step' },
+          analyticsStepMeta
+        )
+      );
       setIsInsertRunning(true);
       setInsertError(null);
       try {
@@ -254,7 +291,7 @@ export const CodeBlockStep = forwardRef<
       } finally {
         setIsInsertRunning(false);
       }
-    }, [currentCode, refTarget, markComplete, handOffFromFullScreenIfNeeded]);
+    }, [currentCode, refTarget, markComplete, handOffFromFullScreenIfNeeded, analyticsStepMeta]);
 
     useImperativeHandle(
       ref,

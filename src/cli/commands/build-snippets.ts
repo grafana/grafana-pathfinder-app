@@ -9,7 +9,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { JsonSnippetSchema, SnippetCatalogSchema } from '../../types/json-snippet.schema';
-import type { SnippetCatalog, SnippetCatalogEntry } from '../../types/json-snippet.types';
+import type { SnippetCatalog, SnippetCatalogEntry, JsonSnippet } from '../../types/json-snippet.types';
+import { formatPath } from '../../validation/errors';
+import { validateGuidedActionsInBlocks } from '../../validation/guided-action-validator';
 import { readJsonFile } from '../../validation/package-io';
 import { defineCommand } from '../contracts';
 import { resolveCliPath } from '../utils/file-loader';
@@ -56,7 +58,19 @@ export function buildSnippetCatalog(dir: string): {
       continue;
     }
 
-    const snippet = read.data;
+    const snippet = read.data as JsonSnippet;
+
+    // `JsonSnippetSchema` shares every block schema with a guide, so a guided
+    // block in a snippet body reaches readers through a `snippet-ref` without
+    // ever meeting the guide-level gate. Publishing is an authoring gate, so it
+    // errors here exactly as `pathfinder validate` does on a guide.
+    const guidedIssues = validateGuidedActionsInBlocks(snippet.blocks);
+    if (guidedIssues.length > 0) {
+      for (const issue of guidedIssues) {
+        errors.push(`${file}: ${formatPath(issue.path)}: ${issue.message}`);
+      }
+      continue;
+    }
 
     // The resolver fetches `<id>.json`, so the file name must equal the id.
     if (snippet.id !== fileId) {
