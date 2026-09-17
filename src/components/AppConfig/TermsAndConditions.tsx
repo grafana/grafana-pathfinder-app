@@ -3,60 +3,48 @@ import { Button, useStyles2, FieldSet, Switch, Text, Alert } from '@grafana/ui';
 import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
-import { DocsPluginConfig, TERMS_VERSION, getConfigWithDefaults } from '../../constants';
+import { PathfinderPluginConfig, ResolvedPathfinderConfig, TERMS_VERSION } from '../../constants';
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
-import { updatePluginSettings } from '../../utils/utils.plugin';
+import { saveTenantSettings } from './save-settings';
+import { useSeededDraft } from './use-seeded-draft';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { logger } from '../../lib/logging';
 
-type JsonData = DocsPluginConfig & {
+type JsonData = PathfinderPluginConfig & {
   isDocsPasswordSet?: boolean;
 };
+
+function buildStateFromConfig(config: ResolvedPathfinderConfig): { acceptedTermsAndConditions: boolean } {
+  return { acceptedTermsAndConditions: config.acceptedTermsAndConditions };
+}
 
 export interface TermsAndConditionsProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
 
 const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
   const styles = useStyles2(getStyles);
-  const { enabled, pinned, jsonData } = plugin.meta;
-
-  // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
-  // After save, page reload brings fresh jsonData - no sync needed
-  const [isRecommenderEnabled, setIsRecommenderEnabled] = useState<boolean>(() => {
-    const configWithDefaults = getConfigWithDefaults(jsonData || {});
-    return configWithDefaults.acceptedTermsAndConditions;
-  });
+  const { draft, edit } = useSeededDraft(buildStateFromConfig);
+  const isRecommenderEnabled = draft.acceptedTermsAndConditions;
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveFailed, setSaveFailed] = useState(false);
 
   const onToggleRecommender = (event: ChangeEvent<HTMLInputElement>) => {
-    setIsRecommenderEnabled(event.target.checked);
+    edit({ acceptedTermsAndConditions: event.target.checked });
   };
 
   const onSubmit = async (event: React.SubmitEvent) => {
     event.preventDefault();
     setIsSaving(true);
+    setSaveFailed(false);
 
     try {
-      // Preserve ALL existing jsonData fields first (including provisioned fields
-      // like stackId that aren't in DocsPluginConfig), then apply defaults for
-      // known fields, then override with this form's fields.
-      const newJsonData = {
-        ...(jsonData || {}),
-        ...getConfigWithDefaults(jsonData || {}),
-        // Pass through raw, not the resolved default — this tab doesn't own the
-        // field, and materializing it here would freeze out a future default change.
-        enableAiAutoHeal: jsonData?.enableAiAutoHeal,
-        acceptedTermsAndConditions: isRecommenderEnabled,
-        // Persist the current terms version when enabling; leave unchanged when disabling
-        termsVersion: isRecommenderEnabled ? TERMS_VERSION : jsonData?.termsVersion,
-      };
-
-      await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
-        jsonData: newJsonData,
+      await saveTenantSettings({
+        pluginId: plugin.meta.id,
+        changes: {
+          acceptedTermsAndConditions: isRecommenderEnabled,
+          ...(isRecommenderEnabled ? { termsVersion: TERMS_VERSION } : {}),
+        },
       });
 
-      // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
       setTimeout(() => {
         try {
           window.location.reload();
@@ -65,18 +53,21 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
         }
       }, 100);
 
-      // Reset saving state - let Grafana's plugin context system handle the refresh
       setIsSaving(false);
     } catch (error) {
       logger.error('Error saving Terms and Conditions', { error });
       setIsSaving(false);
-      // Re-throw to let user know something went wrong
-      throw error;
+      setSaveFailed(true);
     }
   };
 
   return (
     <form onSubmit={onSubmit}>
+      {saveFailed && (
+        <Alert title="Could not save settings" severity="error">
+          Your edits are still here. Try saving again. If the problem continues, reload the page and try again.
+        </Alert>
+      )}
       <FieldSet label="Recommender service" className={styles.termsFieldSet}>
         <Alert title="Data usage information" severity={isRecommenderEnabled ? 'info' : 'warning'}>
           {isRecommenderEnabled

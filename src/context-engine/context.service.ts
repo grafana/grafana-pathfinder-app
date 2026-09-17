@@ -8,7 +8,7 @@ import {
 import {
   getConfigWithDefaults,
   isRecommenderEnabled,
-  DocsPluginConfig,
+  PathfinderPluginConfig,
   DEFAULT_RECOMMENDER_TIMEOUT,
   ONLINE_PACKAGES_BOOT_BUDGET_MS,
   ALLOWED_RECOMMENDER_DOMAINS,
@@ -148,7 +148,7 @@ export class ContextService {
    */
   static async fetchRecommendations(
     contextData: ContextData,
-    pluginConfig: DocsPluginConfig = {}
+    pluginConfig: PathfinderPluginConfig = {}
   ): Promise<{
     recommendations: Recommendation[];
     featuredRecommendations: Recommendation[];
@@ -275,7 +275,7 @@ export class ContextService {
    */
   private static async getExternalRecommendations(
     contextData: ContextData,
-    pluginConfig: DocsPluginConfig,
+    pluginConfig: PathfinderPluginConfig,
     bundledRecommendations: Recommendation[]
   ): Promise<{
     recommendations: Recommendation[];

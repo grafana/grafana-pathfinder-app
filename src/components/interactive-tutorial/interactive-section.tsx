@@ -1,6 +1,6 @@
+import { usePathfinderPluginConfig } from '../../hooks';
 import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef } from 'react';
 import { Button } from '@grafana/ui';
-import { usePluginContext } from '@grafana/data';
 
 import {
   useInteractiveElements,
@@ -80,7 +80,6 @@ import {
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
@@ -428,10 +427,7 @@ export function InteractiveSection({
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
 
   // Get plugin configuration to determine if auto-detection is enabled
-  const pluginContext = usePluginContext();
-  const pluginConfig = useMemo(() => {
-    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-  }, [pluginContext?.meta?.jsonData]);
+  const { config: pluginConfig } = usePathfinderPluginConfig();
 
   // Get runtime interactive config with plugin overrides
   const interactiveConfig = useMemo(() => {

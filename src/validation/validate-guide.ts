@@ -16,6 +16,7 @@ import { validateBlockConditions, type ConditionIssue } from './condition-valida
 import { customErrorMap } from './error-map';
 import { normalizeJsonGuideAliases } from './normalize-guide-aliases';
 import { validateSnippetReferences } from './snippet-references';
+import { validateGuidedActions } from './guided-action-validator';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -43,6 +44,14 @@ export interface ValidationOptions {
    * blocks before the guide ships.
    */
   allowDuplicateHeading?: boolean;
+  /**
+   * When true, a guided step carrying a verb the guided handler cannot drive
+   * stays a warning instead of failing validation. Same split as
+   * `allowDuplicateHeading`: runtime guide loaders set this so an already-published
+   * guide keeps rendering every block that does work, authoring gates leave it
+   * unset so the error blocks before the guide ships.
+   */
+  allowUnsupportedGuidedAction?: boolean;
 }
 /**
  * Convert a condition issue to a validation warning.
@@ -119,6 +128,17 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
       } else {
         errors.push({ message, path: ['blocks', 0], code: 'duplicate_heading' });
       }
+    }
+  }
+
+  // A guided step whose verb the handler cannot drive fails at runtime with no
+  // validation signal — see `allowUnsupportedGuidedAction` above.
+  for (const issue of validateGuidedActions(result.data as JsonGuide)) {
+    const message = `${formatPath(issue.path)}: ${issue.message}`;
+    if (options.allowUnsupportedGuidedAction) {
+      advisories.push({ message, path: issue.path, type: 'suggestion' });
+    } else {
+      errors.push({ message, path: issue.path, code: 'unsupported_guided_action' });
     }
   }
 
