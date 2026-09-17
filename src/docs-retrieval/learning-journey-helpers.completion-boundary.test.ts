@@ -480,27 +480,10 @@ describe('whole-journey completion (trigger class D — the new journey_complete
     expect(journeyEmit).toMatchObject({ guideSource: 'app-platform', guideId: 'linux-journey' });
   });
 
-  // EXPECTED FAILURE (identity-divergence, guideSource axis) — the last open
-  // instance of the class the shared derivations above were introduced to close.
-  //
-  // The whole-journey branch of markMilestoneDone still calls
-  // resolveCompletionIdentity itself, with `fallbackSource: 'bundled'`. Every
-  // other site now goes through a shared derivation, and the standalone one
-  // (resolveStandaloneGuideCompletionIdentity) deliberately passes NO fallback
-  // source precisely so that both sides of the reset seam land on whatever
-  // resolveCompletionIdentity's own default is. A journey manifest with an id
-  // and no repository is the same shape, so it must key the same way:
-  // 'interactive-tutorials', not 'bundled'.
-  //
-  // The guard belongs here rather than in the browser suite: every launch that
-  // reaches this branch in a real browser also resolves a `repository` that
-  // pre-empts the fallback (for a CDN package, the manifest schema's own
-  // default), so the divergence is unreachable from the DOM. See the tripwire
-  // case in tests/completion-tracking.spec.ts.
-  //
-  // Left red deliberately: which source wins is a decision about the durable
-  // key, and guessing at one is what produced the earlier instances.
-  it.failing('keys a journey manifest with an id and no repository on the schema default', async () => {
+  // Journey manifest with id but no repository: resolveJourneyCompletionIdentity
+  // omits fallbackSource, so the schema default 'interactive-tutorials' wins
+  // (matching standalone guides).
+  it('keys a journey manifest with an id and no repository on the schema default', async () => {
     milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
     getPathsDataMock.mockReturnValue({ paths: [] });
 
