@@ -382,6 +382,13 @@ export async function fetchPackageContent(
         }
       } else if (baseUrlResolution && baseUrlResolution.ok) {
         trackMemberBaseUrl = baseUrlResolution.contentUrl;
+      } else if (manifestId) {
+        // No fallback value exists: this must be the path's own resolved URL,
+        // the shared key completion writes and cover-page reads agree on —
+        // this guide's own contentUrl would silently write under the wrong key.
+        logger.warn(`[fetchPackageContent] Could not resolve path base URL for track-only guide: ${contentUrl}`, {
+          manifestId,
+        });
       }
     }
   }

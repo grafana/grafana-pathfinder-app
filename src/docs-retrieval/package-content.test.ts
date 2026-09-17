@@ -22,6 +22,7 @@ import {
   ensureNonEmptyCoverContent,
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
+import { logger } from '../lib/logging';
 import {
   isJourneyCoverPage,
   getTotalMilestones,
@@ -960,6 +961,50 @@ describe('fetchPackageContent path-type enrichment', () => {
     // through milestoneCompletionStorage under its own identity — the path's
     // own resolved base URL, not this guide's own contentUrl.
     expect(result.content!.metadata.trackMemberBaseUrl).toBe('bundled:test-path/content.json');
+  });
+
+  // Regression (review round on PR #1927, "track-only guide baseUrl resolver
+  // failure"): when resolving the path's own manifestId fails or is
+  // transiently unavailable, trackMemberBaseUrl must stay undefined rather
+  // than silently fall back to this guide's own contentUrl — that value is
+  // not interchangeable with the path's resolved base the cover page reads
+  // completion under, so writing it would look fixed while staying broken.
+  // The failure is instead surfaced via a warning log.
+  it('leaves trackMemberBaseUrl unset and warns when the path base URL fails to resolve', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'test-path') {
+          return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'not found' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['first-dashboard'] }],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content!.metadata.trackMemberBaseUrl).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not resolve path base URL'), {
+      manifestId: 'test-path',
+    });
+
+    warnSpy.mockRestore();
   });
 
   // `repository-identity-authority`: without the fallback, opening the same
