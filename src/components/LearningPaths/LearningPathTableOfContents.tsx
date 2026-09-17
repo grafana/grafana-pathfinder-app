@@ -69,10 +69,16 @@ export function LearningPathTableOfContents({
   // there is no track-specific completion model yet. When the progress
   // mechanisms this app carries today (records/milestones/interactive) are
   // consolidated into one, revisit whether a track needs its own.
-  const activeMilestones =
+  const activeTrack =
     hasTracks && activeTabId !== FOUNDATIONS_TAB_ID
-      ? (tracks!.find((track) => track.trackId === activeTabId)?.milestones ?? milestones)
-      : milestones;
+      ? tracks!.find((track) => track.trackId === activeTabId)
+      : undefined;
+  const activeMilestones = activeTrack?.milestones ?? milestones;
+  // The active sequence's own name, not the path's — reused below to scope
+  // the progress ring's accessible label. A track is a presentation
+  // ordering only (COMPLETION-MODEL.md), so its ring must read as "progress
+  // through this track," never as path-wide completion.
+  const activeSequenceLabel = activeTrack?.label ?? t('coverPage.foundationsTab', 'Foundations');
 
   // Adjusting state during render (React's endorsed pattern for resetting
   // state in response to a changed value — see "You Might Not Need an
@@ -135,6 +141,16 @@ export function LearningPathTableOfContents({
   // different numbers for the same journey. A reader who only navigated
   // without completing anything sees this at 0%, honestly, even after
   // visiting every milestone.
+  //
+  // Scoped to whichever sequence is active, not to the path as a whole: a
+  // track is a presentation ordering over a subset/superset of guides, never
+  // a second completion authority (COMPLETION-MODEL.md's decision on this).
+  // The durable, path-wide percentage shown elsewhere (My Learning) stays
+  // keyed to Foundations `milestones` membership alone and can legitimately
+  // read lower than this ring on a track tab — same underlying guides,
+  // different denominators. The ring's aria-label below names the active
+  // sequence so this reads as "progress through Foundations/this track,"
+  // never as path completion.
   const progress = journeyProgressFromMilestones(baseUrl, activeMilestones);
 
   const ctaTarget = cursor >= 0 ? activeMilestones[cursor] : undefined;
@@ -212,7 +228,16 @@ export function LearningPathTableOfContents({
           </h2>
           <div className={styles.headerActions}>
             {progress > 0 && (
-              <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={progress >= 100} />
+              <ProgressRing
+                progress={progress}
+                size={40}
+                strokeWidth={3}
+                isCompleted={progress >= 100}
+                ariaLabel={t('coverPage.progressAriaLabel', '{{percent}}% through {{sequence}}', {
+                  percent: Math.round(progress),
+                  sequence: activeSequenceLabel,
+                })}
+              />
             )}
             {progressLoaded && ctaTarget && (
               <button

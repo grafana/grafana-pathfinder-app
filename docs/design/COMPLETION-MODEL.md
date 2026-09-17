@@ -508,6 +508,52 @@ exclusion, not an edge case.
 missing key, which collapses the distinction the decision rests on. The join
 reads the whole record and tests for the key.
 
+### Decision 10 — a Path Tracks track is a presentation ordering, never a second completion authority
+
+**Decision.** The Foundations `milestones` sequence remains the sole
+completion authority for a path. A `tracks` entry (Path Tracks RFC) is a
+named, independently-ordered **presentation** view over some subset,
+superset, or reordering of a path's guides — never a second denominator, and
+never itself scored for completion. Decision 4's formula (the mean of member
+percentages) is unaffected: it still runs over `milestones` alone. Nothing in
+`src/lib/guide-stats` or `src/global-state/path-member-join.ts` reads
+`tracks`.
+
+**Why.** A track's `guides` list can name a strict subset of `milestones`, a
+strict superset, or a partial overlap with role-specific guides
+interleaved anywhere (`package.types.ts`'s `ManifestTrack` doc comment) — it
+is not a reordering of the same member set decision 4 already scores. Scoring
+a track as its own completion authority would give one path as many
+denominators as it has tracks, with no principled way to reconcile them: a
+learner who finishes a 3-guide Seller track containing 1 guide `milestones`
+never had is not "sooner done with the path" than one working through a
+10-guide Foundations sequence that shares only 2 guides with that track.
+Decision 4 already answers what "done with the path" means; a track answering
+it differently would just be two numbers competing for the same claim.
+
+**What this means for the cover page's per-tab progress ring.**
+`LearningPathTableOfContents.tsx` computes `journeyProgressFromMilestones`
+against whichever sequence's own tab is active — Foundations' `milestones` or
+a track's own `guides` — exactly as decision 4 already does for any member
+list. That number is real and honest **as progress through the active
+sequence**, but it is not this decision's path-wide percentage: the two can
+diverge for the identical underlying guides (a track naming 3 guides, 2 of
+which are also `milestones` members, reads 100% on its own tab while the
+path's durable percentage — Foundations membership alone — reads lower for
+the same completed work). The ring's accessible label names the active
+sequence (`{{percent}}% through {{sequence}}`) so it reads as progress
+through that presentation ordering, never as a path-wide completion claim.
+My Learning's percentage is unaffected: `app-platform-paths.ts` and
+`calculatePathRollup` still build `LearningPath.guides` from `milestones`
+alone, per this decision.
+
+**What we are not doing here.** Per-track completion — a track earning its
+own persisted percentage, badge, or "N of M" count — is a
+`completion-denominator-authority` change and belongs in its own PR against
+`src/lib/guide-stats` and `path-member-join.ts`, not folded into Path Tracks'
+initial landing. This decision exists so that PR starts from an explicit
+choice rather than an implicit one the cover page's UI had already made.
+
 ## The alternative considered and rejected
 
 One position argued against the path-level half of this model. It was overridden,

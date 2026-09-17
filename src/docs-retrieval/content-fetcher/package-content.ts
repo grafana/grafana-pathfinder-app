@@ -320,42 +320,58 @@ export async function fetchPackageContent(
       // RFC explicitly allows a track to do — has no milestones index, but
       // must not be treated as "not found, so this is the cover page." Check
       // every resolved track's own guides before falling back to that.
-      const isTrackMember =
+      const isTrackOnlyMember =
         milestoneIndex < 0 && tracks.some((track) => track.milestones.some((m) => m.url === contentUrl));
-      const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : isTrackMember ? -1 : 0;
 
-      let baseUrl = contentUrl;
-      if ((milestoneIndex >= 0 || isTrackMember) && baseUrlResolution && baseUrlResolution.ok) {
-        baseUrl = baseUrlResolution.contentUrl;
-      }
+      // A track-only guide isn't part of the Foundations sequence a track is
+      // layered on top of (COMPLETION-MODEL.md: a track is a presentation
+      // ordering only, not a second completion authority) — it has no real
+      // position in `milestones` to report. Earlier this synthesized a -1
+      // sentinel currentMilestone to dodge the cover-page branch below, but
+      // that sentinel leaked into every consumer that assumes any non-zero
+      // value is a real step: the docs-panel step label showed "Step -1 of
+      // N", Previous stayed disabled, and Next jumped into Foundations
+      // module 1. Leaving learningJourney undefined instead — the same,
+      // already-supported state a path with zero resolved milestones
+      // produces — renders this guide as a plain guide: no Foundations
+      // step label, no Previous/Next milestone arrows, and completion
+      // records it as a guide rather than a Foundations milestone.
+      if (!isTrackOnlyMember) {
+        const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
 
-      learningJourney = {
-        currentMilestone,
-        totalMilestones: milestones.length,
-        milestones,
-        baseUrl,
-        summary: result.content.metadata.singleDoc?.summary,
-        // pathSlug is already suppressed for private packages at derivation, so a
-        // non-null slug means this is a public path with a grafana.com docs page.
-        ...(pathSlug != null && {
-          websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
-        }),
-      };
-
-      if (currentMilestone === 0) {
-        if (tracks.length > 0) {
-          learningJourney.tracks = tracks;
+        let baseUrl = contentUrl;
+        if (milestoneIndex >= 0 && baseUrlResolution && baseUrlResolution.ok) {
+          baseUrl = baseUrlResolution.contentUrl;
         }
 
-        // skipReadyToBegin: true — the React cover-page TOC (LearningPathTableOfContents)
-        // renders its own Start/Resume CTA against real progress data; the
-        // legacy HTML button always says "Ready to Begin" and always targets
-        // milestone 1, so leaving both on would show two conflicting CTAs.
-        contentString = injectJourneyExtrasIntoJsonGuide(
-          ensureNonEmptyCoverContent(contentString),
-          learningJourney,
-          true
-        );
+        learningJourney = {
+          currentMilestone,
+          totalMilestones: milestones.length,
+          milestones,
+          baseUrl,
+          summary: result.content.metadata.singleDoc?.summary,
+          // pathSlug is already suppressed for private packages at derivation, so a
+          // non-null slug means this is a public path with a grafana.com docs page.
+          ...(pathSlug != null && {
+            websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
+          }),
+        };
+
+        if (currentMilestone === 0) {
+          if (tracks.length > 0) {
+            learningJourney.tracks = tracks;
+          }
+
+          // skipReadyToBegin: true — the React cover-page TOC (LearningPathTableOfContents)
+          // renders its own Start/Resume CTA against real progress data; the
+          // legacy HTML button always says "Ready to Begin" and always targets
+          // milestone 1, so leaving both on would show two conflicting CTAs.
+          contentString = injectJourneyExtrasIntoJsonGuide(
+            ensureNonEmptyCoverContent(contentString),
+            learningJourney,
+            true
+          );
+        }
       }
     }
   }

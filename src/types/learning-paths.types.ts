@@ -203,6 +203,16 @@ export interface ProgressRingProps {
   isCompleted?: boolean;
   /** Whether to show percentage text */
   showPercentage?: boolean;
+  /**
+   * Accessible label scoping what this ring's percentage measures. The ring
+   * itself is a bare number with no visible caption, so on a surface that can
+   * show more than one sequence's progress (e.g. the cover page's Path
+   * Tracks tabs — COMPLETION-MODEL.md's track-is-presentation-only decision)
+   * an unscoped ring risks reading as overall path completion when it is
+   * really "progress through the active sequence." Omit it where only one
+   * sequence can ever be shown.
+   */
+  ariaLabel?: string;
 }
 
 /**

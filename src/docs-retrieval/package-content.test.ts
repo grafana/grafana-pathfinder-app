@@ -22,7 +22,12 @@ import {
   ensureNonEmptyCoverContent,
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
-import { isJourneyCoverPage } from './learning-journey-helpers';
+import {
+  isJourneyCoverPage,
+  getTotalMilestones,
+  getNextMilestoneUrl,
+  getPreviousMilestoneUrl,
+} from './learning-journey-helpers';
 import {
   fetchCustomGuideRepository,
   invalidateCustomGuideRepositoryCache,
@@ -935,7 +940,20 @@ describe('fetchPackageContent path-type enrichment', () => {
 
     expect(result.content).not.toBeNull();
     expect(isJourneyCoverPage(result.content!)).toBe(false);
-    expect(result.content!.metadata.learningJourney!.currentMilestone).not.toBe(0);
+    // Regression (Cursor Bugbot on PR #1927, "Track-only guides get invalid
+    // milestone index", MEDIUM): an earlier fix synthesized currentMilestone
+    // = -1 to dodge the cover-page branch, but that sentinel leaked into
+    // every consumer that assumes a non-zero value is a real Foundations
+    // step — the docs-panel step label showed "Step -1 of N", Previous
+    // stayed disabled, and Next jumped into Foundations module 1. A
+    // track-only guide has no real Foundations position, so learningJourney
+    // must be entirely absent instead — the same, already-supported state a
+    // path with zero resolved milestones produces (see the "does not add
+    // learningJourney for path packages without milestones" case above).
+    expect(result.content!.metadata.learningJourney).toBeUndefined();
+    expect(getTotalMilestones(result.content!)).toBe(0);
+    expect(getNextMilestoneUrl(result.content!)).toBeNull();
+    expect(getPreviousMilestoneUrl(result.content!)).toBeNull();
   });
 
   // `repository-identity-authority`: without the fallback, opening the same

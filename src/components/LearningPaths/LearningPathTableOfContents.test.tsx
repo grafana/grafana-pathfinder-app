@@ -504,5 +504,23 @@ describe('LearningPathTableOfContents', () => {
       fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
       expect(await screen.findByText('1 modules')).toBeInTheDocument();
     });
+
+    // Regression (human review on PR #1927, "track-completion-member-set-
+    // divergence"): a track is a presentation ordering only, never a second
+    // completion authority (COMPLETION-MODEL.md) — the durable, path-wide
+    // percentage shown elsewhere (My Learning) can legitimately read lower
+    // than this ring's own number for the same guides, since it stays keyed
+    // to Foundations membership alone. The ring must not read as path
+    // completion; its accessible label names the active sequence instead.
+    it("scopes the progress ring's accessible label to the active sequence, not the path as a whole", async () => {
+      setCompletedSlugs(new Set(['set-up', 'seller-one']));
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      expect(await screen.findByRole('img', { name: '50% through Foundations' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+
+      expect(await screen.findByRole('img', { name: '50% through Seller' })).toBeInTheDocument();
+    });
   });
 });
