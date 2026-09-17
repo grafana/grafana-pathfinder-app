@@ -19,13 +19,7 @@ import {
 } from '../lib/user-storage';
 import { resolvePathMemberPercentages, type PathMember } from '../global-state/path-member-join';
 import { meanOfMemberPercentages } from '../lib/guide-stats';
-// Pre-existing lateral edge documented in ALLOWED_LATERAL_VIOLATIONS
-// (architecture.test.ts). This file already calls into `learning-paths`
-// via several dynamic imports — moving the badge coordinator behind a
-// stable named import keeps that surface explicit instead of hidden in
-// `await import(...)` calls scattered through the module.
-// eslint-disable-next-line no-restricted-imports
-import { markGuideCompleted } from '../learning-paths';
+import { markGuideCompleted, findPathByUrl } from '../lib/guide-completion-bridge';
 import {
   recordGuideCompletion,
   recordJourneyCompletion,
@@ -805,9 +799,7 @@ export async function markMilestoneDone(
         await journeyCompletionStorage.set(journeyBaseUrl, 100);
       }
 
-      const { getPathsData } = await import('../learning-paths');
-      const normalizedBase = journeyBaseUrl.replace(/\/+$/, '');
-      const path = getPathsData().paths.find((p) => p.url && normalizedBase === p.url.replace(/\/+$/, ''));
+      const path = findPathByUrl(journeyBaseUrl);
       if (path?.badgeId) {
         await learningProgressStorage.awardBadge(path.badgeId);
       }

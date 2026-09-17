@@ -13,14 +13,13 @@ import {
   ONLINE_PACKAGES_BOOT_BUDGET_MS,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
-// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: context-engine -> docs-retrieval
 import {
   fetchContent,
   getJourneyCompletionPercentageAsync,
   resolvePackageMilestones,
   resolvePackageNavLinks,
   derivePathSlug,
-} from '../docs-retrieval';
+} from '../lib/learning-journey-content-bridge';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { logger } from '../lib/logging';
 import { fetchDataSources } from '../lib/grafana-api';

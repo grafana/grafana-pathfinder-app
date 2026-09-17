@@ -14,7 +14,7 @@ import { getBackendSrv } from '@grafana/runtime';
 import { ContextService } from './context.service';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
-import { fetchContent, getJourneyCompletionPercentageAsync } from '../docs-retrieval';
+import { fetchContent, getJourneyCompletionPercentageAsync } from '../lib/learning-journey-content-bridge';
 
 // Mock dependencies
 jest.mock('../utils/dev-mode', () => ({
@@ -83,8 +83,8 @@ jest.mock('../lib/user-storage', () => ({
   useUserStorage: jest.fn(),
 }));
 
-// Mock docs-retrieval module
-jest.mock('../docs-retrieval', () => ({
+// Mock the learning-journey content bridge
+jest.mock('../lib/learning-journey-content-bridge', () => ({
   fetchContent: jest.fn(),
   getJourneyCompletionPercentageAsync: jest.fn(),
 }));
