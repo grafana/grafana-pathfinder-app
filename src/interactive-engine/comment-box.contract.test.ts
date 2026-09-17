@@ -875,10 +875,26 @@ describe('E2E Contract: Comment Box Attributes', () => {
       });
 
       it('reaches 100% only once every step in the block is done', async () => {
-        // Guard on the formula, NOT a state a live guided tour can paint: the box for
-        // step N is created before N is performed and destroyed when it settles, so the
-        // overlay bar tops out at (total-1)/total. See the interactive-engine anchor.
+        // After fix for #1935: the bar CAN reach 100% in a live tour because finishGuidedStep
+        // now pushes the completed step BEFORE cleanup, and the final step shows 100% briefly
+        // before the comment box is destroyed.
         const bar = await renderBar({ current: 3, total: 4, completedSteps: [0, 1, 2, 3], progress: 'performed' });
+        expect(bar.style.width).toBe('100%');
+      });
+
+      it('reaches 100% on final step before cleanup', async () => {
+        // After fix for #1935: On the final step, once it completes, the progress bar
+        // updates to 100% and is visible for ~600ms before the comment box cleanup.
+        // This test verifies the formula supports 100% when all steps are completed.
+        const bar = await renderBar({ current: 2, total: 3, completedSteps: [0, 1, 2], progress: 'performed' });
+        expect(bar.style.width).toBe('100%');
+      });
+
+      it('single-step tour shows 100% on completion', async () => {
+        // After fix for #1935: A one-step guided tour now shows 100% once the single step
+        // completes, using the same logic as the final step of a multi-step tour.
+        // DESIGN DECISION: Completing the only step means the tour is complete (100%).
+        const bar = await renderBar({ current: 0, total: 1, completedSteps: [0], progress: 'performed' });
         expect(bar.style.width).toBe('100%');
       });
 

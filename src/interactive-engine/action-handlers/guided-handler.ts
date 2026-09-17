@@ -32,7 +32,7 @@ interface ActiveListener {
 
 interface GuidedStepArbiter {
   promise: Promise<CompletionResult>;
-  settle: (result: CompletionResult, beforeSettle?: () => void) => CompletionResult;
+  settle: (result: CompletionResult, beforeSettle?: () => void) => Promise<CompletionResult>;
   getResult: () => CompletionResult | null;
 }
 
@@ -97,7 +97,7 @@ export class GuidedHandler {
     );
   }
 
-  private createGuidedStepArbiter(): GuidedStepArbiter {
+  private createGuidedStepArbiter(stepIndex: number, totalSteps: number): GuidedStepArbiter {
     let result: CompletionResult | null = null;
     let resolvePromise!: (result: CompletionResult) => void;
     const promise = new Promise<CompletionResult>((resolve) => {
@@ -106,7 +106,7 @@ export class GuidedHandler {
 
     return {
       promise,
-      settle: (nextResult, beforeSettle) => {
+      settle: async (nextResult, beforeSettle) => {
         if (result !== null) {
           return result;
         }
@@ -118,6 +118,43 @@ export class GuidedHandler {
           logger.error('Guided completion callback failed', { error });
           result = 'error';
         }
+
+        // On the final step with a successful result, show 100% progress briefly before cleanup
+        // DESIGN DECISION: Single-step tours (totalSteps === 1) also show 100% on completion,
+        // defaulting to "completing the only step means the tour is complete" semantics.
+        // Reviewers should confirm this is the desired behavior. Alternatives considered:
+        // - Show 50% while in progress (but 0% → 50% → cleanup feels jarring)
+        // - Hide the progress bar entirely for single-step tours
+        const isFinalStep = stepIndex === totalSteps - 1;
+        const isSuccessfulCompletion = result === 'completed' || result === 'skipped';
+
+        if (isFinalStep && isSuccessfulCompletion) {
+          const progressBarUpdated = this.updateProgressBarTo100();
+          if (progressBarUpdated) {
+            // Wait for the configured delay to let the user see 100% completion
+            // Make this cancellable - if the step is aborted during the delay, resolve immediately
+            await new Promise<void>((resolveDelay) => {
+              const delayTimeoutId = setTimeout(() => {
+                resolveDelay();
+              }, INTERACTIVE_CONFIG.guided.progressBarCompletionDelayMs);
+              this.pendingTimeouts.push(delayTimeoutId);
+
+              // If already aborted, resolve immediately
+              if (this.currentAbortController?.signal.aborted) {
+                clearTimeout(delayTimeoutId);
+                resolveDelay();
+              } else {
+                // Listen for abort during the delay
+                const handleAbort = () => {
+                  clearTimeout(delayTimeoutId);
+                  resolveDelay();
+                };
+                this.currentAbortController?.signal.addEventListener('abort', handleAbort, { once: true });
+              }
+            });
+          }
+        }
+
         resolvePromise(result);
         return result;
       },
@@ -132,7 +169,7 @@ export class GuidedHandler {
     timeout: number,
     onActionCompleted?: () => void
   ): Promise<CompletionResult> {
-    const arbiter = this.createGuidedStepArbiter();
+    const arbiter = this.createGuidedStepArbiter(stepIndex, totalSteps);
 
     try {
       this.cleanupListeners();
@@ -192,12 +229,16 @@ export class GuidedHandler {
       } else if (settledResult !== 'error') {
         logger.warn(`Guided step ${stepIndex + 1} settled before setup failed`, { error, result: settledResult });
       }
-      const result = settledResult ?? arbiter.settle('error');
+      const result = settledResult ?? (await arbiter.settle('error'));
       return this.finishGuidedStep(result, stepIndex);
     }
   }
 
   private finishGuidedStep(result: CompletionResult, stepIndex: number): CompletionResult {
+    // Push to completedSteps FIRST before cleanup so the progress bar can reflect the completion
+    if ((result === 'completed' || result === 'skipped') && !this.completedSteps.includes(stepIndex)) {
+      this.completedSteps.push(stepIndex);
+    }
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;
@@ -206,9 +247,6 @@ export class GuidedHandler {
       this.cleanupListeners(true);
     } catch (error) {
       logger.error('Guided cleanup failed', { error });
-    }
-    if ((result === 'completed' || result === 'skipped') && !this.completedSteps.includes(stepIndex)) {
-      this.completedSteps.push(stepIndex);
     }
     return result;
   }
@@ -224,7 +262,7 @@ export class GuidedHandler {
     timeout: number
   ): Promise<CompletionResult> {
     this.cleanupListeners();
-    const arbiter = this.createGuidedStepArbiter();
+    const arbiter = this.createGuidedStepArbiter(stepIndex, totalSteps);
     this.currentAbortController = new AbortController();
     const signal = this.currentAbortController.signal;
     if (action.isSkippable) {
@@ -232,9 +270,9 @@ export class GuidedHandler {
     }
     this.createCancelListener(stepIndex, arbiter);
     const completionPromise = this.createNoopCompletionListener(stepIndex, timeout);
-    void completionPromise.then((result) => arbiter.settle(result));
+    void completionPromise.then((result) => void arbiter.settle(result));
     const handleAbort = () => {
-      arbiter.settle('cancelled');
+      void arbiter.settle('cancelled');
     };
     signal.addEventListener('abort', handleAbort, { once: true });
     this.activeListeners.push({
@@ -638,7 +676,7 @@ export class GuidedHandler {
     if (actionType === 'button' || actionType === 'highlight') {
       const target = parseTargetState(action.targetState);
       if (target && satisfiesTargetState(resolveStateSource(targetElement, target), target) === true) {
-        arbiter.settle('completed');
+        void arbiter.settle('completed');
         return;
       }
     }
@@ -654,17 +692,17 @@ export class GuidedHandler {
       onActionCompleted
     );
     void completionPromise.then(
-      (result) => arbiter.settle(result),
+      (result) => void arbiter.settle(result),
       (error) => {
         logger.error('Guided completion listener failed', { error });
-        arbiter.settle('error');
+        void arbiter.settle('error');
       }
     );
 
-    const timeoutId = setTimeout(() => arbiter.settle('timeout'), timeout);
+    const timeoutId = setTimeout(() => void arbiter.settle('timeout'), timeout);
     this.pendingTimeouts.push(timeoutId);
     const handleAbort = () => {
-      arbiter.settle('cancelled');
+      void arbiter.settle('cancelled');
     };
     signal.addEventListener('abort', handleAbort, { once: true });
     this.activeListeners.push({
@@ -679,7 +717,7 @@ export class GuidedHandler {
     const handleSkip = (event: Event) => {
       const customEvent = event as CustomEvent<{ stepIndex: number }>;
       if (customEvent.detail.stepIndex === stepIndex) {
-        arbiter.settle('skipped');
+        void arbiter.settle('skipped');
       }
     };
 
@@ -695,12 +733,12 @@ export class GuidedHandler {
     const handleCancel = (event: Event) => {
       const customEvent = event as CustomEvent<{ stepIndex: number }>;
       if (customEvent.detail.stepIndex === stepIndex) {
-        arbiter.settle('cancelled');
+        void arbiter.settle('cancelled');
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        arbiter.settle('cancelled');
+        void arbiter.settle('cancelled');
       }
     };
 
@@ -819,11 +857,11 @@ export class GuidedHandler {
         }
         resolve(result);
       };
-      const complete = () => {
+      const complete = async () => {
         if (isResolved) {
           return;
         }
-        cleanup(arbiter.settle('completed', onActionCompleted));
+        cleanup(await arbiter.settle('completed', onActionCompleted));
       };
       rectUpdateInterval = setInterval(() => {
         if (!element.isConnected) {
@@ -843,7 +881,7 @@ export class GuidedHandler {
         const isTargetOrChild = element === clickedElement || element.contains(clickedElement);
 
         if (isTargetOrChild) {
-          complete();
+          void complete();
           return;
         }
 
@@ -862,7 +900,7 @@ export class GuidedHandler {
           if (element.isConnected) {
             element.click();
           }
-          complete();
+          void complete();
         }
       };
 
@@ -1125,6 +1163,20 @@ export class GuidedHandler {
       this.navigationManager.clearAllHighlights();
     }
   }
+  /**
+   * Update the progress bar directly to 100% via DOM manipulation
+   * Used on the final step to show completion before cleanup
+   * @returns true if the progress bar was found and updated, false otherwise
+   */
+  private updateProgressBarTo100(): boolean {
+    const progressBar = document.querySelector('.interactive-comment-progress-bar') as HTMLElement | null;
+    if (!progressBar) {
+      return false;
+    }
+    progressBar.style.width = '100%';
+    return true;
+  }
+
   cancel(): void {
     if (this.currentAbortController) {
       this.currentAbortController.abort();

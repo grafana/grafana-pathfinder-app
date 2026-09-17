@@ -513,4 +513,324 @@ describe('GuidedHandler', () => {
       expect(handler).toBeDefined();
     });
   });
+
+  describe('Progress bar completion delay behavior', () => {
+    let progressBar: HTMLElement;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      document.body.innerHTML = '<button id="target">Click me</button>';
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        // Create a progress bar in the DOM when highlightWithComment is called
+        progressBar = document.createElement('div');
+        progressBar.className = 'interactive-comment-progress-bar';
+        progressBar.style.width = '0%';
+        document.body.appendChild(progressBar);
+      });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+      guidedHandler.cancel();
+    });
+
+    it('sets progress bar to 100% on final step completion before cleanup', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      // Execute final step (stepIndex=1, totalSteps=2)
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+        },
+        1, // Final step (stepIndex = 1)
+        2, // Total steps = 2
+        5000
+      );
+
+      // Wait for async setup to complete (highlightWithComment called, progress bar created)
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the click to complete the step
+      button.click();
+
+      // Wait for click handler async operations to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Verify progress bar was set to 100%
+      expect(progressBar.style.width).toBe('100%');
+
+      // Verify cleanup hasn't happened yet
+      expect(mockNavigationManager.clearAllHighlights).not.toHaveBeenCalled();
+
+      // Complete the delay
+      await jest.advanceTimersByTimeAsync(600);
+
+      // Now cleanup should have been called
+      await completionPromise;
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
+
+    it('delays cleanup until after ~600ms on final step', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+        },
+        1, // Final step
+        2, // Total steps
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the click
+      button.click();
+
+      // Wait for click handler async operations
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Verify clearAllHighlights has NOT been called yet
+      expect(mockNavigationManager.clearAllHighlights).not.toHaveBeenCalled();
+
+      // Advance by partial delay
+      await jest.advanceTimersByTimeAsync(300);
+      expect(mockNavigationManager.clearAllHighlights).not.toHaveBeenCalled();
+
+      // Complete the delay (600ms total)
+      await jest.advanceTimersByTimeAsync(300);
+
+      // Wait for completion
+      await completionPromise;
+
+      // Now cleanup should have been called
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
+
+    it('resolves immediately when cancelled during the 600ms delay', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+        },
+        1, // Final step
+        2, // Total steps
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the click
+      button.click();
+
+      // Wait for click handler async operations
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Cancel during the delay
+      guidedHandler.cancel();
+
+      // Wait for cancel to propagate
+      await jest.advanceTimersByTimeAsync(0);
+
+      // The completion promise should resolve
+      const result = await completionPromise;
+      expect(result).toBe('completed');
+
+      // Verify cleanup was called
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
+
+    it('shows 100% on single-step tour completion', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Only step',
+        },
+        0, // stepIndex = 0
+        1, // totalSteps = 1 (single-step tour)
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the click
+      button.click();
+
+      // Wait for click handler async operations
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Verify progress bar was set to 100% (single step is final step)
+      expect(progressBar.style.width).toBe('100%');
+
+      // Complete the delay
+      await jest.advanceTimersByTimeAsync(600);
+
+      // Verify completion
+      const result = await completionPromise;
+      expect(result).toBe('completed');
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
+
+    it('does NOT delay cleanup for non-final steps', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'First step',
+        },
+        0, // stepIndex = 0 (NOT final)
+        3, // totalSteps = 3
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the click
+      button.click();
+
+      // Wait for click handler async operations
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Non-final step should NOT set progress to 100%
+      // Progress bar stays at initial value
+      expect(progressBar.style.width).toBe('0%');
+
+      // Wait for completion (should be immediate after click, no delay)
+      const result = await completionPromise;
+      expect(result).toBe('completed');
+
+      // Cleanup should have been called immediately, without waiting for delay
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
+
+    it('skipped final step also shows 100% briefly before cleanup', async () => {
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        // Create progress bar
+        progressBar = document.createElement('div');
+        progressBar.className = 'interactive-comment-progress-bar';
+        progressBar.style.width = '50%';
+        document.body.appendChild(progressBar);
+      });
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+          isSkippable: true,
+        },
+        2, // Final step
+        3, // Total steps
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the skip event
+      document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 2 } }));
+
+      // Wait for skip handler async operations
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Verify progress bar was set to 100% even though skipped
+      expect(progressBar.style.width).toBe('100%');
+
+      // Complete the delay
+      await jest.advanceTimersByTimeAsync(600);
+
+      // Verify completion as skipped
+      const result = await completionPromise;
+      expect(result).toBe('skipped');
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
+
+    it('does NOT show 100% or delay for error results', async () => {
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        // Create progress bar
+        progressBar = document.createElement('div');
+        progressBar.className = 'interactive-comment-progress-bar';
+        progressBar.style.width = '66%';
+        document.body.appendChild(progressBar);
+        // Throw an error
+        throw new Error('Test error');
+      });
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+        },
+        1, // Final step
+        2, // Total steps
+        5000
+      );
+
+      // Wait for async operations to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Complete
+      const result = await completionPromise;
+      expect(result).toBe('error');
+
+      // Verify progress bar was NOT set to 100% (error case)
+      expect(progressBar.style.width).toBe('66%');
+
+      // Cleanup should happen immediately without delay
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
+
+    it('handles missing progress bar gracefully without crashing', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        // Do NOT create a progress bar - simulate DOM missing the element
+      });
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+        },
+        1, // Final step
+        2, // Total steps
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the click
+      button.click();
+
+      // Wait for click handler and fast-forward through delay
+      await jest.advanceTimersByTimeAsync(0);
+      await jest.advanceTimersByTimeAsync(700);
+
+      // Should complete without crashing
+      const result = await completionPromise;
+      expect(result).toBe('completed');
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
+  });
 });

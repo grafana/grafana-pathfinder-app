@@ -144,6 +144,7 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
     retryInterval: 2000, // Retry interval when element not found (ms)
     connectivityCheckInterval: 100, // Interval to check element is still connected (ms)
     stepTimeout: 120000, // Default timeout for guided step completion (2 minutes)
+    progressBarCompletionDelayMs: 600, // Delay to show 100% progress bar before cleanup (ms)
   },
   // Modal detection configuration
   modal: {
