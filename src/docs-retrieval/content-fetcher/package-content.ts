@@ -308,6 +308,11 @@ export async function fetchPackageContent(
   const resolvedRepository = repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
 
   let learningJourney: LearningJourneyMetadata | undefined;
+  // Set only for a track-only member (see the isTrackOnlyMember branch
+  // below) — carries just enough for recordGuideCompletionForSurface to
+  // route its completion write through milestoneCompletionStorage under
+  // this guide's own identity, without resurrecting a fake milestone index.
+  let trackMemberBaseUrl: string | undefined;
   let contentString = result.content.content;
 
   if (needsMilestones) {
@@ -333,9 +338,12 @@ export async function fetchPackageContent(
       // N", Previous stayed disabled, and Next jumped into Foundations
       // module 1. Leaving learningJourney undefined instead — the same,
       // already-supported state a path with zero resolved milestones
-      // produces — renders this guide as a plain guide: no Foundations
-      // step label, no Previous/Next milestone arrows, and completion
-      // records it as a guide rather than a Foundations milestone.
+      // produces — renders this guide as a plain guide: no Foundations step
+      // label, no Previous/Next milestone arrows. trackMemberBaseUrl below
+      // is what keeps its completion write alive despite that (see its own
+      // doc comment in content.types.ts): without it, a second bug — this
+      // guide's completion never reaching milestoneCompletionStorage at
+      // all — would replace the one this branch fixes.
       if (!isTrackOnlyMember) {
         const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
 
@@ -372,6 +380,8 @@ export async function fetchPackageContent(
             true
           );
         }
+      } else if (baseUrlResolution && baseUrlResolution.ok) {
+        trackMemberBaseUrl = baseUrlResolution.contentUrl;
       }
     }
   }
@@ -394,6 +404,7 @@ export async function fetchPackageContent(
         // completion on the true source instead of the manifest schema default.
         ...(resolvedRepository !== undefined && { repository: resolvedRepository }),
         ...(learningJourney !== undefined && { learningJourney }),
+        ...(trackMemberBaseUrl !== undefined && { trackMemberBaseUrl }),
       },
     },
   };

@@ -97,6 +97,25 @@ export interface ContentMetadata {
    * `(guideSource, guideId)` on the true source rather than a manifest default.
    */
   repository?: string;
+
+  /**
+   * The owning path's resolved base URL, present only for a guide referenced
+   * exclusively by a Path Tracks `tracks` entry — never by `milestones`,
+   * which the RFC explicitly allows. Such a guide has no real position in
+   * `milestones`, so `learningJourney` is deliberately absent for it (no
+   * Foundations-relative navigation chrome, and no cover-page
+   * misclassification — see `fetchPackageContent`'s isTrackOnlyMember
+   * check). This field exists solely so `recordGuideCompletionForSurface`
+   * can still route its completion through the same
+   * `milestoneCompletionStorage` write a real milestone gets — keyed on
+   * this guide's own identity, not a fake milestone index — so the cover
+   * page's per-track row lock/unlock (which reads that store) sees it as
+   * done. `resolveExpectedMilestoneIds` never sees a real `milestones` list
+   * for this path, so completing this guide can never satisfy the
+   * whole-journey completion trigger (Path Tracks are not a completion
+   * authority — COMPLETION-MODEL.md decision 10).
+   */
+  trackMemberBaseUrl?: string;
 }
 
 export interface LearningJourneyMetadata {

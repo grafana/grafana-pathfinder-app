@@ -704,6 +704,90 @@ describe('surface emitter routing matrix (bundled/remote × milestone/standalone
   });
 });
 
+// Regression (Cursor Bugbot on PR #1927, "Track-only guides skip completion
+// writes", HIGH): the fix for the earlier -1 sentinel leak left
+// `learningJourney` entirely undefined for a guide referenced only by a
+// track, but `recordGuideCompletionForSurface`'s milestone-write branch
+// requires `metadata.learningJourney.baseUrl` — so that guide's completion
+// silently reached neither `milestoneCompletionStorage` (App Platform: the
+// standalone-guide fallback's `type === 'path'` bail, meant for the cover
+// page, caught it too) nor anything durable (bundled: it fell into
+// `setJourneyCompletionPercentage` keyed on the guide's OWN url, not the
+// journey's). `trackMemberBaseUrl` (content.types.ts) restores the write
+// through the guide's own identity — its own URL-derived slug — without
+// resurrecting a fake milestone index or number.
+describe('track-only guide completion (Path Tracks RFC — no learningJourney, no fake milestone index)', () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("writes to milestoneCompletionStorage under the guide's own identity via trackMemberBaseUrl, with no learningJourney", async () => {
+    recordGuideCompletionForSurface({
+      baseUrl: 'https://ex/track-only',
+      contentUrl: 'https://ex/track-only',
+      currentUrl: 'https://ex/track-only/content.json',
+      contentType: 'interactive',
+      metadata: {
+        title: '',
+        packageManifest: { id: 'the-path', repository: 'app-platform', type: 'path' },
+        trackMemberBaseUrl: 'https://ex/lp/the-path/',
+      },
+      guideTitle: 'Track-only guide',
+    });
+    await flush();
+
+    expect(milestoneMarkCompletedMock).toHaveBeenCalledWith('https://ex/lp/the-path/', 'track-only');
+    const guide = emitted.filter((f) => f.kind === 'guide');
+    expect(guide).toHaveLength(1);
+    expect(guide[0]).toMatchObject({ guideId: 'track-only', guideCategory: 'learning-journey' });
+    expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(0);
+  });
+
+  it('never triggers whole-journey/path completion, however much progress is already stored (no learningJourney means no expected set)', async () => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['track-only']));
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'the-path', title: 'The Path', url: 'https://ex/lp/the-path/', badgeId: 'the-path-badge' }],
+    });
+
+    recordGuideCompletionForSurface({
+      baseUrl: 'https://ex/track-only',
+      contentUrl: 'https://ex/track-only',
+      currentUrl: 'https://ex/track-only/content.json',
+      contentType: 'interactive',
+      metadata: {
+        title: '',
+        packageManifest: { id: 'the-path', repository: 'app-platform', type: 'path' },
+        trackMemberBaseUrl: 'https://ex/lp/the-path/',
+      },
+      guideTitle: 'Track-only guide',
+    });
+    await flush();
+
+    expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(0);
+    expect(awardBadgeMock).not.toHaveBeenCalled();
+  });
+
+  it('bundled track-only guide also writes through milestoneCompletionStorage', async () => {
+    recordGuideCompletionForSurface({
+      baseUrl: 'bundled:track-only',
+      contentUrl: 'bundled:track-only',
+      currentUrl: 'bundled:track-only/content.json',
+      contentType: 'interactive',
+      metadata: {
+        title: '',
+        packageManifest: { id: 'the-path', repository: 'bundled', type: 'path' },
+        trackMemberBaseUrl: 'bundled:the-path/content.json',
+      },
+      guideTitle: 'Track-only guide',
+    });
+    await flush();
+
+    // getMilestoneSlug has no special-case for the `bundled:` scheme (only
+    // `backend-guide:`), so the slug includes the prefix — the same shape a
+    // real bundled milestone's own slug takes; reader and writer agree
+    // either way since both go through this one function.
+    expect(milestoneMarkCompletedMock).toHaveBeenCalledWith('bundled:the-path/content.json', 'bundled:track-only');
+  });
+});
+
 describe('milestone opened directly (surface base is the milestone, not the journey cover)', () => {
   const COVER = 'https://ex/lp/linux/';
   const MILESTONE = 'https://ex/lp/linux/install-alloy/content.json';

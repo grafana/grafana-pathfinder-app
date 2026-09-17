@@ -657,7 +657,16 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
   // Two distinct keys: the surface base a tab happens to be pinned at, and the
   // journey's resolved cover URL that milestone progress is stored under.
   const surfaceBase = baseUrl || contentUrl;
-  const journeyBase = metadata?.learningJourney?.baseUrl;
+  // trackMemberBaseUrl fallback: a guide referenced only by a Path Tracks
+  // `tracks` entry (never by `milestones`) carries no `learningJourney` — see
+  // its doc comment in content.types.ts — but still needs its completion
+  // routed through milestoneCompletionStorage under its own identity, the
+  // same store the cover page's per-track row lock/unlock reads.
+  // resolveExpectedMilestoneIds(metadata?.learningJourney) below safely
+  // returns [] with no `learningJourney`, so this can never satisfy
+  // markMilestoneDone's whole-journey completion trigger (COMPLETION-MODEL.md
+  // decision 10: a track is never a second completion authority).
+  const journeyBase = metadata?.learningJourney?.baseUrl ?? metadata?.trackMemberBaseUrl;
   const slug = resolveActiveMilestoneSlug({ currentUrl, journeyBaseUrl: journeyBase }) ?? '';
   const willMarkMilestone = Boolean(slug && journeyBase);
   const completionContext: CompletionContext = {

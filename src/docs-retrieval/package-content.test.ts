@@ -954,6 +954,12 @@ describe('fetchPackageContent path-type enrichment', () => {
     expect(getTotalMilestones(result.content!)).toBe(0);
     expect(getNextMilestoneUrl(result.content!)).toBeNull();
     expect(getPreviousMilestoneUrl(result.content!)).toBeNull();
+    // Regression (Cursor Bugbot on PR #1927, "Track-only guides skip
+    // completion writes", HIGH): with no learningJourney, this is what lets
+    // recordGuideCompletionForSurface still route this guide's completion
+    // through milestoneCompletionStorage under its own identity — the path's
+    // own resolved base URL, not this guide's own contentUrl.
+    expect(result.content!.metadata.trackMemberBaseUrl).toBe('bundled:test-path/content.json');
   });
 
   // `repository-identity-authority`: without the fallback, opening the same
