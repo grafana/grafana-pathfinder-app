@@ -68,7 +68,13 @@ test('correlates private and CDN failures with committed rendering without leaki
       ? route.fulfill({ status: 200, contentType: 'text/html', body: '<p>Recovered CDN fixture</p>' })
       : route.fulfill({ status: 404, body: 'Not found' })
   );
-  await page.goto('/a/grafana-pathfinder-app/docs?doc=api:private-missing');
+  await page.goto('/');
+  await page.waitForFunction(() => Boolean(window.__pathfinderPluginConfig), undefined, {
+    timeout: TIMEOUTS.UI_READY,
+  });
+  const helpButton = page.getByRole('button', { name: 'Help', exact: true });
+  await expect(helpButton).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+  await helpButton.click();
   await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
 
   const openGuide = async (url: string) => {
@@ -87,6 +93,7 @@ test('correlates private and CDN failures with committed rendering without leaki
     );
   };
   const outcomes = () => events.filter((event) => event.name === 'pathfinder_guide_render');
+  await openGuide('backend-guide:private-missing');
   await expect(page.getByText('Unable to load documentation')).toBeVisible();
   await expect.poll(() => outcomes().some((event) => event.attributes.http_status === '404')).toBe(true);
   await openGuide('backend-guide:private-invalid');
