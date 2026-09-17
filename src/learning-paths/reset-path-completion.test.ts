@@ -394,7 +394,7 @@ describe('resetPath — sibling path isolation (regression for #1928)', () => {
     const interactives = await interactiveCompletionStorage.getAll();
     // Both variants of alerting cleared
     expect(ALERTING_URL in interactives).toBe(false);
-    expect((ALERTING_URL + '/') in interactives).toBe(false);
+    expect(ALERTING_URL + '/' in interactives).toBe(false);
     // Both variants of alerting-advanced preserved
     expect(interactives[ALERTING_ADVANCED_URL]).toBe(100);
     expect(interactives[ALERTING_ADVANCED_URL + '/']).toBe(50);
