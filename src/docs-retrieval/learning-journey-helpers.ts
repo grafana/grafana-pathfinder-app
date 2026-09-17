@@ -223,6 +223,20 @@ export function journeyMilestonePercentages(
 }
 
 /**
+ * The mean-of-members half of {@link journeyProgressFromMilestones}, taking
+ * an already-resolved {@link journeyMilestonePercentages} result — so a
+ * caller that needs both the per-milestone percentages and their mean (the
+ * cover page) can call `journeyMilestonePercentages` once and derive both,
+ * rather than computing it twice (once directly, once inside
+ * `journeyProgressFromMilestones`).
+ */
+export function percentagesToProgress(percentages: readonly MilestonePercentage[]): number {
+  const resolvedPercentages = percentages.flatMap(({ percent }) => (percent === undefined ? [] : [percent]));
+
+  return meanOfMemberPercentages(resolvedPercentages).percent;
+}
+
+/**
  * The shared calculation behind {@link getJourneyProgress}, taking the
  * journey's own identity rather than a full `RawContent` — so the cover
  * page (`LearningPathTableOfContents`, which has `milestones` and `baseUrl`
@@ -231,11 +245,7 @@ export function journeyMilestonePercentages(
  * for the same journey on adjacent screens.
  */
 export function journeyProgressFromMilestones(baseUrl: string, milestones: readonly Milestone[]): number {
-  const resolvedPercentages = journeyMilestonePercentages(baseUrl, milestones).flatMap(({ percent }) =>
-    percent === undefined ? [] : [percent]
-  );
-
-  return meanOfMemberPercentages(resolvedPercentages).percent;
+  return percentagesToProgress(journeyMilestonePercentages(baseUrl, milestones));
 }
 
 /**

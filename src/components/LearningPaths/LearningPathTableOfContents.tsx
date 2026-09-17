@@ -4,7 +4,7 @@ import { t } from '@grafana/i18n';
 
 import type { Milestone } from '../../types/content.types';
 import type { PathGuide } from '../../types/learning-paths.types';
-import { journeyMilestonePercentages, journeyProgressFromMilestones } from '../../docs-retrieval';
+import { journeyMilestonePercentages, percentagesToProgress } from '../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../global-state/progress-events';
 import { testIds } from '../../constants/testIds';
 import { getBadgeForPath } from '../../learning-paths';
@@ -40,14 +40,14 @@ export function LearningPathTableOfContents({
   useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
 
   // The shared per-milestone calculation (docs/design/COMPLETION-MODEL.md,
-  // decision 4/9): the same numbers `journeyProgressFromMilestones` below is
-  // the mean of, so the checkmarks here and the sidebar milestone bar never
-  // disagree about which milestones are done. Synchronous, so there is no
-  // "progress not loaded yet" window the CTA/click target could race.
+  // decision 4/9): the same numbers `progress` below is the mean of, so the
+  // checkmarks here and the sidebar milestone bar never disagree about which
+  // milestones are done. Synchronous, so there is no "progress not loaded
+  // yet" window the CTA/click target could race. Computed once and reused
+  // for `progress` below rather than calling it a second time.
+  const milestonePercentages = journeyMilestonePercentages(baseUrl, milestones);
   const completedUrls = new Set(
-    journeyMilestonePercentages(baseUrl, milestones)
-      .filter(({ percent }) => percent === 100)
-      .map(({ milestone }) => milestone.url)
+    milestonePercentages.filter(({ percent }) => percent === 100).map(({ milestone }) => milestone.url)
   );
 
   // "Get started" targets the first unlocked milestone at 0% progress; once
@@ -78,7 +78,7 @@ export function LearningPathTableOfContents({
   // different numbers for the same journey. A reader who only navigated
   // without completing anything sees this at 0%, honestly, even after
   // visiting every milestone.
-  const progress = journeyProgressFromMilestones(baseUrl, milestones);
+  const progress = percentagesToProgress(milestonePercentages);
 
   const ctaTarget = cursor >= 0 ? milestones[cursor] : undefined;
   const ctaLabel = progress === 0 ? t('coverPage.getStarted', 'Get started') : t('coverPage.resume', 'Resume');
