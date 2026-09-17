@@ -194,7 +194,7 @@ export class GuidedHandler {
         logger.warn(`Guided step ${stepIndex + 1} uses an action the guided handler cannot drive`, {
           targetAction: action.targetAction,
         });
-        return this.finishGuidedStep(arbiter.settle(action.isSkippable ? 'skipped' : 'error'), stepIndex);
+        return this.finishGuidedStep(await arbiter.settle(action.isSkippable ? 'skipped' : 'error'), stepIndex);
       }
 
       const refTarget = action.refTarget;
