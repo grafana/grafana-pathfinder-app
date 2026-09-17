@@ -38,7 +38,10 @@ import {
   isTestFile,
   assertRatchet,
   buildModuleGraph,
+  findOrphanedModules,
+  getOffGraphImportedNodes,
   collectSourceFiles,
+  collectOffGraphImporterFiles,
   loadTsconfigPaths,
   readJsoncFile,
   stripJsonComments,
@@ -122,6 +125,21 @@ describe('extractRelativeImports', () => {
       `import { real } from './actual';`,
     ].join('\n');
     expect(extractRelativeImports(content)).toEqual(['./actual']);
+  });
+
+  it('includes a type-only import by default', () => {
+    const content = `import type { Config } from './types';`;
+    expect(extractRelativeImports(content)).toEqual(['./types']);
+  });
+
+  it('drops a type-only import when excludeTypeOnly is set', () => {
+    const content = `import type { Config } from './types';`;
+    expect(extractRelativeImports(content, undefined, { excludeTypeOnly: true })).toEqual([]);
+  });
+
+  it('keeps a mixed value/type import when excludeTypeOnly is set, since one value usage makes the whole edge live', () => {
+    const content = [`import { useConfig } from './config';`, `import type { Config } from './config';`].join('\n');
+    expect(extractRelativeImports(content, undefined, { excludeTypeOnly: true })).toEqual(['./config']);
   });
 });
 
@@ -443,6 +461,26 @@ describe('collectSourceFiles', () => {
   });
 });
 
+describe('collectOffGraphImporterFiles', () => {
+  const offGraphFiles = collectOffGraphImporterFiles();
+
+  it('returns source files that collectSourceFiles never walks', () => {
+    const sourceFiles = new Set(collectSourceFiles());
+    expect(offGraphFiles.length).toBeGreaterThan(0);
+    for (const file of offGraphFiles) {
+      expect(file).toMatch(/\.(ts|tsx)$/);
+      expect(file.endsWith('.d.ts')).toBe(false);
+      expect(sourceFiles.has(file)).toBe(false);
+    }
+  });
+
+  it('reaches nested files under src/cli and under the repo-root tests/ tree', () => {
+    const relative = offGraphFiles.map((file) => toPosixPath(path.relative(REPO_ROOT, file)));
+    expect(relative).toContain('src/cli/commands/validate.ts');
+    expect(relative).toContain('tests/helpers/completion.helpers.ts');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // path normalization helpers
 // ---------------------------------------------------------------------------
@@ -636,6 +674,68 @@ describe('buildModuleGraph', () => {
     for (const [node, edges] of graph.adjacency) {
       expect(edges.has(node)).toBe(false);
     }
+  });
+});
+
+describe('findOrphanedModules', () => {
+  it('reaches every node forward from the given roots and reports nothing orphaned', () => {
+    const graph = graphFromAdjacency({ root: ['a'], a: ['b'], b: [] });
+    expect(findOrphanedModules(graph, ['root'], [])).toEqual({ orphaned: [], offGraphReachable: [] });
+  });
+
+  it('reports a node no root and no off-graph importer reaches as orphaned', () => {
+    const graph = graphFromAdjacency({ root: ['a'], a: [], dead: [] });
+    expect(findOrphanedModules(graph, ['root'], [])).toEqual({ orphaned: ['dead'], offGraphReachable: [] });
+  });
+
+  it('classifies a node reached only via an off-graph import as offGraphReachable, not orphaned', () => {
+    const graph = graphFromAdjacency({ root: ['a'], a: [], offGraph: [] });
+    expect(findOrphanedModules(graph, ['root'], ['offGraph'])).toEqual({
+      orphaned: [],
+      offGraphReachable: ['offGraph'],
+    });
+  });
+
+  it('follows edges transitively from an off-graph-reached node into other unreached nodes', () => {
+    // offGraph -> chained: chained has no direct off-graph importer, but is only
+    // reachable once offGraph is treated as a root, so it joins the same bucket.
+    const graph = graphFromAdjacency({ root: ['a'], a: [], offGraph: ['chained'], chained: [] });
+    expect(findOrphanedModules(graph, ['root'], ['offGraph']).offGraphReachable.sort()).toEqual([
+      'chained',
+      'offGraph',
+    ]);
+  });
+
+  it('ignores an off-graph-imported node that the app already reaches', () => {
+    const graph = graphFromAdjacency({ root: ['a'], a: [] });
+    expect(findOrphanedModules(graph, ['root'], ['a'])).toEqual({ orphaned: [], offGraphReachable: [] });
+  });
+
+  it('orphans every app node when the entry root matches nothing, rather than reporting a clean scan', () => {
+    const graph = graphFromAdjacency({ renamed: ['a'], a: ['b'], b: [], offGraph: [] });
+    expect(findOrphanedModules(graph, ['module.tsx'], ['offGraph'])).toEqual({
+      orphaned: ['a', 'b', 'renamed'],
+      offGraphReachable: ['offGraph'],
+    });
+  });
+});
+
+describe('getOffGraphImportedNodes', () => {
+  const offGraphNodes = getOffGraphImportedNodes();
+
+  it('resolves imports made from a test file', () => {
+    // Sole off-graph importer: src/validation/unicode-format-characters.test.ts.
+    expect(offGraphNodes).toContain('validation/unicode-format-characters.ts');
+  });
+
+  it('resolves imports made from src/cli tooling, which collectSourceFiles never walks', () => {
+    // Sole off-graph importer: src/cli/commands/build-snippets.ts.
+    expect(offGraphNodes).toContain('validation/guided-action-validator.ts');
+  });
+
+  it('resolves imports made from the repo-root tests/ tree', () => {
+    // Sole off-graph importer: tests/helpers/completion.helpers.ts.
+    expect(offGraphNodes).toContain('completion-records/completion-write-timing.ts');
   });
 });
 
