@@ -63,6 +63,19 @@ export function LearningPathTableOfContents({
 
   const hasTracks = tracks !== undefined && tracks.length > 0;
   const [activeTabId, setActiveTabId] = useState<string>(FOUNDATIONS_TAB_ID);
+  // Adjusting state during render (same React-endorsed reset pattern as
+  // loadedForMilestones below): baseUrl is this path's own identity, so
+  // navigating to a DIFFERENT path resets the tab selection back to
+  // Foundations. Without this, activeTabId survives across paths — there is
+  // no remount key between them, content-renderer.tsx reuses this component
+  // instance — and a track selected on one path either shows no tab as
+  // active on the next (its trackId doesn't exist there) or, worse, silently
+  // pre-selects a same-named track on the new path the reader never clicked.
+  const [activeTabPathBaseUrl, setActiveTabPathBaseUrl] = useState(baseUrl);
+  if (activeTabPathBaseUrl !== baseUrl) {
+    setActiveTabPathBaseUrl(baseUrl);
+    setActiveTabId(FOUNDATIONS_TAB_ID);
+  }
   // Every sequential lock/unlock, progress, and time-estimate calculation
   // below reuses the exact Foundations mechanism (milestoneCompletionStorage
   // + journeyProgressFromMilestones) against whichever sequence is active —

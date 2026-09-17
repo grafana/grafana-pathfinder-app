@@ -409,6 +409,38 @@ describe('LearningPathTableOfContents', () => {
       expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'true');
     });
 
+    // Regression (human review on PR #1927, "Stale track tab across
+    // paths", MEDIUM): activeTabId was initialized once and never reset
+    // when the props changed, and there is no remount key between paths —
+    // content-renderer.tsx reuses this component instance across
+    // navigation. A track selected on one path either left no tab active
+    // on the next (its trackId doesn't exist there) or silently
+    // pre-selected a same-named track the reader never clicked.
+    it('resets the active tab to Foundations when the path changes (no remount key between paths)', async () => {
+      setCompletedSlugs(new Set());
+      const { rerender } = render(
+        <LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />
+      );
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+      expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'true');
+
+      // A different path, reusing the SAME "Builder"/"Seller" track ids and
+      // labels — the exact case where a naive reset-by-trackId-existence
+      // would silently keep a track selected instead of defaulting back to
+      // Foundations, since a track sharing the stale id exists here too.
+      const otherPathBaseUrl = 'https://grafana.com/docs/learning-paths/other-demo/';
+      const otherMilestones: Milestone[] = [
+        { number: 1, title: 'Other set up', url: `${otherPathBaseUrl}other-set-up/content.json`, isActive: false },
+      ];
+      rerender(<LearningPathTableOfContents milestones={otherMilestones} baseUrl={otherPathBaseUrl} tracks={tracks} />);
+
+      expect(screen.getByRole('tab', { name: 'Foundations' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'false');
+      expect(screen.getByText('Other set up')).toBeInTheDocument();
+      expect(screen.queryByText('Seller one')).not.toBeInTheDocument();
+    });
+
     it('shows the Foundations sequence by default, with Foundations active', async () => {
       setCompletedSlugs(new Set());
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);

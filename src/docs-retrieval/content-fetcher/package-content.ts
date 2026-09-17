@@ -321,30 +321,53 @@ export async function fetchPackageContent(
 
     if (milestones && milestones.length > 0) {
       const milestoneIndex = milestones.findIndex((m) => m.url === contentUrl);
-      // A guide referenced only by a track — never by milestones, which the
-      // RFC explicitly allows a track to do — has no milestones index, but
-      // must not be treated as "not found, so this is the cover page." Check
-      // every resolved track's own guides before falling back to that.
-      const isTrackOnlyMember =
-        milestoneIndex < 0 && tracks.some((track) => track.milestones.some((m) => m.url === contentUrl));
+      // Two independent signals, either one enough to positively rule out
+      // the cover page — because each can independently fail on its own
+      // resolve, and this load's real classification must survive either
+      // one failing alone:
+      //  1. contentUrl matches a track's own resolved guide URL. Alone,
+      //     this misclassified a track-only guide as the cover page
+      //     whenever ITS OWN re-resolve (via resolvePackageTracks, run
+      //     fresh on every applicable fetch) failed or returned a
+      //     differently-shaped URL (a locked placeholder's url is '', not
+      //     this guide's real one) — the bug the positive check below was
+      //     added to fix.
+      //  2. baseUrlResolution (this SAME request's own resolve of the
+      //     path's manifestId) succeeded and gave a URL that is NOT this
+      //     load's contentUrl. Alone, this misclassified the REAL cover
+      //     page as an unresolvable track member whenever THIS resolve
+      //     failed/rejected — since a rejected/failed resolve looks
+      //     identical to "positively confirmed not the cover" if that
+      //     absence of confirmation is read as a mismatch.
+      // Neither signal is reliable alone; together, each covers the other's
+      // failure mode. When NEITHER can confirm a track member (both
+      // resolves failed, or agree with contentUrl), this defaults to being
+      // the cover page — the same default this branch used before tracks
+      // existed.
+      const isConfirmedTrackMember =
+        milestoneIndex < 0 &&
+        (tracks.some((track) => track.milestones.some((m) => m.url === contentUrl)) ||
+          (baseUrlResolution?.ok && baseUrlResolution.contentUrl !== contentUrl));
+      const isCoverPageLoad = milestoneIndex < 0 && !isConfirmedTrackMember;
 
-      // A track-only guide isn't part of the Foundations sequence a track is
-      // layered on top of (COMPLETION-MODEL.md: a track is a presentation
-      // ordering only, not a second completion authority) — it has no real
-      // position in `milestones` to report. Earlier this synthesized a -1
-      // sentinel currentMilestone to dodge the cover-page branch below, but
-      // that sentinel leaked into every consumer that assumes any non-zero
-      // value is a real step: the docs-panel step label showed "Step -1 of
-      // N", Previous stayed disabled, and Next jumped into Foundations
-      // module 1. Leaving learningJourney undefined instead — the same,
-      // already-supported state a path with zero resolved milestones
-      // produces — renders this guide as a plain guide: no Foundations step
-      // label, no Previous/Next milestone arrows. trackMemberBaseUrl below
-      // is what keeps its completion write alive despite that (see its own
-      // doc comment in content.types.ts): without it, a second bug — this
+      // A guide that is neither a milestone nor the cover page isn't part of
+      // the Foundations sequence a track is layered on top of
+      // (COMPLETION-MODEL.md: a track is a presentation ordering only, not a
+      // second completion authority) — it has no real position in
+      // `milestones` to report. Earlier this synthesized a -1 sentinel
+      // currentMilestone to dodge the cover-page branch below, but that
+      // sentinel leaked into every consumer that assumes any non-zero value
+      // is a real step: the docs-panel step label showed "Step -1 of N",
+      // Previous stayed disabled, and Next jumped into Foundations module 1.
+      // Leaving learningJourney undefined instead — the same, already-
+      // supported state a path with zero resolved milestones produces —
+      // renders this guide as a plain guide: no Foundations step label, no
+      // Previous/Next milestone arrows. trackMemberBaseUrl below is what
+      // keeps its completion write alive despite that (see its own doc
+      // comment in content.types.ts): without it, a second bug — this
       // guide's completion never reaching milestoneCompletionStorage at
       // all — would replace the one this branch fixes.
-      if (!isTrackOnlyMember) {
+      if (milestoneIndex >= 0 || isCoverPageLoad) {
         const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
 
         let baseUrl = contentUrl;

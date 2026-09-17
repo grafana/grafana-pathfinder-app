@@ -24,7 +24,12 @@ import {
   type GuideStatsSummary,
 } from '../../lib/guide-stats';
 import { ContentJsonSchema, ManifestJsonObjectSchema } from '../../types/package.schema';
-import { getAllTrackGuideIds, getManifestMemberIds, type ManifestTrack } from '../../types/package.types';
+import {
+  getAllTrackGuideIds,
+  getManifestMemberIds,
+  getManifestTracks,
+  type ManifestTrack,
+} from '../../types/package.types';
 import { readJsonFile } from '../../validation/package-io';
 import { defineCommand } from '../contracts';
 import { resolveCliPath } from '../utils/file-loader';
@@ -105,14 +110,15 @@ export async function buildStats(
     return result;
   }
 
-  collectMilestoneStructureErrors(ordered, packages, result.errors);
+  const closureCache = new Map<string, ReadonlySet<string>>();
+  collectMilestoneStructureErrors(ordered, packages, result.errors, closureCache);
 
   const resolved = new Map<string, GuideStatsSummary>();
   const failed = new Set<string>();
   const pending: Array<{ pkg: DiscoveredPackage; stats: GuideStatsSummary }> = [];
 
   for (const pkg of ordered) {
-    const stats = resolveStats(pkg, packages, resolved, failed, [], result.errors);
+    const stats = resolveStats(pkg, packages, resolved, failed, [], result.errors, closureCache);
     if (stats) {
       pending.push({ pkg, stats });
     }
@@ -195,10 +201,11 @@ function readPackage(root: string, packageDir: string): PackageReadOutcome {
  * Stats for one package, recursing into its members first.
  *
  * A path or journey rolls up as its own body followed by its members —
- * `milestones` plus every guide referenced by any `tracks` entry, deduplicated
- * via `getManifestMemberIds` so a guide named by both counts once. Recursing
- * depth-first is what guarantees members are measured before their parents;
- * `resolved` memoizes so a member shared by two paths is measured once.
+ * `milestones` plus every guide referenced by any `tracks` entry not already
+ * inside one of those milestones' own subtree (`resolveOwnMemberIds`).
+ * Recursing depth-first is what guarantees members are measured before their
+ * parents; `resolved` memoizes so a member shared by two paths is measured
+ * once.
  *
  * A member missing from the tree is a hard error, knowingly stricter than
  * `build-graph` (warns on an unresolvable milestone/track entry),
@@ -214,7 +221,8 @@ function resolveStats(
   resolved: Map<string, GuideStatsSummary>,
   failed: Set<string>,
   ancestry: readonly string[],
-  errors: string[]
+  errors: string[],
+  closureCache: Map<string, ReadonlySet<string>>
 ): GuideStatsSummary | undefined {
   const memoized = resolved.get(pkg.id);
   if (memoized) {
@@ -237,10 +245,7 @@ function resolveStats(
   // Only a path or journey rolls up. A guide carrying a stray milestones/tracks
   // array is already an error from `collectMilestoneStructureErrors`; ignoring
   // it here keeps a wrong denominator from being computed in the meantime.
-  const members =
-    pkg.type === 'path' || pkg.type === 'journey'
-      ? getManifestMemberIds({ milestones: [...pkg.milestones], tracks: pkg.tracks })
-      : [];
+  const members = pkg.type === 'path' || pkg.type === 'journey' ? resolveOwnMemberIds(pkg, packages, closureCache) : [];
 
   for (const memberId of members) {
     const member = packages.get(memberId);
@@ -249,7 +254,7 @@ function resolveStats(
       failed.add(pkg.id);
       return undefined;
     }
-    const memberStats = resolveStats(member, packages, resolved, failed, [...ancestry, pkg.id], errors);
+    const memberStats = resolveStats(member, packages, resolved, failed, [...ancestry, pkg.id], errors, closureCache);
     if (!memberStats) {
       failed.add(pkg.id);
       return undefined;
@@ -260,6 +265,81 @@ function resolveStats(
   const stats = rollUpGuideStats(parts);
   resolved.set(pkg.id, stats);
   return stats;
+}
+
+/**
+ * A path/journey's own stats-rollup members: `milestones` (real ownership
+ * claims, always included) plus every `tracks` guide not already inside one
+ * of those milestones' own subtree. A track is a presentation ordering, never
+ * a second ownership claim (COMPLETION-MODEL.md decision 10) — a guide it
+ * names that a nested milestone already owns is that guide's normal owner
+ * being featured again on a tab, not this path's own content a second time,
+ * so summing it again here would double-count it. A guide the track names
+ * that nothing else in this path's tree already claims is still this path's
+ * own content and rolls up normally (the plain track-only-guide case).
+ */
+function resolveOwnMemberIds(
+  pkg: DiscoveredPackage,
+  packages: ReadonlyMap<string, DiscoveredPackage>,
+  closureCache: Map<string, ReadonlySet<string>>
+): string[] {
+  const milestoneIds = [...pkg.milestones];
+
+  const milestoneClosure = new Set<string>();
+  for (const milestoneId of milestoneIds) {
+    const milestone = packages.get(milestoneId);
+    if (!milestone) {
+      continue; // reported as "not found" by resolveStats's own member loop
+    }
+    for (const id of reachableClosure(milestone, packages, closureCache)) {
+      milestoneClosure.add(id);
+    }
+  }
+
+  const trackGuideIds = getAllTrackGuideIds(getManifestTracks(pkg)).filter(
+    (id) => !milestoneIds.includes(id) && !milestoneClosure.has(id)
+  );
+
+  return [...new Set([...milestoneIds, ...trackGuideIds])];
+}
+
+/**
+ * Every id transitively reachable from `pkg` via its own milestones/tracks,
+ * including `pkg.id` itself. Memoized per `buildStats` call; a cycle just
+ * stops expanding there instead of looping forever — resolveStats's own
+ * ancestry check is what turns a real cycle into a reported error, this is
+ * only a heuristic for "is this guide already someone else's content."
+ */
+function reachableClosure(
+  pkg: DiscoveredPackage,
+  packages: ReadonlyMap<string, DiscoveredPackage>,
+  cache: Map<string, ReadonlySet<string>>,
+  visiting: Set<string> = new Set()
+): ReadonlySet<string> {
+  const cached = cache.get(pkg.id);
+  if (cached) {
+    return cached;
+  }
+  if (visiting.has(pkg.id)) {
+    return new Set([pkg.id]);
+  }
+  visiting.add(pkg.id);
+
+  const closure = new Set<string>([pkg.id]);
+  if (pkg.type === 'path' || pkg.type === 'journey') {
+    for (const memberId of getManifestMemberIds({ milestones: [...pkg.milestones], tracks: pkg.tracks })) {
+      const member = packages.get(memberId);
+      if (member) {
+        for (const id of reachableClosure(member, packages, cache, visiting)) {
+          closure.add(id);
+        }
+      }
+    }
+  }
+
+  visiting.delete(pkg.id);
+  cache.set(pkg.id, closure);
+  return closure;
 }
 
 /**
@@ -329,7 +409,15 @@ function statsMatch(current: unknown, computed: GuideStatsSummary): boolean {
  * `conditional`, so it gets the same treatment: an error, not a silent dedup.
  * A guide named by both `milestones` and a track on the *same* package is not
  * this failure — it is exactly the overlap the RFC allows, and it rolls up
- * once because `resolveStats` walks the deduplicated member set.
+ * once because `resolveStats` walks the deduplicated member set. Nor is a
+ * track guide that some *nested* milestone already owns: a track is a
+ * presentation ordering, never a second ownership claim (COMPLETION-MODEL.md
+ * decision 10), so reaching an already-owned guide through a track is that
+ * guide's real owner being featured again, not a diamond — `resolveStats`
+ * excludes it from that track's own package the same way (`resolveOwnMemberIds`).
+ * Only a *milestone* reaching an already-reached guide is the real conflict:
+ * two ownership claims on one guide, which is exactly the diamond this
+ * function still refuses.
  *
  * Every defect is attributed to the package whose `milestones`/`tracks` array
  * holds it and reported exactly once, however many rollups reach that
@@ -340,7 +428,8 @@ function statsMatch(current: unknown, computed: GuideStatsSummary): boolean {
 function collectMilestoneStructureErrors(
   ordered: readonly DiscoveredPackage[],
   packages: ReadonlyMap<string, DiscoveredPackage>,
-  errors: string[]
+  errors: string[],
+  closureCache: Map<string, ReadonlySet<string>>
 ): void {
   const metapackages: DiscoveredPackage[] = [];
 
@@ -400,18 +489,18 @@ function collectMilestoneStructureErrors(
         return; // resolveStats reports the cycle
       }
       inspected.add(pkg.id);
-      const seenInList = new Set<string>();
-      // Milestones first, then track guides: a guide named by both is the
-      // RFC's allowed overlap, and `seenInList` collapses it to one visit
-      // here so it is never mistaken for a diamond below.
-      const memberIds = [...pkg.milestones, ...getAllTrackGuideIds([...pkg.tracks])];
+      // The exact same already-filtered member list `resolveStats` sums —
+      // not a separately re-derived one — so a track guide `resolveStats`
+      // excludes (because some nested milestone already owns it) is never
+      // even considered here as a second sibling to flag either. Deriving
+      // this list independently (e.g. "skip when the CURRENT reference is
+      // from a track") previously missed the case where TWO SEPARATE
+      // packages each track-reference the same otherwise-unowned guide:
+      // neither reference traces back to a real milestone, so summing both
+      // still double-counts it, and this function must still refuse that.
+      const memberIds = resolveOwnMemberIds(pkg, packages, closureCache);
 
       for (const memberId of memberIds) {
-        if (seenInList.has(memberId)) {
-          continue; // already reported against this package, or the milestones/tracks overlap
-        }
-        seenInList.add(memberId);
-
         const previous = reachedBy.get(memberId);
         if (previous !== undefined) {
           const key = JSON.stringify([pkg.id, memberId]);

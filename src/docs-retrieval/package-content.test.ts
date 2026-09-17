@@ -833,8 +833,12 @@ describe('fetchPackageContent path-type enrichment', () => {
     };
     setPackageResolver(resolver);
 
+    // manifest.id must match the loaded contentUrl's own resource name
+    // (first-dashboard is a real bundled fixture) — the cover-page check
+    // now positively resolves manifest.id and compares it against the
+    // loaded contentUrl, rather than eliminating milestones/tracks matches.
     const manifest = {
-      id: 'test-path',
+      id: 'first-dashboard',
       type: 'path',
       milestones: ['step-1', 'step-2'],
     };
@@ -867,8 +871,10 @@ describe('fetchPackageContent path-type enrichment', () => {
     };
     setPackageResolver(resolver);
 
+    // manifest.id matches the loaded contentUrl's own resource name (see
+    // the comment on the previous test) so the cover-page resolution succeeds.
     const manifest = {
-      id: 'test-path',
+      id: 'first-dashboard',
       type: 'path',
       milestones: ['step-1', 'step-2'],
       tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
@@ -899,7 +905,9 @@ describe('fetchPackageContent path-type enrichment', () => {
     };
     setPackageResolver(resolver);
 
-    const manifest = { id: 'test-path', type: 'path', milestones: ['step-1'] };
+    // manifest.id matches the loaded contentUrl's own resource name (see
+    // the comment two tests up) so the cover-page resolution succeeds.
+    const manifest = { id: 'first-dashboard', type: 'path', milestones: ['step-1'] };
     const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
 
     expect(result.content!.metadata.learningJourney!.tracks).toBeUndefined();
@@ -1007,6 +1015,46 @@ describe('fetchPackageContent path-type enrichment', () => {
     warnSpy.mockRestore();
   });
 
+  // Regression (code-review self-check on PR #1927, round 4): the positive
+  // cover-page check above depends on THIS SAME request's own resolve of
+  // manifestId succeeding. That resolve can fail for the real cover page's
+  // own load exactly as easily as for a track member's — a resolver hiccup
+  // must not misclassify the cover page itself as an unresolvable track
+  // guide. No track resolves to this contentUrl either (there are no
+  // tracks), so neither signal confirms a track member and this must still
+  // default to being the cover page.
+  it('still classifies the real cover page correctly when its own baseUrl resolve fails', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'test-path') {
+          return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'not found' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content!.metadata.learningJourney).toBeDefined();
+    expect(result.content!.metadata.learningJourney!.currentMilestone).toBe(0);
+    expect(result.content!.metadata.trackMemberBaseUrl).toBeUndefined();
+  });
+
   // `repository-identity-authority`: without the fallback, opening the same
   // package from My Learning / Discover More (manifest inlined, no explicit
   // repository) recorded under the manifest schema default while the nav-link
@@ -1093,8 +1141,10 @@ describe('fetchPackageContent path-type enrichment', () => {
     };
     setPackageResolver(resolver);
 
+    // manifest.id matches the loaded contentUrl's own resource name so the
+    // cover-page resolution succeeds (see the comment further up this file).
     const manifest = {
-      id: 'test-path',
+      id: 'first-dashboard',
       type: 'path',
       milestones: ['step-1', 'step-2'],
     };
@@ -1169,20 +1219,24 @@ describe('fetchPackageContent path-type enrichment', () => {
 
   it('preserves packageManifest alongside learningJourney', async () => {
     const resolver: PackageResolver = {
-      resolve: jest.fn().mockResolvedValue({
-        ok: true,
-        id: 'ms-1',
-        contentUrl: 'bundled:ms-1/content.json',
-        manifestUrl: 'bundled:ms-1/manifest.json',
-        repository: 'bundled',
-        content: { id: 'ms-1', title: 'MS 1', blocks: [] },
-        manifest: { id: 'ms-1', type: 'guide' },
-      }),
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
     };
     setPackageResolver(resolver);
 
+    // manifest.id matches the loaded contentUrl's own resource name so the
+    // cover-page resolution succeeds (see the comment further up this file).
     const manifest = {
-      id: 'test-path',
+      id: 'first-dashboard',
       type: 'path',
       milestones: ['ms-1'],
     };
@@ -1264,7 +1318,12 @@ describe('fetchPackageContent — no public websiteUrl for catalogue-launched pr
         Promise.resolve({
           ok: true,
           id,
-          contentUrl: `bundled:${id}/content.json`,
+          // The catalogue mock below hardcodes the launched guide's id as
+          // 'fe-alerting-path' — resolving it must point at a real bundled
+          // fixture (first-dashboard, the contentUrl this test loads) so
+          // the cover-page's own baseUrl resolution matches, the same
+          // convention every other fixture in this file follows.
+          contentUrl: id === 'fe-alerting-path' ? 'bundled:first-dashboard/content.json' : `bundled:${id}/content.json`,
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'app-platform',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
