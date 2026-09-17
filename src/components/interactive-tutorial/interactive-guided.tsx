@@ -1,7 +1,7 @@
+import { usePathfinderPluginConfig } from '../../hooks';
 import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
-import { usePluginContext } from '@grafana/data';
 import { getAppEvents } from '@grafana/runtime';
 
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
@@ -16,7 +16,6 @@ import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { getInteractiveConfig } from '../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 import { type AuthoredGuidedAction, isGuidedDomActionType } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
@@ -265,12 +264,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       }
     }, [isStandalone, renderedStepId, sectionId]);
 
-    // Get plugin configuration for auto-detection settings
-    const pluginContext = usePluginContext();
-    const interactiveConfig = useMemo(() => {
-      const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-      return getInteractiveConfig(config);
-    }, [pluginContext?.meta?.jsonData]);
+    const { config: pluginConfig } = usePathfinderPluginConfig();
+    const interactiveConfig = useMemo(() => getInteractiveConfig(pluginConfig), [pluginConfig]);
 
     // Create guided handler instance
     const guidedHandler = useMemo(() => {

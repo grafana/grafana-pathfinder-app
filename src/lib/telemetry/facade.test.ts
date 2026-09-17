@@ -4,6 +4,7 @@ import {
   recordContentFetch,
   recordContentFetchFallback,
   recordCustomGuideCatalogueUnavailable,
+  recordSettingsStoreResolved,
   recordPanelReady,
   recordRecommenderFallback,
   recordRecommenderRequest,
@@ -103,6 +104,13 @@ describe('measurement and event domain operations', () => {
     recordCustomGuideCatalogueUnavailable('obo-unavailable');
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_custom_guide_catalogue_unavailable', {
       reason: 'obo-unavailable',
+    });
+  });
+
+  it('recordSettingsStoreResolved emits the rung the settings read landed on', () => {
+    recordSettingsStoreResolved('kind-not-served');
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_settings_store_resolved', {
+      outcome: 'kind-not-served',
     });
   });
 });

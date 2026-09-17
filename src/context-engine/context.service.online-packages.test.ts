@@ -39,7 +39,7 @@ jest.mock('../lib/user-storage', () => ({
   useUserStorage: jest.fn(),
 }));
 
-jest.mock('../docs-retrieval', () => ({
+jest.mock('../lib/learning-journey-content-bridge', () => ({
   fetchContent: jest.fn(),
   getJourneyCompletionPercentageAsync: jest.fn().mockResolvedValue(0),
   resolvePackageMilestones: jest.fn(),

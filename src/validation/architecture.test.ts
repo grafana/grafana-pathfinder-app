@@ -130,6 +130,18 @@ const ALLOWED_VERTICAL_VIOLATIONS = new Set(ALLOWED_VERTICAL_VIOLATION_ENTRIES.m
  */
 const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
+    violation: 'context-engine/context.hook.ts -> hooks',
+    reason:
+      'Recommendation requests consume the shared resolved settings hook so App Platform overrides and OSS fallback use the same configuration as the settings form.',
+    tracking: '#1691',
+  },
+  {
+    violation: 'interactive-engine/auto-completion/useAutoDetection.ts -> hooks',
+    reason:
+      'Auto-detection consumes the shared resolved settings hook so tenant completion policy does not fall back to stale plugin metadata after App Platform saves.',
+    tracking: '#1691',
+  },
+  {
     violation: 'interactive-engine/interactive.hook.ts -> requirements-manager',
     reason:
       'Interactive execution delegates requirement checks to the requirements engine, forming the tracked cross-engine cycle.',
@@ -146,18 +158,6 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     reason:
       'The step checker coordinates interactive completion state and is one edge of the tracked requirements/interactive engine cycle.',
     tracking: '#1359',
-  },
-  {
-    violation: 'context-engine/context.service.ts -> docs-retrieval',
-    reason:
-      'Context assembly resolves documentation content through the docs retrieval engine while the engine boundary is paid down.',
-    tracking: '#1763',
-  },
-  {
-    violation: 'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
-    reason:
-      'Learning-journey document helpers delegate progress mutation to the learning-path coordinator rather than duplicating persistence logic.',
-    tracking: '#1763',
   },
 ];
 const ALLOWED_LATERAL_VIOLATIONS = new Set(ALLOWED_LATERAL_VIOLATION_ENTRIES.map((entry) => entry.violation));

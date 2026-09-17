@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, ChangeEvent } from 'react';
+import React, { useState, ChangeEvent } from 'react';
 import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
 import {
-  DocsPluginConfig,
+  PathfinderPluginConfig,
   DEFAULT_TUTORIAL_URL,
   DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   DEFAULT_OPEN_PANEL_ON_LAUNCH,
@@ -14,18 +14,19 @@ import {
   DEFAULT_PEERJS_KEY,
   DEFAULT_PEERJS_SECURE,
   DEFAULT_ENABLE_CODA_TERMINAL,
-  getConfigWithDefaults,
+  TENANT_SETTING_BOUNDS,
+  ResolvedPathfinderConfig,
   getDefaultRecommenderUrl,
   isKnownRecommenderUrl,
 } from '../../constants';
-import { fetchPluginJsonData, updatePluginSettings } from '../../utils/utils.plugin';
+import { saveTenantSettings } from './save-settings';
+import { useSeededDraft } from './use-seeded-draft';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { isCodaTerminalForcedByFlag } from '../../utils/coda-enablement';
 import { logger } from '../../lib/logging';
-import { config } from '@grafana/runtime';
 import { CodaBackendStatus } from './CodaBackendStatus';
 
-type JsonData = DocsPluginConfig;
+type JsonData = PathfinderPluginConfig;
 
 type State = {
   recommenderServiceUrl: string;
@@ -40,21 +41,21 @@ type State = {
   enableCodaTerminal: boolean;
 };
 
-function buildStateFromJsonData(jsonData: DocsPluginConfig | undefined): State {
+function buildStateFromConfig(config: ResolvedPathfinderConfig): State {
   return {
     recommenderServiceUrl:
-      jsonData?.recommenderServiceUrl && !isKnownRecommenderUrl(jsonData.recommenderServiceUrl)
-        ? jsonData.recommenderServiceUrl
+      config.recommenderServiceUrl && !isKnownRecommenderUrl(config.recommenderServiceUrl)
+        ? config.recommenderServiceUrl
         : getDefaultRecommenderUrl(),
-    tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
-    interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
-    openPanelOnLaunch: jsonData?.openPanelOnLaunch ?? DEFAULT_OPEN_PANEL_ON_LAUNCH,
-    enableLiveSessions: jsonData?.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
-    peerjsHost: jsonData?.peerjsHost || DEFAULT_PEERJS_HOST,
-    peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
-    peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
-    peerjsSecure: jsonData?.peerjsSecure ?? DEFAULT_PEERJS_SECURE,
-    enableCodaTerminal: jsonData?.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
+    tutorialUrl: config.tutorialUrl || DEFAULT_TUTORIAL_URL,
+    interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+    openPanelOnLaunch: config.openPanelOnLaunch ?? DEFAULT_OPEN_PANEL_ON_LAUNCH,
+    enableLiveSessions: config.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
+    peerjsHost: config.peerjsHost || DEFAULT_PEERJS_HOST,
+    peerjsPort: config.peerjsPort ?? DEFAULT_PEERJS_PORT,
+    peerjsKey: config.peerjsKey || DEFAULT_PEERJS_KEY,
+    peerjsSecure: config.peerjsSecure ?? DEFAULT_PEERJS_SECURE,
+    enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
   };
 }
 
@@ -64,69 +65,28 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const urlParams = new URLSearchParams(window.location.search);
   const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
-  const { enabled, pinned, jsonData: pluginJsonData } = plugin.meta;
-  const [resolvedJsonData, setResolvedJsonData] = useState<DocsPluginConfig>(pluginJsonData || {});
-  const [state, setState] = useState<State>(() => buildStateFromJsonData(pluginJsonData));
+  const { draft: state, changes, edit: editDraft, config: resolvedConfig } = useSeededDraft(buildStateFromConfig);
   const [isSaving, setIsSaving] = useState(false);
-  const isDraftEdited = useRef(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [portError, setPortError] = useState<string | undefined>(undefined);
 
-  const editDraft = (changes: Partial<State>) => {
-    isDraftEdited.current = true;
-    setState((previous) => ({ ...previous, ...changes }));
-  };
+  const devModeEnabledForUser = isDevModeEnabled(resolvedConfig);
+  const tenantDevModeEnabled = resolvedConfig.devMode;
 
-  // `plugin.meta.jsonData` can lag a recent save, so seed the form from the
-  // authoritative read — but never over an edit the admin has already made.
-  useEffect(() => {
-    let cancelled = false;
-
-    fetchPluginJsonData(plugin.meta.id)
-      .then((freshJsonData) => {
-        if (cancelled) {
-          return;
-        }
-
-        setResolvedJsonData(freshJsonData);
-        if (!isDraftEdited.current) {
-          setState(buildStateFromJsonData(freshJsonData));
-        }
-      })
-      .catch((error) => {
-        logger.error('Failed to fetch plugin settings for configuration form', { error });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [plugin.meta.id]);
-
-  // SECURITY: Dev mode - hybrid approach (jsonData storage, multi-user ID scoping)
-  // Get current user ID for scoping
-  const currentUserId = config.bootData.user?.id;
-  const devModeUserIds = resolvedJsonData?.devModeUserIds ?? [];
-
-  // Check if dev mode is enabled for THIS user (synchronous)
-  const devModeEnabledForUser = isDevModeEnabled(resolvedJsonData || {}, currentUserId);
-
-  // `state` stays untouched by the flag, so a save writes the stack's own value.
   const codaForcedByFlag = isCodaTerminalForcedByFlag();
   const codaTerminalShown = codaForcedByFlag || state.enableCodaTerminal;
   const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
+  const [tenantDevModeToggling, setTenantDevModeToggling] = useState<boolean>(false);
 
-  // Assistant dev mode state
-  const assistantDevModeEnabled = resolvedJsonData?.enableAssistantDevMode ?? false;
+  const assistantDevModeEnabled = resolvedConfig.enableAssistantDevMode;
   const [assistantDevModeToggling, setAssistantDevModeToggling] = useState<boolean>(false);
 
-  // Show dev mode input if URL param is set OR if dev mode is already enabled for this user
   const showDevModeInput = hasDevParam || devModeEnabledForUser;
 
-  // Show advanced config fields only in dev mode (for Grafana team development)
   const showAdvancedConfig = devModeEnabledForUser || showDevModeInput;
 
-  // Configuration is now retrieved directly from plugin meta via usePluginContext
-
   const isRecommenderUrlMissing = showAdvancedConfig && !state.recommenderServiceUrl;
-  const isSubmitDisabled = isRecommenderUrlMissing;
+  const isSubmitDisabled = isRecommenderUrlMissing || portError !== undefined;
 
   const onChangeRecommenderServiceUrl = (event: ChangeEvent<HTMLInputElement>) => {
     editDraft({ recommenderServiceUrl: event.target.value.trim() });
@@ -137,29 +97,46 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   };
 
   const onChangeDevMode = async () => {
-    if (!currentUserId) {
-      alert('Cannot determine current user. Please refresh the page and try again.');
-      return;
-    }
-
-    // SECURITY: Dev mode is now stored in plugin jsonData (server-side, admin-controlled)
     setDevModeToggling(true);
     try {
-      await toggleDevMode(currentUserId, devModeEnabledForUser, devModeUserIds);
+      if (!devModeEnabledForUser && !tenantDevModeEnabled) {
+        await saveTenantSettings({ pluginId: plugin.meta.id, changes: { devMode: true } });
+      }
 
-      // Reload page to refresh plugin config and apply changes globally
+      await toggleDevMode(devModeEnabledForUser);
+
       setTimeout(() => {
         window.location.reload();
       }, 500);
     } catch (error) {
       logger.error('Failed to toggle dev mode', { error });
 
-      // Show user-friendly error message
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to toggle dev mode. You may need admin permissions.';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to toggle dev mode. Please try again.';
       alert(errorMessage);
 
       setDevModeToggling(false);
+    }
+  };
+
+  const onChangeTenantDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
+    const enabled = event.target.checked;
+    setTenantDevModeToggling(true);
+    try {
+      await saveTenantSettings({ pluginId: plugin.meta.id, changes: { devMode: enabled } });
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      logger.error('Failed to toggle stack-wide dev mode', { error });
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Failed to change dev mode for this stack. You may need admin permissions.';
+      alert(errorMessage);
+
+      setTenantDevModeToggling(false);
     }
   };
 
@@ -168,20 +145,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     try {
       const newValue = event.target.checked;
 
-      await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
-        jsonData: {
-          ...(resolvedJsonData || {}),
-          ...getConfigWithDefaults(resolvedJsonData || {}),
-          // Pass through raw, not the resolved default — this tab doesn't own the
-          // field, and materializing it here would freeze out a future default change.
-          enableAiAutoHeal: resolvedJsonData?.enableAiAutoHeal,
-          enableAssistantDevMode: newValue,
-        },
+      await saveTenantSettings({
+        pluginId: plugin.meta.id,
+        changes: { enableAssistantDevMode: newValue },
       });
 
-      // Reload page to refresh plugin config and apply changes globally
       setTimeout(() => {
         window.location.reload();
       }, 500);
@@ -219,7 +187,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const onChangePeerjsPort = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value.trim();
     const port = value === '' ? DEFAULT_PEERJS_PORT : parseInt(value, 10);
-    editDraft({ peerjsPort: isNaN(port) ? DEFAULT_PEERJS_PORT : port });
+    const resolved = isNaN(port) ? DEFAULT_PEERJS_PORT : port;
+    const { min, max } = TENANT_SETTING_BOUNDS.peerjsPort;
+
+    setPortError(resolved < min || resolved > max ? `Must be between ${min} and ${max}` : undefined);
+    editDraft({ peerjsPort: resolved });
   };
 
   const onChangePeerjsKey = (event: ChangeEvent<HTMLInputElement>) => {
@@ -233,33 +205,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const onSubmit = async (event: React.SubmitEvent) => {
     event.preventDefault();
     setIsSaving(true);
+    setSaveFailed(false);
 
     try {
-      // Preserve ALL existing jsonData fields first (including provisioned fields
-      // like stackId that aren't in DocsPluginConfig), then apply defaults for
-      // known fields, then override with this form's fields.
-      const newJsonData = {
-        ...(resolvedJsonData || {}),
-        ...getConfigWithDefaults(resolvedJsonData || {}),
-        // Pass through raw, not the resolved default — this tab doesn't own the
-        // field, and materializing it here would freeze out a future default change.
-        enableAiAutoHeal: resolvedJsonData?.enableAiAutoHeal,
-        recommenderServiceUrl: state.recommenderServiceUrl,
-        tutorialUrl: state.tutorialUrl,
-        interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
-        openPanelOnLaunch: state.openPanelOnLaunch,
-        enableLiveSessions: state.enableLiveSessions,
-        peerjsHost: state.peerjsHost,
-        peerjsPort: state.peerjsPort,
-        peerjsKey: state.peerjsKey,
-        peerjsSecure: state.peerjsSecure,
-        enableCodaTerminal: state.enableCodaTerminal,
-      };
-
-      await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
-        jsonData: newJsonData,
+      await saveTenantSettings({
+        pluginId: plugin.meta.id,
+        changes,
       });
 
       setTimeout(() => {
@@ -272,16 +223,20 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     } catch (error) {
       logger.error('Error saving configuration', { error });
       setIsSaving(false);
+      setSaveFailed(true);
     }
   };
 
   return (
     <form onSubmit={onSubmit} data-testid={testIds.appConfig.form}>
+      {saveFailed && (
+        <Alert title="Could not save settings" severity="error">
+          Your edits are still here. Try saving again. If the problem continues, reload the page and try again.
+        </Alert>
+      )}
       <FieldSet label="Plugin configuration" className={s.marginTopXl}>
-        {/* Advanced configuration fields - only shown in dev mode */}
         {showAdvancedConfig && (
           <>
-            {/* Recommender Service URL */}
             <Field
               label="Recommender service URL"
               description="The URL of the service that provides documentation recommendations (Dev mode only)"
@@ -297,8 +252,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             </Field>
           </>
         )}
-
-        {/* Tutorial URL - available to all users */}
         <Field
           label="Auto-launch tutorial URL"
           description="Optional: URL of a learning path or documentation page to automatically open when the Interactive learning panel opens. Useful for demo scenarios. Can be set via environment variable GRAFANA_INTERACTIVE_LEARNING_TUTORIAL_URL"
@@ -313,13 +266,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             onChange={onChangeTutorialUrl}
           />
         </Field>
-
-        {/* Dev Mode - Per-User Setting (stored server-side in Grafana user preferences) */}
         {showDevModeInput && (
           <>
             <Field
               label="Dev mode"
-              description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments. Requires admin permissions to change. Only visible to the user who enabled it."
+              description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments. Turning this on also enables dev mode for the stack; turning it off affects only this browser."
               className={s.marginTop}
             >
               <div className={s.devModeField} data-testid={testIds.appConfig.pathfinderDevMode}>
@@ -335,7 +286,23 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
               </div>
             </Field>
 
-            {/* Assistant Dev Mode - Only show when main dev mode is enabled */}
+            <Field
+              label="Dev mode for this stack"
+              description="The instance-level gate. When off, developer surfaces are hidden for every user regardless of their own opt-in. Requires admin permissions to change."
+              className={s.marginTop}
+            >
+              <div className={s.devModeField} data-testid={testIds.appConfig.tenantDevMode}>
+                <Input
+                  type="checkbox"
+                  id="tenant-dev-mode"
+                  data-testid={testIds.appConfig.tenantDevModeToggle}
+                  checked={tenantDevModeEnabled}
+                  onChange={onChangeTenantDevMode}
+                  disabled={tenantDevModeToggling}
+                />
+                {tenantDevModeToggling && <span className={s.updateText}>Saving to server and reloading...</span>}
+              </div>
+            </Field>
             {devModeEnabledForUser && (
               <Field
                 label="Enable Assistant (Dev Mode)"
@@ -375,8 +342,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             )}
           </>
         )}
-
-        {/* Global Link Interception */}
         <FieldSet
           label={
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -418,8 +383,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             </Alert>
           )}
         </FieldSet>
-
-        {/* Open Panel on Launch */}
         <FieldSet
           label={
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -457,8 +420,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             </Alert>
           )}
         </FieldSet>
-
-        {/* Live sessions (collaborative learning) - Dev Mode Only */}
         {devModeEnabledForUser && (
           <FieldSet
             label={
@@ -496,8 +457,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                     recommended for production-critical workflows.
                   </Text>
                 </Alert>
-
-                {/* PeerJS Server Configuration */}
                 <div className={s.marginTop}>
                   <Text variant="h6">Signaling Server Settings</Text>
                   <div style={{ marginTop: '8px', marginBottom: '16px' }}>
@@ -515,9 +474,16 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                     />
                   </Field>
 
-                  <Field label="Server port" description="Port number">
+                  <Field
+                    label="Server port"
+                    description={`Port number (${TENANT_SETTING_BOUNDS.peerjsPort.min}-${TENANT_SETTING_BOUNDS.peerjsPort.max})`}
+                    invalid={portError !== undefined}
+                    error={portError}
+                  >
                     <Input
                       type="number"
+                      min={TENANT_SETTING_BOUNDS.peerjsPort.min}
+                      max={TENANT_SETTING_BOUNDS.peerjsPort.max}
                       data-testid={testIds.appConfig.peerjsPort}
                       value={state.peerjsPort}
                       onChange={onChangePeerjsPort}

@@ -13,7 +13,7 @@ import type { GuideDiagnostic } from '../types/guide-diagnostics.types';
  * @coupling Config: isRecommenderEnabled in constants.ts
  */
 
-import { type DocsPluginConfig, isRecommenderEnabled, getConfigWithDefaults } from '../constants';
+import { type PathfinderPluginConfig, isRecommenderEnabled, getConfigWithDefaults } from '../constants';
 import type { PackageResolution, PackageResolver, ResolveOptions } from '../types/package.types';
 
 import { createBundledResolver } from './resolver';
@@ -120,7 +120,7 @@ export class CompositePackageResolver implements PackageResolver {
  *    preserved; private guide IDs are expected to carry an `fe-`-style
  *    prefix by convention to make collisions vanishingly unlikely.
  */
-export function createCompositeResolver(pluginConfig: DocsPluginConfig): CompositePackageResolver {
+export function createCompositeResolver(pluginConfig: PathfinderPluginConfig): CompositePackageResolver {
   const resolvers: PackageResolver[] = [createBundledResolver()];
 
   if (isRecommenderEnabled(pluginConfig)) {
