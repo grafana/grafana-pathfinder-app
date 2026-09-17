@@ -53,3 +53,34 @@ export function clearKeysByPrefix(storage: Storage, prefix: string): string[] {
   }
   return keys;
 }
+
+/**
+ * Normalize a content key by stripping trailing slashes.
+ * Used before prefix comparisons to ensure consistent matching.
+ */
+function normalizeForPrefixMatch(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+/**
+ * Test whether `key` matches `prefix` exactly or is a direct child path of it
+ * (i.e., `key` starts with `prefix + '/'`). Unlike naive `startsWith`, this
+ * prevents `/alerting` from matching `/alerting-advanced`.
+ *
+ * Both values are normalized (trailing slashes stripped) before comparison.
+ * An empty `prefix` matches everything (for intentional bulk-clear operations).
+ *
+ * Note: Only `/` is treated as a path boundary. Query strings (`?`) and hash
+ * fragments (`#`) are not handled as delimiters—if keys can contain these,
+ * callers must handle them separately.
+ */
+export function matchesPrefixOrChild(key: string, prefix: string): boolean {
+  const normalizedKey = normalizeForPrefixMatch(key);
+  const normalizedPrefix = normalizeForPrefixMatch(prefix);
+
+  if (normalizedPrefix === '') {
+    return true;
+  }
+
+  return normalizedKey === normalizedPrefix || normalizedKey.startsWith(normalizedPrefix + '/');
+}

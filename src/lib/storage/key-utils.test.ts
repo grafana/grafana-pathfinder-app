@@ -1,4 +1,4 @@
-import { clearKeysByPrefix, collectKeysByPrefix } from './key-utils';
+import { clearKeysByPrefix, collectKeysByPrefix, matchesPrefixOrChild } from './key-utils';
 
 beforeEach(() => {
   localStorage.clear();
@@ -97,5 +97,68 @@ describe('clearKeysByPrefix', () => {
     expect(sessionStorage.getItem('s-a')).toBeNull();
     expect(sessionStorage.getItem('s-b')).toBeNull();
     expect(sessionStorage.getItem('other')).toBe('c');
+  });
+});
+
+describe('matchesPrefixOrChild', () => {
+  it('returns true for exact match', () => {
+    expect(matchesPrefixOrChild('/alerting', '/alerting')).toBe(true);
+  });
+
+  it('returns true for exact match with trailing slash on key', () => {
+    expect(matchesPrefixOrChild('/alerting/', '/alerting')).toBe(true);
+  });
+
+  it('returns true for exact match with trailing slash on prefix', () => {
+    expect(matchesPrefixOrChild('/alerting', '/alerting/')).toBe(true);
+  });
+
+  it('returns true for direct child path', () => {
+    expect(matchesPrefixOrChild('/alerting/rules', '/alerting')).toBe(true);
+  });
+
+  it('returns true for deeply nested child path', () => {
+    expect(matchesPrefixOrChild('/alerting/rules/edit', '/alerting')).toBe(true);
+  });
+
+  it('returns true for child with trailing slash', () => {
+    expect(matchesPrefixOrChild('/alerting/rules/', '/alerting')).toBe(true);
+  });
+
+  it('returns false for sibling with shared prefix substring', () => {
+    expect(matchesPrefixOrChild('/alerting-advanced', '/alerting')).toBe(false);
+  });
+
+  it('returns false for sibling with hyphenated suffix', () => {
+    expect(matchesPrefixOrChild('/drilldown-logs', '/drilldown')).toBe(false);
+  });
+
+  it('returns false for path that starts with prefix but has no separator', () => {
+    expect(matchesPrefixOrChild('/foobar', '/foo')).toBe(false);
+  });
+
+  it('returns false for unrelated path', () => {
+    expect(matchesPrefixOrChild('/dashboards', '/alerting')).toBe(false);
+  });
+
+  it('returns true for any key when prefix is empty', () => {
+    expect(matchesPrefixOrChild('/anything', '')).toBe(true);
+    expect(matchesPrefixOrChild('', '')).toBe(true);
+  });
+
+  it('handles full URL keys with domain', () => {
+    const prefix = 'https://grafana.com/docs/alerting';
+    expect(matchesPrefixOrChild('https://grafana.com/docs/alerting', prefix)).toBe(true);
+    expect(matchesPrefixOrChild('https://grafana.com/docs/alerting/', prefix)).toBe(true);
+    expect(matchesPrefixOrChild('https://grafana.com/docs/alerting/rules', prefix)).toBe(true);
+    expect(matchesPrefixOrChild('https://grafana.com/docs/alerting-advanced', prefix)).toBe(false);
+  });
+
+  it('handles bundled content keys', () => {
+    const prefix = 'bundled:welcome-to-grafana';
+    expect(matchesPrefixOrChild('bundled:welcome-to-grafana', prefix)).toBe(true);
+    expect(matchesPrefixOrChild('bundled:welcome-to-grafana/', prefix)).toBe(true);
+    expect(matchesPrefixOrChild('bundled:welcome-to-grafana/section', prefix)).toBe(true);
+    expect(matchesPrefixOrChild('bundled:welcome-to-grafana-cloud', prefix)).toBe(false);
   });
 });

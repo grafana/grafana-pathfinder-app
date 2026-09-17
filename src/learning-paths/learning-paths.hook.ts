@@ -32,6 +32,7 @@ import {
   milestoneCompletionStorage,
   guideCompletionMarkStorage,
 } from '../lib/user-storage';
+import { matchesPrefixOrChild } from '../lib/storage/key-utils';
 import { evictContentCache } from '../global-state/completion-store';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../global-state/progress-events';
 import {
@@ -535,8 +536,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
         // Milestone content keys aren't stored anywhere, so recover them by prefix.
         const normalizedUrl = path.url.replace(/\/+$/, '');
-        const milestoneKeys = Object.keys(completions).filter((key) => key.startsWith(normalizedUrl));
-        const journeyKeys = [path.url, ...Object.keys(journeyCompletions).filter((k) => k.startsWith(normalizedUrl))];
+        const milestoneKeys = Object.keys(completions).filter((key) => matchesPrefixOrChild(key, normalizedUrl));
+        const journeyKeys = [path.url, ...Object.keys(journeyCompletions).filter((k) => matchesPrefixOrChild(k, normalizedUrl))];
 
         await clearInteractiveProgressForContentKeys(milestoneKeys);
         await interactiveCompletionStorage.clearMany(milestoneKeys);
