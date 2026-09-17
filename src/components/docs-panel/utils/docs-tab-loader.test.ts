@@ -35,6 +35,8 @@ describe('loadDocsTabContentResult', () => {
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
       packageManifest,
       undefined,
+      undefined,
+      undefined,
       undefined
     );
     expect(mockFetchPackageById).not.toHaveBeenCalled();
@@ -53,7 +55,9 @@ describe('loadDocsTabContentResult', () => {
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
       packageManifest,
       undefined,
-      'app-platform'
+      'app-platform',
+      undefined,
+      undefined
     );
   });
 
@@ -72,7 +76,7 @@ describe('loadDocsTabContentResult', () => {
       },
     });
 
-    expect(mockFetchPackageById).toHaveBeenCalledWith('alerting-101', packageManifest, undefined);
+    expect(mockFetchPackageById).toHaveBeenCalledWith('alerting-101', packageManifest, undefined, undefined);
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
     expect(mockFetchContent).not.toHaveBeenCalled();
   });

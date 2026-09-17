@@ -304,7 +304,10 @@ describe('CombinedLearningJourneyPanel.openDocsPage — prepared (one-fetch) lau
     expect(loadDocsTabContentResult as jest.Mock).not.toHaveBeenCalled();
 
     const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
-    expect(tab.content).toBe(preparedContent);
+    expect(tab.content).toEqual({
+      ...preparedContent,
+      loadContext: expect.objectContaining({ loadId: expect.any(String), source: 'bundled' }),
+    });
     expect(tab.isLoading).toBe(false);
     expect(tab.error).toBeNull();
   });
@@ -324,7 +327,10 @@ describe('CombinedLearningJourneyPanel.openDocsPage — prepared (one-fetch) lau
     expect(loadDocsTabContentResult as jest.Mock).not.toHaveBeenCalled();
 
     const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
-    expect(tab.content).toBe(preparedContent);
+    expect(tab.content).toEqual({
+      ...preparedContent,
+      loadContext: expect.objectContaining({ loadId: expect.any(String), source: 'bundled' }),
+    });
     expect(tab.isLoading).toBe(false);
     expect(tab.error).toBeNull();
   });
