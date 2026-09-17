@@ -145,7 +145,7 @@
     "privatePaths": "비공개 학습 경로",
     "privatePathsDescription": "조직에 게시된 학습 경로",
     "resetPathErrorMessage": "이 경로의 일부 진행 상황을 삭제하지 못했습니다. 페이지를 새로고침한 후 다시 시도해 주세요.",
-    "resetPathErrorTitle": "불완전한 상태로 재설정됨",
+    "resetPathErrorTitle": "재설정 미완료",
     "subtitle": "진행 상황을 추적하고 배지를 획득하며 Grafana를 마스터하세요"
   },
   "userProfileBar": {
