@@ -310,3 +310,132 @@ describe('resetPath — URL-based journey path', () => {
     await expect(guideCompletionMarkStorage.get(OTHER_JOURNEY_KEY)).resolves.toBe(true);
   });
 });
+
+describe('resetPath — sibling path isolation (regression for #1928)', () => {
+  const ALERTING_URL = 'https://grafana.com/docs/learning-journeys/alerting';
+  const ALERTING_MILESTONE = `${ALERTING_URL}/rules/`;
+
+  // Sibling path that shares prefix substring but is NOT a child
+  const ALERTING_ADVANCED_URL = 'https://grafana.com/docs/learning-journeys/alerting-advanced';
+  const ALERTING_ADVANCED_MILESTONE = `${ALERTING_ADVANCED_URL}/notifications/`;
+
+  beforeEach(() => {
+    mockBundledPaths.current = [
+      {
+        id: 'alerting-journey',
+        title: 'Alerting journey',
+        description: '',
+        guides: [],
+        badgeId: '',
+        url: ALERTING_URL + '/',
+      },
+    ];
+  });
+
+  it('does NOT clear sibling path whose URL shares a prefix when resetting', async () => {
+    // Seed the target path with completion data
+    await interactiveCompletionStorage.set(ALERTING_URL, 100);
+    await interactiveCompletionStorage.set(ALERTING_MILESTONE, 100);
+    await journeyCompletionStorage.set(ALERTING_URL, 100);
+    await guideCompletionMarkStorage.set(ALERTING_MILESTONE, true);
+
+    // Seed the sibling path (should NOT be cleared)
+    await interactiveCompletionStorage.set(ALERTING_ADVANCED_URL, 100);
+    await interactiveCompletionStorage.set(ALERTING_ADVANCED_MILESTONE, 100);
+    await journeyCompletionStorage.set(ALERTING_ADVANCED_URL, 100);
+    await guideCompletionMarkStorage.set(ALERTING_ADVANCED_MILESTONE, true);
+
+    await renderAndResetPath('alerting-journey');
+
+    // Target path data should be cleared
+    const [journeys, interactives] = await Promise.all([
+      journeyCompletionStorage.getAll(),
+      interactiveCompletionStorage.getAll(),
+    ]);
+    expect(ALERTING_URL in journeys).toBe(false);
+    expect(ALERTING_URL in interactives).toBe(false);
+    expect(ALERTING_MILESTONE in interactives).toBe(false);
+    await expect(guideCompletionMarkStorage.get(ALERTING_MILESTONE)).resolves.toBeNull();
+
+    // Sibling path data should be PRESERVED
+    expect(journeys[ALERTING_ADVANCED_URL]).toBe(100);
+    expect(interactives[ALERTING_ADVANCED_URL]).toBe(100);
+    expect(interactives[ALERTING_ADVANCED_MILESTONE]).toBe(100);
+    await expect(guideCompletionMarkStorage.get(ALERTING_ADVANCED_MILESTONE)).resolves.toBe(true);
+  });
+
+  it('DOES clear legitimate child paths under the reset path', async () => {
+    const childMilestone = `${ALERTING_URL}/milestone-1/`;
+    const deepChild = `${ALERTING_URL}/section/milestone-2/`;
+
+    await interactiveCompletionStorage.set(childMilestone, 100);
+    await interactiveCompletionStorage.set(deepChild, 100);
+    await guideCompletionMarkStorage.set(childMilestone, true);
+    await guideCompletionMarkStorage.set(deepChild, true);
+
+    await renderAndResetPath('alerting-journey');
+
+    const interactives = await interactiveCompletionStorage.getAll();
+    expect(childMilestone in interactives).toBe(false);
+    expect(deepChild in interactives).toBe(false);
+    await expect(guideCompletionMarkStorage.get(childMilestone)).resolves.toBeNull();
+    await expect(guideCompletionMarkStorage.get(deepChild)).resolves.toBeNull();
+  });
+
+  it('handles keys stored with and without trailing slashes', async () => {
+    // Keys may be stored with or without trailing slashes
+    await interactiveCompletionStorage.set(ALERTING_URL, 100); // no trailing
+    await interactiveCompletionStorage.set(ALERTING_URL + '/', 50); // with trailing
+    await interactiveCompletionStorage.set(ALERTING_ADVANCED_URL, 100); // sibling, no trailing
+    await interactiveCompletionStorage.set(ALERTING_ADVANCED_URL + '/', 50); // sibling, with trailing
+
+    await renderAndResetPath('alerting-journey');
+
+    const interactives = await interactiveCompletionStorage.getAll();
+    // Both variants of alerting cleared
+    expect(ALERTING_URL in interactives).toBe(false);
+    expect(ALERTING_URL + '/' in interactives).toBe(false);
+    // Both variants of alerting-advanced preserved
+    expect(interactives[ALERTING_ADVANCED_URL]).toBe(100);
+    expect(interactives[ALERTING_ADVANCED_URL + '/']).toBe(50);
+  });
+
+  it('uses a real paths-cloud url and preserves a stray docs key that merely extends the slug (reachable #1928)', async () => {
+    // The curated-vs-curated collision above is prophylactic: no real path.url is a
+    // prefix of another. The reachable form of #1928 is a real curated path versus a
+    // stray docs content key whose slug extends the path slug. Use a real
+    // paths-cloud.json url so the fixture is a population that can actually occur.
+    const DRILLDOWN_URL = 'https://grafana.com/docs/learning-paths/drilldown-logs';
+    const DRILLDOWN_MILESTONE = `${DRILLDOWN_URL}/get-started/`;
+    // Stray docs key that extends the slug — NOT a child of drilldown-logs.
+    const STRAY_KEY = 'https://grafana.com/docs/learning-paths/drilldown-logs-extra/notes/';
+
+    mockBundledPaths.current = [
+      {
+        id: 'drilldown-logs',
+        title: 'Drilldown logs',
+        description: '',
+        guides: [],
+        badgeId: '',
+        url: DRILLDOWN_URL + '/',
+      },
+    ];
+
+    await interactiveCompletionStorage.set(DRILLDOWN_URL, 100);
+    await interactiveCompletionStorage.set(DRILLDOWN_MILESTONE, 100);
+    await guideCompletionMarkStorage.set(DRILLDOWN_MILESTONE, true);
+    await interactiveCompletionStorage.set(STRAY_KEY, 100);
+    await guideCompletionMarkStorage.set(STRAY_KEY, true);
+
+    await renderAndResetPath('drilldown-logs');
+
+    const interactives = await interactiveCompletionStorage.getAll();
+    // Curated path cleared
+    expect(DRILLDOWN_URL in interactives).toBe(false);
+    expect(DRILLDOWN_MILESTONE in interactives).toBe(false);
+    await expect(guideCompletionMarkStorage.get(DRILLDOWN_MILESTONE)).resolves.toBeNull();
+    // Stray extending-slug key preserved
+    expect(interactives[STRAY_KEY]).toBe(100);
+    await expect(guideCompletionMarkStorage.get(STRAY_KEY)).resolves.toBe(true);
+  });
+});

@@ -46,7 +46,7 @@ import { StorageEvents } from './event-names';
 import { getLearningJourneyBaseUrl } from './learning-journey-url';
 import { logger } from './logging';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
-import { collectKeysByPrefix } from './storage/key-utils';
+import { collectKeysByPrefix, matchesPrefixOrChild } from './storage/key-utils';
 import { listProgressEntries, progressSectionKey, sweepDiscardedProgressRecords } from './storage/progress-keys';
 import {
   HYBRID_TIMESTAMP_SUFFIX,
@@ -1497,7 +1497,7 @@ export const guideCompletionMarkStorage = {
       const contentKeys: string[] = [];
       for (const key of collectKeysByPrefix(localStorage, StorageKeys.GUIDE_COMPLETION_MARK_PREFIX)) {
         const parsed = parseVersionedStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, key);
-        if (parsed && parsed.sectionId === '' && parsed.contentKey.startsWith(contentKeyPrefix)) {
+        if (parsed && parsed.sectionId === '' && matchesPrefixOrChild(parsed.contentKey, contentKeyPrefix)) {
           contentKeys.push(parsed.contentKey);
         }
       }

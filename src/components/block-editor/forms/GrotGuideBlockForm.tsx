@@ -21,16 +21,24 @@ import { isGrotGuideBlock, type JsonGrotGuideBlock } from '../../../types/json-g
 function convertYamlToBlock(yamlContent: string): JsonGrotGuideBlock {
   // Grot Guide YAML files use --- frontmatter delimiters which create multiple
   // YAML documents. Parse all documents and find the one with welcome/screens.
-  const documents: any[] = [];
-  loadAll(yamlContent, (doc) => documents.push(doc));
+  const documents = loadAll(yamlContent);
 
-  const parsed = documents.find((doc) => doc && typeof doc === 'object' && (doc.welcome || doc.screens));
+  // Select the first document that actually carries guide content. Use truthiness
+  // (not `!== undefined`): a leading document declaring a falsy `welcome`/`screens`
+  // (e.g. `welcome: null`) is frontmatter, not the guide, and must be skipped so the
+  // real guide in a later document is chosen.
+  const parsed = documents.find(
+    (doc): doc is Record<string, unknown> =>
+      doc !== null &&
+      typeof doc === 'object' &&
+      (Boolean((doc as Record<string, unknown>).welcome) || Boolean((doc as Record<string, unknown>).screens))
+  );
 
-  if (!parsed || typeof parsed !== 'object') {
+  if (!parsed) {
     throw new Error('Invalid YAML: no document found with "welcome" or "screens" fields');
   }
 
-  const welcome = parsed.welcome;
+  const welcome = parsed.welcome as { title?: string; body?: string; ctas?: unknown[] } | undefined;
   const screens = parsed.screens;
 
   if (!welcome) {
