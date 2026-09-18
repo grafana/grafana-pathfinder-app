@@ -161,4 +161,16 @@ describe('matchesPrefixOrChild', () => {
     expect(matchesPrefixOrChild('bundled:welcome-to-grafana/section', prefix)).toBe(true);
     expect(matchesPrefixOrChild('bundled:welcome-to-grafana-cloud', prefix)).toBe(false);
   });
+
+  // Characterization: only `/` is treated as a path boundary. Query strings and hash
+  // fragments are NOT delimiters, so a key carrying them is not seen as a child of the
+  // bare prefix. Callers that can produce such keys must strip `?`/`#` themselves. These
+  // cases pin that documented behaviour so a future change to the matcher is deliberate.
+  it('does not treat a query string as a path boundary', () => {
+    expect(matchesPrefixOrChild('/alerting?x=1', '/alerting')).toBe(false);
+  });
+
+  it('does not treat a hash fragment as a path boundary', () => {
+    expect(matchesPrefixOrChild('/alerting#top', '/alerting')).toBe(false);
+  });
 });

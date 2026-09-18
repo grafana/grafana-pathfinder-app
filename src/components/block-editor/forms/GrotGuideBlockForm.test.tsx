@@ -85,6 +85,49 @@ describe('GrotGuideBlockForm YAML import', () => {
     });
   });
 
+  it('skips a leading document with a falsy welcome and selects the real guide (regression for #1941)', () => {
+    const onSubmit = jest.fn();
+    const { yamlTextarea, importButton, submitButton } = renderForm(onSubmit);
+
+    // First document declares `welcome: null` (falsy). The buggy `!== undefined`
+    // predicate would select it and then throw "Missing welcome field"; truthiness
+    // must skip it and select the real guide that follows.
+    const yaml = [
+      '---',
+      'welcome: null',
+      '---',
+      'welcome:',
+      '  title: Hello',
+      '  body: Welcome text',
+      '  ctas:',
+      '    - text: Go',
+      '      screen_id: first_question',
+      'screens:',
+      '  - type: result',
+      '    id: first_question',
+      '    title: Result A',
+      '    body: Here you go',
+    ].join('\n');
+
+    fireEvent.change(yamlTextarea, { target: { value: yaml } });
+    fireEvent.click(importButton);
+
+    expect(screen.queryByText(/Missing "welcome" field/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/YAML import error/)).not.toBeInTheDocument();
+
+    fireEvent.click(submitButton);
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: 'grot-guide',
+      welcome: {
+        title: 'Hello',
+        body: 'Welcome text',
+        ctas: [{ text: 'Go', screenId: 'first_question' }],
+      },
+      screens: [{ type: 'result', id: 'first_question', title: 'Result A', body: 'Here you go', links: undefined }],
+    });
+  });
+
   it('surfaces an error when no document has a welcome or screens field', () => {
     importYaml(['unrelated:', '  field: value'].join('\n'));
 

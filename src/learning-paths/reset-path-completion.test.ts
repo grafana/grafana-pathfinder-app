@@ -399,4 +399,43 @@ describe('resetPath — sibling path isolation (regression for #1928)', () => {
     expect(interactives[ALERTING_ADVANCED_URL]).toBe(100);
     expect(interactives[ALERTING_ADVANCED_URL + '/']).toBe(50);
   });
+
+  it('uses a real paths-cloud url and preserves a stray docs key that merely extends the slug (reachable #1928)', async () => {
+    // The curated-vs-curated collision above is prophylactic: no real path.url is a
+    // prefix of another. The reachable form of #1928 is a real curated path versus a
+    // stray docs content key whose slug extends the path slug. Use a real
+    // paths-cloud.json url so the fixture is a population that can actually occur.
+    const DRILLDOWN_URL = 'https://grafana.com/docs/learning-paths/drilldown-logs';
+    const DRILLDOWN_MILESTONE = `${DRILLDOWN_URL}/get-started/`;
+    // Stray docs key that extends the slug — NOT a child of drilldown-logs.
+    const STRAY_KEY = 'https://grafana.com/docs/learning-paths/drilldown-logs-extra/notes/';
+
+    mockBundledPaths.current = [
+      {
+        id: 'drilldown-logs',
+        title: 'Drilldown logs',
+        description: '',
+        guides: [],
+        badgeId: '',
+        url: DRILLDOWN_URL + '/',
+      },
+    ];
+
+    await interactiveCompletionStorage.set(DRILLDOWN_URL, 100);
+    await interactiveCompletionStorage.set(DRILLDOWN_MILESTONE, 100);
+    await guideCompletionMarkStorage.set(DRILLDOWN_MILESTONE, true);
+    await interactiveCompletionStorage.set(STRAY_KEY, 100);
+    await guideCompletionMarkStorage.set(STRAY_KEY, true);
+
+    await renderAndResetPath('drilldown-logs');
+
+    const interactives = await interactiveCompletionStorage.getAll();
+    // Curated path cleared
+    expect(DRILLDOWN_URL in interactives).toBe(false);
+    expect(DRILLDOWN_MILESTONE in interactives).toBe(false);
+    await expect(guideCompletionMarkStorage.get(DRILLDOWN_MILESTONE)).resolves.toBeNull();
+    // Stray extending-slug key preserved
+    expect(interactives[STRAY_KEY]).toBe(100);
+    await expect(guideCompletionMarkStorage.get(STRAY_KEY)).resolves.toBe(true);
+  });
 });

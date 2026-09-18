@@ -460,9 +460,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       }
       return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).percent;
     },
-    // The revision is not read here; it forces the callback to get a new identity so consumers that
-    // memoize on it (My Learning's card list) recompute when completion evidence changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- revision re-identifies callback
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the revision is not read here, it is what re-identifies this callback so a consumer memoising on it (My Learning's card list) recomputes when the evidence moves
     [paths, progress.completedGuides, getGuideUrlForPath, guideProgressRevision]
   );
 
@@ -477,8 +475,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       }
       return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).complete;
     },
-    // As above: the revision re-identifies the callback; it is not an input the body reads.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- revision re-identifies callback
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above: the revision re-identifies the callback, it is not an input the body reads
     [paths, progress.completedGuides, getGuideUrlForPath, guideProgressRevision]
   );
 

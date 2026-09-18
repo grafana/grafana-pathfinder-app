@@ -23,18 +23,22 @@ function convertYamlToBlock(yamlContent: string): JsonGrotGuideBlock {
   // YAML documents. Parse all documents and find the one with welcome/screens.
   const documents = loadAll(yamlContent);
 
+  // Select the first document that actually carries guide content. Use truthiness
+  // (not `!== undefined`): a leading document declaring a falsy `welcome`/`screens`
+  // (e.g. `welcome: null`) is frontmatter, not the guide, and must be skipped so the
+  // real guide in a later document is chosen.
   const parsed = documents.find(
-    (doc): doc is any =>
+    (doc): doc is Record<string, unknown> =>
       doc !== null &&
       typeof doc === 'object' &&
-      ((doc as any).welcome !== undefined || (doc as any).screens !== undefined)
+      (Boolean((doc as Record<string, unknown>).welcome) || Boolean((doc as Record<string, unknown>).screens))
   );
 
-  if (!parsed || typeof parsed !== 'object') {
+  if (!parsed) {
     throw new Error('Invalid YAML: no document found with "welcome" or "screens" fields');
   }
 
-  const welcome = parsed.welcome;
+  const welcome = parsed.welcome as { title?: string; body?: string; ctas?: unknown[] } | undefined;
   const screens = parsed.screens;
 
   if (!welcome) {
