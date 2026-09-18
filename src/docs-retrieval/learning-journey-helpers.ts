@@ -134,19 +134,50 @@ export interface MilestonePercentage {
 }
 
 /**
- * One-shot in-memory guard so a burst of renders backfilling the same
- * milestone doesn't fire a redundant `interactiveCompletionStorage.set` per
- * render while the first write is still in flight. Keyed by the same
- * sanitized content key the write lands under; never cleared, since a
- * successful backfill never needs to run twice for a given session.
+ * Confirmed-persisted guard: a key lands here only after its
+ * `interactiveCompletionStorage.set` call has resolved, so a burst of
+ * renders backfilling the same milestone stops re-queuing it once the write
+ * actually landed. Never cleared, since a successful backfill never needs to
+ * run twice for a given session.
  */
 const backfilledMilestoneKeys = new Set<string>();
 
-/** Test-only reset, mirroring `resetContentKeyForTests` — clears the guard so
- *  each test starts from the same baseline instead of inheriting another
- *  test's backfilled keys. */
+/**
+ * In-flight guard: a key lands here as soon as its write is queued, before
+ * the write resolves, so a second render in the same tick doesn't queue a
+ * duplicate write for a key that's already waiting its turn.
+ */
+const backfillQueuedKeys = new Set<string>();
+
+/** Test-only reset, mirroring `resetContentKeyForTests` — clears both guards
+ *  so each test starts from the same baseline instead of inheriting another
+ *  test's backfilled or in-flight keys. */
 export function resetMilestoneBackfillGuardForTests(): void {
   backfilledMilestoneKeys.clear();
+  backfillQueuedKeys.clear();
+}
+
+/**
+ * Serializes every milestone-completion write this module makes into
+ * `interactiveCompletionStorage` — the real completion write in
+ * {@link markMilestoneDone} and the legacy backfill below — onto one queue.
+ * `BoundedRecordStorage.set` does its own read-modify-write of the single
+ * shared JSON record (read the whole record, mutate, write the whole record
+ * back); firing two `set` calls without awaiting between them lets both read
+ * the same pre-write record, and whichever write finishes last overwrites
+ * the other's key entirely (a lost update). Chaining every write onto this
+ * queue guarantees each one sees the previous one's result, and guarantees a
+ * `markMilestoneDone` write is never lost behind, or racing, a backfill
+ * queued moments earlier by the same journey's own render.
+ */
+let milestoneCompletionWriteQueue: Promise<unknown> = Promise.resolve();
+
+function queueMilestoneCompletionWrite(contentKey: string, percentage: number): Promise<void> {
+  const write = milestoneCompletionWriteQueue.then(() => interactiveCompletionStorage.set(contentKey, percentage));
+  // Swallow so one failed write doesn't poison the queue for writes queued
+  // after it; interactiveCompletionStorage.set already logs its own errors.
+  milestoneCompletionWriteQueue = write.catch(() => undefined);
+  return write;
 }
 
 /**
@@ -157,20 +188,33 @@ export function resetMilestoneBackfillGuardForTests(): void {
  * Safe by construction: it only ever writes 100 (the maximum), only for a
  * milestone the legacy store already reports done, and only when the new
  * store doesn't already hold that value — so it can't lower or overwrite
- * real progress, and repeated calls across a session are no-ops after the
- * first. Fire-and-forget: the caller's own render already reflects the
- * legacy completion this tick (it reads `milestoneCompletionStorage`
- * directly too), so this write is purely about converging storage for
- * readers that don't.
+ * real progress. The write is queued (not awaited by the caller — the
+ * caller's own render already reflects the legacy completion this tick, since
+ * it reads `milestoneCompletionStorage` directly too) but serialized with
+ * every other write this module makes, and `backfilledMilestoneKeys` only
+ * gains the key once that write actually resolves — so a render that fires
+ * before the first write lands re-queues rather than silently no-ops on a
+ * write that never happened.
  */
 function backfillLegacyMilestoneCompletion(contentKey: string, alreadyPersisted: number | undefined): void {
-  if (alreadyPersisted === 100 || backfilledMilestoneKeys.has(contentKey)) {
+  if (alreadyPersisted === 100 || backfilledMilestoneKeys.has(contentKey) || backfillQueuedKeys.has(contentKey)) {
     return;
   }
-  backfilledMilestoneKeys.add(contentKey);
-  void interactiveCompletionStorage.set(contentKey, 100).then(() => {
-    dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
-  });
+  backfillQueuedKeys.add(contentKey);
+  void queueMilestoneCompletionWrite(contentKey, 100).then(
+    () => {
+      backfillQueuedKeys.delete(contentKey);
+      backfilledMilestoneKeys.add(contentKey);
+      dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+    },
+    // interactiveCompletionStorage.set never rejects today (its own
+    // setInternal swallows and logs), so this is a defensive backstop rather
+    // than a reachable path: clear the in-flight guard instead of leaving the
+    // key stuck queued forever if that ever changes.
+    () => {
+      backfillQueuedKeys.delete(contentKey);
+    }
+  );
 }
 
 /**
@@ -789,12 +833,35 @@ export async function getAllJourneyCompletionsAsync(): Promise<Record<string, nu
 // ============================================================================
 
 /**
+ * Canonicalizes a milestone URL to the manifest's own spelling for that
+ * milestone (matched by slug) before turning it into a content key, so a
+ * completion is written and read under the SAME key regardless of which
+ * launch URL variant reached this call. `currentUrl` can be
+ * `.../m1/content.json` (the package-content-json launch) while the
+ * manifest's own `milestone.url` for the same milestone is `.../m1/` —
+ * different strings, so different sanitized content keys, so a completion
+ * recorded under one variant would be invisible to the cover page, the
+ * toolbar, and the whole-journey membership check below, all of which read
+ * by the manifest's own URL. Falls back to the input URL's own key when no
+ * canonical match is available (no expected list, or a slug the list
+ * doesn't contain) — unchanged behavior for those callers.
+ */
+function resolveMilestoneContentKey(url: string, expectedMilestoneUrls?: readonly string[]): string {
+  const slug = getMilestoneSlug(url);
+  const canonicalUrl = slug
+    ? expectedMilestoneUrls?.find((candidate) => getMilestoneSlug(candidate) === slug)
+    : undefined;
+  return sanitizeContentKey(canonicalUrl ?? url);
+}
+
+/**
  * Marks a learning journey milestone as completed.
  * - Persists the milestone's own percentage (100) in
- *   `interactiveCompletionStorage`, keyed by its sanitized URL — the same
- *   content-key scheme `journeyMilestonePercentages`/`resolvePathMemberPercentages`
- *   read back, so the toolbar segment and My Learning's rollup never disagree
- *   with what this just recorded.
+ *   `interactiveCompletionStorage`, keyed by the canonical (manifest-spelling)
+ *   content key {@link resolveMilestoneContentKey} resolves — the same key
+ *   `journeyMilestonePercentages`/`resolvePathMemberPercentages` read back, so
+ *   the toolbar segment and My Learning's rollup never disagree with what
+ *   this just recorded, regardless of which launch URL variant got here.
  * - Calls markGuideCompleted (learning-paths/badge-coordinator) to bridge to the badge/progress system
  * - When `expectedMilestoneUrls` is provided and EVERY one is present in stored
  *   progress, awards the path badge and fires the whole-journey record. Membership
@@ -812,8 +879,11 @@ export async function markMilestoneDone(
   if (!milestoneSlug) {
     return;
   }
-  const contentKey = sanitizeContentKey(milestoneUrl);
-  await interactiveCompletionStorage.set(contentKey, 100);
+  const contentKey = resolveMilestoneContentKey(milestoneUrl, expectedMilestoneUrls);
+  // Queued (not a bare `set`) so this write is serialized with any legacy
+  // backfill this journey's own render may have queued moments earlier —
+  // see {@link queueMilestoneCompletionWrite}.
+  await queueMilestoneCompletionWrite(contentKey, 100);
   dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
   // Local-cache/UX duty (badges, streak) — unchanged.
   await markGuideCompleted(milestoneSlug);
@@ -849,7 +919,13 @@ export async function markMilestoneDone(
   // removed milestone URLs left over from an earlier journey revision.
   if (expectedMilestoneUrls && expectedMilestoneUrls.length > 0) {
     const completions = await interactiveCompletionStorage.getAll();
-    const allMilestonesDone = expectedMilestoneUrls.every((url) => (completions[sanitizeContentKey(url)] ?? 0) >= 100);
+    // Same resolver as the write above: every expected URL is already the
+    // manifest's own canonical spelling, so this is normally a no-op pass
+    // through it, but sharing the function keeps both sides of the
+    // membership check provably aligned rather than independently correct.
+    const allMilestonesDone = expectedMilestoneUrls.every(
+      (url) => (completions[resolveMilestoneContentKey(url, expectedMilestoneUrls)] ?? 0) >= 100
+    );
     if (allMilestonesDone) {
       if (journeyBaseUrl.startsWith('backend-guide:')) {
         await journeyCompletionStorage.set(journeyBaseUrl, 100);
