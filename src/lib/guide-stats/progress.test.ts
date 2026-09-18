@@ -186,3 +186,196 @@ describe('evidence keyed by runtime step id', () => {
     expect(furthestEvidencedPosition(index, [{ kind: 'do-it', blockId: 'derived-9' }])).toBe(0);
   });
 });
+
+describe('branch child evidence', () => {
+  const resolveStepId = (block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+    block.type === 'interactive' ? `${context.parentSectionId}:${context.index}` : undefined;
+
+  it('completing a branch child step returns the conditional\'s position', () => {
+    const index = computeGuideBlockIndex(
+      [
+        markdown('before'),
+        {
+          type: 'conditional',
+          id: 'cond',
+          whenTrue: [interactive('t1'), interactive('t2')],
+          whenFalse: [interactive('f1')],
+        },
+        markdown('after'),
+      ],
+      { resolveStepId }
+    );
+
+    // The conditional is at position 2.
+    expect(index.positionsById.get('cond')).toBe(2);
+    // Completing a whenTrue child credits position 2.
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'conditional-true:blocks[1]:0' }])).toMatchObject({
+      position: 2,
+    });
+    // Completing a whenFalse child credits position 2.
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'conditional-false:blocks[1]:0' }])).toMatchObject({
+      position: 2,
+    });
+  });
+
+  it('completing branch children from both branches returns the same conditional position', () => {
+    const index = computeGuideBlockIndex(
+      [
+        {
+          type: 'conditional',
+          whenTrue: [interactive()],
+          whenFalse: [interactive()],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    // Both branches credit the same position.
+    expect(furthestEvidencedPosition(index, [{ kind: 'do-it', blockId: 'conditional-true:blocks[0]:0' }])).toBe(1);
+    expect(furthestEvidencedPosition(index, [{ kind: 'do-it', blockId: 'conditional-false:blocks[0]:0' }])).toBe(1);
+  });
+
+  it('branchChildPositions takes precedence over positionsByStepId when the same key exists', () => {
+    // This test verifies the lookup order: branchChildPositions is checked before positionsByStepId.
+    // We construct a scenario where a counted block and a branch child could have the same step ID.
+    // This is contrived (shouldn't happen in real guides), but validates that branch child aliases
+    // take precedence since they're more specific and intentionally created.
+    const customResolver = (block: CountableBlock, context: { parentSectionId: string; index: number }) => {
+      // Give the first block a step ID that happens to collide with a branch child's key format.
+      if (block.type === 'interactive' && context.parentSectionId === '__standalone__' && context.index === 0) {
+        return 'conditional-true:blocks[1]:0'; // Simulate a collision with branch child key
+      }
+      return block.type === 'interactive' ? `${context.parentSectionId}:${context.index}` : undefined;
+    };
+
+    const index = computeGuideBlockIndex(
+      [
+        interactive('first'), // Position 1, step ID will be 'conditional-true:blocks[1]:0'
+        {
+          type: 'conditional',
+          whenTrue: [interactive()], // Would normally generate 'conditional-true:blocks[1]:0'
+          whenFalse: [],
+        },
+      ],
+      { resolveStepId: customResolver }
+    );
+
+    // The first interactive at position 1 has the colliding step ID.
+    expect(index.positionsByStepId.get('conditional-true:blocks[1]:0')).toBe(1);
+    // The branch child ALSO maps to position 2 (the conditional).
+    expect(index.branchChildPositions.get('conditional-true:blocks[1]:0')).toBe(2);
+    // When we look up this step ID, branchChildPositions (position 2) should win over
+    // positionsByStepId (position 1), since branch child aliases are more specific.
+    expect(furthestEvidencedPosition(index, [{ kind: 'do-it', blockId: 'conditional-true:blocks[1]:0' }])).toBe(2);
+  });
+
+  it('reaches 100% when completing a branch child in a guide ending with a conditional', () => {
+    const index = computeGuideBlockIndex(
+      [
+        markdown(),
+        {
+          type: 'conditional',
+          whenTrue: [interactive()],
+          whenFalse: [interactive()],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    expect(index.totalBlockCount).toBe(2);
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'conditional-true:blocks[1]:0' }])).toMatchObject({
+      position: 2,
+      percent: 100,
+      complete: true,
+    });
+  });
+
+  it('completing a step inside a section inside a branch credits the conditional', () => {
+    // When a section is inside a conditional branch, its children should credit the conditional.
+    const index = computeGuideBlockIndex(
+      [
+        markdown('before'),
+        {
+          type: 'conditional',
+          id: 'cond',
+          whenTrue: [
+            {
+              type: 'section',
+              id: 'inner-section',
+              blocks: [interactive('s1'), interactive('s2')],
+            },
+          ],
+          whenFalse: [],
+        },
+        markdown('after'),
+      ],
+      { resolveStepId }
+    );
+
+    // Conditional is at position 2.
+    expect(index.positionsById.get('cond')).toBe(2);
+    // Completing a step inside the section credits the conditional.
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'section-inner-section:0' }])).toMatchObject({
+      position: 2,
+    });
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'section-inner-section:1' }])).toMatchObject({
+      position: 2,
+    });
+  });
+
+  it('completing a step inside a nested conditional credits the outer conditional', () => {
+    // When a conditional is nested inside another conditional's branch, completing a step
+    // inside the nested conditional should credit the OUTER conditional.
+    const index = computeGuideBlockIndex(
+      [
+        markdown('before'),
+        {
+          type: 'conditional',
+          id: 'outer',
+          whenTrue: [
+            {
+              type: 'conditional',
+              id: 'inner',
+              whenTrue: [interactive('inner-t1')],
+              whenFalse: [interactive('inner-f1')],
+            },
+          ],
+          whenFalse: [],
+        },
+        markdown('after'),
+      ],
+      { resolveStepId }
+    );
+
+    // Outer conditional is at position 2.
+    expect(index.positionsById.get('outer')).toBe(2);
+    expect(index.totalBlockCount).toBe(3);
+    // Completing a step in the nested conditional's whenTrue branch credits the outer conditional.
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'conditional-true:blocks[1].whenTrue[0]:0' }])).toMatchObject({
+      position: 2,
+    });
+    // Completing a step in the nested conditional's whenFalse branch also credits the outer conditional.
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'conditional-false:blocks[1].whenTrue[0]:0' }])).toMatchObject({
+      position: 2,
+    });
+  });
+
+  it('returns 0 for unknown branch child signal', () => {
+    // A step ID that doesn't correspond to any branch child should return 0.
+    const index = computeGuideBlockIndex(
+      [
+        {
+          type: 'conditional',
+          whenTrue: [interactive()],
+          whenFalse: [interactive()],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    // A completely unknown step ID returns 0.
+    expect(furthestEvidencedPosition(index, [{ kind: 'do-it', blockId: 'nonexistent-branch-step' }])).toBe(0);
+    // A step ID that looks like it could be from a branch but isn't in this guide also returns 0.
+    expect(furthestEvidencedPosition(index, [{ kind: 'do-it', blockId: 'conditional-true:blocks[99]:0' }])).toBe(0);
+  });
+});

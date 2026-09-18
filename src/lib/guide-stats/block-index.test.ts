@@ -350,3 +350,345 @@ describe('CountableBlock', () => {
     expect(computeGuideBlockIndex(countable).totalBlockCount).toBe(3);
   });
 });
+
+describe('branchChildPositions', () => {
+  const resolveStepId = (block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+    block.type === 'interactive' ? `${context.parentSectionId}:${context.index}` : undefined;
+
+  it('maps branch child step IDs to the conditional\'s position', () => {
+    const index = computeGuideBlockIndex(
+      [
+        markdown('before'),
+        {
+          type: 'conditional',
+          id: 'cond',
+          whenTrue: [interactive('t1'), interactive('t2')],
+          whenFalse: [interactive('f1')],
+        },
+        markdown('after'),
+      ],
+      { resolveStepId }
+    );
+
+    // The conditional is at position 2.
+    expect(index.positionsById.get('cond')).toBe(2);
+    // Branch children map to the conditional's position.
+    expect(index.branchChildPositions.get('conditional-true:blocks[1]:0')).toBe(2);
+    expect(index.branchChildPositions.get('conditional-true:blocks[1]:1')).toBe(2);
+    expect(index.branchChildPositions.get('conditional-false:blocks[1]:0')).toBe(2);
+    // The conditional still counts as one block.
+    expect(index.totalBlockCount).toBe(3);
+  });
+
+  it('produces no mappings for empty branches', () => {
+    const index = computeGuideBlockIndex(
+      [
+        {
+          type: 'conditional',
+          whenTrue: [],
+          whenFalse: [],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    expect(index.branchChildPositions.size).toBe(0);
+  });
+
+  it('produces no mappings when the conditional follows a snippet-ref (path shifted)', () => {
+    const index = computeGuideBlockIndex(
+      [
+        { type: 'snippet-ref', blocks: [] },
+        {
+          type: 'conditional',
+          whenTrue: [interactive()],
+          whenFalse: [interactive()],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    // The conditional itself is registered (it has no derived step ID).
+    expect(index.totalBlockCount).toBe(2);
+    // But its branch children are not, because the path was shifted.
+    expect(index.branchChildPositions.size).toBe(0);
+  });
+
+  it('excludes later siblings of a snippet-ref inside a branch, but includes earlier ones', () => {
+    const index = computeGuideBlockIndex(
+      [
+        {
+          type: 'conditional',
+          whenTrue: [interactive('t1'), { type: 'snippet-ref', blocks: [] }, interactive('t2')],
+          whenFalse: [interactive('f1')],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    // The first interactive in whenTrue is included.
+    expect(index.branchChildPositions.has('conditional-true:blocks[0]:0')).toBe(true);
+    // The snippet-ref itself is included (it counts as a block, but has no derived step ID from resolveStepId).
+    // The interactive after the snippet-ref is excluded.
+    expect(index.branchChildPositions.has('conditional-true:blocks[0]:2')).toBe(false);
+    // whenFalse has no snippet-ref, so all its children are included.
+    expect(index.branchChildPositions.has('conditional-false:blocks[0]:0')).toBe(true);
+  });
+
+  it('is empty when no resolver is supplied', () => {
+    const index = computeGuideBlockIndex([
+      {
+        type: 'conditional',
+        whenTrue: [interactive()],
+        whenFalse: [interactive()],
+      },
+    ]);
+
+    expect(index.branchChildPositions.size).toBe(0);
+  });
+
+  it('maps multiple branch children to the same conditional position', () => {
+    const index = computeGuideBlockIndex(
+      [
+        markdown(),
+        {
+          type: 'conditional',
+          whenTrue: [interactive(), interactive(), interactive()],
+          whenFalse: [interactive(), interactive()],
+        },
+        markdown(),
+      ],
+      { resolveStepId }
+    );
+
+    // All true-branch children map to position 2.
+    expect(index.branchChildPositions.get('conditional-true:blocks[1]:0')).toBe(2);
+    expect(index.branchChildPositions.get('conditional-true:blocks[1]:1')).toBe(2);
+    expect(index.branchChildPositions.get('conditional-true:blocks[1]:2')).toBe(2);
+    // All false-branch children map to position 2.
+    expect(index.branchChildPositions.get('conditional-false:blocks[1]:0')).toBe(2);
+    expect(index.branchChildPositions.get('conditional-false:blocks[1]:1')).toBe(2);
+  });
+
+  it('handles nested conditionals by mapping nested branch children to the outer conditional', () => {
+    // Nested conditionals: the inner conditional's branch children should map to the
+    // OUTER conditional's position, so any interactive step inside the nested
+    // conditional credits the outer conditional.
+    const index = computeGuideBlockIndex(
+      [
+        {
+          type: 'conditional',
+          id: 'outer',
+          whenTrue: [
+            interactive('t1'),
+            {
+              type: 'conditional',
+              id: 'inner',
+              whenTrue: [interactive('inner-t1')],
+              whenFalse: [interactive('inner-f1')],
+            },
+          ],
+          whenFalse: [],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    // Outer conditional is at position 1.
+    expect(index.positionsById.get('outer')).toBe(1);
+    // Inner conditional is NOT counted separately (it's inside the opaque outer conditional).
+    expect(index.positionsById.has('inner')).toBe(false);
+    expect(index.totalBlockCount).toBe(1);
+
+    // The outer conditional's direct child (interactive at index 0) maps to position 1.
+    expect(index.branchChildPositions.get('conditional-true:blocks[0]:0')).toBe(1);
+    // The inner conditional is at index 1 in the outer's whenTrue branch.
+    // The inner conditional's whenTrue branch children map to position 1 (the outer conditional).
+    expect(index.branchChildPositions.get('conditional-true:blocks[0].whenTrue[1]:0')).toBe(1);
+    // The inner conditional's whenFalse branch children also map to position 1.
+    expect(index.branchChildPositions.get('conditional-false:blocks[0].whenTrue[1]:0')).toBe(1);
+    // All three interactives (one outer, two nested) should be mapped.
+    expect(index.branchChildPositions.size).toBe(3);
+  });
+
+  it('handles sections inside branches by recursing into their children', () => {
+    // When a section is inside a conditional branch, the section's children should
+    // map to the conditional's position using the section's runtime ID as parentSectionId.
+    const index = computeGuideBlockIndex(
+      [
+        markdown('before'),
+        {
+          type: 'conditional',
+          id: 'cond',
+          whenTrue: [
+            {
+              type: 'section',
+              id: 'inner-section',
+              blocks: [interactive('s1'), interactive('s2')],
+            },
+          ],
+          whenFalse: [],
+        },
+        markdown('after'),
+      ],
+      { resolveStepId }
+    );
+
+    // Conditional is at position 2.
+    expect(index.positionsById.get('cond')).toBe(2);
+    // Section's children use the section's runtime ID as parentSectionId.
+    expect(index.branchChildPositions.get('section-inner-section:0')).toBe(2);
+    expect(index.branchChildPositions.get('section-inner-section:1')).toBe(2);
+    // Total still counts just the 3 top-level blocks.
+    expect(index.totalBlockCount).toBe(3);
+  });
+
+  it('handles id-less sections inside branches using path-based namespace', () => {
+    const index = computeGuideBlockIndex(
+      [
+        {
+          type: 'conditional',
+          whenTrue: [
+            {
+              type: 'section',
+              blocks: [interactive()],
+            },
+          ],
+          whenFalse: [],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    // Section without an ID gets a path-based namespace.
+    // The section is at blocks[0].whenTrue[0], so its namespace is 'section:blocks[0].whenTrue[0]'.
+    expect(index.branchChildPositions.get('section:blocks[0].whenTrue[0]:0')).toBe(1);
+  });
+
+  it('handles assistant containers inside branches', () => {
+    const index = computeGuideBlockIndex(
+      [
+        {
+          type: 'conditional',
+          whenTrue: [
+            {
+              type: 'assistant',
+              blocks: [interactive(), interactive()],
+            },
+          ],
+          whenFalse: [],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    // Assistant uses a path-based namespace.
+    expect(index.branchChildPositions.get('assistant:blocks[0].whenTrue[0]:0')).toBe(1);
+    expect(index.branchChildPositions.get('assistant:blocks[0].whenTrue[0]:1')).toBe(1);
+  });
+
+  it('handles collapsible containers inside branches', () => {
+    const index = computeGuideBlockIndex(
+      [
+        {
+          type: 'conditional',
+          whenTrue: [
+            {
+              type: 'collapsible',
+              blocks: [interactive()],
+            },
+          ],
+          whenFalse: [],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    // Collapsible has no step context (namespace.id is undefined), so its children
+    // should not be collected.
+    expect(index.branchChildPositions.size).toBe(0);
+  });
+
+  it('handles deeply nested structures inside branches', () => {
+    // Section > Conditional > Section > Interactive
+    const index = computeGuideBlockIndex(
+      [
+        {
+          type: 'conditional',
+          id: 'outer',
+          whenTrue: [
+            {
+              type: 'section',
+              id: 'section1',
+              blocks: [
+                {
+                  type: 'conditional',
+                  id: 'inner',
+                  whenTrue: [
+                    {
+                      type: 'section',
+                      id: 'section2',
+                      blocks: [interactive('deep')],
+                    },
+                  ],
+                  whenFalse: [],
+                },
+              ],
+            },
+          ],
+          whenFalse: [],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    // The deeply nested interactive should map to the outer conditional (position 1).
+    expect(index.branchChildPositions.get('section-section2:0')).toBe(1);
+    expect(index.totalBlockCount).toBe(1);
+  });
+
+  it('produces no mappings for branches with only non-completable blocks', () => {
+    // Markdown blocks are non-completable (they don't emit completion evidence).
+    // The resolver returns undefined for markdown, so no step IDs are collected.
+    const index = computeGuideBlockIndex(
+      [
+        {
+          type: 'conditional',
+          whenTrue: [markdown('t1'), markdown('t2')],
+          whenFalse: [markdown('f1')],
+        },
+      ],
+      { resolveStepId }
+    );
+
+    // No step IDs collected because markdown blocks have no step IDs from resolveStepId.
+    expect(index.branchChildPositions.size).toBe(0);
+    expect(index.totalBlockCount).toBe(1);
+  });
+
+  it('handles one-sided conditionals with only whenTrue populated', () => {
+    // A conditional with only whenTrue populated (whenFalse is empty or undefined).
+    const index = computeGuideBlockIndex(
+      [
+        markdown('before'),
+        {
+          type: 'conditional',
+          id: 'one-sided',
+          whenTrue: [interactive('t1'), interactive('t2')],
+          whenFalse: [], // Empty whenFalse
+        },
+        markdown('after'),
+      ],
+      { resolveStepId }
+    );
+
+    // Conditional is at position 2.
+    expect(index.positionsById.get('one-sided')).toBe(2);
+    // whenTrue children are mapped.
+    expect(index.branchChildPositions.get('conditional-true:blocks[1]:0')).toBe(2);
+    expect(index.branchChildPositions.get('conditional-true:blocks[1]:1')).toBe(2);
+    // whenFalse is empty, so no mappings for it.
+    expect(index.branchChildPositions.size).toBe(2);
+    expect(index.totalBlockCount).toBe(3);
+  });
+});
