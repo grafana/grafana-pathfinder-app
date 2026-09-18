@@ -1026,5 +1026,13 @@ describe('malformed journey metadata (defensive boundary)', () => {
     const guide = emitted.filter((f) => f.kind === 'guide');
     expect(guide).toHaveLength(1);
     expect(guide[0]).toMatchObject({ guideId: 'select-platform' });
+
+    // journeySetMock's one call here is setMilestoneCompletionPercentage's
+    // own 100% write, unrelated to the malformed milestones list. The
+    // recommendation-card refresh below it in the surface emitter must skip
+    // rather than compute a 0% mean over an empty list and overwrite that
+    // real percentage with a spurious 0.
+    expect(journeySetMock).toHaveBeenCalledTimes(1);
+    expect(journeySetMock).not.toHaveBeenCalledWith('bundled:linux', 0);
   });
 });

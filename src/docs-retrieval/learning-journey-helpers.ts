@@ -794,11 +794,16 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
     // keeps it live for the rest too (journey-percentage-diverges-on
     // -recommendation-card). A no-op for a backend-guide base, which
     // persistJourneyCompletionPercentage already declines to write.
-    if (metadata?.learningJourney) {
-      const freshJourneyProgress = journeyProgressFromMilestones(
-        journeyBase,
-        metadata.learningJourney.milestones ?? []
-      );
+    // Guards on `milestones` itself, not just `learningJourney` — a
+    // malformed manifest (present journey, missing milestones array) must
+    // skip this refresh entirely rather than compute a 0% mean over an empty
+    // list and overwrite whatever real percentage was already stored here.
+    // Guards on `milestones` itself, not just `learningJourney` — a
+    // malformed manifest (present journey, missing milestones array) must
+    // skip this refresh entirely rather than compute a 0% mean over an empty
+    // list and overwrite whatever real percentage was already stored here.
+    if (metadata?.learningJourney?.milestones) {
+      const freshJourneyProgress = journeyProgressFromMilestones(journeyBase, metadata.learningJourney.milestones);
       setJourneyCompletionPercentage(journeyBase, freshJourneyProgress, completionContext);
     }
   } else if (!surfaceBase?.startsWith('bundled:')) {
