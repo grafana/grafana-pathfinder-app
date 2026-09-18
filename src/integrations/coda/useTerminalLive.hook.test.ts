@@ -419,3 +419,16 @@ describe('useTerminalLive teardown races', () => {
     }
   });
 });
+
+it.each(['vm_unreachable', 'host_identity_unverified', 'coda_auth_failed'])(
+  'offers replacement only for an identified unreachable VM (%s)',
+  async (code) => {
+    const { hook, handlers } = await connectedHook();
+    act(() => handlers.current.onStatus?.({ state: 'ssh_connecting', vmId: 'failed-vm' }));
+    act(() => handlers.current.onError?.(new CodaError('failed', code, 0)));
+    expect(hook.result.current.unreachableVmId).toBe(code === 'vm_unreachable' ? 'failed-vm' : null);
+    expect(hook.result.current.sessionId).toBeNull();
+    act(() => hook.result.current.disconnect());
+    expect(hook.result.current.unreachableVmId).toBeNull();
+  }
+);

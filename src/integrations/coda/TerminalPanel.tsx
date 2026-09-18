@@ -40,6 +40,7 @@ import {
 import { WorkspaceLink } from './WorkspaceLink';
 import { logger } from '../../lib/logging';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { SandboxRecovery } from './SandboxRecovery';
 import { VmExpiryIndicator } from './VmExpiryIndicator';
 
 interface TerminalPanelProps {
@@ -68,9 +69,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, sendCommand, error, sessionId, vmId, vmExpiresAt } = useTerminalLive({
-    terminalRef: terminalInstanceRef,
-  });
+  const { status, connect, disconnect, resize, sendCommand, error, unreachableVmId, sessionId, vmId, vmExpiresAt } =
+    useTerminalLive({
+      terminalRef: terminalInstanceRef,
+    });
 
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
@@ -501,6 +503,19 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
         }}
         data-testid={testIds.codaTerminal.panel}
       >
+        {unreachableVmId && (
+          <SandboxRecovery
+            key={unreachableVmId}
+            vmId={unreachableVmId}
+            onReplace={(options) => {
+              if (terminalCtx) {
+                terminalCtx.connect(options);
+              } else {
+                void connect(options);
+              }
+            }}
+          />
+        )}
         {/* Resize handle */}
         <div
           className={styles.resizeHandle}

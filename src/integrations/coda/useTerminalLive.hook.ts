@@ -74,6 +74,7 @@ interface UseTerminalLiveReturn {
   sendCommand: (command: string) => Promise<void>;
   /** Error message if status is 'error' */
   error: string | null;
+  unreachableVmId: string | null;
   /** Active Coda session id, or null when disconnected. Needed to run exec calls. */
   sessionId: string | null;
   /** Server-reported expiry of the active VM, or null when it is unknown. */
@@ -104,6 +105,7 @@ function renderProvisionProgress(label: string, elapsedMs: number, complete = fa
 export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTerminalLiveReturn {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [unreachableVmId, setUnreachableVmId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [vmId, setVmId] = useState<string | null>(null);
   const [vmExpiresAt, setVmExpiresAt] = useState<string | null>(null);
@@ -325,7 +327,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             category: 'backend_error',
           });
 
+          const failedVmId = currentVmIdRef.current;
           cleanup();
+          setUnreachableVmId(codaErr.code === 'vm_unreachable' ? failedVmId : null);
 
           const message = codaSessionErrorMessage(err);
           terminal.writeln('\r\n');
@@ -388,6 +392,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
       setStatus('connecting');
       setError(null);
+      setUnreachableVmId(null);
       cleanup();
       const generation = connectGenerationRef.current;
 
@@ -442,6 +447,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     cleanup();
     setStatus('disconnected');
     setError(null);
+    setUnreachableVmId(null);
 
     const terminal = terminalRef.current;
     if (terminal) {
@@ -471,6 +477,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     resize,
     sendCommand,
     error,
+    unreachableVmId,
     sessionId,
     vmExpiresAt,
     vmId: status === 'connected' ? vmId : null,

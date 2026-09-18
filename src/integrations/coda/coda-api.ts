@@ -188,6 +188,10 @@ export function listVMs(): Promise<VM[]> {
   return client.listVMs();
 }
 
+export function deleteVM(vmId: string) {
+  return client.deleteVM(vmId, true);
+}
+
 export function deleteSession(sessionId: string) {
   return client.deleteSession(sessionId);
 }
