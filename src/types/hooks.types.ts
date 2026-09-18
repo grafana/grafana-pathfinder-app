@@ -3,6 +3,7 @@
  * Centralized interfaces for React hooks across the application
  */
 
+import type { ConditionInput, StepStatus } from './requirements.types';
 // ============================================================================
 // STEP CHECKER HOOKS
 // ============================================================================
@@ -12,8 +13,8 @@
  * Unified hook for checking tutorial-specific requirements and objectives
  */
 export interface UseStepCheckerProps {
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   hints?: string;
   stepId: string;
   targetAction?: string; // Pass through to requirements checking
@@ -62,10 +63,13 @@ export interface UseStepCheckerProps {
  */
 export interface UseStepCheckerReturn {
   // Unified state
+  status: StepStatus;
   isEnabled: boolean;
   isCompleted: boolean;
   isChecking: boolean;
   isSkipped?: boolean; // Whether this step was skipped due to failed requirements
+  /** True only when blocked by an unmet sequential dependency, never by this step's own failed requirements. */
+  isSequentialBlock?: boolean;
 
   // Retry state
   retryCount?: number; // Current retry attempt

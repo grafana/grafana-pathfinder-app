@@ -24,6 +24,7 @@
  * requirement and triggers a recheck afterwards.
  */
 
+import type { ConditionInput } from '../../../types/requirements.types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRequirementExplanation, dispatchFix } from '../../../requirements-manager';
 import { subscribeProgressEvent } from '../../../global-state/progress-events';
@@ -46,7 +47,7 @@ interface SectionRequirementsResult {
 }
 
 interface SectionRequirementsData {
-  requirements: string;
+  requirements: ConditionInput;
   targetAction: string;
   refTarget: string;
   targetValue: string | undefined;
@@ -66,7 +67,7 @@ export interface SectionRequirementsStatus {
 }
 
 export interface UseSectionRequirementsArgs {
-  requirements: string | undefined;
+  requirements: ConditionInput | undefined;
   sectionId: string;
   title: string | undefined;
   hints?: string;

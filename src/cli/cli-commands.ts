@@ -23,6 +23,7 @@ import {
 } from './contracts';
 import { addBlockGroup } from './commands/add-block';
 import { addChoiceSpec } from './commands/add-choice';
+import { addHintSpec } from './commands/add-hint';
 import { addStepSpec } from './commands/add-step';
 import { buildGraphSpec } from './commands/build-graph';
 import { buildRepositorySpec } from './commands/build-repository';
@@ -61,6 +62,7 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
   },
   'add-step': { positionals: ['dir'], placeholders: { parent: 'id' } },
   'add-choice': { positionals: ['dir'], placeholders: { parent: 'id' } },
+  'add-hint': { positionals: ['dir'], placeholders: { parent: 'id' } },
   'set-manifest': {
     positionals: ['dir'],
     // `<semver>`, `<platform>`, and `<json>` read better than the type-derived `<string>`.
@@ -87,7 +89,13 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
   },
   validate: {
     positionals: ['files'],
-    placeholders: { files: 'files...', format: 'format', package: 'dir', packages: 'dir' },
+    placeholders: {
+      files: 'files...',
+      format: 'format',
+      package: 'dir',
+      packages: 'dir',
+      snippetsCatalog: 'file',
+    },
     inherits: ['format'],
   },
   e2e: {
@@ -152,6 +160,7 @@ const RENDERED: Record<string, Command> = {
   'add-block': mountCommanderGroup(addBlockGroup, PRESENTATIONS['add-block']),
   'add-step': mountCommander(addStepSpec, PRESENTATIONS['add-step']),
   'add-choice': mountCommander(addChoiceSpec, PRESENTATIONS['add-choice']),
+  'add-hint': mountCommander(addHintSpec, PRESENTATIONS['add-hint']),
   'set-manifest': mountCommander(setManifestSpec, PRESENTATIONS['set-manifest']),
   inspect: mountCommander(inspectSpec, PRESENTATIONS.inspect),
   'edit-block': mountCommander(editBlockSpec, PRESENTATIONS['edit-block']),

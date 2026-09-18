@@ -42,15 +42,14 @@ function requirementWaits(waitForTimeout: jest.Mock): number[] {
 
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
   return {
+    stepKind: 'plain',
     stepId: STEP_ID,
     index: 0,
     skippable: false,
     hasDoItButton: true,
     hasShowMeButton: false,
     isPreCompleted: false,
-    isMultistep: false,
-    internalActionCount: 0,
-    isGuided: false,
+    actionCount: 0,
     locator: {} as unknown as TestableStep['locator'],
     ...overrides,
   };

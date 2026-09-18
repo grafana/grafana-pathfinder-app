@@ -136,3 +136,44 @@ export type SandboxUnavailableReason =
 export function recordSandboxUnavailable(reason: SandboxUnavailableReason, blockType: string): void {
   pushFaroEvent(TELEMETRY_EVENTS.sandboxUnavailable, { reason, blockType });
 }
+
+/**
+ * Which rung of the settings-store ladder a config read landed on:
+ * `PathfinderSettings` resource → plugin `jsonData` → defaults.
+ *
+ * Every rung below `resource` is a stack running on the legacy store, and they
+ * are operationally different problems — a kind that was never deployed, a
+ * first-run stack with no resource yet, and an admin whose role cannot read it
+ * all produce identical UI. Without a count, "the migration is done" and "the
+ * migration silently never applied anywhere" look the same.
+ *
+ * A closed set of rungs. No namespace, stack id, user or setting value.
+ */
+export type SettingsStoreOutcome =
+  'resource' | 'not-created' | 'kind-not-served' | 'api-unavailable' | 'empty-spec' | 'forbidden' | 'read-error';
+
+export function recordSettingsStoreResolved(outcome: SettingsStoreOutcome): void {
+  pushFaroEvent(TELEMETRY_EVENTS.settingsStoreResolved, { outcome });
+}
+
+/**
+ * A gcx credential install did not mint, with the rung that stopped it.
+ *
+ * `mint-forbidden` is the ordinary answer rather than a fault —
+ * `serviceaccounts:create` is Admin by default while sandbox sessions are open
+ * to Editors — and the whole shape of the surface follows from how often it
+ * happens. Without this the rate is unmeasurable, and "nobody sets up gcx" and
+ * "nobody on this stack is allowed to" produce identical telemetry.
+ *
+ * `account-outranks-caller` is separated out because it is the one rung an
+ * operator can clear — there is a service account to delete — while
+ * `mint-forbidden` needs a role change.
+ *
+ * A closed set of rungs. No token, session id, or backend error text.
+ */
+export type GcxCredentialDegradation =
+  'mint-forbidden' | 'account-outranks-caller' | 'account-check-unavailable' | 'plugin-too-old' | 'refused';
+
+export function recordGcxCredentialDegradation(reason: GcxCredentialDegradation): void {
+  pushFaroEvent(TELEMETRY_EVENTS.gcxCredentialDegraded, { reason });
+}

@@ -48,6 +48,8 @@ The current Pathfinder custom-guide storage target is an App Platform resource:
 
 `metadata.name` is the App Platform resource name and the key used by Pathfinder deep links. It must be stable after first publication. The auto-generated ID format `<kebab-of-title>-<random-suffix>` (see [Agent authoring CLI — `create`](./AGENT-AUTHORING.md#create)) makes resource names statistically unique within a namespace without requiring a pre-publish lookup.
 
+The handoff encodes native divider blocks as markdown containing `<!-- pathfinder:block=divider;v=1 -->` and `---`. Current Pathfinder releases decode that reserved representation back to a divider. A rollback to a release whose closed block union predates `divider` therefore still validates the resource and renders an equivalent horizontal rule.
+
 ## Handoff tool
 
 The MCP service exposes a finalization tool named `pathfinder_finalize_for_app_platform`.
@@ -121,13 +123,13 @@ The tool returns structured fields, not only prose instructions:
         "Ask the user whether to save as draft or publish (default draft). Set resource.spec.status before writing.",
         "Show the confirmationPrompt copy and only proceed on explicit yes.",
         "POST resource to appPlatform.collectionPathTemplate (substitute {namespace}). Use appPlatform.createMethod (POST).",
-        "If overwriting an existing resource (you passed an explicit --id at create): GET appPlatform.itemPathTemplate, copy metadata.resourceVersion, then PUT using appPlatform.updateMethod.",
+        "If overwriting an existing resource (you passed an explicit --id at create): GET appPlatform.itemPathTemplate, copy metadata.resourceVersion, merge the response metadata.annotations into resource.metadata.annotations so existing annotations survive the whole-object PUT, then PUT using appPlatform.updateMethod.",
         "On 2xx success, resolve viewer.floatingPath against the user's Grafana instance origin to produce an absolute URL and surface it. Do NOT surface a relative path."
       ],
       "errorHandling": [
         "404 on collection POST → switch to grafanaOss (CRD/aggregator not installed). No retry.",
         "403 → user lacks interactiveguides.create permission. Tell user, offer localExport. No retry.",
-        "409 on PUT → stale resourceVersion. Re-GET, copy resourceVersion, confirm with user, retry once. Second 409 → offer localExport.",
+        "409 on PUT → stale resourceVersion. Re-GET, copy resourceVersion, merge the current metadata.annotations into the outgoing resource, confirm with user, retry once. Second 409 → offer localExport.",
         "5xx, network error, timeout → retry once with backoff, then offer localExport.",
         "Other 4xx → surface error verbatim, offer localExport. No retry."
       ]

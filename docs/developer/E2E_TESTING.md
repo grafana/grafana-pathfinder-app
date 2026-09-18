@@ -14,15 +14,23 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 
 ## Source map for agents
 
-- `src/cli/commands/e2e.ts` — Commander options, input resolution, dependency planning, pre-flight orchestration, clean-stack resets, cloud routing, and per-guide Playwright invocation.
+- `src/cli/commands/e2e.ts` — options, input resolution, dependency planning, pre-flight orchestration, environment routing, and Playwright invocation selection.
 - `src/cli/e2e/e2e-local-package.ts` — local path/journey manifest validation, repository loading, milestone expansion, target gating, and guide hydration.
-- `src/cli/e2e/e2e-runner-contract.ts` — environment-variable contract between the CLI process and Playwright runner.
+- `src/cli/e2e/e2e-runner-contract.ts` — environment variables and the validated shared-chain file contract.
 - `src/cli/e2e/e2e-package.ts` — remote package and repository resolution, content fetch, schema validation, side-effect classification, and pre-run skip reasons.
 - `src/cli/e2e/guide-chains.ts` — pure package graph planning across hard dependencies, capabilities, and recursive milestones, followed by leaf-guide hydration.
 - `src/cli/e2e/e2e-targets.ts` — manifest `testEnvironment` to concrete target URL or skip reason.
 - `src/cli/e2e/cloud-provisioning.ts` and `src/cli/e2e/cloud-stack-pool-manager.ts` — shared-stack service-account isolation and pool-manager isolated stack leasing.
-- `tests/e2e-runner/guide-runner.spec.ts` — browser-side guide loading, pre-flight checks, DOM discovery, step execution, and result file writing.
-- `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, browser-termination monitoring, requirement fixing, artifact capture, and failure classification.
+- `tests/e2e-runner/guide-runner.spec.ts` — isolated, single-guide wrapper for the reusable guide lifecycle.
+- `tests/e2e-runner/shared-guide-runner.spec.ts` — one-test shared browser session for explicit path and journey selections.
+- `tests/e2e-runner/utils/guide-runner/discovery.ts` — current and legacy DOM discovery, driver-based inspection, and supported/unsupported coverage collection.
+- `tests/e2e-runner/utils/guide-runner/drivers/types.ts` — the `StepDriver` contract for inspection, timeout calculation, completion checks, skipping, and execution.
+- `tests/e2e-runner/utils/guide-runner/drivers/registry.ts` — the exhaustive registry of tracked step kinds, their supported status, and their concrete drivers.
+- `tests/e2e-runner/utils/guide-runner/drivers/shared.ts` and `drivers/guided.ts` — shared control behavior and guided-step-specific execution.
+- `tests/e2e-runner/utils/guide-runner/execution.ts` — sequential execution through the selected driver and construction of step results.
+- `tests/e2e-runner/utils/guide-runner/run-guide.ts` — guide lifecycle, unsupported-only skips, coverage finalization, and conversion to reporter input.
+- `tests/e2e-runner/utils/console-reporter.ts`, `src/cli/e2e/e2e-reporter.ts`, `src/cli/e2e/e2e-results.ts`, and `src/cli/e2e/schemas/e2e-report.schema.ts` — console output, external report construction, CLI outcome mapping, and the report contract.
+- `tests/e2e-runner/utils/guide-runner/milestone-replacement.ts` — runner-only progress reset and legacy E2E tab replacement.
 - `docs/developer/E2E_TESTING_CONTRACT.md` — stable `data-test-*` selector contract used by the runner.
 
 ## Quick start
@@ -91,7 +99,7 @@ The CLI accepts these input formats:
 
 | Code | Meaning                                   |
 | ---- | ----------------------------------------- |
-| 0    | All steps passed                          |
+| 0    | No guide produced a failure outcome       |
 | 1    | One or more steps failed                  |
 | 2    | Configuration or setup error              |
 | 3    | Grafana unreachable                       |
@@ -135,8 +143,12 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - Plugin loads guide via `bundled:e2e-test` pattern
 
 3. **Step discovery**
-   - Runner scans DOM for interactive step elements
-   - Collects metadata: step IDs, skip buttons, Do it buttons, multistep status
+   - The runner scans for `[data-test-step-kind][data-test-step-id]` roots.
+   - If current roots are absent, the runner uses the documented legacy selector.
+   - The driver registry collects metadata and identifies supported steps.
+   - Unsupported roots remain in coverage, but the runner does not operate their controls.
+   - A guide with only unsupported roots returns a skipped report before execution.
+   - The skipped report includes each unsupported kind and step ID. It does not include `errorCode`.
 
 4. **Sequential execution**
    - For each step:
@@ -144,12 +156,106 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
      - Handle requirements (Fix buttons with retry)
      - Click "Do it" button
      - Wait for completion indicator
-   - Session validated every 5 steps to detect expiry
+   - Session validated before each shared milestone and every 5 steps
 
 5. **Reporting**
    - Console output with real-time progress
    - JSON report when `--output` is specified; non-passing runs also write a default report under `--artifacts`
    - Failure artifacts in `--artifacts` directory
+
+### Adding support for a step kind
+
+`STEP_DRIVERS` is the runner's extension point. Discovery and execution select behavior from this registry instead of branching on step kinds themselves.
+
+To support a registered kind that is currently reported as unsupported:
+
+1. Implement the `StepDriver` contract from `drivers/types.ts`. Its methods own DOM inspection, timeout calculation, completion checks, skip synchronization, and execution for that kind.
+2. Put behavior shared with existing drivers in `drivers/shared.ts`. Keep specialized behavior in a focused driver module, as `drivers/guided.ts` does.
+3. Replace the kind's `unsupportedDriver(...)` entry in `drivers/registry.ts` with a supported driver. Do not add kind-specific branches to `discovery.ts` or `execution.ts`.
+4. Update `drivers/registry.test.ts` and add focused discovery and execution tests. If the change affects unsupported-only handling or externally reported fields, also update `run-guide.test.ts`, reporter/result tests, and the report schema as required.
+
+When introducing a product step kind rather than enabling an existing one, first add it to `STEP_TYPE_KIND_KEYS`, emit the tracked root attributes, and update the contract tests and [E2E testing contract](./E2E_TESTING_CONTRACT.md). The registry test requires every tracked kind to have exactly one registry entry, supported or unsupported.
+
+### Shared path and journey sessions
+
+An explicit path or journey selection uses one Playwright test. The test owns one browser context and one primary page.
+
+The first runnable milestone navigates to its starting location. If it has no authored location, it starts at `/`.
+
+A later milestone keeps the current page when it has no authored location. This preserves forms, wizards, cookies, and in-memory application state.
+
+If a later milestone has an authored location, the runner compares the complete path, query, and fragment. It navigates only when these values differ.
+
+Before a later milestone, the runner publishes the prior result. It opens the current panel and activates the recorded E2E tab.
+
+The runner dismisses badge celebrations and checks for `window.__pathfinderE2E`.
+
+If version 1 is available, the runner calls `resetActiveGuide()`. This parameterless operation resets only `bundled:e2e-test`.
+
+The operation clears step, collapse, acknowledgment, done, percentage, and in-memory completion state. It emits `interactive-progress-cleared`.
+
+The operation does not reload the guide or Grafana. The runner requires empty E2E progress storage before it closes the tab.
+
+An unsupported control version or a rejected reset is fatal. An absent control starts the legacy fallback.
+
+The fallback inspects stored E2E step completion. It does not use the authored block count.
+
+If no completed step IDs exist, the fallback removes namespaced residue and the E2E percentage entry. Then it closes the tab.
+
+This direct cleanup does not evict a mounted completion cache. It is not a general reset for mounted guide progress.
+
+If no prior tab opened, the runner applies direct cleanup regardless of stored completion. It removes a malformed shared percentage record.
+
+If completed step IDs exist, the fallback uses the accessible `Reset guide` control. This path supports older installed plugins.
+
+The fallback waits for `interactive-progress-cleared`. This acknowledgment proves that storage and the completion cache were cleared.
+
+The runner closes the prior tab and waits for all captured step roots to detach. This teardown occurs before navigation.
+
+The product reload can recreate matching storage without completed step IDs. The runner accepts this safe state after tab closure.
+
+The runner requires completed step IDs to remain absent during a bounded check. Then it removes the recreated residue.
+
+The reset acknowledgment proves cache eviction. Direct residue cleanup does not make this claim.
+
+After teardown, the runner navigates only when the authored location differs. Then it prepares the panel and opens the next guide.
+
+Panel bootstrap uses 20 seconds by default. Post-navigation guide loading uses 30 seconds for each attempt.
+
+The legacy fallback remains during plugin rollout. It supports Pathfinder versions that only provide the existing `bundled:e2e-test` URL.
+
+An ordinary guide failure or an unsupported-only skip adds that guide to the blocked set.
+
+Later milestones still run unless a resolved `depends` edge names a blocked guide.
+
+If a dependency is blocked, the runner emits the existing `SKIPPED_PREREQ` result. Milestone order does not create a dependency.
+
+Authentication expiry or browser-session loss stops the chain. The runner writes zero-step authentication or infrastructure results for all unrun milestones.
+
+A fatal transition error also stops the chain while the browser remains open. Fatal errors include these conditions:
+
+- Stored completion has no usable legacy reset control.
+- Stored completion remains after acknowledged reset and tab closure.
+- The prior tab does not close.
+- Prior step roots do not detach.
+- A badge celebration remains as an obstruction.
+- An active E2E tab does not publish a usable tab ID.
+
+A load error remains recoverable before tab activation or after the runner records the new tab ID.
+
+Prior teardown has already removed ambiguous state. Later soft-ordered milestones can continue.
+
+Only a 401, a 403, or a login redirect means authentication expired. Network errors, server errors, and browser loss are infrastructure outcomes.
+
+Each planned milestone produces one `E2ETestReport`. The reports remain in `MultiGuideReport.reports[]` execution order.
+
+The external report schema is `1.1.0`. Fatal transition reports use `TRANSITION_FAILED` and an optional bounded `transitionKind`.
+
+The runner copies the transition code and kind to each unrun milestone. `REPORT_MISSING` remains for missing reports and lost browser sessions.
+
+Standalone guides, multiple input files, bundled sweeps, and remote repository sweeps keep separate browser contexts. These modes do not share browser state.
+
+`doIt: false` remains show-only. Shared sessions preserve state from actions that the runner executes. They do not simulate omitted user actions.
 
 ## Requirements and skip behavior
 
@@ -201,7 +307,7 @@ Use `--output report.json` to generate a structured report:
 
 ```json
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "outcome": "passed",
   "runner": {
     "name": "pathfinder-e2e-runner",
@@ -224,7 +330,25 @@ Use `--output report.json` to generate a structured report:
     "mandatoryFailed": 1,
     "skippableFailed": 0
   },
-  "steps": [...]
+  "steps": [
+    {
+      "stepId": "section-1-step-1",
+      "stepKind": "plain",
+      "index": 0,
+      "status": "passed",
+      "duration": 1000,
+      "currentUrl": "http://localhost:3000/",
+      "consoleErrors": []
+    }
+  ],
+  "coverage": {
+    "contractSource": "current",
+    "rendered": 2,
+    "supported": 1,
+    "executed": 1,
+    "unsupported": 1,
+    "unsupportedSteps": [{ "stepKind": "quiz", "stepId": "section-1-quiz-1" }]
+  }
 }
 ```
 
@@ -233,10 +357,26 @@ The report contract's single source of truth is the Zod schema in `src/cli/e2e/s
 Key contract fields:
 
 - `outcome`: one of `passed`, `failed`, `aborted`, `skipped`, `infrastructure_error`, or `configuration_error`. Multi-guide reports surface `aborted` when any guide's session expired.
-- `errorCode`: structured failure code present on non-passing reports. Notable values: `TIER_MISMATCH` (guide requires a different environment tier), `SKIPPED_PREREQ` (a prerequisite guide failed), `REPORT_MISSING` (Playwright exited but wrote no results file), `AUTH_EXPIRED`, `NO_CAPACITY`, `PLAYWRIGHT_SPAWN_FAILED`.
+- `errorCode`: structured code for failures. An unsupported-only skipped report omits this field. `TRANSITION_FAILED` identifies a fatal shared-browser transition. `REPORT_MISSING` identifies a missing report or lost browser session. Other values include `TIER_MISMATCH`, `SKIPPED_PREREQ`, `AUTH_EXPIRED`, `NO_CAPACITY`, and `PLAYWRIGHT_SPAWN_FAILED`.
+- `transitionKind`: optional fatal-transition detail. Values cover badge obstruction, guide-load ambiguity, reset ambiguity, tab-close errors, and step-detach errors.
 - `guide.contentDigest`: SHA-256 digest of the exact guide content executed
 - `guide.sourceUrl`: remote package source URL when available
 - `selection`: for an explicitly selected path or journey, the multi-guide report records the root package `id` and `type` separately from its executable leaf-guide reports
+- `steps[].stepKind`: optional registered driver kind for a reported step
+- `coverage.contractSource`: `current` for tracked roots, or `legacy` for the compatibility selector
+- `coverage.rendered`: number of tracked roots in the rendered DOM
+- `coverage.supported`: number of rendered roots with supported drivers
+- `coverage.executed`: number of supported roots that reached a terminal runner result
+- `coverage.unsupported`: number of rendered roots without supported drivers
+- `coverage.unsupportedSteps`: unsupported kind and step ID pairs
+
+Coverage fields are optional and additive. Unsupported roots do not change outcomes when the guide also has a supported root.
+
+A guide with only unsupported roots returns `outcome: "skipped"` before execution. Its report keeps the complete coverage inventory and an explicit reason.
+
+The CLI shows `Skipped (unsupported steps)` and exits with code 0. The skipped guide blocks guides that declare it as a prerequisite.
+
+Multi-guide reports keep coverage inside each individual guide report. The aggregate outcome and step summary use the existing rules.
 
 ### Report validation
 
@@ -271,7 +411,13 @@ When a step fails, the runner captures:
 - **DOM snapshot**: `{stepId}-dom.html` for selector debugging
 - **Console errors**: `{stepId}-console.json` when the step records console errors
 
-Artifacts are saved to the `--artifacts` directory (or a temp directory by default). With `--always-screenshot`, the runner also captures pre-step screenshots, success screenshots, and a final screenshot. `--trace` records a Playwright trace in a retained per-invocation output directory and surfaces the trace path in CLI output. Non-trace Playwright output directories are removed after each invocation. Trace capture is disabled for bearer-token-authenticated cloud runs because Playwright traces can contain authorization headers, cookies, and temporary credentials.
+Artifacts are saved to the `--artifacts` directory (or a temporary directory by default). Shared runs use one subdirectory per milestone.
+
+With `--always-screenshot`, the runner also captures pre-step screenshots, success screenshots, and a final screenshot.
+
+`--trace` records one Playwright trace for the invocation and shows its path. The runner removes non-trace Playwright output directories.
+
+Trace capture is disabled for bearer-token cloud runs. Traces can contain authorization headers, cookies, and temporary credentials.
 
 ## Guided-block test guide
 
@@ -321,9 +467,11 @@ Before running, the CLI builds an execution plan from a `repository.json` index 
 - Missing milestones, incompatible targets, and cycles crossing `depends` and `milestones` fail before Grafana provisioning or Playwright execution.
 - The metapackage cover `content.json` is not executed; only leaf guides are sent to Playwright.
 
-After a guide passes, the runner carries its final passed step location to the next guide in that chain. The location includes its path, query, and fragment. It must use the same origin as the Grafana target.
+For isolated guide invocations, the runner carries a passed guide's final location to the next guide. The location includes its path, query, and fragment.
 
 An explicit manifest `startingLocation` always takes precedence. A failed guide, a skipped final step, an unsafe final URL, or a zero-step guide does not replace the carried location. Each new chain starts without a carried location, so omitted metadata falls back to `/`.
+
+Explicit path and journey runs do not use this URL-only handoff. They keep the current page in one browser session.
 
 This ordering applies to every run. `--clean` additionally isolates each chain in its own environment (see below).
 
@@ -346,6 +494,7 @@ The environment is reset **between dependency chains**, not between every guide.
 | Fix button timeout         | 10s              | Per fix operation                                                                           |
 | Max fix attempts           | 3                | Retry limit before giving up                                                                |
 | Requirements settle window | 1s               | Poll budget before an unmet read with no Fix button counts as terminal                      |
+| Panel bootstrap            | 20s or 30s       | Uses 30s after navigation and 20s for same-page panel opening                               |
 | Scroll into view           | 5s               | Bounds scrolling a step into view, so a step completing or detaching there can't hang       |
 | Late completion check      | 2s               | Bounds the pre-scroll recheck for a step that completed or detached since discovery         |
 | Skip sync                  | 5s               | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |
@@ -362,7 +511,7 @@ If the backstop expires, the runner closes the page and reports an infrastructur
 
 During step execution, the runner also watches for page crash, page close, context close, and browser disconnect events. An unexpected event stops the active work and writes an `infrastructure_error` report with completed prior steps.
 
-These outcomes use report schema `1.0.0`. They do not add new report error codes.
+These outcomes use report schema `1.1.0`. Fatal shared-browser transitions use `TRANSITION_FAILED`.
 
 ## Troubleshooting
 
@@ -473,20 +622,22 @@ jobs:
 
 These variables are consumed by the CLI or passed to the spawned Playwright process. You generally do not need to set runner variables directly — the CLI sets them from its own flags and defaults.
 
-| Variable                | Description                                                                    | Default                 |
-| ----------------------- | ------------------------------------------------------------------------------ | ----------------------- |
-| `GUIDE_JSON_PATH`       | Path to JSON guide file                                                        | Required                |
-| `GRAFANA_URL`           | Grafana instance URL                                                           | `http://localhost:3000` |
-| `STARTING_LOCATION`     | Effective same-origin start path from the manifest, current chain, or `/`      | `/`                     |
-| `AUTH_STATE_FILE`       | Per-guide Playwright storage-state path for form-login auth                    | Temporary CLI path      |
-| `GRAFANA_TOKEN`         | Opaque Bearer credential sent only to the Grafana target origin                | Unset (form login)      |
-| `E2E_VERBOSE`           | Enable verbose logging                                                         | `false`                 |
-| `E2E_TRACE`             | Generate Playwright trace file                                                 | `false`                 |
-| `ABORT_FILE_PATH`       | Path where the runner writes abort reason metadata                             | Temporary CLI path      |
-| `RESULTS_FILE_PATH`     | Path where the runner writes step results for JSON reporting                   | Temporary CLI path      |
-| `ARTIFACTS_DIR`         | Directory for screenshots, DOM snapshots, and related artifacts                | `/tmp/pathfinder-e2e-*` |
-| `ALWAYS_SCREENSHOT`     | Capture screenshots on success and failure                                     | `false`                 |
-| `E2E_TRACE_OUTPUT_FILE` | Path where the runner records the generated Playwright trace artifact location | Temporary CLI path      |
+| Variable                      | Description                                                                    | Default                 |
+| ----------------------------- | ------------------------------------------------------------------------------ | ----------------------- |
+| `GUIDE_JSON_PATH`             | Path to JSON guide file                                                        | Required                |
+| `E2E_CHAIN_INPUT_PATH`        | Path to validated input for an explicit path or journey                        | Shared runs only        |
+| `GRAFANA_URL`                 | Grafana instance URL                                                           | `http://localhost:3000` |
+| `STARTING_LOCATION`           | Effective same-origin start path from the manifest, current chain, or `/`      | `/`                     |
+| `AUTH_STATE_FILE`             | Per-invocation Playwright storage-state path for form-login auth               | Temporary CLI path      |
+| `GRAFANA_TOKEN`               | Opaque Bearer credential sent only to the Grafana target origin                | Unset (form login)      |
+| `E2E_VERBOSE`                 | Enable verbose logging                                                         | `false`                 |
+| `E2E_TRACE`                   | Generate Playwright trace file                                                 | `false`                 |
+| `ABORT_FILE_PATH`             | Path where the runner writes abort reason metadata                             | Temporary CLI path      |
+| `RESULTS_FILE_PATH`           | Path where the isolated runner writes step results                             | Temporary CLI path      |
+| `E2E_CHAIN_RESULTS_FILE_PATH` | Path where the shared runner atomically writes ordered milestone results       | Shared runs only        |
+| `ARTIFACTS_DIR`               | Directory for screenshots, DOM snapshots, and related artifacts                | `/tmp/pathfinder-e2e-*` |
+| `ALWAYS_SCREENSHOT`           | Capture screenshots on success and failure                                     | `false`                 |
+| `E2E_TRACE_OUTPUT_FILE`       | Path where the runner records the generated Playwright trace artifact location | Temporary CLI path      |
 
 For cloud targets, pass `--cloud-instance-admin-token host=ENV_VAR_NAME`; the named env var contains an admin service-account token for that exact host. The env var name is user-defined, for example `GRAFANA_PLAY_ADMIN_TOKEN`.
 
@@ -521,6 +672,30 @@ Use CLI output to determine where the fix belongs:
 | Infrastructure | Grafana, auth, networking, pool capacity, or environment setup failed  | Test environment or guide-health operators |
 
 When the failure is not clearly a runner or contract bug, avoid changing Pathfinder code just to make a guide pass. Update the guide, the test environment, or the backend guide-health platform instead.
+
+## Shared-session fixture
+
+The fixture at `tests/e2e-runner/fixtures/shared-session-path/` contains two milestones. The first milestone enters an unsaved configuration value.
+
+The second milestone requires the exact value without an authored starting location. Its observational step cannot create the missing state.
+
+The marker is `https://shared-session.invalid/exact-browser-marker`. It does not enter the page URL, local storage, or server configuration.
+
+Build the CLI before you run the fixture:
+
+```bash
+npm run build:cli
+node dist/cli/cli/index.js e2e \
+  --package tests/e2e-runner/fixtures/shared-session-path \
+  --repository tests/e2e-runner/fixtures/shared-session-path/repository.json
+```
+
+Use the verifier to run the shared path and the isolated negative case:
+
+```bash
+GRAFANA_URL=http://localhost:3000 \
+  bash tests/e2e-runner/fixtures/shared-session-path/verify.sh
+```
 
 ## Remote package-aware testing
 
@@ -577,6 +752,7 @@ In remote modes a package can end in one of these states. `failed`, `provisionin
 | `unsupported_type`            | Repository sweep encountered a non-guide composition package   | No            |
 | `prerequisite_failed`         | A required prerequisite could not be resolved or run           | No            |
 | `skipped_prereq`              | A prerequisite in the same dependency chain failed             | No            |
+| `skipped_unsupported_steps`   | The guide rendered only unsupported step kinds                 | No            |
 | `validation_failed`           | Fetched `content.json` failed guide schema validation          | **Yes**       |
 
 With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`).

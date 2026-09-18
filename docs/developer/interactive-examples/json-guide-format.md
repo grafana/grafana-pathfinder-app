@@ -66,6 +66,16 @@ The primary block type for formatted text content.
 }
 ```
 
+#### Divider block
+
+Adds a semantic horizontal separator with standard guide spacing. Divider blocks have no content fields.
+
+```json
+{
+  "type": "divider"
+}
+```
+
 #### HTML Block
 
 For raw HTML content. Use sparingly—prefer markdown for new content.
@@ -184,7 +194,7 @@ A single interactive step with "Show me" and "Do it" buttons.
   "content": "Click on **Dashboards** to view your dashboards.",
   "tooltip": "The Dashboards section shows all your visualization panels.",
   "requirements": ["navmenu-open"],
-  "objectives": ["visited-dashboards"],
+  "objectives": ["on-page:/dashboards"],
   "skippable": true,
   "hint": "Open the navigation menu first"
 }
@@ -199,7 +209,7 @@ A single interactive step with "Show me" and "Do it" buttons.
 | `targetstate`     | string   | ❌       | —                   | Desired end state for a toggle target (see below)                  |
 | `tooltip`         | string   | ❌       | —                   | Tooltip shown on highlight (supports markdown)                     |
 | `requirements`    | string[] | ❌       | —                   | Conditions that must be met                                        |
-| `objectives`      | string[] | ❌       | —                   | Objectives marked complete after this step                         |
+| `objectives`      | string[] | ❌       | —                   | Conditions that auto-complete this step when already satisfied     |
 | `skippable`       | boolean  | ❌       | `false`             | Allow skipping if requirements fail                                |
 | `hint`            | string   | ❌       | —                   | Hint shown when step cannot be completed                           |
 | `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails (formfill only)              |
@@ -387,7 +397,7 @@ Groups related interactive steps into a sequence with "Do Section" functionality
   "id": "explore-tour",
   "title": "Explore the Interface",
   "requirements": ["is-logged-in"],
-  "objectives": ["completed-tour"],
+  "objectives": ["section-completed:intro"],
   "blocks": [
     {
       "type": "interactive",
@@ -405,13 +415,13 @@ Groups related interactive steps into a sequence with "Do Section" functionality
 }
 ```
 
-| Field          | Type        | Required | Description                         |
-| -------------- | ----------- | -------- | ----------------------------------- |
-| `id`           | string      | ❌       | HTML id for the section             |
-| `title`        | string      | ❌       | Section heading                     |
-| `blocks`       | JsonBlock[] | ✅       | Nested blocks (usually interactive) |
-| `requirements` | string[]    | ❌       | Section-level requirements          |
-| `objectives`   | string[]    | ❌       | Objectives for the entire section   |
+| Field          | Type        | Required | Description                               |
+| -------------- | ----------- | -------- | ----------------------------------------- |
+| `id`           | string      | ❌       | HTML id for the section                   |
+| `title`        | string      | ❌       | Section heading                           |
+| `blocks`       | JsonBlock[] | ✅       | Nested blocks (usually interactive)       |
+| `requirements` | string[]    | ❌       | Section-level requirements                |
+| `objectives`   | string[]    | ❌       | Conditions that auto-complete the section |
 
 #### Collapsible Block
 
@@ -438,7 +448,7 @@ Hides its nested blocks behind a toggle. Use it to gate solutions or example out
 | `collapsed` | boolean             | ❌       | Whether it starts collapsed (defaults to `true`)    |
 | `blocks`    | content block array | ✅       | Content hidden behind the toggle                    |
 
-> A collapsible is presentational: it accepts content blocks only — `markdown` (including fenced code), `html`, `image`, and `video`. Interactive steps and containers (`section`, `collapsible`, `conditional`) are rejected, so a collapsible never carries completion state. To gate interactive steps, use a `section`.
+> A collapsible is presentational: it accepts content blocks only — `markdown` (including fenced code), `html`, `image`, `video`, `callout`, and `divider`. Interactive steps and containers (`section`, `collapsible`, `conditional`) are rejected, so a collapsible never carries completion state. To gate interactive steps, use a `section`.
 
 #### Conditional Block
 
@@ -498,7 +508,7 @@ When `display` is `"section"`, each branch can have its own section configuratio
   "display": "section",
   "whenTrueSectionConfig": {
     "title": "Explore your logs",
-    "objectives": ["viewed-logs"]
+    "objectives": ["has-datasource:loki"]
   },
   "whenFalseSectionConfig": {
     "title": "Set up Loki",
@@ -523,11 +533,11 @@ When `display` is `"section"`, each branch can have its own section configuratio
 
 **ConditionalSectionConfig:**
 
-| Field          | Type     | Description                       |
-| -------------- | -------- | --------------------------------- |
-| `title`        | string   | Section title for this branch     |
-| `requirements` | string[] | Requirements that must be met     |
-| `objectives`   | string[] | Objectives tracked for completion |
+| Field          | Type     | Description                               |
+| -------------- | -------- | ----------------------------------------- |
+| `title`        | string   | Section title for this branch             |
+| `requirements` | string[] | Requirements that must be met             |
+| `objectives`   | string[] | Conditions that auto-complete the section |
 
 **Multiple Conditions:**
 
@@ -582,7 +592,7 @@ Executes multiple actions **automatically** when user clicks "Do it".
 | `content`      | string     | ✅       | Description shown to user         |
 | `steps`        | JsonStep[] | ✅       | Sequence of steps to execute      |
 | `requirements` | string[]   | ❌       | Requirements for the entire block |
-| `objectives`   | string[]   | ❌       | Objectives tracked                |
+| `objectives`   | string[]   | ❌       | Conditions that auto-complete it  |
 | `skippable`    | boolean    | ❌       | Allow skipping                    |
 
 Individual steps accept `targetstate` too, and a sequence is where toggles bite
@@ -633,15 +643,15 @@ Highlights elements and **waits for user** to perform actions.
 }
 ```
 
-| Field           | Type       | Required | Description                                     |
-| --------------- | ---------- | -------- | ----------------------------------------------- |
-| `content`       | string     | ✅       | Description shown to user                       |
-| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform           |
-| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)         |
-| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal |
-| `requirements`  | string[]   | ❌       | Requirements for the block                      |
-| `objectives`    | string[]   | ❌       | Objectives tracked                              |
-| `skippable`     | boolean    | ❌       | Allow skipping                                  |
+| Field           | Type       | Required | Description                                                                     |
+| --------------- | ---------- | -------- | ------------------------------------------------------------------------------- |
+| `content`       | string     | ✅       | Description shown to user                                                       |
+| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform; excludes `navigate` and `popout` actions |
+| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)                                         |
+| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal                                 |
+| `requirements`  | string[]   | ❌       | Requirements for the block                                                      |
+| `objectives`    | string[]   | ❌       | Conditions that auto-complete it                                                |
+| `skippable`     | boolean    | ❌       | Allow skipping                                                                  |
 
 Steps accept `targetstate` here too, with the meaning adjusted for a step the
 user performs: a control already in the requested state completes immediately
@@ -997,8 +1007,9 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
 | `language`     | string   | ❌       | Syntax highlighting language (e.g., `promql`, `logql`, `yaml`, `json`) |
 | `reftarget`    | string   | ✅       | Verified CSS selector of the target Monaco editor                      |
 | `requirements` | string[] | ❌       | Conditions that must be met for this step                              |
-| `objectives`   | string[] | ❌       | Objectives marked complete after this step                             |
+| `objectives`   | string[] | ❌       | Conditions that auto-complete this step when already satisfied         |
 | `skippable`    | boolean  | ❌       | Allow skipping                                                         |
+| `hint`         | string   | ❌       | Hint shown when step cannot be completed                               |
 
 #### Terminal Block
 
@@ -1018,6 +1029,7 @@ A shell command shown with copy-to-clipboard and an "Execute" button that runs t
 | `command`      | string   | ✅       | The shell command                                           |
 | `requirements` | string[] | ❌       | Conditions that must be met (commonly `is-terminal-active`) |
 | `skippable`    | boolean  | ❌       | Allow skipping                                              |
+| `hint`         | string   | ❌       | Hint shown when step cannot be completed                    |
 
 Terminal blocks only render in the docs panel when the administrator has enabled the Coda terminal integration.
 
@@ -1042,6 +1054,33 @@ A button that provisions a sandbox VM (via Coda) and opens a terminal panel insi
 | `vmTemplate` | string | `""` (→ `vm-aws`)   | VM template to provision                                  |
 | `vmApp`      | string | `""`                | App name for `vm-aws-sample-app`                          |
 | `vmScenario` | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
+| `gcx`        | bool   | `false`             | Also install a Grafana credential for the `gcx` CLI       |
+
+Inside a section the block gates on sequential position (`isEligibleForChecking`), which is a behavior change: a published guide with a `terminal-connect` step after any other step now shows "Complete previous step" where it previously offered the connect button unconditionally. The gate hides the whole action area, including the `gcx` controls below. The block takes no `requirements` or `skippable`, so position is its only gate and a blocked step offers no skip: the learner has to complete the step before it.
+
+With `gcx: true` the step also gives the VM a credential, so the `gcx` CLI that ships in every sandbox
+image can talk to this Grafana as the learner:
+
+```json
+{
+  "type": "terminal-connect",
+  "content": "Connect a sandbox and set up `gcx`:",
+  "buttonText": "Connect and set up gcx",
+  "vmTemplate": "vm-aws",
+  "gcx": true
+}
+```
+
+Minting the token needs `serviceaccounts:create`, which is an admin permission by default while sandbox
+sessions are open to editors — so the step offers a pasted service account token as well, and that is the
+path most learners take. A refusal never blocks the guide: the terminal is connected either way, so the
+step offers "Continue without gcx" and later `is-terminal-active` steps still run.
+
+> **`gcx` does not survive a write to the backend yet.** The backend CRD's `#Block` does not declare it,
+> and the API server prunes an undeclared field with a `200` and no message. That covers every path
+> through the CRD — `scripts/upsert-guide.sh`, and a **save or publish from the block editor** — so the
+> guide is stored, the step connects, and no credential is installed. Until the CUE declares it, a guide
+> that needs `gcx` has to be served from a bundled package or a local file.
 
 See [`CODA.md`](../CODA.md) for the full VM template catalog and lifecycle details.
 
@@ -1156,10 +1195,10 @@ Coda mode:
 | `hintLevels`      | `{ text: string }[]`     | ❌       | `[]`      | Progressive hints revealed on demand                                               |
 | `failureMessage`  | string                   | ❌       | —         | Message shown when the success check fails, replacing the checker's own error text |
 | `requirements`    | string[]                 | ❌       | —         | Prerequisite conditions for the challenge                                          |
-| `objectives`      | string[]                 | ❌       | —         | Objectives marked complete after this block                                        |
+| `objectives`      | string[]                 | ❌       | —         | Conditions evaluated and surfaced as an informational note                         |
 | `skippable`       | boolean                  | ❌       | `false`   | Allow skipping                                                                     |
 
-`requirements`, `objectives`, and `skippable` are accepted by the schema, but the challenge runtime does not receive them yet — the block always renders, never contributes to objective tracking, and shows no skip control. Do not rely on them to gate a challenge or to credit an objective.
+`requirements` and `skippable` gate challenge execution and offer a skip control using the unified step checker runtime. The block also gates on sequential position (`isEligibleForChecking`), which is a behavior change: a published guide with a challenge after any other step now shows "Complete previous step" where it previously showed "Start challenge" unconditionally. `objectives` are evaluated and surfaced as an informational note, but only `successCriteria` (via Check my work) can complete a challenge.
 
 `hintLevels` is an array of objects, not an array of strings. Each entry is `{ "text": "..." }` with non-empty text, and hints are revealed one at a time in array order. Hints appear only once the challenge is ready to attempt or has failed a check, so a learner stuck waiting on VM provisioning cannot reach them.
 
@@ -1191,7 +1230,7 @@ A ref may sit at the top level of `blocks`, or nested inside a `section`, a `con
 
 Snippets cannot reference other snippets. The snippet schema rejects `snippet-ref` at every supported nesting depth, so a snippet body may contain any other block type but never a ref.
 
-If a ref cannot be resolved — unknown ID, catalog fetch failure — it is replaced with an inert markdown placeholder naming the snippet ID and an error code. The guide still renders, but nothing interactive appears in the ref's place. The resolver does not distinguish a missing snippet from a transient failure, so an unknown ID reports `network-error` rather than a not-found code.
+If a ref cannot be resolved — unknown ID, catalog fetch failure — it is replaced with an inert markdown placeholder naming the snippet ID and an error code. The guide still renders, but nothing interactive appears in the ref's place.
 
 ---
 
@@ -1200,6 +1239,7 @@ If a ref cannot be resolved — unknown ID, catalog fetch failure — it is repl
 | Block Type         | Category    | Description                                                                     |
 | ------------------ | ----------- | ------------------------------------------------------------------------------- |
 | `markdown`         | Content     | Formatted text with headings, lists, code, tables                               |
+| `divider`          | Content     | Horizontal separator between adjacent guide sections                            |
 | `html`             | Content     | Raw HTML for migration/custom content                                           |
 | `image`            | Content     | Embedded images with optional dimensions                                        |
 | `video`            | Content     | YouTube, Vimeo, or native HTML5 video embeds                                    |
@@ -1224,7 +1264,9 @@ If a ref cannot be resolved — unknown ID, catalog fetch failure — it is repl
 
 ### Step Structure
 
-Steps used in `multistep` and `guided` blocks share this structure:
+Steps used in `multistep` and `guided` blocks share this structure. One field
+differs by parent: `guided` accepts a narrower set of actions than `multistep`
+does — see [Actions a guided step accepts](#actions-a-guided-step-accepts).
 
 ```json
 {
@@ -1240,21 +1282,42 @@ Steps used in `multistep` and `guided` blocks share this structure:
 }
 ```
 
-| Field             | Type     | Required | Default             | Description                                                                 |
-| ----------------- | -------- | -------- | ------------------- | --------------------------------------------------------------------------- |
-| `action`          | string   | ✅       | —                   | Action type: `highlight`, `button`, `formfill`, `navigate`, `hover`, `noop` |
-| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop`)                         |
-| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex patterns)                      |
-| `requirements`    | string[] | ❌       | —                   | Requirements for this specific step                                         |
-| `tooltip`         | string   | ❌       | —                   | Tooltip shown during multistep execution                                    |
-| `description`     | string   | ❌       | —                   | Description shown in guided steps panel                                     |
-| `skippable`       | boolean  | ❌       | `false`             | Whether this step can be skipped (guided only)                              |
-| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails                                       |
-| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                                |
-| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers              |
-| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled          |
+| Field             | Type     | Required | Default             | Description                                                                                                                            |
+| ----------------- | -------- | -------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `action`          | string   | ✅       | —                   | Action type: `highlight`, `button`, `formfill`, `navigate`, `hover`, `noop`, `popout`. `guided` blocks exclude `navigate` and `popout` |
+| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop`)                                                                                    |
+| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex patterns)                                                                                 |
+| `requirements`    | string[] | ❌       | —                   | Requirements for this specific step                                                                                                    |
+| `tooltip`         | string   | ❌       | —                   | Tooltip shown during multistep execution                                                                                               |
+| `description`     | string   | ❌       | —                   | Description shown in guided steps panel                                                                                                |
+| `skippable`       | boolean  | ❌       | `false`             | Whether this step can be skipped (guided only)                                                                                         |
+| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails                                                                                                  |
+| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                                                                                           |
+| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers                                                                         |
+| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled                                                                     |
 
 **Note:** The `tooltip` property is primarily used in `multistep` blocks (shown during automated execution), while `description` is used in `guided` blocks (shown in the steps panel as instructions for the user).
+
+#### Actions a guided step accepts
+
+A `guided` step waits for the reader to act and then detects that they did, so
+it only accepts actions that produce a detectable interaction:
+
+| Action      | `multistep` | `guided` |
+| ----------- | ----------- | -------- |
+| `highlight` | ✅          | ✅       |
+| `button`    | ✅          | ✅       |
+| `formfill`  | ✅          | ✅       |
+| `hover`     | ✅          | ✅       |
+| `noop`      | ✅          | ✅       |
+| `navigate`  | ✅          | ❌       |
+| `popout`    | ✅          | ❌       |
+
+`navigate` and `popout` happen without the reader doing anything, so there is no
+interaction for a guided step to wait on. `pathfinder-cli validate` and the block
+editor reject them inside a `guided` block. Use a separate `interactive` block
+for the action, or move the step into a `multistep` block, which performs its
+steps automatically.
 
 ---
 

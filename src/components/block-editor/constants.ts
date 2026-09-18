@@ -21,6 +21,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Markdown',
     description: 'Formatted text with headings, lists, and code',
   },
+  divider: {
+    type: 'divider',
+    icon: '➖',
+    grafanaIcon: 'minus',
+    name: 'Divider',
+    description: 'Horizontal separator between guide sections',
+  },
   html: {
     type: 'html',
     icon: '🔧',
@@ -168,7 +175,7 @@ export const BLOCK_TYPE_GROUPS = [
   {
     id: 'content',
     label: 'Content',
-    types: ['markdown', 'image', 'video', 'code-block', 'callout'],
+    types: ['markdown', 'divider', 'image', 'video', 'code-block', 'callout'],
   },
   {
     id: 'interactive',

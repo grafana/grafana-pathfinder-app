@@ -23,6 +23,7 @@ import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 
 const PR_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_URL;
 const SELECTED_FILE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_FILE;
@@ -610,7 +611,12 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         return `${styles.statusBadge} ${styles.statusAdded}`;
       case 'modified':
         return `${styles.statusBadge} ${styles.statusModified}`;
+      case 'unchanged':
+      case 'renamed':
+      case 'removed':
+        return styles.statusBadge;
       default:
+        assertExhaustive(status);
         return styles.statusBadge;
     }
   };

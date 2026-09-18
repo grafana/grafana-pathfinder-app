@@ -1,4 +1,4 @@
-import { validateCrossTabMessage, type RemoteRequirementError } from './cross-tab.types';
+import { validateCrossTabMessage, type RemoteRequirementError, type WireMirrors } from './cross-tab.types';
 import type { CheckResultError } from './requirements.types';
 
 function envelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -205,13 +205,69 @@ describe('validateCrossTabMessage', () => {
 
 describe('RemoteRequirementError wire mirror', () => {
   // Compile-time guard for the deliberate re-statement in cross-tab.types.ts:
-  // if CheckResultError and the wire type stop being mutually assignable
-  // (field added/removed/retyped on either side), these lines stop compiling
-  // and force a conscious decision about the wire contract.
-  it('stays mutually assignable with CheckResultError', () => {
+  // if CheckResultError and the wire type diverge by a field, a key, or the
+  // required/optional-ness of a key, this stops compiling and forces a
+  // conscious decision about the wire contract. `WireMirrors` is stricter than
+  // plain mutual assignability, which cannot see an optional-only difference.
+  it('mirrors CheckResultError exactly, optional fields included', () => {
+    const errorMirrorIsExact: WireMirrors<RemoteRequirementError, CheckResultError> = true;
     const local: CheckResultError = { requirement: 'r', pass: true };
     const wire: RemoteRequirementError = local;
     const back: CheckResultError = wire;
+    expect(errorMirrorIsExact).toBe(true);
     expect(back).toBe(local);
+  });
+});
+
+describe('condition array transport', () => {
+  it('accepts intact condition arrays', () => {
+    const message = envelope({
+      kind: 'check-requirements',
+      requestId: 'r',
+      stepId: 's',
+      requirements: ['has-dashboard-named:CPU, memory'],
+    });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+  it('rejects non-string condition entries', () => {
+    expect(
+      validateCrossTabMessage(
+        envelope({ kind: 'check-requirements', requestId: 'r', stepId: 's', requirements: ['is-admin', {}] })
+      )
+    ).toBeNull();
+  });
+
+  // The walk runs before the executor's signature gate, so a forged message
+  // must not be able to make it iterate an unbounded payload.
+  it.each(['check-requirements', 'fix-requirement'] as const)('bounds condition arity on %s', (kind) => {
+    expect(
+      validateCrossTabMessage(
+        envelope({ kind, requestId: 'r', stepId: 's', requirements: new Array(32).fill('is-admin') })
+      )
+    ).not.toBeNull();
+    expect(
+      validateCrossTabMessage(
+        envelope({ kind, requestId: 'r', stepId: 's', requirements: new Array(33).fill('is-admin') })
+      )
+    ).toBeNull();
+  });
+
+  it.each(['check-requirements', 'fix-requirement'] as const)('bounds each condition token on %s', (kind) => {
+    expect(
+      validateCrossTabMessage(envelope({ kind, requestId: 'r', stepId: 's', requirements: ['a'.repeat(512)] }))
+    ).not.toBeNull();
+    expect(
+      validateCrossTabMessage(envelope({ kind, requestId: 'r', stepId: 's', requirements: ['a'.repeat(513)] }))
+    ).toBeNull();
+  });
+
+  it('bounds the legacy comma-separated string form too', () => {
+    const kind = 'check-requirements';
+    expect(
+      validateCrossTabMessage(envelope({ kind, requestId: 'r', stepId: 's', requirements: 'a'.repeat(16384) }))
+    ).not.toBeNull();
+    expect(
+      validateCrossTabMessage(envelope({ kind, requestId: 'r', stepId: 's', requirements: 'a'.repeat(16385) }))
+    ).toBeNull();
   });
 });

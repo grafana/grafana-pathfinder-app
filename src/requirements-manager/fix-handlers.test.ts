@@ -7,7 +7,7 @@ import type { FixContext } from './fix-handlers/types';
 function makeNavManager(overrides: Partial<FixContext['navigationManager']> = {} as any) {
   return {
     expandParentNavigationSection: jest.fn().mockResolvedValue(true),
-    fixLocationRequirement: jest.fn().mockResolvedValue(undefined),
+    fixLocationRequirement: jest.fn().mockResolvedValue(true),
     fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -88,6 +88,20 @@ describe('locationHandler', () => {
 
     expect(result).toEqual({ ok: true });
     expect(navMgr.fixLocationRequirement).toHaveBeenCalledWith('/explore');
+  });
+
+  it('returns ok:false when the location target is refused', async () => {
+    const navMgr = makeNavManager({ fixLocationRequirement: jest.fn().mockResolvedValue(false) } as any);
+    const ctx = makeContext({
+      fixType: 'location',
+      targetHref: '/admin/users',
+      navigationManager: navMgr as any,
+    });
+
+    await expect(locationHandler.execute(ctx)).resolves.toEqual({
+      ok: false,
+      error: 'Location requirement target is not allowed',
+    });
   });
 });
 

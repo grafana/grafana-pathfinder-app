@@ -33,6 +33,8 @@ import { renderMachineJson } from '../../utils/output';
 import { projectManifestForCrd } from '../lib/crd-manifest';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
+import { encodeAppPlatformGuideBlocks } from '../../../types/app-platform-guide-compat';
+import type { JsonBlock } from '../../../types/json-guide.types';
 import type { AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
@@ -135,6 +137,10 @@ async function finalizeImpl(args: {
   // `type` is not declared on `ContentJson`, but clients send it alongside the
   // typed fields, so it has to be stripped through a widened view.
   const { type: _packageType, ...specContent } = content as unknown as Record<string, unknown>;
+  const persistedSpecContent = {
+    ...specContent,
+    blocks: encodeAppPlatformGuideBlocks(specContent.blocks as JsonBlock[]),
+  };
   const crdManifest = projectManifestForCrd(manifest);
 
   const handoff = {
@@ -166,7 +172,7 @@ async function finalizeImpl(args: {
       // declares no `spec.type`, so leaving it in earns a pruning warning on
       // every write. `manifest` carries it, projected onto the CRD's shape.
       spec: {
-        ...specContent,
+        ...persistedSpecContent,
         status,
         ...(crdManifest ? { manifest: crdManifest } : {}),
       },
@@ -200,7 +206,7 @@ async function finalizeImpl(args: {
           'Ask the user whether to save the guide as a draft only, or save and then publish (default draft). A draft is private authoring state; a published guide is visible to every user on this Grafana instance.',
           'Preferred path — save the draft. If pathfinder_manage_guide_drafts is available, call it with op=apply, namespace=<resolved namespace>, guide=<resource object from this response>. The harness will prompt the user to confirm before the write executes. On success you have a saved draft regardless of what status field you sent.',
           'Preferred path — publish if requested. If the user chose to publish AND pathfinder_publish_guide is available, call it with op=publish, namespace=<resolved namespace>, name=<resource.metadata.name> after the draft save succeeds. The harness always prompts for explicit user confirmation on this call — do not try to bypass it.',
-          'Generic-write fallback — only if the preferred tools above are not registered in your environment. POST resource to appPlatform.collectionPathTemplate (substitute {namespace}) using appPlatform.createMethod (POST). To overwrite an existing resource, GET appPlatform.itemPathTemplate first, copy metadata.resourceVersion into resource.metadata.resourceVersion, then PUT to appPlatform.itemPathTemplate using appPlatform.updateMethod (PUT). Set resource.spec.status to "draft" or "published" as the user chose. Show the user the confirmationPrompt copy before writing and proceed only on explicit yes.',
+          'Generic-write fallback — only if the preferred tools above are not registered in your environment. POST resource to appPlatform.collectionPathTemplate (substitute {namespace}) using appPlatform.createMethod (POST). To overwrite an existing resource, GET appPlatform.itemPathTemplate first, copy metadata.resourceVersion into resource.metadata.resourceVersion, merge the response metadata.annotations into resource.metadata.annotations so existing annotations survive the whole-object PUT, then PUT to appPlatform.itemPathTemplate using appPlatform.updateMethod (PUT). Set resource.spec.status to "draft" or "published" as the user chose. Show the user the confirmationPrompt copy before writing and proceed only on explicit yes.',
           "On success (either path), resolve viewer.floatingPath against the user's Grafana instance origin to produce an absolute URL (e.g., https://example.grafana.net + /a/grafana-pathfinder-app?...) and surface that URL to the user. Do NOT surface a relative path.",
         ],
         errorHandling: [
@@ -210,7 +216,7 @@ async function finalizeImpl(args: {
           'Preferred-path refusal to mutate a currently-published guide: call pathfinder_publish_guide op=unpublish first (with user confirmation), then retry pathfinder_manage_guide_drafts op=apply.',
           'Generic-write 404 on collection POST: the InteractiveGuide CRD or the aggregator is not installed in this instance. Switch to the grafanaOss branch (localExport). Do not retry.',
           'Generic-write 403: the user lacks interactiveguides.create permission. Tell the user, then offer localExport. Do not retry.',
-          'Generic-write 409 on PUT: stale resourceVersion. Re-GET the resource, copy the new metadata.resourceVersion, ask the user to confirm overwrite, retry once. A second 409 means concurrent edits — tell the user and offer localExport.',
+          'Generic-write 409 on PUT: stale resourceVersion. Re-GET the resource, copy the new metadata.resourceVersion, merge the current metadata.annotations into the outgoing resource so the retry preserves them, ask the user to confirm overwrite, and retry once. A second 409 means concurrent edits — tell the user and offer localExport.',
           '5xx, network error, or timeout (any path): retry once with short backoff. If it still fails, surface the error and offer localExport.',
           'Any other 4xx (any path): surface the error verbatim to the user and offer localExport. Do not retry.',
         ],

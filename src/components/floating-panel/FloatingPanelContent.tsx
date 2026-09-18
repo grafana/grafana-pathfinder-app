@@ -15,7 +15,7 @@ import {
 } from '../docs-panel/components';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
 import { useLinkClickHandler } from '../docs-panel/link-handler.hook';
-import type { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
+import type { DocsPanelModelOperations } from '../docs-panel/types';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 
 interface FloatingPanelContentProps {
@@ -50,7 +50,7 @@ interface FloatingPanelContentProps {
    * embedded links, etc.). Without this, content links and the
    * "Ready to Begin" CTA on the cover page have no handler.
    */
-  model: CombinedLearningJourneyPanel;
+  model: DocsPanelModelOperations;
 }
 
 /**
@@ -129,7 +129,6 @@ export function FloatingPanelContent({
               panel={model}
               activeTab={activeTab}
               surface={surface}
-              contentRoot={contentRef}
               hasInteractiveProgress={!!hasInteractiveProgress}
               progressKey={progressKey ?? null}
               onResetGuide={onResetGuide!}
@@ -170,6 +169,7 @@ export function FloatingPanelContent({
             });
             onGuideComplete?.();
           }}
+          onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}
         />
       </div>
     </AlignmentPendingContext.Provider>

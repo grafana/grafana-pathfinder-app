@@ -32,6 +32,7 @@ import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -318,6 +319,7 @@ export const InteractiveStep = forwardRef<
 
     const checker = useStepChecker({
       requirements,
+      objectives,
       hints,
       targetAction,
       refTarget,
@@ -388,9 +390,6 @@ export const InteractiveStep = forwardRef<
         }
       }
     }, [isNoopAction, isEligibleForChecking, disabled, stepId, onStepComplete, onComplete]);
-
-    // NOTE: Auto-completion when objectives are met is now handled by useStepChecker
-    // via the onObjectivesComplete callback passed above.
 
     const shouldShowExplanation = isPartOfSection
       ? !isNoopAction && (!isEligibleForChecking || (requirements && !checker.isEnabled && !lazyScrollAvailable))
@@ -595,7 +594,7 @@ export const InteractiveStep = forwardRef<
     // Auto-detection: Use shared hook for detecting user actions
     // Handler for auto-detected action match
     const handleAutoDetectedMatch = useCallback(
-      async (detectedAction: DetectedActionEvent) => {
+      async (_detectedAction: DetectedActionEvent) => {
         // Run post-verification if specified (same as "Do it" button)
         if (postVerify && postVerify.trim() !== '') {
           try {
@@ -624,7 +623,7 @@ export const InteractiveStep = forwardRef<
               );
               return;
             }
-          } catch (error) {
+          } catch {
             // Verification error - don't auto-complete
             // Track failure in analytics
             reportAppInteraction(
@@ -950,8 +949,6 @@ export const InteractiveStep = forwardRef<
           return `Navigate to ${refTarget}`;
         case 'hover':
           return `Hover over element`;
-        case 'sequence':
-          return `Run sequence`;
         case 'noop':
           return `Instructional step`;
         case 'popout':
@@ -982,6 +979,7 @@ export const InteractiveStep = forwardRef<
     return (
       <div
         className={`interactive-step${className ? ` ${className}` : ''}${completedClass}${isCurrentlyExecuting ? ' executing' : ''}`}
+        {...getTrackedStepRootAttributes('plain', stepId || renderedStepId)}
         data-targetaction={targetAction}
         data-reftarget={refTarget}
         data-targetvalue={currentTargetValue}
@@ -1059,44 +1057,38 @@ export const InteractiveStep = forwardRef<
 
             {/* Only show "Do it" button when doIt prop is true AND not a noop action */}
             {/* Noop actions are informational only - no buttons needed */}
-            {doIt &&
-              !isNoopAction &&
-              !isCompletedWithObjectives &&
-              (finalIsEnabled || checker.completionReason === 'objectives') && (
-                <Button
-                  onClick={handleDoAction}
-                  disabled={
-                    disabled ||
-                    isAnyActionRunning ||
-                    (checker.isChecking && !lazyScrollAvailable) ||
-                    (!finalIsEnabled && checker.completionReason !== 'objectives')
-                  }
-                  size="sm"
-                  variant="primary"
-                  className="interactive-step-do-btn"
-                  data-testid={testIds.interactive.doItButton(renderedStepId)}
-                  title={
-                    hints ||
-                    (targetAction === 'navigate'
-                      ? `Go there: ${getActionDescription()}`
-                      : isPopoutAction
-                        ? `${popoutButtonLabel}: ${getActionDescription()}`
-                        : `Do it: ${getActionDescription()}`)
-                  }
-                >
-                  {isDoRunning || isCurrentlyExecuting
-                    ? targetAction === 'navigate'
-                      ? 'Going...'
-                      : isPopoutAction
-                        ? popoutButtonRunningLabel
-                        : 'Executing...'
-                    : targetAction === 'navigate'
-                      ? 'Go there'
-                      : isPopoutAction
-                        ? popoutButtonLabel
-                        : 'Do it'}
-                </Button>
-              )}
+            {doIt && !isNoopAction && !isCompletedWithObjectives && finalIsEnabled && (
+              <Button
+                onClick={handleDoAction}
+                disabled={
+                  disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable) || !finalIsEnabled
+                }
+                size="sm"
+                variant="primary"
+                className="interactive-step-do-btn"
+                data-testid={testIds.interactive.doItButton(renderedStepId)}
+                title={
+                  hints ||
+                  (targetAction === 'navigate'
+                    ? `Go there: ${getActionDescription()}`
+                    : isPopoutAction
+                      ? `${popoutButtonLabel}: ${getActionDescription()}`
+                      : `Do it: ${getActionDescription()}`)
+                }
+              >
+                {isDoRunning || isCurrentlyExecuting
+                  ? targetAction === 'navigate'
+                    ? 'Going...'
+                    : isPopoutAction
+                      ? popoutButtonRunningLabel
+                      : 'Executing...'
+                  : targetAction === 'navigate'
+                    ? 'Go there'
+                    : isPopoutAction
+                      ? popoutButtonLabel
+                      : 'Do it'}
+              </Button>
+            )}
 
             {/* Show "Skip" button when step is skippable (always available, not just on error) */}
             {/* Noop actions don't need skip - they're just informational */}

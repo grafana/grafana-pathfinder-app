@@ -36,6 +36,10 @@ describe('classifySectionChild', () => {
     ])('classifies %s as ignore', (_name, value) => {
       expect(classifySectionChild(value as React.ReactNode)).toBe('ignore');
     });
+
+    it('classifies a divider as ignore', () => {
+      expect(classifySectionChild(<hr className="guide-divider" />)).toBe('ignore');
+    });
   });
 
   describe('passive children', () => {

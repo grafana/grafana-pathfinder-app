@@ -11,11 +11,15 @@
 // DOM Selectors
 // ============================================
 
+export const CURRENT_STEP_SELECTOR = '[data-test-step-kind][data-test-step-id]';
+
 /**
- * Selector pattern for interactive step elements.
- * Steps are identified by data-testid starting with "interactive-step-".
+ * Older deployed plugins do not expose the tracked-root contract.
+ * The completed badge shares the step test ID prefix, so this fallback excludes it.
  */
-export const STEP_SELECTOR = '[data-testid^="interactive-step-"]';
+export const LEGACY_STEP_SELECTOR =
+  '[data-testid^="interactive-step-"]:not([data-testid^="interactive-step-completed-"])';
+export const STEP_ROOT_SELECTOR = `${CURRENT_STEP_SELECTOR}, ${LEGACY_STEP_SELECTOR}`;
 
 /**
  * Prefix to strip from data-testid to get the step ID.
@@ -39,6 +43,7 @@ export const DEFAULT_STEP_TIMEOUT_MS = 30000;
 export const GUIDE_SETUP_TIMEOUT_MS = 60000;
 export const GUIDE_INITIAL_TIMEOUT_MS = 140000;
 export const STEP_OVERHEAD_TIMEOUT_MS = 20000;
+export const STEP_DEADLINE_CLEANUP_GRACE_MS = 3000;
 
 /**
  * Additional timeout per internal action for multisteps.
@@ -48,7 +53,7 @@ export const TIMEOUT_PER_MULTISTEP_ACTION_MS = 5000;
 
 /**
  * Additional timeout per guided substep (Phase 3).
- * Guided steps run a substep loop; total step timeout = base + guidedStepCount * this.
+ * Guided steps run a substep loop; the driver scales this by its action count.
  */
 export const TIMEOUT_PER_GUIDED_SUBSTEP_MS = 30000;
 

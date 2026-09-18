@@ -6,7 +6,7 @@ function makeContext(overrides: Partial<FixContext> = {}): FixContext {
     stepId: 'test-step',
     navigationManager: {
       expandParentNavigationSection: jest.fn().mockResolvedValue(true),
-      fixLocationRequirement: jest.fn().mockResolvedValue(undefined),
+      fixLocationRequirement: jest.fn().mockResolvedValue(true),
       fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
     },
     fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),

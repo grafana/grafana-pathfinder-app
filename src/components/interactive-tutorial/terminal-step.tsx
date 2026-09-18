@@ -6,12 +6,14 @@
  * the same way InteractiveStep does.
  */
 
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
+import type { ConditionInput } from '../../types/requirements.types';
+import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import {
@@ -21,15 +23,16 @@ import {
   useCodaTerminalGate,
 } from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { logger } from '../../lib/logging';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 const SANDBOX_SUBJECT = 'This step runs its command in a Coda sandbox VM';
 
 export interface TerminalStepProps {
   command: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   skippable?: boolean;
   hints?: string;
   children?: React.ReactNode;
@@ -43,9 +46,7 @@ export interface TerminalStepProps {
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   resetTrigger?: number;
-  onStepReset?: () => void;
 
-  // Step position tracking
   stepIndex?: number;
   totalSteps?: number;
   sectionId?: string;
@@ -129,7 +130,6 @@ export const TerminalStep = forwardRef<
       isCurrentlyExecuting = false,
       onStepComplete,
       resetTrigger,
-      onStepReset,
       stepIndex,
       totalSteps,
       sectionId,
@@ -150,6 +150,17 @@ export const TerminalStep = forwardRef<
     }
     const renderedStepId = stepId ?? generatedStepIdRef.current;
 
+    const analyticsStepMeta = useMemo(
+      () => ({
+        stepId: stepId ?? renderedStepId,
+        stepIndex,
+        totalSteps,
+        sectionId,
+        sectionTitle,
+      }),
+      [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
+    );
+
     const [copyFeedback, setCopyFeedback] = useState(false);
     const [isExecRunning, setIsExecRunning] = useState(false);
 
@@ -165,13 +176,33 @@ export const TerminalStep = forwardRef<
     const checker = useStepChecker({
       requirements: requirements || '',
       objectives: objectives || '',
+      hints,
       targetAction: 'noop',
       refTarget: '',
       stepId: renderedStepId,
       isEligibleForChecking,
       skippable,
-      sectionId, // Lets the checker write skip / objectives transitions to the store
+      sectionId,
     });
+
+    const persistReset = useCallback(() => {
+      if (isStandalone) {
+        resetStep(renderedStepId, sectionId);
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
+
+    // Runs in EVERY child of the section, so the store write is suppressed for
+    // section steps: the section's own `resetSteps(tailStepIds)` already owns
+    // it, and a per-child write would wipe preceding completions.
+    useEffect(() => {
+      if (resetTrigger && resetTrigger > 0) {
+        persistReset();
+        setCopyFeedback(false);
+        if (checker.resetStep) {
+          checker.resetStep({ skipStoreWrite: true });
+        }
+      }
+    }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep and persistReset are stable but including checker rebuilds every render
 
     const markComplete = useCallback(() => {
       if (isCompleted) {
@@ -187,6 +218,13 @@ export const TerminalStep = forwardRef<
     }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
 
     const handleCopy = useCallback(async () => {
+      reportAppInteraction(
+        UserInteraction.DoItButtonClick,
+        buildInteractiveStepProperties(
+          { target_action: 'terminal', interaction_location: 'terminal_step', completion_method: 'copy' },
+          analyticsStepMeta
+        )
+      );
       try {
         await navigator.clipboard.writeText(command);
         setCopyFeedback(true);
@@ -195,13 +233,20 @@ export const TerminalStep = forwardRef<
       } catch (err) {
         logger.error('[TerminalStep] Copy failed', { error: err });
       }
-    }, [command, markComplete]);
+    }, [command, markComplete, analyticsStepMeta]);
 
     const handleExec = useCallback(async () => {
       if (!terminalCtx || terminalCtx.status !== 'connected') {
         terminalCtx?.openTerminal();
         return;
       }
+      reportAppInteraction(
+        UserInteraction.DoItButtonClick,
+        buildInteractiveStepProperties(
+          { target_action: 'terminal', interaction_location: 'terminal_step', completion_method: 'exec' },
+          analyticsStepMeta
+        )
+      );
       setIsExecRunning(true);
       try {
         await terminalCtx.sendCommand(command);
@@ -211,7 +256,7 @@ export const TerminalStep = forwardRef<
       } finally {
         setIsExecRunning(false);
       }
-    }, [command, terminalCtx, markComplete]);
+    }, [command, terminalCtx, markComplete, analyticsStepMeta]);
 
     const handleConnect = useCallback(() => {
       terminalCtx?.openTerminal();
@@ -276,6 +321,7 @@ export const TerminalStep = forwardRef<
     return (
       <div
         className={containerClasses}
+        {...getTrackedStepRootAttributes('terminal', renderedStepId)}
         data-test-step-state={stepState}
         data-testid={testIds.interactive.terminalStep(renderedStepId)}
       >

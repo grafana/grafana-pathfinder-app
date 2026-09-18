@@ -22,7 +22,7 @@ export function registerSchemaTools(server: McpServer): void {
     'pathfinder_get_schema',
     {
       description:
-        'Use this tool when an agent or downstream consumer needs the canonical JSON Schema for a Pathfinder authoring artifact (guide, block, content, manifest, repository, graph). Call pathfinder_help({ command: "schema" }) for the `opts` interface. Returns the Zod-derived JSON Schema with refinement notes — the same schema the CLI validator enforces. Read-only.',
+        'Use this tool when an agent or downstream consumer needs the canonical JSON Schema for a Pathfinder authoring artifact (guide, block, content, manifest, repository, graph). Call pathfinder_help({ command: "schema" }) for the `opts` interface. Returns the Zod-derived JSON Schema with refinement notes — the same schema the CLI validator enforces. A schema with `requirements` / `conditions` fields also carries `x-requirement-tokens`, the complete token vocabulary those fields accept, which the field types themselves cannot express. Read-only.',
       annotations: readOnly('Get Pathfinder schema'),
       inputSchema: {
         opts: z

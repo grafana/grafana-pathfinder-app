@@ -39,6 +39,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES, TARGET_STATE_OPTIONS, parseAuthoredTargetState } from '../constants';
+import { isGuidedActionType } from '../../../types/interactive-actions.types';
 import { useActionRecorder } from '../../../utils/devtools';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import { ConditionChipsField } from './ConditionChipsField';
@@ -206,6 +207,23 @@ const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE
   value: a.value as JsonInteractiveAction,
   label: a.label,
 }));
+
+const GUIDED_ACTION_OPTIONS = ACTION_OPTIONS.filter((o) => isGuidedActionType(o.value));
+
+// A pre-gate guide can carry a verb `GuidedHandler` cannot drive, so the picker
+// keeps offering the current value — otherwise the step the author came to fix
+// shows no action at all.
+function actionOptionsFor(
+  isGuided: boolean,
+  current: JsonInteractiveAction
+): Array<ComboboxOption<JsonInteractiveAction>> {
+  if (!isGuided) {
+    return ACTION_OPTIONS;
+  }
+  return isGuidedActionType(current)
+    ? GUIDED_ACTION_OPTIONS
+    : [...GUIDED_ACTION_OPTIONS, ...ACTION_OPTIONS.filter((o) => o.value === current)];
+}
 
 type PopoutTargetMode = (typeof POPOUT_TARGET_MODES)[number]['value'];
 const POPOUT_TARGET_OPTIONS: Array<ComboboxOption<PopoutTargetMode>> = POPOUT_TARGET_MODES.map((m) => ({
@@ -762,7 +780,7 @@ export function StepEditor({
                       <div className={styles.addStepRow}>
                         <Field label="Action" style={{ marginBottom: 0, flex: '0 0 150px' }}>
                           <Combobox
-                            options={ACTION_OPTIONS}
+                            options={actionOptionsFor(isGuided, editAction)}
                             value={editAction}
                             onChange={(opt) => {
                               setEditAction(opt.value);
@@ -1072,7 +1090,7 @@ export function StepEditor({
           <div className={styles.addStepRow}>
             <Field label="Action" style={{ marginBottom: 0, flex: '0 0 150px' }}>
               <Combobox
-                options={ACTION_OPTIONS}
+                options={actionOptionsFor(isGuided, newAction)}
                 value={newAction}
                 onChange={(opt) => {
                   setNewAction(opt.value);

@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { useStyles2, Spinner, Icon, IconButton, Button, Input } from '@grafana/ui';
+import { useStyles2, Spinner, Icon, IconButton, Button, Input, Modal } from '@grafana/ui';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -22,6 +22,8 @@ import { useTerminalLive, ConnectionStatus } from './useTerminalLive.hook';
 import { useTerminalContext } from './TerminalContext';
 import { getTerminalPanelStyles } from './terminal-panel.styles';
 import { testIds } from '../../constants/testIds';
+import { GcxReadyLine, GcxSetupPanel } from './GcxSetupPanel';
+import { useGcxCredential } from './useGcxCredential.hook';
 import {
   setTerminalOpen,
   getTerminalHeight,
@@ -36,6 +38,8 @@ import {
   getLastVmOpts,
 } from './terminal-storage';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { VmExpiryIndicator } from './VmExpiryIndicator';
 
 interface TerminalPanelProps {
   /** Callback when panel is closed via X button */
@@ -59,15 +63,17 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [height, setHeight] = useState(() => getTerminalHeight());
   const [isResizing, setIsResizing] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showGcx, setShowGcx] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, sendCommand, error, sessionId } = useTerminalLive({
+  const { status, connect, disconnect, resize, sendCommand, error, sessionId, vmExpiresAt } = useTerminalLive({
     terminalRef: terminalInstanceRef,
   });
 
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
+  const gcxCredential = useGcxCredential(undefined, sessionId);
   useEffect(() => {
     terminalCtx?._register({ status, sessionId, error, connect, disconnect, sendCommand });
   }, [terminalCtx, status, sessionId, error, connect, disconnect, sendCommand]);
@@ -168,6 +174,17 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     terminal.loadAddon(serializeAddon);
     terminal.loadAddon(searchAddon);
     terminal.open(terminalRef.current);
+
+    // Swallow the terminal colour queries instead of answering them. xterm
+    // replies to OSC 10/11/12 through `onData`, and `onData` is piped straight
+    // to the PTY, so over a relay the reply lands after the asking program has
+    // exited and restored termios ECHO — and the shell echoes it as text. That
+    // is where `11;rgb:1e1e/1e1e/1e1e` came from: our own `theme.background`
+    // read back to us. Returning true pre-empts xterm's built-in handler,
+    // because OscParser dispatches last-registered-first and breaks on true.
+    for (const code of [10, 11, 12]) {
+      terminal.parser.registerOscHandler(code, () => true);
+    }
 
     // WebGL addon for GPU-accelerated rendering (with fallback)
     try {
@@ -385,7 +402,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
         return styles.statusConnecting;
       case 'error':
         return styles.statusError;
+      case 'disconnected':
+        return styles.statusDisconnected;
       default:
+        assertExhaustive(s);
         return styles.statusDisconnected;
     }
   };
@@ -398,7 +418,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
         return 'Connecting...';
       case 'error':
         return error || 'Error';
+      case 'disconnected':
+        return 'Disconnected';
       default:
+        assertExhaustive(s);
         return 'Disconnected';
     }
   };
@@ -407,6 +430,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const canConnect = !isConnecting && status !== 'connected';
   const canDisconnect = status === 'connected';
   const canCancel = isConnecting;
+  const renderVmExpiry = () =>
+    status === 'connected' && vmExpiresAt ? (
+      <VmExpiryIndicator key={vmExpiresAt} expiresAt={vmExpiresAt} className={styles.expiryIndicator} />
+    ) : null;
 
   // Always render terminal div to keep it alive across collapse/expand
   // Use display:none to hide when collapsed instead of unmounting
@@ -432,6 +459,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             <div className={styles.headerLeft}>
               <Icon name="code-branch" size="sm" />
               <span className={styles.title}>Terminal</span>
+              {renderVmExpiry()}
             </div>
             <div className={styles.headerRight}>
               <div className={styles.statusIndicator}>
@@ -483,6 +511,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
           <div className={styles.headerLeft}>
             <Icon name="code-branch" size="sm" />
             <span className={styles.title}>Terminal</span>
+            {isExpanded && renderVmExpiry()}
           </div>
           <div className={styles.headerRight}>
             <div className={styles.statusIndicator}>
@@ -493,7 +522,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               )}
               <span>{getStatusText(status)}</span>
             </div>
-
             {canConnect && (
               <Button
                 size="sm"
@@ -529,6 +557,19 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
                 Disconnect
               </Button>
             )}
+
+            {/* Needs a live session: the backend writes over the SSH channel
+                the stream already owns. */}
+            <Button
+              size="sm"
+              variant="secondary"
+              className={styles.headerButton}
+              disabled={status !== 'connected' || !sessionId}
+              onClick={() => setShowGcx(true)}
+              data-testid={testIds.codaTerminal.gcxButton}
+            >
+              gcx
+            </Button>
 
             <IconButton
               name="search"
@@ -603,6 +644,41 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
         {/* Terminal - always mounted to preserve connection */}
         <div className={styles.terminalWrapper} ref={terminalRef} />
       </div>
+
+      <Modal title="Use gcx in this sandbox" isOpen={showGcx} onDismiss={() => setShowGcx(false)}>
+        {gcxCredential.credential ? (
+          <>
+            <GcxReadyLine credential={gcxCredential.credential} testId={testIds.codaTerminal.gcxReady} />
+            {/* Tokens expire well inside a long session, and the VM cannot be
+                re-provisioned from here, so the form has to stay reachable. */}
+            <Button
+              size="sm"
+              variant="secondary"
+              fill="text"
+              onClick={gcxCredential.reset}
+              data-testid={testIds.codaTerminal.gcxRedo}
+            >
+              Set up again
+            </Button>
+          </>
+        ) : (
+          <GcxSetupPanel
+            state={gcxCredential.state}
+            error={gcxCredential.error}
+            offerMint={gcxCredential.offerMint}
+            mintLikely={gcxCredential.mintLikely}
+            onMint={() => void gcxCredential.run(sessionId)}
+            onInstall={(token) => void gcxCredential.run(sessionId, token)}
+            testIds={{
+              mint: testIds.codaTerminal.gcxMint,
+              tokenInput: testIds.codaTerminal.gcxToken,
+              tokenLifetime: testIds.codaTerminal.gcxTokenLifetime,
+              install: testIds.codaTerminal.gcxInstall,
+              error: testIds.codaTerminal.gcxError,
+            }}
+          />
+        )}
+      </Modal>
     </>
   );
 }

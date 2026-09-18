@@ -17,6 +17,8 @@
 
 import { z } from 'zod';
 
+import { GuideStatsSummarySchema } from './guide-stats.schema';
+
 /** Any JSON value. Mirrors Go `json.RawMessage` / `interface{}` passthrough. */
 export const JsonValueSchema = z.json();
 
@@ -77,7 +79,21 @@ export const CustomGuideAuthorWireSchema = z.strictObject({
 });
 
 /**
- * Two fields are deliberately wider here than in `CustomGuideManifest`
+ * The stamped block statistics — the completion denominator. `version` is the
+ * version of the counting rules that produced the counts, not a content
+ * version.
+ *
+ * Derived from the canonical `GuideStatsSummarySchema` rather than restated, so
+ * the wire cannot admit a stamp the producer would reject — in particular the
+ * non-negative invariant every member carries. `strictObject` adds only the
+ * closed-shape rule the rest of this module's wire schemas apply.
+ *
+ * @coupling Go struct: customGuideStats
+ */
+export const CustomGuideStatsWireSchema = z.strictObject(GuideStatsSummarySchema.shape);
+
+/**
+ * Three fields are deliberately wider here than in `CustomGuideManifest`
  * (src/lib/custom-guide-repository-client.ts), because Go emits more than that
  * interface admits:
  *
@@ -89,6 +105,12 @@ export const CustomGuideAuthorWireSchema = z.strictObject({
  *   `Depends []json.RawMessage`, which forwards whatever the CR holds; the
  *   client declares no `depends` field, so nothing reads it as a typed
  *   `DependencyList`.
+ * - `stats` is on the wire but off the interface. Nothing populates it yet: the
+ *   CRD's `#Manifest` declares no `stats` and prunes a top-level write silently,
+ *   so both App Platform writers stamp `additionalFields.stats` instead, which
+ *   this proxy does not carry. Once the platform CUE field lands, the counts
+ *   will reach the browser untyped — the client declares no `stats` field for a
+ *   reader to use.
  *
  * @coupling Go struct: customGuideManifest
  */
@@ -100,6 +122,7 @@ export const CustomGuideManifestWireSchema = z.strictObject({
   category: z.string().optional(),
   author: CustomGuideAuthorWireSchema.optional(),
   depends: z.array(JsonValueSchema).optional(),
+  stats: CustomGuideStatsWireSchema.optional(),
 });
 
 /** @coupling Go struct: customGuideRepositoryEntry */
@@ -167,6 +190,7 @@ export const GO_STRUCT_SCHEMAS = {
   customGuideCapability: CustomGuideCapabilityWireSchema,
   customGuideRepositoryEntry: CustomGuideRepositoryEntryWireSchema,
   customGuideManifest: CustomGuideManifestWireSchema,
+  customGuideStats: CustomGuideStatsWireSchema,
   'customGuideManifest.author': CustomGuideAuthorWireSchema,
   myCompletionsResponse: MyCompletionsResponseWireSchema,
   completionCapability: CompletionCapabilityWireSchema,

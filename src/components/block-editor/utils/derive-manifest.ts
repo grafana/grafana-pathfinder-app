@@ -20,7 +20,7 @@
  * `Warning:` header `getBackendSrv()` never surfaces — so `stats` and
  * `startingLocation` go under `additionalFields`, matching what
  * `scripts/upsert-learning-path.sh` already does and what
- * `docs/design/CONCERNS.md` records as the two-location contract.
+ * `docs/design/CONCERN_DETAILS.md` records as the two-location contract.
  */
 
 import { summarizeGuideBlocks, TRANSPARENT_CONTAINER_BLOCK_TYPES } from '../../../lib/guide-stats';

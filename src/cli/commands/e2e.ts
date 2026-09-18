@@ -41,11 +41,17 @@ import {
 import { checkGrafanaHealth } from '../e2e/grafana-health';
 import { CleanEnvironment, CLEAN_COMPOSE_PROJECT, CLEAN_GRAFANA_URL } from '../e2e/clean-environment';
 import { ExitCode } from '../e2e/exit-codes';
-import { runPlaywrightTests, type RunGuideOptions } from '../e2e/playwright-runner';
+import {
+  runPlaywrightChain,
+  runPlaywrightTests,
+  type RunChainGuide,
+  type RunGuideOptions,
+} from '../e2e/playwright-runner';
 import {
   applyPackageMeta,
   buildPackageMetaMap,
   exitCodeFromResults,
+  guideStatusFromResultsData,
   provisioningErrorCode,
   provisioningFailureResults,
   resolveRunMode,
@@ -731,7 +737,8 @@ async function runChains(
   packageMetaById: Map<string, PackageMeta> = new Map(),
   cloudAuth?: CloudAuthPolicy,
   cloudStackPoolManagerConfig?: CloudStackPoolManagerConfig,
-  cloudChainCleanup?: CloudChainCleanupRegistry
+  cloudChainCleanup?: CloudChainCleanupRegistry,
+  selection?: ExecutionSelection
 ): Promise<ChainRunOutcome> {
   console.log('\n🎭 Running Playwright tests...\n');
 
@@ -742,6 +749,9 @@ async function runChains(
   const cloudStackPoolManager = cloudStackPoolManagerConfig
     ? new CloudStackPoolManager(cloudStackPoolManagerConfig, options.verbose)
     : undefined;
+  if (selection && plan.chains.length !== 1) {
+    throw new Error(`Invalid ${selection.type} execution plan: expected one milestone chain.`);
+  }
   for (const [chainIndex, chain] of plan.chains.entries()) {
     if (options.clean && chainIndex > 0) {
       console.log(`\n🧹 Resetting docker compose between chains...`);
@@ -786,14 +796,129 @@ async function runChains(
       continue;
     }
     try {
-      // IDs in this chain that failed or were skipped; their dependents skip.
+      if (selection) {
+        const resolvedTargets = chain.map((planned) => {
+          const meta = packageMetaById.get(planned.id);
+          return provisionedTargets.targetUrlForGuide(planned.id, meta?.targetUrl ?? options.grafanaUrl);
+        });
+        const targetOrigins = new Set(resolvedTargets.map((targetUrl) => new URL(targetUrl).origin));
+        if (targetOrigins.size !== 1) {
+          throw new Error(`Invalid ${selection.type} execution plan: milestones resolve to different targets.`);
+        }
+        const targetUrl = resolvedTargets[0] ?? options.grafanaUrl;
+        const firstMeta = packageMetaById.get(chain[0]!.id);
+        const token =
+          firstMeta?.tier === 'cloud' ? provisionedTargets.tokenForGuide(chain[0]!.id, firstMeta.targetUrl) : undefined;
+        const chainGuides: RunChainGuide[] = chain.map((planned) => {
+          const meta = packageMetaById.get(planned.id);
+          return {
+            id: planned.id,
+            guide: planned.guide,
+            dependencies: planned.dependencies,
+            ...(meta?.startingLocation !== undefined ? { authoredStartingLocation: meta.startingLocation } : {}),
+            ...(meta
+              ? {
+                  packageMetadata: {
+                    packageId: meta.packageId,
+                    ...(meta.tier ? { tier: meta.tier } : {}),
+                    ...(meta.instance ? { instance: meta.instance } : {}),
+                    ...(meta.targetUrl ? { targetUrl: meta.targetUrl } : {}),
+                    ...(meta.sourceUrl ? { sourceUrl: meta.sourceUrl } : {}),
+                    ...(meta.startingLocation ? { startingLocation: meta.startingLocation } : {}),
+                    ...(meta.sideEffects ? { sideEffects: meta.sideEffects } : {}),
+                  },
+                }
+              : {}),
+          };
+        });
+        let sharedResult: Awaited<ReturnType<typeof runPlaywrightChain>>;
+        try {
+          sharedResult = await runPlaywrightChain(chainGuides, {
+            targetUrl,
+            verbose: options.verbose,
+            trace: options.trace,
+            headed: options.headed,
+            artifacts: options.artifacts,
+            alwaysScreenshot: options.alwaysScreenshot,
+            token,
+          });
+        } catch (error) {
+          for (const planned of chain) {
+            const meta = packageMetaById.get(planned.id);
+            const failure = runnerFailureResult(planned, meta, targetUrl, error);
+            results.push(failure);
+            console.error(`   ❌ ${failure.abortMessage}`);
+          }
+          allPassed = false;
+          chainHadFailure = true;
+          continue;
+        }
+        const blocked = new Set<string>();
+        for (const [index, planned] of chain.entries()) {
+          const data = sharedResult.resultsData[index]!;
+          const meta = packageMetaById.get(planned.id);
+          applyPackageMeta(data, meta);
+          const failedPrerequisite = planned.dependencies.find((dependency) => blocked.has(dependency));
+          const status = guideStatusFromResultsData(data);
+          const exitCode =
+            status === 'passed' || status === 'skipped_prereq' || status === 'skipped_unsupported_steps'
+              ? ExitCode.SUCCESS
+              : status === 'auth_expired'
+                ? ExitCode.AUTH_FAILURE
+                : data.errorCode === 'PLAYWRIGHT_SPAWN_FAILED'
+                  ? ExitCode.CONFIGURATION_ERROR
+                  : ExitCode.TEST_FAILURE;
+          results.push({
+            guide: planned.guide.path,
+            id: planned.id,
+            status,
+            exitCode,
+            ...(index === 0 && sharedResult.traceFile ? { traceFile: sharedResult.traceFile } : {}),
+            ...(data.abortReason === 'AUTH_EXPIRED' || data.abortReason === 'MANDATORY_FAILURE'
+              ? { abortReason: data.abortReason }
+              : {}),
+            abortMessage: data.abortMessage ?? data.errorMessage,
+            resultsData: data,
+            autoIncluded: planned.autoIncluded,
+            ...(failedPrerequisite ? { failedPrerequisite } : {}),
+          });
+          if (status !== 'passed') {
+            blocked.add(planned.id);
+          }
+          if (status === 'failed') {
+            allPassed = false;
+            chainHadFailure = true;
+          }
+          if (status === 'auth_expired') {
+            allPassed = false;
+            chainHadFailure = true;
+            hasAuthExpiry = true;
+          }
+          const suffix = planned.autoIncluded ? ' (auto-included prerequisite)' : '';
+          console.log(`\n📚 ${planned.guide.path}${suffix}`);
+          if (status === 'passed') {
+            console.log('   ✅ Test passed');
+          } else if (status === 'skipped_prereq') {
+            console.log(`   ⊘ Skipped: prerequisite "${failedPrerequisite}" did not pass`);
+          } else if (status === 'skipped_unsupported_steps') {
+            console.log(`   ⊘ Skipped: ${data.errorMessage}`);
+          } else if (status === 'auth_expired') {
+            console.log(`   ❌ Session expired: ${data.errorMessage ?? data.abortMessage}`);
+          } else {
+            console.log(`   ❌ Test failed (exit code: ${exitCode})`);
+          }
+        }
+        if (sharedResult.traceFile && options.trace) {
+          console.log(`   📊 Trace file: ${sharedResult.traceFile}`);
+        }
+        continue;
+      }
       const blocked = new Set<string>();
 
       for (const planned of chain) {
         const blockingDep = planned.dependencies.find((dep) => blocked.has(dep));
         if (blockingDep) {
           blocked.add(planned.id);
-          chainHadFailure = true;
           console.log(`
 📚 ${planned.guide.path}`);
           console.log(`   ⊘ Skipped: prerequisite "${blockingDep}" did not pass`);
@@ -824,7 +949,6 @@ async function runChains(
             exitCode: ExitCode.SUCCESS,
             autoIncluded: planned.autoIncluded,
             failedPrerequisite: blockingDep,
-            // Include a result so the skipped guide is represented in the JSON report
             resultsData: prereqResultsData,
           });
           continue;
@@ -861,11 +985,12 @@ async function runChains(
           continue;
         }
         applyPackageMeta(result.resultsData, meta);
-        const status: GuideStatus = result.success
-          ? 'passed'
-          : result.abortReason === 'AUTH_EXPIRED'
-            ? 'auth_expired'
-            : 'failed';
+        const status: GuideStatus =
+          result.success && result.resultsData
+            ? guideStatusFromResultsData(result.resultsData)
+            : result.abortReason === 'AUTH_EXPIRED'
+              ? 'auth_expired'
+              : 'failed';
 
         results.push({
           guide: planned.guide.path,
@@ -874,12 +999,15 @@ async function runChains(
           exitCode: result.exitCode,
           traceFile: result.traceFile,
           abortReason: result.abortReason,
-          abortMessage: result.abortMessage,
+          abortMessage: result.abortMessage ?? result.resultsData?.errorMessage,
           resultsData: result.resultsData,
           autoIncluded: planned.autoIncluded,
         });
 
-        if (!result.success) {
+        if (status === 'skipped_unsupported_steps') {
+          blocked.add(planned.id);
+          console.log(`   ⊘ Skipped: ${result.resultsData?.errorMessage}`);
+        } else if (!result.success) {
           allPassed = false;
           chainHadFailure = true;
           blocked.add(planned.id);
@@ -893,7 +1021,7 @@ async function runChains(
         } else {
           console.log(`   ✅ Test passed`);
         }
-        startingLocations.record(result.success, result.resultsData, targetUrl);
+        startingLocations.record(status === 'passed', result.resultsData, targetUrl);
 
         if (result.traceFile && options.trace) {
           console.log(`   📊 Trace file: ${result.traceFile}`);
@@ -1123,7 +1251,8 @@ export async function runE2e(options: E2eInput): Promise<CommandOutcome> {
       inputs.packageMetaById,
       inputs.cloudAuth,
       inputs.cloudStackPoolManagerConfig,
-      cloudChainCleanup
+      cloudChainCleanup,
+      inputs.selection
     );
 
     reportResults([...inputs.preRunSkipped, ...outcome.results], options, outcome.cleanupWarnings, inputs.selection);

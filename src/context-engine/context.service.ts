@@ -8,21 +8,21 @@ import {
 import {
   getConfigWithDefaults,
   isRecommenderEnabled,
-  DocsPluginConfig,
+  PathfinderPluginConfig,
   DEFAULT_RECOMMENDER_TIMEOUT,
   ONLINE_PACKAGES_BOOT_BUDGET_MS,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../constants';
-// eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: context-engine -> docs-retrieval
 import {
   fetchContent,
   getJourneyCompletionPercentageAsync,
   resolvePackageMilestones,
   resolvePackageNavLinks,
   derivePathSlug,
-} from '../docs-retrieval';
+} from '../lib/learning-journey-content-bridge';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { logger } from '../lib/logging';
+import { fetchDataSources } from '../lib/grafana-api';
 import { withTimeout } from '../lib/async-utils';
 import { currentPlatform } from '../lib/platform';
 import {
@@ -36,8 +36,6 @@ import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../s
 import {
   ContextData,
   DataSource,
-  Plugin,
-  DashboardSearchResult,
   DashboardInfo,
   Recommendation,
   ContextPayload,
@@ -97,9 +95,6 @@ export class ContextService {
     'docs-page': 3,
   };
 
-  /**
-   * Main method to get all context data
-   */
   static async getContextData(): Promise<ContextData> {
     // Ensure EchoSrv is initialized (fallback if onPluginStart wasn't called)
     initializeEchoLogging();
@@ -113,7 +108,6 @@ export class ContextService {
     const currentUrl = `${location.pathname}${location.search}${location.hash}`;
     const pathSegments = currentPath.split('/').filter(Boolean);
 
-    // Parse search parameters using LocationService
     const urlQueryMap = locationService.getSearchObject();
     const searchParams: Record<string, string> = {};
     Object.entries(urlQueryMap).forEach(([key, value]) => {
@@ -122,13 +116,8 @@ export class ContextService {
       }
     });
 
-    // Fetch data in parallel
-    const [dataSources, dashboardInfo] = await Promise.all([
-      this.fetchDataSources(),
-      this.fetchDashboardInfo(currentPath),
-    ]);
+    const [dataSources, dashboardInfo] = await Promise.all([fetchDataSources(), this.fetchDashboardInfo(currentPath)]);
 
-    // Generate context tags
     const tags = this.generateContextTags(pathSegments, searchParams, dataSources, dashboardInfo);
 
     return {
@@ -158,7 +147,7 @@ export class ContextService {
    */
   static async fetchRecommendations(
     contextData: ContextData,
-    pluginConfig: DocsPluginConfig = {}
+    pluginConfig: PathfinderPluginConfig = {}
   ): Promise<{
     recommendations: Recommendation[];
     featuredRecommendations: Recommendation[];
@@ -177,7 +166,7 @@ export class ContextService {
         };
       }
 
-      const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
+      const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData);
       if (!isRecommenderEnabled(pluginConfig)) {
         // When the recommender is disabled, OSS users with internet access can
         // still see guides authored on the public CDN. The fetch is gated on
@@ -209,7 +198,7 @@ export class ContextService {
         platform: this.getCurrentPlatform(),
         timeout_ms: DEFAULT_RECOMMENDER_TIMEOUT,
       });
-      const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData, pluginConfig);
+      const bundledRecommendations = await this.getBundledInteractiveRecommendations(contextData);
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
         ...fallbackResult,
@@ -234,7 +223,7 @@ export class ContextService {
   ): Promise<{ recommendations: Recommendation[]; error: string | null }> {
     const staticLinkRecommendations = this.getStaticLinkRecommendations(contextData);
     const allRecommendations = [...bundledRecommendations, ...staticLinkRecommendations];
-    const processedRecommendations = await this.processLearningJourneys(allRecommendations, {});
+    const processedRecommendations = await this.processLearningJourneys(allRecommendations);
 
     return {
       recommendations: processedRecommendations,
@@ -285,7 +274,7 @@ export class ContextService {
    */
   private static async getExternalRecommendations(
     contextData: ContextData,
-    pluginConfig: DocsPluginConfig,
+    pluginConfig: PathfinderPluginConfig,
     bundledRecommendations: Recommendation[]
   ): Promise<{
     recommendations: Recommendation[];
@@ -416,10 +405,10 @@ export class ContextService {
           bundledRecommendations
         );
         const allRecommendations = [...deduplicatedExternal, ...bundledRecommendations];
-        const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
+        const processedRecommendations = await this.processLearningJourneys(allRecommendations);
 
         // Process featured recommendations separately (deduplicated against bundled)
-        const processedFeaturedRecommendations = await this.processLearningJourneys(deduplicatedFeatured, pluginConfig);
+        const processedFeaturedRecommendations = await this.processLearningJourneys(deduplicatedFeatured);
 
         // Filter and sort recommendations
         const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
@@ -815,10 +804,7 @@ export class ContextService {
    * - Learning journeys store completion in journeyCompletionStorage
    * - Interactives store completion in interactiveCompletionStorage (via step completion)
    */
-  private static async processLearningJourneys(
-    recommendations: Recommendation[],
-    pluginConfig?: DocsPluginConfig
-  ): Promise<Recommendation[]> {
+  private static async processLearningJourneys(recommendations: Recommendation[]): Promise<Recommendation[]> {
     return Promise.all(
       recommendations.map(async (rec) => {
         // Process learning journeys, interactives, and items without a type
@@ -1020,50 +1006,6 @@ export class ContextService {
     } catch (error) {
       logger.warn('Failed to get current language', { error });
       return 'en-US';
-    }
-  }
-
-  /**
-   * Fetch data sources
-   */
-  static async fetchDataSources(): Promise<DataSource[]> {
-    try {
-      const dataSources = await getBackendSrv().get('/api/datasources');
-      return dataSources || [];
-    } catch (error) {
-      logger.warn('Failed to fetch data sources', { error });
-      return [];
-    }
-  }
-
-  /**
-   * Fetch plugins
-   */
-  static async fetchPlugins(): Promise<Plugin[]> {
-    try {
-      const plugins = await getBackendSrv().get('/api/plugins');
-      return plugins || [];
-    } catch (error) {
-      logger.warn('Failed to fetch plugins', { error });
-      return [];
-    }
-  }
-
-  /**
-   * Fetch dashboards by name using search API
-   */
-  static async fetchDashboardsByName(name: string): Promise<DashboardSearchResult[]> {
-    try {
-      const dashboards = await getBackendSrv().get('/api/search', {
-        type: 'dash-db',
-        limit: 100,
-        deleted: false,
-        query: name,
-      });
-      return dashboards || [];
-    } catch (error) {
-      logger.warn('Failed to fetch dashboards', { error });
-      return [];
     }
   }
 
@@ -1295,7 +1237,7 @@ export class ContextService {
   private static getGrafanaVersion(): string {
     try {
       return config.bootData.settings.buildInfo.version || 'Unknown';
-    } catch (error) {
+    } catch {
       return 'Unknown';
     }
   }
@@ -1717,10 +1659,7 @@ export class ContextService {
    * Get bundled interactive recommendations from index.json file
    * Filters based on current URL to show contextually relevant interactives
    */
-  private static async getBundledInteractiveRecommendations(
-    contextData: ContextData,
-    pluginConfig: DocsPluginConfig
-  ): Promise<Recommendation[]> {
+  private static async getBundledInteractiveRecommendations(contextData: ContextData): Promise<Recommendation[]> {
     const bundledRecommendations: Recommendation[] = [];
 
     try {

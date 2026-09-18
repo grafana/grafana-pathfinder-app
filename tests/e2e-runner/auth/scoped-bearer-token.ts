@@ -1,6 +1,11 @@
 import type { Page } from '@playwright/test';
 
-import type { AuthStrategy, AuthResult, SessionValidationResult } from './grafana-auth';
+import {
+  authFailureKindForStatus,
+  type AuthStrategy,
+  type AuthResult,
+  type SessionValidationResult,
+} from './grafana-auth';
 
 export function scopedBearerHeaders(
   requestUrl: string,
@@ -34,19 +39,43 @@ export function createScopedBearerTokenAuthStrategy(token: string, targetUrl: st
     name: 'scoped-bearer-token',
 
     async authenticate(page: Page, grafanaUrl: string): Promise<AuthResult> {
-      const response = await page.request.get(new URL('/api/user', grafanaUrl).toString(), { headers });
-      if (!response.ok()) {
-        return { success: false, error: `Authentication check failed: /api/user returned ${response.status()}` };
+      try {
+        const response = await page.request.get(new URL('/api/user', grafanaUrl).toString(), { headers });
+        if (!response.ok()) {
+          return {
+            success: false,
+            failureKind: authFailureKindForStatus(response.status()),
+            error: `Authentication check failed: /api/user returned ${response.status()}`,
+          };
+        }
+        const user = (await response.json()) as { login?: string; id?: number; role?: string };
+        return { success: true, user };
+      } catch (error) {
+        return {
+          success: false,
+          failureKind: 'infrastructure_error',
+          error: `Authentication check failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        };
       }
-      const user = (await response.json()) as { login?: string; id?: number; role?: string };
-      return { success: true, user };
     },
 
     async validateSession(page: Page): Promise<SessionValidationResult> {
-      const response = await page.request.get(new URL('/api/user', targetUrl).toString(), { headers });
-      return response.ok()
-        ? { valid: true }
-        : { valid: false, error: `Session validation failed: /api/user returned ${response.status()}` };
+      try {
+        const response = await page.request.get(new URL('/api/user', targetUrl).toString(), { headers });
+        return response.ok()
+          ? { valid: true }
+          : {
+              valid: false,
+              failureKind: authFailureKindForStatus(response.status()),
+              error: `Session validation failed: /api/user returned ${response.status()}`,
+            };
+      } catch (error) {
+        return {
+          valid: false,
+          failureKind: 'infrastructure_error',
+          error: `Session validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        };
+      }
     },
 
     async refreshSession(): Promise<boolean> {

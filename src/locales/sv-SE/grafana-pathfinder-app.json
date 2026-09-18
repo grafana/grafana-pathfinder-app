@@ -89,6 +89,12 @@
     "body": "",
     "title": ""
   },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "Alla lärresor slutförda!",
     "allCompleteTooltip": "Du har slutfört alla lärresor — bra jobbat!",

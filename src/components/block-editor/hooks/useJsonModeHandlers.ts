@@ -138,6 +138,8 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
         return;
       }
 
+      // A pre-existing guide whose only fault is a duplicate leading heading is
+      // stuck here until the author removes it — tracked by #1811.
       const result = parseAndValidateGuide(jsonModeState.json);
       if (!result.isValid) {
         setJsonValidationErrors(result.errors);

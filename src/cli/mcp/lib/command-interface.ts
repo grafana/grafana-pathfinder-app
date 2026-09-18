@@ -27,6 +27,8 @@
 
 import type { z } from 'zod';
 
+import { assertExhaustive } from '../../../lib/assert-exhaustive';
+
 import {
   renderGroupInterface,
   resolveParamPolicy,
@@ -140,10 +142,15 @@ export function agentView(commandName: string): SurfaceView {
     name: (field) => field.name,
     publishes: (field) => field.policy.role !== 'io' && !withheld.has(field.name),
     // No tool prints the requirement vocabulary and an agent cannot run the command
-    // that does, so the vocabulary is illustrated rather than pointed at. Withholding
-    // the CLI recipe is the point: an agent that reads one tends to try it.
+    // that does, so the vocabulary rides along on the response instead. Withholding
+    // the CLI recipe is the point: an agent that reads one tends to try it. Two
+    // examples used to be the whole of what an agent ever saw, which reads as the
+    // enumeration — so the description now says where the enumeration is.
     describe: (field, stated) =>
-      carriesRequirementTokens(field.name) ? `${stated} | valid tokens include ${REQUIREMENT_TOKEN_EXAMPLES}` : stated,
+      carriesRequirementTokens(field.name)
+        ? `${stated} | one token per entry (e.g. ${REQUIREMENT_TOKEN_EXAMPLES}) | full vocabulary in this response's requirementTokens; nothing outside it validates`
+        : stated,
+    publishesRequirementVocabulary: true,
   };
 }
 
@@ -294,7 +301,10 @@ function matchesValueType(flag: HelpJsonFlag, value: unknown): boolean {
       return typeof value === 'string' && (flag.enum?.includes(value) ?? false);
     case 'union':
       return (flag.unionOf ?? []).some((kind) => matchesPrimitiveKind(kind, value));
+    case 'string':
+      return typeof value === 'string';
     default:
+      assertExhaustive(flag.valueType);
       return typeof value === 'string';
   }
 }

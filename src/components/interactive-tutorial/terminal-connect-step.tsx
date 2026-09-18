@@ -3,15 +3,22 @@
  *
  * Renders a "Try in terminal" button that opens and connects to the Coda terminal.
  * Use this as a guided entry point for users to start using the terminal feature.
+ *
+ * With `gcx`, the step also installs a Grafana credential into the VM. See
+ * `docs/developer/CODA.md` for why a pasted token is the primary path there.
  */
 
-import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
+import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { useStepChecker } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
+import { GcxReadyLine, GcxSetupPanel } from '../../integrations/coda/GcxSetupPanel';
+import { useGcxCredential } from '../../integrations/coda/useGcxCredential.hook';
 import {
   codaUnavailableMessage,
   useCodaSessionEligibility,
@@ -19,7 +26,8 @@ import {
   useCodaTerminalGate,
 } from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 export interface TerminalConnectStepProps {
   buttonText?: string;
@@ -33,13 +41,14 @@ export interface TerminalConnectStepProps {
   vmApp?: string;
   /** Scenario name for alloy-scenario template */
   vmScenario?: string;
+  /** Also install a Grafana credential so `gcx` can be used in the VM */
+  gcx?: boolean;
 
   stepId?: string;
   isEligibleForChecking?: boolean;
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   resetTrigger?: number;
-  onStepReset?: () => void;
 
   stepIndex?: number;
   totalSteps?: number;
@@ -87,6 +96,15 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
   }),
+  requirementMessage: css({
+    padding: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    backgroundColor: theme.colors.warning.transparent,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.warning.border}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
 });
 
 const SANDBOX_SUBJECT = 'This step connects to a Coda sandbox VM';
@@ -105,12 +123,12 @@ export const TerminalConnectStep = forwardRef<
       vmTemplate,
       vmApp,
       vmScenario,
+      gcx = false,
       stepId,
       isEligibleForChecking = true,
       isCurrentlyExecuting = false,
       onStepComplete,
       resetTrigger,
-      onStepReset,
       stepIndex,
       totalSteps,
       sectionId,
@@ -133,9 +151,30 @@ export const TerminalConnectStep = forwardRef<
 
     const [isConnecting, setIsConnecting] = useState(false);
 
+    const analyticsStepMeta = useMemo(
+      () => ({
+        stepId: stepId ?? renderedStepId,
+        stepIndex,
+        totalSteps,
+        sectionId,
+        sectionTitle,
+      }),
+      [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
+    );
+
     const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
     const isStandalone = !onStepComplete;
     const isCompleted = storedCompleted;
+
+    const checker = useStepChecker({
+      requirements: '',
+      objectives: '',
+      targetAction: 'noop',
+      refTarget: '',
+      stepId: renderedStepId,
+      isEligibleForChecking,
+      sectionId,
+    });
 
     const markComplete = useCallback(() => {
       if (isCompleted) {
@@ -150,15 +189,78 @@ export const TerminalConnectStep = forwardRef<
       onComplete?.();
     }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
 
-    const handleConnect = useCallback(() => {
+    const {
+      state: gcxState,
+      error: gcxError,
+      credential: gcxCredential,
+      offerMint,
+      mintLikely,
+      isPending: gcxCredentialPending,
+      run: runGcxCredential,
+      // Readiness is shared by session, but only the stable step that started a
+      // run may complete from it. The toolbar has no requester and completes none.
+    } = useGcxCredential(gcx ? markComplete : undefined, terminalCtx?.sessionId, gcx ? renderedStepId : null);
+
+    const handleConnect = useCallback(async () => {
       if (!terminalCtx) {
         return;
       }
 
       setIsConnecting(true);
       const vmOpts = vmTemplate ? { template: vmTemplate, app: vmApp, scenario: vmScenario } : undefined;
-      terminalCtx.openTerminal(vmOpts);
-    }, [terminalCtx, vmTemplate, vmApp, vmScenario]);
+      const sessionId = await terminalCtx.openTerminal(vmOpts);
+
+      if (!gcx) {
+        return;
+      }
+      if (!sessionId) {
+        // Nothing to install into, and nothing to say here: the terminal owns
+        // the connection error, and the step falls back to offering Connect
+        // again. A gcx error set now would render nowhere, because the panel
+        // below is only reachable once the terminal is connected.
+        return;
+      }
+      // The id `openTerminal` resolved, not the rendered one: when the requested
+      // VM differs from the live one this tears the old session down, and the
+      // render still carries the session being deleted.
+      await runGcxCredential(sessionId);
+    }, [terminalCtx, vmTemplate, vmApp, vmScenario, gcx, runGcxCredential]);
+
+    /** Provision against the live session, for a terminal connected elsewhere. */
+    const handleGcxOnly = useCallback(
+      (token?: string) => runGcxCredential(terminalCtx?.sessionId ?? null, token),
+      [terminalCtx?.sessionId, runGcxCredential]
+    );
+
+    const handleGcxSkip = useCallback(() => {
+      reportAppInteraction(
+        UserInteraction.GcxSetupSkipped,
+        buildInteractiveStepProperties(
+          { state: gcxState, interaction_location: 'terminal_connect_step' },
+          analyticsStepMeta
+        )
+      );
+      markComplete();
+    }, [gcxState, markComplete, analyticsStepMeta]);
+
+    const persistReset = useCallback(() => {
+      if (isStandalone) {
+        resetStep(renderedStepId, sectionId);
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
+
+    // Runs in EVERY child of the section, so the store write is suppressed for
+    // section steps: the section's own `resetSteps(tailStepIds)` already owns
+    // it, and a per-child write would wipe preceding completions.
+    useEffect(() => {
+      if (resetTrigger && resetTrigger > 0) {
+        persistReset();
+        setIsConnecting(false);
+        if (checker.resetStep) {
+          checker.resetStep({ skipStoreWrite: true });
+        }
+      }
+    }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep and persistReset are stable but including checker rebuilds every render
 
     // React to terminal status changes while waiting for connection.
     // Handles: success (connected), failure (error), and cancellation (disconnected).
@@ -169,11 +271,18 @@ export const TerminalConnectStep = forwardRef<
 
       if (terminalCtx?.status === 'connected') {
         setIsConnecting(false);
-        markComplete();
+        // With gcx the step is not done until the credential is in: the hook
+        // completes it. Completing here would tick the step off while the
+        // commands it exists to enable would still fail unauthenticated.
+        if (!gcx) {
+          markComplete();
+        }
       } else if (terminalCtx?.status === 'error' || terminalCtx?.status === 'disconnected') {
         setIsConnecting(false);
       }
-    }, [isConnecting, terminalCtx?.status, markComplete]);
+    }, [isConnecting, terminalCtx?.status, markComplete, gcx]);
+
+    const isGcxPending = gcx && gcxCredentialPending;
 
     useImperativeHandle(
       ref,
@@ -182,23 +291,26 @@ export const TerminalConnectStep = forwardRef<
           if (isCompleted) {
             return true;
           }
-          if (terminalCtx?.status === 'connected') {
+          if (terminalCtx?.status === 'connected' && !isGcxPending) {
             markComplete();
             return true;
           }
-          handleConnect();
+          void handleConnect();
           return false;
         },
         markSkipped: () => {
           markComplete();
         },
       }),
-      [isCompleted, terminalCtx, markComplete, handleConnect]
+      [isCompleted, terminalCtx, markComplete, handleConnect, isGcxPending]
     );
 
     const isTerminalConnected = terminalCtx?.status === 'connected';
     const isTerminalConnecting = isConnecting || terminalCtx?.status === 'connecting';
-    const isEnabled = !disabled && terminalCtx !== null;
+    // `useStepChecker` resolves in a post-mount effect; with empty requirements its
+    // verdict is just eligibility, so trust the prop for the pre-verdict frame.
+    const gateOpen = checker.status === 'idle' ? isEligibleForChecking : checker.isEnabled;
+    const isEnabled = gateOpen && !disabled && terminalCtx !== null;
     // The provider mounts even when the panel that owns `connect` is gated
     // away, so without this the button is enabled and does nothing.
     const sandboxUnavailable = codaUnavailableMessage(
@@ -211,7 +323,7 @@ export const TerminalConnectStep = forwardRef<
     let stepState: StepStateValue = STEP_STATES.IDLE;
     if (isCompleted) {
       stepState = STEP_STATES.COMPLETED;
-    } else if (isTerminalConnecting || isCurrentlyExecuting) {
+    } else if (isTerminalConnecting || isCurrentlyExecuting || (gcx && gcxState === 'provisioning')) {
       stepState = STEP_STATES.EXECUTING;
     } else if (!isEnabled) {
       stepState = STEP_STATES.REQUIREMENTS_UNMET;
@@ -227,47 +339,83 @@ export const TerminalConnectStep = forwardRef<
       .filter(Boolean)
       .join(' ');
 
+    const gcxPanel = (
+      <GcxSetupPanel
+        state={gcxState}
+        error={gcxError}
+        offerMint={offerMint}
+        mintLikely={mintLikely}
+        onMint={() => void handleGcxOnly()}
+        onInstall={(token) => void handleGcxOnly(token)}
+        onSkip={handleGcxSkip}
+        testIds={{
+          mint: testIds.interactive.gcxMintButton(renderedStepId),
+          tokenInput: testIds.interactive.gcxTokenInput(renderedStepId),
+          tokenLifetime: testIds.interactive.gcxTokenLifetime(renderedStepId),
+          install: testIds.interactive.gcxInstallButton(renderedStepId),
+          error: testIds.interactive.gcxError(renderedStepId),
+          skip: testIds.interactive.gcxSkipButton(renderedStepId),
+        }}
+      />
+    );
+
     return (
       <div
         className={containerClasses}
+        {...getTrackedStepRootAttributes('terminal-connect', renderedStepId)}
         data-test-step-state={stepState}
         data-testid={testIds.interactive.terminalConnectStep(renderedStepId)}
       >
         {children && <div className={styles.content}>{children}</div>}
+
+        {gcx && gcxCredential && (
+          <GcxReadyLine credential={gcxCredential} testId={testIds.interactive.gcxReady(renderedStepId)} />
+        )}
+
+        {!isEnabled && !isCompleted && checker.explanation && (
+          <div className={styles.requirementMessage}>{checker.explanation}</div>
+        )}
 
         {isEnabled && !isCompleted && !isTerminalConnected && sandboxUnavailable && (
           <div className={styles.unavailable}>{sandboxUnavailable}</div>
         )}
 
         {isEnabled && !isCompleted && !(sandboxUnavailable && !isTerminalConnected) && (
-          <div className={styles.actions}>
+          <>
             {isTerminalConnected ? (
               <>
-                <span className={`${styles.statusText} ${styles.connectedText}`}>
-                  <Icon name="check" size="sm" /> Connected
-                </span>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={markComplete}
-                  data-testid={testIds.interactive.terminalSkipButton(renderedStepId)}
-                >
-                  Continue
-                </Button>
+                <div className={styles.actions}>
+                  <span className={`${styles.statusText} ${styles.connectedText}`}>
+                    <Icon name="check" size="sm" /> Connected
+                  </span>
+                  {!isGcxPending && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={markComplete}
+                      data-testid={testIds.interactive.terminalSkipButton(renderedStepId)}
+                    >
+                      Continue
+                    </Button>
+                  )}
+                </div>
+                {isGcxPending && gcxPanel}
               </>
             ) : (
-              <Button
-                size="sm"
-                variant="primary"
-                icon={isTerminalConnecting ? 'fa fa-spinner' : 'link'}
-                onClick={handleConnect}
-                disabled={isTerminalConnecting}
-                tooltip="Open terminal panel and connect"
-              >
-                {isTerminalConnecting ? 'Connecting...' : buttonText}
-              </Button>
+              <div className={styles.actions}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={isTerminalConnecting ? 'fa fa-spinner' : 'link'}
+                  onClick={() => void handleConnect()}
+                  disabled={isTerminalConnecting}
+                  tooltip="Open terminal panel and connect"
+                >
+                  {isTerminalConnecting ? 'Connecting...' : buttonText}
+                </Button>
+              </div>
             )}
-          </div>
+          </>
         )}
 
         {isCompleted && (

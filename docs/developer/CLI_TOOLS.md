@@ -79,6 +79,7 @@ node dist/cli/cli/index.js validate [options] [files...]
 - `--format <format>`: Output format. Options are `text` (default) or `json`.
 - `--package <dir>`: Validate a single package directory (expects `content.json` and optionally `manifest.json`).
 - `--packages <dir>`: Validate a tree of package directories recursively.
+- `--snippets-catalog <file>`: Optional generated snippet `index.json` to check every `snippet-ref` ID against. The catalog must satisfy the snippet catalog schema; a missing or invalid catalog fails validation. This option applies to file, stdin, bundled, package, and package-tree validation. Omit it when no local catalog is available.
 - File arguments accept explicit paths to JSON guide files.
 
 ### Examples
@@ -115,6 +116,13 @@ npm run validate:strict
 # Equivalent to: node dist/cli/cli/index.js validate --bundled --strict
 ```
 
+**Validate guide references against a generated snippets catalog:**
+
+```bash
+node dist/cli/cli/index.js build-snippets shared/snippets -o /tmp/snippets-index.json
+node dist/cli/cli/index.js validate --strict --snippets-catalog /tmp/snippets-index.json guides/my-guide/content.json
+```
+
 **Get JSON output for CI integration:**
 
 ```bash
@@ -144,6 +152,9 @@ The validator performs these checks in order:
 2. **Schema compliance** - Types, nesting depth, field names
 3. **Unknown fields** - Warns on unrecognized fields (forward compatibility)
 4. **Condition syntax** - Validates requirements/objectives mini-grammar
+5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (the title is rendered separately). This is an error, so the command fails; remove the heading from the block.
+6. **Guided step actions** - A `guided` block's steps must not use `navigate` or `popout`; the block waits for the reader to act and neither verb produces an interaction to wait on. This is an error, so the command fails. See [actions a guided step accepts](./interactive-examples/json-guide-format.md#actions-a-guided-step-accepts)
+7. **Snippet references** - When `--snippets-catalog` is supplied, every `snippet-ref` ID must be a key in that catalog
 
 Example output with condition warnings:
 
@@ -152,6 +163,8 @@ Example output with condition warnings:
   Warning: blocks[2].requirements[0]: Unknown condition type 'typo-requirement'
   Warning: blocks[5].objectives[0]: 'has-datasource:' requires an argument
 ```
+
+Warnings are reported for a file even when that file also has errors.
 
 In strict mode (`--strict`), warnings become errors and cause the command to fail.
 
@@ -339,7 +352,7 @@ The `stats` key holds a fixed set of numbers in a fixed key order, so unchanged 
 - `multistep` and `guided` count as exactly one block each. Their inner steps are deliberately outside the denominator.
 - `conditional` counts as one block, and neither branch is descended into. Descending into both would put blocks in the denominator the reader can never see.
 - `snippet-ref` counts as one block, and its resolved contents inherit that single position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in before the parser sees the guide, so the stamped denominator is the **pre-inlining** count and a consumer must index the pre-inlining tree. Mapping an inlined block back to its ref is not an option today: the splice carries no provenance, so there is nothing to map back from.
-- Completion is `n / total` with no special case. A "Do it" yields 100% only when its block is the guide's last counted one — `finalCompletablePosition === blockCount`. Anything less means the guide needs a "Mark as complete" button at its foot, and that field is the signal for it.
+- Completion is `n / total` with no special case. A "Do it" yields 100% only when its block is the guide's last counted one — `finalCompletablePosition === blockCount`. Anything less means step evidence alone stops short, and the reader closes the gap with the foot-of-guide "Mark complete" control, which every guide carries regardless of this field (`docs/design/COMPLETION-MODEL.md`, decision 2).
 - A `path` or `journey` rolls up as its own body followed by its milestones in declared order. Milestones are measured before their parents.
 
 ### Strictness
@@ -444,7 +457,7 @@ node dist/cli/cli/index.js build-snippets <dir> [options]
 
 ### How it works
 
-The command reads every `*.json` file in `<dir>` except `index.json`, validates each against the snippet schema, and builds a catalog mapping each snippet `id` to its `id`, `title`, `description`, and optional `category`, `tags`, and `schemaVersion`. It enforces two rules: each file name must equal the `id` inside it (the resolver fetches `<id>.json`), and ids must be unique. If any body fails validation, a file name does not match its id, or an id is duplicated, no output is written and the command exits non-zero.
+The command reads every `*.json` file in `<dir>` except `index.json`, validates each against the snippet schema, and builds a catalog mapping each snippet `id` to its `id`, `title`, `description`, and optional `category`, `tags`, and `schemaVersion`. It enforces three rules: each file name must equal the `id` inside it (the resolver fetches `<id>.json`), ids must be unique, and a `guided` block in a snippet body must not use the `navigate` or `popout` actions (the same rule `validate` applies to a guide). If any body fails validation, a file name does not match its id, an id is duplicated, or a guided step uses an unsupported action, no output is written and the command exits non-zero.
 
 Snippet bodies live in the content repository alongside package content, not in this plugin repo. A convenience npm script wraps the command — append the snippet directory:
 

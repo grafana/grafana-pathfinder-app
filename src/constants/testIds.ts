@@ -43,6 +43,9 @@ export const testIds = {
     fullScreenButton: 'docs-panel-full-screen-button',
     openControllerTabButton: 'docs-panel-open-controller-tab-button',
     milestoneMoreActionsButton: 'docs-panel-milestone-more-actions-button',
+    nextMilestoneButton: 'docs-panel-next-milestone-button',
+    previousMilestoneButton: 'docs-panel-previous-milestone-button',
+    resetGuideButton: 'docs-panel-reset-guide-button',
   },
 
   // Full screen mode page (sibling of the sidebar / floating panel)
@@ -172,6 +175,13 @@ export const testIds = {
     terminalConnectStep: (stepId: string) => `interactive-terminal-connect-${stepId}`,
     terminalSkipButton: (stepId: string) => `interactive-terminal-skip-${stepId}`,
     terminalCopyButton: (stepId: string) => `interactive-terminal-copy-${stepId}`,
+    gcxMintButton: (stepId: string) => `interactive-gcx-mint-${stepId}`,
+    gcxTokenInput: (stepId: string) => `interactive-gcx-token-${stepId}`,
+    gcxTokenLifetime: (stepId: string) => `interactive-gcx-token-lifetime-${stepId}`,
+    gcxInstallButton: (stepId: string) => `interactive-gcx-install-${stepId}`,
+    gcxSkipButton: (stepId: string) => `interactive-gcx-skip-${stepId}`,
+    gcxReady: (stepId: string) => `interactive-gcx-ready-${stepId}`,
+    gcxError: (stepId: string) => `interactive-gcx-error-${stepId}`,
     lazyScrollRetryButton: (stepId: string) => `interactive-lazy-retry-${stepId}`,
   },
 
@@ -212,6 +222,8 @@ export const testIds = {
     devModeToggle: 'config-dev-mode-toggle',
     /** Pathfinder tutorial anchor for #dev-mode (do not rename without Pathfinder squad). */
     pathfinderDevMode: 'pathfinder-dev-mode',
+    tenantDevMode: 'pathfinder-tenant-dev-mode',
+    tenantDevModeToggle: 'config-tenant-dev-mode-toggle',
     assistantDevModeToggle: 'config-assistant-dev-mode-toggle',
     globalLinkInterception: 'config-global-link-interception',
     openPanelOnLaunch: 'config-open-panel-on-launch',
@@ -294,6 +306,7 @@ export const testIds = {
     recordStopButton: 'block-editor-record-stop',
     mergeMultistepButton: 'block-editor-merge-multistep',
     mergeGuidedButton: 'block-editor-merge-guided',
+    bulkDeleteButton: 'block-editor-bulk-delete',
     clearSelectionButton: 'block-editor-clear-selection',
     toggleSelectionButton: 'block-editor-toggle-selection',
     loadTemplateButton: 'block-editor-load-template',
@@ -303,9 +316,6 @@ export const testIds = {
     importCancelButton: 'block-editor-import-cancel',
     importResetButton: 'block-editor-import-reset',
     importDropZone: 'block-editor-import-drop-zone',
-    metadataIdInput: 'block-editor-metadata-id',
-    metadataTitleInput: 'block-editor-metadata-title',
-    metadataSaveButton: 'block-editor-metadata-save',
     previewResetButton: 'block-editor-preview-reset',
   },
 
@@ -392,6 +402,15 @@ export const testIds = {
     searchPrev: 'coda-terminal-search-prev',
     searchNext: 'coda-terminal-search-next',
     searchClose: 'coda-terminal-search-close',
+    vmExpiry: 'coda-terminal-vm-expiry',
+    gcxButton: 'coda-terminal-gcx',
+    gcxMint: 'coda-terminal-gcx-mint',
+    gcxToken: 'coda-terminal-gcx-token',
+    gcxTokenLifetime: 'coda-terminal-gcx-token-lifetime',
+    gcxInstall: 'coda-terminal-gcx-install',
+    gcxReady: 'coda-terminal-gcx-ready',
+    gcxRedo: 'coda-terminal-gcx-redo',
+    gcxError: 'coda-terminal-gcx-error',
   },
 
   // Home Page
@@ -438,6 +457,13 @@ export const testIds = {
     tileTitle: (index: number) => `kiosk-mode-tile-title-${index}`,
     loading: 'kiosk-mode-loading',
     warning: 'kiosk-mode-warning',
+  },
+
+  markComplete: {
+    footer: 'mark-complete-footer',
+    button: 'mark-complete-button',
+    percentage: 'mark-complete-percentage',
+    completed: 'mark-complete-completed',
   },
 
   guideReader: {

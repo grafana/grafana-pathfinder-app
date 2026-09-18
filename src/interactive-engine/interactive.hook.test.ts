@@ -1,6 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { useInteractiveElements } from './interactive.hook';
 import { withFaroUserAction } from '../lib/faro';
+import type { InteractiveElementData } from '../types/interactive.types';
 
 jest.mock('../lib/faro', () => ({
   withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
@@ -83,13 +84,6 @@ jest.mock('./navigation-manager', () => ({
   })),
 }));
 
-jest.mock('./sequence-manager', () => ({
-  SequenceManager: jest.fn().mockImplementation(() => ({
-    runInteractiveSequence: jest.fn().mockResolvedValue('completed'),
-    runStepByStepSequence: jest.fn().mockResolvedValue('completed'),
-  })),
-}));
-
 // Mock dom-utils
 jest.mock('../lib/dom', () => ({
   extractInteractiveDataFromElement: jest.fn().mockReturnValue({
@@ -135,8 +129,7 @@ describe('useInteractiveElements', () => {
 
           <p>To add the Prometheus data source, complete the following steps:</p>
 
-          <!-- An interactive one-shot block sequence -->
-          <span id="test1" class="interactive" data-targetaction="sequence" data-reftarget="span#test1"> 
+          <span id="test1">
               <ul>
                 <!-- Highlight a menu item and click it -->
                 <li class="interactive" 
@@ -209,21 +202,6 @@ describe('useInteractiveElements', () => {
   });
 
   describe('Hook Initialization', () => {
-    it('should initialize without errors', () => {
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      expect(result.current).toBeDefined();
-      expect(result.current.interactiveFocus).toBeDefined();
-      expect(result.current.interactiveButton).toBeDefined();
-      expect(result.current.interactiveFormFill).toBeDefined();
-      expect(result.current.interactiveNavigate).toBeDefined();
-      expect(result.current.interactiveSequence).toBeDefined();
-      expect(result.current.checkElementRequirements).toBeDefined();
-      expect(result.current.checkRequirementsFromData).toBeDefined();
-      expect(result.current.executeInteractiveAction).toBeDefined();
-      expect(result.current.fixNavigationRequirements).toBeDefined();
-    });
-
     it('should work without containerRef', () => {
       const { result } = renderHook(() => useInteractiveElements());
 
@@ -305,7 +283,6 @@ describe('useInteractiveElements', () => {
         { critical: true, outcomeFrom: expect.any(Function) }
       );
 
-      // Non-sequence actions have no captured sequence result → ok on resolve.
       const options = (withFaroUserAction as jest.Mock).mock.calls.at(-1)![4];
       expect(options.outcomeFrom()).toBe('ok');
     });
@@ -449,88 +426,29 @@ describe('useInteractiveElements', () => {
     });
   });
 
-  describe('Interactive Sequence', () => {
-    it('should handle sequence in show mode', async () => {
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      await act(async () => {
-        await result.current.interactiveSequence(
-          {
-            refTarget: 'span#test1',
-            targetAction: 'sequence',
-            tagName: 'span',
-          },
-          true // show mode
-        );
-      });
-
-      // Should call sequence manager with show mode
-      const { SequenceManager } = require('./sequence-manager');
-      expect(SequenceManager).toHaveBeenCalled();
-    });
-
-    it('should handle sequence in do mode', async () => {
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      await act(async () => {
-        await result.current.interactiveSequence(
-          {
-            refTarget: 'span#test1',
-            targetAction: 'sequence',
-            tagName: 'span',
-          },
-          false // do mode
-        );
-      });
-
-      // Should call sequence manager with do mode
-      const { SequenceManager } = require('./sequence-manager');
-      expect(SequenceManager).toHaveBeenCalled();
-    });
-
-    it('should handle missing sequence container', async () => {
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      await act(async () => {
-        await result.current.interactiveSequence(
-          {
-            refTarget: '#nonexistent',
-            targetAction: 'sequence',
-            tagName: 'span',
-          },
-          false
-        );
-      });
-
-      // Should handle error gracefully
-      const { InteractiveStateManager } = require('./interactive-state-manager');
-      expect(InteractiveStateManager).toHaveBeenCalled();
-    });
-
-    it('should prevent recursion', async () => {
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      const data = {
-        refTarget: 'span#test1',
-        targetAction: 'sequence',
-        tagName: 'span',
-      };
-
-      // First call
-      await act(async () => {
-        await result.current.interactiveSequence(data, false);
-      });
-
-      // Second call with same refTarget should return early as a no-op
-      await act(async () => {
-        const result2 = await result.current.interactiveSequence(data, false);
-        expect(result2).toBe('completed');
-      });
-    });
-  });
-
   describe('Requirements Checking', () => {
-    it('should check requirements for sequence elements', async () => {
+    it('rejects an element when DOM decoding returns no interactive data', async () => {
+      extractInteractiveDataFromElement.mockReturnValueOnce(null);
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+      const element = document.createElement('li');
+
+      const check = await result.current.checkElementRequirements(element);
+
+      expect(check).toEqual({
+        requirements: '',
+        pass: false,
+        error: [
+          {
+            requirement: 'data-targetaction',
+            pass: false,
+            error: 'Missing or unknown data-targetaction',
+          },
+        ],
+      });
+      expect(checkRequirements).not.toHaveBeenCalled();
+    });
+
+    it('should check requirements for interactive elements', async () => {
       // Setup mock response for success case
       checkRequirements.mockResolvedValueOnce({
         pass: true,
@@ -609,7 +527,7 @@ describe('useInteractiveElements', () => {
     it('should check requirements from data', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: 'test-target',
         targetAction: 'highlight',
         targetValue: 'test-value',
@@ -711,94 +629,6 @@ describe('useInteractiveElements', () => {
       expect(result.current.interactiveNavigate).toBeDefined();
     });
 
-    it('should execute sequence action', async () => {
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      await act(async () => {
-        await result.current.executeInteractiveAction({
-          targetAction: 'sequence',
-          refTarget: 'span#test1',
-          buttonType: 'do',
-        });
-      });
-
-      // Should call interactiveSequence
-      expect(result.current.interactiveSequence).toBeDefined();
-    });
-
-    it('resolves ok when a sequence run completes', async () => {
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      let outcome: unknown;
-      await act(async () => {
-        outcome = await result.current.executeInteractiveAction({
-          targetAction: 'sequence',
-          refTarget: 'span#test1',
-          buttonType: 'do',
-        });
-      });
-
-      expect(outcome).toBe('ok');
-    });
-
-    it('resolves error instead of ok when a sequence run stops on requirements_exhausted', async () => {
-      const { SequenceManager } = require('./sequence-manager');
-      SequenceManager.mockImplementationOnce(() => ({
-        runStepByStepSequence: jest.fn().mockResolvedValue('requirements_exhausted'),
-        runInteractiveSequence: jest.fn().mockResolvedValue('requirements_exhausted'),
-      }));
-
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      let outcome: unknown;
-      await act(async () => {
-        outcome = await result.current.executeInteractiveAction({
-          targetAction: 'sequence',
-          refTarget: 'span#test1',
-          buttonType: 'do',
-        });
-      });
-
-      expect(outcome).toBe('error');
-    });
-
-    it('resolves error instead of ok when a sequence run stops on action_error', async () => {
-      const { SequenceManager } = require('./sequence-manager');
-      SequenceManager.mockImplementationOnce(() => ({
-        runStepByStepSequence: jest.fn().mockResolvedValue('action_error'),
-        runInteractiveSequence: jest.fn().mockResolvedValue('action_error'),
-      }));
-
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      let outcome: unknown;
-      await act(async () => {
-        outcome = await result.current.executeInteractiveAction({
-          targetAction: 'sequence',
-          refTarget: 'span#test1',
-          buttonType: 'do',
-        });
-      });
-
-      expect(outcome).toBe('error');
-    });
-
-    it('should handle unknown action', async () => {
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-
-      await act(async () => {
-        await result.current.executeInteractiveAction({
-          targetAction: 'unknown',
-          refTarget: 'test-target',
-          buttonType: 'do',
-        });
-      });
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith('Unknown interactive action: unknown', '');
-    });
-
     it('should handle errors in executeInteractiveAction', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
@@ -859,40 +689,13 @@ describe('useInteractiveElements', () => {
       const { InteractiveStateManager } = require('./interactive-state-manager');
       expect(InteractiveStateManager).toHaveBeenCalled();
     });
-
-    it('should handle errors in interactiveSequence', async () => {
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      // Mock an error by making sequenceManager throw
-      const mockError = new Error('Test error');
-      const { SequenceManager } = require('./sequence-manager');
-      SequenceManager.mockImplementationOnce(() => ({
-        runStepByStepSequence: jest.fn().mockRejectedValue(mockError),
-        runInteractiveSequence: jest.fn().mockRejectedValue(mockError),
-      }));
-
-      await act(async () => {
-        await result.current.interactiveSequence(
-          {
-            refTarget: 'span#test1',
-            targetAction: 'sequence',
-            tagName: 'span',
-          },
-          false
-        );
-      });
-
-      // Should handle error gracefully
-      const { InteractiveStateManager } = require('./interactive-state-manager');
-      expect(InteractiveStateManager).toHaveBeenCalled();
-    });
   });
 
   describe('Edge Cases', () => {
     it('should handle empty requirements', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: 'test-target',
         targetAction: 'highlight',
         targetValue: 'test-value',
@@ -916,7 +719,7 @@ describe('useInteractiveElements', () => {
     it('should handle undefined requirements', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: 'test-target',
         targetAction: 'highlight',
         targetValue: 'test-value',
@@ -940,7 +743,7 @@ describe('useInteractiveElements', () => {
     it('should handle undefined textContent', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: 'test-target',
         targetAction: 'highlight',
         targetValue: 'test-value',
@@ -1020,21 +823,6 @@ describe('useInteractiveElements', () => {
       const buttonHandlerInstance = ButtonHandler.mock.results[0]!.value;
       const elementData = buttonHandlerInstance.execute.mock.calls[0]![0];
       expect(elementData.skipCompletionOnEmptyTarget).toBe(true);
-    });
-
-    it('does not hand off for a non-Grafana-driving action in full screen', async () => {
-      mockGetMode.mockReturnValue('fullscreen');
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      await act(async () => {
-        await result.current.executeInteractiveAction({
-          targetAction: 'sequence',
-          refTarget: 'span#test1',
-          buttonType: 'do',
-        });
-      });
-
-      expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
     });
 
     it('reports "error" (not "ok") when the handler suppresses completion because its target was never found', async () => {

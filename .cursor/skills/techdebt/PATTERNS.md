@@ -218,7 +218,7 @@ The skill MUST check disqualifiers before emitting a finding. See `SKILL.md` for
   - The contract-evolution gate reports fix-heavy distinct-PR history for the owning concern, or consumers define the module's vocabulary (event names, payload shapes, outcome values) locally rather than importing central types.
 - **Suggestive signature**:
   - A second product-domain consumer imports vendor-specific primitives from the module directly.
-  - The module's concern has no contract anchor in `docs/design/CONCERNS.md` (Contract anchors) despite ≥ 3 semantic PRs.
+  - The module's concern has no contract anchor in `docs/design/CONCERN_DETAILS.md` despite ≥ 3 semantic PRs.
 - **Disqualifiers**:
   - The module is a deliberate facade or barrel with a recorded contract anchor and conformant consumers — growth of a pinned contract is healthy accretion, not debt.
   - Consumer growth is `feat`-dominated with stable exports (a stable API gaining callers).

@@ -8,7 +8,7 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../../constants';
 import { currentPlatform } from '../platform';
-import { isPathfinderOpen } from './surface';
+import { hasReportedPathfinderSurface, isPathfinderOpen } from './surface';
 import { normalizeTelemetryUrl, stripUrlSecrets } from './url';
 
 const APP_NAME = packageJson.name;
@@ -205,7 +205,7 @@ let pathfinderWasOpen = false;
 // would otherwise leave the gate shut, and session replay is the payload most
 // likely to arrive late — its chunk is fetched on that same open.
 export function markPathfinderActive(): void {
-  pathfinderWasOpen ||= isPathfinderOpen();
+  pathfinderWasOpen ||= hasReportedPathfinderSurface() && isPathfinderOpen();
 }
 
 // Attribution (filterPathfinderTelemetry) asks "is this ours?"; this gate
@@ -220,7 +220,7 @@ export function passesActivityGate(item: TransportItem<APIEvent>): boolean {
   if (isLogItem(item) && String(item.payload.level) === 'error') {
     return true;
   }
-  if (!pathfinderWasOpen && isPathfinderOpen()) {
+  if (!pathfinderWasOpen && hasReportedPathfinderSurface() && isPathfinderOpen()) {
     pathfinderWasOpen = true;
   }
   return pathfinderWasOpen;

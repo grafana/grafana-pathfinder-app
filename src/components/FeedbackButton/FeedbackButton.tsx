@@ -1,10 +1,5 @@
 import React from 'react';
-import {
-  reportAppInteraction,
-  UserInteraction,
-  calculateJourneyProgress,
-  AnalyticsContentType,
-} from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
 import { getFeedbackButtonStyles } from '../../styles/feedback-button.styles';
 import { useTheme2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -16,8 +11,6 @@ interface FeedbackButtonProps {
   contentUrl?: string;
   contentType?: AnalyticsContentType;
   interactionLocation?: string; // Specific location identifier for analytics
-  currentMilestone?: number; // For learning journeys - current milestone user is viewing
-  totalMilestones?: number; // For learning journeys - total milestones in journey
 }
 
 export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
@@ -26,36 +19,17 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
   contentUrl = '',
   contentType,
   interactionLocation = 'feedback_button', // Default fallback
-  currentMilestone,
-  totalMilestones,
 }) => {
   const theme = useTheme2();
   const styles = getFeedbackButtonStyles(theme);
 
   const handleClick = () => {
-    // Calculate completion percentage using centralized helper
-    const completionPercentage =
-      currentMilestone !== undefined && totalMilestones !== undefined
-        ? calculateJourneyProgress({
-            type: 'learning-journey',
-            metadata: {
-              learningJourney: {
-                currentMilestone,
-                totalMilestones,
-              },
-            },
-          })
-        : undefined;
-
     // Track analytics first
     reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
       interaction_location: interactionLocation,
       panel_type: 'combined_learning_journey',
       ...(contentUrl && { content_url: contentUrl }),
       ...(contentType && { content_type: contentType }),
-      ...(currentMilestone !== undefined && { current_milestone: currentMilestone }),
-      ...(totalMilestones !== undefined && { total_milestones: totalMilestones }),
-      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
     });
 
     // Add small delay to ensure analytics event is sent before opening new tab

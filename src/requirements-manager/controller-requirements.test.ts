@@ -85,3 +85,9 @@ describe('splitGuideScopedRequirements (#1574)', () => {
     expect(splitGuideScopedRequirements('')).toEqual({ guideScoped: '', remaining: '' });
   });
 });
+
+it('preserves comma-containing tokens while removing tab-local conditions', () => {
+  expect(stripTabLocalRequirements(['on-page:/explore', 'has-dashboard-named:CPU, memory'])).toEqual([
+    'has-dashboard-named:CPU, memory',
+  ]);
+});

@@ -298,7 +298,7 @@ describe('mountCommander', () => {
     });
     const byName = new Map(mountCommander(spec).options.map((option) => [option.attributeName(), option]));
     expect(byName.get('requirements')!.description).toBe(
-      'Prerequisite conditions | run "pathfinder-cli requirements list" for valid tokens (e.g., is-admin, on-page:/dashboards)'
+      'Prerequisite conditions | repeat the flag once per condition, never comma-joined | run "pathfinder-cli requirements list" for valid tokens (e.g., is-admin, on-page:/dashboards)'
     );
     // Every other field reads exactly as the schema states it.
     expect(byName.get('title')!.description).toBe('Title');

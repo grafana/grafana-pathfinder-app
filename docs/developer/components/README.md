@@ -23,6 +23,7 @@ The components are organized into logical groups with clear responsibilities:
 
 - **LearningPaths/**: Learning path tracking with badges, streaks, and progress visualization
 - **MyLearningTab/**: User's personal learning dashboard
+- **mark-complete/**: The universal "Mark complete" control rendered at the foot of every guide and milestone
 
 ### Collaboration Features
 
@@ -45,21 +46,22 @@ The components are organized into logical groups with clear responsibilities:
 
 ### `testIds.ts`
 
-**Purpose**: Centralized test identifiers for automated testing across all components
-**Role**: Provides consistent data-testid attributes for UI testing and E2E automation
-**Location**: `/src/components/testIds.ts`
-**Used By**:
+Centralized `data-testid` attributes for UI testing and E2E automation, one
+namespace per feature area. Lives at `src/constants/testIds.ts` — not
+`src/components/testIds.ts` (this doc drifted). See that file directly for
+the current namespaces rather than a copy here.
 
-- `AppConfig/ConfigurationForm.tsx` - Configuration form testing
-- `SelectorDebugPanel/SelectorDebugPanel.tsx` - Dev tools panel testing
-- `DomPathTooltip/DomPathTooltip.tsx` - Tooltip element testing
-- Any component requiring test automation
+### Storage instances
 
-**Exports**:
+Every persisted-state instance (tabs, learning progress, per-guide and
+per-section completion, the guide-completion mark, ...) is defined in one
+file: `src/lib/user-storage.ts`. See it directly rather than a copy here.
 
-- `testIds.appConfig` - Test IDs for configuration form elements
-- `testIds.devTools` - Test IDs for developer tools panel
-- Additional test identifiers for various UI components
+### Tier map
+
+For where a given module is allowed to import from/into, see the tier
+model's canonical source, `TIER_MAP` in `src/validation/import-graph.ts`,
+and the annotated per-subsystem reference in `.cursor/rules/systemPatterns.mdc`.
 
 ---
 

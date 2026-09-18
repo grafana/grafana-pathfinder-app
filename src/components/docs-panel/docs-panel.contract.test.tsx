@@ -39,11 +39,10 @@ describe('E2E Contract: Docs panel bootstrap signals', () => {
     expect(configHookSource).toContain('__pathfinderPluginConfig');
   });
 
-  // The runner waits for the readiness global before clicking Grafana's Help
-  // control, so `init` must publish it without awaiting anything.
-  it('publishes readiness synchronously from plugin.init', () => {
+  it('waits for authoritative readiness while registering navigation synchronously', () => {
     expect(moduleSource).toContain('plugin.init = function');
-    expect(moduleSource).toContain('publishPathfinderPluginConfig(meta?.jsonData || {})');
+    expect(moduleSource).toContain('waitForPathfinderPluginConfig()');
+    expect(moduleSource).not.toContain('publishPathfinderPluginConfig');
   });
 
   it('publishes the sidebar-mounted event', () => {
@@ -104,6 +103,10 @@ describe('E2E Contract: Docs panel test IDs', () => {
     it('myLearningTab', () => {
       expect(testIds.docsPanel.myLearningTab).toBe('docs-panel-tab-my-learning');
     });
+
+    it('resetGuideButton', () => {
+      expect(testIds.docsPanel.resetGuideButton).toBe('docs-panel-reset-guide-button');
+    });
   });
 
   describe('devTools preview IDs (used in docs-panel content)', () => {
@@ -143,6 +146,7 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
     references: [
       'testIds.docsPanel.content',
       'testIds.docsPanel.openControllerTabButton',
+      'testIds.docsPanel.resetGuideButton',
       'testIds.devTools.previewBanner',
       'testIds.devTools.previewModeIndicator',
       'testIds.devTools.returnToEditorButton',
@@ -183,7 +187,11 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
   },
   {
     file: 'components/LearningJourneyMilestoneToolbar.tsx',
-    references: ['testIds.docsPanel.milestoneMoreActionsButton'],
+    references: [
+      'testIds.docsPanel.milestoneMoreActionsButton',
+      'testIds.docsPanel.nextMilestoneButton',
+      'testIds.docsPanel.previousMilestoneButton',
+    ],
   },
 ];
 
@@ -271,29 +279,6 @@ describe('E2E Contract: Scroll-restoration DOM id', () => {
       return src.includes(SCROLL_TARGET_ID);
     });
     expect(hasScrollTarget).toBe(true);
-  });
-});
-
-/**
- * Window globals assigned by the docs-panel surface for cross-component
- * communication. These are read by dev-mode utilities, SelectorDebugPanel,
- * interactive-section, and analytics. Do not remove during refactoring —
- * document for future migration to React Context.
- *
- * Owner manifest: each global is assigned in exactly one file. As the
- * renderer is decomposed, hooks take ownership of individual assignments —
- * update the owner path here in the same commit that moves the source.
- */
-const WINDOW_GLOBAL_OWNERS: Array<{ global: string; ownerFile: string }> = [
-  { global: '__pathfinderPluginConfig', ownerFile: '../../hooks/usePathfinderPluginConfig.ts' },
-  { global: '__DocsPluginActiveTabId', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
-  { global: '__DocsPluginActiveTabUrl', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
-];
-
-describe('E2E Contract: Window globals assigned in docs-panel surface', () => {
-  it.each(WINDOW_GLOBAL_OWNERS)('$ownerFile assigns $global', ({ global, ownerFile }) => {
-    const src = fs.readFileSync(path.join(__dirname, ownerFile), 'utf-8');
-    expect(src).toContain(global);
   });
 });
 

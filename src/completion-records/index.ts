@@ -7,10 +7,25 @@ export {
   recordGuideCompletion,
   recordJourneyCompletion,
   onCompletionRecorded,
+  invalidateEmittedCompletion,
+  invalidateAllEmittedCompletions,
   __resetRecorderForTests,
 } from './completion-recorder';
-export { resolveCompletionIdentity, manifestGuideId, manifestGuideSource } from './completion-identity';
-export type { ResolveCompletionIdentityInput } from './completion-identity';
+export {
+  resolveCompletionIdentity,
+  resolveMilestoneCompletionIdentity,
+  resolveBundledGuideCompletionIdentity,
+  resolveStandaloneGuideCompletionIdentity,
+  resolveJourneyCompletionIdentity,
+  manifestGuideId,
+  manifestGuideSource,
+  normalizeGuideId,
+} from './completion-identity';
+export type {
+  ResolveCompletionIdentityInput,
+  ResolveMilestoneCompletionIdentityInput,
+  ResolveGuideCompletionIdentityInput,
+} from './completion-identity';
 export { armCompletionWriteHook, discardQueuedCompletionWrites } from './completion-write-hook';
 export type {
   CompletionKey,

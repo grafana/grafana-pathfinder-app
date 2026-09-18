@@ -40,12 +40,13 @@ import type { JsonBlock } from '../../types/json-guide.types';
 
 /**
  * Child collections a block schema owns that `add-block` must not expose: they are
- * filled by sibling commands (`add-block --parent`, `add-step`, `add-choice`) rather
+ * filled by sibling commands (`add-block --parent`, `add-step`, `add-choice`,
+ * `add-hint`) rather
  * than at creation time. An omission from this command rather than a global list of
  * names to skip — that list also caught fields that merely shared a name, which is
  * how `create --type` lost its flag (§3.4 i).
  */
-const CHILD_COLLECTION_FIELDS = ['blocks', 'whenTrue', 'whenFalse', 'steps', 'choices'] as const;
+const CHILD_COLLECTION_FIELDS = ['blocks', 'whenTrue', 'whenFalse', 'steps', 'choices', 'hintLevels'] as const;
 
 /** Addressing, placement, and control parameters every block type accepts. */
 function structuralShape(type: BlockType) {
@@ -238,7 +239,8 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   }
 
   // Containers start out empty — the agent fills them via subsequent
-  // add-block --parent, add-step --parent, or add-choice --parent calls.
+  // add-block --parent, add-step --parent, add-choice --parent, or
+  // add-hint --parent calls.
   // Initializing the structural arrays here lets the candidate parse below
   // succeed; "container is empty" is a completeness concern surfaced at
   // standalone-validate time, not during authoring.
@@ -379,6 +381,9 @@ function hintsFor(type: BlockType, parentId: string | undefined, assignedId: str
       `Add choices with: pathfinder-cli add-choice <dir> --parent ${assignedId ?? '<id>'} --id <a|b|c> --text <text>`,
     ];
   }
+  if (type === 'challenge') {
+    return [`Add hints with: pathfinder-cli add-hint <dir> --parent ${assignedId ?? '<id>'} --text <text>`];
+  }
   if (type === 'section' || type === 'assistant') {
     return [`Add child blocks with: pathfinder-cli add-block <type> <dir> --parent ${assignedId ?? '<id>'}`];
   }
@@ -392,7 +397,7 @@ function hintsFor(type: BlockType, parentId: string | undefined, assignedId: str
  * Containers always carry their structural arrays — even when empty — so the
  * Zod parse on the candidate block sees a well-formed object. The arrays are
  * populated by sibling commands (`add-block --parent`, `add-step`,
- * `add-choice`) in subsequent invocations.
+ * `add-choice`, `add-hint`) in subsequent invocations.
  */
 function initializeStructuralFields(block: Record<string, unknown>, type: BlockType): void {
   if (type === 'section' || type === 'assistant') {
@@ -413,6 +418,10 @@ function initializeStructuralFields(block: Record<string, unknown>, type: BlockT
   } else if (type === 'quiz') {
     if (!Array.isArray(block.choices)) {
       block.choices = [];
+    }
+  } else if (type === 'challenge') {
+    if (!Array.isArray(block.hintLevels)) {
+      block.hintLevels = [];
     }
   }
 }

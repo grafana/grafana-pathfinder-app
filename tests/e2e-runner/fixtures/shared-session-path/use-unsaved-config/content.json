@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "shared-session-use-unsaved-config-content-id",
+  "title": "Use the unsaved configuration value",
+  "blocks": [
+    {
+      "type": "interactive",
+      "action": "highlight",
+      "reftarget": "input[data-testid=\"config-tutorial-url\"][value=\"https://shared-session.invalid/exact-browser-marker\"]",
+      "doIt": false,
+      "requirements": ["exists-reftarget"],
+      "content": "Use the exact configuration value that the prior milestone entered."
+    }
+  ]
+}
