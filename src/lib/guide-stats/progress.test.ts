@@ -115,7 +115,7 @@ describe('furthestEvidencedPosition', () => {
   });
 
   it('treats "mark as complete" on a section as reaching its last block', () => {
-    expect(furthestEvidencedPosition(index, [{ kind: 'mark-section-complete', blockId: 'setup' }])).toBe(3);
+    expect(furthestEvidencedPosition(index, [{ kind: 'mark-section-complete', blockId: 'section-setup' }])).toBe(3);
   });
 
   it('treats "mark as complete" on the guide as reaching the end', () => {
@@ -125,7 +125,7 @@ describe('furthestEvidencedPosition', () => {
   it('ignores signals naming a block that is not counted', () => {
     expect(furthestEvidencedPosition(index, [{ kind: 'do-it', blockId: 'gone' }])).toBe(0);
     expect(furthestEvidencedPosition(index, [{ kind: 'do-it' }])).toBe(0);
-    expect(furthestEvidencedPosition(index, [{ kind: 'mark-section-complete', blockId: 'intro' }])).toBe(0);
+    expect(furthestEvidencedPosition(index, [{ kind: 'mark-section-complete', blockId: 'section-intro' }])).toBe(0);
   });
 
   it('ignores no evidence at all', () => {
@@ -145,7 +145,7 @@ describe('guideProgress', () => {
     });
   });
 
-  it('needs a "Mark as complete" to finish a guide whose last block is prose', () => {
+  it('reaches 100% only on "Mark as complete" for a guide whose last block is prose', () => {
     const index = computeGuideBlockIndex([
       { type: 'section', blocks: [markdown('brief'), interactive('run')] },
       markdown('well-done'),
@@ -164,5 +164,25 @@ describe('guideProgress', () => {
 
     expect(guideProgress(index, [])).toMatchObject({ percent: 0, complete: false });
     expect(guideProgress(index, [{ kind: 'mark-guide-complete' }])).toMatchObject({ percent: 100, complete: true });
+  });
+});
+
+describe('evidence keyed by runtime step id', () => {
+  // The runtime dispatches a "Do it" under the parser's stepId, and almost no
+  // block in the library carries an author id for `positionsById` to match.
+  const index = computeGuideBlockIndex([markdown(), interactive(), interactive('authored')], {
+    resolveStepId: (block, context) => (block.type === 'interactive' ? `derived-${context.index}` : undefined),
+  });
+
+  it('credits a position for an anonymous block the resolver keyed', () => {
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'derived-1' }])).toMatchObject({ position: 2 });
+  });
+
+  it('falls back to the author id when the resolver keys the block under something else', () => {
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'authored' }])).toMatchObject({ position: 3 });
+  });
+
+  it('credits nothing for a step id no block in this guide carries', () => {
+    expect(furthestEvidencedPosition(index, [{ kind: 'do-it', blockId: 'derived-9' }])).toBe(0);
   });
 });

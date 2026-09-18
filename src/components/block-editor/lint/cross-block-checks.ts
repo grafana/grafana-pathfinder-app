@@ -32,7 +32,7 @@ import {
   type JsonMultistepBlock,
   type JsonSectionBlock,
 } from '../../../types/json-guide.types';
-import { ParameterizedRequirementPrefix } from '../../../types/requirements.types';
+import { isValidRequirement, ParameterizedRequirementPrefix } from '../../../types/requirements.types';
 import { suggestRequirementsFromContext } from '../forms/requirements-suggester';
 import type { Diagnostic } from './types';
 
@@ -238,14 +238,17 @@ export function destructiveActionWithoutObjective(guide: JsonGuide): Diagnostic[
     if (!isDestructive) {
       continue;
     }
-    const objectives = (block as { objectives?: string[] }).objectives;
+    // Only an executable objective makes the step skip on a re-run: the parser
+    // drops a token the checker cannot evaluate, so counting prose here would
+    // clear this warning for a step that still re-runs.
+    const objectives = (block as { objectives?: string[] }).objectives?.filter(isValidRequirement);
     if (objectives && objectives.length > 0) {
       continue;
     }
     issues.push({
       severity: 'warning',
       code: CROSS_BLOCK_CHECK_CODES.DESTRUCTIVE_ACTION_WITHOUT_OBJECTIVE,
-      message: `Destructive ${actionLabel} has no objective. If the user re-runs this guide, the action will be attempted again — declare an objective so the step is skipped when its work is already done.`,
+      message: `Destructive ${actionLabel} has no executable objective. If the user re-runs this guide, the action will be attempted again — declare an objective the checker can evaluate so the step is skipped when its work is already done.`,
       path: [...path, 'objectives'],
     });
   }

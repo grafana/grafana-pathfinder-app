@@ -1,10 +1,10 @@
+import type { ConditionInput } from './requirements.types';
 export const INTERACTIVE_ACTION_TYPES = [
   'button',
   'highlight',
   'formfill',
   'navigate',
   'hover',
-  'sequence',
   'multistep',
   'guided',
   'popout',
@@ -21,8 +21,8 @@ export interface InteractiveElementData {
   /** Desired end state for a toggle target; see `lib/dom/toggle-state`. */
   targetState?: boolean | string;
   targetComment?: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   skippable?: boolean; // Whether this step can be skipped if requirements fail
 
   // Lazy render support for virtualized containers

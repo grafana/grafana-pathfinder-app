@@ -242,6 +242,10 @@ no ID token of its own (#1568). That gap is what makes property 1 necessary: wit
 authenticated to stack B by a service-account token could present their own genuine token from
 stack A and be served stack A's identity.
 
+If the inbound trust boundary above were ever broken, the OBO design would fail open rather than
+closed — a forged identity's minted access token could remain valid for up to its configured
+lifetime (600s), which is the concrete reason the JWKS verification is load-bearing.
+
 What neither property establishes is that the caller presenting the token is its subject: a
 copied, still-unexpired token replayed on a per-user route **on the stack it was minted for**
 still verifies. Binding the token to its presenter is an accepted residual; nothing tracks it.

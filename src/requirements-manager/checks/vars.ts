@@ -19,6 +19,7 @@ export async function guideVariableCheck(check: string, explicitGuideId?: string
       return {
         requirement: check,
         pass: false,
+        verdict: 'invalid',
         error: `Invalid variable requirement format: ${check}. Expected: var-{variableName}:{expectedValue}`,
         context: { format: 'var-{variableName}:{expectedValue}' },
       };
@@ -72,6 +73,7 @@ export async function guideVariableCheck(check: string, explicitGuideId?: string
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Variable check failed: ${error}`,

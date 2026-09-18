@@ -73,13 +73,14 @@ function validateGuides(guides: LoadedGuide[], options: ValidateOptions): Valida
 
     if (result.isValid) {
       summary.validFiles++;
-      if (result.warnings.length > 0) {
-        summary.filesWithWarnings++;
-        summary.warnings.push({ file: guide.path, warnings: legacy.warnings });
-      }
     } else {
       summary.invalidFiles++;
       summary.errors.push({ file: guide.path, errors: legacy.errors });
+    }
+
+    if (result.warnings.length > 0) {
+      summary.filesWithWarnings++;
+      summary.warnings.push({ file: guide.path, warnings: legacy.warnings });
     }
   }
 
@@ -289,16 +290,17 @@ function runStdinValidation(input: string, options: ValidateOptions): CommandOut
   } else {
     if (result.isValid) {
       console.log('✅ Valid guide');
-      if (!options.strict && result.warnings.length > 0) {
-        console.log(`\n⚠️  Warnings:\n`);
-        for (const warning of legacy.warnings) {
-          console.log(`  - ${warning}`);
-        }
-      }
     } else {
       console.log('❌ Invalid guide\n');
       for (const error of legacy.errors) {
         console.log(`  - ${error}`);
+      }
+    }
+
+    if (!options.strict && result.warnings.length > 0) {
+      console.log(`\n⚠️  Warnings:\n`);
+      for (const warning of legacy.warnings) {
+        console.log(`  - ${warning}`);
       }
     }
   }

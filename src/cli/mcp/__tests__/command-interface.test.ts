@@ -7,8 +7,9 @@
  * without booting an MCP server.
  */
 
+import { REQUIREMENT_DESCRIPTIONS, REQUIREMENT_TOKEN_CATALOGUE } from '../../../types/requirements.types';
 import { addBlockGroup } from '../../commands/add-block';
-import { describeFor, publishedNames, specFields } from '../../contracts';
+import { describeFor, publishedNames, specFields, variantNames } from '../../contracts';
 import type { HelpJson } from '../../utils/output';
 import { COMMAND_GROUPS, COMMAND_SPECS, commandNames } from '../../commands/manifest';
 import {
@@ -102,12 +103,21 @@ describe('agentView', () => {
   // An agent has no shell and no `requirements` tool, so it is shown the vocabulary
   // rather than told to print it. The command line gets its own pointer from
   // `CLI_VIEW`; the schema states neither.
-  it('illustrates the requirement vocabulary instead of naming a command', () => {
+  it('points at the published vocabulary instead of naming a command', () => {
     const spec = addBlockGroup.variants.get('interactive')!;
     const field = specFields(spec).find((entry) => entry.name === 'requirements')!;
     const described = describeFor(field, agentView('add-block'));
-    expect(described).toContain('valid tokens include is-admin, on-page:/dashboards');
+    expect(described).toContain('requirementTokens');
     expect(described).not.toContain('pathfinder-cli');
+  });
+
+  // The examples used to be the only tokens an agent ever saw, so they read as the
+  // enumeration. They may stay as examples; what must not come back is a
+  // description that offers them *as* the list.
+  it('does not present its examples as the whole vocabulary', () => {
+    const spec = addBlockGroup.variants.get('interactive')!;
+    const field = specFields(spec).find((entry) => entry.name === 'requirements')!;
+    expect(describeFor(field, agentView('add-block'))).not.toMatch(/valid tokens (include|are)\b/);
   });
 });
 
@@ -186,6 +196,133 @@ describe('formatCommandInterface', () => {
     }
     expect(help.requiredByType?.input).toEqual(expect.arrayContaining(['prompt', 'inputType', 'variableName']));
     expect(help.requiredByType?.input).not.toContain('input-type');
+  });
+});
+
+/**
+ * `requiredByType` on the group root and the per-type parameter lists are two
+ * renderings of one schema, and an agent authors from whichever it reads. When they
+ * appear to disagree the agent omits a field: `add-block --type section` requires
+ * `id`, `requiredByType.section` says so, and `id` is published in the `addressing`
+ * bucket — so a reader that takes `required` + `optional` for the whole interface
+ * builds a section field list with no `id` in it, and every section it authors is
+ * missing one. These pin the three ways that reading can go wrong.
+ */
+describe('the per-type interface and requiredByType', () => {
+  const groupHelp = () => {
+    const help = formatCommandInterface('add-block');
+    if (isCommandInterfaceError(help)) {
+      throw new Error(`expected add-block help, got ${help.code}`);
+    }
+    return help;
+  };
+
+  const variantHelp = (type: string) => {
+    const help = formatCommandInterface('add-block', type);
+    if (isCommandInterfaceError(help)) {
+      throw new Error(`expected add-block ${type} help, got ${help.code}`);
+    }
+    return help;
+  };
+
+  it.each(variantNames(addBlockGroup))('names every requiredByType parameter in the %s interface', (type) => {
+    const demanded = groupHelp().requiredByType?.[type] ?? [];
+    expect(flagNames(variantHelp(type))).toEqual(expect.arrayContaining(demanded));
+  });
+
+  it.each(variantNames(addBlockGroup))('marks every requiredByType parameter required on %s', (type) => {
+    const help = variantHelp(type);
+    const flags = [...help.required, ...help.optional, ...(help.addressing ?? [])];
+    for (const name of groupHelp().requiredByType?.[type] ?? []) {
+      expect(flags.find((flag) => flag.name === name)).toMatchObject({ name, required: true });
+    }
+  });
+
+  // The flat list is the one a reader can trust without knowing that `addressing`
+  // overlaps both requiredness buckets. It has to agree with the root's table, or it
+  // is a third thing to disagree with rather than the answer to the disagreement.
+  it.each(variantNames(addBlockGroup))('publishes requiredParams for %s matching requiredByType', (type) => {
+    const help = variantHelp(type);
+    // The discriminator is the agent's obligation too — `type` selects the variant —
+    // so it leads `requiredParams` and is absent from the per-type table.
+    expect(help.requiredParams).toEqual(['type', ...(groupHelp().requiredByType?.[type] ?? [])]);
+  });
+
+  // The concrete case that produced this suite.
+  it('publishes the container id as a required section parameter', () => {
+    const help = variantHelp('section');
+    expect(groupHelp().requiredByType?.section).toContain('id');
+    expect(help.requiredParams).toContain('id');
+    expect(flagNames(help)).toContain('id');
+    expect([...help.required, ...help.optional, ...(help.addressing ?? [])]).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'id', required: true })])
+    );
+  });
+
+  // Whatever `requiredParams` names, preflight must actually demand — otherwise the
+  // published obligation and the enforced one are two lists again.
+  it.each(variantNames(addBlockGroup))('rejects a %s call that omits its requiredParams', (type) => {
+    const required = variantHelp(type).requiredParams ?? [];
+    const optional = required.filter((name) => name !== 'type');
+    if (optional.length === 0) {
+      expect(validateCommandArgs('add-block', { type })).toBeUndefined();
+      return;
+    }
+    const missing = (rejection(validateCommandArgs('add-block', { type })).data as { missing?: string[] }).missing;
+    expect([...(missing ?? [])].sort()).toEqual([...optional].sort());
+  });
+});
+
+/**
+ * A step carrying a `reftarget` needs `exists-reftarget` in its `requirements`, and
+ * `has-datasource:` / `min-version:` / `plugin-enabled:` are just as load-bearing —
+ * yet the agent surface used to name two tokens and nothing else, with no tool to
+ * print the rest. An agent cannot author a valid guide against a vocabulary it
+ * cannot see, so the whole vocabulary has to reach it from the MCP.
+ */
+describe('the requirement vocabulary', () => {
+  const requirementsHelp = () => {
+    const help = formatCommandInterface('add-block', 'interactive');
+    if (isCommandInterfaceError(help)) {
+      throw new Error(`expected add-block interactive help, got ${help.code}`);
+    }
+    return help;
+  };
+
+  it('publishes every token the validator recognises', () => {
+    const published = new Set((requirementsHelp().requirementTokens ?? []).map((entry) => entry.token));
+    for (const token of Object.keys(REQUIREMENT_DESCRIPTIONS)) {
+      expect([...published]).toContain(token);
+    }
+    expect(published.size).toBe(REQUIREMENT_TOKEN_CATALOGUE.length);
+  });
+
+  // The tokens the reporting case needed, named outright: a regression that drops
+  // one of these is the defect coming back, not a count changing.
+  it.each(['exists-reftarget', 'has-datasource:', 'min-version:', 'plugin-enabled:', 'section-completed:'])(
+    'publishes %s',
+    (token) => {
+      expect((requirementsHelp().requirementTokens ?? []).map((entry) => entry.token)).toContain(token);
+    }
+  );
+
+  it('describes and exemplifies every published token', () => {
+    for (const entry of requirementsHelp().requirementTokens ?? []) {
+      expect(entry.description).not.toBe('');
+      expect(entry.example).not.toBe('');
+      expect(entry.kind === 'fixed' ? entry.example : entry.example.startsWith(entry.token)).toBeTruthy();
+    }
+  });
+
+  // Attached where it is actionable, not on every command: a `create` call has no
+  // parameter that takes a token, and 24 entries of vocabulary on it is noise.
+  it('omits the vocabulary from a command with no requirement parameter', () => {
+    const help = formatCommandInterface('create');
+    expect(isCommandInterfaceError(help)).toBe(false);
+    if (isCommandInterfaceError(help)) {
+      return;
+    }
+    expect(help.requirementTokens).toBeUndefined();
   });
 });
 

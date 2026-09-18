@@ -249,7 +249,7 @@ The Context Engine integrates with multiple systems:
 
 **Internal Dependencies**:
 
-- **Content Fetcher** (`docs-retrieval/content-fetcher.ts`) - Fetches learning path metadata and content
+- **Learning-journey content bridge** (`lib/learning-journey-content-bridge.ts`) - Tier 1 injection seam for the `docs-retrieval` content functions this engine uses: `fetchContent` for content metadata, `getJourneyCompletionPercentageAsync` for learning path completion, `resolvePackageMilestones` / `resolvePackageNavLinks` / `derivePathSlug` for package content. The `docs-retrieval` barrel registers the implementation on load, so this engine never imports the sibling Tier 2 engine
 - **Context Panel** (`components/docs-panel/context-panel.tsx`) - Primary UI consumer using `useContextPanel()` hook
 - **Timeout Manager** (`utils/timeout-manager.ts`) - Centralized debouncing and timeout management
 - **User Storage** (`lib/user-storage.ts`) - Stores interactive and learning path completion percentages
@@ -261,7 +261,6 @@ The Context Engine integrates with multiple systems:
 - **Grafana Runtime** - LocationService for navigation, BackendSrv for API calls, EchoSrv for events, config for system info
 - **Grafana Data** - Plugin context for configuration
 - **External Recommendation Service** - Remote API at `recommender.grafana.com` for ML-powered recommendations
-- **docs-retrieval** - `getJourneyCompletionPercentageAsync` for learning path completion, `fetchContent` for content metadata
 
 **Initialization**:
 
@@ -381,7 +380,7 @@ Recommendations are filtered and sorted based on accuracy and content type:
 
 ## Configuration
 
-Configuration is managed through plugin settings (`DocsPluginConfig`):
+Configuration is managed through plugin settings (`PathfinderPluginConfig`):
 
 **Recommendation Service**:
 
@@ -422,7 +421,7 @@ Configuration is managed through plugin settings (`DocsPluginConfig`):
 **Related Systems**:
 
 - `src/utils/timeout-manager.ts` - Centralized debouncing and timeout management
-- `src/docs-retrieval/content-fetcher.ts` - Content fetching for learning paths
+- `src/lib/learning-journey-content-bridge.ts` - Tier 1 seam this engine calls for `docs-retrieval` content fetching
 - `src/components/docs-panel/context-panel.tsx` - Primary UI consumer
 - `src/constants.ts` - Configuration constants and security allowlists
 

@@ -1,18 +1,20 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { Readable } from 'stream';
 
 import { Command } from 'commander';
 
 import { runAddBlock } from '../commands/add-block';
 import { runAddChoice } from '../commands/add-choice';
+import { runAddHint } from '../commands/add-hint';
 import { runAddStep } from '../commands/add-step';
 import { runCreate } from '../commands/create';
 import { editBlockSpec, runEditBlock } from '../commands/edit-block';
 import { runInspect } from '../commands/inspect';
 import { runRemoveBlock } from '../commands/remove-block';
 import { runSetManifest, setManifestSpec } from '../commands/set-manifest';
-import { runValidate } from '../commands/validate';
+import { runValidate, runValidateCli } from '../commands/validate';
 import { collectCommanderInput, mountCommander, parseCommandInput } from '../contracts';
 import { readPackage } from '../utils/package-io';
 import type { ContentJson } from '../../types/package.types';
@@ -512,6 +514,52 @@ describe('runAddChoice', () => {
 });
 
 // ---------------------------------------------------------------------------
+// runAddHint
+// ---------------------------------------------------------------------------
+
+describe('runAddHint', () => {
+  it('appends progressive hints to a challenge block', async () => {
+    const dir = await bootstrap();
+    const added = await runAddBlock({
+      dir,
+      type: 'challenge',
+      id: 'repair-dashboard',
+      fields: {
+        mode: 'standard',
+        title: 'Repair the dashboard',
+        brief: 'Find and fix the broken dashboard.',
+        successCriteria: 'is-admin',
+      },
+    });
+    expect(added.status).toBe('ok');
+
+    const result = await runAddHint({
+      dir,
+      parent: 'repair-dashboard',
+      text: 'Check the dashboard variables.',
+    });
+    expect(result).toMatchObject({
+      status: 'ok',
+      data: { parent: 'repair-dashboard', position: 'blocks[0].hintLevels[0]' },
+    });
+    const challenge = readContent(dir).blocks[0] as { hintLevels?: Array<{ text: string }> };
+    expect(challenge.hintLevels).toEqual([{ text: 'Check the dashboard variables.' }]);
+  });
+
+  it('rejects empty hint text and a non-challenge parent without writing', async () => {
+    const dir = await bootstrap();
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
+
+    const empty = await runAddHint({ dir, parent: 'intro', text: '' });
+    expect(empty).toMatchObject({ status: 'error', code: 'SCHEMA_VALIDATION' });
+
+    const wrongParent = await runAddHint({ dir, parent: 'intro', text: 'Look closer.' });
+    expect(wrongParent).toMatchObject({ status: 'error', code: 'WRONG_PARENT_KIND' });
+    expect(readContent(dir).blocks).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // runEditBlock
 // ---------------------------------------------------------------------------
 
@@ -720,6 +768,28 @@ describe('runInspect', () => {
     expect(result.data?.valid).toBe(true);
   });
 
+  it('counts challenge hints in the package summary', async () => {
+    const dir = await bootstrap();
+    await runAddBlock({
+      dir,
+      type: 'challenge',
+      id: 'repair-dashboard',
+      fields: {
+        mode: 'standard',
+        title: 'Repair the dashboard',
+        brief: 'Find and fix the broken dashboard.',
+        successCriteria: 'is-admin',
+      },
+    });
+    await runAddHint({ dir, parent: 'repair-dashboard', text: 'Check the dashboard variables.' });
+
+    const result = runInspect({ dir });
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data?.containers).toEqual([{ id: 'repair-dashboard', type: 'challenge', childCount: 1 }]);
+    }
+  });
+
   it('returns block details for --block <id>', async () => {
     const dir = await bootstrap();
     await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
@@ -763,6 +833,83 @@ describe('runValidate', () => {
       expect(result.data?.id).toBe('cmd-test-abc123');
       expect(result.data?.blocks).toBe(1);
     }
+  });
+
+  it("reports a file's independent warnings even when the file is invalid", async () => {
+    const dir = tempDir();
+    const file = path.join(dir, 'guide.json');
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        id: 'dup-heading-guide',
+        title: 'Create your first dashboard',
+        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!', unknownField: true }],
+      })
+    );
+
+    const lines: string[] = [];
+    const spy = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      lines.push(args.join(' '));
+    });
+    let outcome;
+    try {
+      outcome = await runValidateCli({
+        files: [file],
+        bundled: false,
+        stdin: false,
+        strict: false,
+        format: 'json',
+        verbose: false,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(outcome.status).toBe('error');
+    const summary = JSON.parse(lines.join('\n'));
+    expect(summary.invalidFiles).toBe(1);
+    expect(JSON.stringify(summary.errors)).toContain('duplicates the guide title');
+    expect(summary.filesWithWarnings).toBe(1);
+    expect(JSON.stringify(summary.warnings)).toContain('unknownField');
+  });
+
+  it('prints independent warnings in stdin text output even when the guide is invalid', async () => {
+    const guide = JSON.stringify({
+      id: 'dup-heading-stdin',
+      title: 'Create your first dashboard',
+      blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nHi', unknownField: true }],
+    });
+
+    const originalStdin = Object.getOwnPropertyDescriptor(process, 'stdin')!;
+    Object.defineProperty(process, 'stdin', {
+      value: Readable.from([Buffer.from(guide, 'utf-8')]),
+      configurable: true,
+    });
+
+    const lines: string[] = [];
+    const spy = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      lines.push(args.join(' '));
+    });
+    let outcome;
+    try {
+      outcome = await runValidateCli({
+        files: [],
+        bundled: false,
+        stdin: true,
+        strict: false,
+        format: 'text',
+        verbose: false,
+      });
+    } finally {
+      spy.mockRestore();
+      Object.defineProperty(process, 'stdin', originalStdin);
+    }
+
+    const output = lines.join('\n');
+    expect(outcome.status).toBe('error');
+    expect(output).toContain('Invalid guide');
+    expect(output).toContain('duplicates the guide title');
+    expect(output).toContain('unknownField');
   });
 
   it('surfaces structured issues for a broken artifact', () => {

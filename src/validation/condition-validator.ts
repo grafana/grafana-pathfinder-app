@@ -227,9 +227,13 @@ export function validateConditionString(conditionString: string, path: Array<str
 }
 
 /**
- * Validate an array of condition strings.
+ * Validate an array of condition tokens.
  *
- * @param conditions - Array of condition strings (each may be comma-separated)
+ * Each element is ONE condition, so a comma inside an element belongs to the
+ * parameter value (`has-dashboard-named:CPU, memory`). Only the legacy
+ * comma-separated string form still splits — see `validateConditionString`.
+ *
+ * @param conditions - Array of condition tokens (one condition per element)
  * @param basePath - JSON path to the array (e.g., ['blocks', 2, 'requirements'])
  * @returns Array of all validation issues found
  */
@@ -243,9 +247,20 @@ export function validateConditions(
 
   const allIssues: ConditionIssue[] = [];
 
+  if (conditions.length > MAX_CONDITION_COMPONENTS) {
+    allIssues.push({
+      condition: conditions.join(','),
+      message: `Condition has ${conditions.length} components, maximum is ${MAX_CONDITION_COMPONENTS}`,
+      code: 'too_many_components',
+      path: basePath,
+    });
+  }
+
   for (let i = 0; i < conditions.length; i++) {
-    const issues = validateConditionString(conditions[i]!, [...basePath, i]);
-    allIssues.push(...issues);
+    const issue = validateSingleCondition(conditions[i]!, [...basePath, i]);
+    if (issue) {
+      allIssues.push(issue);
+    }
   }
 
   return allIssues;
@@ -271,6 +286,20 @@ export function validateBlockConditions(guide: JsonGuide): ConditionIssue[] {
     // Check requirements if present
     if ('requirements' in block && block.requirements) {
       issues.push(...validateConditions(block.requirements, [...path, 'requirements']));
+    }
+
+    if (block.type === 'challenge' && 'requirements' in block && Array.isArray(block.requirements)) {
+      block.requirements.forEach((token, i) => {
+        if (typeof token === 'string' && token.startsWith('coda-exit-zero:')) {
+          issues.push({
+            condition: token,
+            message:
+              "coda-exit-zero: cannot be used as a challenge requirement because it depends on the challenge's own setup running first — use it in `objectives` instead, or move this check into successCriteria.",
+            code: 'invalid_format',
+            path: [...path, 'requirements', i],
+          });
+        }
+      });
     }
 
     // Check objectives if present

@@ -1,4 +1,4 @@
-import type { EditorBlock, JsonBlock } from '../types';
+import type { EditorBlock } from '../types';
 import type {
   JsonGuidedBlock,
   JsonInteractiveBlock,
@@ -7,9 +7,8 @@ import type {
 } from '../../../types/json-guide.types';
 import {
   generateBlockId,
-  isGuidedBlock,
   isInteractiveBlock,
-  isMultistepBlock,
+  isMergeableBlock,
   isSectionBlock,
   parseBlockId,
   type ParsedBlockId,
@@ -44,11 +43,6 @@ const MERGE_SPECS: Record<MergeKind, MergeSpec> = {
   },
 };
 
-const isMergeable = (
-  block: JsonBlock | undefined
-): block is JsonInteractiveBlock | JsonMultistepBlock | JsonGuidedBlock =>
-  !!block && (isInteractiveBlock(block) || isMultistepBlock(block) || isGuidedBlock(block));
-
 /**
  * Position weight for sorting parsed blocks in document order. Root blocks use
  * their root index; nested blocks fall under their section's root index and
@@ -80,7 +74,7 @@ type ParsedWithId = ParsedBlockId & { id: string };
 export const mergeBlocks = (prev: EditorBlock[], blockIds: string[], kind: MergeKind): EditorBlock[] | null => {
   const parsedBlocks: ParsedWithId[] = blockIds
     .map((id) => ({ id, ...parseBlockId(id, prev) }))
-    .filter((p): p is ParsedWithId => isMergeable(p.block));
+    .filter((p): p is ParsedWithId => isMergeableBlock(p.block));
 
   if (parsedBlocks.length < 2) {
     return null;

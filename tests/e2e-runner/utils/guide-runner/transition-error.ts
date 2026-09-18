@@ -1,5 +1,6 @@
-export type FatalTransitionKind =
-  'badge-obstruction' | 'guide-load-ambiguous' | 'reset-ambiguous' | 'tab-close-failed' | 'step-detach-failed';
+import type { E2ETransitionKind } from '../../../../src/cli/e2e/schemas/e2e-report.schema';
+
+export type FatalTransitionKind = E2ETransitionKind;
 
 export class FatalTransitionError extends Error {
   constructor(

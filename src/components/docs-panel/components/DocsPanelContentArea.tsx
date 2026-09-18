@@ -1,3 +1,4 @@
+import { usePathfinderPluginConfig } from '../../../hooks';
 /**
  * Content area for the docs panel — the 5+ branch switch that lives below
  * the tab bar.
@@ -15,11 +16,9 @@
  * Lazy imports are kept INSIDE this file so webpack sees the same dynamic-import
  * module specifiers and chunk resolution stays stable.
  */
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useSyncExternalStore } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
-import { usePluginContext } from '@grafana/data';
-import { getConfigWithDefaults } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
@@ -36,7 +35,8 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { recordGuideCompletionForSurface } from '../../../docs-retrieval';
+import { recordGuideCompletionForSurface, journeyProgressFromMilestones } from '../../../docs-retrieval';
+import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
@@ -119,10 +119,15 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
     restoreScrollPosition,
   } = props;
 
-  const pluginContext = usePluginContext();
-  const twoTabControllerEnabled = getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableTwoTabController;
+  const { config: pluginConfig } = usePathfinderPluginConfig();
+  const twoTabControllerEnabled = pluginConfig.enableTwoTabController;
 
   const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
+
+  // The loading-state milestone bar below reads journeyProgressFromMilestones
+  // out of storage during render, so this re-render is what keeps it from
+  // painting a stale fill once evidence lands while the tab stays mounted.
+  useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
 
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
@@ -225,7 +230,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       <div
                         className={styles.progressFill}
                         style={{
-                          width: `${((ljMeta.currentMilestone || 0) / (ljMeta.totalMilestones || 1)) * 100}%`,
+                          // The shared calculation (docs/design/COMPLETION-MODEL.md,
+                          // decision 4) — earned progress, not navigation
+                          // position, so this must not climb just because the
+                          // reader turned pages without completing anything.
+                          width: `${journeyProgressFromMilestones(ljMeta.baseUrl, ljMeta.milestones)}%`,
                         }}
                       />
                     </div>
@@ -362,6 +371,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         className={styles.secondaryActionButton}
                         aria-label={t('docsPanel.resetGuide', 'Reset guide')}
                         title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
+                        data-testid={testIds.docsPanel.resetGuideButton}
                         onClick={async () => {
                           if (progressKey && activeTab) {
                             await handleResetGuide(progressKey, activeTab);
@@ -384,7 +394,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                 panel={model}
                 activeTab={activeTab}
                 surface="sidebar"
-                contentRoot={contentRef}
                 hasInteractiveProgress={hasInteractiveProgress}
                 progressKey={progressKey}
                 onResetGuide={handleResetGuide}
@@ -394,11 +403,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
               <div id="inner-docs-content" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
                 {stableContent && (
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
-                    {/* Above the alignment prompt on purpose: whether the guide fits this
-                        Grafana at all settles before where to start it. */}
                     <GuideVersionNotice
                       manifests={[activeTab?.packageInfo?.packageManifest, stableContent.metadata.packageManifest]}
-                      guideUrl={activeTab?.currentUrl ?? activeTab?.baseUrl}
+                      guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
                       guideTitle={activeTab?.title}
                     />
                     {activeTab?.pendingAlignment && (
@@ -436,6 +443,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                           metadata: stableContent.metadata,
                           guideTitle: activeTab?.title,
                         })
+                      }
+                      onContinueToNextMilestone={
+                        model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
                       }
                     />
                   </AlignmentPendingContext.Provider>

@@ -189,6 +189,8 @@ jest.mock('./utils', () => ({
   cleanDocsUrl: jest.fn((url: string) => url),
   loadDocsTabContentResult: jest.fn(),
   ...jest.requireActual('./utils/tab-kinds'),
+  ...jest.requireActual('./utils/tab-state-transitions'),
+  ...jest.requireActual('./utils/docs-load-finalizer'),
 }));
 
 jest.mock('./hooks', () => ({
@@ -222,7 +224,7 @@ jest.mock('../../hooks', () => ({}));
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
-import type { RawContent } from '../../types/content.types';
+import type { PreparedRawContent } from '../../types/content.types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -241,8 +243,9 @@ const makeTab = (id: string) => ({
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-const preparedContent: RawContent = {
+const preparedContent: PreparedRawContent = {
   content: '{"id":"g","title":"g","blocks":[]}',
+  countingSource: { kind: 'pre-inlining', guideJson: '{"id":"g","title":"g","blocks":[]}' },
   metadata: { title: 'g' },
   type: 'interactive',
   url: 'bundled:prepared',

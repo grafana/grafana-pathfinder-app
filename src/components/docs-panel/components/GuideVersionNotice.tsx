@@ -1,19 +1,3 @@
-/**
- * Warns when the running Grafana is below the floor a guide's manifest declares.
- *
- * Warn-only: the steps stay live. A guide written against selectors or pages a
- * older release doesn't have fails as steps that never unblock, and this exists
- * to name that cause rather than to prevent the attempt.
- *
- * The `guide_version_unsupported_shown` event is emitted from here, not from the
- * load path: the notice renders only in the surface the reader is looking at, so
- * a background tab load, a milestone step, or a reload cannot manufacture an
- * observation of a warning nobody saw. Remounts — tab switch, surface handoff —
- * are deduplicated per warning for the app load.
- *
- * @see src/lib/guide-version.ts for the fail-open policy behind the verdict.
- */
-
 import React, { useEffect } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -26,19 +10,13 @@ import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import { testIds } from '../../../constants/testIds';
 
 export interface GuideVersionNoticeProps {
-  /**
-   * The open guide's manifests, most authoritative first. Absent for docs pages
-   * and legacy learning journeys.
-   */
   manifests?: ManifestCandidates;
-  /** Identifies the guide in the impression event and its dedupe key. */
   guideUrl?: string;
   guideTitle?: string;
 }
 
 const reportedImpressions = new Set<string>();
 
-/** Test-only: the dedupe set outlives a single render tree by design. */
 export function resetGuideVersionImpressions() {
   reportedImpressions.clear();
 }

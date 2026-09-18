@@ -10,10 +10,11 @@
  * incorrectly read from journeyCompletionStorage.
  */
 
+import { getBackendSrv } from '@grafana/runtime';
 import { ContextService } from './context.service';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
-import { fetchContent, getJourneyCompletionPercentageAsync } from '../docs-retrieval';
+import { fetchContent, getJourneyCompletionPercentageAsync } from '../lib/learning-journey-content-bridge';
 
 // Mock dependencies
 jest.mock('../utils/dev-mode', () => ({
@@ -27,6 +28,7 @@ jest.mock('@grafana/runtime', () => ({
     post: jest.fn(),
   })),
   config: {
+    theme2: { isDark: false },
     bootData: {
       settings: {
         buildInfo: {
@@ -43,10 +45,13 @@ jest.mock('@grafana/runtime', () => ({
     },
   },
   locationService: {
+    getLocation: () => ({ pathname: '/explore', search: '', hash: '' }),
+    getSearchObject: () => ({}),
     push: jest.fn(),
   },
   getEchoSrv: jest.fn(() => ({
     addEvent: jest.fn(),
+    addBackend: jest.fn(),
   })),
   EchoEventType: {
     Interaction: 'interaction',
@@ -58,7 +63,7 @@ jest.mock('../lib/hash.util', () => ({
     hashedUserId: 'hashed-user',
     hashedEmail: 'hashed-email',
   }),
-  hashString: jest.fn((input: string) => Promise.resolve('a'.repeat(64))),
+  hashString: jest.fn((_input: string) => Promise.resolve('a'.repeat(64))),
 }));
 
 // Mock user storage modules
@@ -78,8 +83,8 @@ jest.mock('../lib/user-storage', () => ({
   useUserStorage: jest.fn(),
 }));
 
-// Mock docs-retrieval module
-jest.mock('../docs-retrieval', () => ({
+// Mock the learning-journey content bridge
+jest.mock('../lib/learning-journey-content-bridge', () => ({
   fetchContent: jest.fn(),
   getJourneyCompletionPercentageAsync: jest.fn(),
 }));
@@ -382,5 +387,28 @@ describe('ContextService: Completion Percentage Storage Selection', () => {
         expect(interactiveRec.completionPercentage).toBe(40);
       }
     });
+  });
+});
+
+describe('context data-source reads', () => {
+  it('includes data sources returned by the shared API', async () => {
+    const dataSources = [{ uid: 'prometheus', type: 'prometheus', name: 'Prometheus' }];
+    const get = jest.fn().mockResolvedValue(dataSources);
+    jest.mocked(getBackendSrv).mockReturnValue({ get } as never);
+
+    const context = await ContextService.getContextData();
+
+    expect(context.dataSources).toEqual(dataSources);
+    expect(get).toHaveBeenCalledWith('/api/datasources');
+  });
+
+  it('keeps context available when the data-source request fails', async () => {
+    const get = jest.fn().mockRejectedValue(new Error('Offline'));
+    jest.mocked(getBackendSrv).mockReturnValue({ get } as never);
+
+    const context = await ContextService.getContextData();
+
+    expect(context.dataSources).toEqual([]);
+    expect(context.currentPath).toBe('/explore');
   });
 });

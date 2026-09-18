@@ -8,13 +8,14 @@
  * `docs/developer/CODA.md` for why a pasted token is the primary path there.
  */
 
-import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
+import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
-import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { useStepChecker } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { GcxReadyLine, GcxSetupPanel } from '../../integrations/coda/GcxSetupPanel';
 import { useGcxCredential } from '../../integrations/coda/useGcxCredential.hook';
@@ -25,7 +26,8 @@ import {
   useCodaTerminalGate,
 } from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 export interface TerminalConnectStepProps {
   buttonText?: string;
@@ -47,7 +49,6 @@ export interface TerminalConnectStepProps {
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   resetTrigger?: number;
-  onStepReset?: () => void;
 
   stepIndex?: number;
   totalSteps?: number;
@@ -95,6 +96,15 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
   }),
+  requirementMessage: css({
+    padding: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    backgroundColor: theme.colors.warning.transparent,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.warning.border}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
 });
 
 const SANDBOX_SUBJECT = 'This step connects to a Coda sandbox VM';
@@ -119,7 +129,6 @@ export const TerminalConnectStep = forwardRef<
       isCurrentlyExecuting = false,
       onStepComplete,
       resetTrigger,
-      onStepReset,
       stepIndex,
       totalSteps,
       sectionId,
@@ -142,9 +151,30 @@ export const TerminalConnectStep = forwardRef<
 
     const [isConnecting, setIsConnecting] = useState(false);
 
+    const analyticsStepMeta = useMemo(
+      () => ({
+        stepId: stepId ?? renderedStepId,
+        stepIndex,
+        totalSteps,
+        sectionId,
+        sectionTitle,
+      }),
+      [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
+    );
+
     const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
     const isStandalone = !onStepComplete;
     const isCompleted = storedCompleted;
+
+    const checker = useStepChecker({
+      requirements: '',
+      objectives: '',
+      targetAction: 'noop',
+      refTarget: '',
+      stepId: renderedStepId,
+      isEligibleForChecking,
+      sectionId,
+    });
 
     const markComplete = useCallback(() => {
       if (isCompleted) {
@@ -167,11 +197,9 @@ export const TerminalConnectStep = forwardRef<
       mintLikely,
       isPending: gcxCredentialPending,
       run: runGcxCredential,
-      // One store serves every surface that offers the install, so a credential
-      // installed from the terminal toolbar reaches every mounted step. Only a
-      // gcx step on this session has anything to complete on it, and the `gcx`
-      // guards below keep the rest of a non-gcx step's render out of it too.
-    } = useGcxCredential(gcx ? markComplete : undefined, terminalCtx?.sessionId);
+      // Readiness is shared by session, but only the stable step that started a
+      // run may complete from it. The toolbar has no requester and completes none.
+    } = useGcxCredential(gcx ? markComplete : undefined, terminalCtx?.sessionId, gcx ? renderedStepId : null);
 
     const handleConnect = useCallback(async () => {
       if (!terminalCtx) {
@@ -205,9 +233,34 @@ export const TerminalConnectStep = forwardRef<
     );
 
     const handleGcxSkip = useCallback(() => {
-      reportAppInteraction(UserInteraction.GcxSetupSkipped, { state: gcxState });
+      reportAppInteraction(
+        UserInteraction.GcxSetupSkipped,
+        buildInteractiveStepProperties(
+          { state: gcxState, interaction_location: 'terminal_connect_step' },
+          analyticsStepMeta
+        )
+      );
       markComplete();
-    }, [gcxState, markComplete]);
+    }, [gcxState, markComplete, analyticsStepMeta]);
+
+    const persistReset = useCallback(() => {
+      if (isStandalone) {
+        resetStep(renderedStepId, sectionId);
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
+
+    // Runs in EVERY child of the section, so the store write is suppressed for
+    // section steps: the section's own `resetSteps(tailStepIds)` already owns
+    // it, and a per-child write would wipe preceding completions.
+    useEffect(() => {
+      if (resetTrigger && resetTrigger > 0) {
+        persistReset();
+        setIsConnecting(false);
+        if (checker.resetStep) {
+          checker.resetStep({ skipStoreWrite: true });
+        }
+      }
+    }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep and persistReset are stable but including checker rebuilds every render
 
     // React to terminal status changes while waiting for connection.
     // Handles: success (connected), failure (error), and cancellation (disconnected).
@@ -254,7 +307,10 @@ export const TerminalConnectStep = forwardRef<
 
     const isTerminalConnected = terminalCtx?.status === 'connected';
     const isTerminalConnecting = isConnecting || terminalCtx?.status === 'connecting';
-    const isEnabled = !disabled && terminalCtx !== null;
+    // `useStepChecker` resolves in a post-mount effect; with empty requirements its
+    // verdict is just eligibility, so trust the prop for the pre-verdict frame.
+    const gateOpen = checker.status === 'idle' ? isEligibleForChecking : checker.isEnabled;
+    const isEnabled = gateOpen && !disabled && terminalCtx !== null;
     // The provider mounts even when the panel that owns `connect` is gated
     // away, so without this the button is enabled and does nothing.
     const sandboxUnavailable = codaUnavailableMessage(
@@ -306,6 +362,7 @@ export const TerminalConnectStep = forwardRef<
     return (
       <div
         className={containerClasses}
+        {...getTrackedStepRootAttributes('terminal-connect', renderedStepId)}
         data-test-step-state={stepState}
         data-testid={testIds.interactive.terminalConnectStep(renderedStepId)}
       >
@@ -313,6 +370,10 @@ export const TerminalConnectStep = forwardRef<
 
         {gcx && gcxCredential && (
           <GcxReadyLine credential={gcxCredential} testId={testIds.interactive.gcxReady(renderedStepId)} />
+        )}
+
+        {!isEnabled && !isCompleted && checker.explanation && (
+          <div className={styles.requirementMessage}>{checker.explanation}</div>
         )}
 
         {isEnabled && !isCompleted && !isTerminalConnected && sandboxUnavailable && (

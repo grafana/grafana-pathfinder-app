@@ -9,6 +9,7 @@
  */
 
 import { Locator } from '@playwright/test';
+import type { StepTypeKind } from '../../../../src/components/interactive-tutorial/step-type-registry';
 
 // ============================================
 // Step Types
@@ -24,6 +25,8 @@ import { Locator } from '@playwright/test';
  * - U3: Steps may not be clickable when discovered (sequential dependencies)
  */
 export interface TestableStep {
+  /** Registered driver kind for this step. */
+  stepKind: StepTypeKind;
   /** Unique identifier for the step (extracted from data-testid) */
   stepId: string;
 
@@ -47,29 +50,8 @@ export interface TestableStep {
   /** The target action type (highlight, button, navigate, formfill, noop, multistep, etc.) */
   targetAction?: string;
 
-  /**
-   * Whether this is a multistep action (L3-3C).
-   * Multisteps require longer timeouts as they execute multiple internal actions.
-   */
-  isMultistep: boolean;
-
-  /**
-   * Number of internal actions for multisteps (L3-3C).
-   * Used to calculate appropriate timeout: 30s base + 5s per action.
-   */
-  internalActionCount: number;
-
-  /**
-   * Whether this is a guided step (E2E contract: data-targetaction="guided").
-   * Guided steps run a substep loop driven by the comment box.
-   */
-  isGuided: boolean;
-
-  /**
-   * Total substeps for guided steps (from data-test-substep-total).
-   * Used for timeouts and loop bound in Phase 3.
-   */
-  guidedStepCount?: number;
+  /** Number of driver-owned actions for timeout and execution scaling */
+  actionCount: number;
 
   /**
    * The target element selector (L3-4A).
@@ -81,11 +63,27 @@ export interface TestableStep {
   locator: Locator;
 }
 
+export type StepContractSource = 'current' | 'legacy';
+
+export interface UnsupportedStepCoverage {
+  stepKind: string;
+  stepId: string;
+}
+
+export interface StepCoverage {
+  contractSource: StepContractSource;
+  rendered: number;
+  supported: number;
+  executed: number;
+  unsupported: number;
+  unsupportedSteps: UnsupportedStepCoverage[];
+}
+
 /**
  * Result of step discovery operation.
  */
 export interface StepDiscoveryResult {
-  /** All discovered steps in DOM order */
+  /** Supported steps in DOM order. */
   steps: TestableStep[];
 
   /** Total count of steps found */
@@ -99,6 +97,9 @@ export interface StepDiscoveryResult {
 
   /** Duration of discovery in milliseconds */
   durationMs: number;
+
+  /** Coverage for every rendered tracked root. */
+  coverage: StepCoverage;
 }
 
 /**
@@ -297,6 +298,9 @@ export type ErrorClassification =
 export interface StepTestResult {
   /** The step identifier */
   stepId: string;
+
+  /** Registered driver kind for this step. */
+  stepKind?: StepTypeKind;
 
   /** Execution outcome */
   status: StepStatus;

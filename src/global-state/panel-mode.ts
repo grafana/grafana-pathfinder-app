@@ -3,12 +3,12 @@ import { StorageKeys } from '../lib/storage-keys';
 import { PANEL_MODE_CHANGE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
 // Surgical imports (not the ../lib/telemetry barrel): panel-mode is
 // entry-eager, and the barrel would pull the telemetry package into module.js.
-import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
+import { reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
 import { pushFaroUserAction } from '../lib/telemetry/bridge';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
 import { GRAFANA_DRIVING_ACTIONS } from '../constants/interactive-actions';
 import type { PackageOpenInfo } from '../types/content-panel.types';
-import type { RawContent } from '../types/content.types';
+import type { PreparedRawContent } from '../types/content.types';
 import type { LaunchSource } from '../recovery';
 
 export type PanelMode = 'sidebar' | 'floating' | 'fullscreen';
@@ -50,7 +50,7 @@ export interface PendingGuide {
    * launch). One-shot memory state — consumed with the pending guide, never
    * persisted to tab storage.
    */
-  preparedContent?: RawContent;
+  preparedContent?: PreparedRawContent;
   /**
    * Launch source of the ORIGINAL launch, carried so alignment semantics
    * survive the surface handoff — a `home_page` launch needs the same
@@ -229,7 +229,7 @@ class PanelModeManager {
       // instances do not collide on the __DocsPluginActiveTabId window
       // global or on tab storage writes.
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
-      reportPathfinderSurface(mode);
+      reportPathfinderSurfaceClosed(previous);
     } else if (previous === 'floating' || previous === 'fullscreen') {
       // 'sidebar' mode does not mean the sidebar is open — its mount reports
       // 'sidebar' itself; until then the surface is closed.
@@ -322,17 +322,18 @@ export const panelModeManager = new PanelModeManager();
  * encountered there can't actually be acted on. Signal FullScreenPanel to
  * hand off to the sidebar (reusing its existing handleExitToSidebar) instead.
  *
- * Called the moment the user clicks "Do it" on a step whose action drives the
- * live Grafana UI while full screen is active — see the gate in
- * `interactive-engine/interactive.hook.ts`, plus the same gate applied
- * directly by `interactive-guided.tsx` and `code-block-step.tsx` for their
- * own execution paths: surface is a property of what the user is about to
- * do, decided at that click, not proactively when a milestone loads.
+ * Called the moment the user triggers a step whose action drives the live
+ * Grafana UI while full screen is active — see the gate in
+ * `interactive-engine/interactive.hook.ts`, plus the same gate applied by
+ * `interactive-guided.tsx`, `code-block-step.tsx`, and
+ * `NavigationManager.fixLocationRequirement` for their own execution paths.
+ * Surface is a property of what the user is about to do, decided at that
+ * click, not proactively when a milestone loads.
  *
- * `targetPath`, when resolved (step/milestone/course fallback chain), is
- * forwarded to `handleExitToSidebar` so the user lands somewhere the clicked
- * step can actually act on, instead of the page they were on before entering
- * full screen.
+ * `targetPath`, when resolved from a step/milestone/course fallback chain or
+ * validated from an `on-page:` requirement, is forwarded to
+ * `handleExitToSidebar` so the user lands somewhere the clicked step can act
+ * on, instead of the page they were on before entering full screen.
  *
  * Returns a promise that resolves once the sidebar has actually mounted (or
  * after a safety timeout), so the caller's subsequent DOM lookup runs against
@@ -394,11 +395,12 @@ export function requestSidebarHandoffAndWait(options?: { targetPath?: string }):
 /**
  * Single source of truth for "does this click need the full-screen -> sidebar
  * handoff": every caller of `requestSidebarHandoffAndWait` (the hook's own
- * gate, `interactive-guided.tsx`, `code-block-step.tsx`) and every caller
- * that needs to know the handoff is about to happen *before* it runs its own
- * DOM-resolution attempt (`interactive-step.tsx`'s `executeWithLazyScroll`,
- * which would otherwise fail fast against full screen's nonexistent Grafana
- * DOM and never reach the gate at all) must agree on the same condition.
+ * gate, `interactive-guided.tsx`, `code-block-step.tsx`, and
+ * `NavigationManager.fixLocationRequirement`) and every caller that needs to
+ * know the handoff is about to happen *before* it runs its own DOM-resolution
+ * attempt (`interactive-step.tsx`'s `executeWithLazyScroll`, which would
+ * otherwise fail fast against full screen's nonexistent Grafana DOM and never
+ * reach the gate at all) must agree on the same condition.
  *
  * Applies equally to "Show me" and "Do it": both need the live Grafana UI in
  * place before they can find anything to preview or act on, so both dock and

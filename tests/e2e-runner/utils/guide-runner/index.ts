@@ -13,6 +13,9 @@
 export type {
   TestableStep,
   StepDiscoveryResult,
+  StepContractSource,
+  UnsupportedStepCoverage,
+  StepCoverage,
   StepStatus,
   SkipReason,
   RequirementStatus,
@@ -42,6 +45,9 @@ export {
   LATE_COMPLETION_CHECK_TIMEOUT_MS,
   GUIDED_RELOAD_LOAD_TIMEOUT_MS,
   SKIP_SYNC_TIMEOUT_MS,
+  CURRENT_STEP_SELECTOR,
+  LEGACY_STEP_SELECTOR,
+  STEP_ROOT_SELECTOR,
 } from './constants';
 
 // ============================================
@@ -66,7 +72,7 @@ export {
 // ============================================
 // Discovery
 // ============================================
-export { discoverStepsFromDOM, logDiscoveryResults, resolveEffectiveSkippable } from './discovery';
+export { discoverStepsFromDOM, logDiscoveryResults, withExecutedCoverage } from './discovery';
 export { ensureDocsPanelOpen } from './bootstrap';
 export { dismissBadgeCelebrations } from './badge-celebrations';
 
@@ -97,12 +103,8 @@ export {
   determineUnmetRequirementOutcome,
   parseNthMatchSelector,
   selectStepAction,
-  waitForStepCompletion,
-  checkObjectiveCompletion,
-  waitForCompletionWithObjectivePolling,
   waitForGuidedCommentBoxReady,
   runGuidedSubstepLoop,
-  clickSkipButtonAndSync,
   executeStep,
   executeAllSteps,
   logStepResult,
@@ -111,3 +113,4 @@ export {
   logExecutionSummary,
   settleWithin,
 } from './execution';
+export { clickSkipButtonAndSync } from './drivers';

@@ -93,6 +93,8 @@ Declare one when a guide targets UI that older releases do not have — most oft
 
 **Not the same field as `testEnvironment.minVersion`.** That one routes E2E runs and fails a test; this one informs a reader. A guide may be tested only on latest and still work several releases back. When `testEnvironment.minVersion` is absent, the preflight falls back to `minGrafanaVersion` — so declaring only this field is the common case, and declaring both is for guides whose test rig needs something newer than their readers do.
 
+The warning reports `guide_version_unsupported_shown` when its notice mounts on the active content surface. It is deduplicated per guide base URL and normalized required/running version pair for the app load, so milestone navigation, reloads, progress resets, and sidebar/floating handoffs do not count again. A background load does not report an impression.
+
 One transport gap to know: a custom guide served through the App Platform catalogue proxy loses the field, because the proxy's shaped response declares no `additionalFields`. The same guide opened standalone or by share link keeps it. See [EXTERNAL_API.md](./EXTERNAL_API.md#specmanifest).
 
 ### Extension fields

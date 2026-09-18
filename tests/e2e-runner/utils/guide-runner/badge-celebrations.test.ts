@@ -383,7 +383,7 @@ describe('dismissBadgeCelebrations', () => {
     } as unknown as Page;
     const step = {
       stepId: 'guided-step',
-      guidedStepCount: 1,
+      actionCount: 1,
     } as TestableStep;
 
     await expect(

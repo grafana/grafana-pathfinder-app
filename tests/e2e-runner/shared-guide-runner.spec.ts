@@ -57,7 +57,7 @@ function setupFailureResult(guide: E2EChainGuide, authFailure: boolean, message:
       contentDigest: contentDigest(guide.content),
     },
     outcome: authFailure ? 'aborted' : 'infrastructure_error',
-    errorCode: authFailure ? 'AUTH_EXPIRED' : 'REPORT_MISSING',
+    errorCode: authFailure ? 'AUTH_EXPIRED' : 'UNKNOWN',
     errorMessage: message,
     ...(authFailure ? { abortReason: 'AUTH_EXPIRED' as const } : {}),
   });

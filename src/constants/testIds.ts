@@ -43,6 +43,9 @@ export const testIds = {
     fullScreenButton: 'docs-panel-full-screen-button',
     openControllerTabButton: 'docs-panel-open-controller-tab-button',
     milestoneMoreActionsButton: 'docs-panel-milestone-more-actions-button',
+    nextMilestoneButton: 'docs-panel-next-milestone-button',
+    previousMilestoneButton: 'docs-panel-previous-milestone-button',
+    resetGuideButton: 'docs-panel-reset-guide-button',
   },
 
   // Full screen mode page (sibling of the sidebar / floating panel)
@@ -224,6 +227,8 @@ export const testIds = {
     devModeToggle: 'config-dev-mode-toggle',
     /** Pathfinder tutorial anchor for #dev-mode (do not rename without Pathfinder squad). */
     pathfinderDevMode: 'pathfinder-dev-mode',
+    tenantDevMode: 'pathfinder-tenant-dev-mode',
+    tenantDevModeToggle: 'config-tenant-dev-mode-toggle',
     assistantDevModeToggle: 'config-assistant-dev-mode-toggle',
     globalLinkInterception: 'config-global-link-interception',
     openPanelOnLaunch: 'config-open-panel-on-launch',
@@ -306,6 +311,7 @@ export const testIds = {
     recordStopButton: 'block-editor-record-stop',
     mergeMultistepButton: 'block-editor-merge-multistep',
     mergeGuidedButton: 'block-editor-merge-guided',
+    bulkDeleteButton: 'block-editor-bulk-delete',
     clearSelectionButton: 'block-editor-clear-selection',
     toggleSelectionButton: 'block-editor-toggle-selection',
     loadTemplateButton: 'block-editor-load-template',
@@ -401,6 +407,7 @@ export const testIds = {
     searchPrev: 'coda-terminal-search-prev',
     searchNext: 'coda-terminal-search-next',
     searchClose: 'coda-terminal-search-close',
+    vmExpiry: 'coda-terminal-vm-expiry',
     gcxButton: 'coda-terminal-gcx',
     gcxMint: 'coda-terminal-gcx-mint',
     gcxToken: 'coda-terminal-gcx-token',
@@ -455,6 +462,13 @@ export const testIds = {
     tileTitle: (index: number) => `kiosk-mode-tile-title-${index}`,
     loading: 'kiosk-mode-loading',
     warning: 'kiosk-mode-warning',
+  },
+
+  markComplete: {
+    footer: 'mark-complete-footer',
+    button: 'mark-complete-button',
+    percentage: 'mark-complete-percentage',
+    completed: 'mark-complete-completed',
   },
 
   guideReader: {

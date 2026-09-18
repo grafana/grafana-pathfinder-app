@@ -63,7 +63,10 @@ test('truth adjudication preserves the bounded high-risk and medium lanes', () =
   const high = observation({ severity: 'high' });
   assert.equal(deriveVerificationLane(high, false), 'high_risk');
   assert.deepEqual(advanceReviewPolicy({ observation: high, round: 1 }).dispatch, { role: 'skeptic', count: 2 });
-  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [confirmed], round: 1 }).dispatch.count, 0);
+  assert.deepEqual(advanceReviewPolicy({ observation: high, verdicts: [confirmed], round: 1 }).dispatch, {
+    role: 'skeptic',
+    count: 1,
+  });
   assert.equal(
     advanceReviewPolicy({ observation: high, verdicts: [confirmed, uncertain], round: 1 }).dispatch.role,
     'tiebreaker'
@@ -78,7 +81,7 @@ test('truth adjudication preserves the bounded high-risk and medium lanes', () =
     'final'
   );
 
-  const mediumNonBlocking = observation({ origin: 'pre_existing' });
+  const mediumNonBlocking = observation({ impact: 'none' });
   assert.equal(deriveVerificationLane(mediumNonBlocking, false), 'advisory');
   assert.deepEqual(advanceReviewPolicy({ observation: mediumNonBlocking, round: 1 }).dispatch, {
     role: 'skeptic',
@@ -97,7 +100,7 @@ test('truth adjudication preserves the bounded high-risk and medium lanes', () =
     'final'
   );
 
-  const low = observation({ severity: 'low', origin: 'pre_existing' });
+  const low = observation({ severity: 'low', impact: 'none' });
   assert.equal(advanceReviewPolicy({ observation: low, round: 1 }).status, 'final');
   assert.throws(
     () => advanceReviewPolicy({ observation: low, verdicts: [confirmed], round: 1 }),
@@ -107,10 +110,7 @@ test('truth adjudication preserves the bounded high-risk and medium lanes', () =
 
 test('provisionally blocking medium defects receive high-risk verification', () => {
   assert.equal(advanceReviewPolicy({ observation: observation(), round: 1 }).lane, 'high_risk');
-  assert.equal(
-    advanceReviewPolicy({ observation: observation({ origin: 'pre_existing' }), round: 1 }).lane,
-    'advisory'
-  );
+  assert.equal(advanceReviewPolicy({ observation: observation({ impact: 'none' }), round: 1 }).lane, 'advisory');
 });
 
 const dispositionCases = [
@@ -212,6 +212,50 @@ test('the closed disposition intersection table preserves protected-harm and aut
   }
 });
 
+test('adjacent findings below the severity bar never reach the report', () => {
+  for (const origin of ['pre_existing', 'latent_unreachable']) {
+    for (const severity of ['low', 'medium']) {
+      assert.deepEqual(disposeObservation(observation({ origin, severity }), 1), {
+        status: 'dropped',
+        reason: 'adjacent-below-bar',
+      });
+      assert.equal(advanceReviewPolicy({ observation: observation({ origin, severity }), round: 1 }).status, 'dropped');
+    }
+    for (const severity of ['critical', 'high']) {
+      assert.equal(disposeObservation(observation({ origin, severity }), 1).disposition, 'follow_up');
+    }
+  }
+});
+
+test('the adjacency bar never drops protected harm or a clearance retraction', () => {
+  const adjacent = { origin: 'pre_existing', severity: 'low' };
+  for (const impact of ['security', 'data_loss', 'credential_exposure']) {
+    assert.equal(disposeObservation(observation({ ...adjacent, impact }), 1).disposition, 'follow_up');
+  }
+  assert.equal(disposeObservation(observation({ ...adjacent, breaks_shipped_path: true }), 1).disposition, 'follow_up');
+  const prior = {
+    concern_id: 'correctness-and-reliability',
+    claim: 'The adjacent branch was checked clean.',
+    reason: 'Every variant reached the guarded path.',
+  };
+  const retraction = observation({
+    ...adjacent,
+    clearance_contradiction: {
+      claim: prior.claim,
+      prior_reason: prior.reason,
+      new_evidence: 'The unguarded variant reaches the default branch at head.',
+    },
+  });
+  assert.equal(advanceReviewPolicy({ observation: retraction, prior_cleared: [prior], round: 1 }).status, 'final');
+});
+
+test('a dropped adjacent finding never consumes skeptic verification', () => {
+  const adjacent = observation({ origin: 'pre_existing', severity: 'medium', finding_id: 'ADJ-1' });
+  assert.deepEqual(planVerificationBatches([{ observation: adjacent, round: 1 }]), []);
+  assert.equal(advanceReviewPolicy({ observation: adjacent, round: 1 }).status, 'dropped');
+  assert.equal(planVerificationBatches([{ observation: { ...adjacent, severity: 'high' }, round: 1 }]).length, 2);
+});
+
 test('optional work cannot widen later rounds', () => {
   const suggestion = observation({ kind: 'suggestion', impact: 'none', severity: 'low' });
   assert.deepEqual(disposeObservation(suggestion, 1), {
@@ -219,10 +263,10 @@ test('optional work cannot widen later rounds', () => {
     disposition: 'suggestion',
     reason: 'within-surface-optional',
   });
-  assert.equal(
-    disposeObservation({ ...suggestion, scope_effect: 'widens_changed_surface' }, 1).disposition,
-    'follow_up'
-  );
+  assert.deepEqual(disposeObservation({ ...suggestion, scope_effect: 'widens_changed_surface' }, 1), {
+    status: 'dropped',
+    reason: 'scope-widening-optional',
+  });
   assert.deepEqual(disposeObservation(suggestion, 3), { status: 'dropped', reason: 'round-three-optional' });
   assert.equal(disposeObservation({ ...suggestion, timing: 'prior_unresolved' }, 3).disposition, 'follow_up');
 });

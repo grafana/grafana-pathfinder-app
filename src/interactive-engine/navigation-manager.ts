@@ -11,8 +11,12 @@ import {
   isPathfinderContent,
   readToggleState,
 } from '../lib/dom';
+import { assertExhaustive } from '../lib/assert-exhaustive';
 import { logger } from '../lib/logging';
 import { sanitizeDocumentationHTML } from '../security';
+import { validateInternalNavigationPath } from '../security/url-validator';
+import { currentUserIsAdmin } from '../utils/current-user-role';
+import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../global-state/panel-mode';
 import { applyE2ECommentBoxAttributes } from './e2e-attributes';
 
 export interface NavigationOptions {
@@ -30,6 +34,33 @@ export interface CommentBoxOptions {
   /** E2E contract: selector for current target */
   refTarget?: string;
   nextLabel?: string;
+}
+
+/**
+ * Step progress for the comment box.
+ *
+ * `progress` picks the evidence the bar is drawn from, because consumers mean different
+ * things by `completedSteps`: a guided block records only steps the reader performed,
+ * while a bubble tour records the steps it has shown.
+ */
+export interface CommentBoxStepInfo {
+  current: number;
+  /** The consumer's own step set - one guided block, or one tour - never the guide. */
+  total: number;
+  completedSteps: number[];
+  progress: 'performed' | 'position';
+}
+
+function progressBarPercent(stepInfo: CommentBoxStepInfo): number {
+  switch (stepInfo.progress) {
+    case 'performed':
+      return (stepInfo.completedSteps.length / stepInfo.total) * 100;
+    case 'position':
+      return ((stepInfo.current + 1) / stepInfo.total) * 100;
+    default:
+      assertExhaustive(stepInfo.progress);
+      return ((stepInfo.current + 1) / stepInfo.total) * 100;
+  }
 }
 
 const NAV_ITEM_SELECTOR = 'a[data-testid="data-testid Nav menu item"]';
@@ -125,7 +156,7 @@ export class NavigationManager {
    */
   showCenteredComment(
     comment: string,
-    stepInfo?: { current: number; total: number; completedSteps: number[] },
+    stepInfo?: CommentBoxStepInfo,
     onCancelCallback?: () => void,
     onNextCallback?: () => void,
     onPreviousCallback?: () => void,
@@ -666,7 +697,7 @@ export class NavigationManager {
    * @param element - The element to highlight
    * @param comment - Optional comment text to display in a comment box
    * @param enableAutoCleanup - Whether to enable auto-cleanup on scroll/click (default: true, false for guided mode)
-   * @param stepInfo - Optional step progress info for guided interactions
+   * @param stepInfo - Optional step progress info for guided interactions and tours
    * @param onSkipCallback - Optional callback when skip button is clicked
    * @param onCancelCallback - Optional callback when cancel button is clicked (for guided mode)
    * @param onNextCallback - Optional callback when next button is clicked (for tour mode)
@@ -678,7 +709,7 @@ export class NavigationManager {
     element: HTMLElement,
     comment?: string,
     enableAutoCleanup = true,
-    stepInfo?: { current: number; total: number; completedSteps: number[] },
+    stepInfo?: CommentBoxStepInfo,
     onSkipCallback?: () => void,
     onCancelCallback?: () => void,
     onNextCallback?: () => void,
@@ -858,7 +889,7 @@ export class NavigationManager {
     comment: string,
     targetRect: DOMRect | null,
     highlightRect: { top: number; left: number; width: number; height: number } | null,
-    stepInfo?: { current: number; total: number; completedSteps: number[] },
+    stepInfo?: CommentBoxStepInfo,
     onSkipCallback?: () => void,
     onCancelCallback?: () => void,
     onNextCallback?: () => void,
@@ -931,8 +962,7 @@ export class NavigationManager {
 
       const progressBar = document.createElement('div');
       progressBar.className = 'interactive-comment-progress-bar';
-      const progressPercent = ((stepInfo.current + 1) / stepInfo.total) * 100;
-      progressBar.style.width = `${progressPercent}%`;
+      progressBar.style.width = `${progressBarPercent(stepInfo)}%`;
 
       progressContainer.appendChild(progressBar);
       content.appendChild(progressContainer);
@@ -1337,11 +1367,21 @@ export class NavigationManager {
    * Fix location requirements by navigating to the expected path
    * This function can be called by the "Fix this" button for location requirements
    */
-  async fixLocationRequirement(targetPath: string): Promise<void> {
-    const { locationService } = await import('@grafana/runtime');
-    locationService.push(targetPath);
+  async fixLocationRequirement(targetPath: string): Promise<boolean> {
+    const safeTargetPath = validateInternalNavigationPath(targetPath, currentUserIsAdmin());
+    if (!safeTargetPath) {
+      return false;
+    }
+
+    if (isGrafanaDrivingHandoffNeeded('navigate')) {
+      await requestSidebarHandoffAndWait({ targetPath: safeTargetPath });
+    } else {
+      const { locationService } = await import('@grafana/runtime');
+      locationService.push(safeTargetPath);
+    }
     // Wait for navigation to complete and React to update
     await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
+    return true;
   }
 
   /**

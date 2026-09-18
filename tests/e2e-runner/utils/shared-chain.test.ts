@@ -93,6 +93,46 @@ describe('shared guide chain', () => {
     expect(publish).toHaveBeenCalledTimes(3);
   });
 
+  it('preserves an unsupported-only report and skips its dependent', async () => {
+    const unsupportedOnly: TestResultsData = {
+      guide: { id: 'first', title: 'First', path: '/first.json', targetUrl: 'http://localhost:3000/' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      outcome: 'skipped',
+      errorMessage: 'No executable steps found. Unsupported kinds: quiz',
+      results: [],
+      coverage: {
+        contractSource: 'current',
+        rendered: 1,
+        supported: 0,
+        executed: 0,
+        unsupported: 1,
+        unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
+      },
+      aborted: false,
+    };
+    const runGuide = jest.fn().mockResolvedValueOnce(unsupportedOnly).mockResolvedValueOnce(result('second', 'passed'));
+
+    const outcome = await runSharedGuideChain(input(), {
+      currentUrl: () => 'http://localhost:3000/current',
+      browserSessionEnded: () => false,
+      runGuide,
+      publish: jest.fn(),
+    });
+
+    expect(runGuide.mock.calls.map(([guide]) => guide.id)).toEqual(['first', 'second']);
+    expect(outcome.results.map((item) => [item.guide.id, item.outcome, item.abortReason])).toEqual([
+      ['first', 'skipped', undefined],
+      ['second', 'passed', undefined],
+      ['dependent', 'skipped', 'SKIPPED_PREREQ'],
+    ]);
+    expect(outcome.results[0]!.coverage).toEqual(unsupportedOnly.coverage);
+
+    const report = generateMultiGuideReport(outcome.results);
+    expect(report.summary).toMatchObject({ passedGuides: 1, failedGuides: 0, skippedGuides: 2 });
+    expect(report.reports[0]!.coverage).toEqual(unsupportedOnly.coverage);
+    expect(MultiGuideReportSchema.safeParse(report).success).toBe(true);
+  });
+
   it('continues after a pre-tab guide-load error while the browser session remains available', async () => {
     const runGuide = jest
       .fn()
@@ -127,10 +167,10 @@ describe('shared guide chain', () => {
     });
 
     expect(runGuide).toHaveBeenCalledTimes(1);
-    expect(outcome.results.map((item) => [item.guide.id, item.outcome, item.errorCode])).toEqual([
-      ['first', 'infrastructure_error', 'REPORT_MISSING'],
-      ['second', 'infrastructure_error', 'REPORT_MISSING'],
-      ['dependent', 'infrastructure_error', 'REPORT_MISSING'],
+    expect(outcome.results.map((item) => [item.guide.id, item.outcome, item.errorCode, item.transitionKind])).toEqual([
+      ['first', 'infrastructure_error', 'TRANSITION_FAILED', 'reset-ambiguous'],
+      ['second', 'infrastructure_error', 'TRANSITION_FAILED', 'reset-ambiguous'],
+      ['dependent', 'infrastructure_error', 'TRANSITION_FAILED', 'reset-ambiguous'],
     ]);
     expect(outcome.results.slice(1).every((item) => item.errorMessage?.includes('fatal shared-browser'))).toBe(true);
   });
@@ -202,7 +242,7 @@ describe('shared guide chain', () => {
 
     const report = generateMultiGuideReport(outcome.results, undefined, { id: 'test-path', type: 'path' });
 
-    expect(report.schemaVersion).toBe('1.0.0');
+    expect(report.schemaVersion).toBe('1.1.0');
     expect(report.reports.map((item) => item.guide.id)).toEqual(['first', 'second', 'dependent']);
     expect(MultiGuideReportSchema.safeParse(report).success).toBe(true);
   });

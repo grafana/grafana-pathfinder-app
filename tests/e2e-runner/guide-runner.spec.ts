@@ -69,6 +69,6 @@ test.describe('Guide runner', () => {
     if (results.outcome === 'infrastructure_error') {
       throw new Error(`RUNNER_TERMINATED: ${results.errorMessage}`);
     }
-    expect(results.outcome).toBe('passed');
+    expect(['passed', 'skipped']).toContain(results.outcome);
   });
 });

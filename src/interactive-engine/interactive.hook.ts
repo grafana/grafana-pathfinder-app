@@ -1,12 +1,11 @@
-import { useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../styles/interactive.styles';
 import { waitForReactUpdates } from '../lib/async-utils';
 import { logger } from '../lib/logging';
-import { USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../lib/faro';
+import { withFaroUserAction } from '../lib/faro';
 import { createInteractionName, UserInteraction } from '../lib/analytics';
-import type { SequenceRunResult, StepOutcome } from '../lib/telemetry';
-import { outcomeFromSequenceRun } from './outcome-classifier';
+import type { StepOutcome } from '../lib/telemetry';
 import { assertExhaustive } from '../lib/assert-exhaustive';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { useGuideRequirements, RequirementsCheckOptions } from '../requirements-manager';
@@ -19,7 +18,6 @@ import {
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../global-state/panel-mode';
 import { InteractiveStateManager } from './interactive-state-manager';
-import { SequenceManager } from './sequence-manager';
 import { NavigationManager } from './navigation-manager';
 import {
   FocusHandler,
@@ -49,12 +47,7 @@ export interface CheckResult {
   targetHref?: string;
 }
 
-function isValidInteractiveElement(data: InteractiveElementData): boolean {
-  return Boolean(data.refTarget);
-}
-
-export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
-  const { containerRef } = options;
+export function useInteractiveElements(_options: UseInteractiveElementsOptions = {}) {
   const { checkRequirements, checkPostconditions } = useGuideRequirements();
 
   // Get current theme for CSS custom property updates
@@ -123,9 +116,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [buttonHandler]
   );
 
-  // Create stable refs for helper functions to avoid circular dependencies
-  const activeRefsRef = useRef(new Set<string>());
-
   const interactiveFormFill = useCallback(
     async (data: InteractiveElementData, fillForm: boolean) => {
       await formFillHandler.execute(data, fillForm);
@@ -159,47 +149,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       await popoutHandler.execute(data, perform);
     },
     [popoutHandler]
-  );
-
-  // Define helper functions using refs to avoid circular dependencies
-  const dispatchInteractiveAction = useCallback(
-    async (data: InteractiveElementData, click: boolean) => {
-      await withFaroUserAction(
-        click
-          ? createInteractionName(UserInteraction.DoItButtonClick)
-          : createInteractionName(UserInteraction.ShowMeButtonClick),
-        { target_action: data.targetAction, ref_target: data.refTarget },
-        async () => {
-          if (data.targetAction === 'highlight') {
-            await interactiveFocus(data, click);
-          } else if (data.targetAction === 'button') {
-            await interactiveButton(data, click);
-          } else if (data.targetAction === 'formfill') {
-            await interactiveFormFill(data, click);
-          } else if (data.targetAction === 'navigate') {
-            interactiveNavigate(data, click);
-          } else if (data.targetAction === 'hover') {
-            await interactiveHover(data, click);
-          } else if (data.targetAction === 'guided') {
-            await interactiveGuided(data, click);
-          } else if (data.targetAction === 'popout') {
-            await interactivePopout(data, click);
-          }
-        },
-        undefined,
-        // "Do it" is the funnel action; "Show me" is just a preview.
-        { critical: click }
-      );
-    },
-    [
-      interactiveFocus,
-      interactiveButton,
-      interactiveFormFill,
-      interactiveNavigate,
-      interactiveHover,
-      interactiveGuided,
-      interactivePopout,
-    ]
   );
 
   /**
@@ -295,81 +244,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [checkPostconditions, waitForActionToSettle]
   );
 
-  // SequenceManager instance - moved here to be available for interactiveSequence
-  const sequenceManager = useMemo(
-    () =>
-      new SequenceManager(
-        stateManager,
-        checkRequirementsFromData,
-        dispatchInteractiveAction,
-        waitForReactUpdates,
-        isValidInteractiveElement,
-        extractInteractiveDataFromElement
-      ),
-    [stateManager, checkRequirementsFromData, dispatchInteractiveAction]
-  );
-
-  const interactiveSequence = useCallback(
-    async (data: InteractiveElementData, showOnly: boolean): Promise<SequenceRunResult> => {
-      // Recursion guard — a re-entrant call is a no-op, not a failure.
-      if (activeRefsRef.current.has(data.refTarget)) {
-        return 'completed';
-      }
-
-      stateManager.setState(data, 'running');
-
-      try {
-        // Resolve grafana: prefix if present
-        const { resolveSelector } = await import('../lib/dom');
-        const resolvedSelector = resolveSelector(data.refTarget);
-
-        const searchContainer = containerRef?.current || document;
-        const targetElements = searchContainer.querySelectorAll(resolvedSelector);
-
-        if (targetElements.length === 0) {
-          const msg = `No interactive sequence container found matching selector: ${resolvedSelector}`;
-          stateManager.handleError(msg, 'interactiveSequence', data, true);
-        }
-
-        if (targetElements.length > 1) {
-          const msg = `${targetElements.length} interactive sequence containers found matching selector: ${resolvedSelector} - this is not supported (must be exactly 1)`;
-          stateManager.handleError(msg, 'interactiveSequence', data, true);
-        }
-
-        activeRefsRef.current.add(data.refTarget);
-
-        // Find all interactive elements within the sequence container
-        const interactiveElements = Array.from(
-          targetElements[0]!.querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])')
-        );
-
-        if (interactiveElements.length === 0) {
-          const msg = `No interactive elements found within sequence container: ${data.refTarget}`;
-          stateManager.handleError(msg, 'interactiveSequence', data, true);
-        }
-
-        const result = !showOnly
-          ? // Full sequence: Show each step, then do each step, one by one
-            await sequenceManager.runStepByStepSequence(interactiveElements)
-          : // Show only mode
-            await sequenceManager.runInteractiveSequence(interactiveElements, true);
-
-        // Only a fully completed run may emit interactive-action-completed —
-        // retry exhaustion resolves without throwing.
-        stateManager.setState(data, result === 'completed' ? 'completed' : 'error');
-
-        activeRefsRef.current.delete(data.refTarget);
-        return result;
-      } catch (error) {
-        stateManager.handleError(error as Error, 'interactiveSequence', data, false);
-        activeRefsRef.current.delete(data.refTarget);
-      }
-
-      return 'action_error';
-    },
-    [containerRef, activeRefsRef, sequenceManager, stateManager]
-  );
-
   /**
    * Check requirements directly from a DOM element
    */
@@ -442,9 +316,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         elementData.skipCompletionOnEmptyTarget = true;
       }
 
-      // Sequence runs resolve on failure, so the captured result — not
-      // promise settlement — stamps the action outcome.
-      let sequenceResult: SequenceRunResult | undefined;
       await withFaroUserAction(
         isShowMode
           ? createInteractionName(UserInteraction.ShowMeButtonClick)
@@ -481,27 +352,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
                 await interactivePopout(elementData, !isShowMode);
                 break;
 
-              case 'sequence':
-                sequenceResult = await interactiveSequence(elementData, isShowMode);
-                break;
-
               case 'multistep':
                 logger.warn('multistep is executed by InteractiveMultiStep, not the element action path');
                 break;
 
               case 'noop':
-                // Noop actions are informational - no element interaction needed
-                // In show mode, briefly display the comment if provided
-                // In do mode, just mark as completed (nothing to execute)
                 if (isShowMode && targetComment) {
-                  // Show a brief notification with the comment
-                  // Use navigationManager to show a floating comment briefly
                   navigationManager.showNoopComment(targetComment);
-                  // Auto-dismiss after a delay
                   await new Promise((resolve) => setTimeout(resolve, 2000));
                   navigationManager.clearAllHighlights();
                 }
-                // Do mode: nothing to do - noop steps complete immediately
                 break;
 
               default:
@@ -512,27 +372,17 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
           }
         },
-        targetAction === 'sequence' ? USER_ACTION_TIMEOUT_LONG_MS : undefined,
+        undefined,
         {
           critical: !isShowMode,
-          // Checked here (not just after the span closes below) so a handler
-          // that suppressed its own completion doesn't get its Faro span
-          // stamped 'ok' before the suppression is known — completionSuppressed
-          // is set synchronously inside the awaited handler, before this runs.
-          outcomeFrom: () => (elementData.completionSuppressed ? 'error' : outcomeFromSequenceRun(sequenceResult)),
+          // Suppressed completion must fail both the span and the caller’s persistence gate.
+          outcomeFrom: () => (elementData.completionSuppressed ? 'error' : 'ok'),
         }
       );
-      // A handler that suppressed its own completion (skipCompletionOnEmptyTarget)
-      // reports it here — otherwise the return value would say 'ok' and the
-      // caller's own completion persistence, which only checks this outcome,
-      // would mark the step done anyway.
       if (elementData.completionSuppressed) {
         return 'error';
       }
-      // Sequence runs resolve rather than throw on requirements-exhausted/
-      // action-error, so callers must check this instead of assuming
-      // settlement means success — see the outcomeFrom mapping above.
-      return sequenceResult === undefined || sequenceResult === 'completed' ? 'ok' : 'error';
+      return 'ok';
     },
     [
       interactiveFocus,
@@ -542,7 +392,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       interactiveHover,
       interactiveGuided,
       interactivePopout,
-      interactiveSequence,
       stateManager,
       navigationManager,
     ]
@@ -552,7 +401,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     // Low-level action methods - primarily for testing, use executeInteractiveAction for new code
     interactiveFocus,
     interactiveButton,
-    interactiveSequence,
     interactiveFormFill,
     interactiveNavigate,
 

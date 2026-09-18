@@ -42,7 +42,7 @@ export const CLI_VIEW: SurfaceView = {
   // An operator can run the command that prints the vocabulary, so they are told to.
   describe: (field, stated) =>
     carriesRequirementTokens(field.name)
-      ? `${stated} | run "pathfinder-cli requirements list" for valid tokens (e.g., ${REQUIREMENT_TOKEN_EXAMPLES})`
+      ? `${stated} | repeat the flag once per condition, never comma-joined | run "pathfinder-cli requirements list" for valid tokens (e.g., ${REQUIREMENT_TOKEN_EXAMPLES})`
       : stated,
 };
 

@@ -8,9 +8,12 @@
  */
 
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
+import { logger } from '../lib/logging';
 import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
 import { JsonSnippetSchema, SnippetCatalogSchema } from '../types/json-snippet.schema';
 import type { JsonSnippet, SnippetCatalog } from '../types/json-snippet.types';
+import { formatPath } from '../validation/errors';
+import { validateGuidedActionsInBlocks } from '../validation/guided-action-validator';
 
 import type { SnippetCatalogProvider, SnippetResolution, SnippetResolver } from './types';
 
@@ -47,7 +50,10 @@ export class OnlineCdnSnippetResolver implements SnippetResolver, SnippetCatalog
         return {
           ok: false,
           id: snippetId,
-          error: { code: 'network-error', message: `Snippet fetch failed: HTTP ${response.status}` },
+          error: {
+            code: response.status === 404 ? 'not-found' : 'network-error',
+            message: `Snippet fetch failed: HTTP ${response.status}`,
+          },
         };
       }
       const raw = await response.json();
@@ -59,7 +65,14 @@ export class OnlineCdnSnippetResolver implements SnippetResolver, SnippetCatalog
           error: { code: 'validation-error', message: `Online snippet validation failed: ${parsed.error.message}` },
         };
       }
-      return { ok: true, id: snippetId, snippet: parsed.data as JsonSnippet, source: 'online-cdn' };
+      const snippet = parsed.data as JsonSnippet;
+      // Runtime path: an already-published snippet keeps resolving so every
+      // block that does work still renders. Only the authoring gate in
+      // `build-snippets` refuses a guided verb the handler cannot drive.
+      for (const issue of validateGuidedActionsInBlocks(snippet.blocks)) {
+        logger.warn(`[OnlineSnippetResolver] snippet "${snippetId}" ${formatPath(issue.path)}: ${issue.message}`);
+      }
+      return { ok: true, id: snippetId, snippet, source: 'online-cdn' };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Snippet fetch failed';
       return { ok: false, id: snippetId, error: { code: 'network-error', message } };

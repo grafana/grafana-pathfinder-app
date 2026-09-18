@@ -10,7 +10,7 @@ import * as path from 'path';
 
 import { buildRepository } from '../cli/commands/build-repository';
 import { COMMANDER_COMMANDS } from '../cli/cli-commands';
-import { RepositoryEntrySchema, RepositoryJsonSchema } from '../types/package.schema';
+import { GuideTargetingSchema, RepositoryEntrySchema, RepositoryJsonSchema } from '../types/package.schema';
 
 const buildRepositoryCommand = COMMANDER_COMMANDS.get('build-repository')!;
 
@@ -27,6 +27,9 @@ function writeJson(filePath: string, data: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
+
+/** Known dropped targeting fields; keep this shrink-only baseline explicit. */
+const KNOWN_DROPPED_TARGETING_FIELDS: readonly string[] = [];
 
 describe('buildRepository', () => {
   let tmpDir: string;
@@ -95,6 +98,38 @@ describe('buildRepository', () => {
     expect(entry!.category).toBe('data-availability');
     expect(entry!.depends).toEqual(['welcome-to-grafana']);
     expect(entry!.provides).toEqual(['datasource-configured']);
+  });
+
+  it('should round-trip every declared targeting field into repository entries', () => {
+    const targeting = Object.fromEntries(
+      Object.keys(GuideTargetingSchema.shape).map((field) => [field, { tripwire: field }])
+    );
+
+    writeJson(path.join(tmpDir, 'targeting-tripwire', 'content.json'), {
+      id: 'targeting-tripwire',
+      title: 'Targeting tripwire',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'targeting-tripwire', 'manifest.json'), {
+      id: 'targeting-tripwire',
+      type: 'guide',
+      targeting,
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+
+    const emitted = repository['targeting-tripwire']?.targeting as Record<string, unknown> | undefined;
+    expect(emitted).toBeDefined();
+
+    const dropped = Object.keys(targeting).filter((field) => !Object.hasOwn(emitted ?? {}, field));
+    expect(dropped).toEqual(KNOWN_DROPPED_TARGETING_FIELDS);
+
+    for (const [field, value] of Object.entries(targeting)) {
+      if (!KNOWN_DROPPED_TARGETING_FIELDS.includes(field)) {
+        expect(emitted).toHaveProperty(field, value);
+      }
+    }
   });
 
   it('should denormalize manifest metadata into repository entries', () => {

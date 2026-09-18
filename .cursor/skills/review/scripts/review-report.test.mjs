@@ -80,10 +80,15 @@ test('compact report fixtures render every author-facing category in stable orde
       deferred: [{ id: followUp.id, concern_id: followUp.concern_id }],
     })
   );
-  assert.match(output, /Fix this item and this PR is mergeable\./);
+  assert.match(output, /^Blockers:$/m);
+  assert.match(output, /^Follow-ups:$/m);
+  assert.match(output, /^Suggestions & nits:$/m);
+  assert.doesNotMatch(output, /^#/m);
   assert.ok(output.indexOf('[blocking]') < output.indexOf('[follow_up]'));
   assert.ok(output.indexOf('[follow_up]') < output.indexOf('[suggestion]'));
   assert.ok(output.indexOf('[suggestion]') < output.indexOf('[nit]'));
+  assert.match(output, /^1\. \[suggestion\]/m);
+  assert.match(output, /^2\. \[nit\]/m);
   assert.equal(
     output.split('\n').slice(-4).join('\n'),
     [
@@ -100,7 +105,8 @@ test('publishing is passive and follow-ups have no ownership metadata', () => {
   const output = renderReviewReport(
     report({ findings: [followUp], deferred: [{ id: followUp.id, concern_id: followUp.concern_id }] })
   );
-  assert.match(output, /These are tracked separately and do not block merge\./);
+  assert.match(output, /^Follow-ups:$/m);
+  assert.match(output, /^1\. \[follow_up\]/m);
   assert.doesNotMatch(output, /Owner:/);
   assert.match(output, /Verdict: Approve with Minor/);
   assert.throws(

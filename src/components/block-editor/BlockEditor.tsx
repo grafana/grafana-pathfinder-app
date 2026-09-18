@@ -19,6 +19,7 @@ import { useRecordingActions } from './hooks/useRecordingActions';
 import { useJsonModeHandlers } from './hooks/useJsonModeHandlers';
 import { useBlockConversionHandlers } from './hooks/useBlockConversionHandlers';
 import { useGuideOperations } from './hooks/useGuideOperations';
+import { canMergeSelection } from './hooks/useBlockEditor.bulk-delete';
 import { useBackendGuides, hasManageableBackendGuides } from './hooks/useBackendGuides';
 import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
@@ -291,7 +292,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
   // Click the eye on the same target again to toggle it off.
   const [pinnedPreviewTargets, setPinnedPreviewTargets] = useState<PreviewTarget[]>([]);
 
-  // Block selection mode state (for merging blocks)
+  // Block selection mode state (for merging and bulk deletion)
   const selection = useBlockSelection();
 
   // Backend availability — read once from boot-time feature toggles
@@ -647,20 +648,30 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
 
   // Merge handlers - use selection hook but need access to editor
   const handleMergeToMultistep = useCallback(() => {
-    if (selection.selectedBlockIds.size < 2) {
+    if (!canMergeSelection(state.blocks, selection.selectedBlockIds)) {
       return;
     }
     editor.mergeBlocksToMultistep(Array.from(selection.selectedBlockIds));
     selection.clearSelection();
-  }, [selection, editor]);
+  }, [selection, editor, state.blocks]);
 
   const handleMergeToGuided = useCallback(() => {
-    if (selection.selectedBlockIds.size < 2) {
+    if (!canMergeSelection(state.blocks, selection.selectedBlockIds)) {
       return;
     }
     editor.mergeBlocksToGuided(Array.from(selection.selectedBlockIds));
     selection.clearSelection();
-  }, [selection, editor]);
+  }, [selection, editor, state.blocks]);
+
+  const canMergeSelectedBlocks = useMemo(
+    () => canMergeSelection(state.blocks, selection.selectedBlockIds),
+    [state.blocks, selection.selectedBlockIds]
+  );
+
+  const handleDeleteSelected = useCallback(() => {
+    editor.deleteSelectedBlocks(Array.from(selection.selectedBlockIds));
+    selection.clearSelection();
+  }, [editor, selection]);
 
   // useBackendSaveFlow returns a fresh object literal every render, so depending
   // on `backendSaveFlow` directly defeats the memoization below. Destructure the
@@ -846,6 +857,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         }}
         onMergeToMultistep={handleMergeToMultistep}
         onMergeToGuided={handleMergeToGuided}
+        canMergeSelection={canMergeSelectedBlocks}
+        onDeleteSelected={handleDeleteSelected}
         onClearSelection={selection.clearSelection}
         onLoadTemplate={guideOps.handleLoadTemplate}
         onOpenTour={() => modals.open('tour')}

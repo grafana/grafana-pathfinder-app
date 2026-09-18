@@ -62,16 +62,19 @@ Related findings with the same concern and evidence surface may share a packet i
 For an established defect, `review-policy.mjs` applies this closed rule in order:
 
 1. PR-caused or newly reachable protected harm is `blocking`.
-2. A pre-existing or unreachable latent condition is `follow_up`, including protected harm.
-3. A condition induced by optional earlier advice is `follow_up`, unless rule 1 applies.
-4. A late finding is `follow_up`, unless rule 1 applies.
-5. A PR-caused one-way door is `blocking`.
-6. A condition with no current harm is `follow_up`.
-7. Every other confirmed regression or newly reachable condition is `blocking`.
+2. An adjacent condition below `high` severity is `dropped`.
+3. A surviving pre-existing or unreachable latent condition is `follow_up`, including protected harm.
+4. A condition induced by optional earlier advice is `follow_up`, unless rule 1 applies.
+5. A late finding is `follow_up`, unless rule 1 applies.
+6. A PR-caused one-way door is `blocking`.
+7. A condition with no current harm is `follow_up`.
+8. Every other confirmed regression or newly reachable condition is `blocking`.
 
 Protected harm is derived from either a `security`, `data_loss`, or `credential_exposure` impact, or `breaks_shipped_path: true`, combined with `regression` or `latent_reachable` origin. One-way-door status is derived from `reversibility`.
 
-Optional observations use the same facade. A scope-widening suggestion or nit becomes `follow_up`. At round three or later, a new suggestion or nit drops. A prior unresolved optional observation may carry by stable ID without new prose only when its finding ID and concern exactly match an entry in the facade's `prior_deferred` input. Before round three, optional work within the changed surface preserves its `suggestion` or `nit` kind.
+Adjacent means `pre_existing` or `latent_unreachable`: a real condition this PR did not cause, usually in a file it happens to touch. A low or medium adjacent finding widens PR scope for little value, so rule 2 drops it instead of deferring it, and the facade applies that rule before verification so it never consumes a skeptic. Rule 2 exempts protected impact, `breaks_shipped_path`, and a `clearance_contradiction`, so neither a severity mislabel nor the retraction of a wrong prior clearance can silence a real finding. A surviving adjacent follow-up states filing a separate issue as its `suggested_action`; it is never stated as work for this PR.
+
+Optional observations use the same facade. A scope-widening suggestion or nit is `dropped`, for the same scope reason as rule 2. At round three or later, a new suggestion or nit drops. A prior unresolved optional observation may carry by stable ID without new prose only when its finding ID and concern exactly match an entry in the facade's `prior_deferred` input. Before round three, optional work within the changed surface preserves its `suggestion` or `nit` kind.
 
 Every policy request, verification-batch request, and `ReviewReport` supplies an explicit integer round from 1 through 100. Missing or out-of-range values fail closed. Only the orchestrator derives a fallback when a version 1 marker supplies no reliable round.
 
@@ -204,6 +207,8 @@ After policy and reconciliation, render one `ReviewReport`:
 Each finding contains only `id`, `concern_id`, `disposition`, `severity`, `title`, `problem`, `suggested_action`, and optional `reversibility`. Disposition is `blocking`, `follow_up`, `suggestion`, or `nit`. The report does not carry confidence, reviewer reasoning, or follow-up ownership.
 
 `review-report.mjs` validates, sorts by disposition then severity, renders every retained finding, derives the verdict and counts, and emits exactly one marker plus one trailing operator recap. It performs no policy decisions.
+
+Findings render under flat `Blockers:`, `Follow-ups:`, and `Suggestions & nits:` labels, each an independently numbered list, suggestions before nits, empty labels omitted. There is no section preamble and no Markdown heading; `## Review incomplete` is the one heading the renderer emits, and only for that mode.
 
 Rendering does not authorize publication. Present the complete output to the user and obtain explicit approval before posting it or otherwise mutating GitHub.
 

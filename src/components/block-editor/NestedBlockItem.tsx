@@ -69,10 +69,6 @@ export function NestedBlockItem({
   const [isNoteModalOpen, setNoteModalOpen] = useState(false);
   const currentAuthorNote = 'authorNote' in block && typeof block.authorNote === 'string' ? block.authorNote : '';
 
-  // Interactive, multistep, and guided blocks can be selected for merging
-  const isSelectable =
-    isSelectionMode && (block.type === 'interactive' || block.type === 'multistep' || block.type === 'guided');
-
   // Get preview content - same logic as BlockItem
   const getPreview = (): string => {
     if ('content' in block && typeof block.content === 'string') {
@@ -90,8 +86,12 @@ export function NestedBlockItem({
 
   const preview = getPreview();
 
-  const handleCheckboxClick = useCallback(
-    (e: React.MouseEvent) => {
+  const handleCheckboxClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+
+  const handleCheckboxChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       e.stopPropagation();
       onToggleSelect?.();
     },
@@ -109,21 +109,16 @@ export function NestedBlockItem({
 
   return (
     <div className={containerClass} data-block-card>
-      {/* Selection checkbox — only for selectable block types
-          (interactive / multistep / guided). Non-selectable blocks
-          render an empty spacer for alignment. */}
-      {isSelectionMode &&
-        (isSelectable ? (
-          <div
-            className={styles.selectionCheckbox}
-            onClick={handleCheckboxClick}
-            title={isSelected ? 'Deselect' : 'Select'}
-          >
-            <Checkbox value={isSelected} onChange={onToggleSelect} />
-          </div>
-        ) : (
-          <div className={styles.selectionCheckbox} aria-hidden="true" />
-        ))}
+      {/* Selection checkbox — every block can be selected for bulk actions. */}
+      {isSelectionMode && (
+        <div
+          className={styles.selectionCheckbox}
+          onClick={handleCheckboxClick}
+          title={isSelected ? 'Deselect' : 'Select'}
+        >
+          <Checkbox value={isSelected} onChange={handleCheckboxChange} />
+        </div>
+      )}
 
       {/* Drag handle - visual indicator only (hidden in selection mode) */}
       {!isSelectionMode && (

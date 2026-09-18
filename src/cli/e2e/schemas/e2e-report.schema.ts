@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const E2E_REPORT_SCHEMA_VERSION = '1.0.0' as const;
+export const E2E_REPORT_SCHEMA_VERSION = '1.1.0' as const;
 
 export const E2E_REPORT_SCHEMA_ID =
   `https://grafana.com/schemas/pathfinder/e2e-test-report-${E2E_REPORT_SCHEMA_VERSION}.json` as const;
@@ -31,10 +31,18 @@ export const E2EErrorCodeSchema = z.enum([
   'PLAYWRIGHT_SPAWN_FAILED',
   'NO_CAPACITY',
   'REPORT_MISSING',
+  'TRANSITION_FAILED',
   'UNKNOWN',
 ]);
 
 export const ErrorClassificationSchema = z.enum(['content-drift', 'product-regression', 'infrastructure', 'unknown']);
+export const E2ETransitionKindSchema = z.enum([
+  'badge-obstruction',
+  'guide-load-ambiguous',
+  'reset-ambiguous',
+  'tab-close-failed',
+  'step-detach-failed',
+]);
 
 // ============================================
 // Shared sub-schemas
@@ -91,8 +99,23 @@ export const ArtifactPathsSchema = z.object({
   console: z.string().optional(),
 });
 
+export const StepCoverageSchema = z.object({
+  contractSource: z.enum(['current', 'legacy']),
+  rendered: z.number().int().nonnegative(),
+  supported: z.number().int().nonnegative(),
+  executed: z.number().int().nonnegative(),
+  unsupported: z.number().int().nonnegative(),
+  unsupportedSteps: z.array(
+    z.object({
+      stepKind: z.string(),
+      stepId: z.string(),
+    })
+  ),
+});
+
 export const ReportStepResultSchema = z.object({
   stepId: z.string(),
+  stepKind: z.string().optional(),
   index: z.number().int().nonnegative(),
   status: z.enum(['passed', 'failed', 'skipped', 'not_reached']),
   duration: z.number().nonnegative(),
@@ -152,6 +175,7 @@ export const E2ETestReportSchema = z
     schemaVersion: z.literal(E2E_REPORT_SCHEMA_VERSION),
     outcome: E2EExecutionOutcomeSchema,
     errorCode: E2EErrorCodeSchema.optional(),
+    transitionKind: E2ETransitionKindSchema.optional(),
     errorMessage: z.string().optional(),
     runner: RunnerProvenanceSchema,
     startedAt: z.iso.datetime(),
@@ -161,6 +185,7 @@ export const E2ETestReportSchema = z
     config: ReportConfigSchema,
     summary: ReportSummarySchema,
     steps: z.array(ReportStepResultSchema),
+    coverage: StepCoverageSchema.optional(),
     aborted: z.boolean().optional(),
     abortReason: AbortReasonSchema.optional(),
     abortMessage: z.string().optional(),
@@ -226,11 +251,13 @@ export const MultiGuideReportSchema = z
 
 export type E2EExecutionOutcome = z.infer<typeof E2EExecutionOutcomeSchema>;
 export type E2EErrorCode = z.infer<typeof E2EErrorCodeSchema>;
+export type E2ETransitionKind = z.infer<typeof E2ETransitionKindSchema>;
 export type ErrorClassification = z.infer<typeof ErrorClassificationSchema>;
 export type RunnerProvenance = z.infer<typeof RunnerProvenanceSchema>;
 export type ReportTarget = z.infer<typeof ReportTargetSchema>;
 export type ReportSummary = z.infer<typeof ReportSummarySchema>;
 export type ArtifactPaths = z.infer<typeof ArtifactPathsSchema>;
+export type StepCoverage = z.infer<typeof StepCoverageSchema>;
 export type ReportStepResult = z.infer<typeof ReportStepResultSchema>;
 export type GuideMetadata = z.infer<typeof GuideMetadataSchema>;
 export type ReportConfig = z.infer<typeof ReportConfigSchema>;

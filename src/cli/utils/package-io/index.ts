@@ -19,7 +19,7 @@
  *   3. auto-id           — block-id minting (`<type>-<n>`)
  *   4. state-validation  — validatePackageState + classifiers
  *   5. disk              — readPackage / writePackage
- *   6. mutators          — appendBlock / appendStep / appendChoice / editBlock / removeBlock
+ *   6. mutators          — appendBlock / appendStep / appendChoice / appendHint / editBlock / removeBlock
  *   7. move              — moveBlock
  *   8. compose           — mutateAndValidate
  *   9. create-state      — newPackageState
@@ -44,7 +44,15 @@ export type { ValidationOutcome, ValidatePackageStateOptions } from './state-val
 export { readPackage, writePackage } from './disk';
 export type { PackageState } from './disk';
 
-export { appendBlock, appendStep, appendChoice, editBlock, removeBlock, UNEDITABLE_BLOCK_FIELDS } from './mutators';
+export {
+  appendBlock,
+  appendStep,
+  appendChoice,
+  appendHint,
+  editBlock,
+  removeBlock,
+  UNEDITABLE_BLOCK_FIELDS,
+} from './mutators';
 export type { AppendBlockOptions, AppendBlockResult, EditBlockOptions, RemoveBlockOptions } from './mutators';
 
 export { moveBlock } from './move';

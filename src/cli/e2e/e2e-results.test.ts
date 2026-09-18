@@ -22,6 +22,7 @@ import {
   countGuideStatuses,
   exitCodeFromResults,
   guideResultReason,
+  guideStatusFromResultsData,
   preRunSkipsFromResults,
   provisioningErrorCode,
   provisioningFailureResults,
@@ -75,6 +76,62 @@ describe('resolveRunMode', () => {
 
   it('falls back to local when no remote inputs are given', () => {
     expect(resolveRunMode({ remote: false })).toBe('local');
+  });
+});
+
+describe('guideResultReason', () => {
+  it('shows the transition kind for fatal transition results', () => {
+    const resultsData: TestResultsData = {
+      guide: { id: 'a', title: 'A', path: 'a/content.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      outcome: 'infrastructure_error',
+      errorCode: 'TRANSITION_FAILED',
+      transitionKind: 'badge-obstruction',
+      results: [],
+      aborted: true,
+    };
+
+    expect(
+      guideResultReason({
+        guide: 'a/content.json',
+        id: 'a',
+        status: 'failed',
+        exitCode: ExitCode.TEST_FAILURE,
+        autoIncluded: false,
+        resultsData,
+      })
+    ).toBe(' (transition failed: badge-obstruction)');
+  });
+});
+
+describe('guideStatusFromResultsData', () => {
+  function resultsData(overrides: Partial<TestResultsData> = {}): TestResultsData {
+    return {
+      guide: { id: 'guide', title: 'Guide', path: 'guide/content.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      results: [],
+      aborted: false,
+      ...overrides,
+    };
+  }
+
+  it('maps an unsupported-only skipped result to its CLI status', () => {
+    expect(guideStatusFromResultsData(resultsData({ outcome: 'skipped' }))).toBe('skipped_unsupported_steps');
+  });
+
+  it('preserves prerequisite and authentication statuses before outcome mapping', () => {
+    expect(guideStatusFromResultsData(resultsData({ outcome: 'skipped', abortReason: 'SKIPPED_PREREQ' }))).toBe(
+      'skipped_prereq'
+    );
+    expect(guideStatusFromResultsData(resultsData({ outcome: 'aborted', errorCode: 'AUTH_EXPIRED' }))).toBe(
+      'auth_expired'
+    );
+  });
+
+  it('maps passed, failed, and legacy results', () => {
+    expect(guideStatusFromResultsData(resultsData({ outcome: 'passed' }))).toBe('passed');
+    expect(guideStatusFromResultsData(resultsData({ outcome: 'failed' }))).toBe('failed');
+    expect(guideStatusFromResultsData(resultsData())).toBe('passed');
   });
 });
 
@@ -399,7 +456,9 @@ describe('exitCodeFromResults', () => {
   });
 
   it('returns SUCCESS for an all-passing run', () => {
-    expect(exitCodeFromResults([result('passed'), result('skipped_prereq')])).toBe(ExitCode.SUCCESS);
+    expect(exitCodeFromResults([result('passed'), result('skipped_prereq'), result('skipped_unsupported_steps')])).toBe(
+      ExitCode.SUCCESS
+    );
   });
 
   it('returns SUCCESS for an empty result set', () => {
@@ -457,6 +516,13 @@ describe('status label / icon tables', () => {
 
     expect(label).toBe('⊘ Skipped (unsafe shared stack)');
     expect(GUIDE_STATUS_ICONS.skipped_unsafe_shared_stack).toBe('⊘');
+  });
+
+  it('defines the unsupported-step skip status', () => {
+    const label = GUIDE_STATUS_LABELS.find(([status]) => status === 'skipped_unsupported_steps')?.[1];
+
+    expect(label).toBe('⊘ Skipped (unsupported steps)');
+    expect(GUIDE_STATUS_ICONS.skipped_unsupported_steps).toBe('⊘');
   });
 });
 

@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
@@ -26,6 +27,7 @@ import { useInteractiveMode } from '../../global-state/interactive-mode-context'
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 let anonymousMultiStepCounter = 0;
 
@@ -50,8 +52,8 @@ interface InteractiveMultiStepProps {
   className?: string;
   disabled?: boolean;
   hints?: string;
-  requirements?: string; // Overall requirements for the multi-step
-  objectives?: string; // Overall objectives for the multi-step
+  requirements?: ConditionInput; // Overall requirements for the multi-step
+  objectives?: ConditionInput; // Overall objectives for the multi-step
   onComplete?: () => void;
   skippable?: boolean; // Whether this multi-step can be skipped if requirements fail
   completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
@@ -795,6 +797,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         className={`interactive-step${className ? ` ${className}` : ''}${
           uiState === STEP_STATES.COMPLETED ? ' completed' : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
+        {...getTrackedStepRootAttributes('multistep', stepId || renderedStepId)}
         data-targetaction="multistep"
         data-reftarget={renderedStepId}
         data-internal-actions={JSON.stringify(internalActions)}

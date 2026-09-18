@@ -180,7 +180,28 @@ export default defineConfig([
           selector:
             "MemberExpression[object.type='TSAsExpression'][object.expression.name='window'][object.typeAnnotation.type='TSAnyKeyword'][property.name=/^__/]",
           message:
-            'Do not bypass the typed Pathfinder window-global contract with window as any. ' +
+            'Do not bypass the typed Pathfinder window-global contract with a window cast. ' +
+            'Declare the global in src/types/window-globals.ts and access it through window directly.',
+        },
+        {
+          selector:
+            "MemberExpression[object.type='TSAsExpression'][object.expression.name='window'][object.typeAnnotation.type='TSAnyKeyword'][computed=true][property.type='Literal'][property.value=/^__/]",
+          message:
+            'Do not bypass the typed Pathfinder window-global contract with a window cast. ' +
+            'Declare the global in src/types/window-globals.ts and access it through window directly.',
+        },
+        {
+          selector:
+            "MemberExpression[object.type='TSAsExpression'][object.expression.type='TSAsExpression'][object.expression.expression.type='Identifier'][object.expression.expression.name='window'][property.name=/^__/]",
+          message:
+            'Do not bypass the typed Pathfinder window-global contract with a window cast. ' +
+            'Declare the global in src/types/window-globals.ts and access it through window directly.',
+        },
+        {
+          selector:
+            "MemberExpression[object.type='TSAsExpression'][object.expression.type='TSAsExpression'][object.expression.expression.type='Identifier'][object.expression.expression.name='window'][computed=true][property.type='Literal'][property.value=/^__/]",
+          message:
+            'Do not bypass the typed Pathfinder window-global contract with a window cast. ' +
             'Declare the global in src/types/window-globals.ts and access it through window directly.',
         },
         {
@@ -262,6 +283,38 @@ export default defineConfig([
       'no-constant-condition': 'error',
       'no-dupe-else-if': 'error',
       'no-useless-return': 'error',
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Unused bindings (Epic #603)
+  // `@grafana/eslint-config` turns this rule off in favour of TypeScript's
+  // `noUnusedLocals`, which this repo does inherit. But that flag is a *locals*
+  // flag: it is structurally blind to unused function parameters
+  // (`noUnusedParameters` is a separate flag, unset in our config chain) and no
+  // compiler flag at all reports an unused `catch` binding. A `@ts-expect-error`
+  // also silences the compiler while leaving this rule intact. A leading
+  // underscore is the escape hatch for a binding that must exist but is
+  // deliberately unread; `ignoreRestSiblings` keeps omit-style destructures
+  // (`const { drop, ...rest } = obj`) legal, since the sibling's only job is to
+  // stay out of `rest`. `src/validation/unused-bindings-lint-config.test.ts`
+  // fails if a later config block downgrades the rule at the probe's own path,
+  // and separately resolves the effective severity for every file under `src/`
+  // so a block that narrows the rule away from any other subtree fails too.
+  // ---------------------------------------------------------------------------
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'after-used',
+          argsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
 

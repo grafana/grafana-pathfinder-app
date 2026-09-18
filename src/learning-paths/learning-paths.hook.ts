@@ -5,8 +5,10 @@
  * Provides a unified API for components to interact with the learning system.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { config } from '@grafana/runtime';
+import { useState, useEffect, useCallback, useMemo, useSyncExternalStore } from 'react';
+import { AppEvents } from '@grafana/data';
+import { t } from '@grafana/i18n';
+import { config, getAppEvents } from '@grafana/runtime';
 
 import type {
   LearningPath,
@@ -18,7 +20,9 @@ import type {
   GuideMetadataEntry,
 } from '../types/learning-paths.types';
 
+import { invalidateEmittedCompletion } from '../completion-records';
 import { StorageEvents } from '../lib/event-names';
+import { getMilestoneSlug } from '../lib/learning-journey-url';
 import { logger } from '../lib/logging';
 import {
   learningProgressStorage,
@@ -26,8 +30,17 @@ import {
   interactiveCompletionStorage,
   journeyCompletionStorage,
   milestoneCompletionStorage,
+  guideCompletionMarkStorage,
 } from '../lib/user-storage';
 import { evictContentCache } from '../global-state/completion-store';
+import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../global-state/progress-events';
+import {
+  pathMemberContentKeys,
+  pathMemberIdSchemeKeys,
+  resolvePathMemberPercentages,
+  type PathMember,
+} from '../global-state/path-member-join';
+import { meanOfMemberPercentages, type MemberRollupProgress } from '../lib/guide-stats';
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
@@ -36,6 +49,24 @@ import { fetchAppPlatformLearningPaths, type AppPlatformPathsResult } from './ap
 import { markGuideCompleted as coordinatorMarkGuideCompleted } from './badge-coordinator';
 
 const EMPTY_APP_PLATFORM_RESULT: AppPlatformPathsResult = { paths: [], guideMetadata: Object.create(null) };
+
+// Completion-record identity (`guideSource`) is resolved from a manifest we
+// don't have in hand here, so this invalidates the write-side dedupe guard
+// under every source a path member is realistically recorded under —
+// including `interactive-tutorials`, which `completion-identity.ts` uses as
+// its default when no manifest resolves one — rather
+// than fetching each member's manifest just to reset a guard. Harmless when
+// a member's real source isn't in this list: that guard is simply not lifted
+// for it, a narrower miss than the reset-then-re-mark defect this exists to close.
+const KNOWN_PATH_MEMBER_GUIDE_SOURCES = ['bundled', 'app-platform', 'interactive-tutorials'] as const;
+
+function invalidateEmittedCompletionsForPathMembers(memberIds: readonly string[]): void {
+  for (const memberId of memberIds) {
+    for (const guideSource of KNOWN_PATH_MEMBER_GUIDE_SOURCES) {
+      invalidateEmittedCompletion(guideSource, memberId);
+    }
+  }
+}
 
 // ============================================================================
 // CONSTANTS
@@ -65,15 +96,72 @@ function formatLegacyBadgeTitle(badgeId: string): string {
 }
 
 /**
- * Calculates path completion percentage
+ * A path's rollup: the mean of its members' percentages
+ * (docs/design/COMPLETION-MODEL.md, decision 4), joined to each member's
+ * persisted percentage by content key (decision 9). Equal weight per
+ * member, regardless of length.
+ *
+ * `resolveMemberUrl` is load-bearing for a URL-based path (`path.url` set):
+ * its members are addressed by a docs URL that cannot be derived from the
+ * member id, so without it the join can form no key, every member resolves
+ * `'unresolved'`, and the mean is taken over the completed ones alone — one
+ * finished module out of six would read 100%. An App Platform member also
+ * carries one (`backend-guide:<id>`, stamped by `app-platform-paths.ts`),
+ * which the join then treats as the member's only candidate group — narrower,
+ * and correct, since that is the scheme it was published under. Only a
+ * bundled member arrives without one and falls back to the id schemes.
  */
-function calculatePathProgress(path: LearningPath, completedGuides: string[]): number {
-  if (path.guides.length === 0) {
-    return 0;
-  }
+function calculatePathRollup(
+  path: LearningPath,
+  completedGuides: readonly string[],
+  resolveMemberUrl: (guideId: string, pathId: string) => string | undefined
+): MemberRollupProgress {
+  const members: PathMember[] = path.guides.map((id) => {
+    const url = resolveMemberUrl(id, path.id);
+    return url ? { id, url } : { id };
+  });
+  const { resolvedPercentages } = resolvePathMemberPercentages(members, {
+    pathBaseUrl: path.url,
+    completedMemberIds: completedGuides,
+    // interactiveCompletionStorage, and only that — see path-member-join.ts's
+    // own doc comment for why journeyCompletionStorage would systematically
+    // exclude every partially-progressed App Platform member.
+    persistedPercentages: interactiveCompletionStorage.peekAll(),
+  });
+  return meanOfMemberPercentages(resolvedPercentages);
+}
 
-  const completedCount = path.guides.filter((g) => completedGuides.includes(g)).length;
-  return Math.round((completedCount / path.guides.length) * 100);
+/**
+ * Clears interactive progress for every content key a path reads under,
+ * completing the whole sweep before reporting.
+ *
+ * A per-key clear rejects when a record survives the delete. Failing the whole
+ * sweep on the first rejection would leave the rest of the path untouched with
+ * nothing said about it, so every key is attempted and the reader is told once
+ * at the end if any of them did not take.
+ */
+async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Promise<void> {
+  const results = await Promise.allSettled(contentKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+  const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+  const firstFailure = failures[0];
+  if (!firstFailure) {
+    return;
+  }
+  logger.error('[LearningPaths] Failed to reset interactive progress', {
+    failed: failures.length,
+    total: contentKeys.length,
+    error: firstFailure.reason,
+  });
+  getAppEvents().publish({
+    type: AppEvents.alertError.name,
+    payload: [
+      t('myLearning.resetPathErrorTitle', 'Reset incomplete'),
+      t(
+        'myLearning.resetPathErrorMessage',
+        "Some of this path's progress could not be cleared. Reload the page and try again."
+      ),
+    ],
+  });
 }
 
 // ============================================================================
@@ -353,6 +441,15 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [resolveGuideMetadata]
   );
 
+  // A member's percentage lives in storage, so a rollup goes stale unless the
+  // store's own announcement re-renders this hook's host — `LearningProgressUpdated`
+  // fires on membership and badge changes, never on a per-step percentage write.
+  const guideProgressRevision = useSyncExternalStore(
+    subscribeGuideProgressRevision,
+    getGuideProgressRevision,
+    getGuideProgressRevision
+  );
+
   // Get completion percentage for a path
   const getPathProgress = useCallback(
     (pathId: string): number => {
@@ -360,17 +457,25 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (!path) {
         return 0;
       }
-      return calculatePathProgress(path, progress.completedGuides);
+      return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).percent;
     },
-    [paths, progress.completedGuides]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the revision is not read here, it is what re-identifies this callback so a consumer memoising on it (My Learning's card list) recomputes when the evidence moves
+    [paths, progress.completedGuides, getGuideUrlForPath, guideProgressRevision]
   );
 
-  // Check if a path is completed
+  // Check if a path is completed. Not `getPathProgress(pathId) === 100` — a
+  // fully-finished path can legitimately round to 99 (meanOfMemberPercentages
+  // reserves 100 for `complete`), so that comparison would strand it.
   const isPathCompleted = useCallback(
     (pathId: string): boolean => {
-      return getPathProgress(pathId) === 100;
+      const path = paths.find((p) => p.id === pathId);
+      if (!path) {
+        return false;
+      }
+      return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).complete;
     },
-    [getPathProgress]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above: the revision re-identifies the callback, it is not an input the body reads
+    [paths, progress.completedGuides, getGuideUrlForPath, guideProgressRevision]
   );
 
   // Mark a guide as completed.
@@ -411,6 +516,11 @@ export function useLearningPaths(): UseLearningPathsReturn {
         return;
       }
 
+      // Guard-invalidation member ids beyond `path.guides`, which for a
+      // URL-based path can still be empty here — the dynamic milestone fetch
+      // that populates it is not required for a reset to be effective.
+      let recoveredMilestoneSlugs: string[] = [];
+
       if (path.url) {
         await milestoneCompletionStorage.clear(path.url);
 
@@ -428,34 +538,61 @@ export function useLearningPaths(): UseLearningPathsReturn {
         const milestoneKeys = Object.keys(completions).filter((key) => key.startsWith(normalizedUrl));
         const journeyKeys = [path.url, ...Object.keys(journeyCompletions).filter((k) => k.startsWith(normalizedUrl))];
 
-        await Promise.all(milestoneKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+        await clearInteractiveProgressForContentKeys(milestoneKeys);
         await interactiveCompletionStorage.clearMany(milestoneKeys);
         await journeyCompletionStorage.clearMany(journeyKeys);
+        // Prefix sweep, not `milestoneKeys`: a marked milestone the reader
+        // never stepped through has no interactive completion record to
+        // recover its key from.
+        await guideCompletionMarkStorage.clearAllWithPrefix(normalizedUrl);
 
         milestoneKeys.forEach((key) => evictContentCache(key));
+
+        // markMilestoneDone keys the durable guard on the bare slug, not the
+        // content key — recovered here from real storage rather than from
+        // `path.guides`, which needs the dynamic milestone fetch to have
+        // landed and can still be empty at reset time.
+        recoveredMilestoneSlugs = milestoneKeys
+          .map((key) => getMilestoneSlug(key))
+          .filter((slug): slug is string => Boolean(slug));
       } else {
         // No base URL: either a static bundled path (`bundled:<id>`) or an App
         // Platform path whose members are `backend-guide:<id>`. We can't tell
-        // them apart from `path.guides` alone, so clear both content schemes.
-        const pathKeys = [`bundled:${path.id}`, `backend-guide:${path.id}`];
+        // them apart from `path.guides` alone, so clear every scheme the join
+        // reads under. Milestone and journey records are keyed by the raw
+        // launch URL, the interactive namespaces by its sanitized content key.
+        const rawPathSchemeKeys = pathMemberIdSchemeKeys(path.id);
+        const rawSchemeKeys = [
+          ...rawPathSchemeKeys,
+          ...path.guides.flatMap((guideId) => pathMemberIdSchemeKeys(guideId)),
+        ];
         const contentKeys = [
-          ...pathKeys,
-          ...path.guides.flatMap((guideId) => [`bundled:${guideId}`, `backend-guide:${guideId}`]),
+          ...pathMemberContentKeys({ id: path.id }),
+          ...path.guides.flatMap((guideId) => pathMemberContentKeys({ id: guideId })),
         ];
 
-        for (const pathKey of pathKeys) {
+        for (const pathKey of rawPathSchemeKeys) {
           await milestoneCompletionStorage.clear(pathKey);
         }
 
-        await Promise.all(contentKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+        await clearInteractiveProgressForContentKeys(contentKeys);
         // Batched, not one clear per key: each helper read-modify-writes a single shared record.
         await interactiveCompletionStorage.clearMany(contentKeys);
-        await journeyCompletionStorage.clearMany(contentKeys);
+        await journeyCompletionStorage.clearMany(rawSchemeKeys);
+        await guideCompletionMarkStorage.clearMany(contentKeys);
 
         contentKeys.forEach((key) => evictContentCache(key));
 
         await learningProgressStorage.removeCompletedGuides(path.guides);
       }
+
+      // Lifts the write-side dedupe guard for the path itself and every
+      // member, so a member re-completed after this reset emits a fresh
+      // durable record rather than deduping against the one just erased.
+      // `recoveredMilestoneSlugs` covers a URL-based path whose members
+      // never keyed into `path.guides` because the dynamic fetch had not
+      // landed at reset time.
+      invalidateEmittedCompletionsForPathMembers([path.id, ...path.guides, ...recoveredMilestoneSlugs]);
 
       window.dispatchEvent(
         new CustomEvent(StorageEvents.InteractiveProgressCleared, {

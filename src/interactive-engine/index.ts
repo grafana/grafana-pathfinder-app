@@ -12,13 +12,11 @@ export { updateInteractiveThemeColors } from '../styles/interactive.styles';
 
 // Navigation manager
 export { NavigationManager } from './navigation-manager';
-export type { NavigationOptions, CommentBoxOptions } from './navigation-manager';
+export type { NavigationOptions, CommentBoxOptions, CommentBoxStepInfo } from './navigation-manager';
 
 // State management
 export { InteractiveStateManager } from './interactive-state-manager';
 export type { InteractiveState, StateManagerOptions } from './interactive-state-manager';
-
-export { SequenceManager } from './sequence-manager';
 
 export { default as GlobalInteractionBlocker } from './global-interaction-blocker';
 
@@ -26,7 +24,7 @@ export { default as GlobalInteractionBlocker } from './global-interaction-blocke
 export { useSequentialStepState } from './use-sequential-step-state.hook';
 
 // UserActionOutcome classification
-export { outcomeFromCompletionResult, outcomeFromSequenceRun, outcomeFromLoopExit } from './outcome-classifier';
+export { outcomeFromCompletionResult, outcomeFromLoopExit } from './outcome-classifier';
 export type { CompletionResult, LoopExitReason } from './outcome-classifier';
 
 // Action handlers (re-export only handlers used externally)

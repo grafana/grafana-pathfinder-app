@@ -40,24 +40,28 @@ export interface UseGcxCredentialResult {
 }
 
 /**
- * @param onReady called once per credential installed into `sessionId`,
- *   whichever surface installed it. A gcx step uses it to mark itself complete;
- *   the terminal toolbar has nothing to do and omits it. Omit it on any surface
- *   that does not complete on a credential — one store serves them all, so a
- *   toolbar install reaches every subscriber.
+ * @param onReady called once when this hook's requester installs a credential.
+ *   A gcx step uses it to mark itself complete; the terminal toolbar has no
+ *   requester and omits it. Readiness remains shared by session, but completion
+ *   never belongs to a sibling step that did not start the run.
  * @param sessionId the session this caller is asking about. Everything the hook
  *   reports describes that session and nothing else: a credential belongs to
  *   the VM it was written into, so an unrelated step must not read one, render
  *   it, or complete on it.
+ * @param requesterId stable identity for the step that may complete. Omit it for
+ *   session-level surfaces such as the terminal toolbar.
  */
 export function useGcxCredential(
   onReady?: (credential: GcxCredential) => void,
-  sessionId: string | null = null
+  sessionId: string | null = null,
+  requesterId: string | null = null
 ): UseGcxCredentialResult {
   const stored = useSyncExternalStore(subscribeGcxCredential, getGcxCredentialSnapshot);
   const snapshot = useMemo(
     () =>
-      stored.sessionId === sessionId ? stored : { sessionId, state: 'idle' as GcxState, credential: null, error: null },
+      stored.sessionId === sessionId
+        ? stored
+        : { sessionId, requesterId: null, state: 'idle' as GcxState, credential: null, error: null },
     [stored, sessionId]
   );
 
@@ -68,14 +72,23 @@ export function useGcxCredential(
 
   const notifiedRef = useRef<GcxCredential | null>(null);
   useEffect(() => {
-    if (snapshot.state !== 'ready' || !snapshot.credential || notifiedRef.current === snapshot.credential) {
+    if (
+      snapshot.state !== 'ready' ||
+      !snapshot.credential ||
+      requesterId === null ||
+      snapshot.requesterId !== requesterId ||
+      notifiedRef.current === snapshot.credential
+    ) {
       return;
     }
     notifiedRef.current = snapshot.credential;
     onReadyRef.current?.(snapshot.credential);
-  }, [snapshot.state, snapshot.credential]);
+  }, [snapshot.state, snapshot.credential, snapshot.requesterId, requesterId]);
 
-  const run = useCallback((target: string | null, token?: string) => runGcxCredential(target, token), []);
+  const run = useCallback(
+    (target: string | null, token?: string) => runGcxCredential(target, token, requesterId),
+    [requesterId]
+  );
   const reset = useCallback(() => resetGcxCredential(), []);
 
   return {

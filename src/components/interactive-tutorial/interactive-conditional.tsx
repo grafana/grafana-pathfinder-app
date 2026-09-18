@@ -1,61 +1,102 @@
-/**
- * Interactive Conditional Component
- *
- * Evaluates conditions and renders the appropriate branch (whenTrue or whenFalse).
- * Re-evaluates when relevant state changes (datasources, plugins, page location, etc.).
- * Supports two display modes:
- * - 'inline' (default): Renders children directly without wrapper
- * - 'section': Renders children inside an InteractiveSection with full "Do Section" functionality
- */
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useInteractiveElements } from '../../interactive-engine';
 import type { ParsedElement } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import type { ConditionalDisplayMode, ConditionalSectionConfig } from '../../types/json-guide.types';
+import { isValidRequirement } from '../../types/requirements.types';
 import { InteractiveSection } from './interactive-section';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { logger } from '../../lib/logging';
-import { markSkipsSectionNumbering } from './skip-section-numbering';
+import { shouldNumberSectionChild } from './section-numbering';
 
 export interface InteractiveConditionalProps {
-  /** Conditions to evaluate (uses same syntax as requirements) */
   conditions: string[];
-  /** Optional description (shown in debug mode, not to users) */
   description?: string;
-  /** Display mode: 'inline' (default) or 'section' for section-styled rendering */
   display?: ConditionalDisplayMode;
-  /** Target element for exists-reftarget condition (CSS selector or button text) */
   refTarget?: string;
-  /** Section config for the 'pass' branch (only used when display is 'section') */
   whenTrueSectionConfig?: ConditionalSectionConfig;
-  /** Section config for the 'fail' branch (only used when display is 'section') */
   whenFalseSectionConfig?: ConditionalSectionConfig;
-  /** Children to render when ALL conditions pass */
   whenTrueChildren: ParsedElement[];
-  /** Children to render when ANY condition fails */
   whenFalseChildren: ParsedElement[];
-  /** Function to render a ParsedElement to React */
   renderElement: (element: ParsedElement, key: string) => React.ReactNode;
-  /** Key prefix for rendered children */
   keyPrefix: string;
 }
 
-/**
- * Parse conditions array into a requirements string for the checker
- */
-function conditionsToRequirementsString(conditions: string[]): string {
-  return conditions.join(',');
-}
-
-/** True when conditions may flip after DOM updates (e.g. viz picker opens). */
 function conditionsKeyNeedsDomWatch(conditionsKey: string): boolean {
   return conditionsKey.includes('exists-reftarget');
 }
 
-/**
- * Interactive conditional component that evaluates conditions and renders appropriate branch
- */
+function markPlainNumberingChild(child: React.ReactNode): React.ReactNode {
+  if (
+    !React.isValidElement<{ className?: string }>(child) ||
+    (typeof child.type !== 'string' && shouldNumberSectionChild(child))
+  ) {
+    return child;
+  }
+
+  const className = [child.props.className, 'section-numbering-plain'].filter(Boolean).join(' ');
+  return React.cloneElement(child, { className });
+}
+
+function hasRenderableNode(node: React.ReactNode): boolean {
+  if (node == null || typeof node === 'boolean') {
+    return false;
+  }
+  if (Array.isArray(node)) {
+    return node.some(hasRenderableNode);
+  }
+  if (typeof node === 'string') {
+    return node.length > 0;
+  }
+  if (React.isValidElement<{ children?: React.ReactNode }>(node) && node.type === React.Fragment) {
+    return hasRenderableNode(node.props.children);
+  }
+  return true;
+}
+
+interface RenderedDomState {
+  hasVisibleContent: boolean;
+  isPending: boolean;
+}
+
+// Nested conditionals are transparent for occupancy: their loading state is
+// pending, and hidden retained markers are not visible content of the parent.
+function inspectRenderedDom(nodes: NodeListOf<ChildNode>): RenderedDomState {
+  let hasVisibleContent = false;
+  let isPending = false;
+
+  for (const node of Array.from(nodes)) {
+    if (node.nodeType === 8) {
+      continue;
+    }
+    if (node.nodeType === 3) {
+      hasVisibleContent ||= Boolean(node.textContent?.trim());
+      continue;
+    }
+    if (!(node instanceof HTMLElement)) {
+      hasVisibleContent ||= node.nodeType === 1;
+      continue;
+    }
+    if (node.hidden) {
+      continue;
+    }
+    if (!node.classList.contains('interactive-conditional')) {
+      hasVisibleContent = true;
+      continue;
+    }
+    if (node.classList.contains('loading')) {
+      isPending = true;
+      continue;
+    }
+
+    const nested = inspectRenderedDom(node.childNodes);
+    hasVisibleContent ||= nested.hasVisibleContent;
+    isPending ||= nested.isPending;
+  }
+
+  return { hasVisibleContent, isPending };
+}
+
 export function InteractiveConditional({
   conditions,
   description,
@@ -70,22 +111,23 @@ export function InteractiveConditional({
 }: InteractiveConditionalProps) {
   const [conditionsPassed, setConditionsPassed] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(true);
+  const [hasOccupiedNumberingSlot, setHasOccupiedNumberingSlot] = useState(false);
+  const [emptyRenderToken, setEmptyRenderToken] = useState<object | null>(null);
+  const conditionalWrapperRef = useRef<HTMLDivElement>(null);
   const { checkRequirementsFromData } = useInteractiveElements();
 
   // Stable string identity for `conditions`. The parent passes a fresh array
   // on every render (parsed from JSON), so keying effects off the array would
   // tear down and re-attach the MutationObserver on every parent render. The
-  // joined string is referentially stable as long as the underlying values are.
-  const conditionsKey = useMemo(() => conditions.join(','), [conditions]);
+  // serialized form is referentially stable as long as the values are.
+  const conditionsKey = useMemo(() => JSON.stringify(conditions), [conditions]);
 
-  // Generate a stable ID for this conditional (derived from the stable key).
   const conditionalId = useMemo(
     () => conditionsKey.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 50) || 'unknown',
     [conditionsKey]
   );
 
-  // Track mounted state to prevent state updates after unmount
-  // REACT: Track mounted state (R4)
+  // REACT: prevent post-unmount updates (R4)
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -104,10 +146,10 @@ export function InteractiveConditional({
   // new schedule supersedes an older one. setTimeouts pile up otherwise.
   const reevalTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Convert conditions to requirements string format
-  const requirementsString = conditionsToRequirementsString(conditions);
-
-  // Function to evaluate conditions
+  // Value-stable view of `conditions`, keyed off the serialized form so the
+  // checker callback below is not rebuilt on every parent render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on conditionsKey, which is the serialization of conditions
+  const requirements = useMemo(() => conditions, [conditionsKey]);
   const evaluateConditions = useCallback(
     async (options?: { isReevaluation?: boolean }) => {
       if (!isMountedRef.current) {
@@ -124,10 +166,8 @@ export function InteractiveConditional({
       const myRunId = runIdRef.current;
 
       try {
-        // Create requirement data for checking
-        // Use provided refTarget for exists-reftarget condition, fallback to placeholder
         const requirementData = {
-          requirements: requirementsString,
+          requirements: requirements,
           targetAction: 'conditional',
           refTarget: refTarget || 'conditional-block',
           targetValue: undefined,
@@ -149,15 +189,62 @@ export function InteractiveConditional({
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
-        // Default to false branch on error
         setConditionsPassed(false);
         setIsChecking(false);
       }
     },
-    [requirementsString, checkRequirementsFromData, description, refTarget]
+    [requirements, checkRequirementsFromData, description, refTarget]
   );
 
   const needsDomWatch = conditionsKeyNeedsDomWatch(conditionsKey);
+
+  const childrenToRender = useMemo(
+    () => (conditionsPassed === null ? [] : conditionsPassed ? whenTrueChildren : whenFalseChildren),
+    [conditionsPassed, whenFalseChildren, whenTrueChildren]
+  );
+  const sectionConfig =
+    conditionsPassed === null ? undefined : conditionsPassed ? whenTrueSectionConfig : whenFalseSectionConfig;
+  const branchKey = conditionsPassed ? 'true' : 'false';
+  const renderedChildren =
+    conditionsPassed === null
+      ? []
+      : childrenToRender.map((child, index) => renderElement(child, `${keyPrefix}-${branchKey}-${index}`));
+  const hasRenderableChildren = renderedChildren.some(hasRenderableNode);
+  // A later authoring update must be allowed to remount a branch previously
+  // observed as empty, even when the condition verdict itself did not change.
+  const renderToken = useMemo(
+    () => ({ branchKey, childrenToRender, display, keyPrefix }),
+    [branchKey, childrenToRender, display, keyPrefix]
+  );
+  const isEmptyAfterCommit = emptyRenderToken === renderToken;
+
+  useEffect(() => {
+    const wrapper = conditionalWrapperRef.current;
+    if (!wrapper || !hasRenderableChildren) {
+      return;
+    }
+
+    const syncRenderedOutput = () => {
+      if (!isMountedRef.current) {
+        return;
+      }
+      const renderedDomState = inspectRenderedDom(wrapper.childNodes);
+      if (!renderedDomState.hasVisibleContent && !renderedDomState.isPending) {
+        setEmptyRenderToken((previous) => (previous === renderToken ? previous : renderToken));
+        return;
+      }
+
+      if (renderedDomState.hasVisibleContent) {
+        setEmptyRenderToken(null);
+        setHasOccupiedNumberingSlot(true);
+      }
+    };
+
+    syncRenderedOutput();
+    const observer = new MutationObserver(syncRenderedOutput);
+    observer.observe(wrapper, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [hasRenderableChildren, renderToken]);
 
   // Stable ref to the latest evaluator. Lets long-lived subscriptions
   // (MutationObserver, event listeners) invoke the current evaluator without
@@ -179,14 +266,12 @@ export function InteractiveConditional({
     }, delay);
   }, [needsDomWatch]);
 
-  // Evaluate on mount and re-evaluate when relevant events occur
   useEffect(() => {
     // Initial evaluation (deferred to avoid synchronous setState in effect)
     const initialCheckTimeout = setTimeout(() => {
       evaluateRef.current();
     }, 0);
 
-    // Listen for events that might change condition results
     const handleDataSourcesChanged = () => {
       scheduleReevaluation();
     };
@@ -199,7 +284,6 @@ export function InteractiveConditional({
       scheduleReevaluation();
     };
 
-    // Re-evaluate after interactive steps complete - the step may have changed UI state
     // `interactive-action-completed` is dispatched from two places with two
     // different targets: interactive-state-manager fires on `document`, while
     // challenge-block fires on `window`. Subscribe to both so conditional
@@ -273,7 +357,6 @@ export function InteractiveConditional({
     };
   }, [needsDomWatch]);
 
-  // Show loading state while checking
   if (isChecking && conditionsPassed === null) {
     return (
       <div className="interactive-conditional loading" data-testid={testIds.interactive.conditional(conditionalId)}>
@@ -285,30 +368,52 @@ export function InteractiveConditional({
     );
   }
 
-  // Select the appropriate branch and config based on condition result
-  const childrenToRender = conditionsPassed ? whenTrueChildren : whenFalseChildren;
-  const sectionConfig = conditionsPassed ? whenTrueSectionConfig : whenFalseSectionConfig;
-
-  // If the selected branch has no children, skip rendering entirely
   if (childrenToRender.length === 0) {
-    return null;
+    return hasOccupiedNumberingSlot ? (
+      <span hidden className="section-numbering-retained" data-section-numbering-retained="true" />
+    ) : null;
   }
 
-  // Render as section if display mode is 'section'
-  // Uses the full InteractiveSection component for "Do Section" button, step tracking, etc.
+  // A direct null/false result has no child lifecycle to preserve, so it can
+  // use the same null/retained fast path as an empty parsed branch.
+  if (!hasRenderableChildren) {
+    return hasOccupiedNumberingSlot ? (
+      <span hidden className="section-numbering-retained" data-section-numbering-retained="true" />
+    ) : null;
+  }
+
+  // Nested components stay mounted when their DOM settles empty so their own
+  // requirement listeners can make them visible again. The direct wrapper
+  // attributes let the numbered <li> hide or retain its slot without
+  // unmounting that subtree.
+  const isEmptyNumberingState = isEmptyAfterCommit && !hasOccupiedNumberingSlot;
+  const isRetainedNumberingState = isEmptyAfterCommit && hasOccupiedNumberingSlot;
+  const numberingStateClass = isEmptyNumberingState
+    ? ' section-numbering-empty'
+    : isRetainedNumberingState
+      ? ' section-numbering-retained'
+      : '';
+
+  // Section display preserves its own execution and numbering scope.
   if (display === 'section') {
-    // Extract config values, using defaults if not provided
     const sectionTitle = sectionConfig?.title || (conditionsPassed ? 'When conditions pass' : 'When conditions fail');
-    const sectionRequirements = sectionConfig?.requirements?.join(',');
-    const sectionObjectives = sectionConfig?.objectives?.join(',');
+    // Collapse an empty array to undefined the way every json-parser converter
+    // does: `[]` is truthy, and a truthy empty condition list makes
+    // `useSectionRequirements` install a recheck loop for nothing.
+    const sectionRequirements = sectionConfig?.requirements?.length ? sectionConfig.requirements : undefined;
+    const executableSectionObjectives = sectionConfig?.objectives?.filter(isValidRequirement);
+    const sectionObjectives = executableSectionObjectives?.length ? executableSectionObjectives : undefined;
 
     return (
       <div
-        className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}`}
+        ref={conditionalWrapperRef}
+        className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}${numberingStateClass}`}
         data-testid={testIds.interactive.conditional(conditionalId)}
         data-conditions={conditions.join(', ')}
         data-passed={String(conditionsPassed)}
         data-display="section"
+        data-section-numbering-empty={isEmptyNumberingState ? 'true' : undefined}
+        data-section-numbering-retained={isRetainedNumberingState ? 'true' : undefined}
       >
         <InteractiveSection
           title={sectionTitle}
@@ -318,30 +423,27 @@ export function InteractiveConditional({
           objectives={sectionObjectives}
           className="conditional-section"
         >
-          {childrenToRender.map((child, index) =>
-            renderElement(child, `${keyPrefix}-${conditionsPassed ? 'true' : 'false'}-${index}`)
-          )}
+          {renderedChildren}
         </InteractiveSection>
       </div>
     );
   }
 
-  // Render inline (default)
+  const alignedChildren = renderedChildren.map(markPlainNumberingChild);
+
   return (
     <div
-      className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}`}
+      ref={conditionalWrapperRef}
+      className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}${numberingStateClass}`}
       data-testid={testIds.interactive.conditional(conditionalId)}
       data-conditions={conditions.join(', ')}
       data-passed={String(conditionsPassed)}
+      data-section-numbering-empty={isEmptyNumberingState ? 'true' : undefined}
+      data-section-numbering-retained={isRetainedNumberingState ? 'true' : undefined}
     >
-      {childrenToRender.map((child, index) =>
-        renderElement(child, `${keyPrefix}-${conditionsPassed ? 'true' : 'false'}-${index}`)
-      )}
+      {alignedChildren}
     </div>
   );
 }
 
 InteractiveConditional.displayName = 'InteractiveConditional';
-
-// Wrapper block: sits in a section's list without a step number.
-markSkipsSectionNumbering(InteractiveConditional);

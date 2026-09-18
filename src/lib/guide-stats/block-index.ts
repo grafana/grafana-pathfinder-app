@@ -25,6 +25,7 @@
 
 import type { JsonBlock } from '../../types/json-guide.types';
 import { emitsCompletionEvidence } from './completion-affordance';
+import { sectionRuntimeId } from './section-identity';
 
 /**
  * The narrowest block shape the counter needs. `JsonBlock` satisfies it; so
@@ -67,9 +68,11 @@ export const TRANSPARENT_CONTAINER_BLOCK_TYPES = [
  * `snippet-ref` counts as one and its resolved contents inherit that single
  * position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in
  * before the parser sees the guide, so the denominator here is the
- * PRE-INLINING count and a consumer must index the pre-inlining tree. Mapping
- * an inlined block back to its ref is not available: the splice carries no
- * provenance field, so there is nothing to map back from.
+ * PRE-INLINING count and a consumer must index the pre-inlining tree — which
+ * is why a payload whose body is already expanded carries that tree alongside
+ * it (`src/lib/guide-counting-source.ts`). Mapping an inlined block back to
+ * its ref is not available: the splice carries no provenance field, so there
+ * is nothing to map back from.
  */
 export const OPAQUE_PARENT_BLOCK_TYPES = [
   'multistep',
@@ -79,6 +82,58 @@ export const OPAQUE_PARENT_BLOCK_TYPES = [
 ] as const satisfies ReadonlyArray<JsonBlock['type']>;
 
 const TRANSPARENT_CONTAINERS: ReadonlySet<string> = new Set(TRANSPARENT_CONTAINER_BLOCK_TYPES);
+
+/** The sentinel `json-parser.ts` keys top-level blocks under. */
+const STANDALONE_PARENT_ID = '__standalone__';
+
+/** The step-id namespace a transparent container puts its children in. */
+interface ContainerNamespace {
+  /**
+   * The namespace itself, spelled exactly as `json-parser.ts` spells it.
+   * `undefined` for a `collapsible`: its converter passes no step context, so
+   * its children take no derived id.
+   */
+  id: string | undefined;
+  /**
+   * Whether the namespace embeds the container's own sibling index. An author
+   * id does not, which is what makes an id-bearing section's children immune
+   * to a `snippet-ref` splice anywhere outside it.
+   */
+  indexDerived: boolean;
+}
+
+function childSectionNamespace(block: CountableBlock, jsonPath: string): ContainerNamespace {
+  if (block.type === 'section') {
+    return { id: sectionRuntimeId(block.id, jsonPath), indexDerived: !block.id };
+  }
+  if (block.type === 'assistant') {
+    return { id: `assistant:${jsonPath}`, indexDerived: true };
+  }
+  return { id: undefined, indexDerived: true };
+}
+
+/** Where a block sits, in the namespace the parser keys derived step ids under. */
+export interface BlockStepIdContext {
+  /** Owning section, conditional branch, or synthetic standalone parent. */
+  parentSectionId: string;
+  /** Zero-based index within the parent block array. */
+  index: number;
+}
+
+/** Optional collaborators for {@link computeGuideBlockIndex}. */
+export interface BlockIndexOptions {
+  /**
+   * Runtime step id for a counted block, injected rather than imported so this
+   * module stays dependency-free. `resolveCountedBlockStepId` in
+   * `src/global-state/guide-step-id-resolver.ts` is the canonical
+   * implementation; anything else has to agree with the parser or the
+   * numerator resolves nothing.
+   *
+   * Not called for blocks under a `collapsible`, which the parser gives no
+   * step context and therefore no derived id.
+   */
+  resolveStepId?: (block: CountableBlock, context: BlockStepIdContext) => string | undefined;
+}
 
 /** A block that occupies a position in the denominator. */
 export interface CountedBlock {
@@ -111,12 +166,31 @@ export interface GuideBlockIndex {
   /** Position by block id. First occurrence wins when ids are duplicated. */
   positionsById: ReadonlyMap<string, number>;
   /**
-   * For each container carrying an id, the position of the last counted block
-   * inside it — the position "mark as complete" on that container evidences.
-   * Containers with no counted descendants are absent. First occurrence wins
-   * when ids are duplicated, matching `positionsById`: last-wins would let a
-   * click on the earlier container permanently over-credit progress, and
-   * progress is monotonic so it could never be corrected downward.
+   * Position by runtime step id — the key a completed "Do it" arrives under,
+   * which is the author id only for the rare block that carries one. Empty
+   * when no resolver was supplied. First occurrence wins, as with
+   * {@link positionsById}. Excludes every block whose runtime step id a
+   * `snippet-ref` splice would shift — its own later siblings, and anything
+   * under a container whose namespace embeds a shifted index — see the
+   * traversal's own comment. Those blocks fall back to
+   * {@link positionsById}/0 rather than a step id the runtime will never
+   * dispatch.
+   */
+  positionsByStepId: ReadonlyMap<string, number>;
+  /**
+   * For each container the runtime can address, the position of the last
+   * counted block inside it — the position "mark as complete" on that
+   * container evidences. Keyed by the container's RUNTIME id, which
+   * `sectionRuntimeId` derives for both halves of the seam, because that is
+   * the namespace the acknowledgement the reader actually produces arrives
+   * under. A section without an author id is addressed by its path and is
+   * acknowledgeable like any other, so it is registered too — unless a
+   * `snippet-ref` shifts that path, where the honest miss is the same choice
+   * {@link positionsByStepId} makes. Containers with
+   * no counted descendants are absent. First occurrence wins when ids are
+   * duplicated, matching `positionsById`: last-wins would let a click on the
+   * earlier container permanently over-credit progress, and progress is
+   * monotonic so it could never be corrected downward.
    */
   containerEndPositions: ReadonlyMap<string, number>;
   /** Transparent `section` containers encountered. Not part of the denominator. */
@@ -125,9 +199,9 @@ export interface GuideBlockIndex {
   completableBlockCount: number;
   /**
    * Position of the last completable counted block, or 0 when the guide has
-   * none. `finalCompletablePosition === totalBlockCount` means the final
-   * counted block is completable, so the guide needs no "Mark as complete"
-   * button at its foot; anything less means one is mandatory.
+   * none. An authoring signal, not a rendering predicate: the foot-of-guide
+   * "Mark as complete" button is unconditional, so do not re-derive one from
+   * this field without re-opening `docs/design/COMPLETION-MODEL.md`.
    */
   finalCompletablePosition: number;
 }
@@ -138,18 +212,53 @@ export interface GuideBlockIndex {
  * Traversal is depth-first pre-order over document order, so positions match
  * the order a reader meets the blocks.
  */
-export function computeGuideBlockIndex(blocks: readonly CountableBlock[] | undefined): GuideBlockIndex {
+export function computeGuideBlockIndex(
+  blocks: readonly CountableBlock[] | undefined,
+  options?: BlockIndexOptions
+): GuideBlockIndex {
   const counted: CountedBlock[] = [];
   const positionsById = new Map<string, number>();
+  const positionsByStepId = new Map<string, number>();
   const containerEndPositions = new Map<string, number>();
   let sectionCount = 0;
   let completableBlockCount = 0;
   let finalCompletablePosition = 0;
+  const resolveStepId = options?.resolveStepId;
 
-  function visit(children: readonly CountableBlock[] | undefined, prefix: readonly number[]): void {
+  function visit(
+    children: readonly CountableBlock[] | undefined,
+    prefix: readonly number[],
+    // `parentSectionId` and `jsonPath` mirror `json-parser.ts`'s own walk: the
+    // step id is a hash over them, so a divergence here silently rekeys every
+    // anonymous block's progress. `undefined` means the parser supplies no
+    // step context, which is what makes a `collapsible` child unaddressable.
+    parentSectionId: string | undefined,
+    jsonPath: string,
+    // Whether `parentSectionId` embeds an index a `snippet-ref` shifted, and
+    // whether `jsonPath` does. They differ: an id-bearing section resets the
+    // first while still carrying the second down to any id-less container
+    // nested inside it.
+    parentNamespaceShifted: boolean,
+    jsonPathShifted: boolean
+  ): void {
     if (!Array.isArray(children)) {
       return;
     }
+
+    // A `snippet-ref` splices in a runtime-sized batch of blocks before
+    // `json-parser.ts` ever sees the guide (`snippet-engine/inline-refs.ts`),
+    // shifting every later sibling's POST-inlining index by however many
+    // blocks it expands into — an amount this traversal cannot know without
+    // waiting on the snippet CDN, which would defeat the frozen index's
+    // stability guarantee (see `active-guide-index.ts`). So once a
+    // snippet-ref has been seen among this parent's children, later siblings
+    // — and anything nested under one whose namespace embeds that shifted
+    // index — are excluded from `positionsByStepId` rather than keyed under
+    // an index the runtime will never dispatch: a miss falls through to
+    // `positionsById`/0, the honest degradation an unauthored block already
+    // gets, instead of colliding with whatever unrelated block happens to
+    // hash to the same wrong-index step id.
+    let sawSnippetRefSibling = false;
 
     for (let index = 0; index < children.length; index++) {
       const block = children[index];
@@ -157,20 +266,29 @@ export function computeGuideBlockIndex(blocks: readonly CountableBlock[] | undef
         continue;
       }
       const path = [...prefix, index];
+      const blockJsonPath = `${jsonPath}[${index}]`;
 
       if (TRANSPARENT_CONTAINERS.has(block.type)) {
         if (block.type === 'section') {
           sectionCount++;
         }
         const before = counted.length;
-        visit(block.blocks, path);
+        const namespace = childSectionNamespace(block, blockJsonPath);
+        const childJsonPathShifted = jsonPathShifted || sawSnippetRefSibling;
+        // The container's own runtime id is as unpredictable as its children's
+        // step ids when the namespace embeds an index a splice moved, and a
+        // wrong container key credits ANOTHER section's end position — which
+        // monotonic progress can never take back. Same rule, same reason as
+        // `positionsByStepId` below.
+        const namespaceShifted = namespace.indexDerived && childJsonPathShifted;
+        visit(block.blocks, path, namespace.id, `${blockJsonPath}.blocks`, namespaceShifted, childJsonPathShifted);
         if (
-          typeof block.id === 'string' &&
-          block.id.length > 0 &&
+          namespace.id !== undefined &&
+          !namespaceShifted &&
           counted.length > before &&
-          !containerEndPositions.has(block.id)
+          !containerEndPositions.has(namespace.id)
         ) {
-          containerEndPositions.set(block.id, counted.length);
+          containerEndPositions.set(namespace.id, counted.length);
         }
         continue;
       }
@@ -181,19 +299,29 @@ export function computeGuideBlockIndex(blocks: readonly CountableBlock[] | undef
       if (typeof block.id === 'string' && block.id.length > 0 && !positionsById.has(block.id)) {
         positionsById.set(block.id, position);
       }
+      if (resolveStepId && parentSectionId !== undefined && !parentNamespaceShifted && !sawSnippetRefSibling) {
+        const stepId = resolveStepId(block, { parentSectionId, index });
+        if (stepId && !positionsByStepId.has(stepId)) {
+          positionsByStepId.set(stepId, position);
+        }
+      }
       if (completable) {
         completableBlockCount++;
         finalCompletablePosition = position;
       }
+      if (block.type === 'snippet-ref') {
+        sawSnippetRefSibling = true;
+      }
     }
   }
 
-  visit(blocks, []);
+  visit(blocks, [], STANDALONE_PARENT_ID, 'blocks', false, false);
 
   return {
     totalBlockCount: counted.length,
     blocks: counted,
     positionsById,
+    positionsByStepId,
     containerEndPositions,
     sectionCount,
     completableBlockCount,

@@ -3,11 +3,12 @@ import type { Page } from '@playwright/test';
 import { testIds } from '../../../../src/constants/testIds';
 import { contentDigest, type TestResultsData } from '../../../../src/cli/e2e/e2e-reporter';
 import { printDetailedSummary, printDiscoveryResults, printHeader, printStepResult } from '../console-reporter';
-import { discoverStepsFromDOM } from './discovery';
+import { STEP_ROOT_SELECTOR } from './constants';
+import { discoverStepsFromDOM, withExecutedCoverage } from './discovery';
 import { calculateGuideTimeout, executeAllSteps, settleWithin, summarizeResults } from './execution';
 import { countInteractiveBlocks } from './static-analysis';
 import { createBrowserTerminationMonitor, type BrowserTerminationMonitor } from './termination-monitor';
-import type { AllStepsResult, StepTestResult } from './types';
+import type { AllStepsResult, StepCoverage, StepTestResult } from './types';
 import type { SessionValidationResult } from '../../auth/grafana-auth';
 import { ensureDocsPanelOpen } from './bootstrap';
 import { ensureGuidePanelOpen } from './panel-recovery';
@@ -16,7 +17,6 @@ import { openLegacyE2EGuide, replacePreviousE2EGuide } from './milestone-replace
 const GUIDE_LOAD_TIMEOUT_MS = 15_000;
 const NAVIGATION_TIMEOUT_MS = 30_000;
 const POST_NAVIGATION_PANEL_TIMEOUT_MS = 30_000;
-const STEP_SELECTOR = '[data-testid^="interactive-step-"]';
 
 export interface PageGuide {
   id: string;
@@ -86,7 +86,8 @@ function toResultsData(
   startingLocation: string,
   timestamp: string,
   allStepsResult: AllStepsResult,
-  outcome: TestResultsData['outcome']
+  outcome: TestResultsData['outcome'],
+  coverage?: StepCoverage
 ): TestResultsData {
   return {
     guide: {
@@ -101,10 +102,11 @@ function toResultsData(
     startedAt: timestamp,
     endedAt: new Date().toISOString(),
     outcome,
-    errorCode: allStepsResult.abortReason ?? (outcome === 'passed' ? undefined : 'UNKNOWN'),
+    errorCode: allStepsResult.abortReason ?? (outcome === 'passed' || outcome === 'skipped' ? undefined : 'UNKNOWN'),
     errorMessage: allStepsResult.abortMessage,
     results: allStepsResult.results.map((result) => ({
       stepId: result.stepId,
+      stepKind: result.stepKind,
       status: result.status,
       durationMs: result.durationMs,
       currentUrl: result.currentUrl,
@@ -118,6 +120,7 @@ function toResultsData(
     aborted: allStepsResult.aborted,
     abortReason: allStepsResult.abortReason,
     abortMessage: allStepsResult.abortMessage,
+    coverage,
   };
 }
 
@@ -128,12 +131,12 @@ async function executeGuideSteps(
   timestamp: string,
   monitor: BrowserTerminationMonitor
 ): Promise<TestResultsData> {
-  const firstStep = page.locator(STEP_SELECTOR).first();
+  const firstStep = page.locator(STEP_ROOT_SELECTOR).filter({ visible: true }).first();
   await firstStep.waitFor({ state: 'visible', timeout: GUIDE_LOAD_TIMEOUT_MS });
   const discovery = await discoverStepsFromDOM(page);
   const guideTimeout = calculateGuideTimeout(discovery.steps);
   options.onTimeoutCalculated?.(guideTimeout);
-  if (discovery.totalSteps === 0) {
+  if (discovery.coverage.rendered === 0) {
     throw new Error(`Guide ${guide.id} contains interactive blocks but rendered no interactive steps`);
   }
 
@@ -142,8 +145,24 @@ async function executeGuideSteps(
     discovery.totalSteps,
     discovery.preCompletedCount,
     discovery.noDoItButtonCount,
-    discovery.durationMs
+    discovery.durationMs,
+    discovery.coverage.contractSource
   );
+  if (discovery.coverage.supported === 0) {
+    const unsupportedKinds = [...new Set(discovery.coverage.unsupportedSteps.map(({ stepKind }) => stepKind))].sort();
+    return {
+      ...toResultsData(
+        guide,
+        options.targetUrl,
+        options.startingLocation,
+        timestamp,
+        { results: [], aborted: false },
+        'skipped',
+        discovery.coverage
+      ),
+      errorMessage: `Guide ${guide.id} rendered only unsupported step kinds: ${unsupportedKinds.join(', ')}`,
+    };
+  }
 
   const completedResults: StepTestResult[] = [];
   const execution = executeAllSteps(page, discovery.steps, {
@@ -183,7 +202,8 @@ async function executeGuideSteps(
       options.startingLocation,
       timestamp,
       terminationResult,
-      'infrastructure_error'
+      'infrastructure_error',
+      withExecutedCoverage(discovery.coverage, terminationResult.results)
     );
   }
 
@@ -197,7 +217,15 @@ async function executeGuideSteps(
       : executionResult.abortReason === 'MANDATORY_FAILURE' || !summary.success
         ? 'failed'
         : 'passed';
-  return toResultsData(guide, options.targetUrl, options.startingLocation, timestamp, executionResult, outcome);
+  return toResultsData(
+    guide,
+    options.targetUrl,
+    options.startingLocation,
+    timestamp,
+    executionResult,
+    outcome,
+    withExecutedCoverage(discovery.coverage, executionResult.results)
+  );
 }
 
 export async function runGuideOnPage(

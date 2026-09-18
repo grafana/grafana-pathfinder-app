@@ -112,12 +112,7 @@ function readSiblingManifest(relativePath: string): Record<string, unknown> | un
   if (!outcome.ok) {
     return undefined;
   }
-  // Stamped, not inherited: the manifest schema defaults an absent `repository`
-  // to `interactive-tutorials`, and `resolveCompletionIdentity` prefers a
-  // manifest repository over the caller's fallback — so a bundled guide that
-  // omits the field would key its completions to a repository it never came
-  // from. This tier IS the bundled source, the same claim `BundledPackageResolver`
-  // stamps on its own resolutions.
+  // Override the schema default so bundled completions retain their source identity.
   return { ...(outcome.data as unknown as Record<string, unknown>), repository: BUNDLED_REPOSITORY };
 }
 

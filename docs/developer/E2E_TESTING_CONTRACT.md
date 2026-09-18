@@ -20,9 +20,58 @@ See: [`docs/developer/interactive-examples/json-guide-format.md`](./interactive-
 
 Used by E2E tests to observe the current state of the interactive system. These are **declarative** - they describe what state the component is in.
 
-Examples: `data-test-step-state`, `data-test-substep-index`, `data-test-action`
+Examples: `data-test-step-kind`, `data-test-step-id`, `data-test-step-state`, `data-test-substep-index`, `data-test-action`
 
 **This document describes the E2E testing contract attributes.**
+
+---
+
+## Tracked step root contract
+
+Each tracked step component exposes these attributes on its stable root:
+
+- `data-test-step-kind`: The registered kind of the tracked step.
+- `data-test-step-id`: The stable test step ID from the guide, or the generated ID for a standalone component.
+
+The registered kind values are:
+
+- `plain`
+- `multistep`
+- `guided`
+- `quiz`
+- `terminal`
+- `terminal-connect`
+- `codeblock`
+- `challenge`
+- `datasource-check`
+
+`getTrackedStepRootAttributes()` is the sole writer of `data-test-step-kind` and `data-test-step-id`. `StepTypeKind` is derived from `STEP_TYPE_KIND_KEYS`.
+
+The registry owns the set of kind values. Each component owns its stable root and stable test step ID.
+
+The plain, multistep, and guided roots keep the existing `data-step-id` runtime attribute. The other tracked roots do not add this runtime attribute.
+
+The guide runner discovers current roots with `[data-test-step-kind][data-test-step-id]`. It records `current` as the contract source.
+
+If current roots are absent, the runner uses the legacy `interactive-step-*` test IDs. It records `legacy` as the contract source.
+
+The legacy selector excludes `interactive-step-completed-*` badges. These badges share the old step test ID prefix.
+
+One `StepDriver` registry owns metadata inspection, product controls, execution, skip behavior, and completion rules. The registry uses `data-test-step-kind` keys.
+
+The runner supports `plain`, `multistep`, and `guided`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
+
+Unsupported roots do not change the outcome when a guide also renders a supported root. The runner reports each unsupported kind and step ID.
+
+A guide with only unsupported roots returns a skipped report before execution. The report includes each unsupported kind and step ID.
+
+This report has `outcome: "skipped"` and no `errorCode`. It keeps the complete coverage inventory and gives an explicit reason.
+
+The CLI shows `Skipped (unsupported steps)` and exits with code 0. The skipped guide blocks guides that declare it as a prerequisite.
+
+Browser actions use only rendered DOM state. Raw guide JSON can identify authored interactive content, but it cannot control browser actions.
+
+These runner changes do not change root ownership, existing test IDs, state values, or product completion behavior.
 
 ---
 
@@ -30,12 +79,14 @@ Examples: `data-test-step-state`, `data-test-substep-index`, `data-test-action`
 
 The guide runner must establish a ready Pathfinder panel before it can load guide content or discover steps. These signals form the stable contract between the plugin surface and `tests/e2e-runner/`:
 
-- **Plugin readiness**: `window.__pathfinderPluginConfig` is assigned when Pathfinder initialization completes. The runner waits for this before treating Grafana's Help control as a Pathfinder open action.
+- **Plugin readiness**: `window.__pathfinderPluginConfig` is assigned only after the authoritative settings read succeeds, including the OSS fallback. Plugin metadata and failed reads do not establish readiness. The runner waits for this before treating Grafana's Help control as a Pathfinder open action.
 - **Sidebar mount**: the outer Pathfinder sidebar dispatches `pathfinder-sidebar-mounted` on `window` after Grafana accepts the extension-sidebar open request. The runner uses this event to avoid a duplicate Help click; because it is an edge signal rather than current mounted state, post-click readiness still requires the panel DOM.
 - **Panel readiness**: the inner panel renders `data-testid="docs-panel-container"` when it is ready for guide content. Once this container is visible, the panel must be able to receive the content-open event below.
 - **Content open**: the panel listens for `pathfinder-auto-open-docs` on `document` with detail `{ url: string; title: string; source?: string }`.
 
 The Grafana-owned Help button and `grafana.navigation.extensionSidebarDocked` storage entry are recovery hints, not Pathfinder-owned contracts. A docs-panel or sidebar refactor must preserve the four Pathfinder signals above, or update the guide runner, contract tests, and this document in the same change.
+
+Pathfinder-owned window globals are declared in `src/types/window-globals.ts`; add new globals there and access them through `window` directly.
 
 The runner waits for Help only after Pathfinder readiness signals do not prove that the panel is ready. Bootstrap owns this fallback.
 
@@ -57,18 +108,40 @@ Before each later runnable milestone, the runner uses this replacement sequence:
 2. It opens the Pathfinder panel at the prior location.
 3. It activates the exact E2E tab that the previous milestone opened.
 4. It dismisses Pathfinder badge celebrations through bounded DOM event dispatch.
-5. It inspects stored step completion for `bundled:e2e-test`.
-6. If completion exists, it captures step roots and clicks the existing `Reset guide` control.
-7. It waits for `interactive-progress-cleared`.
-8. If completion does not exist, it clears only namespaced residue and the E2E percentage entry.
-9. It captures current step roots and closes the E2E guide tab.
-10. It waits until all captured step roots detach.
-11. After the acknowledged reset, it requires completed step IDs to remain absent during a bounded post-close check.
-12. It removes matching residue that the legacy product reload recreated.
-13. It navigates to the authored starting location only when necessary.
-14. It writes the next guide JSON to `StorageKeys.E2E_TEST_GUIDE`.
-15. It dispatches `pathfinder-auto-open-docs` and records the new tab ID.
-16. It waits for the replacement content before step discovery.
+5. If `window.__pathfinderE2E` exists, it requires version 1 and calls `resetActiveGuide()`.
+6. It requires empty E2E progress storage before tab closure.
+7. If the control is absent, it uses the legacy reset sequence below.
+8. It captures current step roots and closes the E2E guide tab.
+9. It waits until all captured step roots detach.
+10. It navigates to the authored starting location only when necessary.
+11. It writes the next guide JSON to `StorageKeys.E2E_TEST_GUIDE`.
+12. It dispatches `pathfinder-auto-open-docs` and records the new tab ID.
+13. It waits for the replacement content before step discovery.
+
+The plugin exposes `window.__pathfinderE2E` only while the exact `bundled:e2e-test` guide is active.
+
+Version 1 contains one parameterless method: `resetActiveGuide(): Promise<void>`.
+
+The method clears step, collapse, acknowledgment, done, percentage, and in-memory completion state. It emits `interactive-progress-cleared`.
+
+The method does not reload guide content or Grafana. It preserves other guide progress and all non-progress application state.
+
+The plugin removes the control when another tab becomes active or the panel unmounts.
+
+An unsupported version or rejected reset is a fatal transition error. The runner does not use the legacy path in these cases.
+
+If the control is absent, the runner uses this legacy sequence:
+
+1. It inspects stored step completion for `bundled:e2e-test`.
+2. If completion exists, it captures step roots and clicks `Reset guide`.
+3. It waits for `interactive-progress-cleared`.
+4. If completion does not exist, it clears namespaced residue and the E2E percentage entry.
+
+If the prior guide had stored completion, the runner performs a bounded post-close check after either reset path.
+
+Completed step IDs must remain absent.
+
+It then removes matching safe residue.
 
 The runner uses stored completion for the reset decision. It does not use the authored interactive-block count.
 
@@ -78,7 +151,11 @@ If no prior tab opened, the runner clears stored E2E residue before it continues
 
 A page reload can clear the active-tab globals. The recorded tab ID lets the runner reactivate a visible or overflowed E2E tab.
 
-The tab close control uses `docs-panel-tab-close-${tabId}`. This test ID is part of the shared runner contract.
+The tab close control uses `docs-panel-tab-close-${tabId}`. The reset control uses `docs-panel-reset-guide-button`.
+
+Both test IDs are part of the shared runner contract.
+
+For plugin versions that predate this test ID, the legacy reset locator also accepts the exact accessible name `Reset guide`.
 
 The standalone runner and first shared milestone can reload once during panel recovery. A later milestone never reloads during recovery.
 
@@ -92,7 +169,7 @@ The legacy UI reset clears Pathfinder progress and its in-memory completion cach
 
 The legacy product reload can recreate matching storage without completed step IDs. The runner accepts this state only after tab closure.
 
-The runner then removes the safe residue. Stored completion that remains after the bounded check is a fatal transition error.
+Stored completion that remains after the bounded check is a fatal transition error.
 
 Hybrid `__timestamp` keys are not completion evidence. Residue cleanup removes them to match the product reset.
 
@@ -100,7 +177,11 @@ Direct no-completion cleanup does not evict the mounted cache. It is not a gener
 
 The same page, browser context, cookies, session storage, form values, and application memory remain active.
 
-This is a runner-only contract. The installed Pathfinder frontend and `bundled:e2e-test` loader remain unchanged.
+The legacy fallback remains until all supported Pathfinder versions provide reset control version 1.
+
+Fatal transitions use report error code `TRANSITION_FAILED`. The optional `transitionKind` uses the runner's bounded fatal-transition values.
+
+The same code and kind appear on each unrun milestone that the fatal transition stops.
 
 If this handshake changes, update both runner specs, runner contract tests, and this document in one change.
 
@@ -138,9 +219,43 @@ A My learning layout or selector refactor must preserve these values or update t
 The course/learning-path cover page exposes stable testids for its hero and table-of-contents so E2E tests can assert cover-page rendering and launch the path without depending on text or DOM structure:
 
 - **`learning-paths-cover-hero`** (`testIds.learningPaths.coverHero`): the cover page's hero section boundary (title, description, module count, duration, badge preview).
+- **`learning-paths-toc`** (`testIds.learningPaths.tableOfContents`): the table of contents boundary, and the element that carries the path progress attribute below.
 - **`learning-paths-toc-cta`** (`testIds.learningPaths.tableOfContentsCta`): the table of contents' get-started/resume action.
 
 A cover-page layout or selector refactor must preserve these values or update the E2E selectors and this document in the same change.
+
+---
+
+## Path progress contract
+
+The path's rolled-up percentage is exposed declaratively on the table-of-contents root, alongside `testIds.learningPaths.tableOfContents`:
+
+- **`data-test-path-percent`**: the path's progress as an integer 0-100 — the mean of its resolvable milestones' own percentages (`docs/design/COMPLETION-MODEL.md`, decision 4). **Absent until the path's stored progress has been read.**
+
+The attribute exists because the progress ring beside it is hidden at 0%, and 0% is the value a test most often needs to assert: it is what a reader who only paged through the path has earned. Reading the ring's rendered text would make "no progress" indistinguishable from "no ring".
+
+Its absence before the cover page has finished loading is deliberate: a test waits for the attribute to exist rather than reading a provisional value, so there is no "not loaded yet" value to confuse with a real 0.
+
+The gate is the cover page's own `progressLoaded`, which tracks its async read of stored milestone progress. Strictly that read is a **sufficient** signal rather than the necessary one: the percentage itself comes from `journeyProgressFromMilestones`, whose two reads are synchronous, so the rendered value is already correct at first paint. What `progressLoaded` buys is a defined point after mount at which the surface is settled — enough to keep a test off the first frame, where a percentage read alongside a still-initialising panel has repeatedly turned out to be a constant. If that async read is ever removed, give the attribute another gate rather than emitting it unconditionally.
+
+The guide-level equivalent is on the Mark complete footer, and there the gate **is** the necessary one:
+
+- **`data-test-progress-state`** on `mark-complete-footer` (`testIds.markComplete.footer`): `pending` until the footer has read the guide's stored completion mark, `ready` afterwards.
+
+Until that read resolves the footer has no content key, so `mark-complete-percentage` reads a hard-coded `0% complete` for every guide, and a click on `mark-complete-button` is silently dropped by the handler. Both the percentage and the click are only meaningful at `ready`, and an assertion made before it cannot fail.
+
+Read the footer's readiness from this attribute rather than inferring it from the control beside it. The control is not always there to read: once the guide is marked, the button is replaced by the completed indicator, so "has the footer hydrated" has no single element to ask. A declarative state attribute holds in both shapes.
+
+That is about **selecting** elements, which this contract does by `data-test-*` and testid and not by ARIA attributes. Asserting a control's own disabled state with the framework's matcher is a different thing and is fine — `expect(locator).toBeDisabled()` resolves the standard disabled semantics including `aria-disabled`, which is how Grafana's `Button` expresses it. The suite uses exactly that to assert there is no next milestone at the end of a path.
+
+Milestone navigation is addressed by testid rather than by the buttons' translated `aria-label`:
+
+- **`docs-panel-next-milestone-button`** (`testIds.docsPanel.nextMilestoneButton`): advance to the next milestone.
+- **`docs-panel-previous-milestone-button`** (`testIds.docsPanel.previousMilestoneButton`): return to the previous milestone, and from milestone 1 to the cover page.
+
+Both are disabled at the ends of the path, which is how a test knows it has walked the whole of it. The loading-state toolbar renders the same two controls without testids: they are permanently disabled placeholders, so a test never has a reason to address them.
+
+The source-level tripwire for the two testids lives in `src/components/docs-panel/docs-panel.contract.test.tsx`.
 
 ---
 
@@ -519,8 +634,9 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 ### Location
 
 - `src/components/interactive-tutorial/data-attributes.contract.test.tsx` - React component attributes
+- `src/components/interactive-tutorial/tracked-step-root.contract.test.ts` - Tracked step root attributes and registry parity
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
-- `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
+- `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, bootstrap signals, scroll-restoration)
 - `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts` - Badge celebration test IDs and source references
 - `src/integrations/coda/GcxSetupPanel.contract.test.tsx` - gcx credential test IDs, source references, and the form's visibility states
 
@@ -559,16 +675,18 @@ npm test -- data-attributes.contract  # Run specific contract tests
 
 ## E2E Test Integration
 
-### Selector Patterns
+### Selector patterns
 
-**Recommended**: Use attribute selectors for stable queries
+Use attribute selectors for stable queries.
+For tracked roots, use the [tracked step root contract](#tracked-step-root-contract).
 
 ```typescript
 // ✅ Good - semantic state selector
 await page.waitForSelector('[data-test-step-state="completed"]');
-
-// ✅ Good - combine with step ID for specificity
-await page.waitForSelector('[data-step-id="create-dashboard"][data-test-step-state="idle"]');
+// ✅ Good - combine the tracked kind, test step ID, and state
+await page.waitForSelector(
+  '[data-test-step-kind="guided"][data-test-step-id="create-dashboard"][data-test-step-state="idle"]'
+);
 
 // ❌ Bad - fragile to UI changes
 await page.waitForSelector('.interactive-step.completed');
@@ -702,6 +820,11 @@ Lifecycle notes a runner has to honour:
   without `gcx` never renders any of the step-scoped ids above, even while another surface is installing
   a credential into the same session. It completes on its **Continue** button
   (`interactive-terminal-skip-${stepId}`) as it always did.
+- **A sequentially blocked step renders none of the form either.** Inside a section the whole action
+  area — connect button, **Continue**, and every step-scoped id above — sits behind the step's own
+  eligibility gate, so a `terminal-connect` step whose predecessor is incomplete shows only
+  "Complete previous step" at `data-test-step-state="requirements-unmet"`. The block takes no
+  `skippable`, so there is no skip control to fall back on: drive the earlier steps first.
 - **A credential belongs to one session.** After a reconnect the ready line detaches and the form
   returns, because the new VM holds no credential.
 - **A held-back mint brings its own button back.** A mint whose preflight could not reach an answer is

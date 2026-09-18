@@ -43,7 +43,6 @@ function ranGuide(id: string, opts: { failed?: boolean } = {}): TestResultsData 
   };
 }
 
-/** A guide skipped before execution because its prerequisite failed. */
 function skippedGuide(id: string, failedPrerequisite: string): TestResultsData {
   return {
     guide: { id, title: id, path: `${id}/content.json`, targetUrl: 'http://localhost:3000' },
@@ -52,6 +51,25 @@ function skippedGuide(id: string, failedPrerequisite: string): TestResultsData {
     aborted: true,
     abortReason: 'SKIPPED_PREREQ',
     abortMessage: `Prerequisite "${failedPrerequisite}" did not pass`,
+  };
+}
+
+function unsupportedOnlyGuide(id: string): TestResultsData {
+  return {
+    guide: { id, title: id, path: `${id}/content.json`, targetUrl: 'http://localhost:3000' },
+    timestamp: '2026-01-01T00:00:00.000Z',
+    outcome: 'skipped',
+    errorMessage: 'No executable steps found. Unsupported kinds: quiz',
+    results: [],
+    coverage: {
+      contractSource: 'current',
+      rendered: 1,
+      supported: 0,
+      executed: 0,
+      unsupported: 1,
+      unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
+    },
+    aborted: false,
   };
 }
 
@@ -113,6 +131,77 @@ describe('generateMultiGuideReport — dependency-skipped guides', () => {
 });
 
 describe('versioned report contract', () => {
+  it('includes additive step-kind and non-gating unsupported coverage', () => {
+    const data = ranGuide('mixed-guide');
+    data.results[0]!.stepKind = 'plain';
+    data.coverage = {
+      contractSource: 'current',
+      rendered: 2,
+      supported: 1,
+      executed: 1,
+      unsupported: 1,
+      unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
+    };
+
+    const report = generateReport(data);
+
+    expect(report.outcome).toBe('passed');
+    expect(report.steps[0]!.stepKind).toBe('plain');
+    expect(report.coverage).toEqual(data.coverage);
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
+  });
+
+  it('keeps per-guide coverage in multi-guide reports without changing guide outcomes', () => {
+    const covered = ranGuide('covered');
+    covered.coverage = {
+      contractSource: 'legacy',
+      rendered: 1,
+      supported: 1,
+      executed: 1,
+      unsupported: 0,
+      unsupportedSteps: [],
+    };
+
+    const report = generateMultiGuideReport([covered, ranGuide('other')]);
+
+    expect(report.summary.passedGuides).toBe(2);
+    expect(report.reports[0]!.coverage).toEqual(covered.coverage);
+    expect(() => MultiGuideReportSchema.parse(report)).not.toThrow();
+  });
+
+  it('preserves coverage and the reason for an unsupported-only skipped guide', () => {
+    const data = unsupportedOnlyGuide('unsupported-only');
+
+    const report = generateReport(data);
+
+    expect(report).toMatchObject({
+      outcome: 'skipped',
+      errorMessage: data.errorMessage,
+      coverage: data.coverage,
+    });
+    expect(report.errorCode).toBeUndefined();
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
+  });
+
+  it('counts an unsupported-only guide as skipped in a multi-guide report', () => {
+    const data = unsupportedOnlyGuide('unsupported-only');
+
+    const report = generateMultiGuideReport([data]);
+
+    expect(report.outcome).toBe('skipped');
+    expect(report.summary).toMatchObject({
+      totalGuides: 1,
+      passedGuides: 0,
+      failedGuides: 0,
+      skippedGuides: 1,
+    });
+    expect(report.reports[0]).toMatchObject({
+      outcome: 'skipped',
+      coverage: data.coverage,
+    });
+    expect(() => MultiGuideReportSchema.parse(report)).not.toThrow();
+  });
+
   it('includes normalized outcome, provenance, target, timestamps, and content digest', () => {
     const report = generateReport({
       ...ranGuide('always-passes'),
@@ -148,6 +237,41 @@ describe('versioned report contract', () => {
     expect(pass.outcome).toBe('passed');
     expect(fail.outcome).toBe('failed');
     expect(fail.errorCode).toBe('MANDATORY_FAILURE');
+  });
+
+  it('includes typed fatal transition metadata', () => {
+    const report = generateReport({
+      ...ranGuide('transition-failed'),
+      outcome: 'infrastructure_error',
+      errorCode: 'TRANSITION_FAILED',
+      transitionKind: 'tab-close-failed',
+      errorMessage: 'The prior guide tab did not close',
+      results: [],
+      aborted: true,
+    });
+
+    expect(report).toMatchObject({
+      schemaVersion: '1.1.0',
+      outcome: 'infrastructure_error',
+      errorCode: 'TRANSITION_FAILED',
+      transitionKind: 'tab-close-failed',
+    });
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
+    expect(E2ETestReportSchema.safeParse({ ...report, transitionKind: 'unknown-transition' }).success).toBe(false);
+  });
+
+  it('accepts a current report without transitionKind', () => {
+    const report = generateReport({
+      ...ranGuide('missing-report'),
+      outcome: 'infrastructure_error',
+      errorCode: 'REPORT_MISSING',
+      errorMessage: 'The runner did not write a report',
+      results: [],
+      aborted: true,
+    });
+
+    expect(report.transitionKind).toBeUndefined();
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
   });
 });
 
@@ -235,7 +359,7 @@ describe('writeReport self-validation', () => {
   });
 
   it('still writes a diagnostic report when validation fails', () => {
-    const invalid = { schemaVersion: '1.0.0', outcome: 'not-a-real-outcome' } as unknown as E2ETestReport;
+    const invalid = { schemaVersion: '1.1.0', outcome: 'not-a-real-outcome' } as unknown as E2ETestReport;
     const out = join(dir, 'report.json');
 
     const schemaValid = writeReport(invalid, out);

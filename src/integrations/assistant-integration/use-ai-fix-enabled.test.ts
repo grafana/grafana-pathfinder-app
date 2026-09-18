@@ -1,21 +1,19 @@
 import { renderHook } from '@testing-library/react';
 
-import { usePluginContext } from '@grafana/data';
+import { usePathfinderPluginConfig } from '../../hooks';
 
 import { useAiFixEnabled } from './use-ai-fix-enabled';
 import { useIsAssistantAvailable } from './assistant-dev-mode';
 
-jest.mock('@grafana/data', () => ({ usePluginContext: jest.fn() }));
+jest.mock('../../hooks', () => ({ usePathfinderPluginConfig: jest.fn() }));
 jest.mock('./assistant-dev-mode', () => ({ useIsAssistantAvailable: jest.fn() }));
-jest.mock('../../constants', () => ({
-  getConfigWithDefaults: (jsonData: Record<string, unknown> | undefined) => ({
-    enableAiAutoHeal: (jsonData?.enableAiAutoHeal as boolean | undefined) ?? true,
-  }),
-}));
 
 function run(available: boolean, flag: boolean | undefined): boolean {
   (useIsAssistantAvailable as jest.Mock).mockReturnValue(available);
-  (usePluginContext as jest.Mock).mockReturnValue({ meta: { jsonData: { enableAiAutoHeal: flag } } });
+  (usePathfinderPluginConfig as jest.Mock).mockReturnValue({
+    config: { enableAiAutoHeal: flag ?? true },
+    isResolved: true,
+  });
   return renderHook(() => useAiFixEnabled()).result.current;
 }
 

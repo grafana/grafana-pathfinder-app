@@ -39,11 +39,10 @@ describe('E2E Contract: Docs panel bootstrap signals', () => {
     expect(configHookSource).toContain('__pathfinderPluginConfig');
   });
 
-  // The runner waits for the readiness global before clicking Grafana's Help
-  // control, so `init` must publish it without awaiting anything.
-  it('publishes readiness synchronously from plugin.init', () => {
+  it('waits for authoritative readiness while registering navigation synchronously', () => {
     expect(moduleSource).toContain('plugin.init = function');
-    expect(moduleSource).toContain('publishPathfinderPluginConfig(meta?.jsonData || {})');
+    expect(moduleSource).toContain('waitForPathfinderPluginConfig()');
+    expect(moduleSource).not.toContain('publishPathfinderPluginConfig');
   });
 
   it('publishes the sidebar-mounted event', () => {
@@ -104,6 +103,10 @@ describe('E2E Contract: Docs panel test IDs', () => {
     it('myLearningTab', () => {
       expect(testIds.docsPanel.myLearningTab).toBe('docs-panel-tab-my-learning');
     });
+
+    it('resetGuideButton', () => {
+      expect(testIds.docsPanel.resetGuideButton).toBe('docs-panel-reset-guide-button');
+    });
   });
 
   describe('devTools preview IDs (used in docs-panel content)', () => {
@@ -143,6 +146,7 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
     references: [
       'testIds.docsPanel.content',
       'testIds.docsPanel.openControllerTabButton',
+      'testIds.docsPanel.resetGuideButton',
       'testIds.devTools.previewBanner',
       'testIds.devTools.previewModeIndicator',
       'testIds.devTools.returnToEditorButton',
@@ -183,7 +187,11 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
   },
   {
     file: 'components/LearningJourneyMilestoneToolbar.tsx',
-    references: ['testIds.docsPanel.milestoneMoreActionsButton'],
+    references: [
+      'testIds.docsPanel.milestoneMoreActionsButton',
+      'testIds.docsPanel.nextMilestoneButton',
+      'testIds.docsPanel.previousMilestoneButton',
+    ],
   },
 ];
 

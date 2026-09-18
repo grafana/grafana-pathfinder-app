@@ -3,13 +3,35 @@ import type { UserStorage } from '../../types/storage.types';
 
 export interface BoundedRecordStorage {
   get(key: string): Promise<number>;
-  /** Clamps `percentage` to `[0, 100]`, trims down to `limit` entries on overflow, and retries once after `cleanup()` on quota errors. */
+  /**
+   * Synchronous read of the whole record — for callers that cannot await one
+   * (a path rollup's mean runs synchronously, in several places, and needs
+   * the whole record rather than one key: `path-member-join.ts` reads by key
+   * presence across several candidate keys per member). The hybrid storage
+   * backend writes through to localStorage before it queues the Grafana
+   * write, so the value is already there. `{}` when nothing has been
+   * written yet or the stored value is malformed.
+   */
+  peekAll(): Record<string, number>;
+  /**
+   * Clamps `percentage` to `[0, 100]` and retries once after `cleanup()` on quota errors.
+   *
+   * On overflow the record is trimmed to `limit` entries: zero-progress
+   * entries go first (a missing key reads back as 0, so dropping one loses
+   * nothing), then the least recently written of the rest. Writing a key
+   * counts as touching it, so a guide the reader keeps returning to outlives
+   * one they opened earlier and abandoned.
+   */
   set(key: string, percentage: number): Promise<void>;
   clear(key: string): Promise<void>;
   /** Deletes every key in one read-modify-write. Concurrent `clear` calls share one record, so each write restores the keys its siblings deleted. */
   clearMany(keys: string[]): Promise<void>;
   getAll(): Promise<Record<string, number>>;
-  /** Trims the record down to `limit` entries (most recent kept). No-op when already within budget. */
+  /**
+   * Trims the record down to `limit` entries, evicting zero-progress entries
+   * first and then the least recently written of the rest. No-op when already
+   * within budget.
+   */
   cleanup(): Promise<void>;
   clearAll(): Promise<void>;
 }
@@ -34,17 +56,40 @@ export interface BoundedRecordStorageConfig {
 export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): BoundedRecordStorage {
   const { storageKey, limit, label, createStorage, onQuotaExceeded } = config;
 
+  const trimToLimit = (data: Record<string, number>): Record<string, number> => {
+    const entries = Object.entries(data);
+    const surplus = entries.length - limit;
+    if (surplus <= 0) {
+      return data;
+    }
+    const evicted = new Set<string>();
+    for (const [key, value] of entries) {
+      if (evicted.size >= surplus) {
+        break;
+      }
+      if (value <= 0) {
+        evicted.add(key);
+      }
+    }
+    const survivors = entries.filter(([key]) => !evicted.has(key));
+    // A just-written 0 is evictable like any other, so writing one at the cap
+    // leaves the record untouched. Intended: a stored 0 and an absent key read
+    // back identically, so displacing a real record for one is a pure loss.
+    return Object.fromEntries(survivors.slice(-limit));
+  };
+
   const writeWithCap = async (data: Record<string, number>): Promise<void> => {
     const storage = createStorage();
-    const entries = Object.entries(data);
-    const payload = entries.length > limit ? Object.fromEntries(entries.slice(-limit)) : data;
-    await storage.setItem(storageKey, payload);
+    await storage.setItem(storageKey, trimToLimit(data));
   };
 
   const setInternal = async (key: string, percentage: number, hasRetried: boolean): Promise<void> => {
     try {
       const storage = createStorage();
       const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
+      // Delete before re-adding so the key moves to the end of the record's
+      // key order, which is what `trimToLimit` reads as write recency.
+      delete data[key];
       data[key] = Math.max(0, Math.min(100, percentage));
       await writeWithCap(data);
     } catch (error) {
@@ -73,6 +118,19 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
         return data?.[key] || 0;
       } catch {
         return 0;
+      }
+    },
+
+    peekAll(): Record<string, number> {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) {
+          return {};
+        }
+        const data = JSON.parse(raw) as unknown;
+        return data && typeof data === 'object' ? (data as Record<string, number>) : {};
+      } catch {
+        return {};
       }
     },
 

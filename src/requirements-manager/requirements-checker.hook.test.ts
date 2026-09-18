@@ -1,6 +1,6 @@
 import { SequentialRequirementsManager } from './index';
 import { onContextChange } from '../context-engine';
-import { __notifyContextChangeForTests } from '../context-engine/context-event-bus';
+import { __notifyContextChangeForTests } from '../lib/context-event-bus';
 
 describe('SequentialRequirementsManager DOM monitoring (nav)', () => {
   it('no longer triggers recheck on nav mutations (uses context monitoring instead)', async () => {

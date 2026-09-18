@@ -7,7 +7,13 @@
  * @see docs/developer/E2E_TESTING.md#console-output
  */
 
-import { StepTestResult, AllStepsResult, summarizeResults, skippableFailuresAffectSuccess } from './guide-runner';
+import {
+  type StepTestResult,
+  type AllStepsResult,
+  type StepContractSource,
+  summarizeResults,
+  skippableFailuresAffectSuccess,
+} from './guide-runner';
 
 // ============================================
 // Constants
@@ -253,11 +259,7 @@ export function printSummary(results: StepTestResult[]): void {
  * @param allStepsResult - Full result including abort info
  * @param verbose - Whether to show verbose output
  */
-export function printDetailedSummary(
-  results: StepTestResult[],
-  allStepsResult: AllStepsResult,
-  verbose: boolean = false
-): void {
+export function printDetailedSummary(results: StepTestResult[], allStepsResult: AllStepsResult, verbose = false): void {
   const summary = summarizeResults(results);
 
   // Print basic summary
@@ -331,7 +333,7 @@ export function createProgressCallback(): StepProgressCallback {
  * @param allStepsResult - The complete execution result
  * @param verbose - Whether to show verbose output
  */
-export function printReport(guideTitle: string, allStepsResult: AllStepsResult, verbose: boolean = false): void {
+export function printReport(guideTitle: string, allStepsResult: AllStepsResult, verbose = false): void {
   printHeader(guideTitle);
 
   // Print all step results
@@ -352,7 +354,7 @@ export function printReport(guideTitle: string, allStepsResult: AllStepsResult, 
  * @param results - Array of step test results
  * @param verbose - Whether to show verbose output
  */
-export function printReportFromResults(guideTitle: string, results: StepTestResult[], verbose: boolean = false): void {
+export function printReportFromResults(guideTitle: string, results: StepTestResult[], verbose = false): void {
   const allStepsResult: AllStepsResult = {
     results,
     aborted: false,
@@ -394,11 +396,15 @@ export function printDiscoveryResults(
   totalSteps: number,
   preCompletedCount: number,
   noDoItButtonCount: number,
-  durationMs: number
+  durationMs: number,
+  contractSource?: StepContractSource
 ): void {
   const duration = formatDuration(durationMs);
   console.log();
   console.log(`📋 Discovered ${totalSteps} steps ${duration}`);
+  if (contractSource) {
+    console.log(`   Contract: ${contractSource}`);
+  }
   if (preCompletedCount > 0 || noDoItButtonCount > 0) {
     console.log(`   (${preCompletedCount} pre-completed, ${noDoItButtonCount} without "Do it" button)`);
   }
