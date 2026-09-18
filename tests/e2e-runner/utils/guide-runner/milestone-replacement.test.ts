@@ -516,7 +516,7 @@ it('clears no-completion residue and closes without requiring Reset guide', asyn
 
   expect(harness.resetButton.waitFor).not.toHaveBeenCalled();
   expect(harness.resetButton.click).not.toHaveBeenCalled();
-  expect(harness.closeButton.dispatchEvent).toHaveBeenCalledWith('click');
+  expect(harness.closeButton.dispatchEvent).toHaveBeenCalledWith('click', undefined, { timeout: 15_000 });
   expectMatchingStorageEmpty();
 });
 
@@ -544,7 +544,7 @@ it('fails fatally when legacy reset leaves stored completion after tab close', a
   });
 
   expect(harness.operations).toEqual(['reset', 'close']);
-  expect(harness.closeButton.dispatchEvent).toHaveBeenCalledWith('click');
+  expect(harness.closeButton.dispatchEvent).toHaveBeenCalledWith('click', undefined, { timeout: 15_000 });
   expect(harness.page.waitForTimeout).not.toHaveBeenCalled();
 });
 
@@ -672,7 +672,7 @@ it('closes the previous guide without dismissing a product modal that blocks poi
 
     expect(harness.operations).toEqual(['close']);
     expect(harness.closeButton.click).not.toHaveBeenCalled();
-    expect(harness.closeButton.dispatchEvent).toHaveBeenCalledWith('click');
+    expect(harness.closeButton.dispatchEvent).toHaveBeenCalledWith('click', undefined, { timeout: 15_000 });
     expect(backdrop.isConnected).toBe(true);
   } finally {
     portal.remove();
