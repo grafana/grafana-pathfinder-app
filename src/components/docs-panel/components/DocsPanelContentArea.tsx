@@ -42,6 +42,7 @@ import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
 import { AlignmentPrompt } from './AlignmentPrompt';
+import { GuideVersionNotice } from './GuideVersionNotice';
 import { ErrorDisplay } from './ErrorDisplay';
 import { FullScreenModeNotice } from './FullScreenModeNotice';
 import { LoadingIndicator } from './LoadingIndicator';
@@ -402,6 +403,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
               <div id="inner-docs-content" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
                 {stableContent && (
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
+                    <GuideVersionNotice
+                      manifests={[activeTab?.packageInfo?.packageManifest, stableContent.metadata.packageManifest]}
+                      guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+                      guideTitle={activeTab?.title}
+                    />
                     {activeTab?.pendingAlignment && (
                       <AlignmentPrompt
                         startingLocation={activeTab.pendingAlignment.startingLocation}

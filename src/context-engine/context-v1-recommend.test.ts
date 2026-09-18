@@ -384,6 +384,27 @@ describe('Additive V1 recommendation helpers', () => {
     expect(manifest.depends).toEqual(['real-dep']);
   });
 
+  it.each([
+    ['carries a string minGrafanaVersion through the allowlist', '13.2.0', '13.2.0'],
+    ['drops a numeric minGrafanaVersion', 13 as unknown as string, undefined],
+    ['drops a null minGrafanaVersion', null as unknown as string, undefined],
+    ['drops an object minGrafanaVersion', { min: '13.2.0' } as unknown as string, undefined],
+  ])('%s', (_label, declared, expected) => {
+    const sanitizeV1Recommendation = (ContextService as any).sanitizeV1Recommendation.bind(ContextService);
+    const pkg = sanitizeV1Recommendation({
+      type: 'package',
+      title: 'Guide',
+      matchAccuracy: 0.9,
+      contentUrl: 'https://cdn.example.com/guide/content.json',
+      manifestUrl: 'https://cdn.example.com/guide/manifest.json',
+      repository: 'test',
+      manifest: { id: 'guide', type: 'guide', minGrafanaVersion: declared },
+    });
+
+    const manifest = pkg.manifest as Record<string, unknown>;
+    expect(manifest.minGrafanaVersion).toBe(expected);
+  });
+
   it('should handle empty contentUrl/manifestUrl gracefully', () => {
     const sanitizeV1Recommendation = (ContextService as any).sanitizeV1Recommendation.bind(ContextService);
     const pkg = sanitizeV1Recommendation({
