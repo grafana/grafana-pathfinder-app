@@ -14,6 +14,7 @@
   - [add-block](#add-block)
   - [add-step](#add-step)
   - [add-choice](#add-choice)
+  - [add-hint](#add-hint)
   - [set-manifest](#set-manifest)
   - [inspect](#inspect)
   - [edit-block](#edit-block)
@@ -75,7 +76,7 @@ Instead of asking agents to understand the schema and produce raw JSON, we give 
 
 3. **Append-first for agents.** The CLI itself supports arbitrary placement (`add-block --before`/`--after`/`--position`, `move-block`) for human/power use, but the MCP agent surface withholds those parameters via a bind-time blacklist (see [The command's Zod schema is the stability contract](#the-commands-zod-schema-is-the-stability-contract)), so an agent's own procedure stays append-only: it writes blocks in the order they should appear, updates them in place via `edit-block`, and removes them via `remove-block` using their ID.
 
-4. **ID-based addressing.** All blocks have an `id`. Container blocks (sections, conditionals, assistant, multistep, guided, quiz) require an author-supplied `--id`. Leaf blocks are auto-assigned an ID by the CLI when none is provided. All IDs are stored in `content.json` — the guide file is the source of truth for block identity and is durable across sessions.
+4. **ID-based addressing.** All blocks have an `id`. Container blocks (sections, conditionals, assistant, multistep, guided, quiz, challenge) require an author-supplied `--id`. Leaf blocks are auto-assigned an ID by the CLI when none is provided. All IDs are stored in `content.json` — the guide file is the source of truth for block identity and is durable across sessions.
 
 5. **Progressive discovery.** An agent runs `add-block interactive --help` and gets exactly the fields, types, constraints, and valid values for an interactive block. No upfront schema study required.
 
@@ -116,7 +117,8 @@ Created package: my-guide/
 
 Add blocks with: pathfinder-cli add-block <type> my-guide/
 Block types: markdown, section, interactive, multistep, guided, quiz, input,
-  image, video, html, terminal, terminal-connect, code-block, conditional, assistant
+  image, video, html, terminal, terminal-connect, code-block, conditional, assistant,
+  challenge
 ```
 
 ### `add-block`
@@ -133,7 +135,7 @@ The block type is the _first_ positional argument so each type's `--help` (`path
 
 The `--parent` flag targets a container block by its `id`. Without `--parent`, the block is appended to the top-level `blocks` array. When the parent is a `conditional` block, `--branch true` or `--branch false` selects the target branch.
 
-Container block types (`section`, `conditional`, `assistant`, `multistep`, `guided`, `quiz`) require `--id` so they can be targeted by subsequent commands.
+Container block types (`section`, `conditional`, `assistant`, `multistep`, `guided`, `quiz`, `challenge`) require `--id` so they can be targeted by subsequent commands.
 
 **Example — adding a section:**
 
@@ -182,6 +184,8 @@ pathfinder-cli add-step <dir> --parent <id> [flags]
 
 Flags are derived from `JsonStepSchema`. The `--parent` flag is required and must reference a block of type `multistep` or `guided`.
 
+A `guided` parent accepts a narrower set of actions than a `multistep` one: `navigate` and `popout` are rejected, because a guided step waits for the reader to act and neither of those produces an interaction to wait on. Use a sibling `interactive` block for the action, or a `multistep` parent, which performs its steps automatically.
+
 **Output on success:**
 
 ```
@@ -211,6 +215,25 @@ Added choice "b" to quiz block "check-understanding" in my-guide/
   Package valid: yes
 
 Add another choice with: pathfinder-cli add-choice my-guide/ --parent check-understanding --id c --text "..."
+```
+
+### `add-hint`
+
+Append a progressive hint to a `challenge` block.
+
+```
+pathfinder-cli add-hint <dir> --parent <id> --text <markdown>
+```
+
+The `--parent` flag is required and must reference a block of type `challenge`. Hints append in reveal order, so add the broadest hint first and the most explicit hint last.
+
+**Output on success:**
+
+```
+Added hint to challenge "repair-dashboard" at blocks[3].hintLevels[0]
+  Package valid: yes
+
+Add another hint with: pathfinder-cli add-hint my-guide/ --parent repair-dashboard --text <text>
 ```
 
 ### `set-manifest`
@@ -282,7 +305,7 @@ pathfinder-cli edit-block <dir> <id> [flags]
 - **Scalar fields** use merge semantics — only the flags provided change; unspecified fields are preserved.
 - **Array fields** (e.g., `--requirements`, `--objectives`) use replace semantics — the new value replaces the existing array entirely.
 - **`--type` is not accepted.** Changing a block's type is not supported. Remove and re-add the block if a different type is needed.
-- **Structural fields** (`blocks`, `whenTrue`, `whenFalse`, `steps`) cannot be edited via this command — they are managed by `add-block`, `add-step`, and `add-choice`.
+- **Structural fields** (`blocks`, `whenTrue`, `whenFalse`, `steps`, `choices`, `hintLevels`) cannot be edited via this command — they are managed by `add-block`, `add-step`, `add-choice`, and `add-hint`.
 
 **Example:**
 
@@ -350,7 +373,7 @@ The addressing model defines how commands locate where to append content within 
 
 1. **Top-level is the default.** Without `--parent`, blocks are appended to the guide's root `blocks` array.
 
-2. **Container blocks require `id`.** When creating a `section`, `conditional`, `assistant`, `multistep`, `guided`, or `quiz` block, the `--id` flag is required. The CLI enforces this — the command fails if `--id` is omitted for these types. All other block types accept an optional `--id`; if omitted, the CLI auto-assigns one (see [Auto-assignment of IDs](#auto-assignment-of-ids)).
+2. **Container blocks require `id`.** When creating a `section`, `conditional`, `assistant`, `multistep`, `guided`, `quiz`, or `challenge` block, the `--id` flag is required. The CLI enforces this — the command fails if `--id` is omitted for these types. All other block types accept an optional `--id`; if omitted, the CLI auto-assigns one (see [Auto-assignment of IDs](#auto-assignment-of-ids)).
 
 3. **`--parent <id>` locates a container.** The CLI searches the block tree depth-first for a block with the matching `id`. If not found, the command fails with an error listing available container IDs.
 
@@ -578,6 +601,7 @@ Details are minimal — just enough for the agent to confirm intent (block type,
 - After `add-block` to a section → suggest adding more blocks to the same section, or a new top-level block
 - After `add-step` → suggest adding another step, or moving on to the next block
 - After `add-choice` → suggest adding another choice
+- After `add-hint` → suggest adding another hint
 
 ### Quiet mode (`--quiet`)
 
@@ -874,6 +898,16 @@ pathfinder-cli add-choice my-guide/ --parent check-understanding \
   --id d --text "All of the above" --pinned \
   --hint "Only one is correct."
 
+# Add a challenge with progressive hints
+pathfinder-cli add-block challenge my-guide/ \
+  --id repair-dashboard --mode standard \
+  --title "Repair the dashboard" \
+  --brief "Find and fix the broken dashboard." \
+  --success-criteria is-admin
+
+pathfinder-cli add-hint my-guide/ --parent repair-dashboard \
+  --text "Check the dashboard variables."
+
 # Set manifest metadata
 pathfinder-cli set-manifest my-guide/ \
   --description "Learn to send logs to Loki and query them in Grafana" \
@@ -896,6 +930,7 @@ Use `pathfinder-cli` to author Pathfinder guides. Commands:
 - pathfinder-cli add-block <type> <dir> [--parent <id>] [--branch true|false]
 - pathfinder-cli add-step <dir> --parent <id> --action <action> [flags]
 - pathfinder-cli add-choice <dir> --parent <id> --id <id> --text <text> [flags]
+- pathfinder-cli add-hint <dir> --parent <id> --text <text>
 - pathfinder-cli set-manifest <dir> [flags]
 - pathfinder-cli inspect <dir> [--block <id>] [--at <jsonpath>]
 - pathfinder-cli edit-block <dir> <id> [flags]
@@ -905,9 +940,10 @@ Run any command with --help to see available flags for that block type.
 All commands support --quiet (terse output) and --format json (structured output).
 
 Block types: markdown, section, interactive, multistep, guided, quiz, input,
-  image, video, html, terminal, terminal-connect, code-block, conditional, assistant
+  image, video, html, terminal, terminal-connect, code-block, conditional, assistant,
+  challenge
 
-Container types (require --id): section, conditional, assistant, multistep, guided, quiz
+Container types (require --id): section, conditional, assistant, multistep, guided, quiz, challenge
 Leaf blocks are auto-assigned an ID (e.g., markdown-1) if --id is not provided.
 Use --parent <id> to append inside a container. New blocks are always appended in order.
 Use --if-absent on container blocks to make retries safe.
@@ -945,7 +981,7 @@ Implement `src/cli/utils/package-io.ts` — read a package directory into memory
 
 ### Phase 5: Commands
 
-Implement the eight commands: `create`, `add-block`, `add-step`, `add-choice`, `set-manifest`, `inspect`, `edit-block`, `remove-block`. The six mutation commands follow the read-mutate-validate-write pattern and produce agent-oriented output with next-step hints. The `inspect` command is read-only.
+Implement the nine commands: `create`, `add-block`, `add-step`, `add-choice`, `add-hint`, `set-manifest`, `inspect`, `edit-block`, `remove-block`. The seven mutation commands follow the read-mutate-validate-write pattern and produce agent-oriented output with next-step hints. The `inspect` command is read-only.
 
 All commands support `--quiet` and `--format json` flags via shared output formatting. The `--if-absent` flag is implemented on `add-block` for container types. Auto-ID assignment is implemented in the `add-block` write path — when no `--id` is provided for a leaf block, a `<type>-<n>` ID is generated before the write.
 
@@ -955,6 +991,7 @@ The `create` command's auto-generated package `id` (when `--id` is omitted) take
 
 - Unit tests for the bridge module (Zod field → Commander option mapping)
 - Unit tests for each command (using in-memory fixtures, not subprocess calls, following existing CLI test patterns)
+- `add-hint` tests: ordered append, empty-text rejection, wrong-parent rejection, and MCP dispatch
 - Integration test: author a complete guide via CLI commands and validate the resulting package
 - Registry completeness test: `BLOCK_SCHEMA_MAP` keys === `VALID_BLOCK_TYPES`
 - `inspect` command tests: verify output for empty packages, populated packages, `--block` targeting, and `--at` JSONPath targeting

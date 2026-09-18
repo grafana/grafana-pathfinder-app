@@ -359,6 +359,26 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
   },
 
+  // Conditionals that resolve empty before showing content do not consume a number.
+  '.interactive-section-content > li[data-numbered="true"]:empty': {
+    display: 'none',
+  },
+
+  // Keep nested conditionals mounted while their own listeners wait for
+  // content to become renderable, but do not count the empty wrapper yet.
+  '.interactive-section-content > li[data-numbered="true"]:has(> .section-numbering-empty)': {
+    display: 'none',
+  },
+
+  // Passive conditional children lack the horizontal padding supplied by step cards.
+  '.interactive-section-content > li[data-numbered="true"] .interactive-conditional > .section-numbering-plain': {
+    paddingLeft: `calc(${theme.spacing(2)} + 2px)`,
+
+    '&:first-child': {
+      paddingTop: theme.spacing(2),
+    },
+  },
+
   '.interactive-section-description': {
     padding: `0 ${theme.spacing(2)} ${theme.spacing(1.5)}`,
     color: theme.colors.text.secondary,
@@ -376,8 +396,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     counterReset: 'step-counter', // Initialize counter
 
     // Every direct child sits in a wrapper <li>. Only li[data-numbered="true"]
-    // participates in the sequential numbering — media (image/video) and wrapper
-    // (conditional) blocks render without a number. See issue #841.
+    // participates in the sequential numbering; media render without a number.
     '& > li': {
       listStyle: 'none',
     },
@@ -423,6 +442,18 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     '& > li[data-numbered="true"][data-step="false"]': {
       paddingTop: theme.spacing(2),
       paddingLeft: `calc(${theme.spacing(4)} + ${theme.spacing(2)} + 2px)`,
+    },
+
+    // Once visible, a conditional keeps its counter slot so later steps do not renumber.
+    // This follows the base/data-step padding rules so its reset wins the cascade.
+    '& > li[data-numbered="true"]:has(> .section-numbering-retained)': {
+      height: 0,
+      overflow: 'hidden',
+      padding: 0,
+
+      '&::before': {
+        display: 'none',
+      },
     },
 
     // Step status styles

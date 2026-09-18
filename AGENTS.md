@@ -74,6 +74,8 @@ Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-intera
 
 **Environment reachability** (orthogonal to tiers): `src/cli/` and `tests/` execute in plain Node — the pathfinder CLI, and Playwright discovery of both the main suite and the e2e-runner — so everything they transitively import must load without browser globals. `architecture.test.ts` walks the value-import closure from those roots and fails on any external package outside its `NODE_SAFE_EXTERNALS` allowlist, and on bundler-only asset imports; type-only imports are exempt. Shared app/CLI logic belongs in environment-neutral `*-core.ts` modules with thin browser adapters on top (see `src/lib/dom/grafana-selector-core.ts`). Growing the allowlist with a genuinely Node-safe dependency is normal maintenance — the test's failure message documents the procedure.
 
+**Orphan reachability** (also orthogonal to tiers): `architecture.test.ts` walks the production module graph forward from `APP_ENTRY_ROOTS` (`module.tsx`, the plugin's only webpack entry) and ratchets every unreachable file. A file nothing imports lands in `ALLOWED_ORPHANED_MODULES_ENTRIES` (dead file, or a barrel every consumer deep-imports around); a file imported only from outside the graph — a test file, or tooling under `OFF_GRAPH_IMPORTER_ROOTS` (every dir on the not-tiered list above, plus the repo-root `tests/` tree — only `src/cli/`, `src/test-utils/`, and `tests/` hold TypeScript today) — lands in `ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES` instead, because it is not dead, it just never ships in the bundle. Both lists only shrink; the grandfathered baseline is tracked by #1923.
+
 For the annotated tier definitions, the per-subsystem reference, and the key dependency-edges table (load-bearing producer → consumer wiring), load `.cursor/rules/systemPatterns.mdc`.
 
 ### Backend (`pkg/`)
@@ -127,3 +129,7 @@ Use `/create-experiment`. Experiments are remote-configured through MTFF, alloca
 Namespace every `npx` example under `pathfinder-cli@...` — for a hypothetical `pathfinder-example` package, write `npx pathfinder-cli@... example`. This keeps us from being namesquatted.
 
 - Security issues should be reported via [Grafana's security issue reporting page](https://grafana.com/legal/report-a-security-issue/) and not directly in this repository.
+
+## Filing issues
+
+When filing an issue (including deferred review follow-ups), fill out the fields in `.github/ISSUE_TEMPLATE/structured-issue.yml`, especially User impact / flow change and Acceptance criteria, and apply the `needs-review` label plus appropriate type, area, and severity labels.

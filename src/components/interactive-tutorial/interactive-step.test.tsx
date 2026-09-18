@@ -6,6 +6,7 @@ import { ControllerChannelProvider } from '../../global-state/controller-channel
 import { TEST_PAIRING } from '../../test-utils/fake-cross-tab-transport';
 import { createPairingAcceptProof } from '../../lib/pairing-manager';
 import { testIds } from '../../constants/testIds';
+import { resetCompletionStoreForTests } from '../../global-state/completion-store';
 
 describe('executeWithLazyScroll: step outcome propagation', () => {
   afterEach(() => {

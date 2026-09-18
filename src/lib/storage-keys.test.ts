@@ -34,6 +34,7 @@ describe('StorageKeys — stable string contract', () => {
       SECTION_ACKNOWLEDGED_PREFIX: 'grafana-pathfinder-app-section-acknowledged-',
       SECTION_DONE_PREFIX: 'grafana-pathfinder-app-section-done-',
       GUIDE_COMPLETION_MARK_PREFIX: 'grafana-pathfinder-app-guide-complete-mark-',
+      COMPLETION_EMITTED_PREFIX: 'grafana-pathfinder-app-completion-emitted-',
       FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
       FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
       FULLSCREEN_BUNDLING_ACTION: 'grafana-pathfinder-app-fullscreen-bundling-action',
@@ -49,6 +50,7 @@ describe('StorageKeys — stable string contract', () => {
       HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
       INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',
       FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
+      DEV_MODE_OPT_IN: 'grafana-pathfinder-app-dev-mode-opt-in',
 
       // UI / panel state
       SUGGESTIONS: 'grafana-pathfinder-app-suggestions',

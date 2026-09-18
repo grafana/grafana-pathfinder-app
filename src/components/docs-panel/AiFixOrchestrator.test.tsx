@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, act, waitFor } from '@testing-library/react';
 
-import { usePluginContext } from '@grafana/data';
+import { usePathfinderPluginConfig } from '../../hooks';
 import { getAppEvents } from '@grafana/runtime';
 
 import AiFixOrchestrator from './AiFixOrchestrator';
@@ -12,8 +12,8 @@ import { applyPatchToGuide } from '../../integrations/assistant-integration/appl
 import { AI_FIX_REQUEST_EVENT } from '../../integrations/assistant-integration/ai-fix-event';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
 
+jest.mock('../../hooks', () => ({ usePathfinderPluginConfig: jest.fn() }));
 jest.mock('@grafana/data', () => ({
-  usePluginContext: jest.fn(),
   AppEvents: { alertSuccess: { name: 'alert-success' }, alertWarning: { name: 'alert-warning' } },
 }));
 jest.mock('@grafana/runtime', () => ({ getAppEvents: jest.fn() }));
@@ -24,11 +24,6 @@ jest.mock('../../lib/analytics', () => ({
     AiFixApplied: 'ai_fix_applied',
     AiFixFailed: 'ai_fix_failed',
   },
-}));
-jest.mock('../../constants', () => ({
-  getConfigWithDefaults: (jsonData: Record<string, unknown> | undefined) => ({
-    enableAiAutoHeal: (jsonData?.enableAiAutoHeal as boolean | undefined) ?? true,
-  }),
 }));
 jest.mock('../../interactive-engine', () => ({
   GlobalInteractionBlocker: {
@@ -76,7 +71,7 @@ function dispatchRequest(detail: Record<string, unknown> = { stepId: 's1', refTa
 }
 
 function setFlag(enabled: boolean) {
-  (usePluginContext as jest.Mock).mockReturnValue({ meta: { jsonData: { enableAiAutoHeal: enabled } } });
+  (usePathfinderPluginConfig as jest.Mock).mockReturnValue({ config: { enableAiAutoHeal: enabled }, isResolved: true });
 }
 
 beforeEach(() => {
@@ -93,6 +88,18 @@ describe('AiFixOrchestrator', () => {
   it('renders nothing', () => {
     const { container } = render(<AiFixOrchestrator activeTab={TAB} onPatchApplied={jest.fn()} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('drops requests after the resolved tenant setting opts out', async () => {
+    const onPatchApplied = jest.fn();
+    const { rerender } = render(<AiFixOrchestrator activeTab={TAB} onPatchApplied={onPatchApplied} />);
+
+    setFlag(false);
+    rerender(<AiFixOrchestrator activeTab={TAB} onPatchApplied={onPatchApplied} />);
+    await dispatchRequest();
+
+    expect(generate).not.toHaveBeenCalled();
+    expect(onPatchApplied).not.toHaveBeenCalled();
   });
 
   it('drops the request when the admin has opted out', async () => {

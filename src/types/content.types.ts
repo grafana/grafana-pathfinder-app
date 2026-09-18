@@ -7,6 +7,20 @@ export interface RawContent {
   /** Raw content - always a JSON guide string */
   content: string;
 
+  /**
+   * Which tree this payload's canonical block index must be counted from.
+   *
+   * `content` is the RENDER tree, and on a direct open it is the counting tree
+   * too — producers leave this unset. `prepare-guide-launch.ts` hands the
+   * renderer a snippet-EXPANDED tree instead, whose block count is not the
+   * canonical one (a `snippet-ref` counts as one block however many it expands
+   * into), so an expanded payload names its counting tree here.
+   *
+   * Internal to the content/launch handoff: never author-supplied guide JSON,
+   * never fetched from a CDN, never persisted with the tab.
+   */
+  countingSource?: GuideCountingSource;
+
   /** Metadata extracted during fetching */
   metadata: ContentMetadata;
 
@@ -24,6 +38,38 @@ export interface RawContent {
 
   /** Whether the content was fetched as native JSON (vs HTML that was wrapped) */
   isNativeJson?: boolean;
+}
+
+/**
+ * The preserved pre-inlining guide an expanded payload was expanded from —
+ * the tree `computeGuideBlockIndex` must traverse.
+ */
+export interface PreInliningCountingSource {
+  kind: 'pre-inlining';
+  /** Serialized pre-inlining guide. */
+  guideJson: string;
+}
+
+/**
+ * A payload known to be snippet-expanded whose pre-inlining tree was not
+ * preserved. Rendering stays available; no canonical index is published from
+ * the expanded tree, because that count would not be the canonical one.
+ */
+export interface UnavailableCountingSource {
+  kind: 'unavailable';
+}
+
+export type GuideCountingSource = PreInliningCountingSource | UnavailableCountingSource;
+
+/**
+ * A `RawContent` whose `content` is snippet-expanded. The counting source is
+ * required rather than optional here: an expanded payload that does not carry
+ * the tree it was expanded from cannot be counted, so the type makes dropping
+ * it a compile error rather than a silent 3-for-2 denominator. Build one with
+ * `createPreparedContent` in `src/lib/guide-counting-source.ts`.
+ */
+export interface PreparedRawContent extends RawContent {
+  countingSource: PreInliningCountingSource;
 }
 
 export interface ContentMetadata {

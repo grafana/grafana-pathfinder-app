@@ -17,8 +17,8 @@ import { PackageIOError } from './errors';
  * Container blocks store their children under different keys. This map tells
  * the traversal code which children-array(s) to descend into for each block
  * type. Steps and choices are intentionally NOT here because they aren't
- * blocks — they're addressed via `appendStep` / `appendChoice`, not the
- * generic block walker.
+ * blocks — they're addressed via `appendStep` / `appendChoice` / `appendHint`,
+ * not the generic block walker.
  */
 export const CONTAINER_CHILD_KEYS: Record<string, string[]> = {
   section: ['blocks'],
@@ -28,7 +28,7 @@ export const CONTAINER_CHILD_KEYS: Record<string, string[]> = {
 };
 
 /**
- * Container blocks whose children are NOT `JsonBlock`s (steps, choices). The
+ * Container blocks whose children are NOT `JsonBlock`s (steps, choices, hints). The
  * walker skips these — generic block traversal would corrupt their schema —
  * but `countChildren` and other "any non-empty container" checks need to see
  * them. Driving the count from a map removes a duplicate site of container-
@@ -38,6 +38,7 @@ export const CONTAINER_NON_BLOCK_CHILD_KEYS: Record<string, string[]> = {
   multistep: ['steps'],
   guided: ['steps'],
   quiz: ['choices'],
+  challenge: ['hintLevels'],
 };
 
 /**
@@ -77,7 +78,8 @@ function* walkArray(blocks: JsonBlock[]): Generator<{ block: JsonBlock; parent: 
  *
  * Both leaf and container blocks may carry an `id` since P1.1; this getter
  * is the single lookup `edit-block`, `remove-block`, `add-block --parent`,
- * `add-step --parent`, and `add-choice --parent` go through.
+ * `add-step --parent`, `add-choice --parent`, and `add-hint --parent` go
+ * through.
  */
 export function findBlockById(content: ContentJson, id: string): JsonBlock | null {
   for (const { block } of walkBlocks(content)) {

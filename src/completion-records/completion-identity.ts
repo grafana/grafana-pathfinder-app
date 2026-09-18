@@ -16,6 +16,48 @@
 
 import type { CompletionKey } from './types';
 
+/**
+ * The package launch shape appends this to a bundled guide's id (the package
+ * resolver hands the context panel `bundled:<id>/content.json`). Named to mirror
+ * `PACKAGE_CONTENT_SUFFIX` in `global-state/path-member-join.ts`, which groups the
+ * same two shapes for local progress.
+ *
+ * THIS IS THE SINGLE PLACE that knows about the suffix for completion identity.
+ * Every path that turns a bundled content key into a guide id — the journey
+ * percentage writer and the reset path — goes through `normalizeGuideId`; do not
+ * reintroduce a second inline `/content.json` strip elsewhere.
+ */
+const PACKAGE_CONTENT_SUFFIX = '/content.json';
+
+/**
+ * Normalize a guide id to its bare, canonical form by stripping a trailing
+ * `/content.json`. Both `bundled:<id>` and `bundled:<id>/content.json` are valid
+ * launch shapes for the same bundled guide and must record ONE identity.
+ * Edge cases: returns the input unchanged if empty or exactly `/content.json`.
+ */
+export function normalizeGuideId(guideId: string): string {
+  if (!guideId || guideId === PACKAGE_CONTENT_SUFFIX) {
+    return guideId;
+  }
+  if (guideId.endsWith(PACKAGE_CONTENT_SUFFIX)) {
+    return guideId.slice(0, -PACKAGE_CONTENT_SUFFIX.length);
+  }
+  return guideId;
+}
+
+/**
+ * Every guide-id spelling that must be READ for one guide, honouring the bundled
+ * dual-shape migration: the canonical (normalized) id, plus the legacy
+ * `/content.json`-suffixed id that plugin 2.17.0 wrote. WRITE only the canonical
+ * id (`normalizeGuideId`); READ every variant this returns, so a completion
+ * already stored under the suffixed id is still found — never re-fired as a
+ * duplicate durable record, never orphaned. The canonical id is always first.
+ */
+export function bundledGuideIdReadVariants(guideId: string): [canonical: string, legacySuffixed: string] {
+  const normalized = normalizeGuideId(guideId);
+  return [normalized, `${normalized}${PACKAGE_CONTENT_SUFFIX}`];
+}
+
 /** Default repository when neither an explicit source nor a manifest resolves one. */
 const DEFAULT_GUIDE_SOURCE = 'interactive-tutorials';
 
@@ -58,4 +100,93 @@ export function resolveCompletionIdentity(input: ResolveCompletionIdentityInput)
     DEFAULT_GUIDE_SOURCE;
 
   return { guideSource, guideId };
+}
+
+export interface ResolveMilestoneCompletionIdentityInput {
+  /** The milestone's own manifest, consulted for `guideSource` ONLY — never for `guideId`. */
+  packageManifest?: Record<string, unknown>;
+  /** Explicit/resolved repository; wins over the manifest value, same precedence as {@link resolveCompletionIdentity}. */
+  repository?: string;
+  /** The milestone's URL slug — the only identity a milestone-as-guide record is ever keyed on. */
+  milestoneSlug: string;
+}
+
+/**
+ * The ONE identity derivation for a milestone-as-guide completion record.
+ * Both `markMilestoneDone` (the writer) and the reset path call this rather
+ * than `resolveCompletionIdentity` directly — a milestone's `guideId` is
+ * always its slug, by construction, with no argument able to override that.
+ * A manifest may exist for the owning journey/package, but a milestone is
+ * addressed by URL, not by the journey's manifest id, so letting a manifest
+ * id win here (as it correctly does for an ordinary guide) would key the
+ * writer and a reset under different ids for the exact same milestone.
+ */
+export function resolveMilestoneCompletionIdentity(input: ResolveMilestoneCompletionIdentityInput): CompletionKey {
+  const guideSource =
+    asNonEmptyString(input.repository) ?? asNonEmptyString(input.packageManifest?.repository) ?? 'bundled';
+
+  return { guideSource, guideId: input.milestoneSlug };
+}
+
+export interface ResolveGuideCompletionIdentityInput {
+  packageManifest?: Record<string, unknown>;
+  repository?: string;
+  guideId: string;
+}
+
+/**
+ * The ONE identity derivation for a bundled guide's completion record.
+ * `recordGuideCompletionForSurface`'s `bundled:` branch and the reset
+ * path's matching branch both call this rather than
+ * `resolveCompletionIdentity` directly, so the fallback source ('bundled')
+ * cannot drift between them the way it did before this function existed
+ * (identity-divergence, guideSource axis).
+ */
+export function resolveBundledGuideCompletionIdentity(input: ResolveGuideCompletionIdentityInput): CompletionKey {
+  return resolveCompletionIdentity({
+    packageManifest: input.packageManifest,
+    repository: input.repository,
+    fallbackId: input.guideId,
+    fallbackSource: 'bundled',
+  });
+}
+
+/**
+ * The ONE identity derivation for a standalone (non-bundled,
+ * manifest-carrying) guide's completion record. Deliberately takes no
+ * `fallbackSource` at all: `recordStandaloneGuideCompletion` (the writer)
+ * and the reset path's matching branch both call this, so whichever value
+ * `resolveCompletionIdentity`'s own default falls through to is what BOTH
+ * sides get — never a caller-supplied guess that the other caller could
+ * supply differently. That divergence (the writer omitting a fallback,
+ * the reset path guessing `'bundled'`) is exactly what let reset-then-
+ * re-mark drop the durable record for a standalone guide whose manifest
+ * carries an id but no repository.
+ */
+export function resolveStandaloneGuideCompletionIdentity(input: ResolveGuideCompletionIdentityInput): CompletionKey {
+  return resolveCompletionIdentity({
+    packageManifest: input.packageManifest,
+    repository: input.repository,
+    fallbackId: input.guideId,
+  });
+}
+
+/**
+ * The ONE identity derivation for a journey's own completion record.
+ * The journey-completion branch of `markMilestoneDone` (the writer) and any
+ * future reset path both call this rather than `resolveCompletionIdentity`
+ * directly. Deliberately takes no `fallbackSource` at all: journey manifests
+ * follow the same contract as standalone guides — if a manifest carries an
+ * `id` but no `repository`, the schema default `'interactive-tutorials'` is
+ * semantically correct, NOT `'bundled'`. That divergence (the writer
+ * supplying `'bundled'`, a reset path omitting it or guessing differently)
+ * is exactly the class of identity-divergence bug the shared derivations
+ * were introduced to close.
+ */
+export function resolveJourneyCompletionIdentity(input: ResolveGuideCompletionIdentityInput): CompletionKey {
+  return resolveCompletionIdentity({
+    packageManifest: input.packageManifest,
+    repository: input.repository,
+    fallbackId: input.guideId,
+  });
 }

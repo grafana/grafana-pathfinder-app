@@ -62,15 +62,36 @@ const mockReportAppInteraction = jest.fn();
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
   UserInteraction: { GcxCredentialInstalled: 'gcx_credential_installed', GcxSetupSkipped: 'gcx_setup_skipped' },
+  buildInteractiveStepProperties: jest.fn((props: unknown) => props),
+}));
+
+// Mirrors `createBlockedState` / `createEnabledState`: an ineligible step is
+// blocked with the sequential explanation, an eligible one is enabled. The
+// override stands in for the `idle` state the real FSM starts in, before its
+// post-mount effect resolves a verdict.
+const mockCheckerResetStep = jest.fn();
+let mockCheckerStatusOverride: string | null = null;
+jest.mock('../../requirements-manager', () => ({
+  useStepChecker: ({ isEligibleForChecking }: { isEligibleForChecking: boolean }) => {
+    const status = mockCheckerStatusOverride ?? (isEligibleForChecking === false ? 'blocked' : 'enabled');
+    return {
+      status,
+      isEnabled: status === 'enabled',
+      isChecking: status === 'checking',
+      explanation: status === 'blocked' ? 'Complete previous step' : undefined,
+      resetStep: (...args: unknown[]) => mockCheckerResetStep(...args),
+    };
+  },
 }));
 
 jest.mock('../../lib/telemetry', () => ({ recordGcxCredentialDegradation: jest.fn() }));
 
 const mockMarkStepCompleted = jest.fn();
+const mockResetStep = jest.fn();
 jest.mock('../../global-state/completion-store', () => ({
   useStepCompletion: jest.fn(() => ({ completed: false, reason: null })),
   markStepCompleted: (...args: unknown[]) => mockMarkStepCompleted(...args),
-  resetStep: jest.fn(),
+  resetStep: (...args: unknown[]) => mockResetStep(...args),
   STANDALONE_SECTION_ID: '__standalone__',
 }));
 
@@ -141,6 +162,7 @@ beforeEach(() => {
   mockSessionId = null;
   mockIsTerminalRegistered = true;
   mockSandboxUnavailable = null;
+  mockCheckerStatusOverride = null;
   mockCanMint = true;
   mockProvisionGcx.mockReset();
   mockBackendFetch.mockReset();
@@ -315,7 +337,10 @@ describe('with gcx', () => {
     fireEvent.click(screen.getByTestId(testIds.interactive.gcxSkipButton(STEP_ID)));
 
     expect(onComplete).toHaveBeenCalled();
-    expect(mockReportAppInteraction).toHaveBeenCalledWith('gcx_setup_skipped', { state: 'needs-token' });
+    expect(mockReportAppInteraction).toHaveBeenCalledWith(
+      'gcx_setup_skipped',
+      expect.objectContaining({ state: 'needs-token', interaction_location: 'terminal_connect_step' })
+    );
   });
 
   it('does not offer Continue while the credential is still outstanding', async () => {
@@ -342,9 +367,8 @@ describe('with gcx', () => {
   });
 });
 
-// One store serves the guide step and the terminal toolbar, so an install made
-// anywhere reaches every mounted step. Only a gcx step on the same session has
-// anything to complete on it.
+// One store serves the guide step and terminal toolbar, so readiness is shared
+// by session. Completion stays with the step that requested the install.
 describe('a credential installed elsewhere', () => {
   it('leaves an ordinary connect step alone', async () => {
     mockTerminalStatus = 'connected';
@@ -365,7 +389,7 @@ describe('a credential installed elsewhere', () => {
     expect(screen.getByTestId(testIds.interactive.terminalSkipButton(STEP_ID))).toBeInTheDocument();
   });
 
-  it('completes a gcx step waiting on the same session', async () => {
+  it('shares readiness without completing a gcx step that did not request the run', async () => {
     mockTerminalStatus = 'connected';
     mockSessionId = 's_abc';
     mockProvisionGcx.mockResolvedValue(CREDENTIAL);
@@ -376,24 +400,30 @@ describe('a credential installed elsewhere', () => {
       await runGcxCredential('s_abc');
     });
 
-    expect(onComplete).toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.interactive.gcxReady(STEP_ID))).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.terminalSkipButton(STEP_ID))).toBeInTheDocument();
   });
 
-  it('leaves a gcx step targeting another VM alone', async () => {
-    // A later step whose `vmTemplate` differs reconnects to its own session;
-    // the credential the previous VM took is not its.
+  it('completes only the co-mounted step that requested the install', async () => {
     mockTerminalStatus = 'connected';
-    mockSessionId = 's_other';
+    mockSessionId = 's_abc';
     mockProvisionGcx.mockResolvedValue(CREDENTIAL);
-    const onComplete = jest.fn();
-    renderStep({ gcx: true, onComplete });
+    const onCompleteA = jest.fn();
+    const onCompleteB = jest.fn();
+    render(
+      <>
+        <TerminalConnectStep stepId="step-a" gcx onComplete={onCompleteA} vmTemplate="vm-aws" />
+        <TerminalConnectStep stepId="step-b" gcx onComplete={onCompleteB} vmTemplate="vm-aws-sample-app" />
+      </>
+    );
 
-    await act(async () => {
-      await runGcxCredential('s_abc');
-    });
+    fireEvent.click(screen.getByTestId(testIds.interactive.gcxMintButton('step-a')));
 
-    expect(onComplete).not.toHaveBeenCalled();
-    expect(screen.queryByTestId(testIds.interactive.gcxReady(STEP_ID))).not.toBeInTheDocument();
+    await waitFor(() => expect(onCompleteA).toHaveBeenCalledTimes(1));
+    expect(onCompleteB).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.interactive.gcxReady('step-b'))).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.terminalSkipButton('step-b'))).toBeInTheDocument();
   });
 });
 
@@ -421,5 +451,58 @@ describe('the executeStep handle', () => {
     render(<TerminalConnectStep stepId={STEP_ID} ref={ref} />);
 
     await expect(ref.current!.executeStep()).resolves.toBe(true);
+  });
+});
+
+describe('sequential gating', () => {
+  it('explains why a blocked step offers nothing instead of dead-ending silently', () => {
+    renderStep({ isEligibleForChecking: false });
+
+    expect(screen.getByText('Complete previous step')).toBeInTheDocument();
+    expect(screen.queryByText('Try in terminal')).not.toBeInTheDocument();
+  });
+
+  it('offers the connect button once the prerequisite clears', () => {
+    renderStep({ isEligibleForChecking: true });
+
+    expect(screen.queryByText('Complete previous step')).not.toBeInTheDocument();
+    expect(screen.getByText('Try in terminal')).toBeInTheDocument();
+  });
+
+  it('offers the connect button before the checker reports a verdict', () => {
+    mockCheckerStatusOverride = 'idle';
+    renderStep({ isEligibleForChecking: true });
+
+    expect(screen.getByText('Try in terminal')).toBeInTheDocument();
+  });
+
+  it('withholds the connect button before the verdict when the prerequisite is unmet', () => {
+    mockCheckerStatusOverride = 'idle';
+    renderStep({ isEligibleForChecking: false });
+
+    expect(screen.queryByText('Try in terminal')).not.toBeInTheDocument();
+  });
+});
+
+describe('a section reset', () => {
+  it('suppresses its own store write, since the section already wrote one', () => {
+    const { rerender } = render(<TerminalConnectStep stepId={STEP_ID} onStepComplete={jest.fn()} resetTrigger={0} />);
+
+    act(() => {
+      rerender(<TerminalConnectStep stepId={STEP_ID} onStepComplete={jest.fn()} resetTrigger={1} />);
+    });
+
+    expect(mockResetStep).not.toHaveBeenCalled();
+    expect(mockCheckerResetStep).toHaveBeenCalledWith({ skipStoreWrite: true });
+  });
+
+  it('writes the store itself when there is no section to own it', () => {
+    const { rerender } = render(<TerminalConnectStep stepId={STEP_ID} resetTrigger={0} />);
+
+    act(() => {
+      rerender(<TerminalConnectStep stepId={STEP_ID} resetTrigger={1} />);
+    });
+
+    expect(mockResetStep).toHaveBeenCalledWith(STEP_ID, undefined);
   });
 });

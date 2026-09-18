@@ -181,7 +181,7 @@ export function matchFormValue(
 // ============ STEP ACTION CONFIG ============
 
 export interface StepActionConfig {
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover' | 'noop';
+  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'hover' | 'noop';
   refTarget: string;
   targetValue?: string;
 }
@@ -328,10 +328,6 @@ export function matchesStepAction(
 
     case 'hover':
       return matchesHoverAction(element, refTarget, targetElement);
-
-    case 'sequence':
-      // Sequence actions are handled at multi-step level, not here
-      return false;
 
     case 'noop':
       return false;

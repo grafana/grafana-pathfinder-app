@@ -319,29 +319,6 @@ export default defineConfig([
   },
 
   // ---------------------------------------------------------------------------
-  // Grandfathered from the rule above (#1815).
-  // These three step components destructure props that `step-type-registry.ts`
-  // provably injects — `interactive-section.symmetry.tripwire.test.tsx` pins
-  // the per-type prop surface — and then never read them. Deleting the
-  // bindings would erase the only in-code evidence of that gap, and an `_`
-  // prefix would mark a real defect as deliberate, so the rule is off here
-  // until #1815 either honours each prop or removes it from the props type.
-  // Nothing else belongs in this list: it exists to be emptied, and
-  // `unused-bindings-lint-config.test.ts` pins both the file list and the
-  // bindings each one exempts, so the baseline can neither grow nor drift.
-  // ---------------------------------------------------------------------------
-  {
-    files: [
-      'src/components/interactive-tutorial/code-block-step.tsx',
-      'src/components/interactive-tutorial/terminal-step.tsx',
-      'src/components/interactive-tutorial/terminal-connect-step.tsx',
-    ],
-    rules: {
-      '@typescript-eslint/no-unused-vars': 'off',
-    },
-  },
-
-  // ---------------------------------------------------------------------------
   // Phase 5: Import boundary rules (Epic #603)
   // Encode the tier model as lint rules. Known violations have targeted
   // suppression comments referencing ALLOWED_*_VIOLATIONS in

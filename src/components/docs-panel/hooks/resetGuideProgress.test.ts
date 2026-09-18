@@ -4,10 +4,26 @@ import {
   interactiveCompletionStorage,
   interactiveStepStorage,
 } from '../../../lib/user-storage';
+import { invalidateEmittedCompletion } from '../../../completion-records';
 import { resetGuideProgress } from './resetGuideProgress';
 
 jest.mock('../../../global-state/completion-store');
 jest.mock('../../../lib/user-storage');
+jest.mock('../../../completion-records', () => ({
+  resolveCompletionIdentity: jest.requireActual('../../../completion-records').resolveCompletionIdentity,
+  resolveMilestoneCompletionIdentity:
+    jest.requireActual('../../../completion-records').resolveMilestoneCompletionIdentity,
+  resolveBundledGuideCompletionIdentity:
+    jest.requireActual('../../../completion-records').resolveBundledGuideCompletionIdentity,
+  resolveStandaloneGuideCompletionIdentity:
+    jest.requireActual('../../../completion-records').resolveStandaloneGuideCompletionIdentity,
+  invalidateEmittedCompletion: jest.fn(),
+  normalizeGuideId: jest.requireActual('../../../completion-records').normalizeGuideId,
+}));
+
+const mockInvalidateEmittedCompletion = invalidateEmittedCompletion as jest.MockedFunction<
+  typeof invalidateEmittedCompletion
+>;
 
 const mockEvictContentCache = evictContentCache as jest.MockedFunction<typeof evictContentCache>;
 const mockInteractiveStepStorage = interactiveStepStorage as jest.Mocked<typeof interactiveStepStorage>;
@@ -50,5 +66,33 @@ describe('resetGuideProgress', () => {
     expect(mockInteractiveStepStorage.clearAllForContent).toHaveBeenCalledTimes(2);
     expect(mockInteractiveCompletionStorage.clear).toHaveBeenCalledTimes(2);
     expect(mockEvictContentCache).toHaveBeenCalledTimes(2);
+  });
+
+  // Reset-then-re-mark defect: without this, a guide re-marked after a reset
+  // gets deduped against the completion this reset just erased.
+  it('lifts the completion-recorder dedupe guard using the resolved identity', async () => {
+    await resetGuideProgress('bundled:e2e-test', {
+      packageManifest: { id: 'e2e-test', repository: 'app-platform' },
+    });
+
+    expect(mockInvalidateEmittedCompletion).toHaveBeenCalledWith('app-platform', 'e2e-test');
+  });
+
+  it('falls back to a content-key-derived identity when no manifest is supplied', async () => {
+    await resetGuideProgress('bundled:e2e-test');
+
+    expect(mockInvalidateEmittedCompletion).toHaveBeenCalledWith('bundled', 'e2e-test');
+  });
+
+  // `markMilestoneDone` records a manifest-less milestone under its slug
+  // alone, so a reset keyed on the milestone's full URL would leave the
+  // guard set and silently swallow the second completion. No milestoneSlug
+  // is passed here (the caller found no journey context), so this falls to
+  // the standalone-guide identity — not 'bundled', since a non-bundled
+  // content key was never recorded under that fallback in the first place.
+  it('reduces a milestone URL to the slug the milestone was recorded under', async () => {
+    await resetGuideProgress('https://grafana.com/docs/learning-journeys/demo/milestone-2/');
+
+    expect(mockInvalidateEmittedCompletion).toHaveBeenCalledWith('interactive-tutorials', 'milestone-2');
   });
 });

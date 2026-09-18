@@ -203,7 +203,6 @@ export function installLiveTabExecutor(
           `[Pathfinder] cross-tab executor: composite action "${action.targetAction}" carried no internalActions to replay`
         );
         break;
-      case 'sequence':
       case 'popout':
         logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
         break;

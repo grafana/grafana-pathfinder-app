@@ -681,7 +681,7 @@ export const JsonTerminalConnectBlockSchema = z.object({
  * @coupling Type: JsonChallengeHint
  */
 export const JsonChallengeHintSchema = z.object({
-  text: z.string().min(1, 'Hint text is required'),
+  text: z.string().min(1, 'Hint text is required').describe('Markdown hint text revealed to the learner'),
 });
 
 /**
@@ -724,7 +724,10 @@ export const JsonChallengeBlockSchema = z.object({
   hintLevels: z.array(JsonChallengeHintSchema).optional().describe('Progressive hints revealed on demand'),
   failureMessage: z.string().optional().describe('Message shown when the success check fails'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions for the challenge'),
-  objectives: z.array(ObjectiveTokenSchema).optional().describe(objectivesDescription('block')),
+  objectives: z
+    .array(ObjectiveTokenSchema)
+    .optional()
+    .describe('Conditions checked and surfaced as an informational note; only successCriteria completes a challenge'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
 });
 

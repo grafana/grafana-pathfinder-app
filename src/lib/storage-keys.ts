@@ -23,6 +23,10 @@ export const StorageKeys = {
   SECTION_ACKNOWLEDGED_PREFIX: 'grafana-pathfinder-app-section-acknowledged-', // Dynamic: see buildVersionedSectionStorageKey (issue #842 gate)
   SECTION_DONE_PREFIX: 'grafana-pathfinder-app-section-done-', // Dynamic: see buildVersionedSectionStorageKey (mount-free `section-completed:` check)
   GUIDE_COMPLETION_MARK_PREFIX: 'grafana-pathfinder-app-guide-complete-mark-', // Dynamic: see buildVersionedContentStorageKey (`mark-guide-complete` evidence; keyed by content key alone)
+  // Dynamic: see buildVersionedContentStorageKey, keyed by the recorder's own
+  // `kind:guideSource:guideId` dedupe string (not a content key). Durable
+  // half of completion-recorder.ts's exactly-once guard; survives a reload.
+  COMPLETION_EMITTED_PREFIX: 'grafana-pathfinder-app-completion-emitted-',
   // Full screen mode persistence (for page refreshes during recording)
   FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
   FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
@@ -49,6 +53,11 @@ export const StorageKeys = {
   INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',
   // Dev/debug feature-flag overrides (localStorage). Read before the MTFF client.
   FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
+  // This user's opt-in to developer surfaces (localStorage, like FLAG_OVERRIDES
+  // above). Per-user, so it lives here rather than in tenant settings — it
+  // replaces the old org-wide `devModeUserIds` array in plugin jsonData. Still
+  // gated by the tenant-level `devMode`: both must be true.
+  DEV_MODE_OPT_IN: 'grafana-pathfinder-app-dev-mode-opt-in',
   // External app suggestions for the featured zone (sessionStorage)
   SUGGESTIONS: 'grafana-pathfinder-app-suggestions',
   // Recommended list scroll position, restored on return from a guide (sessionStorage)

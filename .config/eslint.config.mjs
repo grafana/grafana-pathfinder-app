@@ -22,7 +22,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['./tests/**/*'],
+    files: ['tests/**/*.{ts,tsx,js,mjs}'],
 
     rules: {
       'react-hooks/rules-of-hooks': 'off',

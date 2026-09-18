@@ -81,13 +81,6 @@ jest.mock('./navigation-manager', () => ({
   })),
 }));
 
-jest.mock('./sequence-manager', () => ({
-  SequenceManager: jest.fn().mockImplementation(() => ({
-    runInteractiveSequence: jest.fn().mockResolvedValue('completed'),
-    runStepByStepSequence: jest.fn().mockResolvedValue('completed'),
-  })),
-}));
-
 jest.mock('../lib/dom', () => ({
   extractInteractiveDataFromElement: jest.fn(),
   findButtonByText: jest.fn().mockReturnValue([]),

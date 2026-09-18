@@ -6,8 +6,8 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 
 | File                                           | Purpose                                                                                                 |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `index.ts`                                     | Public API barrel export                                                                                |
-| `paths-data.ts`                                | Runtime platform selection (OSS vs Grafana Cloud)                                                       |
+| `index.ts`                                     | Public API barrel export; also registers the Tier 1 guide-completion bridge                             |
+| `paths-data.ts`                                | Runtime platform selection (OSS vs Grafana Cloud) and path lookup by URL (`findPathByUrl`)              |
 | `paths.json`                                   | OSS path definitions (static, bundled guide IDs)                                                        |
 | `paths-cloud.json`                             | Grafana Cloud path definitions (superset of OSS; includes URL-based paths)                              |
 | `app-platform-paths.ts`                        | Adapts published App Platform path and journey packages into learning paths                             |
@@ -168,7 +168,7 @@ If more than one day has elapsed since the last activity, the streak is reported
 
 ### Marking guides completed
 
-`markGuideCompleted(guideId)` delegates to the Tier 2 coordinator in `badge-coordinator.ts`. The coordinator loads and persists progress through `learningProgressStorage`, updates the streak, evaluates and records new badges, reports badge analytics, and dispatches the progress event. The storage layer only persists learning progress and exposes focused mutation helpers. The coordinator function is also exported directly from the module's `index.ts` barrel for completion flows that do not need the hook.
+`markGuideCompleted(guideId)` delegates to the Tier 2 coordinator in `badge-coordinator.ts`. The coordinator loads and persists progress through `learningProgressStorage`, updates the streak, evaluates and records new badges, reports badge analytics, and dispatches the progress event. The storage layer only persists learning progress and exposes focused mutation helpers. The coordinator function is also exported directly from the module's `index.ts` barrel for completion flows that do not need the hook. `docs-retrieval` reaches it — and `findPathByUrl`, which resolves a journey base URL to its path so `markMilestoneDone` can award the path badge — through the Tier 1 `lib/guide-completion-bridge.ts` seam rather than a lateral import; this barrel registers that implementation on load, so a consumer that imports a bare file from this module instead of the barrel gets the bridge's warn-and-degrade fallback.
 
 ### Dismissing celebrations
 
