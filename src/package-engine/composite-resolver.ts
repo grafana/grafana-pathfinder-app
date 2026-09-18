@@ -27,6 +27,15 @@ import { AppPlatformPackageResolver } from './app-platform-resolver';
 // resolution here would serve stale content after an author edits a guide.
 const UNCACHEABLE_REPOSITORIES = new Set(['app-platform']);
 
+function isResolutionMiss(diagnostic: GuideDiagnostic): boolean {
+  return (
+    diagnostic.reason === 'not-found' ||
+    (diagnostic.stage === 'resolve' &&
+      diagnostic.reason === 'http-error' &&
+      (diagnostic.statusCode === 400 || diagnostic.statusCode === 404))
+  );
+}
+
 export class CompositePackageResolver implements PackageResolver {
   private readonly resolvers: PackageResolver[];
   private readonly cache = new Map<string, Promise<PackageResolution>>();
@@ -90,7 +99,12 @@ export class CompositePackageResolver implements PackageResolver {
       }
       lastFailure = result;
       const diagnostic = result.error.diagnostic;
-      if (diagnostic && diagnostic.reason !== 'namespace-unavailable' && diagnostic.reason !== 'backend-unavailable') {
+      if (
+        diagnostic &&
+        diagnostic.reason !== 'namespace-unavailable' &&
+        diagnostic.reason !== 'backend-unavailable' &&
+        (!attemptedDiagnostic || (isResolutionMiss(attemptedDiagnostic) && !isResolutionMiss(diagnostic)))
+      ) {
         attemptedDiagnostic = diagnostic;
       }
     }

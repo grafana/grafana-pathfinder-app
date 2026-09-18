@@ -59,18 +59,26 @@ export class OnlineCdnPackageResolver implements PackageResolver {
       entry = response.packages.find((p) => p.id === packageId);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'index fetch failed';
-      return failure(packageId, 'network-error', message);
+      return failure(packageId, 'network-error', message, diagnoseGuideError(err, 'cdn', 'resolve'));
     }
 
     if (!entry) {
-      return failure(packageId, 'not-found', 'package not in online CDN index');
+      return failure(packageId, 'not-found', 'package not in online CDN index', {
+        source: 'cdn',
+        stage: 'resolve',
+        reason: 'not-found',
+      });
     }
 
     const contentUrl = buildPackageFileUrl(baseUrl, entry.path, 'content.json');
     const manifestUrl = buildPackageFileUrl(baseUrl, entry.path, 'manifest.json');
 
     if (!contentUrl) {
-      return failure(packageId, 'not-found', 'invalid base URL or path for online package');
+      return failure(packageId, 'not-found', 'invalid base URL or path for online package', {
+        source: 'cdn',
+        stage: 'resolve',
+        reason: 'invalid-url',
+      });
     }
 
     const resolution: PackageResolutionSuccess = {
@@ -98,8 +106,6 @@ export class OnlineCdnPackageResolver implements PackageResolver {
       resolution.content = loaded.content;
       resolution.manifest = loaded.manifest;
     } else if (entry.manifest) {
-      // Even without explicit loadContent, surface the inlined manifest —
-      // resolveDeferredData / processLearningJourneys only need manifest fields.
       const parsed = ManifestJsonObjectSchema.loose().safeParse(entry.manifest);
       if (parsed.success) {
         resolution.manifest = parsed.data as ManifestJson;

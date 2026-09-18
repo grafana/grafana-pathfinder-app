@@ -49,7 +49,6 @@ export class RecommenderPackageResolver implements PackageResolver {
   async resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
     let resolutionData: V1PackageResolutionResponse;
     try {
-      // SECURITY: Construct URL safely using URL API (F3)
       const endpoint = new URL(`/api/v1/packages/${encodeURIComponent(packageId)}`, this.baseUrl);
 
       const response = await fetchGuideResource(
@@ -64,15 +63,30 @@ export class RecommenderPackageResolver implements PackageResolver {
 
       if (response.status === 404) {
         const body = await response.json().catch(() => ({}));
-        return failure(packageId, 'not-found', body.error || 'package not found');
+        return failure(packageId, 'not-found', body.error || 'package not found', {
+          source: 'cdn',
+          stage: 'resolve',
+          reason: 'not-found',
+          statusCode: response.status,
+        });
       }
 
       if (response.status === 400) {
-        return failure(packageId, 'not-found', 'invalid package id');
+        return failure(packageId, 'not-found', 'invalid package id', {
+          source: 'cdn',
+          stage: 'resolve',
+          reason: 'not-found',
+          statusCode: response.status,
+        });
       }
 
       if (!response.ok) {
-        return failure(packageId, 'network-error', `HTTP ${response.status}`);
+        return failure(packageId, 'network-error', `HTTP ${response.status}`, {
+          source: 'cdn',
+          stage: 'resolve',
+          reason: 'http-error',
+          statusCode: response.status,
+        });
       }
 
       resolutionData = await response.json();
@@ -95,16 +109,6 @@ export class RecommenderPackageResolver implements PackageResolver {
     };
 
     if (options?.loadContent) {
-      // V1PackageResolutionResponse carries no title field, so cross-reference
-      // the same process-cached CDN index OnlineCdnPackageResolver uses —
-      // otherwise titles are lost whenever the recommender tier is active
-      // (the default on Grafana Cloud). Best-effort: the index call never
-      // throws and an empty/missing match just leaves entryTitle unset.
-      // Gated on loadContent: callers that only want a fast URL/publish-status
-      // lookup (e.g. fetchPackageById's verifyPublished probe) have no use
-      // for a title, and this index fetch isn't guaranteed warm — cold, it
-      // can cost several seconds, which must never block a caller that never
-      // asked for enriched metadata in the first place.
       const index = await fetchOnlinePackageRecommendations();
       const entry = index.packages.find((p) => p.id === packageId);
       if (entry?.title != null) {
