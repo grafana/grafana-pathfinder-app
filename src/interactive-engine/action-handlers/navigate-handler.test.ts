@@ -65,6 +65,29 @@ describe('NavigateHandler', () => {
       timestamp: Date.now(),
     };
 
+    describe('guide fallback resolution', () => {
+      const resolveGuideParam = (data: InteractiveElementData, url: string): string | null =>
+        (
+          navigateHandler as unknown as {
+            resolveGuideParam: (data: InteractiveElementData, parsedUrl: URL) => string | null;
+          }
+        ).resolveGuideParam(data, new URL(url, 'http://localhost'));
+
+      it('prefers explicit openGuide over the URL doc fallback', () => {
+        expect(
+          resolveGuideParam({ ...mockData, openGuide: 'bundled:explicit-guide' }, '/dashboards?doc=bundled:url-guide')
+        ).toBe('bundled:explicit-guide');
+      });
+
+      it('falls back to the URL doc parameter when openGuide is absent', () => {
+        expect(resolveGuideParam(mockData, '/dashboards?doc=bundled:url-guide')).toBe('bundled:url-guide');
+      });
+
+      it('returns no guide when neither source is present', () => {
+        expect(resolveGuideParam(mockData, '/dashboards')).toBeNull();
+      });
+    });
+
     it('should handle show mode correctly', async () => {
       await navigateHandler.execute(mockData, false);
 
