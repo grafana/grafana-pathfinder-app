@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@grafana/ui';
+import { config, locationService } from '@grafana/runtime';
 import { codaWorkspaceUrl, codaSupports, isCodaUsable } from './coda-api';
 import { loadCodaCapabilities } from './useCodaAvailability.hook';
 import { testIds } from '../../constants/testIds';
@@ -45,12 +46,13 @@ export function WorkspaceLink({
       variant="secondary"
       fill="text"
       icon="brackets-curly"
-      tooltip="Open IDE connected to this VM (new tab)"
+      tooltip="Open IDE connected to this VM"
       className={className}
       disabled={!connected || !vmId}
       onClick={() => {
         if (connected && vmId) {
-          window.open(codaWorkspaceUrl(vmId), '_blank', 'noopener,noreferrer');
+          // Grafana's router adds appSubUrl itself; avoid a full reload or a second tab.
+          locationService.push(codaWorkspaceUrl(vmId).slice(config.appSubUrl?.length ?? 0));
         }
       }}
       data-testid={testIds.codaTerminal.openIdeButton}

@@ -511,13 +511,15 @@ The authoritative list is `GET /v1/capabilities`; prefer feature-detecting over 
 
 The terminal toolbar shows **IDE** beside **GCX** only when Coda advertises both `workspace-files`
 and `explicit-vm-attachment`, and the shared capability cache reports a usable backend. It is enabled
-only while connected with a known `vmId`, and opens a new tab so the guide remains visible. The VM ID
+only while connected with a known `vmId`, and navigates within the current Grafana tab without a full
+page reload. Pathfinder remains in the sidebar. The VM ID
 comes directly from the live terminal hook, not a template lookup. The editor owns a separate
 connection; closing it leaves the guide intact.
 
 The navigation contract, defined by [Coda IDE](https://github.com/grafana/grafana-coda-app/pull/167), is
 `/a/grafana-coda-app/ide?vmId=…&path=…&line=…` with optional file/line hints, prefixed with Grafana's
-`appSubUrl` for sub-path installations. The temporary adapter builds this URL while Pathfinder uses
+`appSubUrl` for browser URLs. The button strips that prefix before calling `locationService.push`,
+because Grafana's router supplies the sub-path itself. The temporary adapter builds this URL while Pathfinder uses
 an older client dependency. Migrate to the exported client builder when that release is adopted;
 `coda-workspace-url.contract.test.ts` fails when the installed SDK exports it. No guide schema or
 block type is added.

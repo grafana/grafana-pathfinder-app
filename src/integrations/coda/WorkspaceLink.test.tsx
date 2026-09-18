@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { config } from '@grafana/runtime';
+import { config, locationService } from '@grafana/runtime';
 import { WorkspaceLink } from './WorkspaceLink';
 import { codaWorkspaceUrl, type CodaCapabilities } from './coda-api';
 import { loadCodaCapabilities } from './useCodaAvailability.hook';
@@ -27,24 +27,26 @@ afterEach(() => {
   config.appSubUrl = originalSubUrl;
 });
 
-it('opens the exact connected VM in an isolated new tab', async () => {
+it('opens the exact connected VM through Grafana navigation in the current tab', async () => {
   const open = jest.spyOn(window, 'open').mockReturnValue(null);
+  const navigate = jest.spyOn(locationService, 'push').mockImplementation(() => {});
   render(<WorkspaceLink connected vmId="guide-vm" />);
   fireEvent.click(await screen.findByRole('button', { name: 'IDE' }));
   expect(screen.getByTestId(testIds.codaTerminal.openIdeButton)).toHaveTextContent('IDE');
-  expect(open).toHaveBeenCalledWith('/a/grafana-coda-app/ide?vmId=guide-vm', '_blank', 'noopener,noreferrer');
+  expect(open).not.toHaveBeenCalled();
+  expect(navigate).toHaveBeenCalledWith('/a/grafana-coda-app/ide?vmId=guide-vm');
 });
 
 it.each([
   { connected: false, vmId: null },
   { connected: true, vmId: null },
 ])('does not navigate with connected=$connected and vmId=$vmId', async (props) => {
-  const open = jest.spyOn(window, 'open').mockReturnValue(null);
+  const navigate = jest.spyOn(locationService, 'push').mockImplementation(() => {});
   render(<WorkspaceLink {...props} />);
   const button = await screen.findByRole('button', { name: 'IDE' });
   expect(button).toHaveAttribute('aria-disabled', 'true');
   fireEvent.click(button);
-  expect(open).not.toHaveBeenCalled();
+  expect(navigate).not.toHaveBeenCalled();
 });
 
 it.each([
@@ -91,17 +93,19 @@ it('encodes file hints without changing the navigation origin', () => {
 
 it('opens IDE under the configured Grafana sub-path', async () => {
   config.appSubUrl = '/grafana';
-  const open = jest.spyOn(window, 'open').mockReturnValue(null);
+  const navigate = jest.spyOn(locationService, 'push').mockImplementation(() => {});
   render(<WorkspaceLink connected vmId="guide-vm" />);
   fireEvent.click(await screen.findByRole('button', { name: 'IDE' }));
-  expect(open).toHaveBeenCalledWith('/grafana/a/grafana-coda-app/ide?vmId=guide-vm', '_blank', 'noopener,noreferrer');
+  // The router owns the basename; the URL builder still supports browser URLs.
+  expect(codaWorkspaceUrl('guide-vm')).toBe('/grafana/a/grafana-coda-app/ide?vmId=guide-vm');
+  expect(navigate).toHaveBeenCalledWith('/a/grafana-coda-app/ide?vmId=guide-vm');
 });
 
 it('uses the current VM after a session changes', async () => {
-  const open = jest.spyOn(window, 'open').mockReturnValue(null);
+  const navigate = jest.spyOn(locationService, 'push').mockImplementation(() => {});
   const { rerender } = render(<WorkspaceLink connected vmId="old-vm" />);
   await screen.findByRole('button', { name: 'IDE' });
   rerender(<WorkspaceLink connected vmId="current-vm" />);
   fireEvent.click(screen.getByRole('button', { name: 'IDE' }));
-  expect(open).toHaveBeenCalledWith('/a/grafana-coda-app/ide?vmId=current-vm', '_blank', 'noopener,noreferrer');
+  expect(navigate).toHaveBeenCalledWith('/a/grafana-coda-app/ide?vmId=current-vm');
 });
