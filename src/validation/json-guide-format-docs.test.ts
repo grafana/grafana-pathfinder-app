@@ -1,21 +1,13 @@
-/**
- * Documentation coverage for the JSON guide format reference.
- *
- * Every block type in the `JsonBlockSchema` union must have a row in the
- * "Block Types Summary" table and a per-type section heading in
- * json-guide-format.md. Block types are read out of the schema at runtime, so
- * adding a variant to the union fails this test until the reference documents
- * it.
- */
-
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { JsonBlockSchema } from '../types/json-guide.schema';
+import { GUIDED_ACTION_TYPES } from '../types/interactive-actions.types';
+import { JsonBlockSchema, JsonInteractiveActionSchema } from '../types/json-guide.schema';
 
 const DOC_RELATIVE_PATH = 'docs/developer/interactive-examples/json-guide-format.md';
 const DOC_PATH = path.resolve(__dirname, '../..', DOC_RELATIVE_PATH);
 const SUMMARY_HEADING = '### Block Types Summary';
+const GUIDED_ACTIONS_HEADING = '#### Actions a guided step accepts';
 
 /** Bump deliberately: a short count means the union shrank or Zod's internals moved. */
 const EXPECTED_BLOCK_TYPE_COUNT = 21;
@@ -54,10 +46,10 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** The summary table alone — other field tables also carry rows like `| \`section\``. */
-function summaryTableSection(markdown: string): string {
+// Scope rows to their section because other tables reuse action and block names.
+function tableSection(markdown: string, heading: string): string {
   const lines = markdown.split('\n');
-  const start = lines.findIndex((line) => line.trim() === SUMMARY_HEADING);
+  const start = lines.findIndex((line) => line.trim() === heading);
   if (start === -1) {
     return '';
   }
@@ -68,7 +60,21 @@ function summaryTableSection(markdown: string): string {
 
 const blockTypes = blockTypesFromSchema();
 const doc = fs.readFileSync(DOC_PATH, 'utf-8');
-const summaryTable = summaryTableSection(doc);
+const summaryTable = tableSection(doc, SUMMARY_HEADING);
+const guidedActionRows = tableSection(doc, GUIDED_ACTIONS_HEADING)
+  .split('\n')
+  .filter((line) => line.trim().startsWith('|'))
+  .map((line) =>
+    line
+      .trim()
+      .slice(1, -1)
+      .split('|')
+      .map((cell) => cell.trim())
+  );
+const guidedColumn = guidedActionRows[0]?.indexOf('`guided`') ?? -1;
+const actionColumn = guidedActionRows[0]?.indexOf('Action') ?? -1;
+const guidedActions: readonly string[] = GUIDED_ACTION_TYPES;
+const rejectedGuidedActions = JsonInteractiveActionSchema.options.filter((action) => !guidedActions.includes(action));
 const headings = doc
   .split('\n')
   .filter((line) => line.startsWith('#### '))
@@ -85,6 +91,30 @@ function claimedByLongerType(heading: string, blockType: string): boolean {
 }
 
 describe('JSON guide format reference', () => {
+  describe('guided-action table', () => {
+    it('locates the action and guided columns', () => {
+      expect(
+        (actionColumn >= 0 && guidedColumn >= 0) ||
+          `No Action and \`guided\` columns found under "${GUIDED_ACTIONS_HEADING}" in ${DOC_RELATIVE_PATH}.`
+      ).toBe(true);
+    });
+
+    it.each([
+      ...guidedActions.map((action) => [action, '✅']),
+      ...rejectedGuidedActions.map((action) => [action, '❌']),
+    ])('documents %s with %s in the guided column', (action, marker) => {
+      const rows = guidedActionRows.filter((row) => row[actionColumn] === `\`${action}\``);
+      expect(
+        rows.length === 1 ||
+          `Action "${action}" needs exactly one row under "${GUIDED_ACTIONS_HEADING}" in ${DOC_RELATIVE_PATH}; found ${rows.length}.`
+      ).toBe(true);
+      expect(
+        rows[0]?.[guidedColumn] === marker ||
+          `Action "${action}" must show ${marker} in the \`guided\` column in ${DOC_RELATIVE_PATH}; found "${rows[0]?.[guidedColumn]}".`
+      ).toBe(true);
+    });
+  });
+
   it('reads every block type out of the schema union', () => {
     expect(blockTypes).toContain('markdown');
     expect(blockTypes).toHaveLength(EXPECTED_BLOCK_TYPE_COUNT);
