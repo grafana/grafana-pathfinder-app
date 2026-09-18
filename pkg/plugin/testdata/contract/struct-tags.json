@@ -75,6 +75,87 @@
       "omitempty": false
     }
   ],
+  "assignmentCapability": [
+    {
+      "field": "Available",
+      "json": "available",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    }
+  ],
+  "assignmentEntry": [
+    {
+      "field": "PathID",
+      "json": "pathId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "TrackID",
+      "json": "trackId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "RuleID",
+      "json": "ruleId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "AssignedBy",
+      "json": "assignedBy",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "AssignedAt",
+      "json": "assignedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "DueAt",
+      "json": "dueAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "AcceptCompletionsFrom",
+      "json": "acceptCompletionsFrom",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Satisfied",
+      "json": "satisfied",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": false
+    },
+    {
+      "field": "Lifecycle",
+      "json": "lifecycle",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    }
+  ],
   "collatedCompletion": [
     {
       "field": "GuideSource",
@@ -334,6 +415,36 @@
       "type": "int",
       "wire": "integer",
       "omitempty": false
+    }
+  ],
+  "myAssignmentsResponse": [
+    {
+      "field": "Capability",
+      "json": "capability",
+      "type": "plugin.assignmentCapability",
+      "wire": "object",
+      "omitempty": false
+    },
+    {
+      "field": "UserID",
+      "json": "userId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Assignments",
+      "json": "assignments",
+      "type": "[]plugin.assignmentEntry",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "AsOf",
+      "json": "asOf",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
     }
   ],
   "myCompletionsResponse": [

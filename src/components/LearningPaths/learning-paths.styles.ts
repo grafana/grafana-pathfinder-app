@@ -29,6 +29,14 @@ export function getColorPalette(theme: GrafanaTheme2) {
     pathAccentMedium: isDark ? 'rgba(139, 124, 246, 0.3)' : 'rgba(108, 99, 255, 0.25)',
     pathGlow: isDark ? 'rgba(139, 124, 246, 0.4)' : 'rgba(108, 99, 255, 0.3)',
 
+    dueSoon: isDark ? '#F5C26B' : '#C4851A',
+    dueSoonLight: isDark ? 'rgba(245, 194, 107, 0.18)' : 'rgba(196, 133, 26, 0.12)',
+    dueSoonGlow: isDark ? 'rgba(245, 194, 107, 0.4)' : 'rgba(196, 133, 26, 0.3)',
+
+    overdue: isDark ? '#F87171' : '#DC2626',
+    overdueLight: isDark ? 'rgba(248, 113, 113, 0.18)' : 'rgba(220, 38, 38, 0.12)',
+    overdueGlow: isDark ? 'rgba(248, 113, 113, 0.4)' : 'rgba(220, 38, 38, 0.3)',
+
     // Streak fire colors
     streakFire: isDark ? '#FF8C5A' : '#FF6B35',
     streakFireLight: isDark ? 'rgba(255, 140, 90, 0.15)' : 'rgba(255, 107, 53, 0.12)',
@@ -159,6 +167,24 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
         boxShadow: `0 2px 8px ${colors.successGlow}`,
       },
     }),
+    cardUpcoming: css({
+      background: `linear-gradient(135deg, ${colors.dueSoonLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      borderColor: colors.dueSoon,
+
+      '&:hover': {
+        borderColor: colors.dueSoon,
+        boxShadow: `0 2px 8px ${colors.dueSoonGlow}`,
+      },
+    }),
+    cardOverdue: css({
+      background: `linear-gradient(135deg, ${colors.overdueLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      borderColor: colors.overdue,
+
+      '&:hover': {
+        borderColor: colors.overdue,
+        boxShadow: `0 2px 8px ${colors.overdueGlow}`,
+      },
+    }),
     header: css({
       display: 'flex',
       alignItems: 'flex-start',
@@ -198,13 +224,41 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
     metaDot: css({
       color: theme.colors.text.disabled,
     }),
-    nextHint: css({
-      marginTop: theme.spacing(0.75),
+    assignedBadge: css({
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.25),
+      padding: `${theme.spacing(0.125)} ${theme.spacing(0.5)}`,
+      borderRadius: theme.shape.radius.pill,
       fontSize: theme.typography.bodySmall.fontSize,
-      color: theme.colors.text.secondary,
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
+      fontWeight: theme.typography.fontWeightMedium,
+      lineHeight: 1.3,
+      backgroundColor: colors.dueSoonLight,
+      border: `1px solid ${colors.dueSoon}`,
+      color: colors.dueSoon,
+    }),
+    dueBadge: css({
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.25),
+      padding: `${theme.spacing(0.125)} ${theme.spacing(0.5)}`,
+      borderRadius: theme.shape.radius.pill,
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      lineHeight: 1.3,
+      backgroundColor: colors.successLight,
+      border: `1px solid ${colors.success}`,
+      color: colors.success,
+    }),
+    dueBadgeUpcoming: css({
+      backgroundColor: colors.dueSoonLight,
+      border: `1px solid ${colors.dueSoon}`,
+      color: colors.dueSoon,
+    }),
+    dueBadgeOverdue: css({
+      backgroundColor: colors.overdueLight,
+      border: `1px solid ${colors.overdue}`,
+      color: colors.overdue,
     }),
     actions: css({
       display: 'flex',
@@ -323,6 +377,23 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
     expandableOpen: css({
       maxHeight: 500,
       opacity: 1,
+    }),
+    expandMeta: css({
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(0.5),
+      padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1)}`,
+    }),
+    expandMetaBordered: css({
+      borderTop: `1px solid ${theme.colors.border.weak}`,
+      paddingTop: theme.spacing(1),
+    }),
+    expandMetaRow: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.75),
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.secondary,
     }),
     description: css({
       margin: 0,

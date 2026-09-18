@@ -296,6 +296,15 @@
       "match": {
         "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:xychart" }, { "targetPlatform": "oss" }]
       }
+    },
+    {
+      "title": "Visualize GitHub data source in Grafana Cloud",
+      "url": "https://grafana.com/docs/learning-paths/github-visualize/",
+      "description": "A learning journey that shows you how to visualize GitHub repository data in Grafana Cloud.",
+      "type": "learning-journey",
+      "match": {
+        "urlPrefix": "/dashboards"
+      }
     }
   ]
 }

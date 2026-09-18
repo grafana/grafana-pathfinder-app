@@ -73,6 +73,7 @@ func contractRoots() []contractRoot {
 		{"custom-guide-repository", reflect.TypeOf(customGuideRepositoryResponse{})},
 		{"completion-records-my", reflect.TypeOf(myCompletionsResponse{})},
 		{"completion-records-capability", reflect.TypeOf(completionCapability{})},
+		{"assignments-my", reflect.TypeOf(myAssignmentsResponse{})},
 	}
 }
 
@@ -96,6 +97,9 @@ func contractCases() []contractCase {
 		{"completion-records-my.unavailable", captureMyCompletionsUnavailable},
 		{"completion-records-capability.available", captureCapabilityAvailable},
 		{"completion-records-capability.unavailable", captureCapabilityUnavailable},
+		{"assignments-my.default", captureMyAssignmentsDefault},
+		{"assignments-my.empty", captureMyAssignmentsEmpty},
+		{"assignments-my.unavailable", captureMyAssignmentsUnavailable},
 	}
 }
 
@@ -836,4 +840,48 @@ func captureCapabilityAvailable(t *testing.T) *httptest.ResponseRecorder {
 func captureCapabilityUnavailable(t *testing.T) *httptest.ResponseRecorder {
 	freezeContractTime(t)
 	return doCompletionGolden(t, completionRequest(t, "/completion-records/capability", ""), completionCapabilityRoute)
+}
+
+// --- Captures: /assignments/my -----------------------------------------------
+
+func doAssignmentsGolden(t *testing.T, r *http.Request, records ...assignmentSpec) *httptest.ResponseRecorder {
+	t.Helper()
+	withAssignmentLister(t, singlePageAssignmentLister(records...))
+	rr := httptest.NewRecorder()
+	newTestApp(t).handleMyAssignments(rr, r)
+	return rr
+}
+
+// One obligation of every shape the envelope can express, so the golden pins
+// which fields are genuinely optional: a bare path with no deadline (what MVP
+// actually writes), a track-qualified target with a due date, and one carrying
+// both time bounds. A second subject's record is present to pin that the
+// caller filter keeps it off the wire.
+func captureMyAssignmentsDefault(t *testing.T) *httptest.ResponseRecorder {
+	freezeContractTime(t)
+
+	bare := asg("user:1", "grafana-fundamentals", "", "all-new-joiners", "2026-03-30T09:00:00Z")
+
+	track := asg("user:1", "grafana-fundamentals", "seller", "sales-executives-seller-track", "2026-03-29T09:00:00Z")
+	track.AssignedBy = "gtm-enablement"
+	track.DueAt = "2026-05-15T00:00:00Z"
+
+	bounded := asg("user:1", "security-awareness", "", "annual-compliance-2026", "2026-03-28T09:00:00Z")
+	bounded.DueAt = "2026-04-15T00:00:00Z"
+	bounded.AcceptCompletionsFrom = "2026-01-01T00:00:00Z"
+
+	other := asg("user:2", "alerting-essentials", "", "oncall-rotation", "2026-03-27T09:00:00Z")
+
+	return doAssignmentsGolden(t, completionRequest(t, "/assignments/my", "user:1"), bare, track, bounded, other)
+}
+
+func captureMyAssignmentsEmpty(t *testing.T) *httptest.ResponseRecorder {
+	freezeContractTime(t)
+	return doAssignmentsGolden(t, completionRequest(t, "/assignments/my", "user:nobody"),
+		asg("user:1", "grafana-fundamentals", "", "all-new-joiners", "2026-03-30T09:00:00Z"))
+}
+
+func captureMyAssignmentsUnavailable(t *testing.T) *httptest.ResponseRecorder {
+	freezeContractTime(t)
+	return doAssignmentsGolden(t, completionRequest(t, "/assignments/my", ""))
 }

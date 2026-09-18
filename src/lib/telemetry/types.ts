@@ -41,6 +41,7 @@ export const TELEMETRY_EVENTS = {
   sandboxUnavailable: 'pathfinder_sandbox_unavailable',
   settingsStoreResolved: 'pathfinder_settings_store_resolved',
   gcxCredentialDegraded: 'pathfinder_gcx_credential_degraded',
+  assignmentsUnavailable: 'pathfinder_assignments_unavailable',
 } as const;
 
 export const TELEMETRY_MEASUREMENTS = {
