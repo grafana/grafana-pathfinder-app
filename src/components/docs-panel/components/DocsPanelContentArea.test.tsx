@@ -42,7 +42,25 @@ jest.mock('../../content-renderer/content-renderer', () => ({
     <button onClick={onGuideComplete}>Complete rendered guide</button>
   ),
 }));
-jest.mock('../../SelectorDebugPanel', () => ({ SelectorDebugPanel: () => null }));
+// Renders a real button wired to the received onOpenDocsPage so the
+// devtools-cover-open explicitGuideId derivation (DocsPanelContentArea's own
+// wrapper) can be exercised, not just rendered as a no-op.
+jest.mock('../../SelectorDebugPanel', () => ({
+  SelectorDebugPanel: ({
+    onOpenDocsPage,
+  }: {
+    onOpenDocsPage: (url: string, title: string, packageInfo?: any) => void;
+  }) => (
+    <button
+      data-testid="devtools-open-docs-page"
+      onClick={() =>
+        onOpenDocsPage('bundled:the-path/content.json', 'The Path', { packageManifest: { id: 'the-path' } })
+      }
+    >
+      Open
+    </button>
+  ),
+}));
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
 
@@ -295,6 +313,34 @@ describe('DocsPanelContentArea', () => {
       render(<DocsPanelContentArea {...makeProps({ activeTab: devToolsTab, stableContent: null, isDevMode: true })} />);
 
       expect(screen.getByTestId('devtools-tab-content')).toBeInTheDocument();
+    });
+
+    // Regression (moxious review on PR #1927, "cover-load-url-mismatch"):
+    // PrTester/UrlTester's devtools cover-open wrapper derives explicitGuideId
+    // from packageInfo.packageManifest.id so a raw PR URL differing from the
+    // resolver's published one is never misread as track membership. Pins
+    // that derivation at its actual call site, not just inside
+    // fetchPackageContent's own unit tests.
+    it("passes the package manifest's own id as explicitGuideId when opening a devtools cover", () => {
+      const openDocsPage = jest.fn();
+      render(
+        <DocsPanelContentArea
+          {...makeProps({
+            activeTab: devToolsTab,
+            stableContent: null,
+            isDevMode: true,
+            model: { openDocsPage } as any,
+          })}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('devtools-open-docs-page'));
+
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'bundled:the-path/content.json',
+        'The Path',
+        expect.objectContaining({ explicitGuideId: 'the-path' })
+      );
     });
 
     it('does not dispatch to Dev Tools from the reserved ID alone', () => {

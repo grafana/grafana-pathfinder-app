@@ -356,6 +356,73 @@ describe('CombinedLearningJourneyPanel — milestone toolbar navigation threads 
   });
 });
 
+// Regression (moxious review on PR #1927,
+// "track-only-parent-resolution-loses-completion", MEDIUM): a track-only
+// guide is only ever reached by clicking it FROM its own path's cover, in
+// the same tab — so the tab's OUTGOING content, right up until this load
+// overwrites it, is that cover's own learningJourney (or, for a track guide
+// clicked from another track guide, that guide's own trackMemberBaseUrl).
+// Carrying it forward as knownBaseUrl lets fetchPackageContent recover a
+// track-only guide's completion identity even if THIS load's own
+// independent re-resolve of the path's id transiently fails.
+describe('CombinedLearningJourneyPanel.loadDocsTabContent — knownBaseUrl fallback', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (loadDocsTabContentResult as jest.Mock).mockResolvedValue({ content: null, error: 'x', errorType: 'other' });
+  });
+
+  it("carries the outgoing cover content's learningJourney.baseUrl forward as knownBaseUrl", async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const coverTab = {
+      ...makeTab('journey-tab'),
+      content: {
+        url: 'bundled:the-path/content.json',
+        metadata: {
+          learningJourney: {
+            baseUrl: 'bundled:the-path/content.json',
+            currentMilestone: 0,
+            totalMilestones: 1,
+            milestones: [],
+          },
+        },
+      },
+    };
+    panel.setState({ tabs: [coverTab as any], activeTabId: 'journey-tab' });
+
+    await panel.loadTab('journey-tab', 'bundled:t-only/content.json', {
+      packageInfo: { packageManifest: { id: 'the-path', type: 'path' } },
+      explicitGuideId: 't-only',
+    });
+
+    expect(loadDocsTabContentResult as jest.Mock).toHaveBeenCalledWith(
+      'bundled:t-only/content.json',
+      expect.objectContaining({ knownBaseUrl: 'bundled:the-path/content.json' })
+    );
+  });
+
+  it("carries the outgoing track-only content's trackMemberBaseUrl forward as knownBaseUrl", async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const trackOnlyTab = {
+      ...makeTab('journey-tab'),
+      content: {
+        url: 'bundled:t-only-a/content.json',
+        metadata: { trackMemberBaseUrl: 'bundled:the-path/content.json' },
+      },
+    };
+    panel.setState({ tabs: [trackOnlyTab as any], activeTabId: 'journey-tab' });
+
+    await panel.loadTab('journey-tab', 'bundled:t-only-b/content.json', {
+      packageInfo: { packageManifest: { id: 'the-path', type: 'path' } },
+      explicitGuideId: 't-only-b',
+    });
+
+    expect(loadDocsTabContentResult as jest.Mock).toHaveBeenCalledWith(
+      'bundled:t-only-b/content.json',
+      expect.objectContaining({ knownBaseUrl: 'bundled:the-path/content.json' })
+    );
+  });
+});
+
 describe('CombinedLearningJourneyPanel.openDocsPage — prepared (one-fetch) launch', () => {
   beforeEach(() => {
     jest.clearAllMocks();

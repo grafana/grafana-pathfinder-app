@@ -37,6 +37,7 @@ describe('loadDocsTabContentResult', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     );
     expect(mockFetchPackageById).not.toHaveBeenCalled();
@@ -56,6 +57,7 @@ describe('loadDocsTabContentResult', () => {
       packageManifest,
       undefined,
       'app-platform',
+      undefined,
       undefined,
       undefined
     );
@@ -80,7 +82,35 @@ describe('loadDocsTabContentResult', () => {
       undefined,
       undefined,
       undefined,
-      'step-1'
+      'step-1',
+      undefined
+    );
+  });
+
+  // Regression (moxious review on PR #1927, "track-only-parent-resolution
+  // -loses-completion"): the cover page's own base URL, when docs-panel.tsx
+  // already knows it (the tab's outgoing content, right before a
+  // track-member click overwrites it), must reach fetchPackageContent so a
+  // transient failure of that request's OWN independent re-resolve doesn't
+  // silently drop the track-only guide's completion.
+  it('threads knownBaseUrl through to fetchPackageContent', async () => {
+    mockFetchPackageContent.mockResolvedValueOnce({ content: null, error: 'x', errorType: 'other' });
+
+    const packageManifest = { id: 'the-path', type: 'path', tracks: [{ trackId: 'builder', guides: ['t-only'] }] };
+    await loadDocsTabContentResult('https://interactive-learning.grafana.net/packages/t-only/content.json', {
+      packageInfo: { packageId: 'the-path', packageManifest },
+      explicitGuideId: 't-only',
+      knownBaseUrl: 'https://interactive-learning.grafana.net/packages/the-path/content.json',
+    });
+
+    expect(mockFetchPackageContent).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/t-only/content.json',
+      packageManifest,
+      undefined,
+      undefined,
+      undefined,
+      't-only',
+      'https://interactive-learning.grafana.net/packages/the-path/content.json'
     );
   });
 

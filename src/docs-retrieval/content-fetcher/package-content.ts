@@ -261,6 +261,7 @@ export function ensureNonEmptyCoverContent(jsonContent: string): string {
  * @param repository - Resolved source repository, stamped onto `metadata.repository` so completion keys on the true source rather than the manifest default; falls back to the baseUrl resolution's own repository when omitted
  * @param preFetchedContent - Optional content the caller already fetched (avoids re-issuing an identical request)
  * @param explicitGuideId - The manifest guide id this load's click target already carried (GuideList's current row, the cover page's CTA — threaded through link-handler.hook.ts / docs-panel.tsx). When present, classification is a direct id lookup against `milestones`/`tracks` instead of comparing resolved URLs — see the comment on `milestoneIndex` below. Absent for loads with no click behind them (the initial cover-page open, a deep link, a bookmark), which fall back to the same URL-comparison heuristic this replaced for the common case.
+ * @param knownBaseUrl - The owning path's own base URL, when the caller already has it (docs-panel.tsx carries forward the cover page's own `learningJourney.baseUrl`/`trackMemberBaseUrl` from the tab's outgoing content when a track member is clicked FROM that same cover — the only way a track-exclusive guide is ever reached). Used only as a fallback for `trackMemberBaseUrl` when this SAME request's own `baseUrlResolution` fails — a transient resolver hiccup must not silently drop a track-only guide's completion just because the independent re-resolve of the path's id happened to fail this one time, when the caller already knows the answer.
  */
 export async function fetchPackageContent(
   contentUrl: string,
@@ -268,7 +269,8 @@ export async function fetchPackageContent(
   preResolvedMilestones?: Milestone[],
   repository?: string,
   preFetchedContent?: ContentFetchResult,
-  explicitGuideId?: string
+  explicitGuideId?: string,
+  knownBaseUrl?: string
 ): Promise<ContentFetchResult> {
   const renderType = getPackageRenderType(packageManifest);
   const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
@@ -427,6 +429,12 @@ export async function fetchPackageContent(
         }
       } else if (baseUrlResolution && baseUrlResolution.ok) {
         trackMemberBaseUrl = baseUrlResolution.contentUrl;
+      } else if (knownBaseUrl) {
+        // This SAME request's own re-resolve of manifestId failed, but the
+        // caller already knows the answer (the cover page this guide was
+        // just clicked from) — use it rather than dropping the guide's
+        // completion entirely for a transient resolver hiccup.
+        trackMemberBaseUrl = knownBaseUrl;
       } else if (manifestId) {
         // No fallback value exists: this must be the path's own resolved URL,
         // the shared key completion writes and cover-page reads agree on —

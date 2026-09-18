@@ -147,10 +147,19 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
                 <SelectorDebugPanel
                   onOpenDocsPage={(url: string, title: string, packageInfo?: PackageOpenInfo) => {
+                    const manifestId = packageInfo?.packageManifest?.id;
                     const opts: OpenDocsOptions = {
                       source: 'devtools',
                       skipReadyToBegin: true,
                       packageInfo,
+                      // PrTester/UrlTester only ever pass packageInfo when
+                      // deliberately opening that package's own cover (never
+                      // a click on a specific member) — the manifest's own
+                      // id positively signals "this is the cover," not a URL
+                      // comparison, so a raw PR URL differing from the
+                      // resolver's published one never gets misread as track
+                      // membership (see OpenDocsOptions.explicitGuideId).
+                      explicitGuideId: typeof manifestId === 'string' ? manifestId : undefined,
                     };
                     return model.openDocsPage(url, title, opts);
                   }}

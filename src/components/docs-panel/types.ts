@@ -37,6 +37,18 @@ export interface OpenDocsOptions {
    * One-shot memory state — never persisted to tab storage.
    */
   preparedContent?: PreparedRawContent;
+  /**
+   * The manifest guide id `url` resolved from, when the caller already knows
+   * it — see `loadTab`'s own doc comment on this same field. A caller that
+   * is deliberately opening a path/journey's own cover (never a click on a
+   * specific member) should pass that manifest's own id here: neither a
+   * `milestones` nor a `tracks` entry, so fetchPackageContent classifies it
+   * as the cover page by elimination, not by comparing resolved URLs — the
+   * fix for "a valid cover with a different resolved URL loses its table of
+   * contents" (PrTester opens a raw PR URL while the resolver's canonical
+   * URL differs; that URL mismatch alone must never imply track membership).
+   */
+  explicitGuideId?: string;
 }
 
 /** @see OpenDocsOptions */

@@ -795,7 +795,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public async openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string> {
-    const { source, skipReadyToBegin, packageInfo, preparedContent } = options ?? {};
+    const { source, skipReadyToBegin, packageInfo, preparedContent, explicitGuideId } = options ?? {};
 
     // Make the launch source explicit at the call site if provided. This
     // narrows the surface area of the legacy `_recordAutoLaunchSource` flag —
@@ -829,7 +829,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save tabs to storage immediately after creating
     this.saveTabsToStorage();
 
-    this.loadTab(tabId, url, { skipReadyToBegin, packageInfo, prefetched: preparedContent });
+    this.loadTab(tabId, url, { skipReadyToBegin, packageInfo, prefetched: preparedContent, explicitGuideId });
 
     return tabId;
   }
@@ -846,6 +846,18 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // edge cases (empty URL with packageInfo falls back to fetchPackageById;
     // empty URL without packageInfo returns a visible error). Surfacing errors
     // is preferable to the old silent no-op for corrupted/restored tabs.
+
+    // Captured before this tab's content is replaced below: a track-exclusive
+    // guide is only ever reached by clicking it FROM its own path's cover,
+    // in this same tab — so the outgoing content, right up until this load
+    // overwrites it, is that cover's own learningJourney. Threaded through as
+    // a fallback so a transient failure of THIS load's own independent
+    // re-resolve of the path's id doesn't silently drop the guide's
+    // completion when the caller already knows the answer (moxious review,
+    // "track-only-parent-resolution-loses-completion").
+    const outgoingContent = this.state.tabs.find((t) => t.id === tabId)?.content;
+    const knownBaseUrl =
+      outgoingContent?.metadata?.learningJourney?.baseUrl ?? outgoingContent?.metadata?.trackMemberBaseUrl;
 
     this.setTabLoading(tabId);
 
@@ -871,7 +883,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
       const result = prefetched
         ? { content: prefetched }
-        : await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo, explicitGuideId });
+        : await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo, explicitGuideId, knownBaseUrl });
 
       // Check if fetch succeeded or failed
       if (result.content) {
