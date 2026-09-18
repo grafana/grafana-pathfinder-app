@@ -154,4 +154,21 @@ describe('isKeyUnderPrefix', () => {
     expect(isKeyUnderPrefix(base + '-advanced', base)).toBe(false);
     expect(isKeyUnderPrefix(base + '-advanced/milestone-1', base)).toBe(false);
   });
+
+  it('treats a query string or fragment on the path itself as under the prefix', () => {
+    const base = 'https://grafana.com/docs/learning-journeys/alerting';
+    // No trailing slash before the ? or # — still the same path (#1950 follow-up).
+    expect(isKeyUnderPrefix(base + '?utm=x', base)).toBe(true);
+    expect(isKeyUnderPrefix(base + '#top', base)).toBe(true);
+    // The trailing-slash forms are under the prefix too.
+    expect(isKeyUnderPrefix(base + '/?utm=x', base)).toBe(true);
+    expect(isKeyUnderPrefix(base + '/#top', base)).toBe(true);
+  });
+
+  it('does not let a query/fragment boundary rescue a sibling path', () => {
+    // The char after the prefix is '-', not a boundary, so the query/fragment
+    // that follows must not pull the sibling back in.
+    expect(isKeyUnderPrefix('/alerting-advanced?utm=x', '/alerting')).toBe(false);
+    expect(isKeyUnderPrefix('/alerting-advanced#top', '/alerting')).toBe(false);
+  });
 });

@@ -1487,10 +1487,19 @@ export const guideCompletionMarkStorage = {
   },
 
   /**
-   * Clear every mark whose content key starts with `contentKeyPrefix`, or all
-   * of them when it is omitted. Marks are keyed by content key alone and
-   * milestone keys are recorded nowhere, so the bulk reset paths recover them
-   * by prefix exactly as the path reset recovers step keys.
+   * Clear every mark whose content key is under `contentKeyPrefix` — the key
+   * itself or a child below a `/`, `?`, or `#` boundary (see
+   * `isKeyUnderPrefix`) — never a sibling that merely shares the text prefix,
+   * which is what stops a reset of one path wiping another (#1928). When
+   * `contentKeyPrefix` is omitted, all marks are cleared. Marks are keyed by
+   * content key alone and milestone keys are recorded nowhere, so the bulk
+   * reset paths recover them by prefix exactly as the path reset recovers step
+   * keys.
+   *
+   * Precondition: the prefix must have no trailing slash, so the boundary test
+   * applies rather than a plain `startsWith`. The sole caller
+   * (`learning-paths.hook.ts`) satisfies this by stripping trailing slashes
+   * from the path URL before calling.
    */
   async clearAllWithPrefix(contentKeyPrefix = ''): Promise<void> {
     try {
