@@ -1,5 +1,6 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager, type CommentBoxStepInfo } from '../navigation-manager';
+import { INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS } from '../constants';
 import { InteractiveElementData } from '../../types/interactive.types';
 import {
   describeElement,
@@ -47,6 +48,7 @@ export class GuidedHandler {
   private pendingIntervals: Array<ReturnType<typeof setInterval>> = [];
   private currentAbortController: AbortController | null = null;
   private completedSteps: number[] = [];
+  private currentCommentBox: HTMLElement | null = null;
 
   constructor(
     private stateManager: InteractiveStateManager,
@@ -124,12 +126,6 @@ export class GuidedHandler {
           result = 'error';
         }
 
-        // On the final step with a successful result, show 100% progress briefly before cleanup
-        // DESIGN DECISION: Single-step tours (totalSteps === 1) also show 100% on completion,
-        // defaulting to "completing the only step means the tour is complete" semantics.
-        // Reviewers should confirm this is the desired behavior. Alternatives considered:
-        // - Show 50% while in progress (but 0% → 50% → cleanup feels jarring)
-        // - Hide the progress bar entirely for single-step tours
         const isFinalStep = stepIndex === totalSteps - 1;
         const isSuccessfulCompletion = result === 'completed' || result === 'skipped';
 
@@ -178,6 +174,7 @@ export class GuidedHandler {
 
     try {
       this.cleanupListeners();
+      this.currentCommentBox = null;
       if (action.targetAction === 'noop') {
         return await this.executeNoopStep(action, stepIndex, totalSteps, timeout);
       }
@@ -255,7 +252,6 @@ export class GuidedHandler {
   }
 
   private finishGuidedStep(result: CompletionResult, stepIndex: number): CompletionResult {
-    // Push to completedSteps FIRST before cleanup so the progress bar can reflect the completion
     if ((result === 'completed' || result === 'skipped') && !this.completedSteps.includes(stepIndex)) {
       this.completedSteps.push(stepIndex);
     }
@@ -656,6 +652,9 @@ export class GuidedHandler {
       }
     );
 
+    // Capture the current comment box for progress bar updates
+    this.currentCommentBox = document.querySelector('.interactive-comment-box') as HTMLElement | null;
+
     // Add a persistent highlight class that won't auto-remove
     element.classList.add('interactive-guided-active');
   }
@@ -875,11 +874,18 @@ export class GuidedHandler {
         }
         resolve(result);
       };
+      let completing = false;
       const complete = async () => {
-        if (isResolved) {
+        if (isResolved || completing) {
           return;
         }
-        cleanup(await arbiter.settle('completed', onActionCompleted));
+        completing = true;
+        try {
+          cleanup(await arbiter.settle('completed', onActionCompleted));
+        } catch (error) {
+          logger.error('Guided completion failed', { error });
+          cleanup('error');
+        }
       };
       rectUpdateInterval = setInterval(() => {
         if (!element.isConnected) {
@@ -889,7 +895,7 @@ export class GuidedHandler {
       this.pendingIntervals.push(rectUpdateInterval);
 
       const handleClick = (event: Event) => {
-        if (isResolved) {
+        if (isResolved || completing) {
           return;
         }
 
@@ -1181,13 +1187,9 @@ export class GuidedHandler {
       this.navigationManager.clearAllHighlights();
     }
   }
-  /**
-   * Update the progress bar directly to 100% via DOM manipulation
-   * Used on the final step to show completion before cleanup
-   * @returns true if the progress bar was found and updated, false otherwise
-   */
   private updateProgressBarTo100(): boolean {
-    const progressBar = document.querySelector('.interactive-comment-progress-bar') as HTMLElement | null;
+    const container = this.currentCommentBox ?? document;
+    const progressBar = container.querySelector(`.${INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS}`) as HTMLElement | null;
     if (!progressBar) {
       return false;
     }

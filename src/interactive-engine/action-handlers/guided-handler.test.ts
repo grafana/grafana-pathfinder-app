@@ -711,13 +711,23 @@ describe('GuidedHandler', () => {
       // Wait for click handler async operations
       await jest.advanceTimersByTimeAsync(0);
 
+      // Assert: progress bar is at 100% BEFORE cancel
+      expect(progressBar.style.width).toBe('100%');
+
+      // Record timer count - the 600ms delay timer should be active
+      const timerCountBeforeCancel = jest.getTimerCount();
+      expect(timerCountBeforeCancel).toBeGreaterThan(0);
+
       // Cancel during the delay
       guidedHandler.cancel();
 
       // Wait for cancel to propagate
       await jest.advanceTimersByTimeAsync(0);
 
-      // The completion promise should resolve
+      // Assert: timer was cleared (delay timer should be gone)
+      expect(jest.getTimerCount()).toBeLessThan(timerCountBeforeCancel);
+
+      // The completion promise should resolve without advancing the full 600ms
       const result = await completionPromise;
       expect(result).toBe('completed');
 
@@ -725,6 +735,70 @@ describe('GuidedHandler', () => {
       expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
     });
 
+    it('prevents click re-entry during post-settle 600ms window (B3 regression)', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      // Track how many times element.click() is called
+      const originalClick = button.click.bind(button);
+      let clickCount = 0;
+      button.click = jest.fn(() => {
+        clickCount++;
+        originalClick();
+      });
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+        },
+        1, // Final step
+        2, // Total steps
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // First click: user clicks the target directly - this completes the step
+      button.click();
+
+      // Wait for click handler async operations (now in the 600ms settling window)
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Progress bar should be at 100%
+      expect(progressBar.style.width).toBe('100%');
+
+      // Reset click count to track only the second click
+      clickCount = 0;
+
+      // Second click: user clicks outside the target but within the 16px padding ring
+      // Simulate a click at a position that satisfies isWithinBounds but not on the element
+      const buttonRect = button.getBoundingClientRect();
+      const outsideButNearClick = new MouseEvent('click', {
+        clientX: buttonRect.right + 10, // 10px to the right (inside 16px padding)
+        clientY: buttonRect.top + 5, // On the vertical center line
+        bubbles: true,
+      });
+
+      // Dispatch the second click during the settling window
+      document.dispatchEvent(outsideButNearClick);
+
+      // Wait for any async handlers
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Assert: The completing flag should have prevented the re-entry
+      // element.click() should NOT have been called again
+      expect(clickCount).toBe(0);
+
+      // Complete the delay
+      await jest.advanceTimersByTimeAsync(600);
+
+      // Verify normal completion
+      const result = await completionPromise;
+      expect(result).toBe('completed');
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
     it('shows 100% on single-step tour completion', async () => {
       const button = document.querySelector<HTMLButtonElement>('#target')!;
 
