@@ -7,12 +7,23 @@
 import React, { useId, useState } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 import { cx } from '@emotion/css';
+import { t } from '@grafana/i18n';
 
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
+import { daysUntilDue } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { getLearningPathCardStyles } from './learning-paths.styles';
 import { GuideList } from './GuideList';
 import { ProgressRing } from './ProgressRing';
+
+function formatDueDate(dueAt: string): string {
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.\d+)?Z$/.exec(dueAt);
+  const date = dateOnly ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])) : new Date(dueAt);
+  if (Number.isNaN(date.getTime())) {
+    return dueAt;
+  }
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 /**
  * Card displaying a learning path with collapsible guide list
@@ -27,11 +38,26 @@ export function LearningPathCard({
   defaultExpanded = false,
   isLaunching = false,
   launchDisabled = false,
+  assignment,
 }: LearningPathCardProps & { defaultExpanded?: boolean }) {
   const styles = useStyles2(getLearningPathCardStyles);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
   const detailsId = useId();
+
+  const dueDays = assignment?.dueAt ? daysUntilDue(assignment.dueAt) : undefined;
+  const isOverdue = Boolean(assignment?.overdue || (dueDays !== undefined && dueDays < 0));
+  const isUpcoming = !isOverdue && dueDays === 0;
+  const dueString =
+    dueDays === undefined
+      ? undefined
+      : isOverdue
+        ? t('myLearning.dueOverdue', 'Overdue')
+        : dueDays === 0
+          ? t('myLearning.dueRelativeToday', 'Today')
+          : dueDays === 1
+            ? t('myLearning.dueRelativeTomorrow', '{{count}} day', { count: dueDays })
+            : t('myLearning.dueDayCount', '{{count}} days', { count: dueDays });
 
   // Whether this is a URL-based path (guides fetched dynamically)
   const isUrlBased = Boolean(path.url);
@@ -41,7 +67,6 @@ export function LearningPathCard({
   const currentGuide = guides.find((g) => g.isCurrent);
   const firstIncompleteGuide = guides.find((g) => !g.completed);
   const firstGuide = guides[0];
-  const nextGuide = currentGuide || firstIncompleteGuide || firstGuide;
 
   const handleContinue = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -84,7 +109,12 @@ export function LearningPathCard({
 
   return (
     <div
-      className={cx(styles.card, isCompleted && styles.cardCompleted)}
+      className={cx(
+        styles.card,
+        isCompleted && styles.cardCompleted,
+        isUpcoming && styles.cardUpcoming,
+        isOverdue && styles.cardOverdue
+      )}
       data-testid={testIds.learningPaths.card(path.id)}
     >
       {/*
@@ -100,6 +130,24 @@ export function LearningPathCard({
           <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>{path.title}</h3>
 
           <div className={styles.meta}>
+            {!isCompleted && assignment && (
+              <span className={styles.assignedBadge}>
+                <Icon name="user" size="xs" />
+                {t('myLearning.assignedBadge', 'Assigned')}
+              </span>
+            )}
+            {!isCompleted && dueString && (
+              <span
+                className={cx(
+                  styles.dueBadge,
+                  isUpcoming && styles.dueBadgeUpcoming,
+                  isOverdue && styles.dueBadgeOverdue
+                )}
+              >
+                <Icon name="clock-nine" size="xs" />
+                {dueString}
+              </span>
+            )}
             {isLoadingGuides ? (
               <span>Loading guides...</span>
             ) : (
@@ -107,18 +155,7 @@ export function LearningPathCard({
                 {completedCount}/{guides.length} guides
               </span>
             )}
-            {path.estimatedMinutes && (
-              <>
-                <span className={styles.metaDot}>·</span>
-                <span>~{path.estimatedMinutes} min</span>
-              </>
-            )}
           </div>
-
-          {/* Next guide hint - only show for in-progress paths when collapsed */}
-          {!isCompleted && progress > 0 && nextGuide && !isExpanded && (
-            <div className={styles.nextHint}>Next: {nextGuide.title}</div>
-          )}
         </div>
 
         {/* Actions - fixed position at end */}
@@ -185,8 +222,35 @@ export function LearningPathCard({
         className={cx(styles.expandable, isExpanded && styles.expandableOpen)}
         aria-hidden={!isExpanded}
       >
+        {assignment && !isCompleted && (
+          <div className={cx(styles.expandMeta, !path.description && styles.expandMetaBordered)}>
+            <div className={styles.expandMetaRow}>
+              <Icon name="user" size="sm" />
+              <span>
+                {t('myLearning.assignedBy', 'Assigned by')}
+                {assignment.assignedBy ? (
+                  <>
+                    {' '}
+                    <strong>{assignment.assignedBy}</strong>
+                  </>
+                ) : null}
+              </span>
+            </div>
+            {assignment.dueAt && dueString && (
+              <div className={styles.expandMetaRow}>
+                <Icon name="clock-nine" size="sm" />
+                <span>
+                  {t('myLearning.dueDetail', 'Due {{date}} — {{relative}}{{left}}', {
+                    date: formatDueDate(assignment.dueAt),
+                    relative: dueString,
+                    left: dueDays !== undefined && dueDays > 0 ? t('myLearning.dueLeft', ' left') : '',
+                  })}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
         {path.description && <p className={styles.description}>{path.description}</p>}
-
         <GuideList guides={guides} isLoading={isLoadingGuides} className={styles.guideList} />
       </div>
     </div>
