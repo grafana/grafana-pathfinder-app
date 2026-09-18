@@ -1,4 +1,4 @@
-import { clearKeysByPrefix, collectKeysByPrefix } from './key-utils';
+import { clearKeysByPrefix, collectKeysByPrefix, isKeyUnderPrefix } from './key-utils';
 
 beforeEach(() => {
   localStorage.clear();
@@ -97,5 +97,61 @@ describe('clearKeysByPrefix', () => {
     expect(sessionStorage.getItem('s-a')).toBeNull();
     expect(sessionStorage.getItem('s-b')).toBeNull();
     expect(sessionStorage.getItem('other')).toBe('c');
+  });
+});
+
+describe('isKeyUnderPrefix', () => {
+  it('returns true when prefix is empty (clear-all semantics)', () => {
+    expect(isKeyUnderPrefix('/alerting', '')).toBe(true);
+    expect(isKeyUnderPrefix('/any/nested/path', '')).toBe(true);
+    expect(isKeyUnderPrefix('bundled:guide', '')).toBe(true);
+  });
+
+  it('returns true for exact match', () => {
+    expect(isKeyUnderPrefix('/alerting', '/alerting')).toBe(true);
+    expect(isKeyUnderPrefix('/docs/path', '/docs/path')).toBe(true);
+  });
+
+  it('returns true for child paths (slash-delimited hierarchy)', () => {
+    expect(isKeyUnderPrefix('/alerting/intro', '/alerting')).toBe(true);
+    expect(isKeyUnderPrefix('/alerting/advanced/step1', '/alerting')).toBe(true);
+    expect(isKeyUnderPrefix('/docs/path/milestone-1', '/docs/path')).toBe(true);
+  });
+
+  it('returns false for sibling paths that share a string prefix (the bug case)', () => {
+    expect(isKeyUnderPrefix('/alerting-advanced', '/alerting')).toBe(false);
+    expect(isKeyUnderPrefix('/alerting-advanced/intro', '/alerting')).toBe(false);
+    expect(isKeyUnderPrefix('/docs/path-2', '/docs/path')).toBe(false);
+    expect(isKeyUnderPrefix('/docs/pathology', '/docs/path')).toBe(false);
+  });
+
+  it('handles prefix already ending with slash', () => {
+    expect(isKeyUnderPrefix('/alerting/intro', '/alerting/')).toBe(true);
+    expect(isKeyUnderPrefix('/alerting-advanced', '/alerting/')).toBe(false);
+    // Key exactly matching prefix-with-slash is not exact (prefix is /alerting/, key is /alerting)
+    expect(isKeyUnderPrefix('/alerting', '/alerting/')).toBe(false);
+  });
+
+  it('returns false when key is shorter than prefix', () => {
+    expect(isKeyUnderPrefix('/alert', '/alerting')).toBe(false);
+    expect(isKeyUnderPrefix('/doc', '/docs/path')).toBe(false);
+  });
+
+  it('returns true when key has trailing slash and prefix does not', () => {
+    expect(isKeyUnderPrefix('/alerting/', '/alerting')).toBe(true);
+  });
+
+  it('handles bundled scheme keys (uses / as hierarchy delimiter)', () => {
+    expect(isKeyUnderPrefix('bundled:welcome', 'bundled:welcome')).toBe(true);
+    expect(isKeyUnderPrefix('bundled:welcome/content.json', 'bundled:welcome')).toBe(true);
+    expect(isKeyUnderPrefix('bundled:welcome-cloud', 'bundled:welcome')).toBe(false);
+  });
+
+  it('handles full URL keys', () => {
+    const base = 'https://grafana.com/docs/learning-journeys/alerting';
+    expect(isKeyUnderPrefix(base, base)).toBe(true);
+    expect(isKeyUnderPrefix(base + '/milestone-1', base)).toBe(true);
+    expect(isKeyUnderPrefix(base + '-advanced', base)).toBe(false);
+    expect(isKeyUnderPrefix(base + '-advanced/milestone-1', base)).toBe(false);
   });
 });

@@ -53,3 +53,29 @@ export function clearKeysByPrefix(storage: Storage, prefix: string): string[] {
   }
   return keys;
 }
+
+/**
+ * Return `true` when `key` belongs under the path hierarchy rooted at
+ * `prefix`. This avoids the sibling-clobber bug where a plain
+ * `key.startsWith(prefix)` causes `/alerting` to match `/alerting-advanced`.
+ *
+ * Matching rules:
+ * - Empty prefix matches everything (clear-all semantics).
+ * - Exact match (`key === prefix`) always matches.
+ * - If prefix ends with `/`, standard `startsWith` applies.
+ * - Otherwise, key must start with `prefix + '/'` (child in hierarchy).
+ *
+ * Note: This helper uses `/` as the hierarchy delimiter. It does not
+ * treat `?` or `#` as boundaries — keys with query strings or fragments
+ * must be handled separately if path equivalence is needed.
+ */
+export function isKeyUnderPrefix(key: string, prefix: string): boolean {
+  if (prefix === '') {
+    return true;
+  }
+  if (key === prefix) {
+    return true;
+  }
+  const boundary = prefix.endsWith('/') ? prefix : prefix + '/';
+  return key.startsWith(boundary);
+}
