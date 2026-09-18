@@ -509,9 +509,9 @@ export async function replacePreviousE2EGuide(page: Page, previousGuideTabId?: s
   }
   const priorSteps = [...stepsBeforeReset, ...stepsBeforeClose];
   try {
-    await page.getByTestId(testIds.docsPanel.tabCloseButton(activeTab.id)).click({
-      timeout: REPLACEMENT_TIMEOUT_MS,
-    });
+    await page
+      .getByTestId(testIds.docsPanel.tabCloseButton(activeTab.id))
+      .dispatchEvent('click', undefined, { timeout: REPLACEMENT_TIMEOUT_MS });
     await waitForStepHandlesToDetach(page, priorSteps);
     await page.waitForFunction(
       (url) => (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl !== url,
