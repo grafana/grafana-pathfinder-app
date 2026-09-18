@@ -795,7 +795,10 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
     // -recommendation-card). A no-op for a backend-guide base, which
     // persistJourneyCompletionPercentage already declines to write.
     if (metadata?.learningJourney) {
-      const freshJourneyProgress = journeyProgressFromMilestones(journeyBase, metadata.learningJourney.milestones ?? []);
+      const freshJourneyProgress = journeyProgressFromMilestones(
+        journeyBase,
+        metadata.learningJourney.milestones ?? []
+      );
       setJourneyCompletionPercentage(journeyBase, freshJourneyProgress, completionContext);
     }
   } else if (!surfaceBase?.startsWith('bundled:')) {
