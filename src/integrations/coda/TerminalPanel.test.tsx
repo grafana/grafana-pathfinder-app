@@ -44,6 +44,7 @@ beforeEach(() => {
     sessionId: 'session',
     vmId: 'vm',
     vmExpiresAt: null,
+    unreachableVmId: null,
   } as ReturnType<typeof useTerminalLive>);
 });
 
