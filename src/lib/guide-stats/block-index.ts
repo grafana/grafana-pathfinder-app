@@ -273,13 +273,7 @@ function collectBranchChildrenRecursive(
 
     // Handle nested conditionals: recurse into their branches.
     if (child.type === 'conditional') {
-      const nestedAliases = collectBranchChildStepIds(
-        child,
-        childJsonPath,
-        conditionalPosition,
-        resolveStepId,
-        false
-      );
+      const nestedAliases = collectBranchChildStepIds(child, childJsonPath, conditionalPosition, resolveStepId, false);
       for (const [stepId, pos] of nestedAliases) {
         if (!result.has(stepId)) {
           result.set(stepId, pos);
@@ -513,7 +507,13 @@ export function computeGuideBlockIndex(
       // Collect branch child step IDs for conditionals.
       if (block.type === 'conditional' && resolveStepId) {
         const childJsonPathShifted = jsonPathShifted || sawSnippetRefSibling;
-        const branchAliases = collectBranchChildStepIds(block, blockJsonPath, position, resolveStepId, childJsonPathShifted);
+        const branchAliases = collectBranchChildStepIds(
+          block,
+          blockJsonPath,
+          position,
+          resolveStepId,
+          childJsonPathShifted
+        );
         for (const [stepId, aliasPosition] of branchAliases) {
           if (!branchChildPositions.has(stepId)) {
             branchChildPositions.set(stepId, aliasPosition);

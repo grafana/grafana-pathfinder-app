@@ -355,7 +355,7 @@ describe('branchChildPositions', () => {
   const resolveStepId = (block: CountableBlock, context: { parentSectionId: string; index: number }) =>
     block.type === 'interactive' ? `${context.parentSectionId}:${context.index}` : undefined;
 
-  it('maps branch child step IDs to the conditional\'s position', () => {
+  it("maps branch child step IDs to the conditional's position", () => {
     const index = computeGuideBlockIndex(
       [
         markdown('before'),

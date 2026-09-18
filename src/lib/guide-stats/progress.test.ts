@@ -191,7 +191,7 @@ describe('branch child evidence', () => {
   const resolveStepId = (block: CountableBlock, context: { parentSectionId: string; index: number }) =>
     block.type === 'interactive' ? `${context.parentSectionId}:${context.index}` : undefined;
 
-  it('completing a branch child step returns the conditional\'s position', () => {
+  it("completing a branch child step returns the conditional's position", () => {
     const index = computeGuideBlockIndex(
       [
         markdown('before'),
@@ -351,11 +351,15 @@ describe('branch child evidence', () => {
     expect(index.positionsById.get('outer')).toBe(2);
     expect(index.totalBlockCount).toBe(3);
     // Completing a step in the nested conditional's whenTrue branch credits the outer conditional.
-    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'conditional-true:blocks[1].whenTrue[0]:0' }])).toMatchObject({
+    expect(
+      guideProgress(index, [{ kind: 'do-it', blockId: 'conditional-true:blocks[1].whenTrue[0]:0' }])
+    ).toMatchObject({
       position: 2,
     });
     // Completing a step in the nested conditional's whenFalse branch also credits the outer conditional.
-    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'conditional-false:blocks[1].whenTrue[0]:0' }])).toMatchObject({
+    expect(
+      guideProgress(index, [{ kind: 'do-it', blockId: 'conditional-false:blocks[1].whenTrue[0]:0' }])
+    ).toMatchObject({
       position: 2,
     });
   });
