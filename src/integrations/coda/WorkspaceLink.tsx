@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@grafana/ui';
-import { codaWorkspaceUrl, getCapabilities } from './coda-api';
+import { codaWorkspaceUrl, codaSupports, isCodaUsable } from './coda-api';
+import { loadCodaCapabilities } from './useCodaAvailability.hook';
+import { testIds } from '../../constants/testIds';
 
 export function WorkspaceLink({
   connected,
@@ -14,11 +16,16 @@ export function WorkspaceLink({
   const [available, setAvailable] = useState(false);
   useEffect(() => {
     let active = true;
-    void getCapabilities()
+    void loadCodaCapabilities()
       .then((caps) => {
         if (active) {
           setAvailable(
-            Boolean(caps.features?.includes('workspace-files') && caps.features?.includes('explicit-vm-attachment'))
+            Boolean(
+              caps &&
+              isCodaUsable(caps) &&
+              codaSupports(caps, 'workspace-files') &&
+              codaSupports(caps, 'explicit-vm-attachment')
+            )
           );
         }
       })
@@ -46,7 +53,7 @@ export function WorkspaceLink({
           window.open(codaWorkspaceUrl(vmId), '_blank', 'noopener,noreferrer');
         }
       }}
-      data-testid="coda-open-workspace"
+      data-testid={testIds.codaTerminal.openIdeButton}
     >
       IDE
     </Button>

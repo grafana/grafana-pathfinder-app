@@ -443,6 +443,7 @@ Grafana restart.
 | `src/integrations/coda/useTerminalLive.hook.ts`                 | Live subscription, publish, provision progress bar, 35 s handshake timeout               |
 | `src/integrations/coda/TerminalContext.tsx`                     | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` |
 | `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                         |
+| `src/integrations/coda/WorkspaceLink.tsx`                       | Capability-gated IDE navigation for the connected VM                                     |
 | `src/integrations/coda/useGcxCredential.hook.ts`                | The gcx mint/paste flow, shared by the toolbar button and the guide step                 |
 | `src/integrations/coda/gcx-credential-store.ts`                 | One gcx credential per session; session-keyed invalidation, and the ladder's telemetry   |
 | `src/integrations/coda/gcx-service-account.ts`                  | Which service account a mint may use: the collision-free name, and the role reconcile    |
@@ -505,6 +506,21 @@ capabilities response also carries each item's `status`, so an experimental entr
 | `vm-aws-alloy-scenario` | t3.small | On-demand | Pre-configured Grafana Alloy learning scenario   |
 
 The authoritative list is `GET /v1/capabilities`; prefer feature-detecting over hardcoding.
+
+## Open the connected VM in Coda IDE
+
+The terminal toolbar shows **IDE** beside **GCX** only when Coda advertises both `workspace-files`
+and `explicit-vm-attachment`, and the shared capability cache reports a usable backend. It is enabled
+only while connected with a known `vmId`, and opens a new tab so the guide remains visible. The VM ID
+comes directly from the live terminal hook, not a template lookup. The editor owns a separate
+connection; closing it leaves the guide intact.
+
+The navigation contract, defined by [Coda IDE](https://github.com/grafana/grafana-coda-app/pull/167), is
+`/a/grafana-coda-app/ide?vmId=…&path=…&line=…` with optional file/line hints, prefixed with Grafana's
+`appSubUrl` for sub-path installations. The temporary adapter builds this URL while Pathfinder uses
+an older client dependency. Migrate to the exported client builder when that release is adopted;
+`coda-workspace-url.contract.test.ts` fails when the installed SDK exports it. No guide schema or
+block type is added.
 
 ## Troubleshooting
 
@@ -579,15 +595,3 @@ rewriting the URL.
 ### VM stuck provisioning, SSH failures, quota problems
 
 These are backend concerns. See the `grafana-coda-app` repo's `docs/API.md` and `docs/SECURITY.md`.
-
-### Open the connected VM in Coda IDE
-
-The terminal toolbar shows **IDE** beside **GCX** only when Coda advertises both `workspace-files`
-and `explicit-vm-attachment`. It is enabled only while connected with a known `vmId`, and opens a
-new tab so the guide remains visible. The VM ID comes from the connected event and terminal context,
-not a template lookup. The editor owns a separate connection; closing it leaves the guide intact.
-
-The navigation contract is `/a/grafana-coda-app/ide?vmId=…&path=…&line=…` with optional file/line
-hints. The adapter retains the same URL builder as the Coda client so this toolbar can ship with the
-currently published client dependency; migrate the adapter to the exported client builder when that
-release is adopted. No guide schema or block type is added.

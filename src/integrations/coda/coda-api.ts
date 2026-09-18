@@ -13,6 +13,8 @@
  * directly from `@grafana/coda-client` rather than through this adapter.
  */
 
+import { config } from '@grafana/runtime';
+
 import {
   CodaClient,
   CodaError,
@@ -24,6 +26,7 @@ import {
   CODA_PLUGIN_ID,
   V1_DEFAULTS,
   isCodaUsable,
+  codaSupports,
   codaSessionEligibility,
   type CatalogueItem,
   type CodaErrorCode,
@@ -46,6 +49,7 @@ export {
   CODA_PLUGIN_ID,
   V1_DEFAULTS,
   isCodaUsable,
+  codaSupports,
   codaSessionEligibility,
 };
 export type { CatalogueItem, CodaErrorCode, CodaCapabilities, CodaSessionRole, GcxCredential, MintTokenOptions };
@@ -204,7 +208,7 @@ export function provisionGcx(sessionId: string, options: MintTokenOptions & { to
   return provisionGcxCredential(client, sessionId, options);
 }
 
-/** Compatibility adapter for the workspace URL contract, independent of the installed client version. */
+/** Temporary IDE URL adapter; coda-workspace-url.contract.test.ts forces migration when the SDK exports its builder. */
 export function codaWorkspaceUrl(vmId: string, path?: string, line?: number): string {
   const query = new URLSearchParams({ vmId });
   if (path) {
@@ -213,5 +217,5 @@ export function codaWorkspaceUrl(vmId: string, path?: string, line?: number): st
   if (line && Number.isSafeInteger(line) && line > 0) {
     query.set('line', String(line));
   }
-  return `/a/grafana-coda-app/ide?${query.toString()}`;
+  return `${config.appSubUrl ?? ''}/a/${CODA_PLUGIN_ID}/ide?${query.toString()}`;
 }

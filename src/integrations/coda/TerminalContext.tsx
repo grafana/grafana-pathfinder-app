@@ -44,7 +44,6 @@ export interface TerminalContextValue {
   status: ConnectionStatus;
   /** Active Coda session id, or null when disconnected */
   sessionId: string | null;
-  vmId?: string | null;
   /** Last connection error reported by the terminal, or null. */
   error: string | null;
   /**
@@ -79,7 +78,6 @@ export interface TerminalContextValue {
   _register: (opts: {
     status: ConnectionStatus;
     sessionId: string | null;
-    vmId?: string | null;
     error: string | null;
     connect: (vmOpts?: TerminalVMOptions) => void;
     disconnect: () => void;
@@ -106,7 +104,6 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   // Store registered hook values from TerminalPanel
   const [registeredStatus, setRegisteredStatus] = useState<ConnectionStatus>('disconnected');
-  const [registeredVmId, setRegisteredVmId] = useState<string | null>(null);
   const [registeredSessionId, setRegisteredSessionId] = useState<string | null>(null);
   const [registeredError, setRegisteredError] = useState<string | null>(null);
   const [isTerminalRegistered, setIsTerminalRegistered] = useState(false);
@@ -177,7 +174,6 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     (opts: {
       status: ConnectionStatus;
       sessionId: string | null;
-      vmId?: string | null;
       error: string | null;
       connect: (vmOpts?: TerminalVMOptions) => void;
       disconnect: () => void;
@@ -185,7 +181,6 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     }) => {
       setRegisteredStatus(opts.status);
       setRegisteredSessionId(opts.sessionId);
-      setRegisteredVmId(opts.vmId ?? null);
       setRegisteredError(opts.error);
       setIsTerminalRegistered(true);
       registeredConnectRef.current = opts.connect;
@@ -281,7 +276,6 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   const value: TerminalContextValue = {
     status: registeredStatus,
     sessionId: registeredSessionId,
-    vmId: registeredStatus === 'connected' ? registeredVmId : null,
     error: registeredError,
     isTerminalRegistered,
     connect,

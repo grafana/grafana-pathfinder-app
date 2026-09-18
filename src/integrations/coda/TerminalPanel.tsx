@@ -76,8 +76,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const terminalCtx = useTerminalContext();
   const gcxCredential = useGcxCredential(undefined, sessionId);
   useEffect(() => {
-    terminalCtx?._register({ status, sessionId, vmId, error, connect, disconnect, sendCommand });
-  }, [terminalCtx, status, sessionId, vmId, error, connect, disconnect, sendCommand]);
+    terminalCtx?._register({ status, sessionId, error, connect, disconnect, sendCommand });
+  }, [terminalCtx, status, sessionId, error, connect, disconnect, sendCommand]);
 
   // Sync: when something calls context.openTerminal, the context sets its
   // isExpanded flag. Mirror that into the panel's local state so we actually
@@ -574,44 +574,49 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
             <WorkspaceLink connected={status === 'connected'} vmId={vmId} className={styles.headerButton} />
 
-            <Dropdown
-              placement="top-end"
-              overlay={
-                <Menu>
-                  <Menu.Item
-                    label="Search terminal"
-                    icon="search"
-                    onClick={handleSearchToggle}
-                    data-testid={testIds.codaTerminal.searchToggle}
-                  />
-                  {canDisconnect && (
-                    <Menu.Item
-                      label="Disconnect"
-                      icon="plug"
-                      onClick={handleDisconnect}
-                      data-testid={testIds.codaTerminal.disconnectButton}
-                    />
-                  )}
-                  {onClose && (
-                    <Menu.Item
-                      label="Close terminal"
-                      icon="times"
-                      onClick={onClose}
-                      data-testid={testIds.codaTerminal.closeButton}
-                    />
-                  )}
-                </Menu>
-              }
-            >
-              <Button
-                variant="secondary"
-                fill="text"
-                size="sm"
-                icon="ellipsis-v"
-                aria-label="Terminal actions"
-                tooltip="Terminal actions"
-              />
-            </Dropdown>
+            <IconButton
+              name="search"
+              size="sm"
+              aria-label="Search"
+              tooltip="Search in terminal (Ctrl+F)"
+              onClick={handleSearchToggle}
+              data-testid={testIds.codaTerminal.searchToggle}
+            />
+
+            {(canDisconnect || onClose) && (
+              <Dropdown
+                placement="top-end"
+                overlay={
+                  <Menu>
+                    {canDisconnect && (
+                      <Menu.Item
+                        label="Disconnect"
+                        icon="plug"
+                        onClick={handleDisconnect}
+                        testId={testIds.codaTerminal.disconnectButton}
+                      />
+                    )}
+                    {onClose && (
+                      <Menu.Item
+                        label="Close terminal"
+                        icon="times"
+                        onClick={onClose}
+                        testId={testIds.codaTerminal.closeButton}
+                      />
+                    )}
+                  </Menu>
+                }
+              >
+                <Button
+                  variant="secondary"
+                  fill="text"
+                  size="sm"
+                  icon="ellipsis-v"
+                  aria-label="Terminal actions"
+                  tooltip="Terminal actions"
+                />
+              </Dropdown>
+            )}
 
             <IconButton
               name="angle-down"

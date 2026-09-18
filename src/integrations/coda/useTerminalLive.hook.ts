@@ -104,7 +104,6 @@ function renderProvisionProgress(label: string, elapsedMs: number, complete = fa
 export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTerminalLiveReturn {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
-
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [vmId, setVmId] = useState<string | null>(null);
   const [vmExpiresAt, setVmExpiresAt] = useState<string | null>(null);
@@ -392,9 +391,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       cleanup();
       const generation = connectGenerationRef.current;
 
-      currentVmIdRef.current = null;
-      setVmId(null);
-
       terminal.clear();
       terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
       terminal.writeln('\x1b[1;36m  Grafana Pathfinder - Sandbox Terminal\x1b[0m');
@@ -444,8 +440,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     // into the next session and swallow its first genuine close.
     suppressClosedBannerRef.current = sessionRef.current !== null;
     cleanup();
-    currentVmIdRef.current = null;
-    setVmId(null);
     setStatus('disconnected');
     setError(null);
 
