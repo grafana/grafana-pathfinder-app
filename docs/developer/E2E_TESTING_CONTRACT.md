@@ -230,13 +230,11 @@ A cover-page layout or selector refactor must preserve these values or update th
 
 The path's rolled-up percentage is exposed declaratively on the table-of-contents root, alongside `testIds.learningPaths.tableOfContents`:
 
-- **`data-test-path-percent`**: the path's progress as an integer 0-100 — the mean of its resolvable milestones' own percentages (`docs/design/COMPLETION-MODEL.md`, decision 4). **Absent until the path's stored progress has been read.**
+- **`data-test-path-percent`**: the path's progress as an integer 0-100 — the mean of its resolvable milestones' own percentages (`docs/design/COMPLETION-MODEL.md`, decision 4). Always present.
 
 The attribute exists because the progress ring beside it is hidden at 0%, and 0% is the value a test most often needs to assert: it is what a reader who only paged through the path has earned. Reading the ring's rendered text would make "no progress" indistinguishable from "no ring".
 
-Its absence before the cover page has finished loading is deliberate: a test waits for the attribute to exist rather than reading a provisional value, so there is no "not loaded yet" value to confuse with a real 0.
-
-The gate is the cover page's own `progressLoaded`, which tracks its async read of stored milestone progress. Strictly that read is a **sufficient** signal rather than the necessary one: the percentage itself comes from `journeyProgressFromMilestones`, whose two reads are synchronous, so the rendered value is already correct at first paint. What `progressLoaded` buys is a defined point after mount at which the surface is settled — enough to keep a test off the first frame, where a percentage read alongside a still-initialising panel has repeatedly turned out to be a constant. If that async read is ever removed, give the attribute another gate rather than emitting it unconditionally.
+It used to be absent until the cover page's own `progressLoaded` state — tracking an async read of stored milestone progress — resolved. That async read is gone: `journeyProgressFromMilestones` and `journeyMilestonePercentages` now read the consolidated store synchronously, so the rendered value is correct at first paint and the attribute is emitted unconditionally. A test still waits for the table-of-contents root to attach before reading the attribute; there is no separate "not loaded yet" window to wait out.
 
 The guide-level equivalent is on the Mark complete footer, and there the gate **is** the necessary one:
 

@@ -1,12 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
 import type { Milestone } from '../../types/content.types';
 import type { PathGuide } from '../../types/learning-paths.types';
-import { milestoneCompletionStorage } from '../../lib/user-storage';
-import { getMilestoneSlug } from '../../lib/learning-journey-url';
-import { journeyProgressFromMilestones } from '../../docs-retrieval';
+import { journeyMilestonePercentages, percentagesToProgress } from '../../docs-retrieval';
+import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../global-state/progress-events';
 import { testIds } from '../../constants/testIds';
 import { getBadgeForPath } from '../../learning-paths';
 import { GuideList } from './GuideList';
@@ -33,31 +32,23 @@ export function LearningPathTableOfContents({
   description,
 }: LearningPathTableOfContentsProps) {
   const styles = useStyles2(getTableOfContentsStyles);
-  const [completedSlugs, setCompletedSlugs] = useState<Set<string>>(new Set());
-  // Guards the CTA and the current-row click target, both derived from
-  // completedSlugs: before this resolves, an empty set reads as "0% done,
-  // start at module 1" regardless of real progress, and a click during that
-  // window would land on the wrong milestone.
-  const [progressLoaded, setProgressLoaded] = useState(false);
   const badge = pathId ? getBadgeForPath(pathId) : undefined;
 
-  useEffect(() => {
-    let cancelled = false;
-    void milestoneCompletionStorage
-      .getCompleted(
-        baseUrl,
-        milestones.map((milestone) => milestone.url)
-      )
-      .then((slugs) => {
-        if (!cancelled) {
-          setCompletedSlugs(slugs);
-          setProgressLoaded(true);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [baseUrl, milestones]);
+  // The segments below read each milestone's percentage out of storage, so the
+  // store's announcement is what keeps them from painting a stale fill —
+  // mirrors the in-guide milestone toolbar's own subscription for the same reason.
+  useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
+
+  // The shared per-milestone calculation (docs/design/COMPLETION-MODEL.md,
+  // decision 4/9): the same numbers `progress` below is the mean of, so the
+  // checkmarks here and the sidebar milestone bar never disagree about which
+  // milestones are done. Synchronous, so there is no "progress not loaded
+  // yet" window the CTA/click target could race. Computed once and reused
+  // for `progress` below rather than calling it a second time.
+  const milestonePercentages = journeyMilestonePercentages(baseUrl, milestones);
+  const completedUrls = new Set(
+    milestonePercentages.filter(({ percent }) => percent === 100).map(({ milestone }) => milestone.url)
+  );
 
   // "Get started" targets the first unlocked milestone at 0% progress; once
   // underway, "Resume" targets the actual next incomplete one so returning to
@@ -65,10 +56,10 @@ export function LearningPathTableOfContents({
   // Every later milestone is sequentially locked — it isn't reachable yet
   // regardless of its own publish-lock state, which stays authoritative for
   // "unpublished" (locked even once its turn comes).
-  const cursor = milestones.findIndex((m) => !m.isLocked && !completedSlugs.has(getMilestoneSlug(m.url)));
+  const cursor = milestones.findIndex((m) => !m.isLocked && !completedUrls.has(m.url));
 
   const guides: PathGuide[] = milestones.map((milestone, index) => {
-    const completed = completedSlugs.has(getMilestoneSlug(milestone.url));
+    const completed = completedUrls.has(milestone.url);
     return {
       id: String(milestone.number),
       title: milestone.title,
@@ -87,7 +78,7 @@ export function LearningPathTableOfContents({
   // different numbers for the same journey. A reader who only navigated
   // without completing anything sees this at 0%, honestly, even after
   // visiting every milestone.
-  const progress = journeyProgressFromMilestones(baseUrl, milestones);
+  const progress = percentagesToProgress(milestonePercentages);
 
   const ctaTarget = cursor >= 0 ? milestones[cursor] : undefined;
   const ctaLabel = progress === 0 ? t('coverPage.getStarted', 'Get started') : t('coverPage.resume', 'Resume');
@@ -133,10 +124,10 @@ export function LearningPathTableOfContents({
         className={styles.container}
         data-testid={testIds.learningPaths.tableOfContents}
         // Testing contract: readable at 0%, where the ring below is hidden.
-        // Gated on progressLoaded to keep a reader off the first frame — see
-        // E2E_TESTING_CONTRACT.md, which owns why this gate is sufficient
-        // rather than necessary.
-        data-test-path-percent={progressLoaded ? progress : undefined}
+        // Unconditional — progress is synchronous (see the comment above), so
+        // there is no "not loaded yet" window to gate on. See
+        // E2E_TESTING_CONTRACT.md.
+        data-test-path-percent={progress}
       >
         <div className={styles.header}>
           <h2 className={styles.heading}>
@@ -147,7 +138,7 @@ export function LearningPathTableOfContents({
             {progress > 0 && (
               <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={progress >= 100} />
             )}
-            {progressLoaded && ctaTarget && (
+            {ctaTarget && (
               <button
                 type="button"
                 className={styles.ctaButton}
@@ -162,7 +153,7 @@ export function LearningPathTableOfContents({
             )}
           </div>
         </div>
-        <GuideList guides={guides} enableCurrentRowLink={progressLoaded} />
+        <GuideList guides={guides} enableCurrentRowLink />
       </div>
     </>
   );
