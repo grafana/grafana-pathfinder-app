@@ -49,7 +49,7 @@ export class SequenceManager {
     private dispatchInteractiveAction: (data: InteractiveElementData, click: boolean) => Promise<void>,
     private waitForReactUpdates: () => Promise<void>,
     private isValidInteractiveElement: (data: InteractiveElementData) => boolean,
-    private extractInteractiveDataFromElement: (element: HTMLElement) => InteractiveElementData
+    private extractInteractiveDataFromElement: (element: HTMLElement) => InteractiveElementData | null
   ) {}
 
   /**
@@ -114,7 +114,7 @@ export class SequenceManager {
       const element = elements[i];
       const data = this.extractInteractiveDataFromElement(element as HTMLElement);
 
-      if (!this.isValidInteractiveElement(data)) {
+      if (data === null || !this.isValidInteractiveElement(data)) {
         continue;
       }
 
@@ -147,7 +147,7 @@ export class SequenceManager {
       const element = elements[i];
       const data = this.extractInteractiveDataFromElement(element as HTMLElement);
 
-      if (!this.isValidInteractiveElement(data)) {
+      if (data === null || !this.isValidInteractiveElement(data)) {
         continue;
       }
 

@@ -51,7 +51,7 @@ export class FullScreenPanel extends SceneObjectBase<FullScreenPanelState> {
 
 function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const panel = useMemo(() => {
-    const globalConfig = (window as any).__pathfinderPluginConfig;
+    const globalConfig = window.__pathfinderPluginConfig;
     const config = getConfigWithDefaults(globalConfig || {});
     return new CombinedLearningJourneyPanel(config);
   }, []);

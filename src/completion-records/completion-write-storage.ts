@@ -105,18 +105,14 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
     volatileItems.delete(id);
     try {
       localStorage.removeItem(`${itemPrefix}${id}`);
-    } catch {
-      return;
-    }
+    } catch {}
   }
 
   function clear(): void {
     volatileItems.clear();
     try {
       clearKeysByPrefix(localStorage, ownerPrefix);
-    } catch {
-      return;
-    }
+    } catch {}
   }
 
   function acquireLease(now: number): LeaseResult {
@@ -165,9 +161,7 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
       if (parseLease(localStorage.getItem(leaseKey))?.tabId === tabId) {
         localStorage.removeItem(leaseKey);
       }
-    } catch {
-      return;
-    }
+    } catch {}
   }
 
   function subscribe(listener: () => void): () => void {

@@ -46,6 +46,43 @@ describe('resolveMinGrafanaVersion', () => {
   ])('returns null for %s', (_label, manifest) => {
     expect(resolveMinGrafanaVersion(manifest as Record<string, unknown>)).toBeNull();
   });
+
+  // Two manifests can describe one launch and they are not equally complete: the
+  // catalogue proxy's shaped response drops the field, the loader's manifest on
+  // the fetched content keeps it. Selecting one wholesale would let the slim one
+  // mask the floor.
+  describe('with several manifests', () => {
+    it('recovers a floor only the fetched manifest declares', () => {
+      expect(resolveMinGrafanaVersion([{ id: 'g', type: 'guide' }, { minGrafanaVersion: '13.2.0' }])).toBe('13.2.0');
+    });
+
+    it('recovers a floor when the more authoritative manifest is absent entirely', () => {
+      expect(resolveMinGrafanaVersion([undefined, { minGrafanaVersion: '13.2.0' }])).toBe('13.2.0');
+    });
+
+    it('lets the first manifest that declares a floor settle it', () => {
+      expect(resolveMinGrafanaVersion([{ minGrafanaVersion: '13.2.0' }, { minGrafanaVersion: '12.0.0' }])).toBe(
+        '13.2.0'
+      );
+    });
+
+    it('prefers a first-manifest additionalFields floor over a later typed one', () => {
+      expect(
+        resolveMinGrafanaVersion([
+          { additionalFields: { minGrafanaVersion: '13.2.0' } },
+          { minGrafanaVersion: '12.0.0' },
+        ])
+      ).toBe('13.2.0');
+    });
+
+    it('returns null when no manifest declares one', () => {
+      expect(resolveMinGrafanaVersion([undefined, { id: 'g', type: 'guide' }])).toBeNull();
+    });
+
+    it('returns null for an empty list', () => {
+      expect(resolveMinGrafanaVersion([])).toBeNull();
+    });
+  });
 });
 
 describe('evaluateVersionSupport', () => {

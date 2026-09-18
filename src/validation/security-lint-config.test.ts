@@ -4,6 +4,15 @@ import * as path from 'path';
 const REPO_ROOT = path.resolve(__dirname, '../..');
 
 describe('Security lint configuration', () => {
+  it('should enforce exhaustive production switches', () => {
+    const eslintConfig = fs.readFileSync(path.join(REPO_ROOT, 'eslint.config.mjs'), 'utf-8');
+
+    expect(eslintConfig).toContain("'@typescript-eslint/switch-exhaustiveness-check': [");
+    expect(eslintConfig).toContain('allowDefaultCaseForExhaustiveSwitch: true');
+    expect(eslintConfig).toContain('considerDefaultExhaustiveForUnions: false');
+    expect(eslintConfig).toContain('requireDefaultForNonUnion: false');
+  });
+
   it('should mechanically enforce F5 DOM sinks', () => {
     const eslintConfig = fs.readFileSync(path.join(REPO_ROOT, 'eslint.config.mjs'), 'utf-8');
 

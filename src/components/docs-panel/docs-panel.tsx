@@ -27,6 +27,7 @@ import { useInteractiveElements, NavigationManager } from '../../interactive-eng
 import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
 import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
+import { isCodaTerminalEnabled } from '../../utils/coda-enablement';
 import { useCodaPluginAvailable } from '../../integrations/coda/useCodaAvailability.hook';
 
 import {
@@ -68,7 +69,6 @@ import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { coerceLaunchSource, evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
-import { evaluateVersionSupport, resolveMinGrafanaVersion } from '../../lib/guide-version';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
@@ -240,8 +240,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // remote packages — the Tier 3/4 injection point.
     //
     // Seed from the published global, not this surface's snapshot — the resolver is one app-wide singleton.
-    const resolverConfig = (window as unknown as { __pathfinderPluginConfig?: DocsPluginConfig })
-      .__pathfinderPluginConfig;
+    const resolverConfig = window.__pathfinderPluginConfig;
     setPackageResolver(createCompositeResolver(resolverConfig ?? pluginConfig));
 
     // Note: Tab restoration now happens from React component after storage is initialized
@@ -984,22 +983,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           });
         }
 
-        // Emitted here rather than from the notice itself, which remounts on every
-        // tab switch and surface handoff — this counts guide opens, not renders.
-        const versionSupport = evaluateVersionSupport({
-          minGrafanaVersion: resolveMinGrafanaVersion(
-            packageInfo?.packageManifest ?? fetchedContent.metadata.packageManifest
-          ),
-          currentVersion: config.buildInfo?.version,
-        });
-        if (versionSupport.shouldWarn) {
-          reportAppInteraction(UserInteraction.GuideVersionUnsupportedShown, {
-            guide_url: url,
-            guide_title: finalTab?.title ?? '',
-            required_version: versionSupport.requiredVersion,
-            grafana_version: versionSupport.currentVersion,
-          });
-        }
         return 'completed';
       } else {
         this.failTab(tabId, result.error || 'Failed to load documentation');
@@ -1031,7 +1014,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   const isEditorUser = isCurrentUserEditor();
 
-  const codaAvailable = useCodaPluginAvailable(isDevMode && pluginConfig.enableCodaTerminal);
+  const codaEnabled = isCodaTerminalEnabled(pluginConfig, currentUserId);
+  const codaAvailable = useCodaPluginAvailable(codaEnabled);
 
   // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console.
   // Stable callback identity so effects depending on it do not re-run when isDevMode toggles.
@@ -1516,9 +1500,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         restoreScrollPosition={restoreScrollPosition}
       />
 
-      {/* Coda terminal panel — needs dev mode, Pathfinder's toggle, and the
+      {/* Coda terminal panel — needs Pathfinder's own enablement gate and the
           separate Coda app plugin to be installed and enabled. */}
-      {isDevMode && pluginConfig.enableCodaTerminal && codaAvailable && (
+      {codaEnabled && codaAvailable && (
         <Suspense fallback={null}>
           <TerminalPanel />
         </Suspense>

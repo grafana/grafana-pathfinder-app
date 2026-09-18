@@ -9,6 +9,8 @@
 
 import { renderHook, waitFor } from '@testing-library/react';
 import { usePluginContext } from '@grafana/data';
+import { getFeatureFlagValue } from '../../utils/openfeature';
+import { resetCodaTerminalFlagCache } from '../../utils/coda-enablement';
 import { isAppPluginEnabled, isAppPluginInstalled } from '@grafana/runtime';
 
 import { CODA_PLUGIN_ID, getCapabilities, type CodaCapabilities } from './coda-api';
@@ -22,8 +24,17 @@ import {
 jest.mock('@grafana/runtime', () => ({
   isAppPluginEnabled: jest.fn(),
   isAppPluginInstalled: jest.fn(),
-  // Silences getConfigWithDefaults' platform-detection warning.
-  config: { bootData: { settings: { buildInfo: { versionString: 'Grafana v13.1.0' } } } },
+  // Silences getConfigWithDefaults' platform-detection warning. `user.id` is
+  // what the dev-mode allowlist half of the enablement gate is keyed on.
+  config: {
+    bootData: { user: { id: 7 }, settings: { buildInfo: { versionString: 'Grafana v13.1.0' } } },
+  },
+}));
+
+// The real enablement accessor is what this suite is exercising; only its flag
+// read is mocked out.
+jest.mock('../../utils/openfeature', () => ({
+  getFeatureFlagValue: jest.fn(),
 }));
 
 jest.mock('@grafana/data', () => ({
@@ -40,6 +51,9 @@ const mockedIsAppPluginEnabled = isAppPluginEnabled as jest.MockedFunction<typeo
 const mockedIsAppPluginInstalled = isAppPluginInstalled as jest.MockedFunction<typeof isAppPluginInstalled>;
 const mockedUsePluginContext = usePluginContext as jest.MockedFunction<typeof usePluginContext>;
 const mockedGetCapabilities = getCapabilities as jest.MockedFunction<typeof getCapabilities>;
+const mockedGetFeatureFlagValue = getFeatureFlagValue as jest.MockedFunction<typeof getFeatureFlagValue>;
+
+const DEV_MODE_USER_ID = 7;
 
 function capabilities(overrides: Partial<CodaCapabilities> = {}): CodaCapabilities {
   return {
@@ -55,6 +69,8 @@ function capabilities(overrides: Partial<CodaCapabilities> = {}): CodaCapabiliti
 beforeEach(() => {
   jest.clearAllMocks();
   resetCodaAvailabilityCache();
+  resetCodaTerminalFlagCache();
+  mockedGetFeatureFlagValue.mockReturnValue(false);
   mockedIsAppPluginEnabled.mockResolvedValue(true);
   mockedIsAppPluginInstalled.mockResolvedValue(true);
 });
@@ -224,7 +240,9 @@ describe('isCodaPluginAvailable', () => {
 
 describe('useCodaTerminalGate', () => {
   function withTerminalSetting(enableCodaTerminal: boolean) {
-    mockedUsePluginContext.mockReturnValue({ meta: { jsonData: { enableCodaTerminal } } } as never);
+    mockedUsePluginContext.mockReturnValue({
+      meta: { jsonData: { enableCodaTerminal, devMode: true, devModeUserIds: [DEV_MODE_USER_ID] } },
+    } as never);
   }
 
   it('asks nothing about Coda when the operator has not enabled the terminal', () => {
@@ -247,6 +265,27 @@ describe('useCodaTerminalGate', () => {
 
   it('reports configured when both operator gates pass', async () => {
     withTerminalSetting(true);
+    const { result } = renderHook(() => useCodaTerminalGate());
+
+    await waitFor(() => expect(result.current).toBe('configured'));
+  });
+
+  // Previously this returned 'configured' while docs-panel refused to mount
+  // TerminalPanel, so blocks offered controls that dead-ended on
+  // "the sandbox terminal is not available here".
+  it('reports disabled for the setting alone, matching the terminal panel it shares a gate with', () => {
+    mockedUsePluginContext.mockReturnValue({
+      meta: { jsonData: { enableCodaTerminal: true, devMode: false, devModeUserIds: [] } },
+    } as never);
+    const { result } = renderHook(() => useCodaTerminalGate());
+
+    expect(result.current).toBe('disabled');
+    expect(mockedIsAppPluginInstalled).not.toHaveBeenCalled();
+  });
+
+  it('reports configured from the feature flag with no dev mode and no setting', async () => {
+    mockedGetFeatureFlagValue.mockReturnValue(true);
+    mockedUsePluginContext.mockReturnValue({ meta: { jsonData: {} } } as never);
     const { result } = renderHook(() => useCodaTerminalGate());
 
     await waitFor(() => expect(result.current).toBe('configured'));

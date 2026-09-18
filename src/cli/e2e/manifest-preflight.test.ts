@@ -389,4 +389,115 @@ describe('runManifestPreflight', () => {
     // All checks should have been skipped (no requirements declared)
     expect(outcome.results.every((r) => r.status === 'skip')).toBe(true);
   });
+
+  // The runtime floor is not a test floor, but a run below the version readers
+  // are warned about proves nothing — so preflight inherits it where the
+  // manifest declares no test floor of its own.
+  describe('runtime floor fallback', () => {
+    const versionResult = (outcome: Awaited<ReturnType<typeof runManifestPreflight>>) =>
+      outcome.results.find((r) => r.check === 'minVersion');
+
+    it('passes when the runtime floor equals the running version', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: '13.2.0', database: 'ok' }),
+      });
+
+      const outcome = await runManifestPreflight(
+        { ...baseManifest, minGrafanaVersion: '13.2.0', testEnvironment: { tier: 'local' } },
+        { grafanaUrl: 'http://localhost:3000', currentTier: 'local' }
+      );
+
+      expect(outcome.canRun).toBe(true);
+      expect(versionResult(outcome)?.status).toBe('pass');
+    });
+
+    it('fails when the running version is below the runtime floor', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: '13.1.0', database: 'ok' }),
+      });
+
+      const outcome = await runManifestPreflight(
+        { ...baseManifest, minGrafanaVersion: '13.2.0', testEnvironment: { tier: 'local' } },
+        { grafanaUrl: 'http://localhost:3000', currentTier: 'local' }
+      );
+
+      expect(outcome.canRun).toBe(false);
+      expect(outcome.skipped).toBe(false);
+      expect(versionResult(outcome)?.status).toBe('fail');
+    });
+
+    it('inherits the runtime floor when the manifest declares no testEnvironment at all', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: '12.3.0', database: 'ok' }),
+      });
+
+      const outcome = await runManifestPreflight(
+        { ...baseManifest, minGrafanaVersion: '13.2.0' },
+        { grafanaUrl: 'http://localhost:3000', currentTier: 'local' }
+      );
+
+      expect(outcome.canRun).toBe(false);
+      expect(versionResult(outcome)?.status).toBe('fail');
+    });
+
+    it('lets an explicit testEnvironment.minVersion win over the runtime floor', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: '13.0.0', database: 'ok' }),
+      });
+
+      // The test floor is met and the runtime floor is not: only a genuine
+      // precedence bug would fail this run.
+      const outcome = await runManifestPreflight(
+        { ...baseManifest, minGrafanaVersion: '13.2.0', testEnvironment: { tier: 'local', minVersion: '12.0.0' } },
+        { grafanaUrl: 'http://localhost:3000', currentTier: 'local' }
+      );
+
+      expect(outcome.canRun).toBe(true);
+      expect(versionResult(outcome)?.status).toBe('pass');
+    });
+
+    it('fails on an explicit test floor the runtime floor would have satisfied', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: '13.2.0', database: 'ok' }),
+      });
+
+      const outcome = await runManifestPreflight(
+        { ...baseManifest, minGrafanaVersion: '13.0.0', testEnvironment: { tier: 'local', minVersion: '13.3.0' } },
+        { grafanaUrl: 'http://localhost:3000', currentTier: 'local' }
+      );
+
+      expect(outcome.canRun).toBe(false);
+      expect(versionResult(outcome)?.status).toBe('fail');
+    });
+
+    it('skips the version check entirely when no floor of either kind is declared', async () => {
+      const outcome = await runManifestPreflight(
+        { ...baseManifest, testEnvironment: { tier: 'local' } },
+        { grafanaUrl: 'http://localhost:3000', currentTier: 'local' }
+      );
+
+      expect(outcome.canRun).toBe(true);
+      expect(versionResult(outcome)?.status).toBe('skip');
+    });
+
+    it('short-circuits on a tier mismatch before touching the runtime floor', async () => {
+      const mockFetch = jest.fn();
+      global.fetch = mockFetch;
+
+      const outcome = await runManifestPreflight(
+        { ...baseManifest, minGrafanaVersion: '13.2.0', testEnvironment: { tier: 'cloud' } },
+        { grafanaUrl: 'http://localhost:3000', currentTier: 'local' }
+      );
+
+      expect(outcome.skipped).toBe(true);
+      expect(outcome.canRun).toBe(false);
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(versionResult(outcome)).toBeUndefined();
+    });
+  });
 });

@@ -143,6 +143,18 @@ describe('fetchBundledInteractive — sibling manifest', () => {
     expect(result.content!.metadata.packageManifest).toMatchObject({ id: 'welcome-to-grafana' });
   });
 
+  // The manifest schema defaults an absent `repository` to `interactive-tutorials`
+  // and completion identity prefers a manifest value over the caller's fallback,
+  // so this tier must claim the source it actually served from.
+  it.each(['bundled:welcome-to-grafana', 'bundled:welcome-to-grafana/content.json'])(
+    'stamps repository "bundled" on %s',
+    async (url) => {
+      const result = await fetchBundledInteractive(url);
+
+      expect(result.content!.metadata.packageManifest!.repository).toBe('bundled');
+    }
+  );
+
   it('loads a static link with no manifest rather than failing', async () => {
     const result = await fetchBundledInteractive('bundled:static-links/administration-cloud.json');
 

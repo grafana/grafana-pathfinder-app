@@ -1,25 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePluginContext } from '@grafana/data';
-import { DocsPluginConfig, getConfigWithDefaults } from '../constants';
+import { DocsPluginConfig, getConfigWithDefaults, type ResolvedPathfinderConfig } from '../constants';
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import pluginJson from '../plugin.json';
 import { fetchPluginJsonData } from '../utils/utils.plugin';
 
-export type ResolvedPathfinderConfig = ReturnType<typeof getConfigWithDefaults>;
-
-interface PathfinderConfigWindow extends Window {
-  __pathfinderPluginConfig?: ResolvedPathfinderConfig;
-}
+export type { ResolvedPathfinderConfig } from '../constants';
 
 export interface PathfinderPluginConfigState {
   config: ResolvedPathfinderConfig;
   /** `false` means "not known yet", which is distinct from an explicit all-defaults config. */
   isResolved: boolean;
-}
-
-function configWindow(): PathfinderConfigWindow {
-  return window as PathfinderConfigWindow;
 }
 
 let unresolvedState: PathfinderPluginConfigState | undefined;
@@ -48,7 +40,7 @@ function configEquals(a: ResolvedPathfinderConfig, b: ResolvedPathfinderConfig):
  * without re-reading the global.
  */
 export function publishPathfinderPluginConfig(jsonData: DocsPluginConfig): ResolvedPathfinderConfig {
-  const target = configWindow();
+  const target = window;
   const next = getConfigWithDefaults(jsonData);
   const current = target.__pathfinderPluginConfig;
 
@@ -82,7 +74,7 @@ export function refreshPathfinderPluginConfig(): Promise<ResolvedPathfinderConfi
 }
 
 function resolveState(contextState: PathfinderPluginConfigState | undefined): PathfinderPluginConfigState {
-  const published = configWindow().__pathfinderPluginConfig;
+  const published = window.__pathfinderPluginConfig;
   if (published) {
     return { config: published, isResolved: true };
   }
@@ -129,5 +121,5 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
 export function __resetPathfinderPluginConfigForTests(): void {
   refreshInFlight = null;
   unresolvedState = undefined;
-  delete configWindow().__pathfinderPluginConfig;
+  delete window.__pathfinderPluginConfig;
 }

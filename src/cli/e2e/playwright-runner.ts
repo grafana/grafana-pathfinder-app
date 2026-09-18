@@ -1,6 +1,6 @@
 /**
- * Spawns the Playwright guide runner for a single guide and parses the temp
- * files it writes back (abort reason, step results) into a PlaywrightResult.
+ * Spawns an isolated guide runner or a shared milestone runner. It converts
+ * temporary runner files into command-side results.
  */
 
 import { spawn } from 'child_process';
@@ -9,7 +9,7 @@ import { basename, dirname, join, resolve } from 'path';
 import { tmpdir } from 'os';
 
 import { ExitCode } from './exit-codes';
-import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
+import { E2E_ENV, encodeEnvFlag, parseE2EChainInput, type E2EChainPackageMetadata } from './e2e-runner-contract';
 import type { LoadedGuide } from '../utils/file-loader';
 import type { E2EErrorCode } from './schemas/e2e-report.schema';
 import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
@@ -19,6 +19,7 @@ export { resolveStartingUrl } from './starting-location';
 
 const PLAYWRIGHT_CONFIG_PATH = join('tests', 'e2e-runner', 'playwright.config.ts');
 const GUIDE_RUNNER_SPEC_PATH = join('tests', 'e2e-runner', 'guide-runner.spec.ts');
+const SHARED_GUIDE_RUNNER_SPEC_PATH = join('tests', 'e2e-runner', 'shared-guide-runner.spec.ts');
 
 function tryFindRunnerRoot(startDir: string): string | undefined {
   let candidate = resolve(startDir);
@@ -27,6 +28,7 @@ function tryFindRunnerRoot(startDir: string): string | undefined {
     if (
       existsSync(join(candidate, PLAYWRIGHT_CONFIG_PATH)) &&
       existsSync(join(candidate, GUIDE_RUNNER_SPEC_PATH)) &&
+      existsSync(join(candidate, SHARED_GUIDE_RUNNER_SPEC_PATH)) &&
       existsSync(join(candidate, 'package.json'))
     ) {
       return candidate;
@@ -54,7 +56,7 @@ export function findRunnerRoot(startDir: string): string {
 
   throw new Error(
     `Could not locate the E2E runner root. Searched from '${startDir}' and cwd '${cwd}'. ` +
-      `Ensure the directory containing '${PLAYWRIGHT_CONFIG_PATH}' and '${GUIDE_RUNNER_SPEC_PATH}' is reachable.`
+      `Ensure the directory containing '${PLAYWRIGHT_CONFIG_PATH}' and both runner specs is reachable.`
   );
 }
 
@@ -145,14 +147,28 @@ function readJsonIfExists<T>(filePath: string): T | undefined {
   }
 }
 
+export interface PlaywrightChainResult {
+  success: boolean;
+  exitCode: number;
+  traceFile?: string;
+  abortReason?: AbortReason;
+  abortMessage?: string;
+  resultsData: TestResultsData[];
+}
+
+export interface RunChainGuide {
+  id: string;
+  guide: LoadedGuide;
+  dependencies: string[];
+  authoredStartingLocation?: string;
+  packageMetadata?: E2EChainPackageMetadata;
+}
+
+export type RunChainOptions = Omit<RunGuideOptions, 'startingLocation'>;
+
 /**
  * Process Playwright test results from temp files.
  * Reads abort file and results file to determine final outcome.
- *
- * @param exitCode - The Playwright process exit code
- * @param options - Options object with trace flag
- * @param filePaths - Paths to abort and results files
- * @returns PlaywrightResult with success status, exit code, and optional data
  */
 export function processPlaywrightResults(
   exitCode: number,
@@ -200,6 +216,219 @@ export function processPlaywrightResults(
     traceFile,
     resultsData,
   };
+}
+
+function isTestResultsData(value: unknown): value is TestResultsData {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate = value as Partial<TestResultsData>;
+  return (
+    typeof candidate.guide === 'object' &&
+    candidate.guide !== null &&
+    typeof candidate.guide.id === 'string' &&
+    typeof candidate.timestamp === 'string' &&
+    Array.isArray(candidate.results) &&
+    typeof candidate.aborted === 'boolean'
+  );
+}
+
+function parsePartialChainResults(filePath: string, guides: RunChainGuide[]): TestResultsData[] {
+  const value = readJsonIfExists<unknown>(filePath);
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const results: TestResultsData[] = [];
+  for (const [index, item] of value.entries()) {
+    if (!isTestResultsData(item) || guides[index]?.id !== item.guide.id) {
+      break;
+    }
+    results.push(item);
+  }
+  return results;
+}
+
+function missingChainResult(
+  guide: RunChainGuide,
+  targetUrl: string,
+  errorCode: E2EErrorCode,
+  message: string,
+  abortReason?: AbortReason
+): TestResultsData {
+  const parsed = JSON.parse(guide.guide.content) as { title?: unknown };
+  return createMinimalResultsData({
+    guide: {
+      id: guide.id,
+      title: typeof parsed.title === 'string' && parsed.title ? parsed.title : guide.id,
+      path: guide.guide.path,
+      targetUrl,
+      contentDigest: contentDigest(guide.guide.content),
+    },
+    outcome: abortReason === 'AUTH_EXPIRED' ? 'aborted' : 'infrastructure_error',
+    errorCode,
+    errorMessage: message,
+    ...(abortReason ? { abortReason } : {}),
+  });
+}
+
+export function processPlaywrightChainResults(
+  playwrightExitCode: number,
+  options: { trace: boolean; targetUrl: string },
+  filePaths: { abortFilePath: string; resultsFilePath: string; traceOutputFilePath: string },
+  guides: RunChainGuide[]
+): PlaywrightChainResult {
+  const traceFile = options.trace ? readFileIfExists(filePaths.traceOutputFilePath)?.trim() || undefined : undefined;
+  const resultsData = parsePartialChainResults(filePaths.resultsFilePath, guides);
+  const abortValue = readJsonIfExists<unknown>(filePaths.abortFilePath);
+  const abortContent = isAbortFileContent(abortValue) ? abortValue : undefined;
+  const errorCode: E2EErrorCode = abortContent?.abortReason === 'AUTH_EXPIRED' ? 'AUTH_EXPIRED' : 'REPORT_MISSING';
+  const errorMessage =
+    abortContent?.message ?? 'The shared Playwright process ended before this milestone produced a result report.';
+
+  for (const guide of guides.slice(resultsData.length)) {
+    resultsData.push(missingChainResult(guide, options.targetUrl, errorCode, errorMessage, abortContent?.abortReason));
+  }
+
+  const allResultsPassed =
+    resultsData.length === guides.length &&
+    resultsData.every((result) => result.outcome === 'passed' || result.outcome === 'skipped');
+  if (playwrightExitCode !== 0 && !abortContent && allResultsPassed) {
+    const finalResult = resultsData[resultsData.length - 1]!;
+    finalResult.outcome = 'infrastructure_error';
+    finalResult.errorCode = 'UNKNOWN';
+    finalResult.errorMessage = `Playwright exited with code ${playwrightExitCode} after all milestone results were written.`;
+    finalResult.aborted = true;
+    finalResult.abortMessage = finalResult.errorMessage;
+  }
+
+  const authExpired =
+    abortContent?.abortReason === 'AUTH_EXPIRED' ||
+    resultsData.some((result) => result.abortReason === 'AUTH_EXPIRED' || result.errorCode === 'AUTH_EXPIRED');
+  const success =
+    playwrightExitCode === 0 &&
+    resultsData.every((result) => result.outcome === 'passed' || result.outcome === 'skipped');
+  return {
+    success,
+    exitCode: authExpired ? ExitCode.AUTH_FAILURE : success ? ExitCode.SUCCESS : ExitCode.TEST_FAILURE,
+    traceFile,
+    abortReason: abortContent?.abortReason,
+    abortMessage: abortContent?.message,
+    resultsData,
+  };
+}
+
+export async function runPlaywrightChain(
+  guides: RunChainGuide[],
+  options: RunChainOptions
+): Promise<PlaywrightChainResult> {
+  const runnerRoot = findRunnerRoot(__dirname);
+  const artifactsDir = resolve(process.cwd(), options.artifacts);
+  const tempDir = mkdtempSync(join(tmpdir(), 'pathfinder-e2e-chain-'));
+  const inputFilePath = join(tempDir, 'chain-input.json');
+  const abortFilePath = join(tempDir, 'abort.json');
+  const resultsFilePath = join(tempDir, 'chain-results.json');
+  const authStateFile = join(tempDir, 'auth.json');
+  const traceOutputFilePath = join(tempDir, 'trace-path.txt');
+  const playwrightOutputDir = join(artifactsDir, `playwright-${basename(tempDir)}`);
+  const traceEnabled = options.trace && !options.token;
+
+  try {
+    const input = parseE2EChainInput({
+      targetUrl: new URL(options.targetUrl).toString(),
+      options: {
+        artifactsDir,
+        alwaysScreenshot: options.alwaysScreenshot,
+        verbose: options.verbose,
+      },
+      guides: guides.map((guide) => ({
+        id: guide.id,
+        path: guide.guide.path,
+        content: guide.guide.content,
+        dependencies: guide.dependencies,
+        ...(guide.authoredStartingLocation !== undefined
+          ? { authoredStartingLocation: resolveStartingPath(options.targetUrl, guide.authoredStartingLocation) }
+          : {}),
+        ...(guide.packageMetadata ? { packageMetadata: guide.packageMetadata } : {}),
+      })),
+    });
+    writeFileSync(inputFilePath, JSON.stringify(input), 'utf-8');
+
+    const playwrightArgs = [
+      'playwright',
+      'test',
+      join(runnerRoot, SHARED_GUIDE_RUNNER_SPEC_PATH),
+      `--config=${join(runnerRoot, PLAYWRIGHT_CONFIG_PATH)}`,
+      '--project=chromium',
+      `--output=${playwrightOutputDir}`,
+    ];
+    if (options.trace && options.token) {
+      console.warn('   ⚠ Trace disabled for bearer-token authentication because traces can contain credentials');
+    }
+    if (traceEnabled) {
+      playwrightArgs.push('--trace', 'on');
+    }
+    if (options.headed) {
+      playwrightArgs.push('--headed');
+    }
+
+    return await new Promise<PlaywrightChainResult>((resolveResult) => {
+      const proc = spawn('npx', playwrightArgs, {
+        cwd: runnerRoot,
+        env: {
+          ...process.env,
+          [E2E_ENV.CHAIN_INPUT_PATH]: inputFilePath,
+          [E2E_ENV.CHAIN_RESULTS_FILE_PATH]: resultsFilePath,
+          [E2E_ENV.GRAFANA_URL]: options.targetUrl,
+          [E2E_ENV.AUTH_STATE_FILE]: authStateFile,
+          ...(options.token ? { [E2E_ENV.GRAFANA_TOKEN]: options.token } : {}),
+          [E2E_ENV.TRACE]: encodeEnvFlag(traceEnabled),
+          [E2E_ENV.VERBOSE]: encodeEnvFlag(options.verbose),
+          [E2E_ENV.ABORT_FILE_PATH]: abortFilePath,
+          [E2E_ENV.ARTIFACTS_DIR]: artifactsDir,
+          [E2E_ENV.ALWAYS_SCREENSHOT]: encodeEnvFlag(options.alwaysScreenshot),
+          [E2E_ENV.TRACE_OUTPUT_FILE]: traceOutputFilePath,
+          PLAYWRIGHT_HTML_OPEN: 'never',
+        },
+        stdio: 'inherit',
+      });
+
+      proc.on('close', (code) => {
+        resolveResult(
+          processPlaywrightChainResults(
+            code ?? 1,
+            { trace: traceEnabled, targetUrl: options.targetUrl },
+            { abortFilePath, resultsFilePath, traceOutputFilePath },
+            guides
+          )
+        );
+      });
+      proc.on('error', (error) => {
+        const message = `Failed to spawn Playwright: ${error.message}`;
+        console.error(message);
+        resolveResult({
+          success: false,
+          exitCode: ExitCode.CONFIGURATION_ERROR,
+          abortMessage: message,
+          resultsData: guides.map((guide) =>
+            missingChainResult(guide, options.targetUrl, 'PLAYWRIGHT_SPAWN_FAILED', message)
+          ),
+        });
+      });
+    });
+  } finally {
+    if (!traceEnabled) {
+      try {
+        rmSync(playwrightOutputDir, { recursive: true, force: true });
+      } catch {
+        console.warn(`Warning: Failed to clean up Playwright output directory: ${playwrightOutputDir}`);
+      }
+    }
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+    } catch {
+      console.warn(`Warning: Failed to clean up temp directory: ${tempDir}`);
+    }
+  }
 }
 
 export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOptions): Promise<PlaywrightResult> {

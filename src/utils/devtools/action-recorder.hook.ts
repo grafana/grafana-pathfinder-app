@@ -6,8 +6,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { shouldCaptureElement, getActionDescription } from '../../lib/dom/action-detector';
 import { logger } from '../../lib/logging';
 import { generateSelectorFromEvent } from './selector-generator.util';
-import { exportStepsToHTML, type RecordedStep, type ExportOptions } from './tutorial-exporter';
-import { formatStepsToString } from './step-parser.util';
+import type { RecordedStep } from './dev-tools.types';
 import { useElementInspector } from './element-inspector.hook';
 
 export type RecordingState = 'idle' | 'recording' | 'paused';
@@ -124,7 +123,6 @@ export interface UseActionRecorderReturn {
   clearRecording: () => void;
   deleteStep: (index: number) => void;
   setRecordedSteps: (steps: RecordedStep[]) => void;
-  exportSteps: (format: 'string' | 'html', options?: ExportOptions) => string;
   // Inspector data for tooltip rendering
   hoveredElement: HTMLElement | null;
   domPath: string | null;
@@ -146,7 +144,7 @@ export interface UseActionRecorderReturn {
  *
  * @example
  * ```typescript
- * const { isRecording, recordedSteps, startRecording, pauseRecording, resumeRecording, stopRecording, exportSteps } = useActionRecorder({
+ * const { isRecording, recordedSteps, startRecording, pauseRecording, resumeRecording, stopRecording } = useActionRecorder({
  *   onStepRecorded: (step) => console.log('Recorded:', step)
  * });
  *
@@ -161,9 +159,6 @@ export interface UseActionRecorderReturn {
  *
  * // Stop recording (keeps steps, exits record mode)
  * stopRecording();
- *
- * // Export as string
- * const stepsString = exportSteps('string');
  * ```
  */
 // Default empty array - defined outside to prevent recreation
@@ -329,30 +324,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   const deleteStep = useCallback((index: number) => {
     setRecordedSteps((prev) => prev.filter((_, i) => i !== index));
   }, []);
-
-  const exportSteps = useCallback(
-    (format: 'string' | 'html', exportOptions?: ExportOptions): string => {
-      if (format === 'string') {
-        return formatStepsToString(
-          recordedSteps.map((step) => ({
-            action: step.action,
-            selector: step.selector,
-            value: step.value,
-          }))
-        );
-      } else {
-        return exportStepsToHTML(recordedSteps, {
-          includeComments: true,
-          includeHints: true,
-          wrapInSection: true,
-          sectionId: 'tutorial-section',
-          sectionTitle: 'Tutorial Section',
-          ...exportOptions,
-        });
-      }
-    },
-    [recordedSteps]
-  );
 
   // MutationObserver for modal detection
   // Watches for modals appearing/disappearing to group actions
@@ -817,7 +788,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     clearRecording,
     deleteStep,
     setRecordedSteps, // State setter from useState is already stable
-    exportSteps,
     // Inspector data
     hoveredElement,
     domPath,

@@ -460,3 +460,517 @@ func TestCustomGuideHTTPClient_StripsBlocksPreservesManifest(t *testing.T) {
 		t.Errorf("blocks leaked into the shaped entry: %s", raw)
 	}
 }
+
+// --- Stats passthrough -------------------------------------------------------
+
+func TestCustomGuideHTTPClient_PreservesManifestStats(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{
+				{"spec": map[string]any{
+					"id":     "fe-alerting-01",
+					"title":  "Alerting module 1",
+					"blocks": []map[string]any{{"type": "markdown", "content": "body"}},
+					"manifest": map[string]any{
+						"type": "guide",
+						"stats": map[string]any{
+							"version":                  1,
+							"blockCount":               9,
+							"sectionCount":             3,
+							"completableBlockCount":    4,
+							"finalCompletablePosition": 7,
+						},
+					},
+				}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+		t.Fatalf("expected one entry with a manifest, got %+v", page.Entries)
+	}
+	got, _ := json.Marshal(page.Entries[0].Manifest.Stats)
+	want := `{"version":1,"blockCount":9,"sectionCount":3,"completableBlockCount":4,"finalCompletablePosition":7}`
+	if string(got) != want {
+		t.Fatalf("stats reached the wire as %s, want %s", got, want)
+	}
+}
+
+func TestCustomGuideHTTPClient_NoStatsDecodesCleanly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{
+				{"spec": map[string]any{"id": "fe-plain", "manifest": map[string]any{"type": "guide"}}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+		t.Fatalf("expected one entry with a manifest, got %+v", page.Entries)
+	}
+	if page.Entries[0].Manifest.Stats != nil {
+		t.Errorf("expected no stats, got %+v", page.Entries[0].Manifest.Stats)
+	}
+	raw, _ := json.Marshal(page.Entries[0])
+	if strings.Contains(string(raw), "stats") {
+		t.Errorf("empty stats leaked into the shaped entry: %s", raw)
+	}
+}
+
+// Zero is a legal count, so a missing member cannot be told from a real 0 once
+// decoded — a laundered {version:1, blockCount:9, 0, 0, 0} even satisfies the
+// reader's own validation, which is worse than no stamp at all. The guide itself
+// always survives: dropping it would hide a usable guide, and a drift that hits
+// every stored guide at once would serve an empty catalogue as if nobody had
+// authored anything.
+func TestCustomGuideHTTPClient_UnusableStatsStampReadsAsAbsent(t *testing.T) {
+	cases := map[string]any{
+		"missing members":     map[string]any{"version": 1, "blockCount": 9},
+		"member type drifted": map[string]any{"version": "1", "blockCount": 9, "sectionCount": 3, "completableBlockCount": 4, "finalCompletablePosition": 7},
+		"not an object":       "9 blocks",
+		"empty object":        map[string]any{},
+	}
+	for name, stats := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"metadata": map[string]any{"continue": ""},
+					"items": []map[string]any{
+						{"spec": map[string]any{
+							"id":     "fe-bad-stats",
+							"title":  "Alerting module 1",
+							"status": "published",
+							"manifest": map[string]any{
+								"type":       "guide",
+								"repository": "app-platform",
+								"stats":      stats,
+							},
+						}},
+					},
+				})
+			}))
+			defer srv.Close()
+
+			c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+			page, err := c.ListPage(context.Background(), testNamespace, "")
+			if err != nil {
+				t.Fatalf("an unusable stats stamp failed the whole page: %v", err)
+			}
+			if len(page.Entries) != 1 {
+				t.Fatalf("expected the guide to survive, got %+v", page.Entries)
+			}
+
+			got := page.Entries[0]
+			if got.ID != "fe-bad-stats" || got.Title != "Alerting module 1" || got.Status != "published" {
+				t.Errorf("the rest of the entry was not preserved: %+v", got)
+			}
+			if got.Manifest == nil || got.Manifest.Type != "guide" || got.Manifest.Repository != "app-platform" {
+				t.Errorf("the rest of the manifest was not preserved: %+v", got.Manifest)
+			}
+			// Indistinguishable on the wire from a guide that never carried stats.
+			raw, _ := json.Marshal(got)
+			if strings.Contains(string(raw), `"stats":`) {
+				t.Errorf("an unusable stamp reached the wire: %s", raw)
+			}
+		})
+	}
+}
+
+func TestCustomGuideHTTPClient_UnrelatedTypeErrorKeepsStats(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{
+				{"spec": map[string]any{
+					"id":     "fe-alerting-01",
+					"title":  "Alerting module 1",
+					"status": 7, // drifts to a number; stats is untouched
+					"manifest": map[string]any{
+						"type": "guide",
+						"stats": map[string]any{
+							"version": 1, "blockCount": 9, "sectionCount": 3,
+							"completableBlockCount": 4, "finalCompletablePosition": 7,
+						},
+					},
+				}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+		t.Fatalf("expected one entry with a manifest, got %+v", page.Entries)
+	}
+	got, _ := json.Marshal(page.Entries[0].Manifest.Stats)
+	want := `{"version":1,"blockCount":9,"sectionCount":3,"completableBlockCount":4,"finalCompletablePosition":7}`
+	if string(got) != want {
+		t.Errorf("a drift in status cost the guide its stats: %s, want %s", got, want)
+	}
+}
+
+// A zero count is a real count, so the completeness check must key on member
+// presence, not on the decoded values.
+func TestCustomGuideHTTPClient_ZeroValuedStatsSurvive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{
+				{"spec": map[string]any{
+					"id": "fe-empty-guide",
+					"manifest": map[string]any{
+						"type": "guide",
+						"stats": map[string]any{
+							"version": 1, "blockCount": 0, "sectionCount": 0,
+							"completableBlockCount": 0, "finalCompletablePosition": 0,
+						},
+					},
+				}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+		t.Fatalf("expected one entry with a manifest, got %+v", page.Entries)
+	}
+	got, _ := json.Marshal(page.Entries[0].Manifest.Stats)
+	want := `{"version":1,"blockCount":0,"sectionCount":0,"completableBlockCount":0,"finalCompletablePosition":0}`
+	if string(got) != want {
+		t.Errorf("an all-zero stamp was mistaken for an absent one: %s, want %s", got, want)
+	}
+}
+
+func TestCustomGuideHTTPClient_SkipsSpecWithoutID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{
+				{"spec": map[string]any{"id": 7, "title": "no usable id"}},
+				{"spec": map[string]any{"id": "fe-good"}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].ID != "fe-good" {
+		t.Fatalf("expected only fe-good, got %+v", page.Entries)
+	}
+}
+
+func TestCustomGuide_ServesManifestStatsToBrowser(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	entry := guideEntry("fe-alerting-01", "Alerting module 1", "published", "guide")
+	entry.Manifest.Stats = &customGuideStats{Version: 1, BlockCount: 9, SectionCount: 3, CompletableBlockCount: 4, FinalCompletablePosition: 7}
+	withGuideLister(t, singlePageGuideLister(entry))
+
+	rr, body := doCustomGuide(t, "/custom-guide-repository", "user:1")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if len(body.Guides) != 1 || body.Guides[0].Manifest == nil {
+		t.Fatalf("expected one guide with a manifest, got %+v", body.Guides)
+	}
+	got, _ := json.Marshal(body.Guides[0].Manifest.Stats)
+	want := `{"version":1,"blockCount":9,"sectionCount":3,"completableBlockCount":4,"finalCompletablePosition":7}`
+	if string(got) != want {
+		t.Fatalf("served stats = %s, want %s", got, want)
+	}
+}
+
+// A negative count is not a denominator, so the stamp must read as absent —
+// the same outcome as an incomplete one, and the same invariant the canonical
+// GuideStatsSummarySchema states.
+func TestCustomGuideHTTPClient_NegativeStatsMemberReadsAsAbsent(t *testing.T) {
+	members := []string{"version", "blockCount", "sectionCount", "completableBlockCount", "finalCompletablePosition"}
+	for _, member := range members {
+		t.Run(member, func(t *testing.T) {
+			stats := map[string]any{
+				"version": 1, "blockCount": 9, "sectionCount": 3,
+				"completableBlockCount": 4, "finalCompletablePosition": 7,
+			}
+			stats[member] = -1
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"metadata": map[string]any{"continue": ""},
+					"items": []map[string]any{
+						{"spec": map[string]any{
+							"id":       "fe-negative-stats",
+							"manifest": map[string]any{"type": "guide", "stats": stats},
+						}},
+					},
+				})
+			}))
+			defer srv.Close()
+
+			c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+			page, err := c.ListPage(context.Background(), testNamespace, "")
+			if err != nil {
+				t.Fatalf("ListPage: %v", err)
+			}
+			if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+				t.Fatalf("expected the guide to survive, got %+v", page.Entries)
+			}
+			if page.Entries[0].Manifest.Stats != nil {
+				t.Errorf("a negative %s was served as a denominator: %+v", member, page.Entries[0].Manifest.Stats)
+			}
+			raw, _ := json.Marshal(page.Entries[0])
+			if strings.Contains(string(raw), `"stats":`) {
+				t.Errorf("a negative %s reached the wire: %s", member, raw)
+			}
+		})
+	}
+}
+
+// encoding/json fills a slice or nested struct with whatever it understood
+// before it failed, so a manifest composite must be kept only once it has
+// decoded whole. Otherwise the surviving prefix — one milestone id out of two,
+// an author with a name and no team — is indistinguishable from data the stack
+// actually stored.
+func TestCustomGuideHTTPClient_MalformedCompositeFieldDropsOnlyThatField(t *testing.T) {
+	cases := map[string]struct {
+		manifest       map[string]any
+		leaked         string
+		wantAuthorName string
+		wantAuthorTeam string
+		wantMilestone  string
+	}{
+		"malformed milestones": {
+			manifest: map[string]any{
+				"type":       "path",
+				"repository": "app-platform",
+				"milestones": []any{"fe-alerting-01", 7},
+				"author":     map[string]any{"name": "Field engineering", "team": "field-eng"},
+			},
+			leaked:         "fe-alerting-01",
+			wantAuthorName: "Field engineering",
+			wantAuthorTeam: "field-eng",
+		},
+		"malformed author": {
+			manifest: map[string]any{
+				"type":       "path",
+				"repository": "app-platform",
+				"milestones": []any{"fe-alerting-01"},
+				"author":     map[string]any{"name": "Field engineering", "team": []string{"field-eng"}},
+			},
+			leaked:        "Field engineering",
+			wantMilestone: "fe-alerting-01",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"metadata": map[string]any{"continue": ""},
+					"items": []map[string]any{
+						{"spec": map[string]any{
+							"id":       "fe-alerting-path",
+							"title":    "Alerting enablement",
+							"manifest": tc.manifest,
+						}},
+					},
+				})
+			}))
+			defer srv.Close()
+
+			c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+			page, err := c.ListPage(context.Background(), testNamespace, "")
+			if err != nil {
+				t.Fatalf("a malformed composite failed the whole page: %v", err)
+			}
+			if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+				t.Fatalf("expected the guide to survive with its manifest, got %+v", page.Entries)
+			}
+
+			got := page.Entries[0]
+			if got.ID != "fe-alerting-path" || got.Title != "Alerting enablement" {
+				t.Errorf("the rest of the entry was not preserved: %+v", got)
+			}
+			if got.Manifest.Type != "path" || got.Manifest.Repository != "app-platform" {
+				t.Errorf("the rest of the manifest was not preserved: %+v", got.Manifest)
+			}
+
+			if tc.wantAuthorName != "" {
+				if got.Manifest.Author == nil {
+					t.Fatal("valid author was dropped")
+				}
+				if got.Manifest.Author.Name != tc.wantAuthorName || got.Manifest.Author.Team != tc.wantAuthorTeam {
+					t.Errorf("valid author was not preserved: %+v", got.Manifest.Author)
+				}
+			}
+
+			if tc.wantMilestone != "" {
+				if len(got.Manifest.Milestones) != 1 || got.Manifest.Milestones[0] != tc.wantMilestone {
+					t.Errorf("valid milestones were not preserved: %+v", got.Manifest.Milestones)
+				}
+			}
+
+			raw, _ := json.Marshal(got)
+
+			if strings.Contains(string(raw), tc.leaked) {
+				t.Errorf("a half-decoded composite reached the wire: %s", raw)
+			}
+		})
+	}
+}
+
+// One drain, one budget: a namespace-wide schema drift must not buy a fresh
+// allowance of detail lines on every page, and the summary that closes it out
+// must land once and count the whole drain.
+func TestCustomGuideHTTPClient_DecodeWarnBudgetSpansPages(t *testing.T) {
+	const perPage = 8
+	page := func(continueToken string) map[string]any {
+		items := make([]map[string]any, 0, perPage)
+		for i := range perPage {
+			items = append(items, map[string]any{"spec": map[string]any{
+				"id":       fmt.Sprintf("fe-drifted-%s-%d", continueToken, i),
+				"manifest": map[string]any{"type": "guide", "stats": map[string]any{"version": 1}},
+			}})
+		}
+		return map[string]any{"metadata": map[string]any{"continue": continueToken}, "items": items}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := page("")
+		if r.URL.Query().Get("continue") == "" {
+			body = page("page-2")
+		}
+		_ = json.NewEncoder(w).Encode(body)
+	}))
+	defer srv.Close()
+
+	logger := newCapturingLogger()
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", logger)
+	if _, _, err := drainCustomGuides(context.Background(), testNamespace, c, logger); err != nil {
+		t.Fatalf("drainCustomGuides: %v", err)
+	}
+
+	details, summaries := 0, 0
+	for _, line := range *logger.lines {
+		switch {
+		case strings.Contains(line.msg, "incomplete manifest stats dropped"):
+			details++
+		case strings.Contains(line.msg, "further decode warnings suppressed"):
+			summaries++
+		}
+	}
+	if details != customGuideDecodeWarnPerDrain {
+		t.Errorf("logged %d detail warnings across two pages, want the drain budget of %d", details, customGuideDecodeWarnPerDrain)
+	}
+	if summaries != 1 {
+		t.Errorf("got %d suppression summaries, want exactly 1 for the drain", summaries)
+	}
+}
+
+func TestCustomGuideHTTPClient_DecodeWarnSummaryOnAggregateBudget(t *testing.T) {
+	prev := customGuideListMaxTotalEntries
+	customGuideListMaxTotalEntries = 1
+	t.Cleanup(func() { customGuideListMaxTotalEntries = prev })
+
+	items := make([]map[string]any, 0, customGuideDecodeWarnPerDrain+1)
+	for i := 0; i < customGuideDecodeWarnPerDrain+1; i++ {
+		items = append(items, map[string]any{"spec": map[string]any{
+			"id":       fmt.Sprintf("fe-drifted-%d", i),
+			"manifest": map[string]any{"type": "guide", "stats": map[string]any{"version": 1}},
+		}})
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": "page-2"},
+			"items":    items,
+		})
+	}))
+	defer srv.Close()
+
+	logger := newCapturingLogger()
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", logger)
+	if _, _, err := drainCustomGuides(context.Background(), testNamespace, c, logger); err != nil {
+		t.Fatalf("drainCustomGuides: %v", err)
+	}
+	if !logger.warnedWith("custom guide catalogue LIST truncated at aggregate budget") {
+		t.Error("aggregate-budget truncation warning did not use the drain's request-scoped logger")
+	}
+
+	details, summaries := 0, 0
+	for _, line := range *logger.lines {
+		switch {
+		case strings.Contains(line.msg, "incomplete manifest stats dropped"):
+			details++
+		case strings.Contains(line.msg, "further decode warnings suppressed"):
+			summaries++
+		}
+	}
+	if details != customGuideDecodeWarnPerDrain {
+		t.Errorf("logged %d detail warnings, want %d", details, customGuideDecodeWarnPerDrain)
+	}
+	if summaries != 1 {
+		t.Errorf("got %d suppression summaries, want exactly 1 after aggregate-budget stop", summaries)
+	}
+}
+
+func TestCustomGuideHTTPClient_DecodeWarnSummaryOnPageError(t *testing.T) {
+	items := make([]map[string]any, 0, customGuideDecodeWarnPerDrain+1)
+	for i := 0; i < customGuideDecodeWarnPerDrain+1; i++ {
+		items = append(items, map[string]any{"spec": map[string]any{
+			"id":       fmt.Sprintf("fe-drifted-%d", i),
+			"manifest": map[string]any{"type": "guide", "stats": map[string]any{"version": 1}},
+		}})
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("continue") != "" {
+			http.Error(w, "upstream failed", http.StatusServiceUnavailable)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": "page-2"},
+			"items":    items,
+		})
+	}))
+	defer srv.Close()
+
+	logger := newCapturingLogger()
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", logger)
+	if _, _, err := drainCustomGuides(context.Background(), testNamespace, c, logger); err == nil {
+		t.Fatal("drainCustomGuides returned nil error")
+	}
+
+	summaries := 0
+	for _, line := range *logger.lines {
+		if strings.Contains(line.msg, "further decode warnings suppressed") {
+			summaries++
+		}
+	}
+	if summaries != 1 {
+		t.Errorf("got %d suppression summaries, want exactly 1 after page error", summaries)
+	}
+}

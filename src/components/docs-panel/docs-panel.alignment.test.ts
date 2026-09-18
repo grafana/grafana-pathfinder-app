@@ -104,7 +104,6 @@ jest.mock('../../lib/analytics', () => ({
     AlignmentPromptShown: 'alignment_prompt_shown',
     AlignmentPromptConfirmed: 'alignment_prompt_confirmed',
     AlignmentPromptDismissed: 'alignment_prompt_dismissed',
-    GuideVersionUnsupportedShown: 'guide_version_unsupported_shown',
     OpenResourceClick: 'open_resource_click',
   },
   getContentTypeForAnalytics: jest.fn(),
@@ -934,52 +933,5 @@ describe('CombinedLearningJourneyPanel — package resolver config source', () =
     new CombinedLearningJourneyPanel(constructorConfig);
 
     expect(jest.requireMock('../../package-engine').createCompositeResolver).toHaveBeenCalledWith(constructorConfig);
-  });
-});
-
-describe('CombinedLearningJourneyPanel — guide version floor telemetry', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockGetLocation.mockReturnValue({ pathname: '/explore', search: '' });
-    jest.requireMock('./utils').shouldUseDocsLoader.mockReturnValue(true);
-  });
-
-  const versionShown = () =>
-    mockReportAppInteraction.mock.calls.find(([type]) => type === 'guide_version_unsupported_shown');
-
-  it('reports a guide whose declared floor is above the running Grafana', async () => {
-    mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
-    const panel = new CombinedLearningJourneyPanel();
-
-    await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
-      packageManifest: { minGrafanaVersion: '13.2.0' },
-    });
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(versionShown()![1]).toEqual(
-      expect.objectContaining({ required_version: '13.2.0', grafana_version: '13.1.0' })
-    );
-  });
-
-  it('reports nothing when the running Grafana meets the floor', async () => {
-    mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
-    const panel = new CombinedLearningJourneyPanel();
-
-    await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', {
-      packageManifest: { minGrafanaVersion: '13.0.0' },
-    });
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(versionShown()).toBeUndefined();
-  });
-
-  it('reports nothing for a guide that declares no floor', async () => {
-    mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
-    const panel = new CombinedLearningJourneyPanel();
-
-    await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page');
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(versionShown()).toBeUndefined();
   });
 });

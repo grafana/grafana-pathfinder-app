@@ -9,7 +9,7 @@
  * see resolved PackageResolution results.
  *
  * @coupling Types: PackageResolver, PackageResolution in package.types.ts
- * @coupling Loader: loader.ts for content fetching
+ * @coupling Loader: lib/bundled-package-files.ts for content fetching
  */
 
 import type {

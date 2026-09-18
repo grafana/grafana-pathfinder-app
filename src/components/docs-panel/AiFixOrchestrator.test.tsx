@@ -27,7 +27,7 @@ jest.mock('../../lib/analytics', () => ({
 }));
 jest.mock('../../constants', () => ({
   getConfigWithDefaults: (jsonData: Record<string, unknown> | undefined) => ({
-    enableAiAutoHeal: !!jsonData?.enableAiAutoHeal,
+    enableAiAutoHeal: (jsonData?.enableAiAutoHeal as boolean | undefined) ?? true,
   }),
 }));
 jest.mock('../../interactive-engine', () => ({
@@ -95,7 +95,7 @@ describe('AiFixOrchestrator', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('drops the request when the admin flag is off (dark landing)', async () => {
+  it('drops the request when the admin has opted out', async () => {
     setFlag(false);
     render(<AiFixOrchestrator activeTab={TAB} onPatchApplied={jest.fn()} />);
     await dispatchRequest();

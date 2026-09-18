@@ -36,6 +36,7 @@ import {
 } from '../../integrations/coda/coda-api';
 import { useGuideRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 
 // The atomic temp+rename guarantees the gated coda-exit-zero check never
 // sees a partially-written gate file. The path is shared with that check
@@ -526,7 +527,14 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
           : 'Preparing your environment…';
       case 'checking':
         return 'Checking your work…';
+      case 'ready':
+      case 'idle':
+      case 'solved':
+      case 'failed-check':
+      case 'setup-failed':
+        return null;
       default:
+        assertExhaustive(state);
         return null;
     }
   })();

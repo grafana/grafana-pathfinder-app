@@ -1,0 +1,11 @@
+{
+  "id": "shared-session-enter-unsaved-config",
+  "type": "guide",
+  "repository": "test-fixture",
+  "description": "Creates unsaved form state for the next milestone.",
+  "startingLocation": "/plugins/grafana-pathfinder-app?page=configuration",
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}

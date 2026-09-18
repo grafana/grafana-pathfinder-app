@@ -8,7 +8,7 @@
  * @see https://grafana.com/developers/plugin-tools/how-to-guides/app-plugins/add-authentication-for-app-plugins
  */
 
-import { getConfigWithDefaults, DocsPluginConfig } from '../../constants';
+import { getConfigWithDefaults, DocsPluginConfig, DEFAULT_ENABLE_AI_AUTO_HEAL } from '../../constants';
 
 describe('plugin settings preservation', () => {
   /**
@@ -155,6 +155,53 @@ describe('plugin settings preservation', () => {
 
       // stackId is preserved
       expect(fixedNewJsonData.stackId).toBe('123');
+    });
+  });
+
+  describe('regression: a field a tab does not own must not be frozen to its default', () => {
+    it('demonstrates the bug: an unrelated save materializes and freezes a never-set field', () => {
+      // Admin never touched the AI auto-heal toggle — jsonData has no opinion on it.
+      const jsonData: DocsPluginConfig = { tutorialUrl: 'https://original.example.com' };
+
+      // BUG: spreading getConfigWithDefaults bakes today's default into jsonData,
+      // even though this save has nothing to do with AI auto-heal.
+      const buggyNewJsonData = {
+        ...(jsonData || {}),
+        ...getConfigWithDefaults(jsonData || {}),
+        tutorialUrl: 'https://changed.example.com',
+      };
+
+      // The field is now explicitly persisted, so it can never again track a
+      // future change to DEFAULT_ENABLE_AI_AUTO_HEAL for this tenant.
+      expect(buggyNewJsonData.enableAiAutoHeal).toBe(DEFAULT_ENABLE_AI_AUTO_HEAL);
+      expect('enableAiAutoHeal' in buggyNewJsonData).toBe(true);
+
+      // FIX: pass the raw (possibly-undefined) value through instead of the resolved one.
+      const fixedNewJsonData = {
+        ...(jsonData || {}),
+        ...getConfigWithDefaults(jsonData || {}),
+        enableAiAutoHeal: jsonData?.enableAiAutoHeal,
+        tutorialUrl: 'https://changed.example.com',
+      };
+
+      // The field stays unset, so getConfigWithDefaults keeps resolving it against
+      // whatever DEFAULT_ENABLE_AI_AUTO_HEAL is at read time.
+      expect(fixedNewJsonData.enableAiAutoHeal).toBeUndefined();
+    });
+
+    it('still preserves an admin-chosen value for the field', () => {
+      // Admin explicitly disabled AI auto-heal from the tab that owns the toggle.
+      const jsonData: DocsPluginConfig = { enableAiAutoHeal: false, tutorialUrl: 'https://original.example.com' };
+
+      const fixedNewJsonData = {
+        ...(jsonData || {}),
+        ...getConfigWithDefaults(jsonData || {}),
+        enableAiAutoHeal: jsonData?.enableAiAutoHeal,
+        tutorialUrl: 'https://changed.example.com',
+      };
+
+      // An explicit choice is never clobbered by an unrelated save.
+      expect(fixedNewJsonData.enableAiAutoHeal).toBe(false);
     });
   });
 });

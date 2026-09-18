@@ -3,6 +3,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { validateObservation } from './review-policy.mjs';
+
 const VERDICTS = new Set([
   'follows_contract',
   'coherent_extension',
@@ -94,7 +96,7 @@ export function validatePacket(packet) {
   return packet;
 }
 
-export function decideDisposition(packet) {
+export function classifyContractState(packet) {
   validatePacket(packet);
   if (
     packet.verdict === 'insufficient_history' ||
@@ -102,31 +104,31 @@ export function decideDisposition(packet) {
   ) {
     return {
       effective_verdict: 'insufficient_history',
-      disposition: 'advisory',
+      kind: 'suggestion',
       severity: 'low',
-      requires_finding: true,
+      requires_observation: true,
     };
   }
   if (packet.verdict === 'follows_contract' || packet.verdict === 'coherent_extension') {
-    return { effective_verdict: packet.verdict, disposition: 'none', severity: null, requires_finding: false };
+    return { effective_verdict: packet.verdict, kind: null, severity: null, requires_observation: false };
   }
   if (packet.verdict === 'contract_missing') {
     return {
       effective_verdict: 'contract_missing',
-      disposition: 'advisory',
+      kind: 'suggestion',
       severity: 'medium',
-      requires_finding: true,
+      requires_observation: true,
     };
   }
 
   const matureTripwire =
     packet.anchor_violated || packet.use_ordinal === 'third_or_later' || packet.same_bug_count >= 2;
-  const blocking = matureTripwire && packet.branching_conditions.length > 0;
+  const defect = matureTripwire && packet.branching_conditions.length > 0;
   return {
     effective_verdict: 'contract_branching',
-    disposition: blocking ? 'blocking' : 'advisory',
-    severity: blocking ? 'high' : 'medium',
-    requires_finding: true,
+    kind: defect ? 'defect' : 'suggestion',
+    severity: defect ? 'high' : 'medium',
+    requires_observation: true,
   };
 }
 
@@ -141,22 +143,22 @@ function synthesizeInsufficientHistoryFinding(packet) {
     ],
     why_it_matters:
       'The scan could not verify the contract verdict against complete history or a recorded anchor, so contract branching may be invisible.',
-    suggested_action: `Record a contract anchor for ${packet.concern_id} in docs/design/CONCERNS.md (Contract anchors) or re-run the scan with complete history.`,
+    suggested_action: `Record a contract anchor for ${packet.concern_id} in docs/design/CONCERN_DETAILS.md or re-run the scan with complete history.`,
     reversibility: 'unknown',
     applies_to_files: [],
   };
 }
 
-export function buildFinding(packet) {
-  const decision = decideDisposition(packet);
-  if (!decision.requires_finding) {
+export function buildObservation(packet) {
+  const state = classifyContractState(packet);
+  if (!state.requires_observation) {
     return null;
   }
 
   let finding = packet.finding;
   if (
     !finding &&
-    decision.effective_verdict === 'insufficient_history' &&
+    state.effective_verdict === 'insufficient_history' &&
     (packet.verdict === 'follows_contract' || packet.verdict === 'coherent_extension')
   ) {
     finding = synthesizeInsufficientHistoryFinding(packet);
@@ -175,12 +177,13 @@ export function buildFinding(packet) {
     throw new Error(`Unknown finding reversibility: ${finding.reversibility}`);
   }
 
-  return {
+  return validateObservation({
     concern_id: packet.concern_id,
     finding_id: finding.finding_id,
-    severity: decision.severity,
+    kind: state.kind,
+    severity: state.severity,
     confidence:
-      decision.effective_verdict === 'insufficient_history'
+      state.effective_verdict === 'insufficient_history'
         ? 'low'
         : packet.history_status === 'complete' || packet.has_recorded_anchor
           ? 'high'
@@ -191,8 +194,13 @@ export function buildFinding(packet) {
     suggested_action: finding.suggested_action,
     reversibility: finding.reversibility,
     applies_to_files: finding.applies_to_files,
-    disposition: decision.disposition,
-  };
+    origin: state.kind === 'defect' ? 'regression' : 'pre_existing',
+    impact: state.kind === 'defect' ? 'ordinary' : 'none',
+    timing: packet.timing ?? 'first_round',
+    scope_effect: state.kind === 'defect' ? 'within_changed_surface' : 'widens_changed_surface',
+    breaks_shipped_path: false,
+    induced: false,
+  });
 }
 
 function main() {
@@ -201,9 +209,9 @@ function main() {
     throw new Error('Expected one path to a contract evolution packet JSON file');
   }
   const packet = JSON.parse(readFileSync(packetPath, 'utf8'));
-  const decision = decideDisposition(packet);
-  const finding = buildFinding(packet);
-  process.stdout.write(`${JSON.stringify({ packet, decision, finding }, null, 2)}\n`);
+  const state = classifyContractState(packet);
+  const observation = buildObservation(packet);
+  process.stdout.write(`${JSON.stringify({ packet, state, observation }, null, 2)}\n`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

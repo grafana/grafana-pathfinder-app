@@ -18,7 +18,7 @@ const DOC_PATH = path.resolve(__dirname, '../..', DOC_RELATIVE_PATH);
 const SUMMARY_HEADING = '### Block Types Summary';
 
 /** Bump deliberately: a short count means the union shrank or Zod's internals moved. */
-const EXPECTED_BLOCK_TYPE_COUNT = 20;
+const EXPECTED_BLOCK_TYPE_COUNT = 21;
 
 function unwrap(schema: any): any {
   const inner = schema?._zod?.def?.innerType;

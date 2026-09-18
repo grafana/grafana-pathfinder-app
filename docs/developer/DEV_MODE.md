@@ -35,7 +35,7 @@ When dev mode is enabled:
 
 - **Debug panel**: The DOM Selector Debug Panel appears at the bottom of the context panel
 - **Advanced configuration**: Additional plugin configuration fields become visible (recommender service URL, etc.)
-- **Experimental sections**: Live sessions and Coda terminal configuration sections appear on the configuration page (the features themselves are gated by their own toggles)
+- **Experimental sections**: Live sessions and Coda terminal configuration sections appear on the configuration page (the features themselves are gated by their own toggles). The Coda section also appears — without dev mode — when the `pathfinder.coda-terminal` feature flag is on, and dev mode is not required to _use_ the terminal in that case
 - **PR Tester and URL Tester**: Diagnostic tools appear in the editor panel for testing guide URLs and PR previews
 - **Cross-page**: Works on all pages, not just where you enabled it
 

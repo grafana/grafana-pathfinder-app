@@ -397,7 +397,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                     {/* Above the alignment prompt on purpose: whether the guide fits this
                         Grafana at all settles before where to start it. */}
                     <GuideVersionNotice
-                      manifest={activeTab?.packageInfo?.packageManifest ?? stableContent.metadata.packageManifest}
+                      manifests={[activeTab?.packageInfo?.packageManifest, stableContent.metadata.packageManifest]}
+                      guideUrl={activeTab?.currentUrl ?? activeTab?.baseUrl}
+                      guideTitle={activeTab?.title}
                     />
                     {activeTab?.pendingAlignment && (
                       <AlignmentPrompt

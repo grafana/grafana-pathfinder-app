@@ -50,7 +50,7 @@ export function useDocumentStepProgress({
       // React state), so it's read fresh inside the effect rather
       // than as a dep.
       const totalSteps = getTotalDocumentSteps();
-      (window as any).__DocsPluginTotalSteps = totalSteps;
+      window.__DocsPluginTotalSteps = totalSteps;
 
       let documentStepIndex: number | undefined;
       if (currentlyExecutingStep) {
@@ -58,7 +58,7 @@ export function useDocumentStepProgress({
         if (executingStepInfo) {
           const { stepIndex } = getDocumentStepPosition(sectionId, executingStepInfo.index);
           documentStepIndex = stepIndex;
-          (window as any).__DocsPluginCurrentStepIndex = stepIndex;
+          window.__DocsPluginCurrentStepIndex = stepIndex;
         }
       }
 

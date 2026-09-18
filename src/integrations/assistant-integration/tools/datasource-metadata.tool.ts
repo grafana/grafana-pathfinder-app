@@ -16,6 +16,7 @@ import {
 } from '@grafana/assistant';
 import { getDataSourceSrv } from '@grafana/runtime';
 import type { DataSourceInstanceSettings } from '@grafana/data';
+import { assertExhaustive } from '../../../lib/assert-exhaustive';
 
 import {
   type DatasourceMetadataArtifact,
@@ -157,7 +158,10 @@ const fetchMetadataForDatasource = async (
       };
     }
 
+    case null:
+      throw new Error(`Unsupported datasource type: ${dsSettings.type}`);
     default:
+      assertExhaustive(normalizedType);
       throw new Error(`Unsupported datasource type: ${dsSettings.type}`);
   }
 };

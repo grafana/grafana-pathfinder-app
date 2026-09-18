@@ -48,6 +48,8 @@ The current Pathfinder custom-guide storage target is an App Platform resource:
 
 `metadata.name` is the App Platform resource name and the key used by Pathfinder deep links. It must be stable after first publication. The auto-generated ID format `<kebab-of-title>-<random-suffix>` (see [Agent authoring CLI — `create`](./AGENT-AUTHORING.md#create)) makes resource names statistically unique within a namespace without requiring a pre-publish lookup.
 
+The handoff encodes native divider blocks as markdown containing `<!-- pathfinder:block=divider;v=1 -->` and `---`. Current Pathfinder releases decode that reserved representation back to a divider. A rollback to a release whose closed block union predates `divider` therefore still validates the resource and renders an equivalent horizontal rule.
+
 ## Handoff tool
 
 The MCP service exposes a finalization tool named `pathfinder_finalize_for_app_platform`.

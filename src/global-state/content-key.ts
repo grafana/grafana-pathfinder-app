@@ -27,11 +27,13 @@ function sanitize(value: string): string {
   return value.replace(/\.\./g, '').slice(0, MAX_KEY_LENGTH);
 }
 
-function readGlobal(name: string): string | undefined {
+type ContentGlobalKey = '__DocsPluginActiveTabUrl' | '__DocsPluginContentKey';
+
+function readGlobal(name: ContentGlobalKey): string | undefined {
   if (typeof window === 'undefined') {
     return undefined;
   }
-  const value = (window as unknown as Record<string, unknown>)[name];
+  const value = window[name];
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 

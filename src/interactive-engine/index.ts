@@ -12,7 +12,7 @@ export { updateInteractiveThemeColors } from '../styles/interactive.styles';
 
 // Navigation manager
 export { NavigationManager } from './navigation-manager';
-export type { NavigationOptions } from './navigation-manager';
+export type { NavigationOptions, CommentBoxOptions } from './navigation-manager';
 
 // State management
 export { InteractiveStateManager } from './interactive-state-manager';

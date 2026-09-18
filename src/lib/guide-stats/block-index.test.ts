@@ -187,6 +187,7 @@ describe('block-type classification', () => {
   /** Types that hold no children at all, so counting one is the only option. */
   const PLAIN_BLOCK_TYPES = [
     'markdown',
+    'divider',
     'html',
     'image',
     'video',

@@ -73,8 +73,12 @@ describe('getConfigWithDefaults recommender wiring', () => {
 });
 
 describe('getConfigWithDefaults feature flags', () => {
-  it('defaults enableAiAutoHeal to false when jsonData is absent', () => {
-    expect(getConfigWithDefaults({}).enableAiAutoHeal).toBe(false);
+  it('defaults enableAiAutoHeal to true when jsonData is absent', () => {
+    expect(getConfigWithDefaults({}).enableAiAutoHeal).toBe(true);
+  });
+
+  it('honors an explicit enableAiAutoHeal opt-out', () => {
+    expect(getConfigWithDefaults({ enableAiAutoHeal: false }).enableAiAutoHeal).toBe(false);
   });
 
   it('defaults enableTwoTabController to false when jsonData is absent', () => {

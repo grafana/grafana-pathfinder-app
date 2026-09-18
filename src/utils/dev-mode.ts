@@ -188,7 +188,7 @@ export const toggleDevMode = async (
 export const isDevModeEnabledGlobal = (): boolean => {
   try {
     // Try to get plugin config from global window (set by components)
-    const globalConfig = (window as any).__pathfinderPluginConfig as DocsPluginConfig | undefined;
+    const globalConfig = window.__pathfinderPluginConfig;
     const userId = config.bootData.user?.id;
 
     if (!globalConfig) {
@@ -231,7 +231,7 @@ export const isAssistantDevModeEnabled = (pluginConfig: DocsPluginConfig, curren
  */
 export const isAssistantDevModeEnabledGlobal = (): boolean => {
   try {
-    const globalConfig = (window as any).__pathfinderPluginConfig as DocsPluginConfig | undefined;
+    const globalConfig = window.__pathfinderPluginConfig;
     const userId = config.bootData.user?.id;
 
     if (!globalConfig) {

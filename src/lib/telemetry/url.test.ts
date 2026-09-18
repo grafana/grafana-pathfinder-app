@@ -14,7 +14,8 @@ describe('normalizeTelemetryUrl', () => {
   });
 
   it('strips userinfo', () => {
-    expect(normalizeTelemetryUrl('https://user:password@grafana.com/docs/page/')).toBe('grafana.com/docs/page/');
+    const withUserinfo = 'https://user:password@grafana.com/docs/page/'; // trufflehog:ignore
+    expect(normalizeTelemetryUrl(withUserinfo)).toBe('grafana.com/docs/page/');
   });
 
   it('passes internal content identifiers through unchanged', () => {
@@ -71,9 +72,8 @@ describe('stripUrlSecrets', () => {
   });
 
   it('strips userinfo', () => {
-    expect(stripUrlSecrets('https://user:password@acme.grafana.net/avatar.png')).toBe(
-      'https://acme.grafana.net/avatar.png'
-    );
+    const withUserinfo = 'https://user:password@acme.grafana.net/avatar.png'; // trufflehog:ignore
+    expect(stripUrlSecrets(withUserinfo)).toBe('https://acme.grafana.net/avatar.png');
   });
 
   it('keeps relative URLs relative', () => {

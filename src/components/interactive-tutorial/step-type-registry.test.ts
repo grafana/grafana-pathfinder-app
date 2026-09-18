@@ -228,6 +228,18 @@ describe('step-type-registry', () => {
         'terminal-connect'
       );
     });
+
+    it('pauses the section run for a gcx step, which needs a click and often a pasted token', () => {
+      // `executeInteractiveAction` has no `terminal-connect` case, so without
+      // this Do Section takes its `default:` branch and reports success —
+      // ticking off a step that installed no credential.
+      expect(TERMINAL_CONNECT_STEP_SCHEMA.toStepInfoExtension({ gcx: true }).pausesSectionRun).toBe(true);
+    });
+
+    it('leaves the section run alone without gcx, so existing guides are unchanged', () => {
+      expect(TERMINAL_CONNECT_STEP_SCHEMA.toStepInfoExtension({}).pausesSectionRun).toBe(false);
+      expect(TERMINAL_CONNECT_STEP_SCHEMA.toStepInfoExtension({ gcx: false }).pausesSectionRun).toBe(false);
+    });
   });
 
   describe('CODE_BLOCK_STEP_SCHEMA', () => {

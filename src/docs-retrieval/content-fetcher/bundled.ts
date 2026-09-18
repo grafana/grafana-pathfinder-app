@@ -6,6 +6,9 @@ import { RawContent, ContentFetchResult } from '../../types/content.types';
 import { loadBundledManifest } from '../../lib/bundled-package-files';
 import { StorageKeys } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
+
+const BUNDLED_REPOSITORY = 'bundled';
 
 /**
  * Discriminated representation of a `bundled:` URL. Adding a new
@@ -106,7 +109,16 @@ function readSiblingManifest(relativePath: string): Record<string, unknown> | un
     return undefined;
   }
   const outcome = loadBundledManifest(packageDir);
-  return outcome.ok ? (outcome.data as unknown as Record<string, unknown>) : undefined;
+  if (!outcome.ok) {
+    return undefined;
+  }
+  // Stamped, not inherited: the manifest schema defaults an absent `repository`
+  // to `interactive-tutorials`, and `resolveCompletionIdentity` prefers a
+  // manifest repository over the caller's fallback — so a bundled guide that
+  // omits the field would key its completions to a repository it never came
+  // from. This tier IS the bundled source, the same claim `BundledPackageResolver`
+  // stamps on its own resolutions.
+  return { ...(outcome.data as unknown as Record<string, unknown>), repository: BUNDLED_REPOSITORY };
 }
 
 function loadBundledPackage(url: string, relativePath: string): ContentFetchResult {
@@ -195,8 +207,7 @@ export async function fetchBundledInteractive(url: string): Promise<ContentFetch
     case 'invalid':
       return { content: null, error: ref.reason, errorType: 'not-found' };
     default: {
-      const _exhaustive: never = ref;
-      void _exhaustive;
+      assertExhaustive(ref);
       return { content: null, error: 'Unknown bundled URL shape' };
     }
   }

@@ -7,7 +7,13 @@
  */
 
 import type { Page } from '@playwright/test';
-import { createAuthContext, getDefaultAuthStrategy, type AuthStrategy, type AuthResult } from '../auth/grafana-auth';
+import {
+  createAuthContext,
+  getDefaultAuthStrategy,
+  type AuthFailureKind,
+  type AuthStrategy,
+  type AuthResult,
+} from '../auth/grafana-auth';
 
 /**
  * Names of pre-flight checks
@@ -21,6 +27,7 @@ export interface PreFlightCheck {
   name: PreFlightCheckName;
   passed: boolean;
   error?: string;
+  failureKind?: AuthFailureKind;
   durationMs?: number;
 }
 
@@ -162,6 +169,7 @@ export async function checkAuthValid(
         name,
         passed: false,
         error: authResult.error ?? 'Authentication failed',
+        failureKind: authResult.failureKind ?? 'infrastructure_error',
         durationMs: Date.now() - startTime,
       };
     }
@@ -177,6 +185,7 @@ export async function checkAuthValid(
       name,
       passed: false,
       error: `Auth validation failed: ${errorMessage}`,
+      failureKind: 'infrastructure_error',
       durationMs: Date.now() - startTime,
     };
   }
@@ -197,7 +206,7 @@ export async function checkPluginInstalled(
   const pluginId = 'grafana-pathfinder-app';
 
   try {
-    const pluginUrl = `${grafanaUrl}/api/plugins/${pluginId}/settings`;
+    const pluginUrl = new URL(`/api/plugins/${pluginId}/settings`, grafanaUrl).toString();
     const response = await page.request.get(pluginUrl, { headers: options.headers });
 
     if (!response.ok()) {

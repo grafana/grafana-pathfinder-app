@@ -112,7 +112,7 @@ function FloatingPanelInner() {
   // global set by module.tsx instead.
 
   const panel = useMemo(() => {
-    const globalConfig = (window as any).__pathfinderPluginConfig;
+    const globalConfig = window.__pathfinderPluginConfig;
     const config = getConfigWithDefaults(globalConfig || {});
     return new CombinedLearningJourneyPanel(config);
   }, []); // Config is read from window global, stable for the session

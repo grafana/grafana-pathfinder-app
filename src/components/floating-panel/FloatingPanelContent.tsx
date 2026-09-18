@@ -138,7 +138,11 @@ export function FloatingPanelContent({
             />
           </div>
         )}
-        <GuideVersionNotice manifest={activeTab?.packageInfo?.packageManifest ?? content?.metadata.packageManifest} />
+        <GuideVersionNotice
+          manifests={[activeTab?.packageInfo?.packageManifest, content?.metadata.packageManifest]}
+          guideUrl={activeTab?.currentUrl ?? activeTab?.baseUrl}
+          guideTitle={activeTab?.title}
+        />
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>
             <AlignmentPrompt

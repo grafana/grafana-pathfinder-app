@@ -95,7 +95,7 @@ Both the controller overlay (`?controller=1` path) and the live-tab executor ins
 ## Security / trust model
 
 > **Reviewing a change in this subsystem?** The `cross-tab-controller` concern in
-> [`docs/design/CONCERNS.md`](../design/CONCERNS.md) is the canonical review checklist
+> [`docs/design/CONCERN_DETAILS.md`](../design/CONCERN_DETAILS.md) is the canonical review checklist
 > for these files. It fires on any single touch of the cross-tab files and enumerates
 > the trust invariants below — signed commands, gesture-to-accept pairing, the per-kind
 > validation gate, and the `enableTwoTabController` re-enable one-way door — that a

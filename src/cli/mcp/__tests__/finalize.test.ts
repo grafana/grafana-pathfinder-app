@@ -11,6 +11,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
+import { PERSISTED_DIVIDER_MARKDOWN } from '../../../types/app-platform-guide-compat';
 import { InMemorySessionStore, SESSION_GENERATION_ABSENT } from '../lib/session-store';
 import { generateSessionToken } from '../lib/session-token';
 import { buildServer } from '../server';
@@ -21,7 +22,7 @@ interface ToolPayload {
   [key: string]: unknown;
 }
 
-async function callFinalize(): Promise<ToolPayload> {
+async function callFinalize(contentOverrides: Record<string, unknown> = {}): Promise<ToolPayload> {
   const server = buildServer();
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -36,6 +37,7 @@ async function callFinalize(): Promise<ToolPayload> {
         title: 'Snapshot Fixture',
         type: 'guide',
         blocks: [{ type: 'markdown', id: 'm-1', content: 'hello' }],
+        ...contentOverrides,
       },
       manifest: {
         id: 'snapshot-fixture',
@@ -268,6 +270,17 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
         },
       }
     `);
+  });
+
+  it('encodes dividers in the App Platform resource without changing the export artifact', async () => {
+    const payload = await callFinalize({ blocks: [{ type: 'divider', id: 'divider-1' }] });
+
+    expect((payload.resource as { spec: { blocks: unknown[] } }).spec.blocks).toEqual([
+      { type: 'markdown', id: 'divider-1', content: PERSISTED_DIVIDER_MARKDOWN },
+    ]);
+    expect((payload.artifact as { content: { blocks: unknown[] } }).content.blocks).toEqual([
+      { type: 'divider', id: 'divider-1' },
+    ]);
   });
 
   it('carries the manifest onto spec so a path does not publish as a flat guide', async () => {

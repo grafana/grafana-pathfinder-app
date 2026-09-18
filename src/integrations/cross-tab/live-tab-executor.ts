@@ -3,6 +3,8 @@ import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import type { InteractiveElementData } from '../../types/interactive.types';
+import { isInteractiveActionType } from '../../lib/interactive-action';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import {
   ButtonHandler,
   FocusHandler,
@@ -155,6 +157,11 @@ export function installLiveTabExecutor(
   let queue: Promise<void> = Promise.resolve();
 
   const runAction = async (action: CrossTabInternalAction, isShow: boolean): Promise<void> => {
+    if (!isInteractiveActionType(action.targetAction)) {
+      logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
+      return;
+    }
+
     const data: InteractiveElementData = {
       refTarget: action.refTarget ?? '',
       targetAction: action.targetAction,
@@ -193,8 +200,13 @@ export function installLiveTabExecutor(
           `[Pathfinder] cross-tab executor: composite action "${action.targetAction}" carried no internalActions to replay`
         );
         break;
+      case 'sequence':
+      case 'popout':
+        logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
+        break;
       default:
         logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
+        assertExhaustive(action.targetAction);
     }
   };
 

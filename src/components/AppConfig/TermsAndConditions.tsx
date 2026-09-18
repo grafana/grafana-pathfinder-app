@@ -42,6 +42,9 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
       const newJsonData = {
         ...(jsonData || {}),
         ...getConfigWithDefaults(jsonData || {}),
+        // Pass through raw, not the resolved default — this tab doesn't own the
+        // field, and materializing it here would freeze out a future default change.
+        enableAiAutoHeal: jsonData?.enableAiAutoHeal,
         acceptedTermsAndConditions: isRecommenderEnabled,
         // Persist the current terms version when enabling; leave unchanged when disabling
         termsVersion: isRecommenderEnabled ? TERMS_VERSION : jsonData?.termsVersion,

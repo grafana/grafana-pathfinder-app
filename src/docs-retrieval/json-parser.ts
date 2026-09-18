@@ -12,6 +12,7 @@ import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
 import { renderMarkdown } from '@grafana/data';
 import DOMPurify from 'dompurify';
+import { assertExhaustive } from '../lib/assert-exhaustive';
 import {
   hasAssistantEnabled,
   type JsonGuide,
@@ -278,6 +279,14 @@ function convertBlockByType(
   switch (block.type) {
     case 'markdown':
       return convertMarkdownBlock(block, path, baseUrl);
+    case 'divider':
+      return {
+        element: {
+          type: 'hr',
+          props: { className: 'guide-divider' },
+          children: [],
+        },
+      };
     case 'html':
       return convertHtmlBlock(block, path, baseUrl);
     case 'section':
@@ -1028,6 +1037,7 @@ function convertTerminalConnectBlock(
         vmTemplate: block.vmTemplate,
         vmApp: block.vmApp,
         vmScenario: block.vmScenario,
+        gcx: block.gcx,
       },
       children,
     },
@@ -1167,7 +1177,17 @@ function extractDefaultValueFromBlock(block: JsonBlock): string {
       return block.title || '';
     case 'grot-guide':
       return block.welcome.title;
+    case 'divider':
+    case 'conditional':
+    case 'assistant':
+    case 'terminal-connect':
+    case 'code-block':
+    case 'collapsible':
+    case 'challenge':
+    case 'snippet-ref':
+      return '';
     default:
+      assertExhaustive(block);
       return '';
   }
 }

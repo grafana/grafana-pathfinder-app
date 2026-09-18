@@ -51,23 +51,45 @@ export function formatVersion(version: Version): string {
 }
 
 /**
+ * A launch describes itself with either one manifest or several — the same shape
+ * `recovery/starting-location.ts` accepts, so the two keys resolve through one
+ * idiom.
+ */
+export type ManifestCandidates = Record<string, unknown> | Array<Record<string, unknown> | undefined>;
+
+/**
  * `additionalFields` is where a manifest key waits for promotion to a real CUE
  * field: the App Platform CRD prunes anything its `#Manifest` doesn't declare.
- * The typed field wins where both are present — same precedence as
- * `recovery/starting-location.ts`, which solves this for its own key.
+ *
+ * Precedence mirrors `resolveStartingLocation`: manifests are consulted in order
+ * and the first one that declares the key at all settles it, so a slim catalogue
+ * manifest no longer masks a floor the fetched manifest carries. Within one
+ * manifest the typed field wins over `additionalFields`.
  */
-export function resolveMinGrafanaVersion(packageManifest?: Record<string, unknown>): string | null {
-  const declared = packageManifest?.minGrafanaVersion;
-  if (typeof declared === 'string' && declared.length > 0) {
-    return declared;
+export function resolveMinGrafanaVersion(packageManifests?: ManifestCandidates): string | null {
+  const candidates = Array.isArray(packageManifests) ? packageManifests : [packageManifests];
+
+  for (const packageManifest of candidates) {
+    const declared = readFloor(packageManifest?.minGrafanaVersion);
+    if (declared) {
+      return declared;
+    }
+
+    const additional = packageManifest?.additionalFields;
+    if (!additional || typeof additional !== 'object' || Array.isArray(additional)) {
+      continue;
+    }
+    const fromAdditional = readFloor((additional as Record<string, unknown>).minGrafanaVersion);
+    if (fromAdditional) {
+      return fromAdditional;
+    }
   }
 
-  const additional = packageManifest?.additionalFields;
-  if (!additional || typeof additional !== 'object' || Array.isArray(additional)) {
-    return null;
-  }
-  const fromAdditional = (additional as Record<string, unknown>).minGrafanaVersion;
-  return typeof fromAdditional === 'string' && fromAdditional.length > 0 ? fromAdditional : null;
+  return null;
+}
+
+function readFloor(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 export type VersionSupportReason = 'no-floor' | 'floor-unparseable' | 'current-unknown' | 'supported' | 'below-floor';

@@ -365,7 +365,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
           </div>
 
           {state.enableAiAutoHeal && (
-            <Alert severity="warning" title="Write path — opt-in" className={styles.infoAlert}>
+            <Alert severity="info" title="Write path" className={styles.infoAlert}>
               <Text variant="body">
                 Accepted suggestions mutate the in-memory guide JSON for the user&apos;s session. Disable this toggle to
                 hide the AI-powered button entirely; the deterministic &quot;Fix this&quot; recovery path is unaffected.

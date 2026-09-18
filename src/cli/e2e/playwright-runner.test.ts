@@ -2,12 +2,21 @@
 
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
 import { ExitCode } from './exit-codes';
-import { findRunnerRoot, processPlaywrightResults, resolveStartingUrl, runPlaywrightTests } from './playwright-runner';
+import {
+  findRunnerRoot,
+  processPlaywrightChainResults,
+  processPlaywrightResults,
+  resolveStartingUrl,
+  runPlaywrightChain,
+  runPlaywrightTests,
+  type RunChainGuide,
+} from './playwright-runner';
+import { createMinimalResultsData } from './e2e-reporter';
 
 jest.mock('child_process', () => ({
   spawn: jest.fn(),
@@ -22,6 +31,48 @@ describe('findRunnerRoot', () => {
     tempRoot = mkdtempSync(join(tmpdir(), 'pathfinder-runner-root-'));
   });
 
+  it('preserves a nonzero process exit after every milestone reports a pass', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'pathfinder-chain-process-failure-'));
+    const processGuides: RunChainGuide[] = [
+      { id: 'first', guide: { path: '/first.json', content: '{"title":"First"}' }, dependencies: [] },
+      { id: 'second', guide: { path: '/second.json', content: '{"title":"Second"}' }, dependencies: [] },
+    ];
+    try {
+      const paths = {
+        abortFilePath: join(tempRoot, 'abort.json'),
+        resultsFilePath: join(tempRoot, 'results.json'),
+        traceOutputFilePath: join(tempRoot, 'trace.txt'),
+      };
+      const passingResults = processGuides.map((guide) =>
+        createMinimalResultsData({
+          guide: { id: guide.id, title: guide.id, path: guide.guide.path },
+          outcome: 'passed',
+          errorCode: 'UNKNOWN',
+          errorMessage: '',
+        })
+      );
+      writeFileSync(paths.resultsFilePath, JSON.stringify(passingResults));
+
+      const result = processPlaywrightChainResults(
+        7,
+        { trace: false, targetUrl: 'http://localhost:3000' },
+        paths,
+        processGuides
+      );
+
+      expect(result).toMatchObject({ success: false, exitCode: ExitCode.TEST_FAILURE });
+      expect(result.resultsData[0]).toMatchObject({ outcome: 'passed' });
+      expect(result.resultsData[1]).toMatchObject({
+        outcome: 'infrastructure_error',
+        errorCode: 'UNKNOWN',
+        aborted: true,
+        errorMessage: expect.stringContaining('exited with code 7'),
+      });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   afterEach(() => {
     rmSync(tempRoot, { recursive: true, force: true });
   });
@@ -34,8 +85,149 @@ describe('findRunnerRoot', () => {
     writeFileSync(join(tempRoot, 'package.json'), '{}');
     writeFileSync(join(runnerTestDir, 'playwright.config.ts'), '');
     writeFileSync(join(runnerTestDir, 'guide-runner.spec.ts'), '');
+    writeFileSync(join(runnerTestDir, 'shared-guide-runner.spec.ts'), '');
 
     expect(findRunnerRoot(compiledModuleDir)).toBe(tempRoot);
+  });
+});
+
+describe('shared Playwright chain', () => {
+  const guides: RunChainGuide[] = [
+    {
+      id: 'first',
+      guide: { path: '/tmp/first/content.json', content: '{"id":"first","title":"First","blocks":[]}' },
+      dependencies: [],
+      authoredStartingLocation: '/dashboards',
+    },
+    {
+      id: 'second',
+      guide: { path: '/tmp/second/content.json', content: '{"id":"second","title":"Second","blocks":[]}' },
+      dependencies: ['first'],
+    },
+  ];
+
+  afterEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it('uses one Playwright spawn for all milestones', async () => {
+    const child = new EventEmitter();
+    spawnMock.mockImplementation((_command, _args, spawnOptions) => {
+      const env = (spawnOptions as { env?: NodeJS.ProcessEnv }).env;
+      const input = JSON.parse(readFileSync(env?.E2E_CHAIN_INPUT_PATH as string, 'utf-8')) as {
+        guides: unknown[];
+        bearerToken?: unknown;
+      };
+      expect(input.guides).toHaveLength(2);
+      expect(input.bearerToken).toBeUndefined();
+      queueMicrotask(() => child.emit('close', 1));
+      return child as never;
+    });
+
+    const result = await runPlaywrightChain(guides, {
+      targetUrl: 'http://localhost:3000',
+      verbose: false,
+      trace: false,
+      headed: false,
+      artifacts: 'artifacts',
+      alwaysScreenshot: false,
+    });
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(spawnMock.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining([expect.stringContaining('shared-guide-runner.spec.ts')])
+    );
+    expect(result.resultsData.map((item) => item.guide.id)).toEqual(['first', 'second']);
+  });
+
+  it('keeps bearer tokens out of the chain input and disables tracing', async () => {
+    const child = new EventEmitter();
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    spawnMock.mockImplementation((_command, _args, spawnOptions) => {
+      const env = (spawnOptions as { env?: NodeJS.ProcessEnv }).env;
+      expect(readFileSync(env?.E2E_CHAIN_INPUT_PATH as string, 'utf-8')).not.toContain('test-token');
+      expect(env?.GRAFANA_TOKEN).toBe('test-token');
+      queueMicrotask(() => child.emit('close', 1));
+      return child as never;
+    });
+
+    try {
+      await runPlaywrightChain(guides, {
+        targetUrl: 'https://play.grafana.org',
+        verbose: false,
+        trace: true,
+        headed: false,
+        artifacts: 'artifacts',
+        alwaysScreenshot: false,
+        token: 'test-token',
+      });
+
+      expect(spawnMock.mock.calls[0]?.[1]).not.toContain('--trace');
+      expect(warnSpy).toHaveBeenCalledWith(
+        '   ⚠ Trace disabled for bearer-token authentication because traces can contain credentials'
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('retains an incremental result and fills only missing milestones', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'pathfinder-chain-results-'));
+    try {
+      const first = createMinimalResultsData({
+        guide: { id: 'first', title: 'First', path: '/tmp/first/content.json' },
+        outcome: 'passed',
+        errorCode: 'UNKNOWN',
+        errorMessage: '',
+      });
+      const paths = {
+        abortFilePath: join(tempRoot, 'abort.json'),
+        resultsFilePath: join(tempRoot, 'results.json'),
+        traceOutputFilePath: join(tempRoot, 'trace.txt'),
+      };
+      writeFileSync(paths.resultsFilePath, JSON.stringify([first]));
+
+      const result = processPlaywrightChainResults(
+        1,
+        { trace: false, targetUrl: 'http://localhost:3000' },
+        paths,
+        guides
+      );
+
+      expect(result.resultsData[0]).toEqual(first);
+      expect(result.resultsData[1]).toMatchObject({
+        outcome: 'infrastructure_error',
+        errorCode: 'REPORT_MISSING',
+        results: [],
+      });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('fills missing milestones with authentication results after an auth abort', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'pathfinder-chain-auth-'));
+    try {
+      const paths = {
+        abortFilePath: join(tempRoot, 'abort.json'),
+        resultsFilePath: join(tempRoot, 'results.json'),
+        traceOutputFilePath: join(tempRoot, 'trace.txt'),
+      };
+      writeFileSync(paths.abortFilePath, JSON.stringify({ abortReason: 'AUTH_EXPIRED', message: 'Expired' }));
+
+      const result = processPlaywrightChainResults(
+        1,
+        { trace: false, targetUrl: 'http://localhost:3000' },
+        paths,
+        guides
+      );
+
+      expect(result.exitCode).toBe(ExitCode.AUTH_FAILURE);
+      expect(result.resultsData.every((item) => item.errorCode === 'AUTH_EXPIRED')).toBe(true);
+      expect(result.resultsData.every((item) => item.results.length === 0)).toBe(true);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 });
 
