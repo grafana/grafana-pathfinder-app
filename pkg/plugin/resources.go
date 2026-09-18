@@ -16,6 +16,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/custom-guide-repository", a.handleCustomGuideRepository)
 	mux.HandleFunc("/custom-guide", a.handleCustomGuide)
 	mux.HandleFunc("/pathfinder-settings", a.handlePathfinderSettings)
+	mux.HandleFunc("/assignments/my", a.handleMyAssignments)
 	mux.HandleFunc("/health", a.handleHealth)
 }
 

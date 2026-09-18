@@ -1,0 +1,86 @@
+{
+  "_comment": [
+    "Local-dev fixture for GET /assignments/my. Read on EVERY request by the",
+    "dev-only build (pkg/plugin/assignments_dev.go, build tag `pathfinderdev`).",
+    "pathId MUST match src/learning-paths/paths.json (or paths-cloud.json).",
+    "github-visualize is in both catalogues so OSS and Cloud can resolve it.",
+    "Dated rows use distinct pathIds except observability-basics, which has two",
+    "disjoint cycles (2025 satisfied + 2026 overdue) that must not merge.",
+    "Dates are relative to 2026-09-18."
+  ],
+
+  "subject": "user:dev",
+
+  "assignments": [
+    {
+      "_comment": "Due today — yellow card / yellow badge.",
+      "pathId": "alerting-basics",
+      "ruleId": "alerting-bootcamp",
+      "assignedBy": "gtm-enablement",
+      "assignedAt": "2026-09-10T09:00:00Z",
+      "dueAt": "2026-09-18T00:00:00Z",
+      "satisfied": false,
+      "lifecycle": "active"
+    },
+    {
+      "_comment": "Due tomorrow — yellow card / yellow badge (close to due).",
+      "pathId": "getting-started",
+      "ruleId": "new-hire-onboarding",
+      "assignedBy": "l-and-d",
+      "assignedAt": "2026-09-08T09:00:00Z",
+      "dueAt": "2026-10-20T00:00:00Z",
+      "satisfied": false,
+      "lifecycle": "active"
+    },
+    {
+      "_comment": "Overdue — red card / red badge. assignedAt / acceptCompletionsFrom keep this disjoint from the 2025 cycle below.",
+      "pathId": "observability-basics",
+      "ruleId": "oncall-rotation-2026",
+      "assignedBy": "l-and-d",
+      "assignedAt": "2026-08-01T09:00:00Z",
+      "acceptCompletionsFrom": "2026-01-01T00:00:00Z",
+      "dueAt": "2026-09-01T00:00:00Z",
+      "satisfied": false,
+      "lifecycle": "active"
+    },
+    {
+      "_comment": "Cloud learning-journey that already appears on /dashboards — Assigned + Due today so the panel badges are visible.",
+      "pathId": "github-visualize",
+      "ruleId": "github-datasource-lab",
+      "assignedBy": "gtm-enablement",
+      "assignedAt": "2026-09-11T09:00:00Z",
+      "dueAt": "2026-09-18T00:00:00Z",
+      "satisfied": false,
+      "lifecycle": "active"
+    },
+    {
+      "_comment": "No due date, no assignedBy. Track-qualified so the tagged fixture test still has a trackId.",
+      "pathId": "logs-dashboards",
+      "trackId": "seller-track",
+      "ruleId": "logs-dashboard-lab",
+      "assignedAt": "2026-09-12T09:00:00Z",
+      "satisfied": false,
+      "lifecycle": "active"
+    },
+    {
+      "_comment": "Satisfied 2025 cycle for observability-basics. Window does not overlap the overdue row.",
+      "pathId": "observability-basics",
+      "trackId": "annual-compliance",
+      "ruleId": "annual-compliance-2025",
+      "assignedBy": "l-and-d",
+      "assignedAt": "2025-01-06T09:00:00Z",
+      "dueAt": "2025-12-31T00:00:00Z",
+      "acceptCompletionsFrom": "2025-01-01T00:00:00Z",
+      "satisfied": true,
+      "lifecycle": "active"
+    },
+    {
+      "_comment": "Dropped by the loader. If this ever reaches the UI, the lifecycle filter regressed.",
+      "pathId": "deprecated-onboarding",
+      "ruleId": "retired-rule",
+      "assignedAt": "2026-06-01T09:00:00Z",
+      "satisfied": false,
+      "lifecycle": "withdrawn"
+    }
+  ]
+}
