@@ -4,6 +4,7 @@ import { config, locationService } from '@grafana/runtime';
 import { WorkspaceLink } from './WorkspaceLink';
 import { codaWorkspaceUrl, type CodaCapabilities } from './coda-api';
 import { loadCodaCapabilities } from './useCodaAvailability.hook';
+import { panelModeManager } from '../../global-state/panel-mode';
 import { testIds } from '../../constants/testIds';
 
 jest.mock('./useCodaAvailability.hook', () => ({ loadCodaCapabilities: jest.fn() }));
@@ -20,6 +21,7 @@ const originalSubUrl = config.appSubUrl;
 beforeEach(() => {
   jest.clearAllMocks();
   config.appSubUrl = '';
+  jest.spyOn(panelModeManager, 'getMode').mockReturnValue('sidebar');
   capabilities.mockResolvedValue(usable);
 });
 afterEach(() => {
@@ -108,4 +110,29 @@ it('uses the current VM after a session changes', async () => {
   rerender(<WorkspaceLink connected vmId="current-vm" />);
   fireEvent.click(screen.getByRole('button', { name: 'IDE' }));
   expect(navigate).toHaveBeenCalledWith('/a/grafana-coda-app/ide?vmId=current-vm');
+});
+
+it('preserves the fullscreen guide by opening IDE in another tab', async () => {
+  jest.mocked(panelModeManager.getMode).mockReturnValue('fullscreen');
+  config.appSubUrl = '/grafana';
+  const open = jest.spyOn(window, 'open').mockReturnValue(null);
+  const navigate = jest.spyOn(locationService, 'push').mockImplementation(() => {});
+  const view = render(<WorkspaceLink connected vmId="first-vm" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'IDE' }));
+  expect(open).toHaveBeenLastCalledWith(
+    '/grafana/a/grafana-coda-app/ide?vmId=first-vm',
+    '_blank',
+    'noopener,noreferrer'
+  );
+  view.rerender(<WorkspaceLink connected vmId="second-vm" />);
+  fireEvent.click(screen.getByRole('button', { name: 'IDE' }));
+  expect(open).toHaveBeenLastCalledWith(
+    '/grafana/a/grafana-coda-app/ide?vmId=second-vm',
+    '_blank',
+    'noopener,noreferrer'
+  );
+  view.rerender(<WorkspaceLink connected={false} vmId={null} />);
+  fireEvent.click(screen.getByRole('button', { name: 'IDE' }));
+  expect(open).toHaveBeenCalledTimes(2);
+  expect(navigate).not.toHaveBeenCalled();
 });

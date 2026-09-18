@@ -3,6 +3,7 @@ import { Button } from '@grafana/ui';
 import { config, locationService } from '@grafana/runtime';
 import { codaWorkspaceUrl, codaSupports, isCodaUsable } from './coda-api';
 import { loadCodaCapabilities } from './useCodaAvailability.hook';
+import { panelModeManager } from '../../global-state/panel-mode';
 import { testIds } from '../../constants/testIds';
 
 export function WorkspaceLink({
@@ -51,8 +52,13 @@ export function WorkspaceLink({
       disabled={!connected || !vmId}
       onClick={() => {
         if (connected && vmId) {
-          // Grafana's router adds appSubUrl itself; avoid a full reload or a second tab.
-          locationService.push(codaWorkspaceUrl(vmId).slice(config.appSubUrl?.length ?? 0));
+          const url = codaWorkspaceUrl(vmId);
+          if (panelModeManager.getMode() === 'fullscreen') {
+            // Same-tab navigation would unmount the fullscreen guide and its terminal.
+            window.open(url, '_blank', 'noopener,noreferrer');
+          } else {
+            locationService.push(url.slice(config.appSubUrl?.length ?? 0));
+          }
         }
       }}
       data-testid={testIds.codaTerminal.openIdeButton}
