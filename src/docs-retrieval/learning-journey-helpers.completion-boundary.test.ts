@@ -989,3 +989,42 @@ describe('standalone private guide opened straight off the backend-guide: scheme
     expect(emitted).toHaveLength(0);
   });
 });
+
+describe('malformed journey metadata (defensive boundary)', () => {
+  // A present `learningJourney` with no `milestones` array is malformed —
+  // the type claims `Milestone[]` is always there, but nothing validates
+  // that at this boundary, and `.filter` on `undefined` throws. A throw here
+  // means markMilestoneDone never runs at all: no progress write, no badge,
+  // no journey_completed, for a reader who otherwise did everything right.
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('does not throw when learningJourney is present but milestones is missing', async () => {
+    expect(() =>
+      recordGuideCompletionForSurface({
+        baseUrl: 'bundled:linux',
+        contentUrl: 'bundled:linux',
+        currentUrl: 'https://ex/select-platform/content.json',
+        contentType: 'learning-journey',
+        metadata: {
+          title: '',
+          packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+          learningJourney: {
+            baseUrl: 'bundled:linux',
+            currentMilestone: 1,
+            totalMilestones: 1,
+            milestones: undefined,
+          },
+        } as any,
+        guideTitle: 'LJ',
+      })
+    ).not.toThrow();
+    await flush();
+
+    // The milestone-as-guide fact still emits — only the (absent) whole-journey
+    // membership check is skipped, since there is nothing to check membership
+    // of a locked-milestone filter this input can't provide.
+    const guide = emitted.filter((f) => f.kind === 'guide');
+    expect(guide).toHaveLength(1);
+    expect(guide[0]).toMatchObject({ guideId: 'select-platform' });
+  });
+});

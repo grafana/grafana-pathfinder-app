@@ -172,3 +172,63 @@ describe('milestone content-key round trip across launch URL variants (pf-1925-m
     expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(1);
   });
 });
+
+describe('whole-journey completion without a prior backfill read (Cursor Bugbot round-3 finding 2)', () => {
+  it('sees earlier legacy-only milestones even when journeyMilestonePercentages never ran first', async () => {
+    // GuideReaderOverlay renders no LearningJourneyMilestoneToolbar and calls
+    // no cover-page read, so journeyMilestonePercentages — the only other
+    // place a legacy completion backfills into interactiveCompletionStorage —
+    // never runs for a journey read exclusively through that surface. m1 and
+    // m2 are legacy-complete but this test never calls journeyMilestonePercentages
+    // at all before completing m3, unlike the earlier "legacy milestone
+    // backfill" case above.
+    const base = 'https://grafana.com/docs/learning-journeys/linux/';
+    const urls = [`${base}m1/`, `${base}m2/`, `${base}m3/`];
+
+    await milestoneCompletionStorage.markCompleted(base, 'm1');
+    await milestoneCompletionStorage.markCompleted(base, 'm2');
+
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'linux-path', url: base, badgeId: 'linux-badge' }],
+    });
+
+    await markMilestoneDone(base, 'm3', urls[2]!, urls, {
+      packageManifest: { id: 'linux-path', type: 'journey' },
+    });
+    await flush();
+
+    const progress = await learningProgressStorage.get();
+    expect(progress.earnedBadges.some((b) => b.id === 'linux-badge')).toBe(true);
+    expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(1);
+  });
+});
+
+describe('markMilestoneDone racing an unqueued direct write (Cursor Bugbot round-3 finding 1)', () => {
+  it('keeps both keys when a Mark-complete-style direct set() fires concurrently with markMilestoneDone', async () => {
+    // Simulates MarkCompleteFooter.tsx / completion-store.ts: a caller
+    // outside this module writing straight to interactiveCompletionStorage,
+    // fire-and-forget, at the same moment this module completes a different
+    // milestone. Neither goes through this module's own queue — the
+    // guarantee has to come from interactiveCompletionStorage itself.
+    const base = 'https://grafana.com/docs/learning-journeys/linux/';
+    const urls = [`${base}m1/`, `${base}m2/`];
+    const otherGuideKey = 'https://ex.com/some-other-guide/';
+
+    // One microtask of slack so this genuinely overlaps markMilestoneDone's
+    // own write below (which goes through this module's own queue — see
+    // queueMilestoneCompletionWrite — adding a hop before it even starts);
+    // without it, this direct write's whole read-modify-write cycle can
+    // finish before the module's write starts, masking the race this test
+    // exists to catch.
+    const directWrite = Promise.resolve().then(() => interactiveCompletionStorage.set(otherGuideKey, 100));
+    const milestoneWrite = markMilestoneDone(base, 'm1', urls[0]!, urls, {
+      packageManifest: { id: 'linux-path', type: 'journey' },
+    });
+    await Promise.all([directWrite, milestoneWrite]);
+    await flush();
+
+    const stored = await interactiveCompletionStorage.getAll();
+    expect(stored[otherGuideKey]).toBe(100);
+    expect(stored[urls[0]!]).toBe(100);
+  });
+});

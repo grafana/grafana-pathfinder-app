@@ -96,18 +96,18 @@ describe('createBoundedRecordStorage', () => {
     expect(await store.getAll()).toEqual({ a: 10, b: 20 });
   });
 
-  // Characterizes a real hazard, not a desired behavior: `set()` reads the
-  // whole record, mutates its own key, and writes the whole record back.
-  // Two calls fired without awaiting between them both read the same
-  // pre-write record, so whichever write resolves last silently discards the
-  // other's key (a lost update). A caller with more than one key to persist
-  // in the same tick (pf-1925-backfill-lost-updates) must serialize its own
-  // `set()` calls — this store does not do it for them.
-  it('loses one key when two set() calls for DIFFERENT keys race without an await between them', async () => {
+  // `set()` reads the whole record, mutates its own key, and writes the
+  // whole record back — a caller firing two `set()` calls for different keys
+  // without awaiting between them would otherwise have both reads race
+  // against the same pre-write record, so whichever write resolved last
+  // would silently discard the other's key (a lost update,
+  // pf-1925-backfill-lost-updates). Every mutation this store instance makes
+  // is serialized onto one internal queue specifically so this can't happen,
+  // regardless of how many independent callers share the instance.
+  it('keeps every key when two set() calls for DIFFERENT keys race without an await between them', async () => {
     const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
     await Promise.all([store.set('a', 100), store.set('b', 100)]);
-    const stored = await store.getAll();
-    expect(Object.keys(stored)).toHaveLength(1);
+    expect(await store.getAll()).toEqual({ a: 100, b: 100 });
   });
 
   it('keeps every key when the same set() calls are awaited one at a time instead', async () => {
