@@ -33,6 +33,8 @@ import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuid
 import { ContextPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { useRecommendationsScrollPosition } from './hooks';
+import { useLearningPaths, useMyAssignments, daysUntilDue, type ResolvedAssignment } from '../../learning-paths';
+import { getLearningPathCardStyles } from '../LearningPaths/learning-paths.styles';
 
 /**
  * Resolve the effective display type for a recommendation.
@@ -46,6 +48,36 @@ const getEffectiveDisplayType = (recommendation: Recommendation): Recommendation
   }
   return recommendation.type;
 };
+
+function assignmentForPath(
+  recommendation: Recommendation,
+  assignments: ResolvedAssignment[]
+): ResolvedAssignment | undefined {
+  if (getEffectiveDisplayType(recommendation) !== 'learning-journey') {
+    return undefined;
+  }
+  const title = recommendation.title.trim().toLowerCase();
+  return assignments.find((assignment) => assignment.title.trim().toLowerCase() === title);
+}
+
+function assignmentDueString(assignment: ResolvedAssignment): string | undefined {
+  if (!assignment.dueAt) {
+    return undefined;
+  }
+  const dueDays = daysUntilDue(assignment.dueAt);
+  if (dueDays === undefined) {
+    return undefined;
+  }
+  if (assignment.overdue || dueDays < 0) {
+    return t('myLearning.dueOverdue', 'Overdue');
+  }
+  if (dueDays === 0) {
+    return t('myLearning.dueRelativeToday', 'Today');
+  }
+  return dueDays === 1
+    ? t('myLearning.dueDayCount', '{{count}} day', { count: dueDays })
+    : t('myLearning.dueDayCount', '{{count}} days', { count: dueDays });
+}
 
 /** Maps a recommendation's effective display type onto the canonical analytics content_type. */
 const getContentTypeForDisplayType = (displayType: Recommendation['type']): AnalyticsContentType => {
@@ -276,6 +308,7 @@ interface RecommendationsSectionProps {
   toggleSuggestedGuidesExpansion: () => void;
   toggleSummaryExpansion: (recommendationUrl: string) => void;
   toggleOtherDocsExpansion: () => void;
+  assignments?: ResolvedAssignment[];
 }
 
 export const RecommendationsSection = memo(function RecommendationsSection({
@@ -298,8 +331,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   toggleSuggestedGuidesExpansion,
   toggleSummaryExpansion,
   toggleOtherDocsExpansion,
+  assignments = [],
 }: RecommendationsSectionProps) {
   const styles = useStyles2(getStyles);
+  const cardStyles = useStyles2(getLearningPathCardStyles);
   const skeletonStyles = useStyles2(getSkeletonStyles);
   const hasCustomGuidesContent = isLoadingCustomGuides || customGuides.length > 0;
   const suggestedGuidesCount = recommendations.length + featuredRecommendations.length;
@@ -709,6 +744,11 @@ export const RecommendationsSection = memo(function RecommendationsSection({
               const contentUrl = getRecommendationContentUrl(recommendation);
               const packageInfo = getRecommendationPackageInfo(recommendation);
               const displayType = getEffectiveDisplayType(recommendation);
+              const assignment = assignmentForPath(recommendation, assignments);
+              const dueString = assignment ? assignmentDueString(assignment) : undefined;
+              const dueDays = assignment?.dueAt ? daysUntilDue(assignment.dueAt) : undefined;
+              const isOverdue = Boolean(assignment?.overdue || (dueDays !== undefined && dueDays < 0));
+              const isUpcoming = !isOverdue && dueDays === 0;
               const isExpandable = isSummaryExpandable(recommendation);
               const isExpanded = isExpandable && Boolean(recommendation.summaryExpanded);
               return (
@@ -736,10 +776,30 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                         >
                           {recommendation.title}
                         </h3>
-                        <span className={getCategoryTagStyle(styles, displayType)}>
-                          {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
-                          {getCategoryLabel(displayType)}
-                        </span>
+                        <div className={styles.cardTagRow}>
+                          <span className={getCategoryTagStyle(styles, displayType)}>
+                            {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
+                            {getCategoryLabel(displayType)}
+                          </span>
+                          {assignment && (
+                            <span className={cardStyles.assignedBadge}>
+                              <Icon name="user" size="xs" />
+                              {t('myLearning.assignedBadge', 'Assigned')}
+                            </span>
+                          )}
+                          {dueString && (
+                            <span
+                              className={cx(
+                                cardStyles.dueBadge,
+                                isUpcoming && cardStyles.dueBadgeUpcoming,
+                                isOverdue && cardStyles.dueBadgeOverdue
+                              )}
+                            >
+                              <Icon name="clock-nine" size="xs" />
+                              {dueString}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className={styles.cardActions}>
                         <button
@@ -1122,6 +1182,12 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   } = usePublishedGuides();
   const [customGuidesExpanded, setCustomGuidesExpanded] = useState(true);
   const [suggestedGuidesExpanded, setSuggestedGuidesExpanded] = useState(true);
+  const { paths, isPathCompleted, getPathProgress } = useLearningPaths();
+  const { notDone: assignedNotDone } = useMyAssignments({
+    paths,
+    isPathCompleted,
+    getPathProgress,
+  });
 
   // Note: Auto-open event listener moved to CombinedPanelRenderer to avoid remounting issues
   // ContextPanelRenderer remounts when tabs change, causing listener cleanup
@@ -1183,6 +1249,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             toggleSuggestedGuidesExpansion={() => setSuggestedGuidesExpanded((prev) => !prev)}
             toggleSummaryExpansion={toggleSummaryExpansion}
             toggleOtherDocsExpansion={toggleOtherDocsExpansion}
+            assignments={assignedNotDone}
           />
         </div>
 

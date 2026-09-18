@@ -51,6 +51,8 @@ jest.mock('../../learning-paths', () => ({
     streakInfo: { days: 0 },
     isLoading: false,
   }),
+  useMyAssignments: () => ({ notDone: [], completed: [], isLoading: false, hasLoaded: true, refresh: jest.fn() }),
+  daysUntilDue: jest.requireActual('../../learning-paths/useMyAssignments').daysUntilDue,
 }));
 
 jest.mock('../SkeletonLoader', () => ({ SkeletonLoader: () => null }));

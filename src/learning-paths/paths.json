@@ -19,6 +19,46 @@
       "targetPlatform": "oss",
       "estimatedMinutes": 35,
       "icon": "graph-bar"
+    },
+    {
+      "id": "alerting-basics",
+      "title": "Set up alerting",
+      "description": "Create your first alert rule and learn how notifications fire.",
+      "guides": ["welcome-to-grafana", "first-dashboard"],
+      "badgeId": "alert-starter",
+      "targetPlatform": "oss",
+      "estimatedMinutes": 15,
+      "icon": "bell"
+    },
+    {
+      "id": "linux-monitoring",
+      "title": "Monitor a Linux server",
+      "description": "Collect host metrics and see them on a dashboard.",
+      "guides": ["prometheus-advanced-queries"],
+      "badgeId": "linux-observer",
+      "targetPlatform": "oss",
+      "estimatedMinutes": 15,
+      "icon": "server"
+    },
+    {
+      "id": "logs-dashboards",
+      "title": "Build a logs dashboard",
+      "description": "Visualize Loki logs alongside your metrics.",
+      "guides": ["loki-grafana-101", "first-dashboard"],
+      "badgeId": "log-builder",
+      "targetPlatform": "oss",
+      "estimatedMinutes": 20,
+      "icon": "dashboard"
+    },
+    {
+      "id": "github-visualize",
+      "title": "Visualize GitHub data source in Grafana Cloud",
+      "description": "A learning journey that shows you how to visualize GitHub repository data in Grafana Cloud.",
+      "url": "https://grafana.com/docs/learning-paths/github-visualize/",
+      "guides": [],
+      "badgeId": "github-visualizer",
+      "estimatedMinutes": 20,
+      "icon": "github"
     }
   ],
   "guideMetadata": {

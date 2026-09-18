@@ -80,11 +80,15 @@ describe('paths.json / badges.ts data integrity', () => {
     expect(cloudOnlyPaths.length).toBeGreaterThan(0);
   });
 
-  it('no path ID collisions between OSS and cloud files', () => {
-    const ossPathIds = new Set((ossPathsData.paths as LearningPath[]).map((p) => p.id));
-    const cloudPathIds = new Set((cloudPathsData.paths as LearningPath[]).map((p) => p.id));
-    for (const id of ossPathIds) {
-      expect(cloudPathIds.has(id)).toBe(false);
+  it('shared path IDs between OSS and cloud files are the same path', () => {
+    const cloudById = new Map((cloudPathsData.paths as LearningPath[]).map((p) => [p.id, p]));
+    for (const path of ossPathsData.paths as LearningPath[]) {
+      const cloud = cloudById.get(path.id);
+      if (!cloud) {
+        continue;
+      }
+      expect(cloud.title).toBe(path.title);
+      expect(cloud.url).toBe(path.url);
     }
   });
 
