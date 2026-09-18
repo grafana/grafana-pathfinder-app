@@ -213,5 +213,5 @@ export function codaWorkspaceUrl(vmId: string, path?: string, line?: number): st
   if (line && Number.isSafeInteger(line) && line > 0) {
     query.set('line', String(line));
   }
-  return `/a/grafana-coda-app/workspace?${query.toString()}`;
+  return `/a/grafana-coda-app/ide?${query.toString()}`;
 }

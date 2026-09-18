@@ -580,14 +580,14 @@ rewriting the URL.
 
 These are backend concerns. See the `grafana-coda-app` repo's `docs/API.md` and `docs/SECURITY.md`.
 
-### Open the connected VM in Coda Workspace
+### Open the connected VM in Coda IDE
 
-The terminal toolbar shows **Open in Coda editor** only when Coda advertises both `workspace-files`
+The terminal toolbar shows **IDE** beside **GCX** only when Coda advertises both `workspace-files`
 and `explicit-vm-attachment`. It is enabled only while connected with a known `vmId`, and opens a
 new tab so the guide remains visible. The VM ID comes from the connected event and terminal context,
 not a template lookup. The editor owns a separate connection; closing it leaves the guide intact.
 
-The navigation contract is `/a/grafana-coda-app/workspace?vmId=…&path=…&line=…` with optional file/line
+The navigation contract is `/a/grafana-coda-app/ide?vmId=…&path=…&line=…` with optional file/line
 hints. The adapter retains the same URL builder as the Coda client so this toolbar can ship with the
 currently published client dependency; migrate the adapter to the exported client builder when that
 release is adopted. No guide schema or block type is added.

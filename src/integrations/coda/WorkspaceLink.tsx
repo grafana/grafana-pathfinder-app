@@ -36,6 +36,9 @@ export function WorkspaceLink({
     <Button
       size="sm"
       variant="secondary"
+      fill="text"
+      icon="brackets-curly"
+      tooltip="Open IDE connected to this VM (new tab)"
       className={className}
       disabled={!connected || !vmId}
       onClick={() => {
@@ -45,7 +48,7 @@ export function WorkspaceLink({
       }}
       data-testid="coda-open-workspace"
     >
-      Open in Coda editor
+      IDE
     </Button>
   );
 }

@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { useStyles2, Spinner, Icon, IconButton, Button, Input, Modal } from '@grafana/ui';
+import { useStyles2, Spinner, Icon, IconButton, Button, Input, Modal, Dropdown, Menu } from '@grafana/ui';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -463,13 +463,18 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               {renderVmExpiry()}
             </div>
             <div className={styles.headerRight}>
-              <div className={styles.statusIndicator}>
+              <div
+                className={styles.statusIndicator}
+                role="status"
+                aria-label={getStatusText(status)}
+                title={getStatusText(status)}
+              >
                 {isConnecting ? (
                   <Spinner size="xs" />
                 ) : (
                   <div className={`${styles.statusDot} ${getStatusDotClass(status)}`} />
                 )}
-                <span>{getStatusText(status)}</span>
+                {status !== 'connected' && <span>{getStatusText(status)}</span>}
               </div>
               <span data-testid={testIds.codaTerminal.pathfinderExpand}>
                 <IconButton
@@ -515,13 +520,18 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             {isExpanded && renderVmExpiry()}
           </div>
           <div className={styles.headerRight}>
-            <div className={styles.statusIndicator}>
+            <div
+              className={styles.statusIndicator}
+              role="status"
+              aria-label={getStatusText(status)}
+              title={getStatusText(status)}
+            >
               {isConnecting ? (
                 <Spinner size="xs" />
               ) : (
                 <div className={`${styles.statusDot} ${getStatusDotClass(status)}`} />
               )}
-              <span>{getStatusText(status)}</span>
+              {status !== 'connected' && <span>{getStatusText(status)}</span>}
             </div>
             {canConnect && (
               <Button
@@ -547,41 +557,61 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               </Button>
             )}
 
-            {canDisconnect && (
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={handleDisconnect}
-                className={styles.headerButton}
-                data-testid={testIds.codaTerminal.disconnectButton}
-              >
-                Disconnect
-              </Button>
-            )}
-
-            <WorkspaceLink connected={status === 'connected'} vmId={vmId} className={styles.headerButton} />
-
             {/* Needs a live session: the backend writes over the SSH channel
                 the stream already owns. */}
             <Button
               size="sm"
               variant="secondary"
               className={styles.headerButton}
+              fill="text"
+              tooltip="Set up GCX in this VM"
               disabled={status !== 'connected' || !sessionId}
               onClick={() => setShowGcx(true)}
               data-testid={testIds.codaTerminal.gcxButton}
             >
-              gcx
+              GCX
             </Button>
 
-            <IconButton
-              name="search"
-              size="sm"
-              aria-label="Search"
-              tooltip="Search in terminal (Ctrl+F)"
-              onClick={handleSearchToggle}
-              data-testid={testIds.codaTerminal.searchToggle}
-            />
+            <WorkspaceLink connected={status === 'connected'} vmId={vmId} className={styles.headerButton} />
+
+            <Dropdown
+              placement="top-end"
+              overlay={
+                <Menu>
+                  <Menu.Item
+                    label="Search terminal"
+                    icon="search"
+                    onClick={handleSearchToggle}
+                    data-testid={testIds.codaTerminal.searchToggle}
+                  />
+                  {canDisconnect && (
+                    <Menu.Item
+                      label="Disconnect"
+                      icon="plug"
+                      onClick={handleDisconnect}
+                      data-testid={testIds.codaTerminal.disconnectButton}
+                    />
+                  )}
+                  {onClose && (
+                    <Menu.Item
+                      label="Close terminal"
+                      icon="times"
+                      onClick={onClose}
+                      data-testid={testIds.codaTerminal.closeButton}
+                    />
+                  )}
+                </Menu>
+              }
+            >
+              <Button
+                variant="secondary"
+                fill="text"
+                size="sm"
+                icon="ellipsis-v"
+                aria-label="Terminal actions"
+                tooltip="Terminal actions"
+              />
+            </Dropdown>
 
             <IconButton
               name="angle-down"
@@ -591,17 +621,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               onClick={handleToggleExpand}
               data-testid={testIds.codaTerminal.collapseButton}
             />
-
-            {onClose && (
-              <IconButton
-                name="times"
-                size="sm"
-                aria-label="Close terminal"
-                tooltip="Close terminal"
-                onClick={onClose}
-                data-testid={testIds.codaTerminal.closeButton}
-              />
-            )}
           </div>
         </div>
 
