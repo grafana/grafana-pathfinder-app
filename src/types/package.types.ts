@@ -115,6 +115,110 @@ export function getPackageRenderType(manifest?: Record<string, unknown>): Packag
   return 'interactive';
 }
 
+// ============ TRACKS ============
+
+/**
+ * One named, independently-ordered guide sequence within a path/journey's
+ * `tracks` list (Path Tracks RFC). Unlike `milestones`, a track's `guides`
+ * list is its own complete ordering — not a subset or reordering of
+ * `milestones` — so a track may include guides `milestones` never had, omit
+ * ones it has, and interleave role-specific content anywhere in the sequence.
+ * @coupling Zod schema: ManifestTrackSchema in package.schema.ts
+ */
+export interface ManifestTrack {
+  trackId: string;
+  label: string;
+  guides: string[];
+}
+
+/**
+ * Reserved `trackId` sentinel meaning "the default milestones sequence is
+ * active" — the cover page's Foundations tab. An author-supplied track must
+ * not collide with it, since the cover page distinguishes "Foundations
+ * active" from "a named track is active" by comparing against this value.
+ * @coupling Schema: ManifestJsonSchema Rule 4 in package.schema.ts
+ * @coupling UI: LearningPathTableOfContents.tsx's Foundations tab id
+ */
+export const FOUNDATIONS_TRACK_ID = 'foundations';
+
+/**
+ * Safely reads a manifest-shaped value's `tracks` array, tolerating an
+ * untyped/untrusted source (a raw JSON manifest, a network payload) the same
+ * way `milestones` readers already do ad hoc. The one place every tracks
+ * consumer should read through, so a malformed entry is dropped consistently
+ * instead of each call site inventing its own guard.
+ *
+ * Also enforces the two invariants `ManifestJsonSchema` Rule 4 only checks at
+ * authoring time (package.schema.ts's `superRefine`, exercised by the CLI's
+ * `validate` command): no track may reuse the reserved `FOUNDATIONS_TRACK_ID`,
+ * and no two tracks may share a `trackId`. Every runtime loader
+ * (app-platform-resolver.ts, online-cdn-resolver.ts, loader.ts,
+ * package-info-from-url.ts, repository-client.ts) parses the unrefined
+ * `ManifestJsonObjectSchema` instead, and `scripts/upsert-learning-path.sh`
+ * runs no Zod validation at all — so a manifest that reaches the runtime
+ * without ever passing through `validate` could otherwise carry a track named
+ * "foundations" or a duplicate trackId straight to the cover page. Enforcing
+ * here, in the one place every tracks consumer reads through, makes that true
+ * on every path rather than only the CLI/authoring one — a violating entry is
+ * silently dropped (first occurrence wins on a duplicate trackId), never
+ * rendered. Silent by necessity: this is a Tier 0 module (package.types.ts),
+ * so it cannot depend on the Tier 1 Faro-backed logger (`src/lib/logging.ts`)
+ * or call `console.warn`/`console.error` directly (banned outside `src/cli/**`
+ * and `logging.ts` by design — see `eslint.config.mjs`'s `no-console` rule).
+ * A caller in a position to log (e.g. `resolvePackageTracks` in
+ * `package-content.ts`, which already logs an unresolvable guide the same
+ * way) may compare its input/output length to detect a drop and log it.
+ */
+export function getManifestTracks(source?: { tracks?: unknown } | null): ManifestTrack[] {
+  if (!source || !Array.isArray(source.tracks)) {
+    return [];
+  }
+
+  const seenTrackIds = new Set<string>();
+  const tracks: ManifestTrack[] = [];
+  for (const candidate of source.tracks.filter(isManifestTrack)) {
+    if (candidate.trackId === FOUNDATIONS_TRACK_ID || seenTrackIds.has(candidate.trackId)) {
+      continue;
+    }
+    seenTrackIds.add(candidate.trackId);
+    tracks.push(candidate);
+  }
+  return tracks;
+}
+
+function isManifestTrack(value: unknown): value is ManifestTrack {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.trackId === 'string' &&
+    typeof candidate.label === 'string' &&
+    Array.isArray(candidate.guides) &&
+    candidate.guides.every((guide) => typeof guide === 'string')
+  );
+}
+
+/** Flattens every guide ID referenced by any track, in declared order. */
+export function getAllTrackGuideIds(tracks: ManifestTrack[]): string[] {
+  return tracks.flatMap((track) => track.guides);
+}
+
+/**
+ * The full member set of a path/journey — `milestones` plus every guide
+ * referenced by any `tracks` entry, deduplicated. For traversal concerns
+ * (graph reachability, E2E chain expansion, orphan detection) where a guide
+ * counts as "part of this path" regardless of which sequence names it.
+ * Not for rendering: the cover page keeps `milestones` and each track's
+ * `guides` as separate ordered lists, since order and sequence membership
+ * (not flattened reachability) is exactly what a track's own tab must show.
+ */
+export function getManifestMemberIds(source?: { milestones?: string[]; tracks?: unknown } | null): string[] {
+  const milestones = source?.milestones ?? [];
+  const trackGuides = getAllTrackGuideIds(getManifestTracks(source));
+  return [...new Set([...milestones, ...trackGuides])];
+}
+
 // ============ SHARED METADATA ============
 
 /**
@@ -132,6 +236,7 @@ export interface PackageMetadataFields {
   author?: Author;
   startingLocation?: string;
   milestones?: string[];
+  tracks?: ManifestTrack[];
   depends?: DependencyList;
   recommends?: DependencyList;
   suggests?: DependencyList;
@@ -160,6 +265,7 @@ export interface ManifestJson {
   repository?: string;
 
   milestones?: string[];
+  tracks?: ManifestTrack[];
 
   description?: string;
   /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
@@ -327,7 +433,7 @@ export interface GraphNode extends PackageMetadataFields {
 
 /** Edge types in the dependency graph */
 export type GraphEdgeType =
-  'depends' | 'recommends' | 'suggests' | 'provides' | 'conflicts' | 'replaces' | 'milestones';
+  'depends' | 'recommends' | 'suggests' | 'provides' | 'conflicts' | 'replaces' | 'milestones' | 'tracks';
 
 /**
  * An edge in the dependency graph.

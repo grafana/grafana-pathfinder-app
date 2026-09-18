@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useStyles2, Icon } from '@grafana/ui';
+import { useStyles2, Icon, TabsBar, Tab } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
-import type { Milestone } from '../../types/content.types';
+import type { CoverPageTrack, Milestone } from '../../types/content.types';
 import type { PathGuide } from '../../types/learning-paths.types';
+import { FOUNDATIONS_TRACK_ID } from '../../types/package.types';
 import { milestoneCompletionStorage } from '../../lib/user-storage';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
 import { journeyProgressFromMilestones } from '../../docs-retrieval';
@@ -14,6 +15,15 @@ import { ProgressRing } from './ProgressRing';
 import { BadgeIcon } from './BadgeIcon';
 import { getTableOfContentsStyles } from './learning-paths.styles';
 
+/**
+ * Tab id for the always-present default sequence — never a real trackId.
+ * Enforced in `getManifestTracks` (package.types.ts), the one place every
+ * tracks consumer reads through, so this holds for every manifest this
+ * component ever receives `tracks` from — not only ones that passed through
+ * the CLI's `validate` command.
+ */
+const FOUNDATIONS_TAB_ID = FOUNDATIONS_TRACK_ID;
+
 export interface LearningPathTableOfContentsProps {
   milestones: Milestone[];
   baseUrl: string;
@@ -23,6 +33,15 @@ export interface LearningPathTableOfContentsProps {
   title?: string;
   /** Package manifest description, when known — shown as the hero summary above the module list. */
   description?: string;
+  /**
+   * Named, independently-ordered guide sequences from the manifest's `tracks`
+   * field (Path Tracks RFC), each already resolved to Milestone rows the same
+   * way `milestones` is. When present and non-empty, each track gets its own
+   * tab alongside the default Foundations sequence (`milestones`); when
+   * absent or empty, rendering is unchanged from before tracks existed —
+   * a single flat list, no tabs.
+   */
+  tracks?: CoverPageTrack[];
 }
 
 export function LearningPathTableOfContents({
@@ -31,6 +50,7 @@ export function LearningPathTableOfContents({
   pathId,
   title,
   description,
+  tracks,
 }: LearningPathTableOfContentsProps) {
   const styles = useStyles2(getTableOfContentsStyles);
   const [completedSlugs, setCompletedSlugs] = useState<Set<string>>(new Set());
@@ -41,12 +61,59 @@ export function LearningPathTableOfContents({
   const [progressLoaded, setProgressLoaded] = useState(false);
   const badge = pathId ? getBadgeForPath(pathId) : undefined;
 
+  const hasTracks = tracks !== undefined && tracks.length > 0;
+  const [activeTabId, setActiveTabId] = useState<string>(FOUNDATIONS_TAB_ID);
+  // Adjusting state during render (same React-endorsed reset pattern as
+  // loadedForMilestones below): baseUrl is this path's own identity, so
+  // navigating to a DIFFERENT path resets the tab selection back to
+  // Foundations. Without this, activeTabId survives across paths — there is
+  // no remount key between them, content-renderer.tsx reuses this component
+  // instance — and a track selected on one path either shows no tab as
+  // active on the next (its trackId doesn't exist there) or, worse, silently
+  // pre-selects a same-named track on the new path the reader never clicked.
+  const [activeTabPathBaseUrl, setActiveTabPathBaseUrl] = useState(baseUrl);
+  if (activeTabPathBaseUrl !== baseUrl) {
+    setActiveTabPathBaseUrl(baseUrl);
+    setActiveTabId(FOUNDATIONS_TAB_ID);
+  }
+  // Every sequential lock/unlock, progress, and time-estimate calculation
+  // below reuses the exact Foundations mechanism (milestoneCompletionStorage
+  // + journeyProgressFromMilestones) against whichever sequence is active —
+  // there is no track-specific completion model yet. When the progress
+  // mechanisms this app carries today (records/milestones/interactive) are
+  // consolidated into one, revisit whether a track needs its own.
+  const activeTrack =
+    hasTracks && activeTabId !== FOUNDATIONS_TAB_ID
+      ? tracks!.find((track) => track.trackId === activeTabId)
+      : undefined;
+  const activeMilestones = activeTrack?.milestones ?? milestones;
+  // The active sequence's own name, not the path's — reused below to scope
+  // the progress ring's accessible label. A track is a presentation
+  // ordering only (COMPLETION-MODEL.md), so its ring must read as "progress
+  // through this track," never as path-wide completion.
+  const activeSequenceLabel = activeTrack?.label ?? t('coverPage.foundationsTab', 'Foundations');
+
+  // Adjusting state during render (React's endorsed pattern for resetting
+  // state in response to a changed value — see "You Might Not Need an
+  // Effect"): re-guards progressLoaded the moment activeMilestones changes
+  // (e.g. a tab switch), not only on the initial mount. Without this,
+  // completedSlugs still reflects the PREVIOUS tab until the effect below's
+  // fetch resolves, and leaving progressLoaded true across that window would
+  // keep the CTA and the current-row click live against stale data, sending
+  // a reader who just switched tabs to the wrong module. Setting it inside
+  // the effect itself would trigger a cascading-render lint error.
+  const [loadedForMilestones, setLoadedForMilestones] = useState(activeMilestones);
+  if (loadedForMilestones !== activeMilestones) {
+    setLoadedForMilestones(activeMilestones);
+    setProgressLoaded(false);
+  }
+
   useEffect(() => {
     let cancelled = false;
     void milestoneCompletionStorage
       .getCompleted(
         baseUrl,
-        milestones.map((milestone) => milestone.url)
+        activeMilestones.map((milestone) => milestone.url)
       )
       .then((slugs) => {
         if (!cancelled) {
@@ -57,7 +124,7 @@ export function LearningPathTableOfContents({
     return () => {
       cancelled = true;
     };
-  }, [baseUrl, milestones]);
+  }, [baseUrl, activeMilestones]);
 
   // "Get started" targets the first unlocked milestone at 0% progress; once
   // underway, "Resume" targets the actual next incomplete one so returning to
@@ -65,12 +132,22 @@ export function LearningPathTableOfContents({
   // Every later milestone is sequentially locked — it isn't reachable yet
   // regardless of its own publish-lock state, which stays authoritative for
   // "unpublished" (locked even once its turn comes).
-  const cursor = milestones.findIndex((m) => !m.isLocked && !completedSlugs.has(getMilestoneSlug(m.url)));
+  const cursor = activeMilestones.findIndex((m) => !m.isLocked && !completedSlugs.has(getMilestoneSlug(m.url)));
 
-  const guides: PathGuide[] = milestones.map((milestone, index) => {
+  const guides: PathGuide[] = activeMilestones.map((milestone, index) => {
     const completed = completedSlugs.has(getMilestoneSlug(milestone.url));
     return {
-      id: String(milestone.number),
+      // React-key-only — falls back to the ordinal for a fixture/edge case
+      // that never set Milestone.id. Never sent as a click-target id (see
+      // guideId below): an ordinal like "3" would never match a real
+      // manifest id and would misclassify the next load as the cover page.
+      id: milestone.id ?? String(milestone.number),
+      // The real manifest guide id, only when resolveGuideIdsToMilestones set
+      // one (every real usage) — undefined otherwise, never the ordinal
+      // fallback above. GuideList threads this through data-milestone-id so
+      // fetchPackageContent can classify the next load by direct lookup
+      // instead of a resolved-URL comparison.
+      guideId: milestone.id,
       title: milestone.title,
       description: milestone.description,
       estimatedMinutes: milestone.estimatedMinutes,
@@ -87,9 +164,19 @@ export function LearningPathTableOfContents({
   // different numbers for the same journey. A reader who only navigated
   // without completing anything sees this at 0%, honestly, even after
   // visiting every milestone.
-  const progress = journeyProgressFromMilestones(baseUrl, milestones);
+  //
+  // Scoped to whichever sequence is active, not to the path as a whole: a
+  // track is a presentation ordering over a subset/superset of guides, never
+  // a second completion authority (COMPLETION-MODEL.md's decision on this).
+  // The durable, path-wide percentage shown elsewhere (My Learning) stays
+  // keyed to Foundations `milestones` membership alone and can legitimately
+  // read lower than this ring on a track tab — same underlying guides,
+  // different denominators. The ring's aria-label below names the active
+  // sequence so this reads as "progress through Foundations/this track,"
+  // never as path completion.
+  const progress = journeyProgressFromMilestones(baseUrl, activeMilestones);
 
-  const ctaTarget = cursor >= 0 ? milestones[cursor] : undefined;
+  const ctaTarget = cursor >= 0 ? activeMilestones[cursor] : undefined;
   const ctaLabel = progress === 0 ? t('coverPage.getStarted', 'Get started') : t('coverPage.resume', 'Resume');
 
   // Sum of authored per-milestone estimates — only when every milestone has
@@ -97,8 +184,8 @@ export function LearningPathTableOfContents({
   // A partial sum across e.g. 3 of 10 authored milestones would understate
   // the real total rather than approximate it.
   const totalEstimatedMinutes =
-    milestones.length > 0 && milestones.every((m) => typeof m.estimatedMinutes === 'number')
-      ? milestones.reduce((sum, m) => sum + m.estimatedMinutes!, 0)
+    activeMilestones.length > 0 && activeMilestones.every((m) => typeof m.estimatedMinutes === 'number')
+      ? activeMilestones.reduce((sum, m) => sum + m.estimatedMinutes!, 0)
       : undefined;
 
   return (
@@ -110,7 +197,7 @@ export function LearningPathTableOfContents({
           <div className={styles.heroMeta}>
             <span className={styles.heroMetaItem}>
               <Icon name="list-ul" size="sm" />
-              {t('coverPage.moduleCount', '{{count}} modules', { count: milestones.length })}
+              {t('coverPage.moduleCount', '{{count}} modules', { count: activeMilestones.length })}
             </span>
             {totalEstimatedMinutes != null && (
               <span className={styles.heroMetaItem}>
@@ -129,6 +216,25 @@ export function LearningPathTableOfContents({
           </div>
         </div>
       )}
+      {hasTracks && (
+        <TabsBar data-testid={testIds.learningPaths.tracksTabs}>
+          <Tab
+            label={t('coverPage.foundationsTab', 'Foundations')}
+            active={activeTabId === FOUNDATIONS_TAB_ID}
+            onChangeTab={() => setActiveTabId(FOUNDATIONS_TAB_ID)}
+            data-testid={testIds.learningPaths.tracksTab(FOUNDATIONS_TAB_ID)}
+          />
+          {tracks!.map((track) => (
+            <Tab
+              key={track.trackId}
+              label={track.label}
+              active={activeTabId === track.trackId}
+              onChangeTab={() => setActiveTabId(track.trackId)}
+              data-testid={testIds.learningPaths.tracksTab(track.trackId)}
+            />
+          ))}
+        </TabsBar>
+      )}
       <div
         className={styles.container}
         data-testid={testIds.learningPaths.tableOfContents}
@@ -145,7 +251,16 @@ export function LearningPathTableOfContents({
           </h2>
           <div className={styles.headerActions}>
             {progress > 0 && (
-              <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={progress >= 100} />
+              <ProgressRing
+                progress={progress}
+                size={40}
+                strokeWidth={3}
+                isCompleted={progress >= 100}
+                ariaLabel={t('coverPage.progressAriaLabel', '{{percent}}% through {{sequence}}', {
+                  percent: Math.round(progress),
+                  sequence: activeSequenceLabel,
+                })}
+              />
             )}
             {progressLoaded && ctaTarget && (
               <button
@@ -153,6 +268,7 @@ export function LearningPathTableOfContents({
                 className={styles.ctaButton}
                 data-journey-start="true"
                 data-milestone-url={ctaTarget.url}
+                {...(ctaTarget.id != null && { 'data-milestone-id': ctaTarget.id })}
                 data-interaction-location={progress === 0 ? 'get_started_cta' : 'resume_cta'}
                 data-testid={testIds.learningPaths.tableOfContentsCta}
               >

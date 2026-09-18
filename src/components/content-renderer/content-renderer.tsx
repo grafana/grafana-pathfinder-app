@@ -488,6 +488,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         pathId={pathId}
         title={content.metadata.title}
         description={pathDescription}
+        tracks={journey.tracks}
       />
     ) : null;
 

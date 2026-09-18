@@ -34,9 +34,16 @@ function readManifest(dir: string, id: string): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(path.join(dir, id, 'manifest.json'), 'utf-8'));
 }
 
+interface TrackOptions {
+  trackId: string;
+  label: string;
+  guides: string[];
+}
+
 interface GuideOptions {
   type?: 'guide' | 'path' | 'journey';
   milestones?: string[];
+  tracks?: TrackOptions[];
   blocks?: unknown[];
   manifestExtras?: Record<string, unknown>;
 }
@@ -51,6 +58,7 @@ function writeGuide(root: string, id: string, options: GuideOptions = {}): void 
     id,
     type: options.type ?? 'guide',
     ...(options.milestones ? { milestones: options.milestones } : {}),
+    ...(options.tracks ? { tracks: options.tracks } : {}),
     ...options.manifestExtras,
   });
 }
@@ -198,6 +206,40 @@ describe('buildStats', () => {
     expect(readManifest(tmpDir, 'journey').stats).toMatchObject({ blockCount: 3, completableBlockCount: 2 });
   });
 
+  it('rolls a guide referenced only by a track into the path stats denominator', async () => {
+    writeGuide(tmpDir, 'milestone-one', { blocks: [markdown, interactive] });
+    writeGuide(tmpDir, 'track-only-guide', { blocks: [interactive] });
+    writeGuide(tmpDir, 'the-path', {
+      type: 'path',
+      milestones: ['milestone-one'],
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['milestone-one', 'track-only-guide'] }],
+      blocks: [],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual([]);
+    expect(readManifest(tmpDir, 'the-path').stats).toMatchObject({
+      blockCount: 3,
+      completableBlockCount: 2,
+    });
+  });
+
+  it('counts a guide named by both milestones and a track only once', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown, interactive] });
+    writeGuide(tmpDir, 'the-path', {
+      type: 'path',
+      milestones: ['leaf'],
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['leaf'] }],
+      blocks: [],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual([]);
+    expect(readManifest(tmpDir, 'the-path').stats).toMatchObject({ blockCount: 2 });
+  });
+
   it('counts a metapackage own body ahead of its milestones', async () => {
     writeGuide(tmpDir, 'the-milestone', { blocks: [interactive] });
     writeGuide(tmpDir, 'the-path', {
@@ -219,7 +261,7 @@ describe('buildStats', () => {
 
     const result = await buildStats(tmpDir);
 
-    expect(result.errors).toEqual(['the-path: milestone "nowhere" not found in the package tree']);
+    expect(result.errors).toEqual(['the-path: milestone or track guide "nowhere" not found in the package tree']);
     expect(readManifest(tmpDir, 'the-path').stats).toBeUndefined();
   });
 
@@ -229,7 +271,7 @@ describe('buildStats', () => {
 
     const result = await buildStats(tmpDir);
 
-    expect(result.errors).toEqual(['zzz-path: milestone "nowhere" not found in the package tree']);
+    expect(result.errors).toEqual(['zzz-path: milestone or track guide "nowhere" not found in the package tree']);
     expect(result.written).toEqual([]);
     expect(readManifest(tmpDir, 'aaa-guide').stats).toBeUndefined();
     expect(readManifest(tmpDir, 'zzz-path').stats).toBeUndefined();
@@ -276,7 +318,94 @@ describe('buildStats', () => {
     const result = await buildStats(tmpDir);
 
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toContain('the-path: milestone "leaf" is reachable twice (also via "mid")');
+    expect(result.errors[0]).toContain('the-path: milestone or track guide "leaf" is reachable twice (also via "mid")');
+  });
+
+  // Regression (Cursor Bugbot on PR #1927, "Nested track overlap fails
+  // stats", MEDIUM): a track's guides are a presentation ordering, never a
+  // second ownership claim (COMPLETION-MODEL.md decision 10) — a guide a
+  // track names that some nested milestone already owns is that guide's
+  // real owner being featured again, not a diamond, so it must not be
+  // summed a second time or hard-error the parent.
+  it('does not double-count or error on a track guide already owned by a nested milestone', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown] });
+    writeGuide(tmpDir, 'mid', { type: 'path', milestones: ['leaf'], blocks: [] });
+    writeGuide(tmpDir, 'top', {
+      type: 'journey',
+      milestones: ['mid'],
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['leaf'] }],
+      blocks: [],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual([]);
+    expect(readManifest(tmpDir, 'top').stats).toMatchObject({ blockCount: 1 });
+  });
+
+  it('does not double-count or error on a track guide already owned by a nested track', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown] });
+    writeGuide(tmpDir, 'other', {
+      type: 'path',
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['leaf'] }],
+      blocks: [],
+    });
+    writeGuide(tmpDir, 'top', {
+      type: 'journey',
+      milestones: ['other'],
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['leaf'] }],
+      blocks: [],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual([]);
+    expect(readManifest(tmpDir, 'top').stats).toMatchObject({ blockCount: 1 });
+  });
+
+  // Regression (code-review self-check on PR #1927, round 4): an earlier
+  // version of this fix skipped any already-reached guide as long as the
+  // CURRENT reference came from a track, regardless of whether the guide
+  // had a real owner yet. Two unrelated siblings each track-referencing the
+  // same otherwise-unowned guide slipped through uncaught, silently
+  // double-counting it in their common ancestor's rollup.
+  it('errors when two siblings each track-reference the same unowned guide', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown, markdown] });
+    writeGuide(tmpDir, 'pkg-a', {
+      type: 'path',
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['leaf'] }],
+      blocks: [],
+    });
+    writeGuide(tmpDir, 'pkg-b', {
+      type: 'path',
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['leaf'] }],
+      blocks: [],
+    });
+    writeGuide(tmpDir, 'top', { type: 'journey', milestones: ['pkg-a', 'pkg-b'], blocks: [] });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors.some((error) => error.includes('reachable twice'))).toBe(true);
+    expect(readManifest(tmpDir, 'top').stats).toBeUndefined();
+  });
+
+  // The asymmetry this fix relies on: a *track* deferring silently to an
+  // already-owned guide must not widen into milestones deferring too — two
+  // real ownership claims on the same guide is still the diamond this
+  // command refuses.
+  it('still errors when a milestone claims a guide a track already featured', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown] });
+    writeGuide(tmpDir, 'other', {
+      type: 'path',
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['leaf'] }],
+      blocks: [],
+    });
+    writeGuide(tmpDir, 'top', { type: 'journey', milestones: ['other', 'leaf'], blocks: [] });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors.some((error) => error.includes('reachable twice'))).toBe(true);
+    expect(readManifest(tmpDir, 'top').stats).toBeUndefined();
   });
 
   it('errors when a guide-typed manifest carries milestones', async () => {
@@ -292,6 +421,33 @@ describe('buildStats', () => {
 
     expect(result.errors.some((error) => error.includes('cannot carry milestones'))).toBe(true);
     expect(readManifest(tmpDir, 'sneaky').stats).toBeUndefined();
+  });
+
+  it('errors when a guide-typed manifest carries tracks', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown, markdown, markdown] });
+    writeGuide(tmpDir, 'sneaky', {
+      type: 'guide',
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['leaf'] }],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors.some((error) => error.includes('cannot carry tracks'))).toBe(true);
+    expect(readManifest(tmpDir, 'sneaky').stats).toBeUndefined();
+  });
+
+  it('errors on a guide listed twice within one track rather than summing it twice', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown, interactive] });
+    writeGuide(tmpDir, 'the-path', {
+      type: 'path',
+      tracks: [{ trackId: 'seller', label: 'Seller', guides: ['leaf', 'leaf'] }],
+      blocks: [],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual(['the-path: track "seller" lists guide "leaf" more than once']);
+    expect(readManifest(tmpDir, 'the-path').stats).toBeUndefined();
   });
 
   it('reports a missing milestone once, however many parents reference it', async () => {
@@ -363,7 +519,7 @@ describe('buildStats', () => {
 
     const result = await buildStats(tmpDir);
 
-    expect(result.errors.some((error) => error.includes('milestone cycle'))).toBe(true);
+    expect(result.errors.some((error) => error.includes('milestone/track cycle'))).toBe(true);
   });
 
   it('errors on an ID mismatch between content and manifest', async () => {

@@ -17,10 +17,18 @@ import {
   setPackageResolver,
   setPackageResolverFactory,
   resolvePackageMilestones,
+  resolvePackageTracks,
   resolvePackageNavLinks,
   ensureNonEmptyCoverContent,
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
+import { logger } from '../lib/logging';
+import {
+  isJourneyCoverPage,
+  getTotalMilestones,
+  getNextMilestoneUrl,
+  getPreviousMilestoneUrl,
+} from './learning-journey-helpers';
 import {
   fetchCustomGuideRepository,
   invalidateCustomGuideRepositoryCache,
@@ -521,6 +529,7 @@ describe('resolvePackageMilestones', () => {
 
     expect(result).toHaveLength(3);
     expect(result[0]).toEqual({
+      id: 'step-one',
       number: 1,
       title: 'Title for step-one',
       url: 'bundled:step-one/content.json',
@@ -717,6 +726,84 @@ describe('resolvePackageMilestones', () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolvePackageTracks — Path Tracks RFC: resolve each track's own guides
+// ---------------------------------------------------------------------------
+
+describe('resolvePackageTracks', () => {
+  afterEach(() => {
+    setPackageResolver(
+      makeResolver({
+        ok: false,
+        id: 'reset',
+        error: { code: 'not-found', message: 'reset' },
+      })
+    );
+  });
+
+  it('returns an empty array for an empty tracks list', async () => {
+    setPackageResolver(makeResolver(makeSuccessResolution()));
+    const result = await resolvePackageTracks([]);
+    expect(result).toEqual([]);
+  });
+
+  it("resolves each track's guides independently, preserving trackId and label", async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageTracks([
+      { trackId: 'builder', label: 'Builder', guides: ['builder-1', 'builder-2'] },
+      { trackId: 'seller', label: 'Seller', guides: ['seller-1'] },
+    ]);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({ trackId: 'builder', label: 'Builder' });
+    expect(result[0]!.milestones).toHaveLength(2);
+    expect(result[0]!.milestones[0]!.title).toBe('Title: builder-1');
+    expect(result[1]).toMatchObject({ trackId: 'seller', label: 'Seller' });
+    expect(result[1]!.milestones).toHaveLength(1);
+  });
+
+  it('keeps an unresolvable track guide as a locked placeholder, same as milestones', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'missing') {
+          return Promise.resolve({ ok: false, id, error: { code: 'not-found' as const, message: 'not found' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageTracks([{ trackId: 'builder', label: 'Builder', guides: ['ok', 'missing'] }]);
+
+    expect(result[0]!.milestones).toEqual([
+      expect.objectContaining({ number: 1, title: 'Title: ok' }),
+      expect.objectContaining({ number: 2, title: 'missing', url: '', isLocked: true }),
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // fetchPackageContent — path-type package learningJourney enrichment
 // ---------------------------------------------------------------------------
 
@@ -747,8 +834,12 @@ describe('fetchPackageContent path-type enrichment', () => {
     };
     setPackageResolver(resolver);
 
+    // manifest.id must match the loaded contentUrl's own resource name
+    // (first-dashboard is a real bundled fixture) — the cover-page check
+    // now positively resolves manifest.id and compares it against the
+    // loaded contentUrl, rather than eliminating milestones/tracks matches.
     const manifest = {
-      id: 'test-path',
+      id: 'first-dashboard',
       type: 'path',
       milestones: ['step-1', 'step-2'],
     };
@@ -763,6 +854,423 @@ describe('fetchPackageContent path-type enrichment', () => {
       expect(result.content.metadata.learningJourney!.milestones).toHaveLength(2);
       expect(result.content.metadata.learningJourney!.milestones[0]!.title).toBe('Milestone: step-1');
     }
+  });
+
+  it('resolves manifest tracks into learningJourney.tracks on the cover page', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    // manifest.id matches the loaded contentUrl's own resource name (see
+    // the comment on the previous test) so the cover-page resolution succeeds.
+    const manifest = {
+      id: 'first-dashboard',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    const journey = result.content!.metadata.learningJourney!;
+    expect(journey.tracks).toHaveLength(1);
+    expect(journey.tracks![0]).toMatchObject({ trackId: 'builder', label: 'Builder' });
+    expect(journey.tracks![0]!.milestones).toHaveLength(1);
+    expect(journey.tracks![0]!.milestones[0]!.title).toBe('Milestone: builder-1');
+  });
+
+  it('omits learningJourney.tracks when the manifest declares no tracks (regression: unchanged default)', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    // manifest.id matches the loaded contentUrl's own resource name (see
+    // the comment two tests up) so the cover-page resolution succeeds.
+    const manifest = { id: 'first-dashboard', type: 'path', milestones: ['step-1'] };
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content!.metadata.learningJourney!.tracks).toBeUndefined();
+  });
+
+  // Regression (human review on PR #1927, "track-guide-loads-as-cover-page",
+  // HIGH): a guide referenced only by a track — never by milestones, which
+  // the RFC explicitly allows — has no milestones index, so currentMilestone
+  // fell back to 0 and isJourneyCoverPage misclassified it as the path's own
+  // cover page instead of as itself.
+  it('does not classify a track-exclusive guide as the cover page', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    // The resolver mock maps any id to `bundled:<id>/content.json`, so the
+    // loaded contentUrl below must match a real bundled fixture (used
+    // elsewhere in this file) both to load successfully AND to resolve, as
+    // a track member, to that same URL.
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['first-dashboard'] }],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content).not.toBeNull();
+    expect(isJourneyCoverPage(result.content!)).toBe(false);
+    // Regression (Cursor Bugbot on PR #1927, "Track-only guides get invalid
+    // milestone index", MEDIUM): an earlier fix synthesized currentMilestone
+    // = -1 to dodge the cover-page branch, but that sentinel leaked into
+    // every consumer that assumes a non-zero value is a real Foundations
+    // step — the docs-panel step label showed "Step -1 of N", Previous
+    // stayed disabled, and Next jumped into Foundations module 1. A
+    // track-only guide has no real Foundations position, so learningJourney
+    // must be entirely absent instead — the same, already-supported state a
+    // path with zero resolved milestones produces (see the "does not add
+    // learningJourney for path packages without milestones" case above).
+    expect(result.content!.metadata.learningJourney).toBeUndefined();
+    expect(getTotalMilestones(result.content!)).toBe(0);
+    expect(getNextMilestoneUrl(result.content!)).toBeNull();
+    expect(getPreviousMilestoneUrl(result.content!)).toBeNull();
+    // Regression (Cursor Bugbot on PR #1927, "Track-only guides skip
+    // completion writes", HIGH): with no learningJourney, this is what lets
+    // recordGuideCompletionForSurface still route this guide's completion
+    // through milestoneCompletionStorage under its own identity — the path's
+    // own resolved base URL, not this guide's own contentUrl.
+    expect(result.content!.metadata.trackMemberBaseUrl).toBe('bundled:test-path/content.json');
+  });
+
+  // Regression (captain-approved structural fix on PR #1927, round 5):
+  // classification was inferred from comparing resolved URLs across 4
+  // review rounds, and each round's fix flipped which case it broke
+  // (guide-loads-as-cover-page -> -1 sentinel -> skipped completion write ->
+  // failed-resolve misclassified as cover -> an ordinary cover misclassified
+  // as a track member). Fixed structurally: `explicitGuideId` — the manifest
+  // guide id the click target already carried (GuideList's current row, the
+  // cover page's CTA) — makes the decision a direct id lookup against
+  // `milestones`/`tracks`, not a URL comparison. This single test exercises
+  // all three classifications against the SAME manifest so this exact
+  // regression class cannot round-trip again: a real cover-page load (no
+  // explicitGuideId — the load behind no click, e.g. the initial open), a
+  // track-exclusive guide load (explicitGuideId set to a track's own guide
+  // id), and an ordinary Foundations milestone load (explicitGuideId set to
+  // a milestone id).
+  it('classifies cover-page, track-exclusive, and ordinary-milestone loads correctly together against one manifest', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    // Every contentUrl fetchPackageContent is CALLED WITH below must be a
+    // real bundled fixture (fetchContent loads it for real) — everything
+    // else (milestone/track resolution, baseUrlResolution) goes through the
+    // mock resolver above regardless of whether the id is a real fixture.
+    const manifest = {
+      id: 'welcome-to-grafana',
+      type: 'path',
+      milestones: ['loki-grafana-101', 'prometheus-grafana-101'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['first-dashboard'] }],
+    };
+
+    // 1. Cover-page load: no explicitGuideId, contentUrl is the path's own
+    // resolved base URL — the load with no click behind it.
+    const coverResult = await fetchPackageContent('bundled:welcome-to-grafana/content.json', manifest);
+    expect(coverResult.content!.metadata.learningJourney).toBeDefined();
+    expect(coverResult.content!.metadata.learningJourney!.currentMilestone).toBe(0);
+    expect(coverResult.content!.metadata.trackMemberBaseUrl).toBeUndefined();
+
+    // 2. Track-exclusive guide load: explicitGuideId is the track's own
+    // guide id — never listed in `milestones` — so this must classify as a
+    // track member by direct lookup, not as the cover page.
+    const trackResult = await fetchPackageContent(
+      'bundled:first-dashboard/content.json',
+      manifest,
+      undefined,
+      undefined,
+      undefined,
+      'first-dashboard'
+    );
+    expect(trackResult.content!.metadata.learningJourney).toBeUndefined();
+    expect(trackResult.content!.metadata.trackMemberBaseUrl).toBe('bundled:welcome-to-grafana/content.json');
+
+    // 3. Ordinary Foundations milestone load: explicitGuideId is a real
+    // `milestones` entry, so this must classify as milestone index 0 (the
+    // first step) by direct lookup, not by comparing contentUrl to anything.
+    const milestoneResult = await fetchPackageContent(
+      'bundled:loki-grafana-101/content.json',
+      manifest,
+      undefined,
+      undefined,
+      undefined,
+      'loki-grafana-101'
+    );
+    expect(milestoneResult.content!.metadata.learningJourney).toBeDefined();
+    expect(milestoneResult.content!.metadata.learningJourney!.currentMilestone).toBe(1);
+    expect(milestoneResult.content!.metadata.trackMemberBaseUrl).toBeUndefined();
+  });
+
+  // Regression (review round on PR #1927, "track-only guide baseUrl resolver
+  // failure"): when resolving the path's own manifestId fails or is
+  // transiently unavailable, trackMemberBaseUrl must stay undefined rather
+  // than silently fall back to this guide's own contentUrl — that value is
+  // not interchangeable with the path's resolved base the cover page reads
+  // completion under, so writing it would look fixed while staying broken.
+  // The failure is instead surfaced via a warning log.
+  it('leaves trackMemberBaseUrl unset and warns when the path base URL fails to resolve', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'test-path') {
+          return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'not found' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['first-dashboard'] }],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content!.metadata.trackMemberBaseUrl).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not resolve path base URL'), {
+      manifestId: 'test-path',
+    });
+
+    warnSpy.mockRestore();
+  });
+
+  // Regression (moxious review on PR #1927,
+  // "track-only-parent-resolution-loses-completion", MEDIUM): a track-only
+  // guide's OWN content can load successfully while this SAME request's
+  // independent re-resolve of the path's manifestId transiently fails (a CDN
+  // hiccup unrelated to the guide's own content). Without a fallback, that
+  // failure silently drops the guide's completion entirely — no
+  // trackMemberBaseUrl means recordGuideCompletionForSurface has no journey
+  // base to write against, so the learner can mark it complete and it never
+  // sticks. knownBaseUrl — the cover page's own base URL, already known to
+  // docs-panel.tsx since a track-only guide is only ever reached by clicking
+  // it FROM that same cover — lets this succeed anyway, with no warning
+  // needed since the caller already had the answer.
+  it('falls back to knownBaseUrl for trackMemberBaseUrl when the path base URL fails to resolve', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'test-path') {
+          return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'not found' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['first-dashboard'] }],
+    };
+
+    const result = await fetchPackageContent(
+      'bundled:first-dashboard/content.json',
+      manifest,
+      undefined,
+      undefined,
+      undefined,
+      'first-dashboard',
+      'bundled:test-path/content.json'
+    );
+
+    expect(result.content!.metadata.trackMemberBaseUrl).toBe('bundled:test-path/content.json');
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  // Regression (code-review self-check on PR #1927, round 4): the positive
+  // cover-page check above depends on THIS SAME request's own resolve of
+  // manifestId succeeding. That resolve can fail for the real cover page's
+  // own load exactly as easily as for a track member's — a resolver hiccup
+  // must not misclassify the cover page itself as an unresolvable track
+  // guide. No track resolves to this contentUrl either (there are no
+  // tracks), so neither signal confirms a track member and this must still
+  // default to being the cover page.
+  it('still classifies the real cover page correctly when its own baseUrl resolve fails', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'test-path') {
+          return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'not found' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content!.metadata.learningJourney).toBeDefined();
+    expect(result.content!.metadata.learningJourney!.currentMilestone).toBe(0);
+    expect(result.content!.metadata.trackMemberBaseUrl).toBeUndefined();
+  });
+
+  // Regression (moxious review on PR #1927, "cover-load-url-mismatch",
+  // HIGH): PrTester opens a path's cover via a raw PR URL, which differs
+  // from resolve(manifestId)'s published CDN URL. The old fallback read that
+  // URL mismatch alone as proof of track membership — wrong even with no
+  // tracks at all. DocsPanelContentArea's devtools wrapper now passes the
+  // manifest's own id as explicitGuideId whenever it's deliberately opening
+  // that package's own cover, which settles this by direct lookup instead:
+  // the id is neither a milestone nor a track guide, so the URL mismatch
+  // never enters into it.
+  it('classifies a cover load correctly via explicitGuideId even when the resolved URL differs (no tracks)', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = { id: 'test-path', type: 'path', milestones: ['step-1', 'step-2'] };
+
+    // contentUrl (the "raw" URL) deliberately differs from what resolving
+    // 'test-path' returns ('bundled:test-path/content.json').
+    const result = await fetchPackageContent(
+      'bundled:first-dashboard/content.json',
+      manifest,
+      undefined,
+      undefined,
+      undefined,
+      'test-path'
+    );
+
+    expect(result.content!.metadata.learningJourney).toBeDefined();
+    expect(result.content!.metadata.learningJourney!.currentMilestone).toBe(0);
+    expect(result.content!.metadata.trackMemberBaseUrl).toBeUndefined();
+  });
+
+  it('classifies a cover load correctly via explicitGuideId even when the resolved URL differs (with tracks)', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['first-dashboard'] }],
+    };
+
+    // Neither the raw contentUrl nor resolving 'test-path' matches
+    // (mismatch), and the track's own guide resolves to a THIRD, distinct
+    // URL — none of that should matter once explicitGuideId settles it.
+    const result = await fetchPackageContent(
+      'bundled:welcome-to-grafana/content.json',
+      manifest,
+      undefined,
+      undefined,
+      undefined,
+      'test-path'
+    );
+
+    expect(result.content!.metadata.learningJourney).toBeDefined();
+    expect(result.content!.metadata.learningJourney!.currentMilestone).toBe(0);
+    expect(result.content!.metadata.trackMemberBaseUrl).toBeUndefined();
   });
 
   // `repository-identity-authority`: without the fallback, opening the same
@@ -851,8 +1359,10 @@ describe('fetchPackageContent path-type enrichment', () => {
     };
     setPackageResolver(resolver);
 
+    // manifest.id matches the loaded contentUrl's own resource name so the
+    // cover-page resolution succeeds (see the comment further up this file).
     const manifest = {
-      id: 'test-path',
+      id: 'first-dashboard',
       type: 'path',
       milestones: ['step-1', 'step-2'],
     };
@@ -927,20 +1437,24 @@ describe('fetchPackageContent path-type enrichment', () => {
 
   it('preserves packageManifest alongside learningJourney', async () => {
     const resolver: PackageResolver = {
-      resolve: jest.fn().mockResolvedValue({
-        ok: true,
-        id: 'ms-1',
-        contentUrl: 'bundled:ms-1/content.json',
-        manifestUrl: 'bundled:ms-1/manifest.json',
-        repository: 'bundled',
-        content: { id: 'ms-1', title: 'MS 1', blocks: [] },
-        manifest: { id: 'ms-1', type: 'guide' },
-      }),
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
     };
     setPackageResolver(resolver);
 
+    // manifest.id matches the loaded contentUrl's own resource name so the
+    // cover-page resolution succeeds (see the comment further up this file).
     const manifest = {
-      id: 'test-path',
+      id: 'first-dashboard',
       type: 'path',
       milestones: ['ms-1'],
     };
@@ -1022,7 +1536,12 @@ describe('fetchPackageContent — no public websiteUrl for catalogue-launched pr
         Promise.resolve({
           ok: true,
           id,
-          contentUrl: `bundled:${id}/content.json`,
+          // The catalogue mock below hardcodes the launched guide's id as
+          // 'fe-alerting-path' — resolving it must point at a real bundled
+          // fixture (first-dashboard, the contentUrl this test loads) so
+          // the cover-page's own baseUrl resolution matches, the same
+          // convention every other fixture in this file follows.
+          contentUrl: id === 'fe-alerting-path' ? 'bundled:first-dashboard/content.json' : `bundled:${id}/content.json`,
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'app-platform',
           content: { id, title: `Milestone: ${id}`, blocks: [] },

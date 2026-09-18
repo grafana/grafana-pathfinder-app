@@ -104,6 +104,46 @@ export function getPreviousMilestoneUrl(content: RawContent): string | null {
   return baseUrl;
 }
 
+/**
+ * The manifest guide id `getNextMilestoneUrl` would navigate to, when there
+ * is one — undefined at the last milestone (no next) and for any resolver
+ * failure (a locked placeholder Milestone has no real id populated). Threaded
+ * through `loadTab`'s `explicitGuideId` so the toolbar's Next arrow and its
+ * Alt+Right shortcut classify the resulting load by direct id lookup instead
+ * of the fallback URL comparison — see `fetchPackageContent`'s own doc comment.
+ */
+export function getNextMilestoneId(content: RawContent): string | undefined {
+  if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
+    return undefined;
+  }
+
+  const { currentMilestone, milestones } = content.metadata.learningJourney;
+  return milestones.find((m) => m.number > currentMilestone && !m.isLocked)?.id;
+}
+
+/**
+ * The manifest guide id `getPreviousMilestoneUrl` would navigate to —
+ * undefined both when there is no earlier resolved milestone (Previous falls
+ * back to the cover page, which has no guide id of its own) and at the first
+ * milestone (no previous at all). See `getNextMilestoneId`'s own doc comment.
+ */
+export function getPreviousMilestoneId(content: RawContent): string | undefined {
+  if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
+    return undefined;
+  }
+
+  const { currentMilestone, milestones } = content.metadata.learningJourney;
+  if (currentMilestone < 1) {
+    return undefined;
+  }
+
+  const candidates = milestones.filter((m) => m.number < currentMilestone && !m.isLocked);
+  if (candidates.length === 0) {
+    return undefined;
+  }
+  return candidates.reduce((latest, m) => (m.number > latest.number ? m : latest)).id;
+}
+
 export function getCurrentMilestone(content: RawContent): Milestone | null {
   if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
     return null;
@@ -657,7 +697,16 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
   // Two distinct keys: the surface base a tab happens to be pinned at, and the
   // journey's resolved cover URL that milestone progress is stored under.
   const surfaceBase = baseUrl || contentUrl;
-  const journeyBase = metadata?.learningJourney?.baseUrl;
+  // trackMemberBaseUrl fallback: a guide referenced only by a Path Tracks
+  // `tracks` entry (never by `milestones`) carries no `learningJourney` — see
+  // its doc comment in content.types.ts — but still needs its completion
+  // routed through milestoneCompletionStorage under its own identity, the
+  // same store the cover page's per-track row lock/unlock reads.
+  // resolveExpectedMilestoneIds(metadata?.learningJourney) below safely
+  // returns [] with no `learningJourney`, so this can never satisfy
+  // markMilestoneDone's whole-journey completion trigger (COMPLETION-MODEL.md
+  // decision 10: a track is never a second completion authority).
+  const journeyBase = metadata?.learningJourney?.baseUrl ?? metadata?.trackMemberBaseUrl;
   const slug = resolveActiveMilestoneSlug({ currentUrl, journeyBaseUrl: journeyBase }) ?? '';
   const willMarkMilestone = Boolean(slug && journeyBase);
   const completionContext: CompletionContext = {

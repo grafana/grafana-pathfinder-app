@@ -275,6 +275,28 @@ else
   nope "milestone-before-cover ordering" "order: $(write_order)"
 fi
 
+# Regression (Cursor Bugbot on PR #1927, "Track-only guides never
+# uploaded", HIGH): build_manifest already emits `tracks` on the cover
+# resource's own spec.manifest, but the upload SET itself was still built
+# from `.milestones` alone — a guide named only by a track was never
+# written, so App Platform's cover tabs resolved it as locked/missing even
+# though the reference existed. `m-a` is deliberately listed in both
+# `milestones` and the track (RFC-allowed overlap) to prove it uploads once,
+# not twice.
+TRACKED=$(path_pkg tracked)
+mkpkg "${TRACKED}/only" t-only guide null "$blocks"
+printf '{"id":"lp","type":"path","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":["m-a","t-only"]}]}' \
+  >"${TRACKED}/manifest.json"
+
+MODE=empty run --package "$TRACKED"
+expect_code "a track-only guide (not in milestones) uploads too" 0
+expect_out "and reports the track-only guide in the count" "4 created, 0 updated, 0 failed"
+if [[ "$(write_order)" == "m-a m-b t-only lp " ]]; then
+  ok "track-only guide uploads after milestones, before the cover page, deduplicated against the overlapping milestone"
+else
+  nope "track-guide upload ordering" "order: $(write_order)"
+fi
+
 MODE=existing_ours run --package "$PKG"
 expect_code "re-running an already-uploaded package succeeds" 0
 expect_out "and reports updates rather than creates" "0 created, 3 updated"

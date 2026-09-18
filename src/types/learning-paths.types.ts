@@ -67,6 +67,18 @@ export interface PathGuide {
    * two paths share a guide slug.
    */
   url?: string;
+  /**
+   * The real manifest guide id, when the producer had one — separate from
+   * `id` above, which some producers (LearningPathTableOfContents) fall back
+   * to a React-key-only ordinal for when no real id is available. GuideList
+   * threads this through `data-milestone-id` on the clickable current row so
+   * fetchPackageContent can classify the next load by direct lookup; only
+   * ever forward a real id here, never a fallback — an ordinal like "3"
+   * would never match a manifest id and would misclassify the load as the
+   * cover page (Cursor Bugbot on PR #1927, "Row click sends fallback ordinal
+   * id").
+   */
+  guideId?: string;
 }
 
 /**
@@ -203,6 +215,16 @@ export interface ProgressRingProps {
   isCompleted?: boolean;
   /** Whether to show percentage text */
   showPercentage?: boolean;
+  /**
+   * Accessible label scoping what this ring's percentage measures. The ring
+   * itself is a bare number with no visible caption, so on a surface that can
+   * show more than one sequence's progress (e.g. the cover page's Path
+   * Tracks tabs — COMPLETION-MODEL.md's track-is-presentation-only decision)
+   * an unscoped ring risks reading as overall path completion when it is
+   * really "progress through the active sequence." Omit it where only one
+   * sequence can ever be shown.
+   */
+  ariaLabel?: string;
 }
 
 /**

@@ -11,19 +11,21 @@ import { z } from 'zod';
 
 import { GuideStatsSummarySchema } from './guide-stats.schema';
 import { JsonBlockSchema, CURRENT_SCHEMA_VERSION } from './json-guide.schema';
-import type {
-  Author,
-  DependencyClause,
-  DependencyGraph,
-  DependencyList,
-  GraphEdge,
-  GraphEdgeType,
-  GraphNode,
-  GuideTargeting,
-  PackageType,
-  RepositoryEntry,
-  RepositoryJson,
-  TestEnvironment,
+import {
+  FOUNDATIONS_TRACK_ID,
+  type Author,
+  type DependencyClause,
+  type DependencyGraph,
+  type DependencyList,
+  type GraphEdge,
+  type GraphEdgeType,
+  type GraphNode,
+  type GuideTargeting,
+  type ManifestTrack,
+  type PackageType,
+  type RepositoryEntry,
+  type RepositoryJson,
+  type TestEnvironment,
 } from './package.types';
 
 // ============ PACKAGE ID FORMAT ============
@@ -130,6 +132,20 @@ const DEFAULT_TEST_ENVIRONMENT = { tier: 'cloud' } as const;
 
 export const PackageTypeSchema = z.enum(['guide', 'path', 'journey']) satisfies z.ZodType<PackageType>;
 
+// ============ TRACK SCHEMA ============
+
+/**
+ * One named, independently-ordered guide sequence (Path Tracks RFC). `guides`
+ * is a track's own complete ordering, not a subset or reordering of
+ * `milestones`.
+ * @coupling Type: ManifestTrack
+ */
+export const ManifestTrackSchema = z.object({
+  trackId: z.string().min(1),
+  label: z.string().min(1),
+  guides: z.array(z.string().min(1)),
+}) satisfies z.ZodType<ManifestTrack>;
+
 // ============ MANIFEST SCHEMA (manifest.json) ============
 
 /**
@@ -146,6 +162,7 @@ export const ManifestJsonObjectSchema = z.looseObject({
   repository: z.string().default('interactive-tutorials'),
 
   milestones: z.array(z.string().min(1)).optional(),
+  tracks: z.array(ManifestTrackSchema).optional(),
 
   description: z.string().optional(),
   /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
@@ -200,12 +217,15 @@ export const ManifestJsonObjectSchema = z.looseObject({
  * - GENERATED: stats (stamped by `pathfinder-cli build-stats` or the block editor; never authored)
  * - Conditional ERROR: milestones required when type is "path" or "journey" (Rule 1)
  * - Conditional ERROR: milestones only valid when type is "path" or "journey" (Rule 2)
+ * - Conditional ERROR: tracks only valid when type is "path" or "journey" (Rule 3)
+ * - Conditional ERROR: trackId must be unique within one manifest's tracks (Rule 4)
  *
  * @coupling Type: ManifestJson
  */
 export const ManifestJsonSchema = ManifestJsonObjectSchema.superRefine((manifest, ctx) => {
   const isMetapackage = manifest.type === 'path' || manifest.type === 'journey';
   const hasMilestones = manifest.milestones !== undefined && manifest.milestones.length > 0;
+  const hasTracks = manifest.tracks !== undefined && manifest.tracks.length > 0;
 
   // Rule 1: path/journey requires milestones
   if (isMetapackage && !hasMilestones) {
@@ -222,6 +242,41 @@ export const ManifestJsonSchema = ManifestJsonObjectSchema.superRefine((manifest
       code: 'custom',
       message: `"milestones" is only valid when type is "path" or "journey", but type is "${manifest.type}" — either change type to "path" or "journey", or remove the milestones array`,
       path: ['type'],
+    });
+  }
+
+  // Rule 3: tracks requires path/journey type — tracks are alternate orderings
+  // of a path/journey's own guide sequence, additive alongside milestones.
+  if (hasTracks && !isMetapackage) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `"tracks" is only valid when type is "path" or "journey", but type is "${manifest.type}" — either change type to "path" or "journey", or remove the tracks array`,
+      path: ['type'],
+    });
+  }
+
+  // Rule 4: trackId must be unique, and may not collide with the reserved
+  // Foundations sentinel — each track is independently addressable (cover-page
+  // tab selection, CRD projection), and a duplicate or reserved id makes that
+  // lookup ambiguous.
+  if (hasTracks) {
+    const seenTrackIds = new Set<string>();
+    manifest.tracks!.forEach((track, index) => {
+      if (track.trackId === FOUNDATIONS_TRACK_ID) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `"tracks" trackId cannot be "${FOUNDATIONS_TRACK_ID}" — that id is reserved for the default Foundations sequence`,
+          path: ['tracks', index, 'trackId'],
+        });
+      }
+      if (seenTrackIds.has(track.trackId)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `"tracks" contains duplicate trackId "${track.trackId}" — each track must have a unique trackId`,
+          path: ['tracks', index, 'trackId'],
+        });
+      }
+      seenTrackIds.add(track.trackId);
     });
   }
 });
@@ -243,6 +298,7 @@ const packageMetadataSchemaFields = {
   author: AuthorSchema.optional(),
   startingLocation: z.string().optional(),
   milestones: z.array(z.string()).optional(),
+  tracks: z.array(ManifestTrackSchema).optional(),
   depends: DependencyListSchema.optional(),
   recommends: DependencyListSchema.optional(),
   suggests: DependencyListSchema.optional(),
@@ -293,6 +349,7 @@ export const GraphEdgeTypeSchema = z.enum([
   'conflicts',
   'replaces',
   'milestones',
+  'tracks',
 ]) satisfies z.ZodType<GraphEdgeType>;
 
 /**

@@ -190,6 +190,52 @@ describe('planPackageExecution', () => {
     expect(plan.errors.some((error) => error.includes('Cycle in milestones'))).toBe(true);
   });
 
+  it('detects a pure tracks-only cycle without any milestones or depends edges', () => {
+    const repository: RepositoryJson = {
+      'path-a': {
+        path: 'path-a/',
+        type: 'path',
+        milestones: ['guide-a'],
+        tracks: [{ trackId: 'builder', label: 'Builder', guides: ['path-b'] }],
+      },
+      'path-b': {
+        path: 'path-b/',
+        type: 'path',
+        milestones: ['guide-b'],
+        tracks: [{ trackId: 'builder', label: 'Builder', guides: ['path-a'] }],
+      },
+      'guide-a': { path: 'guide-a/', type: 'guide' },
+      'guide-b': { path: 'guide-b/', type: 'guide' },
+    };
+
+    const plan = planPackageExecution({ rootIds: ['path-a'], repository });
+
+    expect(plan.chains).toEqual([]);
+    expect(plan.errors.some((error) => error.includes('Cycle in tracks'))).toBe(true);
+  });
+
+  // Regression (Cursor Bugbot on PR #1927): the combined cycle walk only
+  // covered depends+milestones, so a cycle that only closes once a tracks
+  // edge joins depends went undetected and the plan would have accepted a
+  // genuinely cyclic graph.
+  it('detects a cycle that crosses tracks and depends relationships', () => {
+    const repository: RepositoryJson = {
+      path: {
+        path: 'path/',
+        type: 'path',
+        milestones: ['step'],
+        tracks: [{ trackId: 'builder', label: 'Builder', guides: ['track-only-guide'] }],
+      },
+      step: { path: 'path/step/', type: 'guide' },
+      'track-only-guide': { path: 'path/track-only-guide/', type: 'guide', depends: ['path'] },
+    };
+
+    const plan = planPackageExecution({ rootIds: ['path'], repository });
+
+    expect(plan.chains).toEqual([]);
+    expect(plan.errors.some((error) => error.includes('Cycle across depends, milestones, and tracks'))).toBe(true);
+  });
+
   it('keeps OR-provider choices invariant when independently valid roots are batched', () => {
     const repository: RepositoryJson = {
       pkgx: { path: 'pkgx/', type: 'guide', depends: [['pkgp', 'pkgq']] },

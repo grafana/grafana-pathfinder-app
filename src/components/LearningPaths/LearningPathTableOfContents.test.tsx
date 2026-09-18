@@ -1,12 +1,33 @@
 import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { LearningPathTableOfContents } from './LearningPathTableOfContents';
 import { interactiveCompletionStorage, milestoneCompletionStorage } from '../../lib/user-storage';
-import type { Milestone } from '../../types/content.types';
+import type { CoverPageTrack, Milestone } from '../../types/content.types';
 
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: (_t, p) => String(p) }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+  TabsBar: ({ children, ...rest }: { children: React.ReactNode }) => (
+    <div role="tablist" {...rest}>
+      {children}
+    </div>
+  ),
+  Tab: ({
+    label,
+    active,
+    onChangeTab,
+    'data-testid': testId,
+  }: {
+    label: string;
+    active?: boolean;
+    onChangeTab?: () => void;
+    'data-testid'?: string;
+  }) => (
+    <button type="button" role="tab" aria-selected={active} data-testid={testId} onClick={onChangeTab}>
+      {label}
+    </button>
+  ),
+  TabContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   // `@grafana/runtime`'s own module init reaches for these two, and the real
   // percentage calculation this file exercises imports it transitively
   // (docs-retrieval -> security -> dev-mode -> @grafana/runtime).
@@ -135,6 +156,32 @@ describe('LearningPathTableOfContents', () => {
 
     expect(await screen.findByText('Resume')).toBeInTheDocument();
     expect(document.querySelector('[data-journey-start]')).toHaveAttribute('data-milestone-url', milestones[1]!.url);
+  });
+
+  // Regression (Cursor Bugbot on PR #1927, "Row click sends fallback ordinal
+  // id"): the module list's React key falls back to an ordinal (e.g. "2")
+  // when a Milestone carries no real manifest id (the `milestones` fixture
+  // above never sets one) — GuideList must never forward that fallback as
+  // data-milestone-id, since an ordinal would never match a real manifest id
+  // and would misclassify the next load as the cover page.
+  it('never sends a fallback ordinal id as data-milestone-id when milestones carry no real id', async () => {
+    setCompletedSlugs(new Set(['set-up']));
+    render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
+
+    await screen.findByText('Resume');
+    expect(document.querySelector('[data-journey-start]')).not.toHaveAttribute('data-milestone-id');
+  });
+
+  it('sends the real manifest guide id as data-milestone-id when milestones carry one', async () => {
+    const milestonesWithIds: Milestone[] = [
+      { id: 'set-up', number: 1, title: 'Set up', url: `${baseUrl}set-up/content.json`, isActive: false },
+      { id: 'explore', number: 2, title: 'Explore', url: `${baseUrl}explore/content.json`, isActive: false },
+    ];
+    setCompletedSlugs(new Set(['set-up']));
+    render(<LearningPathTableOfContents milestones={milestonesWithIds} baseUrl={baseUrl} />);
+
+    await screen.findByText('Resume');
+    expect(document.querySelector('[data-journey-start]')).toHaveAttribute('data-milestone-id', 'explore');
   });
 
   it('shows a Get started CTA targeting the first milestone, with no progress ring, at 0%', async () => {
@@ -318,6 +365,220 @@ describe('LearningPathTableOfContents', () => {
       // Only "Two" is locked; "Three" is done and "One" is the current cursor.
       expect(screen.getAllByText('Locked')).toHaveLength(1);
       expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(1);
+    });
+  });
+
+  describe('tracks (Path Tracks RFC)', () => {
+    const builderMilestones: Milestone[] = [
+      { number: 1, title: 'Builder one', url: `${baseUrl}builder-one/content.json`, isActive: false },
+    ];
+    const sellerMilestones: Milestone[] = [
+      { number: 1, title: 'Seller one', url: `${baseUrl}seller-one/content.json`, isActive: false },
+      { number: 2, title: 'Seller two', url: `${baseUrl}seller-two/content.json`, isActive: false },
+    ];
+    const tracks: CoverPageTrack[] = [
+      { trackId: 'builder', label: 'Builder', milestones: builderMilestones },
+      { trackId: 'seller', label: 'Seller', milestones: sellerMilestones },
+    ];
+
+    // Regression: no `tracks` prop (the case every caller used before Path
+    // Tracks existed) must render byte-for-byte what it always did — a single
+    // flat list, no tab bar at all.
+    it('renders no tab bar and the plain flat list when tracks is omitted', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
+
+      await waitFor(() => expect(getCompletedMock).toHaveBeenCalled());
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      expect(screen.queryByText('Foundations')).not.toBeInTheDocument();
+      expect(screen.getByText('Set up')).toBeInTheDocument();
+      expect(screen.getByText('Explore')).toBeInTheDocument();
+    });
+
+    it('renders no tab bar when tracks is an empty array', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={[]} />);
+
+      await waitFor(() => expect(getCompletedMock).toHaveBeenCalled());
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    });
+
+    it('renders a Foundations tab plus one tab per declared track', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      await waitFor(() => expect(getCompletedMock).toHaveBeenCalled());
+      expect(screen.getByRole('tablist')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Foundations' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Builder' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Seller' })).toBeInTheDocument();
+    });
+
+    // Regression (human review on PR #1927, "foundations-sentinel-unenforced-
+    // at-runtime", MEDIUM): getManifestTracks (the shared utility every
+    // tracks consumer reads through) now drops a reserved-id or duplicate
+    // trackId before it ever reaches this component, so the tab bar this
+    // component renders from its (already-clean) `tracks` prop never shows
+    // two tabs simultaneously marked active — never a "duplicate/dead tab".
+    it('marks exactly one tab active at a time, whichever tab is selected', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
+      expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1);
+      expect(screen.getByRole('tab', { name: 'Builder' })).toHaveAttribute('aria-selected', 'true');
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+      expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1);
+      expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    // Regression (human review on PR #1927, "Stale track tab across
+    // paths", MEDIUM): activeTabId was initialized once and never reset
+    // when the props changed, and there is no remount key between paths —
+    // content-renderer.tsx reuses this component instance across
+    // navigation. A track selected on one path either left no tab active
+    // on the next (its trackId doesn't exist there) or silently
+    // pre-selected a same-named track the reader never clicked.
+    it('resets the active tab to Foundations when the path changes (no remount key between paths)', async () => {
+      setCompletedSlugs(new Set());
+      const { rerender } = render(
+        <LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />
+      );
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+      expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'true');
+
+      // A different path, reusing the SAME "Builder"/"Seller" track ids and
+      // labels — the exact case where a naive reset-by-trackId-existence
+      // would silently keep a track selected instead of defaulting back to
+      // Foundations, since a track sharing the stale id exists here too.
+      const otherPathBaseUrl = 'https://grafana.com/docs/learning-paths/other-demo/';
+      const otherMilestones: Milestone[] = [
+        { number: 1, title: 'Other set up', url: `${otherPathBaseUrl}other-set-up/content.json`, isActive: false },
+      ];
+      rerender(<LearningPathTableOfContents milestones={otherMilestones} baseUrl={otherPathBaseUrl} tracks={tracks} />);
+
+      expect(screen.getByRole('tab', { name: 'Foundations' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'false');
+      expect(screen.getByText('Other set up')).toBeInTheDocument();
+      expect(screen.queryByText('Seller one')).not.toBeInTheDocument();
+    });
+
+    it('shows the Foundations sequence by default, with Foundations active', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      expect(screen.getByRole('tab', { name: 'Foundations' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByText('Set up')).toBeInTheDocument();
+      expect(screen.getByText('Explore')).toBeInTheDocument();
+      expect(screen.queryByText('Builder one')).not.toBeInTheDocument();
+    });
+
+    it("switches the module list, hero module count, and progress lookup to the active track's own guides", async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+
+      expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByText('Seller one')).toBeInTheDocument();
+      expect(screen.getByText('Seller two')).toBeInTheDocument();
+      expect(screen.queryByText('Set up')).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(getCompletedMock).toHaveBeenLastCalledWith(
+          baseUrl,
+          sellerMilestones.map((m) => m.url)
+        )
+      );
+    });
+
+    // Regression (Cursor Bugbot on PR #1927): switching tabs re-fires the
+    // completion fetch for the new tab's own guides, but until that
+    // resolves, completedSlugs still reflects the PREVIOUS tab. If
+    // progressLoaded stayed true across that window, the CTA and the
+    // current-row click would stay live against stale data and could send a
+    // reader who just switched tabs to the wrong module.
+    it('disables the CTA and clickable row again on tab switch, until the new tab completion data lands', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      // Let the initial (Foundations) fetch resolve before switching tabs.
+      expect(await screen.findByText('Get started')).toBeInTheDocument();
+
+      let resolveSellerCompleted: (slugs: Set<string>) => void = () => {};
+      getCompletedMock.mockReturnValue(
+        new Promise((resolve) => {
+          resolveSellerCompleted = resolve;
+        })
+      );
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+
+      // Titles switch immediately from the static track data...
+      expect(screen.getByText('Seller one')).toBeInTheDocument();
+      // ...but nothing is clickable again until the new tab's own progress is known.
+      expect(screen.queryByText('Get started')).not.toBeInTheDocument();
+      expect(screen.queryByText('Resume')).not.toBeInTheDocument();
+      expect(document.querySelector('[data-journey-start]')).not.toBeInTheDocument();
+
+      await act(async () => {
+        getCompletedSyncMock.mockReturnValue(new Set());
+        resolveSellerCompleted(new Set());
+      });
+
+      expect(await screen.findByText('Get started')).toBeInTheDocument();
+      expect(document.querySelector('[data-journey-start]')).toHaveAttribute(
+        'data-milestone-url',
+        sellerMilestones[0]!.url
+      );
+    });
+
+    it('reuses the Foundations sequential lock/unlock mechanism for a track', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+
+      await waitFor(() => expect(screen.getAllByText('Locked')).toHaveLength(1));
+      expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(1);
+    });
+
+    it('reflects the hero module count for the active tab, not the Foundations count', async () => {
+      setCompletedSlugs(new Set());
+      render(
+        <LearningPathTableOfContents
+          milestones={milestones}
+          baseUrl={baseUrl}
+          tracks={tracks}
+          title="Alerting enablement"
+        />
+      );
+
+      expect(await screen.findByText('2 modules')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
+      expect(await screen.findByText('1 modules')).toBeInTheDocument();
+    });
+
+    // Regression (human review on PR #1927, "track-completion-member-set-
+    // divergence"): a track is a presentation ordering only, never a second
+    // completion authority (COMPLETION-MODEL.md) — the durable, path-wide
+    // percentage shown elsewhere (My Learning) can legitimately read lower
+    // than this ring's own number for the same guides, since it stays keyed
+    // to Foundations membership alone. The ring must not read as path
+    // completion; its accessible label names the active sequence instead.
+    it("scopes the progress ring's accessible label to the active sequence, not the path as a whole", async () => {
+      setCompletedSlugs(new Set(['set-up', 'seller-one']));
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      expect(await screen.findByRole('img', { name: '50% through Foundations' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
+
+      expect(await screen.findByRole('img', { name: '50% through Seller' })).toBeInTheDocument();
     });
   });
 });

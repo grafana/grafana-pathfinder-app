@@ -5,9 +5,10 @@
 # A package is a directory holding `manifest.json` + `content.json`, the
 # two-file model used by grafana/interactive-tutorials. For a
 # `type: "path"` or `type: "journey"` manifest this uploads every guide
-# listed in `milestones`, then the path's own cover page — so the path
-# never references a guide that does not exist yet. For `type: "guide"`
-# it uploads the single package.
+# listed in `milestones`, every guide referenced only by a `tracks` entry
+# (Path Tracks RFC — a track may name a guide `milestones` never had), then
+# the path's own cover page — so the path never references a guide that
+# does not exist yet. For `type: "guide"` it uploads the single package.
 #
 # Each package becomes one InteractiveGuide resource whose `spec.manifest`
 # carries the package metadata. Per-resource create/update is delegated to
@@ -196,7 +197,7 @@ JQ
 # hatch) so nothing is lost on the way in.
 build_manifest() {
   jq --arg repo "$REPOSITORY" '
-    ["id","type","repository","description","milestones","author","category","depends"] as $typed
+    ["id","type","repository","description","milestones","tracks","author","category","depends"] as $typed
     | . as $m
     | ($m | with_entries(. as $e | select(($typed | index($e.key)) == null and $e.value != null))) as $rest
     | (($m.author // {}) | with_entries(select(.value != null))) as $allAuthor
@@ -215,6 +216,7 @@ build_manifest() {
     + (if $m.category != null then {category: $m.category} else {} end)
     + (if ($author | length) > 0 then {author: $author} else {} end)
     + (if $isMeta and (($m.milestones // []) | length) > 0 then {milestones: $m.milestones} else {} end)
+    + (if $isMeta and (($m.tracks // []) | length) > 0 then {tracks: $m.tracks} else {} end)
     + (if ($depends | length) > 0 then {depends: $depends} else {} end)
     + (if ($extra | length) > 0 then {additionalFields: $extra} else {} end)
   ' "$1"
@@ -429,6 +431,35 @@ if [[ "$PKG_TYPE" != "guide" ]]; then
   fi
 fi
 
+# A track's own guides (Path Tracks RFC) are not implicitly milestones — a
+# track may reference a guide `milestones` never had — so build_manifest
+# above already emits them in spec.manifest.tracks, but nothing yet uploads
+# the guides themselves. Without this, the cover page's track tabs resolve
+# those ids as locked/missing even though the tab and the reference both
+# exist. Deduplicated against MILESTONES (RFC-allowed overlap) and against
+# repeats across multiple tracks; upload order is first-appearance order.
+TRACK_GUIDES=()
+if [[ "$PKG_TYPE" != "guide" ]]; then
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && TRACK_GUIDES+=("$line")
+  done < <(jq -r '.tracks[]?.guides[]? // empty' "$ROOT_MANIFEST")
+fi
+
+TRACK_ONLY_GUIDES=()
+for guide in ${TRACK_GUIDES[@]+"${TRACK_GUIDES[@]}"}; do
+  already_milestone=false
+  for m in ${MILESTONES[@]+"${MILESTONES[@]}"}; do
+    [[ "$m" != "$guide" ]] || { already_milestone=true; break; }
+  done
+  [[ "$already_milestone" == false ]] || continue
+  already_added=false
+  for t in ${TRACK_ONLY_GUIDES[@]+"${TRACK_ONLY_GUIDES[@]}"}; do
+    [[ "$t" != "$guide" ]] || { already_added=true; break; }
+  done
+  [[ "$already_added" == false ]] || continue
+  TRACK_ONLY_GUIDES+=("$guide")
+done
+
 # Milestone IDs are the `id` inside each subdirectory's manifest, so index
 # them rather than assuming the directory name. A tab-delimited string keeps
 # this working on bash 3.2, which has no associative arrays.
@@ -468,6 +499,14 @@ for milestone in ${MILESTONES[@]+"${MILESTONES[@]}"}; do
     echo "milestone \"${milestone}\" has the same id as the package itself" >&2
     echo "both map to resource name \"$(ap_slugify "$PKG_ID")\", so the cover page would" >&2
     echo "overwrite the milestone. Rename one of them." >&2
+    exit 1
+  fi
+done
+for guide in ${TRACK_ONLY_GUIDES[@]+"${TRACK_ONLY_GUIDES[@]}"}; do
+  if [[ "$guide" == "$PKG_ID" ]]; then
+    echo "track guide \"${guide}\" has the same id as the package itself" >&2
+    echo "both map to resource name \"$(ap_slugify "$PKG_ID")\", so the cover page would" >&2
+    echo "overwrite the guide. Rename one of them." >&2
     exit 1
   fi
 done
@@ -550,7 +589,7 @@ existing_owner() {
     END { if (!found) print "-" }'
 }
 
-TOTAL=$(( ${#MILESTONES[@]} + 1 ))
+TOTAL=$(( ${#MILESTONES[@]} + ${#TRACK_ONLY_GUIDES[@]} + 1 ))
 RESOURCES="resources"
 [[ "$TOTAL" -ne 1 ]] || RESOURCES="resource"
 echo "Package:    ${PKG_ID} (${PKG_TYPE}, ${TOTAL} ${RESOURCES})"
@@ -584,11 +623,12 @@ report_and_exit() {
   exit 0
 }
 
-# Milestones upload before the cover page, so every check that can refuse the
-# run has to happen before the first write — otherwise a cover page rejected on
-# its own content leaves the milestones already replaced, with nothing
-# sequencing them. Only the provenance lookup here needs the stack.
-ORDER=(${MILESTONES[@]+"${MILESTONES[@]}"} "$PKG_ID")
+# Milestones and track-only guides upload before the cover page, so every
+# check that can refuse the run has to happen before the first write —
+# otherwise a cover page rejected on its own content leaves them already
+# replaced, with nothing sequencing them. Only the provenance lookup here
+# needs the stack.
+ORDER=(${MILESTONES[@]+"${MILESTONES[@]}"} ${TRACK_ONLY_GUIDES[@]+"${TRACK_ONLY_GUIDES[@]}"} "$PKG_ID")
 CLASHES=
 STEP=0
 for name in "${ORDER[@]}"; do
@@ -599,7 +639,7 @@ for name in "${ORDER[@]}"; do
     dir=$(lookup_dir "$name")
   fi
   if [[ -z "$dir" ]]; then
-    echo "  [${STEP}/${TOTAL}]      milestone \"${name}\" has no subdirectory under ${PACKAGE}" >&2
+    echo "  [${STEP}/${TOTAL}]      guide \"${name}\" (milestone or track member) has no subdirectory under ${PACKAGE}" >&2
     echo "  ids found: $(printf '%s' "$INDEX" | cut -f1 | paste -sd' ' -)" >&2
     record_failure "$name"
     continue

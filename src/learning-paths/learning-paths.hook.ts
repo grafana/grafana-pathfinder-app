@@ -423,6 +423,10 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
         return {
           id: guideId,
+          // Always the real id here (never a React-key-only fallback), so
+          // safe to forward as the click-target id too — see PathGuide's own
+          // doc comment on why the two fields exist separately.
+          guideId,
           title: metadata.title,
           completed,
           isCurrent,

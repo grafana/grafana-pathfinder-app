@@ -64,6 +64,25 @@ describe('projectManifestForCrd', () => {
     expect(asJourney?.milestones).toEqual(['a', 'b']);
   });
 
+  it('emits tracks only for meta types, alongside milestones', () => {
+    const track = { trackId: 'builder', label: 'Builder', guides: ['a', 'b'] };
+    const asGuide = projectManifestForCrd({ type: 'guide', tracks: [track] });
+    const asPath = projectManifestForCrd({ type: 'path', milestones: ['a'], tracks: [track] });
+
+    expect(asGuide).not.toHaveProperty('tracks');
+    expect(asPath?.tracks).toEqual([track]);
+    expect(asPath?.milestones).toEqual(['a']);
+  });
+
+  it('drops a malformed tracks entry rather than projecting it', () => {
+    const projected = projectManifestForCrd({
+      type: 'path',
+      tracks: [{ trackId: 'builder' /* missing label and guides */ }, 'not-an-object'],
+    });
+
+    expect(projected).not.toHaveProperty('tracks');
+  });
+
   it('sweeps untyped keys into additionalFields rather than dropping them', () => {
     const projected = projectManifestForCrd({
       id: 'alerting-path',

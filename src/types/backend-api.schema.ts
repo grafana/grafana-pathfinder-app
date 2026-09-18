@@ -78,6 +78,13 @@ export const CustomGuideAuthorWireSchema = z.strictObject({
   team: z.string().optional(),
 });
 
+/** @coupling Go struct: customGuideManifest.tracks */
+export const CustomGuideTrackWireSchema = z.strictObject({
+  trackId: z.string(),
+  label: z.string(),
+  guides: z.array(z.string()),
+});
+
 /**
  * The stamped block statistics — the completion denominator. `version` is the
  * version of the counting rules that produced the counts, not a content
@@ -119,6 +126,7 @@ export const CustomGuideManifestWireSchema = z.strictObject({
   repository: z.string().optional(),
   description: z.string().optional(),
   milestones: z.array(z.string()).optional(),
+  tracks: z.array(CustomGuideTrackWireSchema).optional(),
   category: z.string().optional(),
   author: CustomGuideAuthorWireSchema.optional(),
   depends: z.array(JsonValueSchema).optional(),
@@ -192,6 +200,7 @@ export const GO_STRUCT_SCHEMAS = {
   customGuideManifest: CustomGuideManifestWireSchema,
   customGuideStats: CustomGuideStatsWireSchema,
   'customGuideManifest.author': CustomGuideAuthorWireSchema,
+  'customGuideManifest.tracks': CustomGuideTrackWireSchema,
   myCompletionsResponse: MyCompletionsResponseWireSchema,
   completionCapability: CompletionCapabilityWireSchema,
   collatedCompletion: CollatedCompletionWireSchema,
