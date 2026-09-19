@@ -147,7 +147,7 @@ export function journeyMilestonePercentages(
     return [];
   }
 
-  const members: PathMember[] = unlocked.map((m) => ({ id: getMilestoneSlug(m.url) ?? m.url, url: m.url }));
+  const members: PathMember[] = unlocked.map((m) => ({ id: getMilestoneSlug(m.url) || m.url, url: m.url }));
   // The milestone URLs resolve alias-keyed records the canonical base URL
   // alone would miss — the same argument the cover page's async read passes,
   // so both screens see one set of completed milestones.
