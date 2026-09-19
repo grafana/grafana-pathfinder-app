@@ -261,3 +261,32 @@ describe('fetchBackendInteractive — completion identity', () => {
     });
   });
 });
+
+describe('private guide diagnostics', () => {
+  it.each([401, 403, 404, 429, 500, 503])(
+    'retains HTTP %i without forwarding backend response text',
+    async (status) => {
+      mockFetch.mockReturnValue(throwError(() => ({ status, data: { message: 'private payload' } })));
+      const result = await fetchBackendInteractive('backend-guide:private-resource');
+      expect(result.diagnostic).toEqual({
+        source: 'app-platform',
+        stage: 'fetch',
+        reason: 'http-error',
+        statusCode: status,
+      });
+      expect(JSON.stringify(result.diagnostic)).not.toContain('private');
+    }
+  );
+
+  it('reports schema failure using safe counts', async () => {
+    mockFetch.mockReturnValue(of(okResource()));
+    mockValidateGuide.mockReturnValue({ isValid: false, errors: [{ message: 'private field value' }] });
+    const result = await fetchBackendInteractive('backend-guide:private-resource');
+    expect(result.diagnostic).toEqual({
+      source: 'app-platform',
+      stage: 'validate',
+      reason: 'schema-invalid',
+      validationCount: 1,
+    });
+  });
+});

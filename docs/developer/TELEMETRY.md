@@ -90,3 +90,44 @@ What that means operationally:
 - **The kill switch is "no new recordings"**, not "recording stops now". Budget for the tail of long-lived tabs, now bounded by Pathfinder use rather than tab lifetime: a tab with no surface open stops five seconds after the last close, so the worst case is a docked sidebar left open on an auto-refreshing dashboard overnight.
 - **Recordings already ingested are not undone by the flip.** Removing them is a collector-side deletion request against the Frontend Observability app, not something a flag or a release can do.
 - If a recording must stop immediately on a known stack, the only in-band lever is a plugin release plus a forced reload; otherwise the flag flip plus natural page turnover is the mechanism.
+
+## Investigating guide loading and rendering
+
+A guide open carries an in-memory `load_id` from launch preparation through content fetching and the renderer. A successful `pathfinder_content_fetch` measurement means that content was fetched and shaped; it does not prove the guide appeared. Use `pathfinder_guide_render` for the final visible outcome. The mirrored `open_guide` action now finishes with this outcome on instrumented launches (`phase=render`); its `duration_ms` records active loading time.
+
+| Signal                                          | What it explains                                                                                                                                                            |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pathfinder_guide_request`                      | Each HTTP attempt: source, file role, duration, HTTP status, and transport reason. Attempts in a fallback ladder share a load ID.                                           |
+| `pathfinder_guide_render`                       | `rendered`, `error`, `timeout`, or `cancelled` terminal outcome. `awaiting-user` and `degraded` are intermediate states, not failed opens.                                  |
+| `pathfinder_content_fetch`                      | Existing latency measurement, enriched with load ID and structured failure diagnostics.                                                                                     |
+| `pathfinder_content_fetch_fallback`             | Existing fallback event, correlated with the load ID when supplied.                                                                                                         |
+| `pathfinder_package_index`                      | Index availability, backend cache disposition/age, manifest failure counts by HTTP/timeout/JSON/other reason, enrichment-budget exhaustion, and suppressed session retries. |
+| `pathfinder_custom_guide_catalogue_unavailable` | Existing private-catalogue signal, now preserving bounded transient proxy reasons and upstream status.                                                                      |
+
+Failure diagnostics contain `source`, `stage`, `reason`, optional `http_status`, and `validation_count`. Stages distinguish resolution, fetching, JSON decoding, schema validation, launch preparation, and rendering. A browser network failure is classified as `network-error`, without guessing whether CORS caused it. When every package resolver fails, the first diagnostic other than a routine lookup miss takes precedence; if every attempt misses, the first lookup diagnostic is retained. Later fallback misses do not replace an earlier index, content, or permission failure. This diagnostic selection does not change resolver order, returned error codes, or cache behavior. Native guide JSON that cannot be parsed is rejected; deliberate HTML documents and supported missing/null JSON fallbacks remain supported.
+
+A load has one terminal outcome. Closing or replacing its tab cancels it, hidden content pauses its budget, and alignment prompts pause the 60-second active-time budget until the learner responds. Render success is emitted from the committed valid content tree after snippet resolution, not from a readiness timer. Partial parser/snippet failures produce degradation signals; a later React crash after initial success is also a degradation rather than a second terminal outcome. Guide render errors and timeouts pass the activity gate even when preparation fails before a destination mounts; consent and environment gates still apply.
+
+Private guides use random opaque references held only in memory. Private resource names, namespaces, titles, content, raw validation messages, and upstream response bodies are not diagnostic attributes. Existing private-guide URL/view attributes are anonymized, and private guide actions omit authored metadata from the Faro mirror. Public content URLs retain only normalized hostname/path. No load state is written to tab storage. These changes do not redact historical telemetry.
+
+The optional `diagnostics` object on `/package-recommendations` reports `outcome`, bounded `reason`, `upstreamStatus`, `cache` (`hit`, `shared`, or `refresh`), `cacheAgeMs`, `manifestFailures` counts by reason, and `budgetExhausted`. Error responses retain `package-index-unavailable` and HTTP 503. Transient `/custom-guide-repository` responses retain their error identifier, HTTP 503, and Retry-After header and add the same safe diagnostic shape. Cache diagnostics contain no user data; cache lifetimes and retry policies are unchanged. Older clients ignore these additions and newer clients tolerate missing diagnostics.
+
+In the ops Loki datasource, use the application's `app_id` label and parse the Faro logfmt fields. For example:
+
+```logql
+{app_id="77"} | logfmt | event_name="pathfinder_guide_render" | event_data_outcome=~"error|timeout"
+```
+
+Once a failing event provides a load ID, inspect its request attempts and outcome together:
+
+```logql
+{app_id="77"} | logfmt | event_data_load_id="<load ID>"
+```
+
+Inspect CDN index degradation independently of guide-not-found outcomes:
+
+```logql
+{app_id="77"} | logfmt | event_name="pathfinder_package_index" | event_data_outcome=~"error|degraded|suppressed"
+```
+
+Private guide content reads go directly to the shared App Platform API. The plugin backend owns the private catalogue and public CDN index proxies. Adding instrumentation to the local Go handlers in `grafana-pathfinder-backend` does not add production reporting: that repository currently deploys the CRD manifest only.

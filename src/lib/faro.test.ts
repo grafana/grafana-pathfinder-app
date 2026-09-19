@@ -299,6 +299,13 @@ function performanceNavigationItem(): TransportItem<APIEvent> {
 }
 
 describe('filterPathfinderTelemetry', () => {
+  it('redacts private package lookup resource timings and URL secrets', () => {
+    const item = performanceResourceItem('https://recommender.grafana.com/api/v1/packages/private-name?token=secret');
+    const result = filterPathfinderTelemetry(item);
+    expect(result).not.toBeNull();
+    expect(JSON.stringify(result)).not.toContain('private-name');
+    expect(JSON.stringify(result)).not.toContain('token=secret');
+  });
   it('keeps an exception with a pathfinder stack frame', () => {
     const item = exceptionItem(['webpack://grafana-pathfinder-app/./src/lib/faro.ts']);
     expect(filterPathfinderTelemetry(item)).toBe(item);
@@ -1178,6 +1185,15 @@ describe('setFaroSessionAttributes', () => {
 });
 
 describe('passesActivityGate', () => {
+  it('keeps explicit launch failures before a destination mounts without opening the activity gate', () => {
+    const faro = freshFaro();
+    const failure = eventItem();
+    (failure.payload as any).name = TELEMETRY_EVENTS.guideRender;
+    (failure.payload as any).attributes = { outcome: 'error', reason: 'http-error', http_status: '404' };
+    expect(faro.passesActivityGate(failure)).toBe(true);
+    expect(faro.filterPathfinderTelemetry(failure)).toBe(failure);
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+  });
   const DOCKED_KEY = 'grafana.navigation.extensionSidebarDocked';
   const PANEL_MODE_KEY = 'grafana-pathfinder-app-panel-mode';
 
@@ -1411,7 +1427,7 @@ describe('setFaroView', () => {
     expect(mockSetView).toHaveBeenCalledWith({ name: 'bundled:welcome-to-pathfinder' });
 
     faro.setFaroView('backend-guide:my-guide');
-    expect(mockSetView).toHaveBeenCalledWith({ name: 'backend-guide:my-guide' });
+    expect(mockSetView).toHaveBeenCalledWith({ name: expect.stringMatching(/^private-guide:[a-f0-9]{32}$/) });
   });
 
   it('bounds the view name length', async () => {

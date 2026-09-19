@@ -168,8 +168,19 @@ export const PackageEntryWireSchema = z.strictObject({
   manifest: z.record(z.string(), JsonValueSchema).optional(),
 });
 
+export const GuideProxyDiagnosticWireSchema = z.strictObject({
+  outcome: z.enum(['ok', 'error', 'degraded']),
+  reason: z.string().optional(),
+  upstreamStatus: z.number().int().min(100).max(599).optional(),
+  cache: z.enum(['hit', 'shared', 'refresh']).optional(),
+  cacheAgeMs: z.number().int().nonnegative(),
+  manifestFailures: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  budgetExhausted: z.boolean().optional(),
+});
+
 /** @coupling Go struct: PackageRecommendationsResponse */
 export const PackageRecommendationsResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   baseUrl: z.string(),
   packages: z.array(PackageEntryWireSchema),
 });
@@ -183,6 +194,7 @@ export const PackageRecommendationsResponseWireSchema = z.strictObject({
  * struct — or a stale schema — fails.
  */
 export const GO_STRUCT_SCHEMAS = {
+  guideProxyDiagnostic: GuideProxyDiagnosticWireSchema,
   PackageRecommendationsResponse: PackageRecommendationsResponseWireSchema,
   PackageEntry: PackageEntryWireSchema,
   PackageTargeting: PackageTargetingWireSchema,

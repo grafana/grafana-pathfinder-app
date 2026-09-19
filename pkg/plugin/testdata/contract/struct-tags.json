@@ -52,6 +52,13 @@
   ],
   "PackageRecommendationsResponse": [
     {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*plugin.guideProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
+    {
       "field": "BaseURL",
       "json": "baseUrl",
       "type": "string",
@@ -334,6 +341,57 @@
       "type": "int",
       "wire": "integer",
       "omitempty": false
+    }
+  ],
+  "guideProxyDiagnostic": [
+    {
+      "field": "Outcome",
+      "json": "outcome",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "UpstreamStatus",
+      "json": "upstreamStatus",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": true
+    },
+    {
+      "field": "Cache",
+      "json": "cache",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "CacheAgeMS",
+      "json": "cacheAgeMs",
+      "type": "int64",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "ManifestFailures",
+      "json": "manifestFailures",
+      "type": "map[string]int",
+      "wire": "record<integer>",
+      "omitempty": true
+    },
+    {
+      "field": "BudgetExhausted",
+      "json": "budgetExhausted",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": true
     }
   ],
   "myCompletionsResponse": [

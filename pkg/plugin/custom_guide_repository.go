@@ -179,7 +179,7 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 		// this route indefinitely — is diagnosable without raising the log level
 		// (matches getCompletionIndex on the completions route).
 		logger.Info("custom guide catalogue unavailable (transient)", "namespace", namespace, "error", err)
-		a.writeCustomGuideUnavailable(w)
+		a.writeCustomGuideUnavailable(w, err)
 		return
 	}
 
@@ -194,9 +194,9 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 // writeCustomGuideUnavailable serves BACKEND_PROXY_PATTERN.md §7's transient
 // hiccup — 503 plus a Retry-After hint, never a capability envelope — so every
 // retryable failure on this route answers in one shape.
-func (a *App) writeCustomGuideUnavailable(w http.ResponseWriter) {
+func (a *App) writeCustomGuideUnavailable(w http.ResponseWriter, err error) {
 	w.Header().Set("Retry-After", strconv.Itoa(customGuideRetryAfterSeconds))
-	a.writeError(w, "custom-guide-repository-unavailable", http.StatusServiceUnavailable)
+	a.writeJSON(w, map[string]interface{}{"error": "custom-guide-repository-unavailable", "diagnostics": classifyGuideProxyError(err)}, http.StatusServiceUnavailable)
 }
 
 // drainCustomGuides drains the namespace LIST across pages — up to the
