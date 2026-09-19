@@ -170,7 +170,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     }
   });
 
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback(async () => {
     if (contentKey === undefined || marked) {
       return;
     }
@@ -185,7 +185,8 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     // stream exists to measure whether real readers use the control. The narrow
     // URL predicate, not `isPreviewContentKey`: that one's `devtools` arm is a
     // substring test, and this key is a URL.
-    if (!isBlockEditorPreviewUrl(contentKey)) {
+    const persistCompletion = !isBlockEditorPreviewUrl(contentKey);
+    if (persistCompletion) {
       // The completion write must not wait on the celebration: a reader who
       // navigates away mid-animation still completed the guide.
       onMarkComplete?.();
@@ -198,12 +199,6 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       void guideCompletionMarkStorage.set(contentKey, true).catch((error) => {
         logger.warn('Failed to persist guide completion mark', { error });
       });
-      // Deliberate, not a placeholder: the percentage namespace is what
-      // recommendation cards and context read, and the reader's statement that
-      // they finished belongs there too. See COMPLETION-MODEL.md, "Rolling this
-      // back".
-      void interactiveCompletionStorage.set(contentKey, 100);
-      dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
     }
 
     // Reduced motion means no dwell either — continuing is the reader's
@@ -211,14 +206,26 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     // same delay with none of the reward.
     if (prefersReducedMotion()) {
       onContinue?.();
-      return;
+    } else {
+      setCelebrating(true);
+      celebrationTimer.current = setTimeout(() => {
+        setCelebrating(false);
+        onContinue?.();
+      }, CELEBRATION_MS);
     }
 
-    setCelebrating(true);
-    celebrationTimer.current = setTimeout(() => {
-      setCelebrating(false);
-      onContinue?.();
-    }, CELEBRATION_MS);
+    if (persistCompletion) {
+      // Deliberate, not a placeholder: the percentage namespace is what
+      // recommendation cards and context read, and the reader's statement that
+      // they finished belongs there too. See COMPLETION-MODEL.md, "Rolling this
+      // back".
+      try {
+        await interactiveCompletionStorage.set(contentKey, 100);
+      } catch (error) {
+        logger.warn('Failed to persist guide completion percentage', { error });
+      }
+      dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+    }
   }, [contentKey, marked, context, percentage, contentUrl, onMarkComplete, onContinue]);
 
   const displayPercentage = marked ? 100 : percentage;
