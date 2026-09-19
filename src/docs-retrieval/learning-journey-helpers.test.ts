@@ -194,6 +194,14 @@ describe('journeyMilestonePercentages', () => {
     expect(percentages.map((entry) => entry.percent)).toEqual([50, 0]);
     expect(getJourneyProgress(journeyContent(1, [m1, m2]))).toBe(25);
   });
+
+  it('falls back to the milestone url when the url yields no slug', () => {
+    const m1 = milestone(1, { url: 'backend-guide:' });
+
+    localStorage.setItem(StorageKeys.MILESTONE_COMPLETION, JSON.stringify({ 'backend-guide:path': ['backend-guide:'] }));
+
+    expect(journeyMilestonePercentages('backend-guide:path', [m1])).toEqual([{ milestone: m1, percent: 100 }]);
+  });
 });
 
 describe('isLastMilestone (locked-aware)', () => {
