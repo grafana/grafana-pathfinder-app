@@ -53,6 +53,8 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: theme.spacing(0.5, 1),
     padding: theme.spacing(0.5, 1),
     backgroundColor: theme.colors.background.secondary,
     borderBottom: `1px solid ${theme.colors.border.weak}`,
@@ -80,6 +82,8 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
+    marginLeft: 'auto',
+    flexWrap: 'wrap',
   }),
 
   // Status indicator
@@ -145,6 +149,8 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: theme.spacing(0.5, 1),
     padding: theme.spacing(0.5, 1),
     backgroundColor: theme.colors.background.secondary,
     cursor: 'pointer',
@@ -157,7 +163,7 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
   // Button styles
   headerButton: css({
     label: 'coda-terminal-header-button',
-    marginLeft: theme.spacing(0.5),
+    flexShrink: 0,
   }),
 
   // Search bar

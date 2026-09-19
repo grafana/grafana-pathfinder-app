@@ -74,10 +74,12 @@ interface UseTerminalLiveReturn {
   sendCommand: (command: string) => Promise<void>;
   /** Error message if status is 'error' */
   error: string | null;
+  unreachableVmId: string | null;
   /** Active Coda session id, or null when disconnected. Needed to run exec calls. */
   sessionId: string | null;
   /** Server-reported expiry of the active VM, or null when it is unknown. */
   vmExpiresAt: string | null;
+  vmId: string | null;
 }
 
 // ─── Provision progress bar ──────────────────────────────────────────────────
@@ -103,6 +105,7 @@ function renderProvisionProgress(label: string, elapsedMs: number, complete = fa
 export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTerminalLiveReturn {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [unreachableVmId, setUnreachableVmId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [vmId, setVmId] = useState<string | null>(null);
   const [vmExpiresAt, setVmExpiresAt] = useState<string | null>(null);
@@ -324,7 +327,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             category: 'backend_error',
           });
 
+          const failedVmId = currentVmIdRef.current;
           cleanup();
+          setUnreachableVmId(codaErr.code === 'vm_unreachable' ? failedVmId : null);
 
           const message = codaSessionErrorMessage(err);
           terminal.writeln('\r\n');
@@ -387,10 +392,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
       setStatus('connecting');
       setError(null);
+      setUnreachableVmId(null);
       cleanup();
       const generation = connectGenerationRef.current;
-
-      currentVmIdRef.current = null;
 
       terminal.clear();
       terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
@@ -441,9 +445,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     // into the next session and swallow its first genuine close.
     suppressClosedBannerRef.current = sessionRef.current !== null;
     cleanup();
-    currentVmIdRef.current = null;
     setStatus('disconnected');
     setError(null);
+    setUnreachableVmId(null);
 
     const terminal = terminalRef.current;
     if (terminal) {
@@ -473,7 +477,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     resize,
     sendCommand,
     error,
+    unreachableVmId,
     sessionId,
     vmExpiresAt,
+    vmId: status === 'connected' ? vmId : null,
   };
 }

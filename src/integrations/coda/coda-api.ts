@@ -13,6 +13,8 @@
  * directly from `@grafana/coda-client` rather than through this adapter.
  */
 
+import { config } from '@grafana/runtime';
+
 import {
   CodaClient,
   CodaError,
@@ -24,6 +26,7 @@ import {
   CODA_PLUGIN_ID,
   V1_DEFAULTS,
   isCodaUsable,
+  codaSupports,
   codaSessionEligibility,
   type CatalogueItem,
   type CodaErrorCode,
@@ -46,6 +49,7 @@ export {
   CODA_PLUGIN_ID,
   V1_DEFAULTS,
   isCodaUsable,
+  codaSupports,
   codaSessionEligibility,
 };
 export type { CatalogueItem, CodaErrorCode, CodaCapabilities, CodaSessionRole, GcxCredential, MintTokenOptions };
@@ -184,6 +188,10 @@ export function listVMs(): Promise<VM[]> {
   return client.listVMs();
 }
 
+export function deleteVM(vmId: string) {
+  return client.deleteVM(vmId, true);
+}
+
 export function deleteSession(sessionId: string) {
   return client.deleteSession(sessionId);
 }
@@ -202,4 +210,16 @@ export function execInSession(sessionId: string, req: ExecRequest) {
  */
 export function provisionGcx(sessionId: string, options: MintTokenOptions & { token?: string } = {}) {
   return provisionGcxCredential(client, sessionId, options);
+}
+
+/** Temporary IDE URL adapter; coda-workspace-url.contract.test.ts forces migration when the SDK exports its builder. */
+export function codaWorkspaceUrl(vmId: string, path?: string, line?: number): string {
+  const query = new URLSearchParams({ vmId });
+  if (path) {
+    query.set('path', path);
+  }
+  if (line && Number.isSafeInteger(line) && line > 0) {
+    query.set('line', String(line));
+  }
+  return `${config.appSubUrl ?? ''}/a/${CODA_PLUGIN_ID}/ide?${query.toString()}`;
 }
