@@ -2,6 +2,7 @@ import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
 import {
+  PLUGIN_BACKEND_URL,
   PathfinderPluginConfig,
   TENANT_SETTING_BOUNDS,
   TENANT_SETTING_KEYS,
@@ -110,7 +111,7 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
   try {
     const response = await lastValueFrom(
       getBackendSrv().fetch<PathfinderSettingsResource>({
-        url: itemUrl(config.namespace),
+        url: `${PLUGIN_BACKEND_URL}/pathfinder-settings`,
         method: 'GET',
         showErrorAlert: false,
       })
@@ -129,7 +130,11 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
     return { config: specToConfig(spec), spec, resourceVersion: response.data?.metadata?.resourceVersion };
   } catch (err) {
     const status = statusOf(err);
-    if (status && UNAVAILABLE_STATUSES.has(status)) {
+    if (
+      status &&
+      UNAVAILABLE_STATUSES.has(status) &&
+      (err as { data?: { error?: string } }).data?.error === 'settings-upstream-unavailable'
+    ) {
       recordSettingsStoreResolved(status === 404 ? 'not-created' : 'kind-not-served');
       return null;
     }
