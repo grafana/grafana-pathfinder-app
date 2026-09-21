@@ -29,7 +29,6 @@ Contains all React and Grafana Scenes components:
 ### `/constants` - Configuration & Constants
 
 - `constants.ts` - Main plugin configuration and API endpoints
-- `selectors.ts` - Type-safe CSS selectors and UI configuration constants
 
 ### `/img` - Assets
 
@@ -72,7 +71,6 @@ Organized by functionality after major refactoring:
 ### Configuration
 
 - `constants.ts` - Central configuration management
-- `constants/selectors.ts` - UI selectors and configuration constants
 
 ## Development Patterns
 
