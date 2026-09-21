@@ -711,7 +711,7 @@ Optional:
   --do-it                           Enable "Do it" button
   --complete-early                  Allow completion before all steps done
   --verify <string>                 Post-action verification condition
-  --open-guide <string>             Guide ID to open when block completes
+  --open-guide <string>             Guide ID to open during an internal navigate action (ignored for external http(s) targets)
 
 Constraints:
   - Non-noop actions require --reftarget
