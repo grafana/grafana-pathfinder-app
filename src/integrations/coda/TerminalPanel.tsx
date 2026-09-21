@@ -70,10 +70,21 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, sendCommand, error, unreachableVmId, sessionId, vmId, vmExpiresAt, onExpiryChange } =
-    useTerminalLive({
-      terminalRef: terminalInstanceRef,
-    });
+  const {
+    status,
+    connect,
+    disconnect,
+    resize,
+    sendCommand,
+    error,
+    unreachableVmId,
+    sessionId,
+    vmId,
+    vmExpiresAt,
+    onExpiryChange,
+  } = useTerminalLive({
+    terminalRef: terminalInstanceRef,
+  });
 
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
