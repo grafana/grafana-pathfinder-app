@@ -128,3 +128,16 @@ func TestGuideReadRejectsUnsafeNames(t *testing.T) {
 		}
 	}
 }
+
+func TestAppPlatformReadErrorStatusDoesNotExpireSession(t *testing.T) {
+	for _, status := range []int{401, 403, 404, 405, 429, 500, 501, 503, 302} {
+		want := status
+		if status == 401 || status == 302 {
+			want = http.StatusBadGateway
+		}
+		got := appPlatformReadErrorStatus(&appPlatformUpstreamError{status: status})
+		if got != want {
+			t.Errorf("upstream %d: got %d, want %d", status, got, want)
+		}
+	}
+}

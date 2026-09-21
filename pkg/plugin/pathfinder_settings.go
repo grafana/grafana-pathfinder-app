@@ -44,10 +44,7 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 	client := newAppPlatformListClient(appURL, a.oboExchanger, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), a.ctxLogger(r.Context()))
 	body, err := client.getItem(r.Context(), namespace, resource, name, maxBytes)
 	if err != nil {
-		status := http.StatusBadGateway
-		if upstreamStatus, ok := upstreamStatusOf(err); ok && upstreamStatus >= 400 && upstreamStatus <= 599 {
-			status = upstreamStatus
-		}
+		status := appPlatformReadErrorStatus(err)
 		a.ctxLogger(r.Context()).Warn("App Platform proxy read failed", "resource", resource, "namespace", namespace, "error", err)
 		message := "app platform read failed"
 		if resource == "pathfindersettings" && (status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented) {
@@ -93,4 +90,13 @@ func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource
 		return nil, fmt.Errorf("invalid app platform upstream response")
 	}
 	return json.RawMessage(body), nil
+}
+
+func appPlatformReadErrorStatus(err error) int {
+	status, ok := upstreamStatusOf(err)
+	// Grafana interprets plugin-resource 401s as session expiry, not upstream failure.
+	if !ok || status == http.StatusUnauthorized || status < 400 || status > 599 {
+		return http.StatusBadGateway
+	}
+	return status
 }
