@@ -64,7 +64,7 @@ describe('projectManifestForCrd', () => {
     expect(asJourney?.milestones).toEqual(['a', 'b']);
   });
 
-  it('emits tracks only for meta types, alongside milestones', () => {
+  it('emits tracks only for the path type, alongside milestones', () => {
     const track = { trackId: 'builder', label: 'Builder', guides: ['a', 'b'] };
     const asGuide = projectManifestForCrd({ type: 'guide', tracks: [track] });
     const asPath = projectManifestForCrd({ type: 'path', milestones: ['a'], tracks: [track] });
@@ -72,6 +72,14 @@ describe('projectManifestForCrd', () => {
     expect(asGuide).not.toHaveProperty('tracks');
     expect(asPath?.tracks).toEqual([track]);
     expect(asPath?.milestones).toEqual(['a']);
+  });
+
+  it('drops tracks for a journey — RFC §6.1 scopes tracks to paths only', () => {
+    const track = { trackId: 'builder', label: 'Builder', guides: ['a', 'b'] };
+    const asJourney = projectManifestForCrd({ type: 'journey', milestones: ['a'], tracks: [track] });
+
+    expect(asJourney).not.toHaveProperty('tracks');
+    expect(asJourney?.milestones).toEqual(['a']);
   });
 
   it('drops a malformed tracks entry rather than projecting it', () => {

@@ -218,7 +218,7 @@ The authoring artifact is package-shaped — it carries a fully-formed `manifest
 
 The CRD types a subset of the manifest, so the handoff projects rather than copies. This mirrors `build_manifest` in `scripts/upsert-learning-path.sh` — the other writer of `spec.manifest` — so both entry points put the same bytes on the wire:
 
-- the CRD-typed keys verbatim: `type`, `repository`, `description`, `category`, `author` (`name` and `team` only), and `milestones`/`tracks` (Path Tracks RFC) for the `path` and `journey` package types,
+- the CRD-typed keys verbatim: `type`, `repository`, `description`, `category`, `author` (`name` and `team` only), `milestones` for the `path` and `journey` package types, and `tracks` (Path Tracks RFC) for `path` only,
 - `depends` widened from bare package IDs to CNF singleton clauses (`"grafana-basics"` becomes `["grafana-basics"]`),
 - every remaining key — `language`, `startingLocation`, `targeting`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`, `schemaVersion`, and any author sub-key beyond `name`/`team` — swept into `additionalFields`, the CRD's escape hatch, so nothing authored is lost on the way in,
 - fields that are absent, `null`, or empty are omitted rather than emitted as empty values.

@@ -209,6 +209,7 @@ build_manifest() {
     | ($rest + (if ($authorExtra | length) > 0 then {author: $authorExtra} else {} end)) as $extra
     | (($m.depends // []) | map(if type == "array" then . else [.] end)) as $depends
     | (($m.type // "") | . == "path" or . == "journey") as $isMeta
+    | (($m.type // "") == "path") as $isPath
     | (if $repo != "" then $repo else ($m.repository // "") end) as $repository
     | {type: $m.type}
     + (if $repository != "" then {repository: $repository} else {} end)
@@ -216,7 +217,10 @@ build_manifest() {
     + (if $m.category != null then {category: $m.category} else {} end)
     + (if ($author | length) > 0 then {author: $author} else {} end)
     + (if $isMeta and (($m.milestones // []) | length) > 0 then {milestones: $m.milestones} else {} end)
-    + (if $isMeta and (($m.tracks // []) | length) > 0 then {tracks: $m.tracks} else {} end)
+    # RFC 6.1 scopes tracks to paths only, since a journey is a fixed
+    # reading order and tracks presenting the same content differently do
+    # not apply to it.
+    + (if $isPath and (($m.tracks // []) | length) > 0 then {tracks: $m.tracks} else {} end)
     + (if ($depends | length) > 0 then {depends: $depends} else {} end)
     + (if ($extra | length) > 0 then {additionalFields: $extra} else {} end)
   ' "$1"

@@ -143,7 +143,9 @@ export const PackageTypeSchema = z.enum(['guide', 'path', 'journey']) satisfies 
 export const ManifestTrackSchema = z.object({
   trackId: z.string().min(1),
   label: z.string().min(1),
-  guides: z.array(z.string().min(1)),
+  // RFC §6.11: a track's own ordered sequence, same non-empty-sequence rule
+  // milestones enforces (Rule 1 below) — an empty list isn't a sequence.
+  guides: z.array(z.string().min(1)).min(1, 'A track must declare at least one guide'),
 }) satisfies z.ZodType<ManifestTrack>;
 
 // ============ MANIFEST SCHEMA (manifest.json) ============
@@ -217,7 +219,7 @@ export const ManifestJsonObjectSchema = z.looseObject({
  * - GENERATED: stats (stamped by `pathfinder-cli build-stats` or the block editor; never authored)
  * - Conditional ERROR: milestones required when type is "path" or "journey" (Rule 1)
  * - Conditional ERROR: milestones only valid when type is "path" or "journey" (Rule 2)
- * - Conditional ERROR: tracks only valid when type is "path" or "journey" (Rule 3)
+ * - Conditional ERROR: tracks only valid when type is "path" (Rule 3)
  * - Conditional ERROR: trackId must be unique within one manifest's tracks (Rule 4)
  *
  * @coupling Type: ManifestJson
@@ -245,12 +247,13 @@ export const ManifestJsonSchema = ManifestJsonObjectSchema.superRefine((manifest
     });
   }
 
-  // Rule 3: tracks requires path/journey type — tracks are alternate orderings
-  // of a path/journey's own guide sequence, additive alongside milestones.
-  if (hasTracks && !isMetapackage) {
+  // Rule 3: tracks requires path type specifically, not journey — RFC §6.1
+  // scopes tracks to paths only. A journey is a fixed reading order; tracks
+  // presenting the same content in a different order don't apply to it.
+  if (hasTracks && manifest.type !== 'path') {
     ctx.addIssue({
       code: 'custom',
-      message: `"tracks" is only valid when type is "path" or "journey", but type is "${manifest.type}" — either change type to "path" or "journey", or remove the tracks array`,
+      message: `"tracks" is only valid when type is "path", but type is "${manifest.type}" — either change type to "path", or remove the tracks array`,
       path: ['type'],
     });
   }

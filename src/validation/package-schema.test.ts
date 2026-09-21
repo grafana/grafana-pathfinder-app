@@ -346,9 +346,44 @@ describe('ManifestJsonSchema — tracks (Path Tracks RFC)', () => {
     }
   });
 
+  // Regression (moxious review on backend PR #93's sibling review, flagging
+  // the identical bug here): RFC §6.11 requires the same non-empty-sequence
+  // rule milestones already has — a track's own `guides` array constrained
+  // each string's length but not the array itself, so `guides: []` passed.
+  it('should reject a track with an empty guides array — a track must name at least one guide', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: [] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('should reject tracks set on a guide-type manifest (Rule 3)', () => {
     const result = ManifestJsonSchema.safeParse({ id: 'test', type: 'guide', tracks: [track] });
     expect(result.success).toBe(false);
+  });
+
+  // Regression (moxious review on backend PR #93's sibling review, flagging
+  // the identical bug here): RFC §6.1 scopes tracks to paths only, not
+  // journeys — a journey is a fixed reading order, and tracks presenting the
+  // same content in a different order don't apply to it. Milestones are
+  // present so only the tracks-on-journey rule is exercised (Rule 1 would
+  // otherwise also fire on a bare journey with no milestones).
+  it('should reject tracks set on a journey-type manifest (Rule 3) — tracks are path-only', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-journey',
+      type: 'journey',
+      milestones: ['guide-1'],
+      tracks: [track],
+    });
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+    const typeIssue = result.error.issues.find((issue) => issue.path.length > 0 && issue.path[0] === 'type');
+    expect(typeIssue).toBeDefined();
   });
 
   it('should report error on type field path when guide has tracks (Rule 3)', () => {

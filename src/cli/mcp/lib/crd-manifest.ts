@@ -9,7 +9,8 @@
  *
  * - the CRD-typed keys verbatim, dropping ones that are absent or empty,
  * - `depends` widened from bare IDs to CNF singleton clauses,
- * - `milestones` and `tracks` only for the meta types that may declare them,
+ * - `milestones` for `path`/`journey`, `tracks` for `path` only — the meta
+ *   types that may declare them (`package.schema.ts` Rules 1-3),
  * - everything else swept into `additionalFields`, the CRD's escape hatch,
  *   so no authored field is silently lost on the way in.
  *
@@ -34,7 +35,7 @@ const CRD_TYPED_KEYS = [
 /** The CRD's `#Author` declares only these two; anything else sweeps into `additionalFields`. */
 const CRD_AUTHOR_KEYS = ['name', 'team'];
 
-/** Only these package types may declare milestones or tracks (`package.schema.ts` Rules 2 and 3). */
+/** Only these package types may declare milestones (`package.schema.ts` Rules 1 and 2). */
 const META_TYPES = ['path', 'journey'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -91,6 +92,9 @@ export function projectManifestForCrd(manifest: unknown): Record<string, unknown
   const milestones = Array.isArray(present.milestones) ? present.milestones : [];
   const tracks = getManifestTracks(present);
   const isMeta = typeof present.type === 'string' && META_TYPES.includes(present.type);
+  // RFC §6.1 scopes tracks to paths only — a journey is a fixed reading order,
+  // and tracks presenting the same content in a different order don't apply to it.
+  const isPath = present.type === 'path';
   const depends = toCnfClauses(present.depends);
   const repository = typeof present.repository === 'string' ? present.repository : '';
 
@@ -101,7 +105,7 @@ export function projectManifestForCrd(manifest: unknown): Record<string, unknown
     ...(present.category !== undefined ? { category: present.category } : {}),
     ...(Object.keys(author).length > 0 ? { author } : {}),
     ...(isMeta && milestones.length > 0 ? { milestones } : {}),
-    ...(isMeta && tracks.length > 0 ? { tracks } : {}),
+    ...(isPath && tracks.length > 0 ? { tracks } : {}),
     ...(depends.length > 0 ? { depends } : {}),
     ...(Object.keys(extra).length > 0 ? { additionalFields: extra } : {}),
   };

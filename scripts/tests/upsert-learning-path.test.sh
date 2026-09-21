@@ -297,6 +297,30 @@ else
   nope "track-guide upload ordering" "order: $(write_order)"
 fi
 
+# Regression (moxious review flagging the identical bug fixed in
+# package.schema.ts's Rule 3): RFC §6.1 scopes tracks to paths only — a
+# journey is a fixed reading order, and tracks presenting the same content
+# differently don't apply to it. build_manifest's $isMeta gate covered both
+# path and journey for tracks, so a journey manifest with tracks would have
+# projected them into spec.manifest anyway.
+JOURNEY_TRACKED=$(path_pkg journey-tracked)
+printf '{"id":"lp","type":"journey","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":["m-a","m-b"]}]}' \
+  >"${JOURNEY_TRACKED}/manifest.json"
+
+MODE=empty run --package "$JOURNEY_TRACKED"
+expect_code "a journey with tracks still uploads" 0
+COVER_BODY=$(printf '%s\n' "$RUN_LOG" | grep -E '^BODY\s' | grep '"name": *"lp"')
+if [[ "$COVER_BODY" != *'"tracks"'* ]]; then
+  ok "tracks are dropped from a journey's spec.manifest, not just a path's"
+else
+  nope "journey tracks should be dropped" "$COVER_BODY"
+fi
+if [[ "$COVER_BODY" == *'"milestones"'* ]]; then
+  ok "milestones still project for a journey"
+else
+  nope "journey milestones should still project" "$COVER_BODY"
+fi
+
 MODE=existing_ours run --package "$PKG"
 expect_code "re-running an already-uploaded package succeeds" 0
 expect_out "and reports updates rather than creates" "0 created, 3 updated"

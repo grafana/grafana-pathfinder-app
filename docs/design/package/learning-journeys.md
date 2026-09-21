@@ -88,7 +88,7 @@ The `milestones` field is valid when `type` is `"path"` or `"journey"`. The CLI 
 
 ## The `tracks` field (Path Tracks RFC)
 
-A path or journey may additionally declare `tracks`: named, independently-ordered guide sequences, one per audience or role, alongside the always-present `milestones` default (referred to in the UI as "Foundations"):
+A path may additionally declare `tracks`: named, independently-ordered guide sequences, one per audience or role, alongside the always-present `milestones` default (referred to in the UI as "Foundations"):
 
 ```typescript
 interface Track {
@@ -100,7 +100,7 @@ interface Track {
   guides: string[];
 }
 
-/** Additive alongside milestones. Valid only when type is "path" or "journey". */
+/** Additive alongside milestones. Valid only when type is "path" (narrower than milestones' path-or-journey gate). */
 tracks?: Track[];
 ```
 
@@ -108,7 +108,7 @@ tracks?: Track[];
 
 **This is additive only.** A manifest with no `tracks` behaves exactly as it always has: a single flat, milestones-driven module list, with no tabs. Adding `tracks` never changes the meaning or required-ness of `milestones` (Rule 1 and Rule 2 above are unaffected).
 
-The `tracks` field is valid when `type` is `"path"` or `"journey"` — the same type-gate `milestones` uses (`package.schema.ts` Rule 3). Each `trackId` must be unique within one manifest's `tracks` list, and may not be `"foundations"` — that id is reserved for the default Foundations sequence the cover page falls back to (Rule 4).
+The `tracks` field is valid only when `type` is `"path"` (`package.schema.ts` Rule 3) — narrower than the `"path"`-or-`"journey"` gate `milestones` uses (Rules 1/2), since a journey is a fixed reading order and tracks presenting the same content in a different order don't apply to it. A track's own `guides` list must be non-empty, the same rule `milestones` enforces. Each `trackId` must be unique within one manifest's `tracks` list, and may not be `"foundations"` — that id is reserved for the default Foundations sequence the cover page falls back to (Rule 4).
 
 **Cover-page rendering.** When a manifest declares `tracks`, the package-backed cover page (`LearningPathTableOfContents`) renders one tab per declared track, plus a "Foundations" tab for the default `milestones` sequence. Whichever tab is active reuses the same per-module row rendering as Foundations — hero card, sequential lock/unlock, and time estimates — recomputed against that tab's own guide list. Lock/unlock reuses the Foundations mechanism (`milestoneCompletionStorage`) per track, since there is no track-specific lock/unlock model.
 

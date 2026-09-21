@@ -64,7 +64,7 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `type`             | `"guide"` \| `"path"` \| `"journey"` | **Yes**                       | —                         | Package type                                                                                |
 | `repository`       | `string`                             | No                            | `"interactive-tutorials"` | Provenance — which repository this package belongs to                                       |
 | `milestones`       | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages — the always-present default sequence ("Foundations")    |
-| `tracks`           | `Track[]`                            | No — `path`/`journey` only    | —                         | Named, independently-ordered guide sequences alongside `milestones` (see [tracks](#tracks)) |
+| `tracks`           | `Track[]`                            | No — `path` only              | —                         | Named, independently-ordered guide sequences alongside `milestones` (see [tracks](#tracks)) |
 | `description`      | `string`                             | Recommended                   | —                         | Full description for display and search                                                     |
 | `language`         | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                                               |
 | `category`         | `string`                             | Recommended                   | —                         | Content category for taxonomy (e.g., `"data-sources"`, `"dashboards"`)                      |
@@ -97,7 +97,7 @@ A bare package `id` must be unique across **every** repository a stack can see �
 
 ## Tracks
 
-`tracks` (Path Tracks RFC) declares named, independently-ordered guide sequences for one path/journey, one per audience or role — additive alongside the always-present `milestones` default ("Foundations"). Each entry is:
+`tracks` (Path Tracks RFC) declares named, independently-ordered guide sequences for one path, one per audience or role — additive alongside the always-present `milestones` default ("Foundations"). Each entry is:
 
 ```jsonc
 { "trackId": "builder", "label": "Builder", "guides": ["welcome-to-grafana", "builder-advanced-panels"] }
@@ -105,9 +105,9 @@ A bare package `id` must be unique across **every** repository a stack can see �
 
 - `trackId` (`string`, required) — a stable identifier, unique within one manifest's `tracks` list. Cannot be `"foundations"` — that id is reserved for the default sequence's cover-page tab.
 - `label` (`string`, required) — the human-facing name shown on the cover page's tab for this track.
-- `guides` (`string[]`, required) — the track's own complete ordered sequence of bare package IDs. **Not** a subset or reordering of `milestones`: a track may include guides `milestones` never had, omit guides `milestones` has, and interleave role-specific content anywhere in the sequence.
+- `guides` (`string[]`, required, non-empty) — the track's own complete ordered sequence of bare package IDs. **Not** a subset or reordering of `milestones`: a track may include guides `milestones` never had, omit guides `milestones` has, and interleave role-specific content anywhere in the sequence.
 
-`milestones` is never itself represented as a `tracks` entry, and `tracks` is valid only when `type` is `path` or `journey` (the same type-gate `milestones` uses). On the cover page, each declared track gets its own tab alongside Foundations; when a manifest declares no `tracks`, the cover page renders exactly as it did before — a single flat list, no tabs.
+`milestones` is never itself represented as a `tracks` entry, and `tracks` is valid only when `type` is `path` — narrower than the `path`-or-`journey` gate `milestones` uses, since a journey is a fixed reading order and tracks presenting the same content in a different order don't apply to it. On the cover page, each declared track gets its own tab alongside Foundations; when a manifest declares no `tracks`, the cover page renders exactly as it did before — a single flat list, no tabs.
 
 ---
 
