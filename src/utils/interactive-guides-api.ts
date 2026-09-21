@@ -5,6 +5,7 @@
  * isn't enabled.
  */
 import { config } from '@grafana/runtime';
+import { PLUGIN_BACKEND_URL } from '../constants';
 
 export const APP_PLATFORM_GROUP = 'pathfinderbackend.ext.grafana.app';
 export const APP_PLATFORM_API_VERSION = `${APP_PLATFORM_GROUP}/v1alpha1`;
@@ -28,4 +29,9 @@ export function collectionUrl(namespace: string): string {
 
 export function itemUrl(namespace: string, name: string): string {
   return `${collectionUrl(namespace)}/${encodeURIComponent(name)}`;
+}
+
+export function guideReadUrl(name: string): string {
+  const params = new URLSearchParams({ name });
+  return `${PLUGIN_BACKEND_URL}/custom-guide?${params.toString()}`;
 }

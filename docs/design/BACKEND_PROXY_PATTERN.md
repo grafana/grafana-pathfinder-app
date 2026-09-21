@@ -689,3 +689,11 @@ settings. Only upstream 404/405/501 responses carry
 behavior. A missing plugin route, missing OBO configuration, or rejected identity
 must not trigger that behavior. Settings writes continue to use the direct
 App Platform API and its existing authorization and concurrency checks.
+
+`GET /custom-guide?name=<resource name>` uses the same bounded, caller-scoped
+item reader for full InteractiveGuide resources. The backend fixes the resource
+kind and derives the namespace from plugin context; names cannot contain path
+separators, percent escapes, or control characters. Content loading and the
+package resolver's published-status probe both use this route. The proxy
+preserves draft content for existing share links; the resolver retains its
+published-status gate. Catalogue listing continues to use `/custom-guide-repository`.

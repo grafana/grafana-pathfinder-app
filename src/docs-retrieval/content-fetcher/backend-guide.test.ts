@@ -153,25 +153,26 @@ describe('fetchBackendInteractive — happy path', () => {
 });
 
 describe('fetchBackendInteractive — path traversal guard (F3)', () => {
-  it('percent-encodes the resource name into the endpoint path', async () => {
+  it('encodes the resource name as a query parameter', async () => {
     mockFetch.mockReturnValue(of(okResource()));
 
     await fetchBackendInteractive('backend-guide:../../etc/passwd');
 
     const calledUrl = mockFetch.mock.calls[0]![0].url as string;
-    expect(calledUrl).toContain('/interactiveguides/');
-    // The traversal sequence is encoded, so no raw path separators leak into the segment.
+    expect(calledUrl).toContain('/resources/custom-guide?name=');
     expect(calledUrl).toContain(encodeURIComponent('../../etc/passwd'));
-    expect(calledUrl).not.toContain('/interactiveguides/../../');
+    expect(new URL(calledUrl, 'http://localhost').pathname).toBe(
+      '/api/plugins/grafana-pathfinder-app/resources/custom-guide'
+    );
   });
 
-  it('scopes the request to the current namespace', async () => {
+  it('leaves namespace selection to the backend', async () => {
     mockFetch.mockReturnValue(of(okResource()));
 
     await fetchBackendInteractive('backend-guide:my-guide');
 
     const calledUrl = mockFetch.mock.calls[0]![0].url as string;
-    expect(calledUrl).toContain('/namespaces/stacks-123/');
+    expect(calledUrl).toBe('/api/plugins/grafana-pathfinder-app/resources/custom-guide?name=my-guide');
   });
 });
 

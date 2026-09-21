@@ -98,3 +98,33 @@ func TestSettingsProxyReadOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestGuideReadProxyPreservesContent(t *testing.T) {
+	const body = `{"metadata":{"name":"welcome-lpqx"},"spec":{"status":"draft","blocks":[{"type":"markdown","content":"Welcome"}]}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-35611/interactiveguides/welcome-lpqx" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		if r.Header.Get(auth.AccessTokenHeader) != "anonymous-obo" {
+			t.Error("missing OBO token")
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+	client := newAppPlatformListClient(server.URL, &stubMinter{token: "anonymous-obo"}, "anonymous-id", log.DefaultLogger)
+	got, err := client.getItem(context.Background(), "stacks-35611", "interactiveguides", "welcome-lpqx", customGuideListMaxBytes)
+	if err != nil || string(got) != body {
+		t.Fatalf("body=%s err=%v", got, err)
+	}
+}
+
+func TestGuideReadRejectsUnsafeNames(t *testing.T) {
+	app := newTestApp(t)
+	for _, query := range []string{"", "name=..", "name=../settings", "name=x%2Fy", "name=x%5Cy", "name=%2500", "name=x%00"} {
+		recorder := httptest.NewRecorder()
+		app.handleCustomGuide(recorder, httptest.NewRequest(http.MethodGet, "/custom-guide?"+query, nil))
+		if recorder.Code != http.StatusBadRequest {
+			t.Errorf("%q: status %d", query, recorder.Code)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -15,6 +16,10 @@ import (
 const pathfinderSettingsMaxBytes = 1024 * 1024
 
 func (a *App) handlePathfinderSettings(w http.ResponseWriter, r *http.Request) {
+	a.handleAppPlatformRead(w, r, "pathfindersettings", "default", pathfinderSettingsMaxBytes)
+}
+
+func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, resource, name string, maxBytes int64) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
@@ -28,24 +33,24 @@ func (a *App) handlePathfinderSettings(w http.ResponseWriter, r *http.Request) {
 	namespace := backend.PluginConfigFromContext(r.Context()).Namespace
 	cfg := config.GrafanaConfigFromContext(r.Context())
 	if cfg == nil || namespace == "" || a.oboExchanger == nil {
-		a.writeError(w, "settings proxy unavailable", http.StatusServiceUnavailable)
+		a.writeError(w, "app platform proxy unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	appURL, err := cfg.AppURL()
 	if err != nil || appURL == "" {
-		a.writeError(w, "settings proxy unavailable", http.StatusServiceUnavailable)
+		a.writeError(w, "app platform proxy unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	client := newAppPlatformListClient(appURL, a.oboExchanger, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), a.ctxLogger(r.Context()))
-	body, err := client.getSettings(r.Context(), namespace)
+	body, err := client.getItem(r.Context(), namespace, resource, name, maxBytes)
 	if err != nil {
 		status := http.StatusBadGateway
 		if upstreamStatus, ok := upstreamStatusOf(err); ok && upstreamStatus >= 400 && upstreamStatus <= 599 {
 			status = upstreamStatus
 		}
-		a.ctxLogger(r.Context()).Warn("Pathfinder settings proxy read failed", "namespace", namespace, "error", err)
-		message := "settings read failed"
-		if status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented {
+		a.ctxLogger(r.Context()).Warn("App Platform proxy read failed", "resource", resource, "namespace", namespace, "error", err)
+		message := "app platform read failed"
+		if resource == "pathfindersettings" && (status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented) {
 			message = "settings-upstream-unavailable"
 		}
 		a.writeError(w, message, status)
@@ -55,13 +60,17 @@ func (a *App) handlePathfinderSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *appPlatformListClient) getSettings(ctx context.Context, namespace string) (json.RawMessage, error) {
+	return c.getItem(ctx, namespace, "pathfindersettings", "default", pathfinderSettingsMaxBytes)
+}
+
+func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource, name string, maxBytes int64) (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 	token, err := mintAccessToken(ctx, c.minter, namespace, c.idToken)
 	if err != nil {
 		return nil, err
 	}
-	endpoint := buildAppPlatformURL(c.appURL, appPlatformGroup+"/v1alpha1", namespace, "pathfindersettings") + "/default"
+	endpoint := buildAppPlatformURL(c.appURL, appPlatformGroup+"/v1alpha1", namespace, resource) + "/" + url.PathEscape(name)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -74,14 +83,14 @@ func (c *appPlatformListClient) getSettings(ctx context.Context, namespace strin
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, &appPlatformUpstreamError{status: resp.StatusCode, msg: fmt.Sprintf("settings upstream status %d", resp.StatusCode)}
+		return nil, &appPlatformUpstreamError{status: resp.StatusCode, msg: fmt.Sprintf("app platform upstream status %d", resp.StatusCode)}
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, pathfinderSettingsMaxBytes+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(body) > pathfinderSettingsMaxBytes || !json.Valid(body) {
-		return nil, fmt.Errorf("invalid settings upstream response")
+	if int64(len(body)) > maxBytes || !json.Valid(body) {
+		return nil, fmt.Errorf("invalid app platform upstream response")
 	}
 	return json.RawMessage(body), nil
 }
