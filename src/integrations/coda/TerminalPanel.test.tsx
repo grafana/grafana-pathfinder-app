@@ -176,7 +176,7 @@ describe('terminal geometry', () => {
   });
 
   function flush() {
-    act(() => jest.advanceTimersByTime(20));
+    act(() => jest.advanceTimersByTime(100));
   }
 
   function notifyResize() {
@@ -204,6 +204,29 @@ describe('terminal geometry', () => {
     expect(resize).toHaveBeenLastCalledWith(20, 50);
     expect(Terminal).toHaveBeenCalledTimes(1);
     expect(terminal.dispose).not.toHaveBeenCalled();
+  });
+
+  it('keeps the canvas stable during a drag and skips unchanged cell dimensions', () => {
+    openPanel();
+    flush();
+    const resize = live.mock.results.at(-1)!.value.resize;
+    const fit = jest.mocked(FitAddon).mock.results.at(-1)!.value.fit;
+    resize.mockClear();
+    jest.mocked(fit).mockClear();
+    for (const cols of [90, 100, 110]) {
+      dimensions = { rows: 20, cols };
+      notifyResize();
+      act(() => jest.advanceTimersByTime(30));
+    }
+    expect(fit).not.toHaveBeenCalled();
+    expect(resize).not.toHaveBeenCalled();
+    flush();
+    expect(fit).toHaveBeenCalledTimes(1);
+    expect(resize).toHaveBeenLastCalledWith(20, 110);
+    notifyResize();
+    flush();
+    expect(fit).toHaveBeenCalledTimes(1);
+    expect(resize).toHaveBeenCalledTimes(1);
   });
 
   it('skips hidden and invalid geometry and refits after collapse and expansion', () => {

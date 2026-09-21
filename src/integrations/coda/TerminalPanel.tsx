@@ -259,6 +259,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     }
 
     let frame: number | undefined;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastSent: { rows: number; cols: number } | undefined;
     const fit = () => {
       frame = undefined;
       const terminal = terminalInstanceRef.current;
@@ -276,9 +278,12 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       ) {
         return;
       }
-      addon.fit();
-      if (status === 'connected') {
+      if (terminal.rows !== dimensions.rows || terminal.cols !== dimensions.cols) {
+        addon.fit();
+      }
+      if (status === 'connected' && (lastSent?.rows !== terminal.rows || lastSent?.cols !== terminal.cols)) {
         resize(terminal.rows, terminal.cols);
+        lastSent = { rows: terminal.rows, cols: terminal.cols };
       }
     };
     const scheduleFit = () => {
@@ -286,11 +291,16 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
         frame = requestAnimationFrame(fit);
       }
     };
-    const observer = new ResizeObserver(scheduleFit);
+    const observer = new ResizeObserver(() => {
+      // Fitting clears xterm's canvas; wait for the drag to settle before repainting.
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(scheduleFit, 80);
+    });
     observer.observe(container);
     scheduleFit();
     return () => {
       observer.disconnect();
+      clearTimeout(settleTimer);
       if (frame !== undefined) {
         cancelAnimationFrame(frame);
       }
@@ -475,9 +485,11 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             <div className={styles.headerLeft}>
               <Icon name="code-branch" size="sm" />
               <span className={styles.title}>Terminal</span>
-              {renderVmExpiry()}
-            </div>
-            <div className={styles.headerRight}>
+              {vmId && (
+                <span className={styles.vmIdentity} title={`Sandbox: ${vmId}`} aria-label={`Sandbox ${vmId}`}>
+                  #{vmId.slice(-6)}
+                </span>
+              )}
               <div
                 className={styles.statusIndicator}
                 role="status"
@@ -491,6 +503,9 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
                 )}
                 {status !== 'connected' && <span>{getStatusText(status)}</span>}
               </div>
+              {renderVmExpiry()}
+            </div>
+            <div className={styles.headerRight}>
               <span data-testid={testIds.codaTerminal.pathfinderExpand}>
                 <IconButton
                   name="angle-up"
@@ -545,9 +560,11 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
           <div className={styles.headerLeft}>
             <Icon name="code-branch" size="sm" />
             <span className={styles.title}>Terminal</span>
-            {isExpanded && renderVmExpiry()}
-          </div>
-          <div className={styles.headerRight}>
+            {vmId && (
+              <span className={styles.vmIdentity} title={`Sandbox: ${vmId}`} aria-label={`Sandbox ${vmId}`}>
+                #{vmId.slice(-6)}
+              </span>
+            )}
             <div
               className={styles.statusIndicator}
               role="status"
@@ -561,6 +578,9 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               )}
               {status !== 'connected' && <span>{getStatusText(status)}</span>}
             </div>
+            {isExpanded && renderVmExpiry()}
+          </div>
+          <div className={styles.headerRight}>
             {canConnect && (
               <Button
                 size="sm"

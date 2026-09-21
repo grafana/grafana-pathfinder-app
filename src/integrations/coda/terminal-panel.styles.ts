@@ -77,6 +77,13 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     margin: 0,
   }),
 
+  vmIdentity: css({
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontFamily: theme.typography.fontFamilyMonospace,
+    whiteSpace: 'nowrap',
+  }),
+
   headerRight: css({
     label: 'coda-terminal-header-right',
     display: 'flex',
@@ -95,7 +102,7 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
       transform: 'translateY(-50%)',
       height: theme.spacing(2),
       width: 1,
-      backgroundColor: theme.colors.border.medium,
+      backgroundColor: theme.colors.border.strong,
       pointerEvents: 'none',
     },
   }),
