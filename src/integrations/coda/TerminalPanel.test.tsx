@@ -1,5 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
 import { TerminalPanel } from './TerminalPanel';
 import { useTerminalLive } from './useTerminalLive.hook';
 import { lifetimeClient, type LifetimeVM } from './coda-api';
@@ -29,6 +31,19 @@ jest.mock('@xterm/addon-search', () => ({
 jest.mock('@xterm/addon-webgl', () => ({
   WebglAddon: jest.fn(() => ({ onContextLoss: jest.fn(), dispose: jest.fn() })),
 }));
+
+const observers: Array<{ callback: ResizeObserverCallback; disconnect: jest.Mock }> = [];
+const originalResizeObserver = global.ResizeObserver;
+beforeAll(() => {
+  global.ResizeObserver = jest.fn((callback: ResizeObserverCallback) => {
+    const observer = { callback, observe: jest.fn(), unobserve: jest.fn(), disconnect: jest.fn() };
+    observers.push(observer);
+    return observer;
+  }) as unknown as typeof ResizeObserver;
+});
+afterAll(() => {
+  global.ResizeObserver = originalResizeObserver;
+});
 
 const live = jest.mocked(useTerminalLive);
 const disconnect = jest.fn();
@@ -124,4 +139,114 @@ it('keeps the collapsed lifetime mounted through an extension and a lost-respons
   } finally {
     jest.restoreAllMocks();
   }
+});
+
+describe('terminal geometry', () => {
+  let width = 640;
+  let height = 320;
+  let dimensions = { rows: 20, cols: 80 };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    width = 640;
+    height = 320;
+    dimensions = { rows: 20, cols: 80 };
+    jest.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => width);
+    jest.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(() => height);
+    jest.mocked(FitAddon).mockImplementation(
+      () =>
+        ({
+          proposeDimensions: jest.fn(() => dimensions),
+          fit: jest.fn(() => {
+            const terminal = jest.mocked(Terminal).mock.results.at(-1)!.value;
+            terminal.rows = dimensions.rows;
+            terminal.cols = dimensions.cols;
+          }),
+        }) as unknown as FitAddon
+    );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  function flush() {
+    act(() => jest.advanceTimersByTime(20));
+  }
+
+  function notifyResize() {
+    act(() => observers.at(-1)!.callback([], {} as ResizeObserver));
+  }
+
+  it('fits width-only growth and shrinkage and coalesces drag events without replacing the terminal', () => {
+    openPanel();
+    flush();
+    const resize = live.mock.results.at(-1)!.value.resize;
+    expect(resize).toHaveBeenLastCalledWith(20, 80);
+    const terminal = jest.mocked(Terminal).mock.results.at(-1)!.value;
+    resize.mockClear();
+    width = 960;
+    dimensions = { rows: 20, cols: 120 };
+    notifyResize();
+    notifyResize();
+    flush();
+    expect(resize).toHaveBeenCalledTimes(1);
+    expect(resize).toHaveBeenLastCalledWith(20, 120);
+    width = 400;
+    dimensions = { rows: 20, cols: 50 };
+    notifyResize();
+    flush();
+    expect(resize).toHaveBeenLastCalledWith(20, 50);
+    expect(Terminal).toHaveBeenCalledTimes(1);
+    expect(terminal.dispose).not.toHaveBeenCalled();
+  });
+
+  it('skips hidden and invalid geometry and refits after collapse and expansion', () => {
+    openPanel();
+    flush();
+    const resize = live.mock.results.at(-1)!.value.resize;
+    resize.mockClear();
+    width = 0;
+    notifyResize();
+    flush();
+    width = 640;
+    dimensions = { rows: NaN, cols: 80 };
+    notifyResize();
+    flush();
+    expect(resize).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId(testIds.codaTerminal.collapseButton));
+    expect(observers.at(-1)!.disconnect).toHaveBeenCalled();
+    dimensions = { rows: 25, cols: 100 };
+    fireEvent.click(screen.getByTestId(testIds.codaTerminal.expandButton));
+    flush();
+    expect(resize).toHaveBeenLastCalledWith(25, 100);
+  });
+
+  it('fits on connection and reconnection and cancels pending work on unmount', () => {
+    const current = live.mock.results.at(-1)?.value ?? live({ terminalRef: { current: null } });
+    live.mockReturnValue({ ...current, status: 'connecting' });
+    const view = render(<TerminalPanel />);
+    fireEvent.click(screen.getByTestId(testIds.codaTerminal.expandButton));
+    flush();
+    expect(current.resize).not.toHaveBeenCalled();
+    live.mockReturnValue({ ...current, status: 'connected' });
+    view.rerender(<TerminalPanel />);
+    flush();
+    expect(current.resize).toHaveBeenLastCalledWith(20, 80);
+    live.mockReturnValue({ ...current, status: 'connecting' });
+    view.rerender(<TerminalPanel />);
+    dimensions = { rows: 25, cols: 100 };
+    live.mockReturnValue({ ...current, status: 'connected' });
+    view.rerender(<TerminalPanel />);
+    flush();
+    expect(current.resize).toHaveBeenLastCalledWith(25, 100);
+    current.resize.mockClear();
+    notifyResize();
+    const observer = observers.at(-1)!;
+    view.unmount();
+    flush();
+    expect(observer.disconnect).toHaveBeenCalled();
+    expect(current.resize).not.toHaveBeenCalled();
+  });
 });

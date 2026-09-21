@@ -84,6 +84,20 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.5),
     marginLeft: 'auto',
     flexWrap: 'wrap',
+    '& > button': {
+      position: 'relative',
+    },
+    '& > button + button::after': {
+      content: '""',
+      position: 'absolute',
+      left: `calc(-${theme.spacing(0.25)} - 1px)`,
+      top: '50%',
+      transform: 'translateY(-50%)',
+      height: theme.spacing(2),
+      width: 1,
+      backgroundColor: theme.colors.border.medium,
+      pointerEvents: 'none',
+    },
   }),
 
   // Status indicator
@@ -132,6 +146,8 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
   terminalWrapper: css({
     label: 'coda-terminal-wrapper',
     flex: 1,
+    minWidth: 0,
+    minHeight: 0,
     padding: theme.spacing(0.5),
     overflow: 'hidden',
     backgroundColor: '#1e1e1e',

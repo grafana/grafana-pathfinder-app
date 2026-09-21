@@ -445,3 +445,18 @@ it.each(['vm_unreachable', 'host_identity_unverified', 'coda_auth_failed'])(
     expect(hook.result.current.unreachableVmId).toBeNull();
   }
 );
+
+it('leaves the welcome to the guest and passes terminal output through unchanged', async () => {
+  const { handlers, terminalRef } = await connectedHook();
+  expect(terminalRef.current.writeln).toHaveBeenCalledTimes(1);
+  expect(terminalRef.current.writeln).toHaveBeenCalledWith('Connecting to sandbox...');
+  jest.mocked(terminalRef.current.writeln).mockClear();
+  act(() => {
+    handlers.current.onStatus?.({ state: 'ssh_connecting', message: 'Establishing SSH connection...' });
+    handlers.current.onConnected?.('vm-1');
+  });
+  expect(terminalRef.current.writeln).not.toHaveBeenCalled();
+  const output = 'Welcome to Coda, your ephemeral sandbox.\r\nARM64 · Docker\r\n';
+  act(() => handlers.current.onOutput?.(output));
+  expect(terminalRef.current.write).toHaveBeenLastCalledWith(output);
+});

@@ -287,7 +287,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             }
           } else if (state === 'retrying') {
             terminal.writeln(`\x1b[33m   │  ⚠ ${message || 'Retrying...'}\x1b[0m`);
-          } else {
+          } else if (state !== 'ssh_connecting') {
             const line = `\x1b[90m   │  ${message || `Status: ${state}`}\x1b[0m`;
             if (line !== lastStatusLineRef.current) {
               lastStatusLineRef.current = line;
@@ -302,25 +302,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           }
 
           setStatus('connected');
-          terminal.writeln('');
-          terminal.writeln('\x1b[32m✓ SSH connection established\x1b[0m');
-          terminal.writeln('');
-          terminal.writeln('\x1b[36m┌──────────────────────────────────────────────────────────────┐\x1b[0m');
-          terminal.writeln(
-            '\x1b[36m│\x1b[0m  \x1b[1;33mGrafana Pathfinder Sandbox\x1b[0m                                 \x1b[36m│\x1b[0m'
-          );
-          terminal.writeln(
-            '\x1b[36m│\x1b[0m                                                              \x1b[36m│\x1b[0m'
-          );
-          terminal.writeln(
-            '\x1b[36m│\x1b[0m  \x1b[90mThis is a temporary sandbox VM for learning Grafana.\x1b[0m       \x1b[36m│\x1b[0m'
-          );
-          terminal.writeln(
-            '\x1b[36m│\x1b[0m  \x1b[90mVM will auto-terminate after inactivity.\x1b[0m                   \x1b[36m│\x1b[0m'
-          );
-          terminal.writeln('\x1b[36m└──────────────────────────────────────────────────────────────┘\x1b[0m');
-          terminal.writeln('');
-
           if (inputDisposerRef.current) {
             inputDisposerRef.current.dispose();
           }
@@ -416,20 +397,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       const generation = connectGenerationRef.current;
 
       terminal.clear();
-      terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
-      terminal.writeln('\x1b[1;36m  Grafana Pathfinder - Sandbox Terminal\x1b[0m');
-      terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
-      terminal.writeln('');
-
-      if (vmOpts?.scenario) {
-        terminal.writeln(`\x1b[33m⏳ Connecting to ${vmOpts.scenario} scenario sandbox...\x1b[0m`);
-      } else if (vmOpts?.app) {
-        terminal.writeln(`\x1b[33m⏳ Connecting to ${vmOpts.app} sandbox...\x1b[0m`);
-      } else {
-        terminal.writeln('\x1b[33m⏳ Connecting to sandbox...\x1b[0m');
-      }
-      terminal.writeln('\x1b[90m   ├─ Backend will assign your VM...\x1b[0m');
-      terminal.writeln('\x1b[90m   └─ Establishing connection...\x1b[0m');
+      terminal.writeln('Connecting to sandbox...');
 
       let session: CodaSession;
       try {

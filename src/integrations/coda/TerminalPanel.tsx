@@ -214,11 +214,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       // WebGL not available, falls back to canvas renderer
     }
 
-    // Initial fit
-    setTimeout(() => {
-      fitAddon.fit();
-    }, 0);
-
     terminalInstanceRef.current = terminal;
     fitAddonRef.current = fitAddon;
     serializeAddonRef.current = serializeAddon;
@@ -231,13 +226,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       terminal.writeln('\r\n\x1b[90m--- Session restored ---\x1b[0m\r\n');
       clearScrollback();
     } else {
-      // Welcome message (only shown on fresh start)
-      terminal.writeln('\x1b[36m╔════════════════════════════════════════╗\x1b[0m');
-      terminal.writeln('\x1b[36m║\x1b[0m        \x1b[1;33mCoda Terminal\x1b[0m                 \x1b[36m║\x1b[0m');
-      terminal.writeln('\x1b[36m╚════════════════════════════════════════╝\x1b[0m');
-      terminal.writeln('');
-      terminal.writeln('\x1b[90mClick "Connect" to start your session...\x1b[0m');
-      terminal.writeln('');
+      terminal.writeln('Click "Connect" to start your session.');
     }
 
     // REACT: cleanup terminal on unmount only (R1)
@@ -263,38 +252,50 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     };
   }, []);
 
-  // Handle resize when expanded/height changes
-  const handleFit = useCallback(() => {
-    if (fitAddonRef.current && isExpanded) {
-      fitAddonRef.current.fit();
-      // Send resize to backend
-      if (terminalInstanceRef.current && status === 'connected') {
-        const dims = fitAddonRef.current.proposeDimensions();
-        if (dims) {
-          resize(dims.rows, dims.cols);
-        }
+  useEffect(() => {
+    const container = terminalRef.current;
+    if (!container || !isExpanded) {
+      return;
+    }
+
+    let frame: number | undefined;
+    const fit = () => {
+      frame = undefined;
+      const terminal = terminalInstanceRef.current;
+      const addon = fitAddonRef.current;
+      if (!terminal || !addon || container.clientWidth <= 0 || container.clientHeight <= 0) {
+        return;
       }
-    }
+      const dimensions = addon.proposeDimensions();
+      if (
+        !dimensions ||
+        !Number.isFinite(dimensions.rows) ||
+        !Number.isFinite(dimensions.cols) ||
+        dimensions.rows < 1 ||
+        dimensions.cols < 2
+      ) {
+        return;
+      }
+      addon.fit();
+      if (status === 'connected') {
+        resize(terminal.rows, terminal.cols);
+      }
+    };
+    const scheduleFit = () => {
+      if (frame === undefined) {
+        frame = requestAnimationFrame(fit);
+      }
+    };
+    const observer = new ResizeObserver(scheduleFit);
+    observer.observe(container);
+    scheduleFit();
+    return () => {
+      observer.disconnect();
+      if (frame !== undefined) {
+        cancelAnimationFrame(frame);
+      }
+    };
   }, [isExpanded, resize, status]);
-
-  // Fit terminal when expanded or height changes (but not on status changes,
-  // since the connected handler already sends an initial resize)
-  useEffect(() => {
-    if (isExpanded) {
-      // Small delay to ensure DOM has updated
-      const timer = setTimeout(handleFit, 50);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately excluding handleFit to avoid re-triggering on status changes
-  }, [isExpanded, height]);
-
-  // Handle window resize
-  useEffect(() => {
-    // REACT: cleanup event listener (R1)
-    window.addEventListener('resize', handleFit);
-    return () => window.removeEventListener('resize', handleFit);
-  }, [handleFit]);
 
   // Resize drag handling
   const handleResizeStart = useCallback(
