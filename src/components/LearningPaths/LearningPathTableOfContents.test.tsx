@@ -414,6 +414,20 @@ describe('LearningPathTableOfContents', () => {
       expect(screen.getByRole('tab', { name: 'Seller' })).toBeInTheDocument();
     });
 
+    // Regression (captain-scoped fix on PR #1927, round 8): the tab strip
+    // rendered flush against the hero card's bottom border, with no gap
+    // between them — visually confirmed against the design mockups. The
+    // tabs bar needs its own top margin because `hero`'s bottom margin is
+    // deliberately 0 (so the no-tracks case above stays pixel-for-pixel
+    // unchanged) and `@grafana/ui`'s TabsBar carries none of its own.
+    it('gives the tabs bar its own top margin, separate from the hero card', async () => {
+      setCompletedSlugs(new Set());
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
+
+      await waitFor(() => expect(getCompletedMock).toHaveBeenCalled());
+      expect(screen.getByRole('tablist').className).toContain('tracksTabs');
+    });
+
     // Regression (human review on PR #1927, "foundations-sentinel-unenforced-
     // at-runtime", MEDIUM): getManifestTracks (the shared utility every
     // tracks consumer reads through) now drops a reserved-id or duplicate

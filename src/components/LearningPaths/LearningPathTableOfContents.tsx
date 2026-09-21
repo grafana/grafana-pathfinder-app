@@ -217,7 +217,7 @@ export function LearningPathTableOfContents({
         </div>
       )}
       {hasTracks && (
-        <TabsBar data-testid={testIds.learningPaths.tracksTabs}>
+        <TabsBar className={styles.tracksTabs} data-testid={testIds.learningPaths.tracksTabs}>
           <Tab
             label={t('coverPage.foundationsTab', 'Foundations')}
             active={activeTabId === FOUNDATIONS_TAB_ID}
