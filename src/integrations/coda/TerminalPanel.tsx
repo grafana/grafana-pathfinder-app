@@ -448,10 +448,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const canCancel = isConnecting;
   const renderVmExpiry = () =>
     status === 'connected' && vmExpiresAt ? (
-      <>
-        <VmExpiryIndicator key={vmExpiresAt} expiresAt={vmExpiresAt} className={styles.expiryIndicator} />
-        {vmId && <SandboxLifetime key={vmId} vmId={vmId} onExtended={onExpiryChange} />}
-      </>
+      <VmExpiryIndicator key={vmExpiresAt} expiresAt={vmExpiresAt} className={styles.expiryIndicator} />
     ) : null;
 
   // Always render terminal div to keep it alive across collapse/expand
@@ -586,6 +583,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               >
                 Cancel
               </Button>
+            )}
+
+            {status === 'connected' && vmId && (
+              <SandboxLifetime key={vmId} vmId={vmId} onExtended={onExpiryChange} className={styles.headerButton} />
             )}
 
             {/* Needs a live session: the backend writes over the SSH channel

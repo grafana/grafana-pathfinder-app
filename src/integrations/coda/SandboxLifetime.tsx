@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Stack } from '@grafana/ui';
+import { Button } from '@grafana/ui';
 import { CodaError } from '@grafana/coda-client';
 import { lifetimeClient, type LifetimeVM as VM } from './coda-api';
 
@@ -7,10 +7,12 @@ export function SandboxLifetime({
   client = lifetimeClient,
   vmId,
   onExtended,
+  className,
 }: {
   client?: typeof lifetimeClient;
   vmId: string;
   onExtended?: (expiry: string) => void;
+  className?: string;
 }) {
   const [vm, setVM] = useState<VM>();
   const [now, setNow] = useState(() => Date.now());
@@ -79,34 +81,24 @@ export function SandboxLifetime({
       setBusy(false);
     }
   };
+  if (!eligible && !retryPending && !busy && !error) {
+    return null;
+  }
   return (
-    <Stack direction="column" gap={1}>
-      <Stack gap={1} alignItems="center">
-        <span>
-          {remaining} min left · {lifetime.extensionsRemaining} extensions remaining
-        </span>
-        <Button
-          size="sm"
-          disabled={busy || (!eligible && !retryPending)}
-          onClick={(event) => {
-            event.stopPropagation();
-            void extend();
-          }}
-        >
-          {busy ? 'Extending…' : error ? 'Retry extension' : 'Extend by 30 minutes'}
-        </Button>
-      </Stack>
-      {waiting && !eligible && <span>Available during the final 10 minutes.</span>}
-      {lifetime.unavailableReason === 'unsupported_vm' && (
-        <span>This sandbox cannot be extended. New sandboxes support extensions.</span>
-      )}
-      {lifetime.extensionsRemaining === 0 && <span>All three extensions have been used.</span>}
-      <span>Extending the sandbox does not renew Grafana credentials installed inside it.</span>
-      {error && (
-        <Alert title="Sandbox extension" severity="error">
-          {error}
-        </Alert>
-      )}
-    </Stack>
+    <Button
+      size="sm"
+      variant="secondary"
+      fill="text"
+      className={className}
+      aria-label={busy ? 'Extending…' : error ? 'Retry extension' : 'Extend by 30 minutes'}
+      tooltip={error || 'Extend sandbox by 30 minutes'}
+      disabled={busy || (!eligible && !retryPending)}
+      onClick={(event) => {
+        event.stopPropagation();
+        void extend();
+      }}
+    >
+      {busy ? 'Extending…' : error ? 'Retry' : '+30 min'}
+    </Button>
   );
 }

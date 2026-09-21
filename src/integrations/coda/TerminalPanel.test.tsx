@@ -102,7 +102,7 @@ it('focuses the search input when the toolbar search action opens it', () => {
   expect(screen.getByTestId(testIds.codaTerminal.searchInput)).toHaveFocus();
 });
 
-it('keeps the collapsed lifetime mounted through an extension and a lost-response retry', async () => {
+it('keeps the toolbar extension request mounted across collapse and retry', async () => {
   const expiry = new Date(Date.now() + 5 * 60000).toISOString();
   const vm = {
     id: 'vm',
@@ -127,15 +127,19 @@ it('keeps the collapsed lifetime mounted through an extension and a lost-respons
     )
     .mockResolvedValue(vm);
   try {
-    render(<TerminalPanel />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Extend by 30 minutes' }));
+    openPanel();
+    const extension = await screen.findByRole('button', { name: 'Extend by 30 minutes' });
+    expect(extension.parentElement).toBe(screen.getByTestId(testIds.codaTerminal.gcxButton).parentElement);
+    fireEvent.click(extension);
+    expect(screen.getByRole('button', { name: 'Extending…' })).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByTestId(testIds.codaTerminal.collapseButton));
     expect(screen.getByTestId(testIds.codaTerminal.panel)).not.toBeVisible();
-    expect(screen.getByRole('button', { name: 'Extending…' })).toBeDisabled();
     await act(async () => reject(new Error('Lost response')));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand terminal panel' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Retry extension' }));
     expect(extend).toHaveBeenCalledTimes(2);
     expect(extend.mock.calls[1]).toEqual(extend.mock.calls[0]);
-    expect(screen.getByTestId(testIds.codaTerminal.panel)).not.toBeVisible();
+    expect(screen.getByTestId(testIds.codaTerminal.panel)).toBeVisible();
   } finally {
     jest.restoreAllMocks();
   }
