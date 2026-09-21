@@ -124,6 +124,73 @@ describe('useJsonModeHandlers — duplicate leading heading', () => {
     expect(result.current.jsonMode.jsonValidationErrors).toHaveLength(0);
   });
 
+  it('lets the author leave a pre-existing guide that already carried the duplicated heading', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(duplicateHeadingGuide));
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('json');
+    });
+    expect(result.current.jsonMode.isJsonValid).toBe(true);
+
+    act(() => {
+      result.current.jsonMode.handleJsonChange(
+        JSON.stringify(
+          {
+            ...duplicateHeadingGuide,
+            blocks: [...duplicateHeadingGuide.blocks, { type: 'markdown', content: 'More' }],
+          },
+          null,
+          2
+        )
+      );
+    });
+    expect(result.current.jsonMode.isJsonValid).toBe(true);
+    expect(result.current.jsonMode.jsonValidationErrors).toHaveLength(0);
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('edit');
+    });
+
+    expect(result.current.editor.state.viewMode).toBe('edit');
+    expect(result.current.editor.state.blocks).toHaveLength(2);
+  });
+
+  it('undo restores a pre-existing guide with the duplicated heading as valid', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(duplicateHeadingGuide));
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('json');
+    });
+    act(() => {
+      result.current.jsonMode.handleJsonChange('{ invalid');
+    });
+    expect(result.current.jsonMode.isJsonValid).toBe(false);
+
+    act(() => {
+      result.current.jsonMode.handleJsonUndo();
+    });
+
+    expect(result.current.jsonMode.jsonModeState?.json).toBe(JSON.stringify(duplicateHeadingGuide, null, 2));
+    expect(result.current.jsonMode.isJsonValid).toBe(true);
+    expect(result.current.jsonMode.jsonValidationErrors).toHaveLength(0);
+  });
+
+  it('restores a persisted JSON session for a guide that already carried the duplicated heading as valid', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
+    const json = JSON.stringify(duplicateHeadingGuide, null, 2);
+
+    act(() => {
+      result.current.jsonMode.restoreJsonMode(duplicateHeadingGuide, ['b1'], {
+        json,
+        originalBlockIds: ['b1'],
+        originalJson: json,
+      });
+    });
+
+    expect(result.current.jsonMode.isJsonValid).toBe(true);
+    expect(result.current.jsonMode.jsonValidationErrors).toHaveLength(0);
+  });
+
   it('still blocks exit for a genuinely broken guide', () => {
     const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
 
