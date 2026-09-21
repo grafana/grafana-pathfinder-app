@@ -35,7 +35,7 @@ jest.mock('../../lib/analytics', () => ({
 }));
 
 // Spy only markMilestoneDone; every other docs-retrieval export (getMilestoneSlug,
-// resolveExpectedMilestoneIds, getJourneyProgress) stays real.
+// getJourneyProgress) stays real.
 jest.mock('../../docs-retrieval', () => ({
   ...jest.requireActual('../../docs-retrieval'),
   markMilestoneDone: jest.fn(),
