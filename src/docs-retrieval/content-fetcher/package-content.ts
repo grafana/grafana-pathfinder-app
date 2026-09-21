@@ -251,6 +251,16 @@ export function ensureNonEmptyCoverContent(jsonContent: string): string {
  * completion"): a direct or deep-link load of a track-only guide never goes
  * through a cover-page click, so it never gets a `knownBaseUrl` either — the
  * two-attempt budget this function otherwise has is entirely spent by then.
+ *
+ * `bypassCache: true` is required, not optional: this call uses the exact
+ * same `packageId:loadContent:verifyPublished` cache key `baseUrlResolution`
+ * already used moments earlier through the same singleton
+ * `CompositePackageResolver`, and that resolver preserves a static-tier
+ * (bundled/CDN) negative result rather than evicting it on failure (only an
+ * app-platform-tagged result is). Without this flag, "retry" would silently
+ * return the identical already-failed cached promise for the common
+ * (non-app-platform) case — never a fresh attempt at all.
+ *
  * Returns the resolved contentUrl, or `undefined` if this attempt also fails.
  */
 async function retryTrackMemberBaseUrlResolution(manifestId: string): Promise<string | undefined> {
@@ -259,7 +269,7 @@ async function retryTrackMemberBaseUrlResolution(manifestId: string): Promise<st
     return undefined;
   }
   try {
-    const resolution = await resolver.resolve(manifestId, { loadContent: false });
+    const resolution = await resolver.resolve(manifestId, { loadContent: false, bypassCache: true });
     return resolution.ok ? resolution.contentUrl : undefined;
   } catch {
     return undefined;

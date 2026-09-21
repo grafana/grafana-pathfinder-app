@@ -186,6 +186,35 @@ describe('CompositePackageResolver', () => {
       expect(first.ok).toBe(false);
       expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
     });
+
+    // Regression (moxious review on PR #1927, "track-only-retry-hits-
+    // negative-cache", HIGH): a caller that already knows the prior call for
+    // this exact packageId/loadContent/verifyPublished combination failed
+    // (package-content.ts's retryTrackMemberBaseUrlResolution) needs a way
+    // to force a genuinely fresh attempt for a static-tier (bundled/CDN)
+    // failure — the kind this suite's own test just above proves is
+    // negatively cached and NOT evicted on failure, unlike app-platform's.
+    // Without `bypassCache`, that caller would silently get back the
+    // identical already-failed cached promise, never retrying anything.
+    it('bypassCache forces a fresh attempt past a cached static-tier failure, and refreshes the cache', async () => {
+      const resolveMock = mockBundledResolver.resolve as jest.Mock;
+      resolveMock.mockResolvedValueOnce(NOT_FOUND).mockResolvedValueOnce(SUCCESS_BUNDLED);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      const first = await composite.resolve('missing');
+      expect(first.ok).toBe(false);
+
+      const retried = await composite.resolve('missing', { bypassCache: true });
+      expect(retried.ok).toBe(true);
+      expect(resolveMock).toHaveBeenCalledTimes(2);
+
+      // The cache is refreshed with the successful retry, not just bypassed
+      // for that one call — a later ordinary call reuses it rather than
+      // re-attempting or reverting to the stale failure.
+      const third = await composite.resolve('missing');
+      expect(third).toBe(retried);
+      expect(resolveMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('app-platform cache bypass (§6.8)', () => {

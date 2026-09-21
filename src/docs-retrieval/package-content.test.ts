@@ -23,6 +23,7 @@ import {
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
 import { logger } from '../lib/logging';
+import { CompositePackageResolver } from '../package-engine/composite-resolver';
 import {
   isJourneyCoverPage,
   getTotalMilestones,
@@ -1096,19 +1097,26 @@ describe('fetchPackageContent path-type enrichment', () => {
   });
 
   // Regression (moxious review on PR #1927,
-  // "track-only-parent-resolution-loses-completion", HIGH): a direct or
+  // "track-only-parent-resolution-loses-completion", HIGH, plus the follow-
+  // up "track-only-retry-hits-negative-cache" also HIGH): a direct or
   // deep-link load of a track-only guide never goes through a cover-page
   // click, so docs-panel.tsx never has a `knownBaseUrl` to pass through
   // either — the ONLY fallback available to such a load, before this fix,
   // was this SAME request's own baseUrlResolution succeeding on the first
   // try. A transient resolver hiccup on that one attempt silently dropped
-  // the guide's completion with no way to recover it. The retry gives a
-  // second independent resolve a chance to succeed with no knownBaseUrl
-  // involved at all, proving this recovers even the case the cover-click
-  // fallback (the test above and below) cannot reach.
-  it("retries the path's own resolve once and recovers trackMemberBaseUrl when knownBaseUrl is absent (direct/deep-link entry point)", async () => {
+  // the guide's completion with no way to recover it, and a first-pass retry
+  // that reused the resolver's ordinary cache key was a guaranteed no-op for
+  // this exact scenario: `getPackageResolver()` always returns the same
+  // memoized singleton for the life of the session (package-resolver-
+  // registry.ts), so the retry hit CompositePackageResolver's own in-memory
+  // negative cache and got back the identical already-failed promise,
+  // never re-invoking the underlying resolver at all. This test wraps the
+  // mock resolver in the REAL `CompositePackageResolver` (not a bare mock
+  // with no caching layer) specifically so it exercises that cache and
+  // would fail against the pre-fix version of the retry.
+  it("retries the path's own resolve past a cached failure and recovers trackMemberBaseUrl when knownBaseUrl is absent (direct/deep-link entry point)", async () => {
     let callCount = 0;
-    const resolver: PackageResolver = {
+    const underlyingResolver: PackageResolver = {
       resolve: jest.fn().mockImplementation((id: string) => {
         if (id === 'test-path') {
           callCount += 1;
@@ -1136,7 +1144,12 @@ describe('fetchPackageContent path-type enrichment', () => {
         });
       }),
     };
-    setPackageResolver(resolver);
+    // The real caching layer: package-content.ts's own resolve of `manifestId`
+    // (inside the initial Promise.all) and the retry both go through this
+    // SAME composite instance, exactly as the real module-level singleton
+    // does — the first call negatively caches `test-path`'s failure, and
+    // only `bypassCache: true` on the retry can get past it.
+    setPackageResolver(new CompositePackageResolver([underlyingResolver]));
     const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
 
     const manifest = {

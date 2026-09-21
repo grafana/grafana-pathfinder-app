@@ -408,6 +408,19 @@ export interface ResolveOptions {
    * Ignored by resolvers with no draft/published distinction.
    */
   verifyPublished?: boolean;
+  /**
+   * Skip `CompositePackageResolver`'s in-memory negative cache for this call
+   * and force a fresh attempt, still refreshing that cache with the new
+   * result afterward. For a caller that already knows the prior call for
+   * this exact `packageId`/`loadContent`/`verifyPublished` combination
+   * failed and wants a genuine second try — a same-key repeat call would
+   * otherwise return the identical cached (failed) promise for any
+   * repository whose negative results the composite resolver intentionally
+   * preserves (static/read-mostly tiers; see `UNCACHEABLE_REPOSITORIES`).
+   * Ignored by every individual resolver and by any caller that reaches one
+   * directly rather than through the composite.
+   */
+  bypassCache?: boolean;
 }
 
 /**
