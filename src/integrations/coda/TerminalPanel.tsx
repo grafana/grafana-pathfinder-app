@@ -443,7 +443,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       case 'connecting':
         return 'Connecting...';
       case 'error':
-        return error || 'Error';
+        return 'Disconnected';
       case 'disconnected':
         return 'Disconnected';
       default:
@@ -589,7 +589,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
                 className={styles.headerButton}
                 data-testid={testIds.codaTerminal.connectButton}
               >
-                Connect
+                {status === 'error' ? 'Retry' : 'Connect'}
               </Button>
             )}
 
@@ -680,6 +680,13 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             />
           </div>
         </div>
+
+        {error && (
+          <div className={styles.connectionNotice} role="alert">
+            <Icon name="info-circle" size="sm" />
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* Search bar */}
         {showSearch && (

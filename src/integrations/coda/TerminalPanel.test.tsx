@@ -70,6 +70,22 @@ function openPanel(onClose = jest.fn()) {
   return onClose;
 }
 
+it('keeps failure details out of the toolbar and offers a working retry', () => {
+  const connect = jest.fn();
+  live.mockReturnValue({
+    ...live({ terminalRef: { current: null } }),
+    status: 'error',
+    error: 'The connection was interrupted. Select Retry to reconnect.',
+    connect,
+  } as ReturnType<typeof useTerminalLive>);
+  openPanel();
+  expect(screen.getByRole('alert')).toHaveTextContent('The connection was interrupted.');
+  expect(screen.getByRole('status')).toHaveTextContent('Disconnected');
+  expect(screen.getByRole('status')).not.toHaveTextContent('interrupted');
+  fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+  expect(connect).toHaveBeenCalledTimes(1);
+});
+
 it('invokes disconnect once from the real terminal actions menu', async () => {
   openPanel();
   fireEvent.click(screen.getByRole('button', { name: 'Terminal actions' }));

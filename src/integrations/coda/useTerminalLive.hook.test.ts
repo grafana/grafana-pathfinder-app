@@ -225,6 +225,16 @@ describe('useTerminalLive session lifetime', () => {
     expect(hook.result.current.vmExpiresAt).toBeNull();
   });
 
+  it.each([
+    ['instance_disposing', 'The sandbox connection was interrupted when the Coda plugin reloaded. Select Retry to reconnect.'],
+    ['recovery_exhausted', 'Automatic reconnection stopped. Select Retry to try again.'],
+  ])('shows an actionable final message for %s', async (code, message) => {
+    const { hook, handlers } = await connectedHook();
+    act(() => handlers.current.onError?.(new CodaError('Reconnecting…', code, 0)));
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.error).toBe(message);
+  });
+
   it('names an exhausted quota from the error code instead of the generic message', async () => {
     const { hook, handlers } = await connectedHook();
 

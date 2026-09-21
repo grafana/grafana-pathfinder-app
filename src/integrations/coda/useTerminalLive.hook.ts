@@ -50,6 +50,12 @@ export type { TerminalVMOptions };
 
 function codaSessionErrorMessage(err: unknown): string {
   const codaErr = toCodaError(err);
+  if (codaErr.code === 'instance_disposing') {
+    return 'The sandbox connection was interrupted when the Coda plugin reloaded. Select Retry to reconnect.';
+  }
+  if (codaErr.code === 'recovery_exhausted') {
+    return 'Automatic reconnection stopped. Select Retry to try again.';
+  }
   return codaErrorCodeMessage(codaErr.code, codaErr.message);
 }
 
@@ -332,8 +338,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           setUnreachableVmId(codaErr.code === 'vm_unreachable' ? failedVmId : null);
 
           const message = codaSessionErrorMessage(err);
-          terminal.writeln('\r\n');
-          terminal.writeln(`\x1b[31m✖ Error: ${message}\x1b[0m`);
 
           setError(message);
           setStatus('error');
@@ -410,7 +414,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         connectionLogRef.current.error('Could not create Coda session', err, { category: 'session_create' });
         setError(message);
         setStatus('error');
-        terminal.writeln(`\r\n\x1b[31m✖ ${message}\x1b[0m`);
         return;
       }
 

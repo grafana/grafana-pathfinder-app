@@ -77,6 +77,17 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     margin: 0,
   }),
 
+  connectionNotice: css({
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    backgroundColor: theme.colors.background.secondary,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+  }),
+
   vmIdentity: css({
     color: theme.colors.text.secondary,
     fontSize: theme.typography.bodySmall.fontSize,
