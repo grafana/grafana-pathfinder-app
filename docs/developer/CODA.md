@@ -437,24 +437,26 @@ Grafana restart.
 
 ## Key files
 
-| File                                                            | Purpose                                                                                  |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `src/integrations/coda/coda-api.ts`                             | The only module that knows the Coda plugin id                                            |
-| `src/integrations/coda/useTerminalLive.hook.ts`                 | Live subscription, publish, provision progress bar, 35 s handshake timeout               |
-| `src/integrations/coda/TerminalContext.tsx`                     | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` |
-| `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                         |
-| `src/integrations/coda/WorkspaceLink.tsx`                       | Capability-gated IDE navigation for the connected VM                                     |
-| `src/integrations/coda/useGcxCredential.hook.ts`                | The gcx mint/paste flow, shared by the toolbar button and the guide step                 |
-| `src/integrations/coda/gcx-credential-store.ts`                 | One gcx credential per session; session-keyed invalidation, and the ladder's telemetry   |
-| `src/integrations/coda/gcx-service-account.ts`                  | Which service account a mint may use: the collision-free name, and the role reconcile    |
-| `src/integrations/coda/GcxSetupPanel.tsx`                       | The gcx form and its result line; test ids come in as a prop                             |
-| `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                    |
-| `src/integrations/coda/terminal-storage.ts`                     | Panel state, scrollback, last VM opts                                                    |
-| `src/requirements-manager/checks/coda.ts`                       | `coda-exit-zero:` check (always gated)                                                   |
-| `src/requirements-manager/checks/terminal.ts`                   | `is-terminal-active` check                                                               |
-| `src/components/AppConfig/CodaBackendStatus.tsx`                | Backend availability reporting                                                           |
-| `src/components/interactive-tutorial/challenge-block.tsx`       | CTF-style block                                                                          |
-| `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button, and the gcx mint/paste flow behind `gcx: true`                 |
+| File                                                            | Purpose                                                                                      |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `src/integrations/coda/coda-api.ts`                             | The only module that knows the Coda plugin id                                                |
+| `src/integrations/coda/useTerminalLive.hook.ts`                 | Live subscription and shared VM/lifetime lookup on connect, every 15 seconds, and focus      |
+| `src/integrations/coda/TerminalContext.tsx`                     | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()`     |
+| `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                             |
+| `src/integrations/coda/SandboxLifetime.tsx`                     | Compact extension action using the hook's shared VM snapshot; retains idempotent retry state |
+| `src/integrations/coda/SandboxRecovery.tsx`                     | Recovery actions for an unreachable sandbox                                                  |
+| `src/integrations/coda/WorkspaceLink.tsx`                       | Capability-gated IDE navigation for the connected VM                                         |
+| `src/integrations/coda/useGcxCredential.hook.ts`                | The gcx mint/paste flow, shared by the toolbar button and the guide step                     |
+| `src/integrations/coda/gcx-credential-store.ts`                 | One gcx credential per session; session-keyed invalidation, and the ladder's telemetry       |
+| `src/integrations/coda/gcx-service-account.ts`                  | Which service account a mint may use: the collision-free name, and the role reconcile        |
+| `src/integrations/coda/GcxSetupPanel.tsx`                       | The gcx form and its result line; test ids come in as a prop                                 |
+| `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                        |
+| `src/integrations/coda/terminal-storage.ts`                     | Panel state, scrollback, last VM opts                                                        |
+| `src/requirements-manager/checks/coda.ts`                       | `coda-exit-zero:` check (always gated)                                                       |
+| `src/requirements-manager/checks/terminal.ts`                   | `is-terminal-active` check                                                                   |
+| `src/components/AppConfig/CodaBackendStatus.tsx`                | Backend availability reporting                                                               |
+| `src/components/interactive-tutorial/challenge-block.tsx`       | CTF-style block                                                                              |
+| `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button, and the gcx mint/paste flow behind `gcx: true`                     |
 
 ### Terminal persistence
 

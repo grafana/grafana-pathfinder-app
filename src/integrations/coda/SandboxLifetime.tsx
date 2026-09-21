@@ -6,42 +6,28 @@ import { lifetimeClient, type LifetimeVM as VM } from './coda-api';
 export function SandboxLifetime({
   client = lifetimeClient,
   vmId,
+  vm: serverVM,
   onExtended,
   className,
 }: {
   client?: typeof lifetimeClient;
   vmId: string;
+  vm: VM | undefined;
   onExtended?: (expiry: string) => void;
   className?: string;
 }) {
-  const [vm, setVM] = useState<VM>();
+  const [updatedVM, setVM] = useState<VM>();
+  const vm =
+    updatedVM && serverVM && Date.parse(updatedVM.expiresAt) > Date.parse(serverVM.expiresAt) ? updatedVM : serverVM;
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [retryPending, setRetryPending] = useState(false);
   const request = useRef<{ key: string; expiresAt: string } | undefined>(undefined);
   useEffect(() => {
-    let active = true;
-    const refresh = () =>
-      void client
-        .getVM(vmId)
-        .then((value) => {
-          if (active) {
-            setVM(value);
-          }
-        })
-        .catch(() => {});
-    refresh();
-    const poll = window.setInterval(refresh, 15000);
     const clock = window.setInterval(() => setNow(Date.now()), 1000);
-    window.addEventListener('focus', refresh);
-    return () => {
-      active = false;
-      window.clearInterval(poll);
-      window.clearInterval(clock);
-      window.removeEventListener('focus', refresh);
-    };
-  }, [client, vmId]);
+    return () => window.clearInterval(clock);
+  }, []);
   const lifetime = vm?.lifetime;
   if (!vm || !lifetime || lifetime.unavailableReason === 'disabled') {
     return null;
@@ -63,7 +49,7 @@ export function SandboxLifetime({
     request.current ??= { key: crypto.randomUUID(), expiresAt: vm.expiresAt };
     try {
       const result = await client.extendVM(vmId, request.current.key, request.current.expiresAt);
-      setVM((current) => (current ? { ...current, ...result } : current));
+      setVM({ ...vm, ...result });
       onExtended?.(result.expiresAt);
       request.current = undefined;
       setRetryPending(false);
@@ -73,10 +59,6 @@ export function SandboxLifetime({
       }
       setRetryPending(request.current !== undefined);
       setError(err instanceof Error ? err.message : 'Could not extend the sandbox. Retry to check the result.');
-      void client
-        .getVM(vmId)
-        .then(setVM)
-        .catch(() => {});
     } finally {
       setBusy(false);
     }

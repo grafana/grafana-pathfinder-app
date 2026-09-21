@@ -60,6 +60,7 @@ beforeEach(() => {
     sessionId: 'session',
     vmId: 'vm',
     vmExpiresAt: null,
+    lifetimeVM: undefined,
     unreachableVmId: null,
   } as ReturnType<typeof useTerminalLive>);
 });
@@ -82,7 +83,7 @@ it('keeps failure details out of the toolbar and offers a working retry', () => 
   expect(screen.getByRole('alert')).toHaveTextContent('The connection was interrupted.');
   expect(screen.getByRole('status')).toHaveTextContent('Disconnected');
   expect(screen.getByRole('status')).not.toHaveTextContent('interrupted');
-  fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(connect).toHaveBeenCalledTimes(1);
 });
 
@@ -130,7 +131,7 @@ it('keeps the toolbar extension request mounted across collapse and retry', asyn
       unavailableReason: null,
     },
   } as LifetimeVM;
-  live.mockReturnValue({ ...live({ terminalRef: { current: null } }), vmExpiresAt: expiry });
+  live.mockReturnValue({ ...live({ terminalRef: { current: null } }), vmExpiresAt: expiry, lifetimeVM: vm });
   jest.spyOn(lifetimeClient, 'getVM').mockResolvedValue(vm);
   let reject!: (reason: Error) => void;
   const extend = jest

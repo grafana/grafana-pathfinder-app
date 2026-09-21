@@ -135,6 +135,7 @@ describe('useTerminalLive session lifetime', () => {
 
       expect(mockedListVMs).toHaveBeenCalledTimes(1);
       expect(hook.result.current.vmExpiresAt).toBe(activeVm.expiresAt);
+      expect(hook.result.current.lifetimeVM).toEqual(activeVm);
 
       act(() => {
         jest.advanceTimersByTime(60_000);
@@ -226,7 +227,10 @@ describe('useTerminalLive session lifetime', () => {
   });
 
   it.each([
-    ['instance_disposing', 'The sandbox connection was interrupted when the Coda plugin reloaded. Select Retry to reconnect.'],
+    [
+      'instance_disposing',
+      'The sandbox connection was interrupted when the Coda plugin reloaded. Select Retry to reconnect.',
+    ],
     ['recovery_exhausted', 'Automatic reconnection stopped. Select Retry to try again.'],
   ])('shows an actionable final message for %s', async (code, message) => {
     const { hook, handlers } = await connectedHook();

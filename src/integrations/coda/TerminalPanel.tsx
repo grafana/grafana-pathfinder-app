@@ -81,6 +81,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     sessionId,
     vmId,
     vmExpiresAt,
+    lifetimeVM,
     onExpiryChange,
   } = useTerminalLive({
     terminalRef: terminalInstanceRef,
@@ -606,7 +607,13 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             )}
 
             {status === 'connected' && vmId && (
-              <SandboxLifetime key={vmId} vmId={vmId} onExtended={onExpiryChange} className={styles.headerButton} />
+              <SandboxLifetime
+                key={vmId}
+                vm={lifetimeVM}
+                vmId={vmId}
+                onExtended={onExpiryChange}
+                className={styles.headerButton}
+              />
             )}
 
             {/* Needs a live session: the backend writes over the SSH channel

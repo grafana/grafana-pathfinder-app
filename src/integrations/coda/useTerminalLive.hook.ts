@@ -22,7 +22,14 @@ import { useCallback, useEffect, useRef, useState, RefObject } from 'react';
 import type { Terminal } from '@xterm/xterm';
 import type { CodaSession } from '@grafana/coda-client';
 import { logger } from '../../lib/logging';
-import { codaErrorCodeMessage, createSession, listVMs, toCodaError, type TerminalVMOptions } from './coda-api';
+import {
+  codaErrorCodeMessage,
+  createSession,
+  listVMs,
+  toCodaError,
+  type TerminalVMOptions,
+  type LifetimeVM,
+} from './coda-api';
 
 interface ConnectionLog {
   error: (message: string, error?: unknown, data?: Record<string, unknown>) => void;
@@ -85,6 +92,7 @@ interface UseTerminalLiveReturn {
   sessionId: string | null;
   /** Server-reported expiry of the active VM, or null when it is unknown. */
   vmExpiresAt: string | null;
+  lifetimeVM: LifetimeVM | undefined;
   onExpiryChange?: (expiry: string) => void;
   vmId: string | null;
 }
@@ -115,6 +123,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   const [unreachableVmId, setUnreachableVmId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [vmId, setVmId] = useState<string | null>(null);
+  const [lifetimeVM, setLifetimeVM] = useState<LifetimeVM>();
   const [vmExpiresAt, setVmExpiresAt] = useState<string | null>(null);
 
   const connectionLogRef = useRef<ConnectionLog>(createConnectionLog());
@@ -154,6 +163,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     currentVmIdRef.current = normalized;
     setVmId(normalized);
     setVmExpiresAt(null);
+    setLifetimeVM(undefined);
   }, []);
 
   // Tearing the session down invalidates its id: exec is session-scoped, so a
@@ -165,6 +175,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     currentVmIdRef.current = null;
     setVmId(null);
     setVmExpiresAt(null);
+    setLifetimeVM(undefined);
     const session = sessionRef.current;
     sessionRef.current = null;
     if (session) {
@@ -203,6 +214,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         }
         const vm = vms.find((entry) => entry.id === vmId);
         setVmExpiresAt(vm?.expiresAt ?? null);
+        setLifetimeVM(vm);
       } catch {
         // Expiry is advisory; leave the indicator hidden when the lookup fails.
       }
@@ -470,6 +482,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     unreachableVmId,
     sessionId,
     vmExpiresAt,
+    lifetimeVM,
     onExpiryChange: setVmExpiresAt,
     vmId: status === 'connected' ? vmId : null,
   };
