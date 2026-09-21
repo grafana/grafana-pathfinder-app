@@ -176,6 +176,19 @@ describe('useTerminalLive session lifetime', () => {
     expect(hook.result.current.vmExpiresAt).toBe(activeVm.expiresAt);
   });
 
+  it('retains expiry from status frames that establish or replace the VM identity', async () => {
+    const { hook, handlers } = await connectedHook();
+    const firstFrame = { state: 'active', vmId: 'first-vm', expiresAt: activeVm.expiresAt };
+    act(() => handlers.current.onStatus?.(firstFrame));
+    expect(hook.result.current.vmExpiresAt).toBe(activeVm.expiresAt);
+    const nextExpiry = '2026-09-14T13:00:00Z';
+    const secondFrame = { state: 'active', vmId: 'second-vm', expiresAt: nextExpiry };
+    act(() => handlers.current.onStatus?.(secondFrame));
+    expect(hook.result.current.vmExpiresAt).toBe(nextExpiry);
+    act(() => handlers.current.onStatus?.({ state: 'active', vmId: 'third-vm' }));
+    expect(hook.result.current.vmExpiresAt).toBeNull();
+  });
+
   it('holds the session id once connected', async () => {
     const { hook, handlers } = await connectedHook();
 

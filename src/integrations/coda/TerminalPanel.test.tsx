@@ -1,7 +1,8 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { TerminalPanel } from './TerminalPanel';
 import { useTerminalLive } from './useTerminalLive.hook';
+import { lifetimeClient, type LifetimeVM } from './coda-api';
 import { testIds } from '../../constants/testIds';
 
 jest.mock('./useTerminalLive.hook', () => ({ useTerminalLive: jest.fn() }));
@@ -84,4 +85,43 @@ it('focuses the search input when the toolbar search action opens it', () => {
   openPanel();
   fireEvent.click(screen.getByTestId(testIds.codaTerminal.searchToggle));
   expect(screen.getByTestId(testIds.codaTerminal.searchInput)).toHaveFocus();
+});
+
+it('keeps the collapsed lifetime mounted through an extension and a lost-response retry', async () => {
+  const expiry = new Date(Date.now() + 5 * 60000).toISOString();
+  const vm = {
+    id: 'vm',
+    expiresAt: expiry,
+    lifetime: {
+      canExtend: true,
+      extensionsRemaining: 3,
+      eligibleAt: new Date(Date.now() - 1000).toISOString(),
+      unavailableReason: null,
+    },
+  } as LifetimeVM;
+  live.mockReturnValue({ ...live({ terminalRef: { current: null } }), vmExpiresAt: expiry });
+  jest.spyOn(lifetimeClient, 'getVM').mockResolvedValue(vm);
+  let reject!: (reason: Error) => void;
+  const extend = jest
+    .spyOn(lifetimeClient, 'extendVM')
+    .mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        })
+    )
+    .mockResolvedValue(vm);
+  try {
+    render(<TerminalPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Extend by 30 minutes' }));
+    expect(screen.getByTestId(testIds.codaTerminal.panel)).not.toBeVisible();
+    expect(screen.getByRole('button', { name: 'Extending…' })).toBeDisabled();
+    await act(async () => reject(new Error('Lost response')));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry extension' }));
+    expect(extend).toHaveBeenCalledTimes(2);
+    expect(extend.mock.calls[1]).toEqual(extend.mock.calls[0]);
+    expect(screen.getByTestId(testIds.codaTerminal.panel)).not.toBeVisible();
+  } finally {
+    jest.restoreAllMocks();
+  }
 });

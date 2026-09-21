@@ -238,11 +238,11 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           vmId?: string;
           expiresAt?: string;
         }) => {
-          if (expiresAt) {
-            setVmExpiresAt(expiresAt);
-          }
           if (vmId) {
             rememberVmId(vmId);
+          }
+          if (expiresAt) {
+            setVmExpiresAt(expiresAt);
           }
 
           if (state === 'pending' || state === 'provisioning') {

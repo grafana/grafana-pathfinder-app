@@ -85,7 +85,14 @@ export function SandboxLifetime({
         <span>
           {remaining} min left · {lifetime.extensionsRemaining} extensions remaining
         </span>
-        <Button size="sm" disabled={busy || (!eligible && !retryPending)} onClick={() => void extend()}>
+        <Button
+          size="sm"
+          disabled={busy || (!eligible && !retryPending)}
+          onClick={(event) => {
+            event.stopPropagation();
+            void extend();
+          }}
+        >
           {busy ? 'Extending…' : error ? 'Retry extension' : 'Extend by 30 minutes'}
         </Button>
       </Stack>
