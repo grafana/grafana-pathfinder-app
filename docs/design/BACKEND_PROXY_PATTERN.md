@@ -673,3 +673,19 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 - First-request credential diagnostics log (§9)
 - Runtime smoke procedure in the PR body, gating dependent work and the final outbound header set
   (§3, §10)
+
+## Singleton settings reads
+
+`GET /pathfinder-settings` extends the caller-scoped OBO proxy pattern to the
+`pathfindersettings/default` singleton. It verifies the forwarded identity and
+uses the trusted plugin-context namespace, preserving the full spec and
+`metadata.resourceVersion` for optimistic concurrency. Reads have a 15-second
+deadline, a 1 MiB response bound, disabled redirects, and no shared cache.
+
+Unlike the optional catalogue, settings failures remain HTTP errors: callers
+must not interpret failed authoritative reads as permission to write legacy
+settings. Only upstream 404/405/501 responses carry
+`error: "settings-upstream-unavailable"`, permitting existing absent-store
+behavior. A missing plugin route, missing OBO configuration, or rejected identity
+must not trigger that behavior. Settings writes continue to use the direct
+App Platform API and its existing authorization and concurrency checks.
