@@ -82,7 +82,7 @@ export type InteractiveActionRequest = Pick<InteractiveElementData, 'targetActio
   Partial<
     Pick<
       InteractiveElementData,
-      'refTarget' | 'targetValue' | 'targetState' | 'targetComment' | 'fullScreenFallbackLocation'
+      'refTarget' | 'targetValue' | 'targetState' | 'targetComment' | 'openGuide' | 'fullScreenFallbackLocation'
     >
   > & {
     buttonType?: 'show' | 'do';

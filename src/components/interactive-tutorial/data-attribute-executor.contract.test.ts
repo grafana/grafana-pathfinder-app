@@ -12,7 +12,7 @@ const RENDERER_FILES = ['interactive-step.tsx', 'interactive-multi-step.tsx'];
 const NON_ACTION_ATTRIBUTES = new Set(['data-step-id', 'data-testid', 'data-internal-actions']);
 
 /** Gaps recorded on the first run; remove an entry only when the path is fixed. */
-const KNOWN_UNREACHABLE = ['data-openguide', 'data-targetcomment'];
+const KNOWN_UNREACHABLE = ['data-targetcomment'];
 
 const ACTION_ATTRIBUTE_FIELDS = {
   'data-targetaction': 'targetAction',
