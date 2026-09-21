@@ -522,10 +522,12 @@ connection; closing it leaves the guide intact.
 The navigation contract, defined by [Coda IDE](https://github.com/grafana/grafana-coda-app/pull/167), is
 `/a/grafana-coda-app/ide?vmId=…&path=…&line=…` with optional file/line hints, prefixed with Grafana's
 `appSubUrl` for browser URLs. For same-tab navigation, the button strips that prefix before calling `locationService.push`,
-because Grafana's router supplies the sub-path itself. The temporary adapter builds this URL while Pathfinder uses
-an older client dependency. Migrate to the exported client builder when that release is adopted;
-`coda-workspace-url.contract.test.ts` fails when the installed SDK exports it. No guide schema or
-block type is added.
+because Grafana's router supplies the sub-path itself. The adapter uses the SDK's URL builder for
+encoded navigation hints and applies the IDE route and Grafana sub-path. No guide schema or block type is added.
+
+Pathfinder requires Coda client 1.11.0 or newer. Older clients can treat a `lifetime_updated` status
+frame as provisioning and silently stop publishing terminal input. The client contract test verifies
+that keyboard input continues on the same connected session after an extension.
 
 ## Troubleshooting
 
