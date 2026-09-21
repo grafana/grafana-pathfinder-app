@@ -1,3 +1,4 @@
+import { SandboxLifetime } from './SandboxLifetime';
 /**
  * Coda Terminal Panel
  *
@@ -69,7 +70,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, sendCommand, error, unreachableVmId, sessionId, vmId, vmExpiresAt } =
+  const { status, connect, disconnect, resize, sendCommand, error, unreachableVmId, sessionId, vmId, vmExpiresAt, onExpiryChange } =
     useTerminalLive({
       terminalRef: terminalInstanceRef,
     });
@@ -435,7 +436,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const canCancel = isConnecting;
   const renderVmExpiry = () =>
     status === 'connected' && vmExpiresAt ? (
-      <VmExpiryIndicator key={vmExpiresAt} expiresAt={vmExpiresAt} className={styles.expiryIndicator} />
+      <>
+        <VmExpiryIndicator key={vmExpiresAt} expiresAt={vmExpiresAt} className={styles.expiryIndicator} />
+        {vmId && <SandboxLifetime key={vmId} vmId={vmId} onExtended={onExpiryChange} />}
+      </>
     ) : null;
 
   // Always render terminal div to keep it alive across collapse/expand

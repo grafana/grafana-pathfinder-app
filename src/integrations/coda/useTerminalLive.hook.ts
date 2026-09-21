@@ -79,6 +79,7 @@ interface UseTerminalLiveReturn {
   sessionId: string | null;
   /** Server-reported expiry of the active VM, or null when it is unknown. */
   vmExpiresAt: string | null;
+  onExpiryChange?: (expiry: string) => void;
   vmId: string | null;
 }
 
@@ -202,8 +203,13 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     };
 
     void loadExpiry();
+    const poll = window.setInterval(() => void loadExpiry(), 15000);
+    const focus = () => void loadExpiry();
+    window.addEventListener('focus', focus);
 
     return () => {
+      window.clearInterval(poll);
+      window.removeEventListener('focus', focus);
       cancelled = true;
     };
   }, [status, vmId]);
@@ -221,7 +227,20 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           terminal.write(data);
         },
 
-        onStatus: ({ state, message, vmId }) => {
+        onStatus: ({
+          state,
+          message,
+          vmId,
+          expiresAt,
+        }: {
+          state?: string;
+          message?: string;
+          vmId?: string;
+          expiresAt?: string;
+        }) => {
+          if (expiresAt) {
+            setVmExpiresAt(expiresAt);
+          }
           if (vmId) {
             rememberVmId(vmId);
           }
@@ -480,6 +499,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     unreachableVmId,
     sessionId,
     vmExpiresAt,
+    onExpiryChange: setVmExpiresAt,
     vmId: status === 'connected' ? vmId : null,
   };
 }

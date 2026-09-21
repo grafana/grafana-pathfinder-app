@@ -121,7 +121,7 @@ describe('useTerminalLive session lifetime', () => {
     expect(mockedListVMs).not.toHaveBeenCalled();
   });
 
-  it('loads the server-reported VM expiry once after connection', async () => {
+  it('refreshes the server-reported VM expiry while connected', async () => {
     jest.useFakeTimers();
     try {
       mockedListVMs.mockResolvedValue([activeVm]);
@@ -139,7 +139,7 @@ describe('useTerminalLive session lifetime', () => {
       act(() => {
         jest.advanceTimersByTime(60_000);
       });
-      expect(mockedListVMs).toHaveBeenCalledTimes(1);
+      expect(mockedListVMs).toHaveBeenCalledTimes(5);
     } finally {
       jest.useRealTimers();
     }

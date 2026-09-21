@@ -13,7 +13,8 @@
  * directly from `@grafana/coda-client` rather than through this adapter.
  */
 
-import { config } from '@grafana/runtime';
+import { config, getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
 
 import {
   CodaClient,
@@ -223,3 +224,46 @@ export function codaWorkspaceUrl(vmId: string, path?: string, line?: number): st
   }
   return `${config.appSubUrl ?? ''}/a/${CODA_PLUGIN_ID}/ide?${query.toString()}`;
 }
+
+// Additive wire types keep this PR compatible with the currently published SDK.
+export interface SandboxLifetime {
+  extensionMinutes: number;
+  extensionsUsed: number;
+  extensionsRemaining: number;
+  eligibleAt: string | null;
+  maxExpiresAt: string | null;
+  canExtend: boolean;
+  unavailableReason: string | null;
+}
+export type LifetimeVM = VM & { lifetime?: SandboxLifetime };
+export const lifetimeClient = {
+  getVM: async (vmId: string): Promise<LifetimeVM> => {
+    const response = await lastValueFrom(
+      getBackendSrv().fetch<LifetimeVM>({
+        method: 'GET',
+        url: `/api/plugins/grafana-coda-app/resources/v1/vms/${encodeURIComponent(vmId)}`,
+        showErrorAlert: false,
+      })
+    );
+    return response.data;
+  },
+  extendVM: async (
+    vmId: string,
+    requestKey: string,
+    expiresAt: string
+  ): Promise<Pick<LifetimeVM, 'id' | 'expiresAt' | 'lifetime'>> => {
+    try {
+      const response = await lastValueFrom(
+        getBackendSrv().fetch<Pick<LifetimeVM, 'id' | 'expiresAt' | 'lifetime'>>({
+          method: 'POST',
+          url: `/api/plugins/grafana-coda-app/resources/v1/vms/${encodeURIComponent(vmId)}/extend`,
+          data: { requestKey, expiresAt },
+          showErrorAlert: false,
+        })
+      );
+      return response.data;
+    } catch (err) {
+      throw toCodaError(err);
+    }
+  },
+};
