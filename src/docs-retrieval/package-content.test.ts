@@ -1096,6 +1096,68 @@ describe('fetchPackageContent path-type enrichment', () => {
   });
 
   // Regression (moxious review on PR #1927,
+  // "track-only-parent-resolution-loses-completion", HIGH): a direct or
+  // deep-link load of a track-only guide never goes through a cover-page
+  // click, so docs-panel.tsx never has a `knownBaseUrl` to pass through
+  // either — the ONLY fallback available to such a load, before this fix,
+  // was this SAME request's own baseUrlResolution succeeding on the first
+  // try. A transient resolver hiccup on that one attempt silently dropped
+  // the guide's completion with no way to recover it. The retry gives a
+  // second independent resolve a chance to succeed with no knownBaseUrl
+  // involved at all, proving this recovers even the case the cover-click
+  // fallback (the test above and below) cannot reach.
+  it("retries the path's own resolve once and recovers trackMemberBaseUrl when knownBaseUrl is absent (direct/deep-link entry point)", async () => {
+    let callCount = 0;
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'test-path') {
+          callCount += 1;
+          if (callCount === 1) {
+            return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'transient hiccup' } });
+          }
+          return Promise.resolve({
+            ok: true,
+            id,
+            contentUrl: 'bundled:test-path/content.json',
+            manifestUrl: 'bundled:test-path/manifest.json',
+            repository: 'bundled',
+            content: { id, title: 'The Path', blocks: [] },
+            manifest: { id, type: 'path' },
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['first-dashboard'] }],
+    };
+
+    // No knownBaseUrl argument — the direct/deep-link case, not a click from
+    // an already-open cover tab.
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content!.metadata.trackMemberBaseUrl).toBe('bundled:test-path/content.json');
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(callCount).toBe(2);
+
+    warnSpy.mockRestore();
+  });
+
+  // Regression (moxious review on PR #1927,
   // "track-only-parent-resolution-loses-completion", MEDIUM): a track-only
   // guide's OWN content can load successfully while this SAME request's
   // independent re-resolve of the path's manifestId transiently fails (a CDN

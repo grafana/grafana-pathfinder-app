@@ -784,7 +784,7 @@ describe('surface emitter routing matrix (bundled/remote × milestone/standalone
 describe('track-only guide completion (Path Tracks RFC — no learningJourney, no fake milestone index)', () => {
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-  it("writes to milestoneCompletionStorage under the guide's own identity via trackMemberBaseUrl, with no learningJourney", async () => {
+  it("writes to interactiveCompletionStorage under the guide's own identity via trackMemberBaseUrl, with no learningJourney", async () => {
     recordGuideCompletionForSurface({
       baseUrl: 'https://ex/track-only',
       contentUrl: 'https://ex/track-only',
@@ -799,7 +799,7 @@ describe('track-only guide completion (Path Tracks RFC — no learningJourney, n
     });
     await flush();
 
-    expect(milestoneMarkCompletedMock).toHaveBeenCalledWith('https://ex/lp/the-path/', 'track-only');
+    expect(interactiveCompletionSetMock).toHaveBeenCalledWith('https://ex/track-only/content.json', 100);
     const guide = emitted.filter((f) => f.kind === 'guide');
     expect(guide).toHaveLength(1);
     expect(guide[0]).toMatchObject({ guideId: 'track-only', guideCategory: 'learning-journey' });
@@ -807,7 +807,10 @@ describe('track-only guide completion (Path Tracks RFC — no learningJourney, n
   });
 
   it('never triggers whole-journey/path completion, however much progress is already stored (no learningJourney means no expected set)', async () => {
-    milestoneGetCompletedMock.mockResolvedValue(new Set(['track-only']));
+    // No `learningJourney` means `expectedMilestoneUrls` is empty regardless
+    // of what's already stored, so markMilestoneDone's whole-journey-
+    // completion branch (gated on a non-empty expected set) never runs —
+    // nothing needs to be pre-seeded here for that to hold.
     getPathsDataMock.mockReturnValue({
       paths: [{ id: 'the-path', title: 'The Path', url: 'https://ex/lp/the-path/', badgeId: 'the-path-badge' }],
     });
@@ -830,7 +833,7 @@ describe('track-only guide completion (Path Tracks RFC — no learningJourney, n
     expect(awardBadgeMock).not.toHaveBeenCalled();
   });
 
-  it('bundled track-only guide also writes through milestoneCompletionStorage', async () => {
+  it('bundled track-only guide also writes through interactiveCompletionStorage', async () => {
     recordGuideCompletionForSurface({
       baseUrl: 'bundled:track-only',
       contentUrl: 'bundled:track-only',
@@ -849,7 +852,7 @@ describe('track-only guide completion (Path Tracks RFC — no learningJourney, n
     // `backend-guide:`), so the slug includes the prefix — the same shape a
     // real bundled milestone's own slug takes; reader and writer agree
     // either way since both go through this one function.
-    expect(milestoneMarkCompletedMock).toHaveBeenCalledWith('bundled:the-path/content.json', 'bundled:track-only');
+    expect(interactiveCompletionSetMock).toHaveBeenCalledWith('bundled:track-only/content.json', 100);
   });
 });
 
