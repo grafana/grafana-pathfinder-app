@@ -183,6 +183,8 @@ for (const offline of [false, true]) {
     await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/a/grafana-pathfinder-app');
     await expect(page.getByTestId(testIds.docsPanel.container)).toContainText('Core Grafana concepts');
+    await expect(page.getByRole('button', { name: 'Next milestone', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Data sources Learn how/ })).toBeVisible();
     expect(new URL(page.url()).searchParams.has('pathfinderKiosk')).toBe(false);
     expect(page.context().pages()).toHaveLength(pagesBefore);
   });

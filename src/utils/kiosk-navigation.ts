@@ -1,5 +1,4 @@
 import { config, locationService } from '@grafana/runtime';
-import { parseKioskWebUrl } from '../security/kiosk-url';
 import { kioskState } from '../global-state/kiosk';
 import { parsePathfinderDeepLink } from './pathfinder-search-params';
 
@@ -49,8 +48,13 @@ export function installKioskNavigation(mount: () => void): boolean {
     if (target && target.toLowerCase() !== '_self') {
       return;
     }
-    const url = parseKioskWebUrl(anchor.href, window.location.origin);
-    if (!url) {
+    let url: URL;
+    try {
+      url = new URL(anchor.href);
+    } catch {
+      return;
+    }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
       return;
     }
     const params = parsePathfinderDeepLink(url.search);

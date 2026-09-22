@@ -143,7 +143,10 @@ describe('KioskTile', () => {
     const openedUrl = new URL(mockOpen.mock.calls[0][0]);
     expect(openedUrl.searchParams.get('kiosk_session')).toMatch(UUID_REGEX);
   });
-  it.each(['javascript:alert(1)', 'data:text/html,test', 'https://user:password@example.com'])(
+  const credentialTarget = new URL('https://example.com');
+  credentialTarget.username = 'test-user';
+  credentialTarget.password = 'test-password';
+  it.each(['javascript:alert(1)', 'data:text/html,test', credentialTarget.href])(
     'rejects unsafe target %s without analytics or navigation',
     (targetUrl) => {
       render(<KioskTile rule={{ ...rule, targetUrl }} index={0} />);

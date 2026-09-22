@@ -1,3 +1,4 @@
+/** @jest-environment-options {"url":"http://grafana.internal/"} */
 import { config, locationService } from '@grafana/runtime';
 import { kioskState } from '../global-state/kiosk';
 import { installKioskNavigation, clearKioskLaunchParams } from './kiosk-navigation';
@@ -96,7 +97,7 @@ function clickLink(href: string, attributes: Record<string, string> = {}, option
   return event;
 }
 
-it('opens same-origin kiosk links through SPA navigation instead of reloading', () => {
+it('opens same-origin HTTP kiosk links on a private host without reloading', () => {
   installKioskNavigation(jest.fn());
   const event = clickLink('/d/demo?orgId=2&pathfinderKiosk=1&kioskRulesUrl=custom#section');
   expect(event.defaultPrevented).toBe(true);
