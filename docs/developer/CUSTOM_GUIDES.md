@@ -43,6 +43,10 @@ Edit the copy, select **Save**, and then **Publish** to make it available on you
 
 Learning journeys and paths, including their cover pages and milestones, cannot be copied through this action. Existing private guides are edited through the guide library.
 
+When Grafana Assistant is available, admins can also select **Customize with Assistant**. Describe the audience, what readers should learn or do, and any environment details to include. Assistant receives the full guide, with shared snippets expanded, and these answers. Select **Customize and open editor** to generate the copy, then review and edit it before saving or publishing. An existing editor draft is only replaced after confirmation; cancelling or a generation error leaves it intact.
+
+The modal shows generation progress and elapsed time. If the response fails guide validation, Assistant makes one repair attempt using the validation errors. If it still fails, the modal shows the validation details and keeps your answers for another attempt.
+
 ### Undo, preview, and progress
 
 - **Undo** and **Redo** are available in Edit view for changes made during the current editor session. History is not persisted across a browser refresh and is cleared when a guide is loaded or reset.

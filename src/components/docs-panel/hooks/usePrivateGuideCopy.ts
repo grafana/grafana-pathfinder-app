@@ -11,6 +11,7 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
     tab: LearningJourneyTab;
     isPreparing: boolean;
     pending: JsonGuide | null;
+    customization?: JsonGuide;
   } | null>(null);
   const lifecycle = useRef({ active: true, busy: false });
 
@@ -37,7 +38,18 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
     openEditor();
   };
 
-  const prepare = async () => {
+  const reviewCopy = (guide: JsonGuide) => {
+    if (!tab || !canCopyPublicGuide(tab, currentUserIsAdmin())) {
+      return;
+    }
+    if (hasEditorDraft()) {
+      setOperation({ tab, isPreparing: false, pending: guide });
+    } else {
+      openCopy(guide);
+    }
+  };
+
+  const prepare = async (customize = false) => {
     if (lifecycle.current.busy || !canCopyPublicGuide(tab, currentUserIsAdmin()) || !tab || !openEditor) {
       return;
     }
@@ -50,10 +62,10 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
       if (!current.active || !currentUserIsAdmin()) {
         return;
       }
-      if (hasEditorDraft()) {
-        setOperation({ tab, isPreparing: false, pending: guide });
+      if (customize) {
+        setOperation({ tab, isPreparing: false, pending: null, customization: guide });
       } else {
-        openCopy(guide);
+        reviewCopy(guide);
       }
     } catch (error) {
       if (current.active) {
@@ -71,6 +83,8 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
     available: Boolean(openEditor) && canCopyPublicGuide(tab, currentUserIsAdmin()),
     isPreparing: operation?.tab === tab && operation?.isPreparing === true,
     needsConfirmation: Boolean(pending),
+    customization: operation?.tab === tab ? operation?.customization : undefined,
+    reviewCopy,
     prepare,
     cancel: () => setOperation(null),
     confirm: () => {
