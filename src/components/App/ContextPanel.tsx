@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { usePathfinderPluginConfig, refreshPathfinderPluginConfig } from '../../hooks';
+import { usePathfinderPluginConfig } from '../../hooks';
 import type { ResolvedPathfinderConfig } from '../../constants';
-import { Alert, Button, LoadingPlaceholder } from '@grafana/ui';
+import { LoadingPlaceholder } from '@grafana/ui';
 import { CombinedLearningJourneyPanel } from 'components/docs-panel/docs-panel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
@@ -41,14 +41,7 @@ export default function MemoizedContextPanel() {
 
 function SidebarContent() {
   const { config, isResolved, hasError } = usePathfinderPluginConfig();
-  if (hasError) {
-    return (
-      <Alert title="Could not load Pathfinder settings" severity="error">
-        <Button onClick={() => void refreshPathfinderPluginConfig()}>Try again</Button>
-      </Alert>
-    );
-  }
-  if (!isResolved) {
+  if (!isResolved && !hasError) {
     return <LoadingPlaceholder text="Loading Pathfinder settings" />;
   }
   return <ResolvedSidebarContent config={config} />;
