@@ -54,20 +54,23 @@ it('sends the full guide only on submission and hands validated output to the ed
   expect(JSON.parse(options.prompt).guide).toEqual(guide);
   expect(screen.getByRole('button', { name: 'Customizing…' })).toBeDisabled();
   const revised = { ...guide, title: 'Our customized guide' };
-  act(() => options.onComplete?.(JSON.stringify(revised)));
+  await act(async () => options.onComplete?.(JSON.stringify(revised)));
   expect(onReview).toHaveBeenCalledWith(revised);
 });
 
 it('retains the answers and existing draft when validation fails, and allows retry', async () => {
   const { onReview } = renderModal();
   await submit();
-  act(() => options.onComplete?.('invalid guide'));
+  await act(async () => options.onComplete?.('invalid guide'));
+  expect(generate).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('status')).toHaveTextContent('Repairing the guide format');
+  await act(async () => options.onComplete?.('still invalid'));
   expect(onReview).not.toHaveBeenCalled();
-  expect(screen.getByRole('alert')).toHaveTextContent('Assistant did not return a valid guide');
+  expect(screen.getByRole('alert')).toHaveTextContent('The response is incomplete or is not valid JSON');
   expect(screen.getByLabelText(/What should they learn/)).toHaveValue('Use our team conventions');
   fireEvent.click(screen.getByRole('button', { name: 'Customize and open editor' }));
-  await waitFor(() => expect(generate).toHaveBeenCalledTimes(2));
-  act(() => options.onComplete?.(JSON.stringify(guide)));
+  await waitFor(() => expect(generate).toHaveBeenCalledTimes(3));
+  await act(async () => options.onComplete?.(JSON.stringify(guide)));
   expect(onReview).toHaveBeenCalledWith(guide);
 });
 
@@ -77,7 +80,7 @@ it('cancels generation and ignores results after dismissal', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(cancel).toHaveBeenCalled();
   expect(onDismiss).toHaveBeenCalled();
-  act(() => options.onComplete?.(JSON.stringify(guide)));
+  await act(async () => options.onComplete?.(JSON.stringify(guide)));
   expect(onReview).not.toHaveBeenCalled();
 });
 
@@ -85,7 +88,7 @@ it('ignores results after unmount', async () => {
   const { unmount, onReview } = renderModal();
   await submit();
   unmount();
-  act(() => options.onComplete?.(JSON.stringify(guide)));
+  await act(async () => options.onComplete?.(JSON.stringify(guide)));
   expect(cancel).toHaveBeenCalled();
   expect(onReview).not.toHaveBeenCalled();
 });
@@ -93,7 +96,7 @@ it('ignores results after unmount', async () => {
 it('handles Assistant errors without importing a draft', async () => {
   const { onReview } = renderModal();
   await submit();
-  act(() => options.onError?.(new Error('Service unavailable')));
+  await act(async () => options.onError?.(new Error('Service unavailable')));
   expect(screen.getByRole('alert')).toHaveTextContent('Assistant could not customize this guide');
   expect(onReview).not.toHaveBeenCalled();
 });
@@ -102,12 +105,12 @@ it('ignores a previous attempt completing after a retry starts', async () => {
   const { onReview } = renderModal();
   await submit();
   const first = options;
-  act(() => first.onError?.(new Error('Disconnected')));
+  await act(async () => first.onError?.(new Error('Disconnected')));
   fireEvent.click(screen.getByRole('button', { name: 'Customize and open editor' }));
   await waitFor(() => expect(generate).toHaveBeenCalledTimes(2));
-  act(() => first.onComplete?.(JSON.stringify({ ...guide, title: 'Stale' })));
+  await act(async () => first.onComplete?.(JSON.stringify({ ...guide, title: 'Stale' })));
   expect(onReview).not.toHaveBeenCalled();
-  act(() => options.onComplete?.(JSON.stringify({ ...guide, title: 'Current' })));
+  await act(async () => options.onComplete?.(JSON.stringify({ ...guide, title: 'Current' })));
   expect(onReview).toHaveBeenCalledWith(expect.objectContaining({ title: 'Current' }));
 });
 
@@ -122,4 +125,19 @@ it('does not generate when Assistant becomes unavailable', async () => {
   expect(screen.getByRole('button', { name: 'Customize and open editor' })).toBeDisabled();
   expect(screen.getByText('Assistant is unavailable. Try again later.')).toBeInTheDocument();
   expect(generate).not.toHaveBeenCalled();
+});
+
+it('shows streamed progress and repairs a schema-invalid response once', async () => {
+  const { onReview } = renderModal();
+  await submit();
+  expect(screen.getByRole('status')).toHaveTextContent('Waiting for Assistant');
+  act(() => options.onDelta?.('{"title":'));
+  expect(screen.getByRole('status')).toHaveTextContent('Receiving the customized guide');
+  expect(screen.getByText(/9 characters received/)).toBeInTheDocument();
+  await act(async () => options.onComplete?.(JSON.stringify({ title: 'Our guide', blocks: [{ type: 'unknown' }] })));
+  expect(generate).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(options.prompt).validationErrors).toContain('blocks');
+  expect(screen.getByRole('status')).toHaveTextContent('Repairing the guide format');
+  await act(async () => options.onComplete?.(JSON.stringify(guide)));
+  expect(onReview).toHaveBeenCalledWith(guide);
 });

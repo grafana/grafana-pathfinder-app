@@ -5,6 +5,8 @@ import type { JsonGuide } from '../../../types/json-guide.types';
 import { useAssistantGeneration } from '../../../integrations/assistant-integration';
 import {
   buildGuideCustomizationPrompt,
+  buildGuideRepairPrompt,
+  GuideCustomizationError,
   GUIDE_CUSTOMIZATION_SYSTEM_PROMPT,
   parseCustomizedGuide,
 } from '../utils/customize-guide';
@@ -25,6 +27,9 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
   const [outcome, setOutcome] = useState('');
   const [environment, setEnvironment] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [phase, setPhase] = useState('Waiting for Assistant…');
+  const [received, setReceived] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string>();
   const request = useRef({ active: true, busy: false });
 
@@ -35,6 +40,15 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
       cancel();
     };
   }, [cancel]);
+
+  useEffect(() => {
+    if (!isGenerating) {
+      return;
+    }
+    const started = Date.now();
+    const interval = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => window.clearInterval(interval);
+  }, [isGenerating]);
 
   const dismiss = () => {
     request.current.active = false;
@@ -51,34 +65,77 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
     request.current = current;
     setIsGenerating(true);
     setError(undefined);
-    const fail = () => {
-      if (current.active && current.busy) {
-        current.busy = false;
-        setIsGenerating(false);
-        setError(t('docsPanel.customizeGuideFailed', 'Assistant could not customize this guide. Try again.'));
-      }
+    setElapsed(0);
+    setReceived(0);
+    setPhase('Waiting for Assistant…');
+    const answers = { audience, outcome, environment };
+    const isCurrent = () => current.active && current.busy;
+    const generateResponse = async (prompt: string, repairing: boolean): Promise<string> => {
+      let resolveResponse!: (value: string) => void;
+      let rejectResponse!: (error: Error) => void;
+      const response = new Promise<string>((resolve, reject) => {
+        resolveResponse = resolve;
+        rejectResponse = reject;
+      });
+      let characters = 0;
+      const [, text] = await Promise.all([
+        generate({
+          origin: 'grafana-pathfinder-app/customize-guide',
+          systemPrompt: GUIDE_CUSTOMIZATION_SYSTEM_PROMPT,
+          prompt,
+          onDelta: (delta) => {
+            if (isCurrent()) {
+              characters += delta.length;
+              setReceived(characters);
+              setPhase(repairing ? 'Repairing the guide format…' : 'Receiving the customized guide…');
+            }
+          },
+          onComplete: resolveResponse,
+          onError: rejectResponse,
+        }),
+        response,
+      ]);
+      return text;
     };
     try {
-      await generate({
-        origin: 'grafana-pathfinder-app/customize-guide',
-        systemPrompt: GUIDE_CUSTOMIZATION_SYSTEM_PROMPT,
-        prompt: buildGuideCustomizationPrompt(guide, { audience, outcome, environment }),
-        onComplete: (response) => {
-          if (!current.active || !current.busy) {
-            return;
-          }
-          current.busy = false;
-          setIsGenerating(false);
-          try {
-            onReview(parseCustomizedGuide(response, guide, sourceUrl));
-          } catch (e) {
-            setError(e instanceof Error ? e.message : 'Could not open the customized guide. Try again.');
-          }
-        },
-        onError: fail,
-      });
-    } catch {
-      fail();
+      let response = await generateResponse(buildGuideCustomizationPrompt(guide, answers), false);
+      if (!isCurrent()) {
+        return;
+      }
+      setPhase('Checking the generated guide…');
+      let customized: JsonGuide;
+      try {
+        customized = parseCustomizedGuide(response, guide, sourceUrl);
+      } catch (e) {
+        if (!(e instanceof GuideCustomizationError)) {
+          throw e;
+        }
+        setPhase('Repairing the guide format…');
+        setReceived(0);
+        response = await generateResponse(buildGuideRepairPrompt(guide, answers, response, e.details), true);
+        if (!isCurrent()) {
+          return;
+        }
+        setPhase('Checking the generated guide…');
+        customized = parseCustomizedGuide(response, guide, sourceUrl);
+      }
+      onReview(customized);
+    } catch (e) {
+      if (isCurrent()) {
+        setError(
+          e instanceof GuideCustomizationError
+            ? `${e.message} Your draft is unchanged. Try again.`
+            : t(
+                'docsPanel.customizeGuideFailed',
+                'Assistant could not customize this guide. Your draft is unchanged. Try again.'
+              )
+        );
+      }
+    } finally {
+      if (current.active) {
+        current.busy = false;
+        setIsGenerating(false);
+      }
     }
   };
 
@@ -127,6 +184,17 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
           rows={3}
         />
       </Field>
+      {isGenerating && (
+        <div>
+          <div role="status" aria-live="polite">
+            {phase}
+          </div>
+          <progress aria-label="Assistant progress" style={{ width: '100%' }} />
+          <p>
+            {elapsed}s elapsed{received > 0 ? ` · ${received.toLocaleString()} characters received` : ''}
+          </p>
+        </div>
+      )}
       {error && <Alert title={error} severity="error" />}
       {!isAssistantAvailable && (
         <Alert

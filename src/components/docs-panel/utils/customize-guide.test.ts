@@ -38,3 +38,21 @@ it.each([
 ])('rejects unusable assistant output: %s', (response) => {
   expect(() => parseCustomizedGuide(response, source, url)).toThrow();
 });
+
+it.each([
+  (json: string) => `Here is the customized guide:\n\n\`\`\`json\n${json}\n\`\`\`\nReview it before publishing.`,
+  (json: string) => `Here is your guide:\n${json}\nDone.`,
+  (json: string) => JSON.stringify({ guide: JSON.parse(json) }),
+])('accepts a complete guide surrounded by Assistant formatting', (wrap) => {
+  expect(parseCustomizedGuide(wrap(JSON.stringify(source)), source, url)).toEqual(source);
+});
+
+it('restores the client-owned id before validating a response that omits it', () => {
+  expect(parseCustomizedGuide(JSON.stringify({ title: 'New', blocks: source.blocks }), source, url).id).toBe(source.id);
+});
+
+it('reports the invalid field rather than hiding schema errors', () => {
+  expect(() => parseCustomizedGuide(JSON.stringify({ ...source, blocks: [{ type: 'invalid' }] }), source, url)).toThrow(
+    /blocks/
+  );
+});
