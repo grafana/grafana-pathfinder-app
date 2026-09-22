@@ -83,3 +83,5 @@ registerLearningJourneyContentBridge({
   resolvePackageNavLinks,
   derivePathSlug,
 });
+
+export { resolveAssetUrl } from './components/docs/resolve-asset-url';

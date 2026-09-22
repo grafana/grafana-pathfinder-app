@@ -35,6 +35,14 @@ A custom guide moves through three states:
 
 The **JSON** view edits the complete guide document. Invalid JSON or an invalid guide cannot be applied, and the editor remains in JSON view with inline validation errors. A valid change is applied when you switch to **Edit** or **Preview**; leaving JSON view clears the saved JSON draft. Loading, importing, or starting another guide also replaces the current local draft.
 
+### Customizing a public guide
+
+Organization admins and Grafana server admins can open a standalone public JSON guide and select **More options** → **Edit as private guide**. This opens an independent copy in the visual block editor with a new ID and “(copy)” appended to its title. If an editor draft already exists, confirm **Replace draft** or cancel to keep it.
+
+Edit the copy, select **Save**, and then **Publish** to make it available on your stack. The public original remains unchanged and can still appear in recommendations. Shared snippets become editable blocks in the copy; later source updates do not change those blocks. External media remains hosted at its original location.
+
+Learning journeys and paths, including their cover pages and milestones, cannot be copied through this action. Existing private guides are edited through the guide library.
+
 ### Undo, preview, and progress
 
 - **Undo** and **Redo** are available in Edit view for changes made during the current editor session. History is not persisted across a browser refresh and is cleared when a guide is loaded or reset.
