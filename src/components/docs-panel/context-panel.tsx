@@ -782,7 +782,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             {getCategoryLabel(displayType)}
                           </span>
                           {assignment && (
-                            <span className={cardStyles.assignedBadge}>
+                            <span className={cx(cardStyles.pathCardBadge, cardStyles.assignedBadge)}>
                               <Icon name="user" size="xs" />
                               {t('myLearning.assignedBadge', 'Assigned')}
                             </span>
@@ -790,6 +790,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                           {dueString && (
                             <span
                               className={cx(
+                                cardStyles.pathCardBadge,
                                 cardStyles.dueBadge,
                                 isUpcoming && cardStyles.dueBadgeUpcoming,
                                 isOverdue && cardStyles.dueBadgeOverdue

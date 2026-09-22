@@ -131,7 +131,7 @@ export function LearningPathCard({
 
           <div className={styles.meta}>
             {!isCompleted && assignment && (
-              <span className={styles.assignedBadge}>
+              <span className={cx(styles.pathCardBadge, styles.assignedBadge)}>
                 <Icon name="user" size="xs" />
                 {t('myLearning.assignedBadge', 'Assigned')}
               </span>
@@ -139,6 +139,7 @@ export function LearningPathCard({
             {!isCompleted && dueString && (
               <span
                 className={cx(
+                  styles.pathCardBadge,
                   styles.dueBadge,
                   isUpcoming && styles.dueBadgeUpcoming,
                   isOverdue && styles.dueBadgeOverdue
