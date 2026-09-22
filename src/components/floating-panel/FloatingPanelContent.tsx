@@ -123,9 +123,8 @@ export function FloatingPanelContent({
 
   const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
 
-  // Get contentKey for the progress bar
-  const contentKeyValue = getContentKey();
-  const showProgressBar = !!getGuideIndex(contentKeyValue);
+  // Show the step progress bar whenever a guide is active in this surface.
+  const showProgressBar = !!getGuideIndex(getContentKey());
 
   return (
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>
@@ -141,12 +140,12 @@ export function FloatingPanelContent({
               onResetGuide={onResetGuide!}
               compact
             />
-            {showProgressBar && <SegmentedGuideProgressBar contentKey={contentKeyValue} />}
+            {showProgressBar && <SegmentedGuideProgressBar hasActiveGuide={showProgressBar} />}
           </div>
         ) : (
           showProgressBar && (
             <div className={floatingStyles.stickyToolbar}>
-              <SegmentedGuideProgressBar contentKey={contentKeyValue} />
+              <SegmentedGuideProgressBar hasActiveGuide={showProgressBar} />
             </div>
           )
         )}

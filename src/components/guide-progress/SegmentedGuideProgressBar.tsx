@@ -1,13 +1,17 @@
-import React, { useSyncExternalStore } from 'react';
+import React from 'react';
 import { css } from '@emotion/css';
 import { useStyles2 } from '@grafana/ui';
 import type { GrafanaTheme2 } from '@grafana/data';
 
-import { getGuideIndex } from '../../global-state/active-guide-index';
-import { subscribeProgress, peekGuidePercentage } from '../../global-state/completion-store';
+import { useStepProgressCounts } from '../../hooks/useStepProgressFromEvents';
 
 interface SegmentedGuideProgressBarProps {
-  contentKey: string;
+  /**
+   * Whether a guide is currently active in this surface. Passed through to the
+   * progress subscription so the bar clears its value when the guide is torn
+   * down (rather than lingering with a stale count).
+   */
+  hasActiveGuide: boolean;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -39,49 +43,42 @@ const getStyles = (theme: GrafanaTheme2) => ({
 /**
  * Sticky segmented progress bar for guides.
  *
- * Shows one segment per step/block in the guide, with each segment lighting up
- * as its corresponding step is completed. Reuses the existing progress/completion
- * state from the completion store to maintain a single source of truth.
+ * Shows one segment per user-facing step in the guide — the same unit the
+ * "Step N of M" chip counts — and lights up exactly the completed steps. It
+ * reads from the shared `pathfinder-step-progress` signal (via
+ * `useStepProgressCounts`), the single source of truth that also drives the
+ * header chip, so the bar can never disagree with the numbered steps the reader
+ * sees. It deliberately does NOT count raw content blocks: a guide with 14
+ * steps renders 14 segments, and completing step 1 lights exactly one.
  *
  * The bar stays at the top of the guide panel as content scrolls, providing
  * persistent visual feedback on progress.
  */
-export function SegmentedGuideProgressBar({ contentKey }: SegmentedGuideProgressBarProps): React.ReactElement | null {
+export function SegmentedGuideProgressBar({
+  hasActiveGuide,
+}: SegmentedGuideProgressBarProps): React.ReactElement | null {
   const styles = useStyles2(getStyles);
+  const counts = useStepProgressCounts(hasActiveGuide);
 
-  // Get the frozen guide index for this content key
-  const guideIndex = getGuideIndex(contentKey);
-  const totalBlockCount = guideIndex?.index.totalBlockCount ?? 0;
-
-  // Subscribe to progress changes for this content key
-  const percentage = useSyncExternalStore(
-    React.useCallback((listener: () => void) => subscribeProgress(contentKey, listener), [contentKey]),
-    React.useCallback(() => peekGuidePercentage(contentKey), [contentKey]),
-    React.useCallback(() => peekGuidePercentage(contentKey), [contentKey])
-  );
-
-  // Don't render if there are no blocks to track or no guide index
-  if (totalBlockCount === 0 || !guideIndex) {
+  // No progress observed yet (or no active guide / no steps): render nothing.
+  if (!counts || counts.total === 0) {
     return null;
   }
 
-  // Derive completed position from percentage
-  // If 100% complete, all segments are done
-  // Otherwise, calculate how many segments should be lit up
-  const completedPosition = percentage === 100 ? totalBlockCount : Math.round((percentage / 100) * totalBlockCount);
+  const { done, total } = counts;
 
   return (
     <div
       className={styles.stickyContainer}
       role="progressbar"
-      aria-valuenow={completedPosition}
-      aria-valuemax={totalBlockCount}
-      aria-label={`Guide progress: ${completedPosition} of ${totalBlockCount} steps completed`}
+      aria-valuenow={done}
+      aria-valuemax={total}
+      aria-label={`Guide progress: ${done} of ${total} steps completed`}
     >
       <div className={styles.progressSegments}>
-        {Array.from({ length: totalBlockCount }, (_, index) => {
+        {Array.from({ length: total }, (_, index) => {
           const position = index + 1; // Positions are 1-indexed
-          const isDone = position <= completedPosition;
+          const isDone = position <= done;
           return (
             <div key={position} className={styles.progressSegment} data-segment-state={isDone ? 'done' : 'upcoming'} />
           );

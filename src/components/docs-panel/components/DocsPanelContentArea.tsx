@@ -403,9 +403,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
               {/* Unified Content Renderer - works for both learning journeys and docs! */}
               <div id="inner-docs-content" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                {stableContent && getGuideIndex(getContentKey()) && (
-                  <SegmentedGuideProgressBar contentKey={getContentKey()} />
-                )}
+                {stableContent && getGuideIndex(getContentKey()) && <SegmentedGuideProgressBar hasActiveGuide />}
                 {stableContent && (
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
                     {activeTab?.pendingAlignment && (

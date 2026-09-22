@@ -16,216 +16,101 @@ jest.mock('@grafana/ui', () => ({
     }),
 }));
 
-// Mock getGuideIndex
-const mockGetGuideIndex = jest.fn();
-jest.mock('../../global-state/active-guide-index', () => ({
-  getGuideIndex: (_contentKey: string) => mockGetGuideIndex(_contentKey),
-}));
+/** Dispatch the shared step-progress signal the component subscribes to. */
+function emitStepProgress(completedCount: number, totalSteps: number): void {
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent('pathfinder-step-progress', {
+        detail: { totalSteps, completedCount },
+      })
+    );
+  });
+}
 
-// Mock subscribeProgress and peekGuidePercentage
-let mockPercentage = 0;
-let progressListener: (() => void) | undefined;
-const mockSubscribeProgress = jest.fn((_contentKey: string, listener: () => void) => {
-  progressListener = listener;
-  return () => {
-    progressListener = undefined;
-  };
-});
-const mockPeekGuidePercentage = jest.fn((_contentKey: string) => mockPercentage);
-
-jest.mock('../../global-state/completion-store', () => ({
-  subscribeProgress: (_contentKey: string, listener: () => void) => mockSubscribeProgress(_contentKey, listener),
-  peekGuidePercentage: (_contentKey: string) => mockPeekGuidePercentage(_contentKey),
-}));
+function doneCount(container: HTMLElement): number {
+  return container.querySelectorAll('[data-segment-state="done"]').length;
+}
+function upcomingCount(container: HTMLElement): number {
+  return container.querySelectorAll('[data-segment-state="upcoming"]').length;
+}
 
 describe('SegmentedGuideProgressBar', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockPercentage = 0;
-    progressListener = undefined;
-    mockGetGuideIndex.mockReturnValue({
-      index: {
-        totalBlockCount: 5,
-        positionsByStepId: new Map(),
-      },
-    });
-  });
-
-  it('returns null when guide index is not available', () => {
-    mockGetGuideIndex.mockReturnValue(undefined);
-
-    const { container } = render(<SegmentedGuideProgressBar contentKey="test-guide" />);
-
+  it('renders nothing before any progress signal has been observed', () => {
+    const { container } = render(<SegmentedGuideProgressBar hasActiveGuide />);
     expect(container.firstChild).toBeNull();
   });
 
-  it('returns null when totalBlockCount is 0', () => {
-    mockGetGuideIndex.mockReturnValue({
-      index: {
-        totalBlockCount: 0,
-        positionsByStepId: new Map(),
-      },
-    });
-
-    const { container } = render(<SegmentedGuideProgressBar contentKey="test-guide" />);
-
+  it('renders nothing when there is no active guide', () => {
+    const { container } = render(<SegmentedGuideProgressBar hasActiveGuide={false} />);
+    emitStepProgress(2, 14);
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders correct number of segments for totalBlockCount = 5', () => {
-    mockGetGuideIndex.mockReturnValue({
-      index: {
-        totalBlockCount: 5,
-        positionsByStepId: new Map(),
-      },
-    });
-    mockPercentage = 0;
-
-    const { container } = render(<SegmentedGuideProgressBar contentKey="test-guide" />);
+  it('renders one segment per user-facing step (not per content block)', () => {
+    const { container } = render(<SegmentedGuideProgressBar hasActiveGuide />);
+    emitStepProgress(0, 14);
 
     const segments = container.querySelectorAll('[data-segment-state]');
-    expect(segments).toHaveLength(5);
+    expect(segments).toHaveLength(14);
   });
 
-  it('all segments have "upcoming" state when percentage is 0', () => {
-    mockGetGuideIndex.mockReturnValue({
-      index: {
-        totalBlockCount: 5,
-        positionsByStepId: new Map(),
-      },
-    });
-    mockPercentage = 0;
+  it('lights exactly one segment when one of many steps is completed', () => {
+    // This is the regression the bug report described: completing step 1 of 14
+    // must light exactly 1 segment — not ~3 of 19 blocks.
+    const { container } = render(<SegmentedGuideProgressBar hasActiveGuide />);
+    emitStepProgress(1, 14);
 
-    const { container } = render(<SegmentedGuideProgressBar contentKey="test-guide" />);
-
-    const upcomingSegments = container.querySelectorAll('[data-segment-state="upcoming"]');
-    const doneSegments = container.querySelectorAll('[data-segment-state="done"]');
-
-    expect(upcomingSegments).toHaveLength(5);
-    expect(doneSegments).toHaveLength(0);
+    expect(doneCount(container)).toBe(1);
+    expect(upcomingCount(container)).toBe(13);
   });
 
-  it('correct segments are "done" when percentage is 40 and totalBlockCount = 10 (should be 4 done)', () => {
-    mockGetGuideIndex.mockReturnValue({
-      index: {
-        totalBlockCount: 10,
-        positionsByStepId: new Map(),
-      },
-    });
-    mockPercentage = 40;
+  it('all segments are upcoming when nothing is completed', () => {
+    const { container } = render(<SegmentedGuideProgressBar hasActiveGuide />);
+    emitStepProgress(0, 5);
 
-    const { container } = render(<SegmentedGuideProgressBar contentKey="test-guide" />);
-
-    const doneSegments = container.querySelectorAll('[data-segment-state="done"]');
-    const upcomingSegments = container.querySelectorAll('[data-segment-state="upcoming"]');
-
-    expect(doneSegments).toHaveLength(4);
-    expect(upcomingSegments).toHaveLength(6);
+    expect(doneCount(container)).toBe(0);
+    expect(upcomingCount(container)).toBe(5);
   });
 
-  it('all segments have "done" state when percentage is 100', () => {
-    mockGetGuideIndex.mockReturnValue({
-      index: {
-        totalBlockCount: 5,
-        positionsByStepId: new Map(),
-      },
-    });
-    mockPercentage = 100;
+  it('all segments are done when every step is completed', () => {
+    const { container } = render(<SegmentedGuideProgressBar hasActiveGuide />);
+    emitStepProgress(7, 7);
 
-    const { container } = render(<SegmentedGuideProgressBar contentKey="test-guide" />);
-
-    const doneSegments = container.querySelectorAll('[data-segment-state="done"]');
-    const upcomingSegments = container.querySelectorAll('[data-segment-state="upcoming"]');
-
-    expect(doneSegments).toHaveLength(5);
-    expect(upcomingSegments).toHaveLength(0);
+    expect(doneCount(container)).toBe(7);
+    expect(upcomingCount(container)).toBe(0);
   });
 
-  it('has proper accessibility attributes: role="progressbar", aria-valuenow, aria-valuemax, aria-label', () => {
-    mockGetGuideIndex.mockReturnValue({
-      index: {
-        totalBlockCount: 10,
-        positionsByStepId: new Map(),
-      },
-    });
-    mockPercentage = 40;
+  it('clamps done to total if the signal reports more completed than exist', () => {
+    const { container } = render(<SegmentedGuideProgressBar hasActiveGuide />);
+    emitStepProgress(99, 5);
 
-    render(<SegmentedGuideProgressBar contentKey="test-guide" />);
+    expect(doneCount(container)).toBe(5);
+    expect(upcomingCount(container)).toBe(0);
+  });
+
+  it('updates live as further steps are completed', () => {
+    const { container } = render(<SegmentedGuideProgressBar hasActiveGuide />);
+
+    emitStepProgress(2, 10);
+    expect(doneCount(container)).toBe(2);
+
+    emitStepProgress(5, 10);
+    expect(doneCount(container)).toBe(5);
+  });
+
+  it('exposes accessible progressbar semantics in steps', () => {
+    render(<SegmentedGuideProgressBar hasActiveGuide />);
+    emitStepProgress(4, 10);
 
     const progressBar = screen.getByRole('progressbar');
-
     expect(progressBar).toHaveAttribute('aria-valuenow', '4');
     expect(progressBar).toHaveAttribute('aria-valuemax', '10');
     expect(progressBar).toHaveAttribute('aria-label', 'Guide progress: 4 of 10 steps completed');
   });
 
-  it('updates segments when percentage changes and progress listener is notified', () => {
-    mockGetGuideIndex.mockReturnValue({
-      index: {
-        totalBlockCount: 10,
-        positionsByStepId: new Map(),
-      },
-    });
-    mockPercentage = 20;
-
-    const { container } = render(<SegmentedGuideProgressBar contentKey="test-guide" />);
-
-    // Initially 2 segments should be done (20% of 10)
-    expect(container.querySelectorAll('[data-segment-state="done"]')).toHaveLength(2);
-
-    // Update percentage and notify listener
-    mockPercentage = 50;
-    act(() => {
-      progressListener?.();
-    });
-
-    // Now 5 segments should be done (50% of 10)
-    expect(container.querySelectorAll('[data-segment-state="done"]')).toHaveLength(5);
-  });
-
-  it('subscribes to progress changes with the correct content key', () => {
-    render(<SegmentedGuideProgressBar contentKey="my-test-guide" />);
-
-    expect(mockSubscribeProgress).toHaveBeenCalledWith('my-test-guide', expect.any(Function));
-  });
-
-  it('peeks at the correct content key for initial percentage', () => {
-    render(<SegmentedGuideProgressBar contentKey="my-test-guide" />);
-
-    expect(mockPeekGuidePercentage).toHaveBeenCalledWith('my-test-guide');
-  });
-
-  it('handles edge case of percentage 50 with odd totalBlockCount (e.g. 5 blocks, 50% = 2.5 rounds to 2 or 3)', () => {
-    mockGetGuideIndex.mockReturnValue({
-      index: {
-        totalBlockCount: 5,
-        positionsByStepId: new Map(),
-      },
-    });
-    mockPercentage = 50;
-
-    const { container } = render(<SegmentedGuideProgressBar contentKey="test-guide" />);
-
-    const doneSegments = container.querySelectorAll('[data-segment-state="done"]');
-
-    // 50% of 5 = 2.5, which should round to 3 with Math.round
-    expect(doneSegments).toHaveLength(3);
-  });
-
-  it('correctly handles percentage that equals 100 (all segments done)', () => {
-    mockGetGuideIndex.mockReturnValue({
-      index: {
-        totalBlockCount: 7,
-        positionsByStepId: new Map(),
-      },
-    });
-    mockPercentage = 100;
-
-    const { container } = render(<SegmentedGuideProgressBar contentKey="test-guide" />);
-
-    const doneSegments = container.querySelectorAll('[data-segment-state="done"]');
-
-    // At 100%, all 7 segments should be done
-    expect(doneSegments).toHaveLength(7);
+  it('renders nothing when the guide reports zero steps', () => {
+    const { container } = render(<SegmentedGuideProgressBar hasActiveGuide />);
+    emitStepProgress(0, 0);
+    expect(container.firstChild).toBeNull();
   });
 });
