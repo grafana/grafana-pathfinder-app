@@ -93,7 +93,8 @@ let mockDiscoverItems: Array<{
 }> = [];
 let mockDiscoverExcludeTitles: Set<string> | undefined;
 let mockAssignments: Array<{
-  pathId: string;
+  targetType: string;
+  targetId: string;
   title: string;
   assignedBy?: string;
   dueAt?: string;
@@ -356,7 +357,8 @@ describe('MyLearningTab launch flow', () => {
     ];
     mockAssignments = [
       {
-        pathId: 'path-1',
+        targetType: 'path',
+        targetId: 'path-1',
         title: 'Started path',
         assignedBy: 'Org Admin',
         dueAt: '2099-01-15T00:00:00Z',
@@ -406,7 +408,8 @@ describe('MyLearningTab launch flow', () => {
 
     mockAssignments = [
       {
-        pathId: 'path-new',
+        targetType: 'path',
+        targetId: 'path-new',
         title: 'New path',
         assignedBy: 'Org Admin',
         dueAt: dueAt(0),
@@ -415,7 +418,8 @@ describe('MyLearningTab launch flow', () => {
         progress: 0,
       },
       {
-        pathId: 'edge-low',
+        targetType: 'path',
+        targetId: 'edge-low',
         title: 'Barely started',
         assignedBy: 'Org Admin',
         dueAt: dueAt(1),
@@ -424,7 +428,8 @@ describe('MyLearningTab launch flow', () => {
         progress: 1,
       },
       {
-        pathId: 'path-1',
+        targetType: 'path',
+        targetId: 'path-1',
         title: 'Started path',
         assignedBy: 'Org Admin',
         dueAt: dueAt(-4),
@@ -433,7 +438,8 @@ describe('MyLearningTab launch flow', () => {
         progress: 50,
       },
       {
-        pathId: 'edge-high',
+        targetType: 'path',
+        targetId: 'edge-high',
         title: 'Almost done',
         assignedBy: 'Org Admin',
         dueAt: dueAt(7),
@@ -485,7 +491,8 @@ describe('MyLearningTab launch flow', () => {
   it('lifts due-dated assignments above other courses, soonest first', () => {
     mockAssignments = [
       {
-        pathId: 'path-new',
+        targetType: 'path',
+        targetId: 'path-new',
         title: 'New path',
         assignedBy: 'Org Admin',
         dueAt: '2099-06-01T00:00:00Z',
@@ -494,7 +501,8 @@ describe('MyLearningTab launch flow', () => {
         progress: 0,
       },
       {
-        pathId: 'path-1',
+        targetType: 'path',
+        targetId: 'path-1',
         title: 'Started path',
         assignedBy: 'Org Admin',
         dueAt: '2099-01-15T00:00:00Z',

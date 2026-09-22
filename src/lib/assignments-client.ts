@@ -1,21 +1,11 @@
 /**
- * Client for the /assignments/my backend proxy — the caller's slice of Path
- * Assignments (pathfinder-rfcs/rfc/PATH_ASSIGNMENTS.md), computed live by
- * pkg/plugin/assignments.go against the App Platform Assignment CRD.
+ * Client for the /assignments/my backend proxy — the caller's assignments,
+ * computed live by pkg/plugin/assignments.go.
  *
  * Mirrors lib/custom-guide-repository-client.ts's capability-gated soft-200
  * shape and in-flight de-duplication. It does not pre-check
- * isBackendApiAvailable() — assignments_dev.go's fixture answers
- * `capability.available: true` precisely when that toggle is off, so
- * short-circuiting on it here would make local dev fixtures unreachable for no
- * gain. It also skips that sibling's 30s response cache: §7.4 requires this
- * route to evaluate live, and a TTL would hide a completion once
- * unevaluatedSatisfaction is real. In-flight de-duplication still covers
- * concurrent surfaces on one open.
- *
- * `satisfied` on each entry is a stub (assignments.go's unevaluatedSatisfaction
- * always returns false) until real evaluation ships — callers OR in local
- * completion via standInSatisfaction in learning-paths/assignments-core.ts.
+ * isBackendApiAvailable() — the dev fixture answers available when that
+ * toggle is off — and it skips that sibling's response cache.
  *
  * @coupling API: GET /assignments/my served by pkg/plugin/assignments.go
  */
@@ -25,22 +15,16 @@ import { PLUGIN_BACKEND_URL } from '../constants';
 import { logger } from './logging';
 import { recordAssignmentsUnavailable } from './telemetry/facade';
 
-/**
- * Wire shape of a single assignment, mirroring pkg/plugin/assignments.go's
- * assignmentEntry. `pathId` plus an optional `trackId` is a draft reading of
- * the open §12.2 field-name question, not a settled Assignment schema. Time
- * fields are RFC3339 strings, omitted (not empty strings) when unset — see
- * assignmentEntry's doc comment on the Go side.
- */
+/** Wire shape of one assignment. The target is (targetType, targetId); this client does not filter on targetType. */
 export interface AssignmentEntry {
-  pathId: string;
+  targetType: string;
+  targetId: string;
   trackId?: string;
   ruleId?: string;
   assignedBy?: string;
   assignedAt?: string;
   dueAt?: string;
   acceptCompletionsFrom?: string;
-  /** Server-evaluated join against the caller's completions. See module doc. */
   satisfied: boolean;
   lifecycle: string;
 }

@@ -8,17 +8,10 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
-// Upstream coordinates for the Assignment kind (pathfinder-rfcs
-// rfc/PATH_ASSIGNMENTS.md §7.1): a namespaced sibling of CompletionRecord in
-// the same App Platform group, so an obligation and its fulfilment key on one
-// subject vocabulary and join without an identity bridge.
-//
-// The kind is NOT registered upstream yet — that RFC's §11 lists it as
-// dependency 8, and pathfinder-backend's manifest serves InteractiveGuide and
-// GuideCompletion only. Until it ships, a LIST here addresses a resource the
-// aggregator does not serve and comes back 404: a terminal error, which
-// handleMyAssignments reports as capability=false rather than as a hiccup.
-// Nothing in this file changes when the kind lands.
+// Upstream coordinates for the Assignment kind (kinds/assignment.cue), a
+// namespaced sibling of CompletionRecord in the same App Platform group.
+// A stack that has not registered the kind answers LIST with 404, which
+// handleMyAssignments reports as capability=false rather than a hiccup.
 const (
 	// assignmentsGroupVersion is derived from appPlatformGroup
 	// (app_platform_client.go) so it cannot drift from the group name.
@@ -45,44 +38,29 @@ const (
 // URL, a namespace, and a provisioned on-behalf-of credential.
 var assignmentsAggregationToggle = aggregationToggle(appPlatformGroup)
 
-// assignmentSpec mirrors the fields of the Assignment `spec` this read proxy
-// consumes. Every field lives in `spec` and is provisioner-written: the RFC
-// puts the whole obligation there precisely so a future grant letting a user
-// record satisfaction cannot also let them withdraw their own obligation
-// (§6.10). Unlisted spec fields are ignored by encoding/json.
-//
-// `satisfied` is deliberately absent. It lives in the kind's `status`
-// subresource as a cache for consumers that cannot compute the join (§6.12),
-// and this route is required to evaluate live instead so a learner who has just
-// finished a path never waits on a materialiser (§7.4). The shared LIST client
-// decodes `items[].spec` only, so the cached copy is not even reachable here —
-// which enforces that requirement structurally rather than by discipline.
+// assignmentSpec mirrors the Assignment `spec` this read proxy consumes.
+// Unlisted fields, including status.satisfied, are ignored by encoding/json.
+// Field names track kinds/assignment.cue. Optional scalars unmarshal as ""
+// when absent.
 type assignmentSpec struct {
-	UserID  string `json:"userId"`
-	PathID  string `json:"pathId"`
-	TrackID string `json:"trackId"`
+	UserID       string `json:"userId"`
+	TargetType   string `json:"targetType"`
+	TargetID     string `json:"targetId"`
+	TrackID      string `json:"trackId"`
+	TargetSource string `json:"targetSource"`
 
-	// RuleID is the authored rule's stable slug, stamped into every record's
-	// provenance from day one (§6.13). Nothing reads it back yet; it is the
-	// addressing key a future withdrawal action needs.
-	RuleID     string `json:"ruleId"`
-	AssignedBy string `json:"assignedBy"`
-	AssignedAt string `json:"assignedAt"`
+	RuleID       string `json:"ruleId"`
+	RuleRevision string `json:"ruleRevision"`
+	AssignedBy   string `json:"assignedBy"`
+	AssignedAt   string `json:"assignedAt"`
 
-	// DueAt is soft by definition (§6.9): an obligation past it is displayed as
-	// overdue and never locked out. Absent means no deadline, which is what MVP
-	// writes, so a reader treating absent that way needs no change when due
-	// dates start being written.
-	DueAt string `json:"dueAt"`
-
-	// AcceptCompletionsFrom is the earliest completion that counts toward this
-	// obligation (§6.9). Absent credits any prior completion.
+	DueAt                 string `json:"dueAt"`
 	AcceptCompletionsFrom string `json:"acceptCompletionsFrom"`
 
-	// Lifecycle is "active" or "withdrawn" — the only part of an obligation
-	// that ever changes. MVP's provisioner never writes the second value
-	// (§6.10, §12.5).
-	Lifecycle string `json:"lifecycle"`
+	Lifecycle   string `json:"lifecycle"`
+	WithdrawnAt string `json:"withdrawnAt"`
+
+	SchemaVersion int64 `json:"schemaVersion"`
 }
 
 // assignmentPage is one page of a namespace LIST: the decoded specs plus the

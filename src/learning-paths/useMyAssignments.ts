@@ -1,13 +1,8 @@
 /**
- * Hook wrapping fetchMyAssignments (lib/assignments-client.ts) — the caller's
- * slice of Path Assignments. Mirrors utils/usePublishedGuides.ts's fetch shape
- * (fetch-once-on-mount, namespace-gated, best-effort empty on failure) rather
- * than sharing it. Consider an abstraction if a third matching resource shows up.
+ * Fetches the caller's assignments once on mount. Namespace-gated and
+ * best-effort empty on failure, the same shape as usePublishedGuides.
  *
- * Resolution lives in assignments-core.ts. This hook fetches, then returns
- * `notDone`/`completed`, already split by `satisfied`. My paths cards take
- * `notDone` for decoration; the docs-panel section takes `notDone` only,
- * never `completed`.
+ * Resolution lives in assignments-core.ts. Returns `notDone` and `completed`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { config } from '@grafana/runtime';
@@ -86,8 +81,8 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     [rawAssignments, paths, isPathCompleted, getPathProgress]
   );
   // §12.13 left hide-vs-error open. Hiding stays; the ids are the signal.
-  // pathIds stay off the warn — that context bridges to Faro.
-  const unresolvedKey = resolved.unresolvedPathIds.join('\n');
+  // targetIds stay off the warn — that context bridges to Faro.
+  const unresolvedKey = resolved.unresolvedTargetIds.join('\n');
   useEffect(() => {
     if (!unresolvedKey) {
       return;
@@ -96,12 +91,10 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
       reason: 'unresolvable-target',
       count: unresolvedKey.split('\n').length,
     });
-    logger.debug('[assignments] unresolvable target', { pathIds: unresolvedKey });
+    logger.debug('[assignments] unresolvable target', { targetIds: unresolvedKey });
   }, [unresolvedKey]);
 
-  // Order within each group is already right — resolveAssignments sorts
-  // overdue-first/soonest-due-first with satisfied last, and filtering
-  // preserves relative order.
+  // resolveAssignments already sorts; filtering preserves that order.
   const notDone = useMemo(() => resolved.items.filter((a) => !a.satisfied), [resolved.items]);
   const completed = useMemo(() => resolved.items.filter((a) => a.satisfied), [resolved.items]);
 

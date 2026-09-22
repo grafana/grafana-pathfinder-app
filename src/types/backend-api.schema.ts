@@ -67,11 +67,7 @@ export const MyCompletionsResponseWireSchema = z.strictObject({
 // ============ /assignments/my ============
 
 /**
- * `assignmentCapability` (pkg/plugin/assignments.go). Structurally identical to
- * the completion one and deliberately not aliased to it: they are separate
- * contracts on separate routes, and a reason token added to one must not
- * silently widen the other.
- *
+ * `assignmentCapability` (pkg/plugin/assignments.go).
  * @coupling Go struct: assignmentCapability
  */
 export const AssignmentCapabilityWireSchema = z.strictObject({
@@ -84,7 +80,8 @@ export const AssignmentCapabilityWireSchema = z.strictObject({
  * @coupling Go struct: assignmentEntry
  */
 export const AssignmentEntryWireSchema = z.strictObject({
-  pathId: z.string(),
+  targetType: z.string(),
+  targetId: z.string(),
   trackId: z.string().optional(),
   ruleId: z.string().optional(),
   assignedBy: z.string().optional(),

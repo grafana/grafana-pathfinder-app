@@ -30,10 +30,10 @@ interface MyCoursesSectionProps {
   styles: ReturnType<typeof getMyLearningStyles>;
 }
 
-function orderCourses(courses: LearningPath[], byPathId: Map<string, ResolvedAssignment>): LearningPath[] {
+function orderCourses(courses: LearningPath[], byTargetId: Map<string, ResolvedAssignment>): LearningPath[] {
   return [...courses].sort((a, b) => {
-    const aDue = byPathId.get(a.id)?.dueAt;
-    const bDue = byPathId.get(b.id)?.dueAt;
+    const aDue = byTargetId.get(a.id)?.dueAt;
+    const bDue = byTargetId.get(b.id)?.dueAt;
     if (aDue && bDue) {
       return aDue.localeCompare(bDue);
     }
@@ -59,8 +59,8 @@ export function MyCoursesSection({
   styles,
 }: MyCoursesSectionProps) {
   const [listRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
-  const byPathId = useMemo(() => new Map(assignments.map((a) => [a.pathId, a])), [assignments]);
-  const ordered = useMemo(() => orderCourses(courses, byPathId), [courses, byPathId]);
+  const byTargetId = useMemo(() => new Map(assignments.map((a) => [a.targetId, a])), [assignments]);
+  const ordered = useMemo(() => orderCourses(courses, byTargetId), [courses, byTargetId]);
 
   return (
     <div className={cx(styles.section, styles.columnSection)} data-testid={testIds.learningPaths.myCoursesSection}>
@@ -85,7 +85,7 @@ export function MyCoursesSection({
           {ordered.map((path, index) => {
             const pathProgress = getPathProgress(path.id);
             const isFirstInProgress = index === 0 && pathProgress > 0;
-            const assignment = byPathId.get(path.id);
+            const assignment = byTargetId.get(path.id);
 
             return (
               <LearningPathCard

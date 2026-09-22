@@ -1,13 +1,16 @@
 /**
- * Pure resolution for Path Assignments: window merge, due-date math, and
- * catalogue lookup. useMyAssignments.ts owns the fetch; this module owns
- * the rules those records are displayed by.
+ * Window merge, due-date math, and catalogue lookup for assignments.
+ * useMyAssignments.ts owns the fetch.
  */
 import type { AssignmentEntry } from '../lib/assignments-client';
 import type { LearningPath } from '../types/learning-paths.types';
 
+/** The only target type this destination resolves into a path card. */
+const PATH_ASSIGNMENT_TARGET = 'path';
+
 export interface ResolvedAssignment {
-  pathId: string;
+  targetType: string;
+  targetId: string;
   title: string;
   trackLabel?: string;
   assignedBy?: string;
@@ -24,8 +27,8 @@ export interface ResolvedAssignment {
 
 export interface ResolvedAssignments {
   items: ResolvedAssignment[];
-  /** pathIds with no match in the catalogue passed to resolveAssignments. */
-  unresolvedPathIds: string[];
+  /** Path targetIds with no match in the catalogue passed to resolveAssignments. */
+  unresolvedTargetIds: string[];
 }
 
 /** Kebab/snake-case id -> Title Case, mirroring learning-paths.hook.ts's formatLegacyBadgeTitle. */
@@ -48,6 +51,10 @@ function assignmentWindow(assignment: AssignmentEntry): { start: number; end: nu
   };
 }
 
+function assignmentTargetKey(assignment: AssignmentEntry): string {
+  return `${assignment.targetType}\0${assignment.targetId}`;
+}
+
 /** Merges one cluster's records into a single entry; a lone record passes through unchanged. */
 function collapseCluster(cluster: AssignmentEntry[]): AssignmentEntry {
   return cluster.reduce((acc, assignment) => {
@@ -62,26 +69,21 @@ function collapseCluster(cluster: AssignmentEntry[]): AssignmentEntry {
 }
 
 /**
- * Same pathId, overlapping accept/due windows -> one card: completing the
- * material once satisfies every obligation whose window that completion
- * falls in, so a whole-path record and a track-scoped record for the same
- * path merge exactly when their windows overlap, same as two records from
- * different rules (PATH_ASSIGNMENTS.md §6.10's "no uniqueness constraint").
- * Non-overlapping windows (e.g. two disjoint annual cycles) stay separate
- * cards, which is what keeps recurrence working. Classic sweep: sort each
- * path's records by window start and extend a running cluster while the
- * next record's start falls inside it, so overlap chains transitively.
+ * Same (targetType, targetId) and overlapping windows become one record.
+ * A shared targetId with a different targetType does not merge. Disjoint
+ * windows stay separate.
  */
 export function collapseOverlappingWindows(assignments: AssignmentEntry[]): AssignmentEntry[] {
-  const byPath = new Map<string, AssignmentEntry[]>();
+  const byTarget = new Map<string, AssignmentEntry[]>();
   for (const assignment of assignments) {
-    const records = byPath.get(assignment.pathId) ?? [];
+    const key = assignmentTargetKey(assignment);
+    const records = byTarget.get(key) ?? [];
     records.push(assignment);
-    byPath.set(assignment.pathId, records);
+    byTarget.set(key, records);
   }
 
   const merged: AssignmentEntry[] = [];
-  for (const records of byPath.values()) {
+  for (const records of byTarget.values()) {
     const sorted = [...records].sort((a, b) => assignmentWindow(a).start - assignmentWindow(b).start);
     let cluster: AssignmentEntry[] = [];
     let clusterEnd = -Infinity;
@@ -133,25 +135,19 @@ function isOverdue(dueAt: string | undefined, satisfied: boolean, now: number): 
   return days !== undefined && days < 0;
 }
 
-/**
- * Stand-in for unevaluatedSatisfaction in pkg/plugin/assignments.go, which
- * is the tracking point for the real completion join. Wire `satisfied` stays
- * false until that lands, so this ORs the path's local completion. It checks
- * the whole path even when the record names a trackId — §7.1 wants that
- * track's own derived check, which this cannot do yet.
- */
+/** Wire `satisfied`, or local path completion for a path target. Track scope is not checked yet. */
 export function standInSatisfaction(
   assignment: AssignmentEntry,
   isPathCompleted: (pathId: string) => boolean
 ): boolean {
-  return assignment.satisfied || isPathCompleted(assignment.pathId);
+  return (
+    assignment.satisfied || (assignment.targetType === PATH_ASSIGNMENT_TARGET && isPathCompleted(assignment.targetId))
+  );
 }
 
 /**
- * Resolves wire assignments to display-ready items. Targets that don't match
- * any path in the current catalogue are omitted from `items` and listed in
- * `unresolvedPathIds`. PATH_ASSIGNMENTS.md §12.13 leaves hide-vs-error open;
- * hiding stays the reader-facing default, and the caller logs the ids.
+ * Path targets only. Unmatched path targetIds land in `unresolvedTargetIds`;
+ * other target types are omitted.
  */
 export function resolveAssignments(
   assignments: AssignmentEntry[],
@@ -161,18 +157,20 @@ export function resolveAssignments(
   now: number = Date.now()
 ): ResolvedAssignments {
   const byId = new Map(paths.map((path) => [path.id, path]));
-  const unresolvedPathIds: string[] = [];
+  const unresolvedTargetIds: string[] = [];
 
-  const resolved = collapseOverlappingWindows(assignments)
+  const pathAssignments = assignments.filter((assignment) => assignment.targetType === PATH_ASSIGNMENT_TARGET);
+  const resolved = collapseOverlappingWindows(pathAssignments)
     .map((assignment): ResolvedAssignment | null => {
-      const path = byId.get(assignment.pathId);
+      const path = byId.get(assignment.targetId);
       if (!path) {
-        unresolvedPathIds.push(assignment.pathId);
+        unresolvedTargetIds.push(assignment.targetId);
         return null;
       }
       const satisfied = standInSatisfaction(assignment, isPathCompleted);
       return {
-        pathId: path.id,
+        targetType: assignment.targetType,
+        targetId: path.id,
         title: path.title,
         trackLabel: assignment.trackId ? formatTrackLabel(assignment.trackId) : undefined,
         assignedBy: assignment.assignedBy ? formatTrackLabel(assignment.assignedBy) : undefined,
@@ -205,5 +203,5 @@ export function resolveAssignments(
     return 0;
   });
 
-  return { items, unresolvedPathIds };
+  return { items, unresolvedTargetIds };
 }
