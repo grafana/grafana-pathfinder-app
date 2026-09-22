@@ -74,11 +74,16 @@ test('copies a public guide, protects the draft and publishes a separate private
   expect(writes).toEqual(['POST', 'PUT']);
 
   const switchToTab = async (name: string) => {
-    const visibleTab = page.getByTestId(testIds.docsPanel.tabList).getByText(name, { exact: true });
+    const visibleTab = page
+      .getByTestId(testIds.docsPanel.tabList)
+      .getByRole('button', { name: new RegExp(`Close ${name}$`) })
+      .filter({ has: page.getByText(name, { exact: true }) });
+    const overflowButton = page.getByTestId(testIds.docsPanel.tabOverflowButton);
+    await expect(visibleTab.or(overflowButton).first()).toBeVisible();
     if (await visibleTab.isVisible()) {
       await visibleTab.click();
     } else {
-      await page.getByTestId(testIds.docsPanel.tabOverflowButton).click();
+      await overflowButton.click();
       await page.getByRole('menuitem', { name: `Switch to ${name}`, exact: true }).click();
     }
   };
@@ -86,6 +91,7 @@ test('copies a public guide, protects the draft and publishes a separate private
   await openCopy();
   await expect(page.getByText('Replace editor draft?', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByText('Replace editor draft?', { exact: true })).toBeHidden();
   await switchToTab('Our company guide');
   await expect(title).toHaveValue('Our company guide');
   await switchToTab('Welcome to Grafana');
