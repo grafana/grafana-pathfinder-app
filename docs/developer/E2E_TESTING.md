@@ -137,6 +137,12 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
 1. **Pre-flight checks**
    - CLI checks Grafana health via `/api/health` (public endpoint)
    - Playwright validates authentication and plugin installation
+   - The version floor is `testEnvironment.minVersion` when the manifest declares one, and the top-level
+     `minGrafanaVersion` otherwise. An explicit test floor always wins — a guide whose rig needs something newer than
+     its readers do declares both. A guide that declares only the runtime floor is still gated on it here: an E2E run
+     below the version its readers are warned about proves nothing. See
+     [package authoring](./package-authoring.md#mingrafanaversion).
+   - A `testEnvironment.tier` mismatch short-circuits before any version or plugin work — no network calls are made.
 
 2. **Guide injection**
    - Guide JSON written to localStorage

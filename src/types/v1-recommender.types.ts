@@ -35,6 +35,7 @@ export interface V1PackageManifest {
   category?: string;
   author?: V1AuthorInfo;
   startingLocation?: string;
+  minGrafanaVersion?: string;
   milestones?: string[];
   depends?: string[];
   recommends?: string[];

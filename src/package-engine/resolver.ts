@@ -9,7 +9,7 @@
  * see resolved PackageResolution results.
  *
  * @coupling Types: PackageResolver, PackageResolution in package.types.ts
- * @coupling Loader: loader.ts for content fetching
+ * @coupling Loader: lib/bundled-package-files.ts for content fetching
  */
 
 import type {
@@ -24,7 +24,7 @@ import type {
 } from '../types/package.types';
 import { RepositoryJsonSchema } from '../types/package.schema';
 
-import { loadBundledContent, loadBundledManifest } from './loader';
+import { loadBundledContent, loadBundledManifest } from '../lib/bundled-package-files';
 
 const BUNDLED_REPOSITORY = 'bundled';
 

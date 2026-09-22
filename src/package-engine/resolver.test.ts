@@ -9,12 +9,12 @@ import type { ContentJson, ManifestJson, RepositoryJson } from '../types/package
 
 import { BundledPackageResolver, createBundledResolver } from './resolver';
 
-jest.mock('./loader', () => ({
+jest.mock('../lib/bundled-package-files', () => ({
   loadBundledContent: jest.fn(),
   loadBundledManifest: jest.fn(),
 }));
 
-import { loadBundledContent, loadBundledManifest } from './loader';
+import { loadBundledContent, loadBundledManifest } from '../lib/bundled-package-files';
 
 const mockLoadContent = loadBundledContent as jest.MockedFunction<typeof loadBundledContent>;
 const mockLoadManifest = loadBundledManifest as jest.MockedFunction<typeof loadBundledManifest>;

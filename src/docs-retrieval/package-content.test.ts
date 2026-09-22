@@ -110,19 +110,21 @@ describe('fetchPackageContent', () => {
     // We need a contentUrl that actually resolves — use a real bundled package
     // from the test fixture. Use the bundled first-dashboard package which exists
     // in bundled-interactives/ after Phase 2.
-    const manifest = { id: 'first-dashboard', type: 'guide', category: 'dashboards' };
+    const manifest = { id: 'first-dashboard', type: 'guide', category: 'overridden-by-caller' };
     const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
 
     if (result.content) {
-      expect(result.content.metadata.packageManifest).toEqual(manifest);
+      // The caller's manifest wins per key; the package's own manifest, which the
+      // bundled fetch tier now stamps, fills in what the caller did not declare.
+      expect(result.content.metadata.packageManifest).toMatchObject(manifest);
+      expect(result.content.metadata.packageManifest).toHaveProperty('provides');
     }
-    // Whether or not content loads (depends on test environment), manifest attaches correctly
   });
 
-  it('omits packageManifest from metadata when not provided', async () => {
+  it('falls back to the package own manifest when the caller provides none', async () => {
     const result = await fetchPackageContent('bundled:first-dashboard/content.json');
     if (result.content) {
-      expect(result.content.metadata.packageManifest).toBeUndefined();
+      expect(result.content.metadata.packageManifest).toMatchObject({ id: 'first-dashboard', type: 'guide' });
     }
   });
 
@@ -459,7 +461,7 @@ describe('fetchPackageById with resolved content', () => {
 
     expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: false, verifyPublished: true });
     if (result.content) {
-      expect(result.content.metadata.packageManifest).toEqual(manifest);
+      expect(result.content.metadata.packageManifest).toMatchObject(manifest);
       expect(result.content.type).toBe('interactive');
     }
   });
@@ -948,7 +950,7 @@ describe('fetchPackageContent path-type enrichment', () => {
     const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
 
     if (result.content) {
-      expect(result.content.metadata.packageManifest).toEqual(manifest);
+      expect(result.content.metadata.packageManifest).toMatchObject(manifest);
       expect(result.content.metadata.learningJourney).toBeDefined();
     }
   });

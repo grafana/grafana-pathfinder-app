@@ -8,6 +8,8 @@
 
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import { config } from '@grafana/runtime';
+import { resetGuideVersionImpressions } from './GuideVersionNotice';
 import { testIds } from '../../../constants/testIds';
 import { DocsPanelContentArea, type DocsPanelContentAreaProps } from './DocsPanelContentArea';
 
@@ -24,6 +26,7 @@ jest.mock('../../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   getContentTypeForAnalytics: jest.fn(() => 'docs'),
   UserInteraction: {
+    GuideVersionUnsupportedShown: 'guide_version_unsupported_shown',
     DocsPanelInteraction: 'docs_panel_interaction',
     OpenExtraResource: 'open_extra_resource',
   },
@@ -367,5 +370,74 @@ describe('DocsPanelContentArea', () => {
       expect(screen.getByTestId('home-content')).toBeInTheDocument();
       expect(screen.queryByTestId('editor-tab-content')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('DocsPanelContentArea — guide version notice', () => {
+  // Assign onto the real config rather than mocking '@grafana/runtime': this
+  // suite reaches the module transitively and a partial mock would blank the
+  // rest of it.
+  const originalVersion = config.buildInfo?.version;
+
+  beforeEach(() => {
+    config.buildInfo.version = '13.1.0';
+    resetGuideVersionImpressions();
+    jest.clearAllMocks();
+  });
+
+  afterAll(() => {
+    config.buildInfo.version = originalVersion;
+  });
+
+  it('renders no notice for a guide with no manifest', () => {
+    render(<DocsPanelContentArea {...makeProps()} />);
+
+    expect(screen.queryByTestId(testIds.guideVersionNotice.container)).not.toBeInTheDocument();
+  });
+
+  it('renders the notice when the content manifest declares a floor above the running Grafana', () => {
+    const props = makeProps();
+    props.stableContent!.metadata.packageManifest = { minGrafanaVersion: '13.2.0' };
+
+    render(<DocsPanelContentArea {...props} />);
+
+    expect(screen.getByTestId(testIds.guideVersionNotice.container)).toBeInTheDocument();
+  });
+});
+
+describe('guide warning impression lifecycle', () => {
+  beforeEach(() => {
+    config.buildInfo.version = '13.1.0';
+    resetGuideVersionImpressions();
+    jest.clearAllMocks();
+  });
+
+  it('deduplicates milestone navigation, reload and progress reset for the same guide', () => {
+    const props = makeProps();
+    props.stableContent!.metadata.packageManifest = { minGrafanaVersion: '13.2.0' };
+    const view = render(<DocsPanelContentArea {...props} />);
+    view.rerender(
+      <DocsPanelContentArea
+        {...props}
+        activeTab={{ ...props.activeTab!, currentUrl: 'https://example.com/guide/step-2' }}
+      />
+    );
+    view.rerender(<DocsPanelContentArea {...props} activeTab={{ ...props.activeTab!, isLoading: true }} />);
+    view.rerender(<DocsPanelContentArea {...props} hasInteractiveProgress={false} />);
+    expect(
+      reportAppInteraction.mock.calls.filter(([event]: [string]) => event === 'guide_version_unsupported_shown')
+    ).toHaveLength(1);
+  });
+
+  it('does not count a loaded guide while recommendations are active', () => {
+    const props = makeProps();
+    props.stableContent!.metadata.packageManifest = { minGrafanaVersion: '13.2.0' };
+    const view = render(<DocsPanelContentArea {...props} isRecommendationsTab />);
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+    view.rerender(<DocsPanelContentArea {...props} />);
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      'guide_version_unsupported_shown',
+      expect.objectContaining({ guide_url: props.activeTab!.baseUrl })
+    );
   });
 });
