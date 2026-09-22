@@ -13,6 +13,9 @@ const guide = {
 };
 const generate = jest.fn();
 const cancel = jest.fn();
+const getDatasourceContext = jest
+  .fn()
+  .mockResolvedValue({ dataSources: [{ name: 'play Pathfinder', type: 'prometheus', uid: 'play' }] });
 let options: InlineAssistantOptions;
 
 beforeEach(() => {
@@ -22,7 +25,7 @@ beforeEach(() => {
   });
   jest
     .mocked(useAssistantGeneration)
-    .mockReturnValue({ generate, cancel, isAssistantAvailable: true } as unknown as ReturnType<
+    .mockReturnValue({ generate, cancel, isAssistantAvailable: true, getDatasourceContext } as unknown as ReturnType<
       typeof useAssistantGeneration
     >);
 });
@@ -52,6 +55,9 @@ it('sends the full guide only on submission and hands validated output to the ed
   expect(screen.getByRole('button', { name: 'Customize and open editor' })).toBeDisabled();
   await submit();
   expect(JSON.parse(options.prompt).guide).toEqual(guide);
+  expect(JSON.parse(options.prompt).availableDataSources).toEqual([
+    { name: 'play Pathfinder', type: 'prometheus', uid: 'play' },
+  ]);
   expect(screen.getByRole('button', { name: 'Customizing…' })).toBeDisabled();
   const revised = { ...guide, title: 'Our customized guide' };
   await act(async () => options.onComplete?.(JSON.stringify(revised)));
@@ -63,7 +69,10 @@ it('retains the answers and existing draft when validation fails, and allows ret
   await submit();
   await act(async () => options.onComplete?.('invalid guide'));
   expect(generate).toHaveBeenCalledTimes(2);
-  expect(screen.getByRole('status')).toHaveTextContent('Repairing the guide format');
+  expect(JSON.parse(options.prompt).availableDataSources).toEqual([
+    { name: 'play Pathfinder', type: 'prometheus', uid: 'play' },
+  ]);
+  expect(screen.getByRole('status')).toHaveTextContent('Repairing the generated guide');
   await act(async () => options.onComplete?.('still invalid'));
   expect(onReview).not.toHaveBeenCalled();
   expect(screen.getByRole('alert')).toHaveTextContent('The response is incomplete or is not valid JSON');
@@ -137,7 +146,24 @@ it('shows streamed progress and repairs a schema-invalid response once', async (
   await act(async () => options.onComplete?.(JSON.stringify({ title: 'Our guide', blocks: [{ type: 'unknown' }] })));
   expect(generate).toHaveBeenCalledTimes(2);
   expect(JSON.parse(options.prompt).validationErrors).toContain('blocks');
-  expect(screen.getByRole('status')).toHaveTextContent('Repairing the guide format');
+  expect(screen.getByRole('status')).toHaveTextContent('Repairing the generated guide');
   await act(async () => options.onComplete?.(JSON.stringify(guide)));
   expect(onReview).toHaveBeenCalledWith(guide);
+});
+
+it('does not start generation if dismissed while data source context is loading', async () => {
+  let resolveContext!: (value: { dataSources: [] }) => void;
+  getDatasourceContext.mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveContext = resolve;
+    })
+  );
+  const { onReview } = renderModal();
+  fireEvent.change(screen.getByLabelText(/What should they learn/), { target: { value: 'Use Prometheus' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Customize and open editor' }));
+  expect(screen.getByRole('status')).toHaveTextContent('Reading available data sources');
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  await act(async () => resolveContext({ dataSources: [] }));
+  expect(generate).not.toHaveBeenCalled();
+  expect(onReview).not.toHaveBeenCalled();
 });

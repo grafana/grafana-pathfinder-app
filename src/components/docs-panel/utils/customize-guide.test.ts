@@ -56,3 +56,99 @@ it('reports the invalid field rather than hiding schema errors', () => {
     /blocks/
   );
 });
+
+const interactiveSource: JsonGuide = {
+  ...source,
+  blocks: [
+    {
+      type: 'section',
+      id: 'setup',
+      title: 'Set up the data source',
+      blocks: [
+        {
+          type: 'interactive',
+          action: 'navigate',
+          reftarget: '/connections/datasources',
+          content: 'Open data sources',
+        },
+      ],
+    },
+  ],
+};
+
+it('rejects a retained interactive section converted to a static checklist', () => {
+  const generated = {
+    ...interactiveSource,
+    blocks: [
+      {
+        type: 'section',
+        id: 'setup',
+        title: 'Prepare your data source',
+        blocks: [{ type: 'markdown', content: 'Ask your administrator to configure Prometheus.' }],
+      },
+    ],
+  };
+  expect(() => parseCustomizedGuide(JSON.stringify(generated), interactiveSource, url)).toThrow(
+    /setup.*lost its interactive steps/
+  );
+});
+
+it('accepts interactive setup adapted to an existing data source without changing the source', () => {
+  const generated: JsonGuide = {
+    ...interactiveSource,
+    blocks: [
+      {
+        type: 'section',
+        id: 'setup',
+        title: 'Open play Pathfinder',
+        blocks: [
+          {
+            type: 'interactive',
+            action: 'navigate',
+            reftarget: '/connections/datasources/edit/play',
+            content: 'Open play Pathfinder',
+          },
+        ],
+      },
+    ],
+  };
+  expect(parseCustomizedGuide(JSON.stringify(generated), interactiveSource, url)).toEqual(generated);
+  expect(interactiveSource.blocks[0]).toMatchObject({ title: 'Set up the data source' });
+});
+
+it('checks interactive sections nested in conditional branches', () => {
+  const nested: JsonGuide = {
+    ...source,
+    blocks: [
+      {
+        type: 'conditional',
+        conditions: ['has-datasource:prometheus'],
+        whenTrue: interactiveSource.blocks,
+        whenFalse: [],
+      },
+    ],
+  };
+  const generated: JsonGuide = {
+    ...nested,
+    blocks: [
+      {
+        type: 'conditional',
+        conditions: ['has-datasource:prometheus'],
+        whenTrue: [
+          {
+            type: 'section',
+            id: 'setup',
+            title: 'Setup',
+            blocks: [{ type: 'markdown', content: 'Configure it yourself' }],
+          },
+        ],
+        whenFalse: [],
+      },
+    ],
+  };
+  expect(() => parseCustomizedGuide(JSON.stringify(generated), nested, url)).toThrow(/lost its interactive steps/);
+});
+
+it('allows obsolete sections to be removed rather than keeping misleading instructions', () => {
+  expect(parseCustomizedGuide(JSON.stringify(source), interactiveSource, url)).toEqual(source);
+});

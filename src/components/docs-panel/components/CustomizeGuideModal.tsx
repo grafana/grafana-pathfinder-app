@@ -19,7 +19,7 @@ interface Props {
 }
 
 export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: Props) {
-  const { generate, cancel, isAssistantAvailable } = useAssistantGeneration({
+  const { generate, cancel, isAssistantAvailable, getDatasourceContext } = useAssistantGeneration({
     contentKey: guide.id,
     assistantId: 'customize-guide',
   });
@@ -67,7 +67,7 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
     setError(undefined);
     setElapsed(0);
     setReceived(0);
-    setPhase('Waiting for Assistant…');
+    setPhase('Reading available data sources…');
     const answers = { audience, outcome, environment };
     const isCurrent = () => current.active && current.busy;
     const generateResponse = async (prompt: string, repairing: boolean): Promise<string> => {
@@ -87,7 +87,7 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
             if (isCurrent()) {
               characters += delta.length;
               setReceived(characters);
-              setPhase(repairing ? 'Repairing the guide format…' : 'Receiving the customized guide…');
+              setPhase(repairing ? 'Repairing the generated guide…' : 'Receiving the customized guide…');
             }
           },
           onComplete: resolveResponse,
@@ -98,7 +98,12 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
       return text;
     };
     try {
-      let response = await generateResponse(buildGuideCustomizationPrompt(guide, answers), false);
+      const { dataSources } = await getDatasourceContext();
+      if (!isCurrent()) {
+        return;
+      }
+      setPhase('Waiting for Assistant…');
+      let response = await generateResponse(buildGuideCustomizationPrompt(guide, answers, dataSources), false);
       if (!isCurrent()) {
         return;
       }
@@ -110,9 +115,12 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         if (!(e instanceof GuideCustomizationError)) {
           throw e;
         }
-        setPhase('Repairing the guide format…');
+        setPhase('Repairing the generated guide…');
         setReceived(0);
-        response = await generateResponse(buildGuideRepairPrompt(guide, answers, response, e.details), true);
+        response = await generateResponse(
+          buildGuideRepairPrompt(guide, answers, response, e.details, dataSources),
+          true
+        );
         if (!isCurrent()) {
           return;
         }
