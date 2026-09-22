@@ -4,6 +4,17 @@ import { KioskTile } from './KioskTile';
 import type { KioskRule } from './kiosk-rules';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
+const mockPush = jest.fn();
+jest.mock('@grafana/runtime', () => ({
+  config: {},
+  locationService: {
+    push: (...args: unknown[]) => mockPush(...args),
+    getLocation: () => ({ pathname: '/dashboards', search: '?orgId=2&pathfinderKiosk=1', hash: '' }),
+  },
+}));
+
+jest.mock('../../utils/dev-mode', () => ({ isDevModeEnabledGlobal: () => false }));
+
 jest.mock('@grafana/ui', () => ({
   Icon: ({ name }: { name: string }) => <span data-testid={`icon-${name}`} />,
   useStyles2: () => ({}),
@@ -131,5 +142,53 @@ describe('KioskTile', () => {
 
     const openedUrl = new URL(mockOpen.mock.calls[0][0]);
     expect(openedUrl.searchParams.get('kiosk_session')).toMatch(UUID_REGEX);
+  });
+  it.each(['javascript:alert(1)', 'data:text/html,test', 'https://user:password@example.com'])(
+    'rejects unsafe target %s without analytics or navigation',
+    (targetUrl) => {
+      render(<KioskTile rule={{ ...rule, targetUrl }} index={0} />);
+      fireEvent.click(screen.getByTestId('kiosk-tile-0'));
+      expect(mockOpen).not.toHaveBeenCalled();
+      expect(reportAppInteraction).not.toHaveBeenCalled();
+    }
+  );
+  it('rejects unsafe guide URLs', () => {
+    render(<KioskTile rule={{ ...rule, url: 'javascript:alert(1)' }} index={0} />);
+    fireEvent.click(screen.getByTestId('kiosk-tile-0'));
+    expect(mockOpen).not.toHaveBeenCalled();
+  });
+  it('opens a guide on the current instance and tab, ignoring presentation targetUrl', () => {
+    const onLaunch = jest.fn();
+    render(
+      <KioskTile rule={{ ...rule, page: '/explore?left=test#query' }} index={0} mode="instance" onLaunch={onLaunch} />
+    );
+    fireEvent.click(screen.getByTestId('kiosk-tile-0'));
+    expect(mockOpen).not.toHaveBeenCalled();
+    expect(onLaunch).toHaveBeenCalledTimes(1);
+    const url = new URL(mockPush.mock.calls[0][0], window.location.origin);
+    expect(url.pathname).toBe('/explore');
+    expect(url.searchParams.get('left')).toBe('test');
+    expect(url.searchParams.get('orgId')).toBe('2');
+    expect(url.searchParams.get('doc')).toBe(rule.url);
+    expect(url.searchParams.get('page')).toBe('/explore');
+    expect(url.searchParams.get('panelMode')).toBe('sidebar');
+    expect(url.searchParams.has('pathfinderKiosk')).toBe(false);
+    expect(url.hash).toBe('#query');
+    expect(onLaunch.mock.invocationCallOrder[0]).toBeLessThan(mockPush.mock.invocationCallOrder[0]!);
+  });
+
+  it('keeps the current route when no page is specified and forwards learning journeys', () => {
+    render(<KioskTile rule={{ ...rule, type: 'learning-journey' }} index={0} mode="instance" />);
+    fireEvent.click(screen.getByTestId('kiosk-tile-0'));
+    const url = new URL(mockPush.mock.calls[0][0], window.location.origin);
+    expect(url.pathname).toBe('/dashboards');
+    expect(url.searchParams.get('type')).toBe('learning-journey');
+  });
+
+  it.each(['//evil.example.com', '/logout', 'https://evil.example.com'])('rejects unsafe destination %s', (page) => {
+    render(<KioskTile rule={{ ...rule, page }} index={0} mode="instance" />);
+    fireEvent.click(screen.getByTestId('kiosk-tile-0'));
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockOpen).not.toHaveBeenCalled();
   });
 });

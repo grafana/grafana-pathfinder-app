@@ -1,0 +1,32 @@
+{
+  "rules": [
+    {
+      "title": "Core Grafana concepts",
+      "url": "https://interactive-learning.grafana.net/packages/core-grafana-concepts-lj/content.json",
+      "description": "Explore data sources, queries, dashboards, and alerting. No setup required.",
+      "type": "interactive",
+      "page": "/a/grafana-pathfinder-app"
+    },
+    {
+      "title": "Explore time series",
+      "url": "https://interactive-learning.grafana.net/guides/grafana-timeseries-signal-detective/content.json",
+      "description": "Build a time series panel with built-in sample data. Requires permission to create dashboards.",
+      "type": "interactive",
+      "page": "/dashboard/new"
+    },
+    {
+      "title": "Transform query results",
+      "url": "https://interactive-learning.grafana.net/guides/transform-testdata-query/content.json",
+      "description": "Shape sample data with transformations. Requires dashboard editing access and the TestData data source.",
+      "type": "interactive",
+      "page": "/dashboard/new"
+    },
+    {
+      "title": "Create dashboard playlists",
+      "url": "https://interactive-learning.grafana.net/guides/dashboard-playlists-guide/content.json",
+      "description": "Cycle through your dashboards in a playlist. Requires Editor access and at least two dashboards.",
+      "type": "interactive",
+      "page": "/playlists"
+    }
+  ]
+}
