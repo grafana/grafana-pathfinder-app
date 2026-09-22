@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.18.1
+
+### Fixed
+
+- **Settings and custom guides load through the backend proxy**: Settings, guide content, and publication checks use caller-scoped on-behalf-of tokens, matching the custom-guide catalogue. Upstream authentication failures no longer trigger Grafana's session-expiry handling, and failed settings reads cannot silently switch administrative writes to the legacy store. (#1966)
+
+- **Path resets preserve sibling progress**: Resetting a learning path no longer clears another path whose URL shares its prefix. (#1950)
+
+- **Consistent journey completion identity**: Journey completion records use the shared identity resolver and the correct default repository instead of always identifying themselves as bundled content. (#1939)
+
+- **Existing guides can leave JSON mode**: Guides with a pre-existing duplicate heading can return to the visual editor, undo, and restore their editing session. New duplicate headings remain validation errors. (#1960)
+
+- **Korean translations cover learning surfaces**: Fill missing and empty translations for path covers, My Learning, completion controls, and sidebar actions, and align inconsistent wording. (#1938)
+
+- **E2E journeys advance behind open modals**: The guide runner can close its current guide tab while a Grafana modal remains open for the next milestone. (#1947)
+
+### Added
+
+- **Open the connected sandbox in IDE**: The terminal toolbar offers IDE beside GCX when the Coda capability is enabled, opening the same VM without provisioning a replacement. Secondary terminal actions move into an overflow menu. (#1943)
+
+### Chore
+
+- **Stronger validation and steadier tests**: Add orphan-module and guided-action documentation checks, remove unused modules, batch validation subprocesses, and give hint assertions more retry headroom. (#1940, #1944, #1945, #1952, #1956)
+
+- **Clarified release procedures**: Document shared Cloud deployment, artifact version suffixes, and the distinction between publication and deployed health. (#1962)
+
 ## 2.18.0
 
 > Upgrade note: unfinished guides restart at the beginning once when upgrading to collision-safe progress storage. Completed guides, badges, streaks, and finished milestones are retained. Progress previously awarded for navigation can decrease under the new evidence-based calculation.

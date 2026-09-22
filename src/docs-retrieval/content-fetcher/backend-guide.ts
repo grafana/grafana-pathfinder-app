@@ -4,7 +4,7 @@
 import { ContentFetchResult } from '../../types/content.types';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
-import { itemUrl } from '../../utils/interactive-guides-api';
+import { guideReadUrl } from '../../utils/interactive-guides-api';
 import { validateGuide } from '../../validation';
 import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
 import type { JsonBlock } from '../../types/json-guide.types';
@@ -122,10 +122,9 @@ export async function fetchBackendInteractive(url: string): Promise<ContentFetch
   }
 
   try {
-    // itemUrl encodes resourceName to prevent path traversal (F3).
     const response = await lastValueFrom(
       getBackendSrv().fetch<BackendGuideResource>({
-        url: itemUrl(namespace, resourceName),
+        url: guideReadUrl(resourceName),
         method: 'GET',
         // Optional rollout endpoint: don't show a global toast when unavailable.
         showErrorAlert: false,

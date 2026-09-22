@@ -12,7 +12,7 @@
  * resolutions from here (see CompositePackageResolver's repository check).
  *
  * @coupling Types: PackageResolver, PackageResolution in package.types.ts
- * @coupling API: GET /apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{ns}/interactiveguides/{name}
+ * @coupling API: GET /api/plugins/grafana-pathfinder-app/resources/custom-guide?name={name}
  *   — group/version/availability come from utils/interactive-guides-api.ts (GAP).
  * @coupling Catalogue/listing needs (Custom Guides, My Learning) go through the
  *   separate /custom-guide-repository backend proxy instead of this resolver —
@@ -22,7 +22,7 @@
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
-import { isBackendApiAvailable, itemUrl } from '../utils/interactive-guides-api';
+import { isBackendApiAvailable, guideReadUrl } from '../utils/interactive-guides-api';
 import { logger } from '../lib/logging';
 
 import { ManifestJsonObjectSchema } from '../types/package.schema';
@@ -85,12 +85,9 @@ type ProbeResult = { ok: true; resource: InteractiveGuideResource } | { ok: fals
  * the content-loading paths below. Shared so the URL-only path (when asked to
  * verify) and the metadata/content paths enforce identical rules.
  */
-async function probePublishedGuide(namespace: string, packageId: string): Promise<ProbeResult> {
+async function probePublishedGuide(packageId: string): Promise<ProbeResult> {
   try {
-    // SECURITY: itemUrl encodes both namespace and packageId to prevent path
-    // traversal (F3) — mirrors fetchBackendInteractive in
-    // docs-retrieval/content-fetcher/backend-guide.ts.
-    const url = itemUrl(namespace, packageId);
+    const url = guideReadUrl(packageId);
     const response = await lastValueFrom(
       getBackendSrv().fetch<InteractiveGuideResource>({ url, method: 'GET', showErrorAlert: false })
     );
@@ -269,7 +266,7 @@ export class AppPlatformPackageResolver implements PackageResolver {
       if (!options?.verifyPublished) {
         return resolution;
       }
-      const probe = await probePublishedGuide(namespace, packageId);
+      const probe = await probePublishedGuide(packageId);
       if (!probe.ok) {
         return probe.failure;
       }
@@ -281,7 +278,7 @@ export class AppPlatformPackageResolver implements PackageResolver {
 
     const metadataOnly = options.loadContent === 'metadata-only';
 
-    const probe = await probePublishedGuide(namespace, packageId);
+    const probe = await probePublishedGuide(packageId);
     if (!probe.ok) {
       return probe.failure;
     }
