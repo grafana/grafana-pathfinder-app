@@ -109,3 +109,32 @@ it('checks admin access again before committing a confirmed replacement', async 
   expect(open).not.toHaveBeenCalled();
   expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBe('existing');
 });
+
+it('prepares customization without changing the draft and confirms replacement after generation', async () => {
+  localStorage.setItem(StorageKeys.BLOCK_EDITOR_STATE, 'existing');
+  const open = jest.fn();
+  const { result } = renderHook(() => usePrivateGuideCopy(tab, open));
+  await act(() => result.current.prepare(true));
+  expect(result.current.customization).toEqual(guide);
+  expect(result.current.needsConfirmation).toBe(false);
+  expect(open).not.toHaveBeenCalled();
+  const customized = { ...guide, title: 'Customized' };
+  act(() => result.current.reviewCopy(customized));
+  expect(result.current.needsConfirmation).toBe(true);
+  expect(result.current.customization).toBeUndefined();
+  expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBe('existing');
+  act(() => result.current.confirm());
+  expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).guide).toEqual(customized);
+  expect(open).toHaveBeenCalledTimes(1);
+});
+
+it('can cancel customization without touching the existing draft', async () => {
+  localStorage.setItem(StorageKeys.BLOCK_EDITOR_STATE, 'existing');
+  const open = jest.fn();
+  const { result } = renderHook(() => usePrivateGuideCopy(tab, open));
+  await act(() => result.current.prepare(true));
+  act(() => result.current.cancel());
+  expect(result.current.customization).toBeUndefined();
+  expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBe('existing');
+  expect(open).not.toHaveBeenCalled();
+});
