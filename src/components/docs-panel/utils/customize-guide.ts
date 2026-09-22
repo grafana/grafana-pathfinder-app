@@ -169,7 +169,13 @@ function validateRetainedInteractions(source: JsonGuide, result: JsonGuide): voi
 
 export function parseCustomizedGuide(response: string, source: JsonGuide, sourceUrl: string): JsonGuide {
   const parsed = parseResponseJson(response);
-  const candidate = parsed && typeof parsed === 'object' && 'guide' in parsed ? parsed.guide : parsed;
+  let candidate = parsed;
+  if (parsed && typeof parsed === 'object' && 'guide' in parsed) {
+    if (Object.keys(parsed).length !== 1) {
+      throw new GuideCustomizationError('Return only the customized guide, not the request or its context.');
+    }
+    candidate = parsed.guide;
+  }
   const input =
     candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       ? { ...candidate, id: source.id }
@@ -199,5 +205,11 @@ export function parseCustomizedGuide(response: string, source: JsonGuide, source
     throw new GuideCustomizationError('The guide contains snippet-ref blocks. Return their expanded content instead.');
   }
   validateRetainedInteractions(source, result.guide);
-  return preserveGuideUrls({ ...result.guide, id: source.id }, sourceUrl);
+  try {
+    return preserveGuideUrls({ ...result.guide, id: source.id }, sourceUrl);
+  } catch (error) {
+    throw new GuideCustomizationError(
+      error instanceof Error ? error.message : 'The guide contains an invalid media or link URL.'
+    );
+  }
 }

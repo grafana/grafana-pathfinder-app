@@ -42,6 +42,7 @@ export interface UseAssistantGenerationOptions {
 export interface UseAssistantGenerationReturn {
   /** Whether the assistant is available in this Grafana instance */
   isAssistantAvailable: boolean;
+  isCheckingAssistantAvailability: boolean;
   /** The inline assistant generate function */
   generate: ReturnType<typeof useInlineAssistant>['generate'];
   /** Whether content is currently being generated */
@@ -72,7 +73,7 @@ export function useAssistantGeneration(options: UseAssistantGenerationOptions): 
   const mockInlineAssistant = useMockInlineAssistant();
   const { generate, isGenerating, content, reset, cancel } = devModeEnabled ? mockInlineAssistant : realInlineAssistant;
 
-  const [isAssistantAvailable, setIsAssistantAvailable] = useState(false);
+  const [isAssistantAvailable, setIsAssistantAvailable] = useState<boolean | null>(null);
 
   const setPageContext = useProvidePageContext('/explore', EMPTY_CONTEXT_DEPS);
 
@@ -140,7 +141,8 @@ export function useAssistantGeneration(options: UseAssistantGenerationOptions): 
   }, []);
 
   return {
-    isAssistantAvailable,
+    isAssistantAvailable: isAssistantAvailable === true,
+    isCheckingAssistantAvailability: isAssistantAvailable === null,
     generate,
     isGenerating,
     content,

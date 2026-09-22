@@ -193,3 +193,61 @@ it('preserves the draft and avoids generation when the request exceeds the conte
   expect(generate).not.toHaveBeenCalled();
   expect(onReview).not.toHaveBeenCalled();
 });
+
+it('keeps generation alive when the hook returns a new cancel callback on each render', async () => {
+  const callbacks: jest.Mock[] = [];
+  jest.mocked(useAssistantGeneration).mockImplementation(() => {
+    const nextCancel = jest.fn();
+    callbacks.push(nextCancel);
+    return {
+      generate,
+      cancel: nextCancel,
+      isAssistantAvailable: true,
+      isCheckingAssistantAvailability: false,
+      getDatasourceContext,
+    } as unknown as ReturnType<typeof useAssistantGeneration>;
+  });
+  const { onReview, unmount } = renderModal();
+  await submit();
+  act(() => options.onDelta?.('partial response'));
+  expect(callbacks.length).toBeGreaterThan(1);
+  callbacks.forEach((callback) => expect(callback).not.toHaveBeenCalled());
+  await act(async () => options.onComplete?.(JSON.stringify(guide)));
+  expect(onReview).toHaveBeenCalledWith(guide);
+  expect(screen.getByRole('button', { name: 'Customize and open editor' })).toBeEnabled();
+  const latest = callbacks.at(-1)!;
+  unmount();
+  expect(latest).toHaveBeenCalledTimes(1);
+});
+
+it('shows a pending availability check without an unavailable warning', () => {
+  jest.mocked(useAssistantGeneration).mockReturnValue({
+    generate,
+    cancel,
+    isAssistantAvailable: false,
+    isCheckingAssistantAvailability: true,
+    getDatasourceContext,
+  } as unknown as ReturnType<typeof useAssistantGeneration>);
+  renderModal();
+  expect(screen.getByRole('status')).toHaveTextContent('Checking Assistant availability');
+  expect(screen.queryByText('Assistant is unavailable. Try again later.')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Customize and open editor' })).toBeDisabled();
+});
+
+it.each(['prompt echo', 'unsupported URL'])('repairs %s and preserves details when repair fails', async (failure) => {
+  const { onReview } = renderModal();
+  await submit();
+  const invalid =
+    failure === 'prompt echo'
+      ? options.prompt
+      : JSON.stringify({ ...guide, blocks: [{ type: 'markdown', content: '[Download](ftp://example.com/file.txt)' }] });
+  const message = failure === 'prompt echo' ? 'not the request or its context' : 'unsupported media or link URL';
+  await act(async () => options.onComplete?.(invalid));
+  expect(generate).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(options.prompt).validationErrors).toContain(message);
+  expect(onReview).not.toHaveBeenCalled();
+  await act(async () => options.onComplete?.(invalid));
+  expect(screen.getByRole('alert')).toHaveTextContent(message);
+  expect(screen.getByRole('alert')).toHaveTextContent('Your draft is unchanged');
+  expect(onReview).not.toHaveBeenCalled();
+});

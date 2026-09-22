@@ -25,10 +25,11 @@ interface Props {
 }
 
 export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: Props) {
-  const { generate, cancel, isAssistantAvailable, getDatasourceContext } = useAssistantGeneration({
-    contentKey: guide.id,
-    assistantId: 'customize-guide',
-  });
+  const { generate, cancel, isAssistantAvailable, isCheckingAssistantAvailability, getDatasourceContext } =
+    useAssistantGeneration({
+      contentKey: guide.id,
+      assistantId: 'customize-guide',
+    });
   const [audience, setAudience] = useState('');
   const [outcome, setOutcome] = useState('');
   const [environment, setEnvironment] = useState('');
@@ -39,13 +40,18 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
   const [error, setError] = useState<string>();
   const request = useRef({ active: true, busy: false });
 
+  const cancelRef = useRef(cancel);
+  useEffect(() => {
+    cancelRef.current = cancel;
+  }, [cancel]);
+
   useEffect(() => {
     request.current = { active: true, busy: false };
     return () => {
       request.current.active = false;
-      cancel();
+      cancelRef.current();
     };
-  }, [cancel]);
+  }, []);
 
   useEffect(() => {
     if (!isGenerating) {
@@ -232,7 +238,10 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         </div>
       )}
       {error && <Alert title={error} severity="error" />}
-      {!isAssistantAvailable && (
+      {isCheckingAssistantAvailability && (
+        <div role="status">{t('docsPanel.checkingAssistantAvailability', 'Checking Assistant availability…')}</div>
+      )}
+      {!isCheckingAssistantAvailability && !isAssistantAvailable && (
         <Alert
           title={t('docsPanel.customizeGuideUnavailable', 'Assistant is unavailable. Try again later.')}
           severity="info"

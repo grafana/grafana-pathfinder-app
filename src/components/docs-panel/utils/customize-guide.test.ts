@@ -2,6 +2,7 @@ import type { JsonGuide } from '../../../types/json-guide.types';
 import {
   buildGuideCustomizationPrompt,
   buildGuideRepairPrompt,
+  GuideCustomizationError,
   GUIDE_CUSTOMIZATION_MAX_CHARS,
   parseCustomizedGuide,
 } from './customize-guide';
@@ -199,4 +200,20 @@ it('accepts a Monaco insertion block as an interactive replacement', () => {
     ],
   };
   expect(parseCustomizedGuide(JSON.stringify(generated), interactiveSource, url)).toEqual(generated);
+});
+
+it('rejects an echoed customization or repair prompt', () => {
+  const answers = { audience: '', outcome: 'Use Prometheus', environment: '' };
+  for (const response of [
+    buildGuideCustomizationPrompt(source, answers),
+    buildGuideRepairPrompt(source, answers, 'invalid', 'Invalid JSON'),
+  ]) {
+    expect(() => parseCustomizedGuide(response, source, url)).toThrow(/not the request or its context/);
+  }
+});
+
+it('reports unsupported generated URLs as repairable validation errors', () => {
+  const generated = { ...source, blocks: [{ type: 'markdown', content: '[Download](ftp://example.com/file.txt)' }] };
+  expect(() => parseCustomizedGuide(JSON.stringify(generated), source, url)).toThrow(GuideCustomizationError);
+  expect(() => parseCustomizedGuide(JSON.stringify(generated), source, url)).toThrow(/unsupported media or link URL/);
 });
