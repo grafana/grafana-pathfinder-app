@@ -23,23 +23,8 @@ interface StepProgressDetail {
   completedCount?: number;
 }
 
-/** Numeric completed/total step counts for the active guide, or `undefined`. */
-export interface StepProgressCounts {
-  /** User-facing steps completed across the whole document. */
-  done: number;
-  /** Total user-facing steps in the document. */
-  total: number;
-}
-
-/**
- * Numeric variant of {@link useStepProgressFromEvents}: returns the raw
- * completed/total step counts (clamped so `done <= total`) rather than a
- * formatted string. Both counts are in user-facing STEPS — the same unit the
- * "Step N of M" chip uses — so consumers stay consistent with what the reader
- * sees, not with internal content-block counts.
- */
-export function useStepProgressCounts(hasActiveGuide: boolean): StepProgressCounts | undefined {
-  const [counts, setCounts] = useState<StepProgressCounts | undefined>();
+export function useStepProgressFromEvents(hasActiveGuide: boolean): string | undefined {
+  const [stepProgress, setStepProgress] = useState<string | undefined>();
 
   useEffect(() => {
     if (!hasActiveGuide) {
@@ -51,9 +36,9 @@ export function useStepProgressCounts(hasActiveGuide: boolean): StepProgressCoun
       const total = detail?.totalSteps ?? 0;
       const done = detail?.completedCount ?? 0;
       if (total > 0) {
-        setCounts({ done: Math.max(0, Math.min(done, total)), total });
+        setStepProgress(`${done}/${total}`);
       } else {
-        setCounts(undefined);
+        setStepProgress(undefined);
       }
     };
 
@@ -67,10 +52,5 @@ export function useStepProgressCounts(hasActiveGuide: boolean): StepProgressCoun
   // `react-hooks/set-state-in-effect` rule stays clean. Stale state from a
   // prior active session is hidden until the next event arrives — the chip
   // is meaningless without an active guide anyway.
-  return hasActiveGuide ? counts : undefined;
-}
-
-export function useStepProgressFromEvents(hasActiveGuide: boolean): string | undefined {
-  const counts = useStepProgressCounts(hasActiveGuide);
-  return counts ? `${counts.done}/${counts.total}` : undefined;
+  return hasActiveGuide ? stepProgress : undefined;
 }

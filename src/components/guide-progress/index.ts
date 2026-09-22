@@ -1,1 +1,1 @@
-export { SegmentedGuideProgressBar } from './SegmentedGuideProgressBar';
+export { GuideProgressBar } from './GuideProgressBar';

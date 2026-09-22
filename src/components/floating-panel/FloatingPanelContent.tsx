@@ -1,7 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
-import { SegmentedGuideProgressBar } from '../guide-progress';
+import { GuideProgressBar } from '../guide-progress';
 import { getGuideIndex } from '../../global-state/active-guide-index';
 import { getContentKey } from '../../global-state/content-key';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
@@ -140,12 +140,12 @@ export function FloatingPanelContent({
               onResetGuide={onResetGuide!}
               compact
             />
-            {showProgressBar && <SegmentedGuideProgressBar hasActiveGuide={showProgressBar} />}
+            {showProgressBar && <GuideProgressBar contentUrl={content.url} />}
           </div>
         ) : (
           showProgressBar && (
             <div className={floatingStyles.stickyToolbar}>
-              <SegmentedGuideProgressBar hasActiveGuide={showProgressBar} />
+              <GuideProgressBar contentUrl={content.url} />
             </div>
           )
         )}
