@@ -100,8 +100,15 @@
   ],
   "assignmentEntry": [
     {
-      "field": "PathID",
-      "json": "pathId",
+      "field": "TargetType",
+      "json": "targetType",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "TargetID",
+      "json": "targetId",
       "type": "string",
       "wire": "string",
       "omitempty": false

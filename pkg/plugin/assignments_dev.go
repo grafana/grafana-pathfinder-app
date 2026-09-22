@@ -11,31 +11,21 @@ import (
 	"sync"
 )
 
-// Local-dev fixture for GET /assignments/my, compiled ONLY under the
-// `pathfinderdev` build tag. See docs/developer/LOCAL_DEV.md for the build and
-// run recipe.
+// Local-dev fixture for GET /assignments/my, compiled only under the
+// pathfinderdev build tag. See docs/developer/LOCAL_DEV.md.
 //
-// Why a build tag rather than configuration: the route's real path needs four
-// things a local docker-compose stack cannot supply — a served aggregation
-// layer for the .app group, a registered Assignment kind (RFC §11 dependency 8,
-// not started), a provisioned CAP token to mint an on-behalf-of access token
-// with, and a stack subject for the caller. Substituting all four means
-// substituting the caller's identity too, and an identity substitution that
-// could be switched on by configuration in a shipped binary is the kind of
-// fail-open this proxy's whole trust boundary exists to prevent
-// (docs/design/BACKEND_PROXY_PATTERN.md §3). A build tag makes the substitution
-// absent from the artifact rather than merely disabled in it.
+// A build tag rather than configuration: substituting the caller's identity
+// must be absent from a shipped binary, not merely disabled in it
+// (docs/design/BACKEND_PROXY_PATTERN.md §3).
 
 // assignmentFixtureDefaultPath is where the fixture lives inside the
 // docker-compose stack: the repo root is mounted at /root/grafana-pathfinder-app
 // (.config/docker-compose-base.yaml), and demo/ sits outside dist/, so a
 // webpack build does not wipe it.
 //
-// A default path rather than a required env var, because Grafana constructs the
-// environment it launches a backend plugin with; a variable set on the Grafana
-// container is not reliably visible in this process. A missing file is the
-// "off" state, so even a tagged build serves the real read path until someone
-// puts a fixture there.
+// A default path rather than a required env var: Grafana's plugin process
+// does not reliably see container env. A missing file falls through to the
+// real read path.
 const assignmentFixtureDefaultPath = "/root/grafana-pathfinder-app/demo/assignments-fixture.json"
 
 // assignmentFixtureEnvVar overrides that path when it does arrive — useful when
@@ -47,13 +37,9 @@ const assignmentFixtureEnvVar = "PATHFINDER_DEV_ASSIGNMENTS_FIXTURE"
 // subject of its own.
 const devFixtureFallbackSubject = "user:dev"
 
-// devAssignmentFixture is the on-disk shape: the wire entries plus two dev-only
-// knobs.
-//
-// Entries carry `satisfied` directly, which the real route will instead derive
-// from the caller's completions (see unevaluatedSatisfaction). That is the
-// point of the fixture — the UI has to render satisfied, outstanding and
-// overdue states before that join exists.
+// devAssignmentFixture is the on-disk shape: wire entries plus a dev-only
+// subject. Entries carry `satisfied` directly; the real route does not
+// evaluate it yet (see unevaluatedSatisfaction).
 type devAssignmentFixture struct {
 	// Subject serves the entries as a specific user, so "another user's
 	// obligations" is reachable locally without a second login. Optional: a
@@ -110,10 +96,8 @@ func serveDevAssignmentFixture(a *App, r *http.Request) ([]assignmentEntry, stri
 			"path", path)
 	})
 
-	// Default, then filter, on the same rules shapeAssignments applies, and sort
-	// the same way. A fixture must not be able to teach the UI something the
-	// real route would never do — that file order is preserved, or that a
-	// withdrawn obligation reaches the client.
+	// Same lifecycle filter and sort as shapeAssignments. A fixture must not
+	// serve a withdrawn obligation or preserve file order.
 	entries := []assignmentEntry{}
 	for _, entry := range fixture.Assignments {
 		if entry.Lifecycle == "" {

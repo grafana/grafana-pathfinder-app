@@ -26,14 +26,14 @@ describe('fetchMyAssignments', () => {
   it('returns the assignments array on success', async () => {
     mockGet.mockResolvedValue({
       capability: { available: true },
-      assignments: [{ pathId: 'fundamentals', satisfied: false, lifecycle: 'active' }],
+      assignments: [{ targetType: 'path', targetId: 'fundamentals', satisfied: false, lifecycle: 'active' }],
       asOf: '2026-07-23T00:00:00Z',
     });
 
     const result = await fetchMyAssignments('stacks-123');
 
     expect(result).toHaveLength(1);
-    expect(result[0]!.pathId).toBe('fundamentals');
+    expect(result[0]!.targetId).toBe('fundamentals');
     expect(mockGet).toHaveBeenCalledWith(expect.stringContaining('/assignments/my'), undefined, undefined, {
       showErrorAlert: false,
       showSuccessAlert: false,
@@ -128,7 +128,7 @@ describe('fetchMyAssignments', () => {
 
     mockGet.mockResolvedValueOnce({
       capability: { available: true },
-      assignments: [{ pathId: 'fundamentals', satisfied: false, lifecycle: 'active' }],
+      assignments: [{ targetType: 'path', targetId: 'fundamentals', satisfied: false, lifecycle: 'active' }],
     });
 
     const recovered = await fetchMyAssignments('stacks-123');
@@ -186,7 +186,7 @@ describe('fetchMyAssignments', () => {
   it('de-duplicates concurrent calls and refetches once each has settled', async () => {
     mockGet.mockResolvedValue({
       capability: { available: true },
-      assignments: [{ pathId: 'p1', satisfied: false, lifecycle: 'active' }],
+      assignments: [{ targetType: 'path', targetId: 'p1', satisfied: false, lifecycle: 'active' }],
     });
 
     const [a, b] = await Promise.all([fetchMyAssignments('stacks-123'), fetchMyAssignments('stacks-123')]);
@@ -201,13 +201,13 @@ describe('fetchMyAssignments', () => {
     mockGet.mockRejectedValueOnce(new Error('network error'));
     mockGet.mockResolvedValueOnce({
       capability: { available: true },
-      assignments: [{ pathId: 'p1', satisfied: false, lifecycle: 'active' }],
+      assignments: [{ targetType: 'path', targetId: 'p1', satisfied: false, lifecycle: 'active' }],
     });
 
     expect(await fetchMyAssignments('stacks-123')).toEqual([]);
     const retry = await fetchMyAssignments('stacks-123');
 
-    expect(retry.map((a) => a.pathId)).toEqual(['p1']);
+    expect(retry.map((a) => a.targetId)).toEqual(['p1']);
     expect(mockGet).toHaveBeenCalledTimes(2);
     expect(recordAssignmentsUnavailable).toHaveBeenCalledTimes(1);
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('transport-error');

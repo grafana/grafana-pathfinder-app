@@ -33,8 +33,8 @@ function path(overrides: Partial<LearningPath> & { id: string; title: string }):
   return { description: '', guides: [], badgeId: '', ...overrides };
 }
 
-function assignment(overrides: Partial<AssignmentEntry> & { pathId: string }): AssignmentEntry {
-  return { satisfied: false, lifecycle: 'active', ...overrides };
+function assignment(overrides: Partial<AssignmentEntry> & { targetId: string }): AssignmentEntry {
+  return { targetType: 'path', satisfied: false, lifecycle: 'active', ...overrides };
 }
 
 const noProgress = () => 0;
@@ -62,7 +62,7 @@ describe('useMyAssignments', () => {
   });
 
   it('resolves a fetched assignment into notDone', async () => {
-    mockFetchMyAssignments.mockResolvedValue([assignment({ pathId: 'fundamentals' })]);
+    mockFetchMyAssignments.mockResolvedValue([assignment({ targetId: 'fundamentals' })]);
 
     const { result } = renderHook(() =>
       useMyAssignments({
@@ -80,7 +80,7 @@ describe('useMyAssignments', () => {
   });
 
   it('logs an unresolvable target without putting the path id on the warn', async () => {
-    mockFetchMyAssignments.mockResolvedValue([assignment({ pathId: 'ghost-path' })]);
+    mockFetchMyAssignments.mockResolvedValue([assignment({ targetId: 'ghost-path' })]);
 
     const { result } = renderHook(() =>
       useMyAssignments({
@@ -98,7 +98,7 @@ describe('useMyAssignments', () => {
       reason: 'unresolvable-target',
       count: 1,
     });
-    expect(logger.debug).toHaveBeenCalledWith('[assignments] unresolvable target', { pathIds: 'ghost-path' });
+    expect(logger.debug).toHaveBeenCalledWith('[assignments] unresolvable target', { targetIds: 'ghost-path' });
     expect(JSON.stringify((logger.warn as jest.Mock).mock.calls)).not.toContain('ghost-path');
   });
 });

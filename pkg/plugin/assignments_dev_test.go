@@ -29,12 +29,15 @@ func TestDevAssignmentFixture_CommittedFileLoads(t *testing.T) {
 	}
 
 	for _, entry := range entries {
-		if entry.PathID == "deprecated-onboarding" {
+		if entry.TargetID == "deprecated-onboarding" {
 			t.Error("a withdrawn obligation reached the client; the lifecycle filter regressed")
+		}
+		if entry.TargetType != "path" || entry.TargetID == "" {
+			t.Errorf("entry = %+v; the fixture must name targetType and targetId", entry)
 		}
 		if entry.Lifecycle != assignmentLifecycleActive {
 			t.Errorf("entry %q has lifecycle %q; only active obligations may be served",
-				entry.PathID, entry.Lifecycle)
+				entry.TargetID, entry.Lifecycle)
 		}
 	}
 
@@ -91,7 +94,7 @@ func TestDevAssignmentFixture_FallsThroughOnBadInput(t *testing.T) {
 // the real identity path whenever the stack can satisfy it.
 func TestDevAssignmentFixture_VerifiedSubjectWinsOverFixture(t *testing.T) {
 	t.Setenv(assignmentFixtureEnvVar, writeTempFixture(t,
-		`{"subject":"user:dev","assignments":[{"pathId":"p","satisfied":false}]}`))
+		`{"subject":"user:dev","assignments":[{"targetType":"path","targetId":"p","satisfied":false}]}`))
 
 	r := completionRequest(t, "/assignments/my", "user:real")
 	entries, subject, handled := serveDevAssignmentFixture(newTestApp(t), r)

@@ -56,21 +56,13 @@ const (
 )
 
 // assignmentListMaxTotalRecords is the aggregate budget across all LIST pages
-// of one drain (the per-page byte cap alone does not bound total memory). When
-// the budget trips, the drain caps the result and logs the truncation — never
-// silently. §7.4 names steady-state cardinality as a stated input: roughly
-// (assigned people × targets each × retained obligations) for the namespace,
-// since the LIST is namespace-wide and the filter to one caller happens here.
-// 50_000 is the one-kind completion-records budget carried over. §7.4 asks to
-// resize it once the live join holds this LIST and the completions LIST in
-// memory together; do not treat this number as that answer.
-// A var so tests can exercise the budget path.
+// of one drain (the per-page byte cap alone does not bound total memory).
+// When the budget trips, the drain caps the result and logs the truncation —
+// never silently. A var so tests can exercise the budget path.
 var assignmentListMaxTotalRecords = 50_000
 
-// assignmentLifecycleActive is the only lifecycle value MVP ever writes
-// (§6.10): the provisioner is create-only and never withdraws. Records carrying
-// anything else are filtered out of the response rather than rendered, so a
-// withdrawal mechanism built later needs no frontend change to take effect.
+// assignmentLifecycleActive is the only lifecycle this route serves.
+// Anything else is filtered out rather than rendered.
 const assignmentLifecycleActive = "active"
 
 // assignmentListerOverride injects a fake lister in tests. nil selects the real
@@ -79,55 +71,26 @@ const assignmentLifecycleActive = "active"
 // path stays testable.
 var assignmentListerOverride assignmentLister
 
-// assignmentDevHook is nil in every shipped build, and the only thing that can
-// set it is assignments_dev.go, which is behind the `pathfinderdev` build tag.
-// It exists so the local dev loop can serve a canned envelope without the four
-// things a local stack cannot supply — a served aggregation layer, a registered
-// Assignment kind, a provisioned CAP token, and an Okta-resolved subject — and
-// so that affordance cannot be switched on by configuration alone in a build
-// that shipped. See docs/developer/LOCAL_DEV.md.
-//
-// A nil check rather than an interface with a no-op default: one branch, one
-// symbol, and `git grep assignmentDevHook` finds every line that participates.
-// It takes the *App so the fixture can reuse the shared ID-token verifier
-// (and its key cache) when the local stack does forward a usable token.
+// assignmentDevHook is nil in every shipped build. assignments_dev.go, behind
+// the pathfinderdev build tag, is the only thing that sets it, so a local
+// fixture cannot be switched on by configuration. See docs/developer/LOCAL_DEV.md.
 var assignmentDevHook func(*App, *http.Request) (entries []assignmentEntry, subject string, handled bool)
 
 // assignmentCapability is the availability signal "My Paths" gates on.
-// `available` is read-derived: it measures identity presence plus read-path
-// reachability of the assignments API on this stack. Reasons are
-// reasonIdentityUnavailable, reasonIdentityUnverifiable and
-// reasonSigningKeysUnreachable (all via identityStatus.capabilityReason()),
-// reasonFeatureToggleDisabled, reasonAppURLUnavailable,
-// reasonNamespaceUnavailable, reasonOBOUnavailable, and `upstream-<status>` for
-// a terminal upstream — which is what an unregistered Assignment kind looks
-// like today (`upstream-404`).
+// `available` is read-derived: identity presence plus read-path reachability
+// of the assignments API on this stack.
 type assignmentCapability struct {
 	Available bool   `json:"available"`
 	Reason    string `json:"reason,omitempty"`
 }
 
-// assignmentEntry is one obligation as "My Paths" renders it.
-//
-// pathId plus an optional trackId is a draft reading of the open §12.2
-// question (the RFC does not commit to field names). It is the shape this
-// proxy speaks today, not a settled Assignment schema.
-//
-// The envelope carries FACTS, not a rendered status. `satisfied`, `dueAt` and
-// `lifecycle` are separate fields and the UI derives its own display state from
-// them, rather than the backend shipping a precomputed "overdue" string. Two
-// reasons: `dueAt` is soft by definition (§6.9), so overdue is a display
-// concept the store has no opinion about; and a derived enum would have to pick
-// a comparison basis — §12.3 leaves open whether a deadline is measured against
-// the completion's own `completedAt` or the server-stamped `recordedAt` — and
-// shipping either reading here would bake an unsettled decision into the wire.
-//
-// Every optional field is an omitempty flat scalar whose absence means what MVP
-// does today (§6.11): absent `dueAt` is no deadline, absent
-// `acceptCompletionsFrom` credits any prior completion.
+// assignmentEntry is one obligation on the wire. The target is
+// (targetType, targetId); this route does not filter on targetType.
+// Optional omitempty scalars are absent, not empty, when unset.
 type assignmentEntry struct {
-	PathID  string `json:"pathId"`
-	TrackID string `json:"trackId,omitempty"`
+	TargetType string `json:"targetType"`
+	TargetID   string `json:"targetId"`
+	TrackID    string `json:"trackId,omitempty"`
 
 	RuleID     string `json:"ruleId,omitempty"`
 	AssignedBy string `json:"assignedBy,omitempty"`
@@ -140,15 +103,9 @@ type assignmentEntry struct {
 	Lifecycle string `json:"lifecycle"`
 }
 
-// myAssignmentsResponse is the GET /assignments/my envelope. `assignments` is
-// always a non-nil slice so it serializes as `[]` rather than `null`: an empty
-// array means the caller genuinely has no obligations, which is a different
-// statement from capability.available=false (§7).
-//
-// `asOf` is the age of THIS request's LIST, not of a materialisation. §6.12
-// requires any surface serving the cached satisfaction copy to state its age;
-// this route does not serve that copy at all — it evaluates live — so `asOf`
-// here means only "when the obligations were read".
+// myAssignmentsResponse is the GET /assignments/my envelope. `assignments`
+// is always a non-nil slice, so an empty list serializes as `[]` rather than
+// as capability.available=false.
 type myAssignmentsResponse struct {
 	Capability  assignmentCapability `json:"capability"`
 	UserID      string               `json:"userId,omitempty"`
@@ -258,42 +215,15 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// unevaluatedSatisfaction is the satisfaction evaluator the real read path uses
-// until the completion join lands. It reports every obligation unsatisfied.
-//
-// This is a stated gap, not an oversight, and it is the narrower half of RFC
-// §7.4: both kinds must be listed for the namespace, joined in memory on
-// (subject, target), and each obligation evaluated against whether ONE
-// completion event meets every configured criterion at once — never criteria
-// tested independently against a general-purpose aggregate, which can report a
-// satisfaction no single completion ever achieved (§6.12). The proxy's existing
-// collateByUser is exactly that general-purpose aggregate, so this join must
-// NOT be built by reusing it as-is; it needs a criteria-scoped collation or a
-// scan of the caller's raw completions.
-//
-// Reporting false is the safe direction while it is missing: an obligation
-// shown as outstanding when it is met is a wrong nudge, whereas one shown met
-// when it is not would suppress work someone owes. It is also why the dev hook
-// supplies its own values — the UI has to render both states before the join
-// exists. The client stand-in (standInSatisfaction) ORs whole-path local
-// completion and ignores trackId; §7.1 wants the named track's own derived
-// check, which neither side does yet.
+// unevaluatedSatisfaction reports every obligation unsatisfied until the
+// completion join lands. False is the safe direction: showing work as done
+// when it is not would suppress it. Do not build that join on collateByUser;
+// that aggregate can report a satisfaction no single completion achieved.
 func unevaluatedSatisfaction(assignmentSpec) bool { return false }
 
-// shapeAssignments filters a namespace-wide LIST to one caller's active
-// obligations and shapes each into a wire entry, newest assignment first.
-//
-// The caller filter is what makes this "my" assignments. It is a UI filter and
-// not row-level authorization: the upstream LIST is namespace-wide-readable by
-// any authenticated viewer on the stack, which is the accepted privacy grain
-// (§6.8) and is stated rather than implied.
-//
-// No deduplication by (subject, target). The RFC is explicit that two rules may
-// assign the same path to the same person and that this produces two records,
-// each with its own provenance and `dueAt` (§6.10) — nothing upstream merges
-// them, and collapsing them here would discard a deadline the learner owes.
-// Whether "My Paths" renders two cards for one path is a display decision for
-// the component, made with both records in hand.
+// shapeAssignments keeps one caller's active obligations, newest first.
+// Target type is not a filter. Two rules for the same target stay two
+// records — collapsing them would discard a deadline.
 func shapeAssignments(records []assignmentSpec, userID string, satisfied func(assignmentSpec) bool) []assignmentEntry {
 	entries := []assignmentEntry{}
 	for _, rec := range records {
@@ -304,7 +234,8 @@ func shapeAssignments(records []assignmentSpec, userID string, satisfied func(as
 			continue
 		}
 		entries = append(entries, assignmentEntry{
-			PathID:                rec.PathID,
+			TargetType:            rec.TargetType,
+			TargetID:              rec.TargetID,
 			TrackID:               rec.TrackID,
 			RuleID:                rec.RuleID,
 			AssignedBy:            rec.AssignedBy,
@@ -321,8 +252,9 @@ func shapeAssignments(records []assignmentSpec, userID string, satisfied func(as
 
 // sortAssignments orders entries by assignedAt descending, so the newest
 // obligation leads. Parseable timestamps sort chronologically; unparseable and
-// absent ones sort last, then by (pathId, trackId, ruleId) so the order is
-// total and a golden cannot flake on map iteration or upstream page order.
+// absent ones sort last, then by (targetType, targetId, trackId, ruleId) so
+// the order is total and a golden cannot flake on map iteration or upstream
+// page order.
 func sortAssignments(entries []assignmentEntry) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		x, y := entries[i], entries[j]
@@ -334,8 +266,11 @@ func sortAssignments(entries []assignmentEntry) {
 		if okx != oky {
 			return okx // the one that parsed leads
 		}
-		if x.PathID != y.PathID {
-			return x.PathID < y.PathID
+		if x.TargetType != y.TargetType {
+			return x.TargetType < y.TargetType
+		}
+		if x.TargetID != y.TargetID {
+			return x.TargetID < y.TargetID
 		}
 		if x.TrackID != y.TrackID {
 			return x.TrackID < y.TrackID

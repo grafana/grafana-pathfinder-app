@@ -48,17 +48,19 @@ func withAssignmentLister(t *testing.T, l assignmentLister) {
 	t.Cleanup(func() { assignmentListerOverride = prev })
 }
 
-// asg builds an active assignment spec. Tests that need another lifecycle or
-// the optional time bounds set them on the returned value.
-func asg(userID, pathID, trackID, ruleID, assignedAt string) assignmentSpec {
+// asg builds an active path assignment. Override lifecycle, target type, or
+// the optional bounds on the returned value.
+func asg(userID, targetID, trackID, ruleID, assignedAt string) assignmentSpec {
 	return assignmentSpec{
-		UserID:     userID,
-		PathID:     pathID,
-		TrackID:    trackID,
-		RuleID:     ruleID,
-		AssignedBy: "l-and-d",
-		AssignedAt: assignedAt,
-		Lifecycle:  assignmentLifecycleActive,
+		UserID:        userID,
+		TargetType:    "path",
+		TargetID:      targetID,
+		TrackID:       trackID,
+		RuleID:        ruleID,
+		AssignedBy:    "l-and-d",
+		AssignedAt:    assignedAt,
+		Lifecycle:     assignmentLifecycleActive,
+		SchemaVersion: 1,
 	}
 }
 
@@ -95,7 +97,7 @@ func TestMyAssignments_ServesOnlyTheCallersSlice(t *testing.T) {
 	if resp.UserID != "user:1" {
 		t.Errorf("userId = %q, want user:1", resp.UserID)
 	}
-	if len(resp.Assignments) != 1 || resp.Assignments[0].PathID != "grafana-fundamentals" {
+	if len(resp.Assignments) != 1 || resp.Assignments[0].TargetType != "path" || resp.Assignments[0].TargetID != "grafana-fundamentals" {
 		t.Fatalf("assignments = %+v, want only the caller's", resp.Assignments)
 	}
 }
@@ -139,8 +141,85 @@ func TestMyAssignments_DropsWithdrawnAndUnknownLifecycle(t *testing.T) {
 
 	_, resp := doMyAssignments(t, "user:1")
 
-	if len(resp.Assignments) != 1 || resp.Assignments[0].PathID != "grafana-fundamentals" {
+	if len(resp.Assignments) != 1 || resp.Assignments[0].TargetID != "grafana-fundamentals" {
 		t.Fatalf("assignments = %+v, want only the active one", resp.Assignments)
+	}
+}
+
+// Every target type the caller holds is theirs. Selecting paths is a
+// destination's job; this route must not drop a guide or invent "path" for
+// a record whose targetType is absent.
+func TestMyAssignments_ServesEveryTargetType(t *testing.T) {
+	guide := asg("user:1", "github-visualize", "", "guide-lab", "2026-09-15T09:00:00Z")
+	guide.TargetType = "guide"
+	guide.TargetSource = "bundled"
+
+	blank := asg("user:1", "missing-type", "", "malformed", "2026-09-13T09:00:00Z")
+	blank.TargetType = ""
+
+	withAssignmentLister(t, singlePageAssignmentLister(
+		asg("user:1", "grafana-fundamentals", "seller", "new-joiners", "2026-09-14T09:00:00Z"),
+		guide,
+		blank,
+	))
+
+	_, resp := doMyAssignments(t, "user:1")
+
+	if len(resp.Assignments) != 3 {
+		t.Fatalf("assignments = %+v, want path, guide, and the blank type", resp.Assignments)
+	}
+	got := map[string]string{}
+	for _, entry := range resp.Assignments {
+		got[entry.TargetID] = entry.TargetType
+	}
+	if got["grafana-fundamentals"] != "path" || got["github-visualize"] != "guide" || got["missing-type"] != "" {
+		t.Errorf("targets = %v, want each type preserved", got)
+	}
+	for _, entry := range resp.Assignments {
+		if entry.TargetID == "grafana-fundamentals" && entry.TrackID != "seller" {
+			t.Errorf("trackId = %q, want seller", entry.TrackID)
+		}
+	}
+}
+
+// A legacy pathId field is not the kind. Decoding must not treat it as a
+// target, and the route must not default a missing targetType to path.
+func TestAssignmentSpec_DecodesKindTargetNotPathID(t *testing.T) {
+	const raw = `{
+		"userId": "user:1",
+		"targetType": "path",
+		"targetId": "grafana-fundamentals",
+		"trackId": "seller",
+		"targetSource": "ignored-for-paths",
+		"ruleId": "new-joiners",
+		"ruleRevision": "abc123",
+		"assignedBy": "l-and-d",
+		"assignedAt": "2026-09-14T09:00:00Z",
+		"dueAt": "2026-12-31T00:00:00Z",
+		"acceptCompletionsFrom": "2026-01-01T00:00:00Z",
+		"lifecycle": "active",
+		"withdrawnAt": "",
+		"schemaVersion": 1,
+		"pathId": "not-a-field"
+	}`
+
+	var spec assignmentSpec
+	if err := json.Unmarshal([]byte(raw), &spec); err != nil {
+		t.Fatalf("decode spec: %v", err)
+	}
+	if spec.TargetType != "path" || spec.TargetID != "grafana-fundamentals" {
+		t.Fatalf("target = %q %q, want path grafana-fundamentals", spec.TargetType, spec.TargetID)
+	}
+	if spec.TrackID != "seller" || spec.RuleRevision != "abc123" || spec.SchemaVersion != 1 {
+		t.Fatalf("spec = %+v, want the kind's optional scalars and schemaVersion", spec)
+	}
+
+	var legacy assignmentSpec
+	if err := json.Unmarshal([]byte(`{"userId":"user:1","pathId":"grafana-fundamentals","lifecycle":"active"}`), &legacy); err != nil {
+		t.Fatalf("decode legacy: %v", err)
+	}
+	if legacy.TargetType != "" || legacy.TargetID != "" {
+		t.Fatalf("legacy pathId populated the target: %+v", legacy)
 	}
 }
 
@@ -184,6 +263,9 @@ func TestMyAssignments_AbsentTimeBoundsAreOmitted(t *testing.T) {
 		if strings.Contains(rr.Body.String(), `"`+field+`"`) {
 			t.Errorf("%s must be omitted when unset: %s", field, rr.Body.String())
 		}
+	}
+	if !strings.Contains(rr.Body.String(), `"targetType":"path"`) || !strings.Contains(rr.Body.String(), `"targetId":"grafana-fundamentals"`) {
+		t.Errorf("target type and id must be present: %s", rr.Body.String())
 	}
 	// satisfied and lifecycle are NOT omitempty: false and "" are meaningful
 	// answers a client must be able to read, not absences.

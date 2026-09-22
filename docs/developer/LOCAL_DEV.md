@@ -159,7 +159,7 @@ longer applies; reset it with `docker compose exec grafana grafana cli admin res
 
 Notes on the loop:
 
-- **Every `pathId` in the fixture must match a real entry in the current catalogue**
+- **Every path assignment's `targetId` in the fixture must match a real entry in the current catalogue**
   (`src/learning-paths/paths.json` for a non-cloud-migration-target stack, `paths-cloud.json`
   otherwise — see `paths-data.ts`), or App Platform's own custom-guide catalogue for a private path.
   Unresolvable targets are omitted from the cards. The hook logs
