@@ -11,7 +11,7 @@ jest.mock('./logging', () => ({
 }));
 
 import { getBackendSrv } from '@grafana/runtime';
-import { fetchMyAssignments, invalidateMyAssignmentsCache } from './assignments-client';
+import { fetchMyAssignments } from './assignments-client';
 import { logger } from './logging';
 import { recordAssignmentsUnavailable } from './telemetry/facade';
 
@@ -19,7 +19,6 @@ const mockGet = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
-  invalidateMyAssignmentsCache();
   (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
 });
 
@@ -122,7 +121,7 @@ describe('fetchMyAssignments', () => {
     expect(logger.warn).toHaveBeenCalledWith('[assignments] malformed response', { reason: 'malformed-response' });
   });
 
-  it('does not cache a malformed response for the TTL', async () => {
+  it('does not stick a malformed response across calls', async () => {
     mockGet.mockResolvedValueOnce({ capability: { available: true }, assignments: { nope: true } });
 
     await expect(fetchMyAssignments('stacks-123')).resolves.toEqual([]);
@@ -138,13 +137,13 @@ describe('fetchMyAssignments', () => {
     expect(mockGet).toHaveBeenCalledTimes(2);
   });
 
-  it('still caches a legitimately empty list', async () => {
+  it('refetches a legitimately empty list', async () => {
     mockGet.mockResolvedValue({ capability: { available: true }, assignments: [] });
 
     await fetchMyAssignments('stacks-123');
     await fetchMyAssignments('stacks-123');
 
-    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(mockGet).toHaveBeenCalledTimes(2);
   });
 
   it.each([
@@ -184,7 +183,7 @@ describe('fetchMyAssignments', () => {
     await expect(fetchMyAssignments('stacks-123')).resolves.toEqual([]);
   });
 
-  it('caches a successful result within the TTL and de-duplicates concurrent calls', async () => {
+  it('de-duplicates concurrent calls and refetches once each has settled', async () => {
     mockGet.mockResolvedValue({
       capability: { available: true },
       assignments: [{ pathId: 'p1', satisfied: false, lifecycle: 'active' }],
@@ -195,14 +194,10 @@ describe('fetchMyAssignments', () => {
 
     expect(a).toEqual(b);
     expect(third).toEqual(a);
-    expect(mockGet).toHaveBeenCalledTimes(1);
-
-    invalidateMyAssignmentsCache();
-    await fetchMyAssignments('stacks-123');
     expect(mockGet).toHaveBeenCalledTimes(2);
   });
 
-  it('does not cache failures (a transient error does not stick for the TTL)', async () => {
+  it('does not stick a failure across calls', async () => {
     mockGet.mockRejectedValueOnce(new Error('network error'));
     mockGet.mockResolvedValueOnce({
       capability: { available: true },

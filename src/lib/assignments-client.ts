@@ -4,16 +4,18 @@
  * pkg/plugin/assignments.go against the App Platform Assignment CRD.
  *
  * Mirrors lib/custom-guide-repository-client.ts's capability-gated soft-200
- * shape, namespace-keyed cache, and in-flight de-duplication. One divergence:
- * it does not pre-check isBackendApiAvailable() — assignments_dev.go's fixture
- * answers `capability.available: true` precisely when that toggle is off, so
+ * shape and in-flight de-duplication. It does not pre-check
+ * isBackendApiAvailable() — assignments_dev.go's fixture answers
+ * `capability.available: true` precisely when that toggle is off, so
  * short-circuiting on it here would make local dev fixtures unreachable for no
- * gain — the server-side check already returns before any upstream call, so
- * the client-side pre-check saves nothing a real stack would notice.
+ * gain. It also skips that sibling's 30s response cache: §7.4 requires this
+ * route to evaluate live, and a TTL would hide a completion once
+ * unevaluatedSatisfaction is real. In-flight de-duplication still covers
+ * concurrent surfaces on one open.
  *
  * `satisfied` on each entry is a stub (assignments.go's unevaluatedSatisfaction
- * always returns false) until real evaluation ships — callers should OR in
- * local completion state; see learning-paths/useMyAssignments.ts.
+ * always returns false) until real evaluation ships — callers OR in local
+ * completion via standInSatisfaction in learning-paths/assignments-core.ts.
  *
  * @coupling API: GET /assignments/my served by pkg/plugin/assignments.go
  */
@@ -25,8 +27,10 @@ import { recordAssignmentsUnavailable } from './telemetry/facade';
 
 /**
  * Wire shape of a single assignment, mirroring pkg/plugin/assignments.go's
- * assignmentEntry. Time fields are RFC3339 strings, omitted (not empty
- * strings) when unset — see assignmentEntry's doc comment on the Go side.
+ * assignmentEntry. `pathId` plus an optional `trackId` is a draft reading of
+ * the open §12.2 field-name question, not a settled Assignment schema. Time
+ * fields are RFC3339 strings, omitted (not empty strings) when unset — see
+ * assignmentEntry's doc comment on the Go side.
  */
 export interface AssignmentEntry {
   pathId: string;
@@ -61,12 +65,9 @@ interface MyAssignmentsResponse {
 
 const ASSIGNMENTS_URL = `${PLUGIN_BACKEND_URL}/assignments/my`;
 
-// Same rationale as custom-guide-repository-client.ts: several surfaces can
-// fetch on panel/page open concurrently (My Learning page, the shared
-// recommendations panel), and the proxy keeps no cross-request cache of its
-// own. A full reload always refetches.
-const CACHE_TTL_MS = 30_000;
-const cache = new Map<string, { entries: AssignmentEntry[]; at: number }>();
+// Several surfaces can fetch on panel/page open concurrently (My Learning
+// page, the shared recommendations panel). De-duplicate the in-flight request
+// only — a stored TTL would stale the live evaluation §7.4 requires.
 const inflight = new Map<string, Promise<AssignmentEntry[]>>();
 
 // Bounded token, never the error text — lands on a Faro event attribute,
@@ -90,11 +91,6 @@ function reportFetchFailure(err: unknown): void {
   }
 }
 
-interface AssignmentsResult {
-  entries: AssignmentEntry[];
-  cacheable: boolean;
-}
-
 const MALFORMED_REASON = 'malformed-response';
 
 // `null` is absent, not malformed: json.Marshal of a nil []assignmentEntry
@@ -103,7 +99,7 @@ function isMalformedAssignments(assignments: unknown): boolean {
   return assignments !== undefined && assignments !== null && !Array.isArray(assignments);
 }
 
-async function requestAssignments(): Promise<AssignmentsResult> {
+async function requestAssignments(): Promise<AssignmentEntry[]> {
   const response = await getBackendSrv().get<MyAssignmentsResponse>(ASSIGNMENTS_URL, undefined, undefined, {
     showErrorAlert: false,
     showSuccessAlert: false,
@@ -112,15 +108,14 @@ async function requestAssignments(): Promise<AssignmentsResult> {
     const reason = response?.capability?.reason ?? 'unknown';
     logger.warn('[assignments] unavailable', { reason });
     recordAssignmentsUnavailable(reason);
-    return { entries: [], cacheable: true };
+    return [];
   }
   if (isMalformedAssignments(response.assignments)) {
     logger.warn('[assignments] malformed response', { reason: MALFORMED_REASON });
     recordAssignmentsUnavailable(MALFORMED_REASON);
-    return { entries: [], cacheable: false };
+    return [];
   }
-  const assignments = Array.isArray(response.assignments) ? response.assignments : [];
-  return { entries: assignments, cacheable: true };
+  return Array.isArray(response.assignments) ? response.assignments : [];
 }
 
 /**
@@ -129,19 +124,14 @@ async function requestAssignments(): Promise<AssignmentsResult> {
  * for "am I on a provisioned stack" and the cache key. Returns an empty array
  * when there's no namespace, the proxy reports itself unavailable, or the
  * request fails — best-effort, not a hard dependency (mirrors
- * fetchCustomGuideRepository, minus its isBackendApiAvailable() pre-check;
- * see the module doc for why). Successful results are cached per namespace
- * for CACHE_TTL_MS with in-flight de-duplication; failures and malformed
- * responses are not cached.
+ * fetchCustomGuideRepository, minus its isBackendApiAvailable() pre-check
+ * and its response cache; see the module doc for why). Concurrent calls for
+ * the same namespace share one in-flight request; nothing is stored after it
+ * settles.
  */
 export async function fetchMyAssignments(namespace: string): Promise<AssignmentEntry[]> {
   if (!namespace) {
     return [];
-  }
-
-  const cached = cache.get(namespace);
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
-    return cached.entries;
   }
 
   const existing = inflight.get(namespace);
@@ -150,12 +140,6 @@ export async function fetchMyAssignments(namespace: string): Promise<AssignmentE
   }
 
   const request = requestAssignments()
-    .then(({ entries, cacheable }) => {
-      if (cacheable) {
-        cache.set(namespace, { entries, at: Date.now() });
-      }
-      return entries;
-    })
     .catch((err: unknown) => {
       reportFetchFailure(err);
       return [] as AssignmentEntry[];
@@ -166,9 +150,4 @@ export async function fetchMyAssignments(namespace: string): Promise<AssignmentE
 
   inflight.set(namespace, request);
   return request;
-}
-
-/** Drop cached assignments so the next fetch re-lists (e.g. in tests). */
-export function invalidateMyAssignmentsCache(): void {
-  cache.clear();
 }
