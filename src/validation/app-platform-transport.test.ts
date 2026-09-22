@@ -21,6 +21,12 @@
  * site is allowlisted. Ratchet mechanism per import-graph.ts: the allowlist
  * can only shrink, and a call this guard cannot resolve with confidence is
  * reported rather than passed silently.
+ *
+ * Landed with two pre-existing violations grandfathered into
+ * ALLOWED_DIRECT_APP_PLATFORM_READS below — the same failure mode as
+ * incident 5857, still unfixed on main. Paying those down is tracked in
+ * https://github.com/grafana/grafana-pathfinder-app/issues/1975; no new
+ * violation can land on top of them.
  */
 
 import * as fs from 'fs';
@@ -40,18 +46,41 @@ import {
 } from './import-graph';
 
 // ---------------------------------------------------------------------------
-// The allowlist — must ship empty (see the describe block below)
+// The allowlist — the ratchet baseline (see #1975 for the pay-down plan)
 // ---------------------------------------------------------------------------
 
 /**
- * Deliberately EMPTY. The two direct App Platform reads this guard reports
- * today (src/utils/fetchBackendGuides.ts, src/context-engine/context.init.ts)
- * are known and are NOT excused here — they are tracked as separate follow-up
- * work to fix both reads, and are meant to keep this test red until that
- * lands. A reviewed, deliberate exception would carry an
- * AllowedArchitectureEntry with a substantive reason and a tracking issue.
+ * Baseline grandfathered when this ratchet landed. Both entries are real,
+ * pre-existing defects — the same failure mode as incident 5857 — not
+ * tolerated design choices; each silently returns an empty guide list to an
+ * anonymous viewer instead of failing visibly. Pay down separately, one PR
+ * per entry (see #1975): fixing either removes its own entry here, and the
+ * ratchet enforces that by failing on a stale entry that no longer matches
+ * a real violation.
  */
-const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [];
+const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'context-engine/context.init.ts — GET collectionUrl(namespace)',
+    reason:
+      'Pre-existing defect (not a design choice): fetches the interactive-guides collection directly at ' +
+      "plugin start, but nothing reads the response — the call's original purpose needs to be established " +
+      'before it is deleted or re-pointed at a proxy. Same failure mode as incident 5857 — an anonymous ' +
+      "viewer's read fails the storage layer's delegated service-token check and 403s — except here the " +
+      '403 is swallowed as "endpoint not rolled out yet," so the failure is invisible.',
+    tracking: '#1975',
+  },
+  {
+    violation: 'utils/fetchBackendGuides.ts — GET collectionUrl(namespace)',
+    reason:
+      'Pre-existing defect (not a design choice): a direct read of the interactive-guides collection, the ' +
+      "same failure mode as incident 5857. An anonymous viewer's read fails the storage layer's delegated " +
+      'service-token check and 403s; this call swallows that 403 as "endpoint not rolled out yet" and ' +
+      'returns an empty list, so the anonymous visitor sees no custom guides and no error. A proxied ' +
+      'equivalent already exists (fetchCustomGuideRepository in src/lib/custom-guide-repository-client.ts) ' +
+      'and is the likely fix.',
+    tracking: '#1975',
+  },
+];
 
 const ADVICE =
   'A direct browser read of App Platform ("/apis/..." — or the shared collectionUrl/itemUrl ' +
@@ -485,7 +514,24 @@ function scanAppPlatformTransport(): ScanResult {
   return { totalCallSites, appPlatformCallSites, violations };
 }
 
+/**
+ * Line-independent identity for the ratchet/allowlist comparison. A baseline
+ * entry must survive unrelated edits to its file — keying on line number
+ * would turn any edit above the flagged line into a double failure (a stale
+ * entry for the old line, and a "new" violation at the shifted one) even
+ * though the flagged call site never changed. Consequence accepted: two
+ * structurally identical violations in the same file (same method, same url
+ * expression, different lines) collapse to one key, and one allowlist entry
+ * grandfathers both — a file either has this violation shape or it does not,
+ * and assertRatchet already operates on Sets, so a collapsed duplicate is
+ * simply absent rather than double-counted.
+ */
 function violationKey(violation: Violation): string {
+  return `${violation.file} — ${violation.method} ${violation.urlText}`;
+}
+
+/** Human-facing form of a violation, with the line number, for reports and error advice — never used as the allowlist key. */
+function violationDisplay(violation: Violation): string {
   return `${violation.file}:${violation.line} — ${violation.method} ${violation.urlText}`;
 }
 
@@ -506,7 +552,7 @@ describe('App Platform transport: proxy-first reads', () => {
         `appPlatformAddressed=${scan.appPlatformCallSites} violations=${scan.violations.length}`
     );
     for (const violation of scan.violations) {
-      console.log(`  ${violationKey(violation)}`);
+      console.log(`  ${violationDisplay(violation)}`);
     }
   });
 
@@ -617,5 +663,38 @@ describe('App Platform transport ratchet: detector', () => {
       ts.ScriptKind.TSX
     );
     expect(findCandidateCalls(sourceFile)).toEqual([]);
+  });
+});
+
+describe('App Platform transport ratchet: allowlist mechanics', () => {
+  it('does not fail the ratchet when the only violation is allowlisted', () => {
+    const violations = new Set(['utils/fetchBackendGuides.ts — GET collectionUrl(namespace)']);
+    const allowlist = new Set(['utils/fetchBackendGuides.ts — GET collectionUrl(namespace)']);
+
+    expect(() => assertRatchet(violations, allowlist, 'label', 'ALLOWLIST', 'advice')).not.toThrow();
+  });
+
+  it('still fails on a violation that is not allowlisted, even when a different one is', () => {
+    const violations = new Set([
+      'utils/fetchBackendGuides.ts — GET collectionUrl(namespace)',
+      'context-engine/context.init.ts — GET collectionUrl(namespace)',
+    ]);
+    const allowlist = new Set(['utils/fetchBackendGuides.ts — GET collectionUrl(namespace)']);
+
+    expect(() => assertRatchet(violations, allowlist, 'label', 'ALLOWLIST', 'advice')).toThrow(
+      /context-engine\/context\.init\.ts/
+    );
+  });
+
+  it('fails on a stale allowlist entry that no longer matches any real violation', () => {
+    const violations = new Set(['utils/fetchBackendGuides.ts — GET collectionUrl(namespace)']);
+    const allowlist = new Set([
+      'utils/fetchBackendGuides.ts — GET collectionUrl(namespace)',
+      'context-engine/context.init.ts — GET collectionUrl(namespace)',
+    ]);
+
+    expect(() => assertRatchet(violations, allowlist, 'label', 'ALLOWLIST', 'advice')).toThrow(
+      /Stale entries.*context-engine\/context\.init\.ts/s
+    );
   });
 });

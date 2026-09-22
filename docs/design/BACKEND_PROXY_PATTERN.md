@@ -721,3 +721,6 @@ while an admin PUT/POST/PATCH/DELETE may stay on the direct App Platform API wit
 optimistic-concurrency checks — is enforced by `src/validation/app-platform-transport.test.ts`.
 That test is the authority on the rule's exact precision (how a conditional method or a
 variable-held request object is resolved); see it rather than this paragraph for the mechanics.
+
+Two pre-existing direct reads are grandfathered in that test's allowlist, tracked for pay-down in
+[#1975](https://github.com/grafana/grafana-pathfinder-app/issues/1975).
