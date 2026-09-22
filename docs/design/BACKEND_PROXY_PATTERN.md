@@ -713,3 +713,11 @@ Expected settings absence, unsupported collection routes, idempotent write confl
 and cancellations are excluded. Internal logs retain trusted
 stack and trace context; diagnostic responses never include tokens or upstream bodies.
 An empty successful LIST is not classified as an authorization failure.
+
+## Mechanically enforced: reads proxied, writes direct
+
+The read/write split this document describes — a GET must go through a plugin-backend proxy,
+while an admin PUT/POST/PATCH/DELETE may stay on the direct App Platform API with its own
+optimistic-concurrency checks — is enforced by `src/validation/app-platform-transport.test.ts`.
+That test is the authority on the rule's exact precision (how a conditional method or a
+variable-held request object is resolved); see it rather than this paragraph for the mechanics.
