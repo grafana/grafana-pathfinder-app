@@ -32,7 +32,7 @@ function pageWithRoots(current: Locator[], legacy: Locator[] = []): Page {
       if (testId.startsWith('interactive-step-completed-')) {
         return control(1);
       }
-      if (testId.startsWith('interactive-do-it-')) {
+      if (testId.startsWith('interactive-do-it-') || testId.startsWith('code-block-insert-')) {
         return control(1);
       }
       return control(0);
@@ -79,6 +79,32 @@ describe('discoverStepsFromDOM', () => {
       unsupported: 1,
       unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
     });
+  });
+
+  it('discovers codeblocks in document order alongside the following plain step', async () => {
+    const page = pageWithRoots([
+      root({
+        'data-test-step-kind': 'codeblock',
+        'data-test-step-id': 'insert-query',
+        'data-test-step-state': 'idle',
+        'data-test-skippable': 'false',
+      }),
+      root({ 'data-test-step-kind': 'plain', 'data-test-step-id': 'run-query', 'data-targetaction': 'button' }),
+    ]);
+
+    const result = await discoverStepsFromDOM(page);
+
+    expect(result.steps.map(({ stepKind, stepId }) => ({ stepKind, stepId }))).toEqual([
+      { stepKind: 'codeblock', stepId: 'insert-query' },
+      { stepKind: 'plain', stepId: 'run-query' },
+    ]);
+    expect(result.steps[0]).toMatchObject({
+      hasDoItButton: true,
+      isPreCompleted: false,
+      skippable: false,
+      actionCount: 0,
+    });
+    expect(result.coverage).toMatchObject({ rendered: 2, supported: 2, unsupported: 0, unsupportedSteps: [] });
   });
 
   it('uses the legacy fallback when current roots are absent', async () => {
