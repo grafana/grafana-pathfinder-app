@@ -6,6 +6,7 @@ import { t } from '@grafana/i18n';
 
 import { peekGuidePercentage, subscribeProgress } from '../../global-state/completion-store';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
+import { testIds } from '../../constants/testIds';
 
 interface GuideProgressBarProps {
   /**
@@ -53,6 +54,7 @@ export function GuideProgressBar({ contentUrl }: GuideProgressBarProps): React.R
   return (
     <div
       className={styles.sticky}
+      data-testid={testIds.guideProgress.bar}
       role="progressbar"
       aria-valuenow={percentage}
       aria-valuemin={0}
@@ -62,7 +64,7 @@ export function GuideProgressBar({ contentUrl }: GuideProgressBarProps): React.R
       <div className={styles.track}>
         <div className={styles.fill} style={{ width: `${percentage}%` }} />
       </div>
-      <span className={styles.percentage}>
+      <span className={styles.percentage} data-testid={testIds.guideProgress.percentage}>
         {t('guideProgress.percentComplete', '{{percent}}% complete', { percent: percentage })}
       </span>
     </div>

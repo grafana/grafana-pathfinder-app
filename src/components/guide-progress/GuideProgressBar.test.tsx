@@ -63,6 +63,9 @@ describe('GuideProgressBar', () => {
     render(<GuideProgressBar contentUrl="guide-a" />);
 
     const bar = screen.getByRole('progressbar');
+    // Locks the e2e contract: tests/helpers/completion.helpers.ts reads these.
+    expect(bar).toHaveAttribute('data-testid', 'guide-progress-bar');
+    expect(screen.getByText('40% complete')).toHaveAttribute('data-testid', 'guide-progress-percentage');
     expect(bar).toHaveAttribute('aria-valuenow', '40');
     expect(bar).toHaveAttribute('aria-valuemin', '0');
     expect(bar).toHaveAttribute('aria-valuemax', '100');
