@@ -2,7 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Field, Modal, TextArea } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import type { JsonGuide } from '../../../types/json-guide.types';
-import { useAssistantGeneration } from '../../../integrations/assistant-integration';
+import {
+  useAssistantGeneration,
+  getGuideCustomizationContext,
+  createGuideMetadataTool,
+  type InlineToolRunnable,
+} from '../../../integrations/assistant-integration';
 import {
   buildGuideCustomizationPrompt,
   buildGuideRepairPrompt,
@@ -70,6 +75,7 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
     setPhase('Reading available data sources…');
     const answers = { audience, outcome, environment };
     const isCurrent = () => current.active && current.busy;
+    let metadataTools: InlineToolRunnable[] = [];
     const generateResponse = async (prompt: string, repairing: boolean): Promise<string> => {
       let resolveResponse!: (value: string) => void;
       let rejectResponse!: (error: Error) => void;
@@ -83,6 +89,7 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
           origin: 'grafana-pathfinder-app/customize-guide',
           systemPrompt: GUIDE_CUSTOMIZATION_SYSTEM_PROMPT,
           prompt,
+          tools: metadataTools,
           onDelta: (delta) => {
             if (isCurrent()) {
               characters += delta.length;
@@ -102,8 +109,23 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
       if (!isCurrent()) {
         return;
       }
+      const grafanaContext = getGuideCustomizationContext();
+      metadataTools = [
+        createGuideMetadataTool(
+          dataSources,
+          () => {
+            if (isCurrent()) {
+              setPhase('Reading data source metadata…');
+            }
+          },
+          isCurrent
+        ),
+      ];
       setPhase('Waiting for Assistant…');
-      let response = await generateResponse(buildGuideCustomizationPrompt(guide, answers, dataSources), false);
+      let response = await generateResponse(
+        buildGuideCustomizationPrompt(guide, answers, dataSources, grafanaContext),
+        false
+      );
       if (!isCurrent()) {
         return;
       }
@@ -118,7 +140,7 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         setPhase('Repairing the generated guide…');
         setReceived(0);
         response = await generateResponse(
-          buildGuideRepairPrompt(guide, answers, response, e.details, dataSources),
+          buildGuideRepairPrompt(guide, answers, response, e.details, dataSources, grafanaContext),
           true
         );
         if (!isCurrent()) {
@@ -152,7 +174,7 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
       <p>
         {t(
           'docsPanel.customizeGuideDescription',
-          'Assistant will use the full guide and your answers to create a private copy. Review it in the block editor before saving or publishing.'
+          'Assistant will use the guide, your answers, Grafana UI context, and relevant data source metadata to create a private copy. Review it in the block editor before saving or publishing.'
         )}
       </p>
       <Field label={t('docsPanel.customizeGuideAudience', 'Who is this guide for?')} htmlFor="customize-guide-audience">

@@ -1,5 +1,10 @@
 import type { JsonGuide } from '../../../types/json-guide.types';
-import { buildGuideCustomizationPrompt, parseCustomizedGuide } from './customize-guide';
+import {
+  buildGuideCustomizationPrompt,
+  buildGuideRepairPrompt,
+  GUIDE_CUSTOMIZATION_MAX_CHARS,
+  parseCustomizedGuide,
+} from './customize-guide';
 
 const source: JsonGuide = {
   id: 'private-copy',
@@ -10,7 +15,10 @@ const url = 'https://grafana.com/guides/example/content.json';
 
 it('includes the full guide and all customization answers', () => {
   const answers = { audience: 'New developers', outcome: 'Query our logs', environment: 'Loki: production' };
-  expect(JSON.parse(buildGuideCustomizationPrompt(source, answers))).toEqual({ customization: answers, guide: source });
+  expect(JSON.parse(buildGuideCustomizationPrompt(source, answers))).toMatchObject({
+    customization: answers,
+    guide: source,
+  });
 });
 
 it('keeps the independent copy identity and resolves generated relative media', () => {
@@ -151,4 +159,22 @@ it('checks interactive sections nested in conditional branches', () => {
 
 it('allows obsolete sections to be removed rather than keeping misleading instructions', () => {
   expect(parseCustomizedGuide(JSON.stringify(source), interactiveSource, url)).toEqual(source);
+});
+
+it('includes a compact action reference and the same environment on repair', () => {
+  const answers = { audience: '', outcome: 'Use Prometheus', environment: '' };
+  const context = { grafanaVersion: '13.2.2', uiFeatures: { queryEditorNext: true } };
+  const initial = JSON.parse(buildGuideCustomizationPrompt(source, answers, [], context));
+  const repair = JSON.parse(buildGuideRepairPrompt(source, answers, 'invalid', 'invalid JSON', [], context));
+  expect(initial.blockReference.interactive.action).toBe('formfill');
+  expect(repair.blockReference).toEqual(initial.blockReference);
+  expect(repair.grafanaContext).toEqual(context);
+});
+
+it('rejects oversized initial and repair prompts without truncating the guide', () => {
+  const answers = { audience: '', outcome: 'Customize', environment: '' };
+  const large = 'x'.repeat(GUIDE_CUSTOMIZATION_MAX_CHARS);
+  expect(() => buildGuideCustomizationPrompt(source, { ...answers, environment: large })).toThrow(/too large/);
+  expect(() => buildGuideRepairPrompt(source, answers, large, 'invalid')).toThrow(/too large/);
+  expect(source.blocks).toHaveLength(1);
 });

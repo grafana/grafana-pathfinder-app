@@ -2,9 +2,13 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { InlineAssistantOptions } from '@grafana/assistant';
 import { CustomizeGuideModal } from './CustomizeGuideModal';
-import { useAssistantGeneration } from '../../../integrations/assistant-integration';
+import { useAssistantGeneration, createGuideMetadataTool } from '../../../integrations/assistant-integration';
 
-jest.mock('../../../integrations/assistant-integration', () => ({ useAssistantGeneration: jest.fn() }));
+jest.mock('../../../integrations/assistant-integration', () => ({
+  useAssistantGeneration: jest.fn(),
+  getGuideCustomizationContext: jest.fn(() => ({ grafanaVersion: '13.2.2' })),
+  createGuideMetadataTool: jest.fn(() => ({ name: 'fetch_datasource_metadata' })),
+}));
 
 const guide = {
   id: 'private-copy',
@@ -55,6 +59,8 @@ it('sends the full guide only on submission and hands validated output to the ed
   expect(screen.getByRole('button', { name: 'Customize and open editor' })).toBeDisabled();
   await submit();
   expect(JSON.parse(options.prompt).guide).toEqual(guide);
+  expect(JSON.parse(options.prompt).grafanaContext).toEqual({ grafanaVersion: '13.2.2' });
+  expect(options.tools).toEqual([{ name: 'fetch_datasource_metadata' }]);
   expect(JSON.parse(options.prompt).availableDataSources).toEqual([
     { name: 'play Pathfinder', type: 'prometheus', uid: 'play' },
   ]);
@@ -164,6 +170,25 @@ it('does not start generation if dismissed while data source context is loading'
   expect(screen.getByRole('status')).toHaveTextContent('Reading available data sources');
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   await act(async () => resolveContext({ dataSources: [] }));
+  expect(generate).not.toHaveBeenCalled();
+  expect(onReview).not.toHaveBeenCalled();
+});
+
+it('shows metadata lookup activity and reuses its bounded tool during repair', async () => {
+  renderModal();
+  await submit();
+  const tools = options.tools;
+  act(() => jest.mocked(createGuideMetadataTool).mock.calls[0]![1]());
+  expect(screen.getByRole('status')).toHaveTextContent('Reading data source metadata');
+  await act(async () => options.onComplete?.('invalid'));
+  expect(options.tools).toBe(tools);
+});
+
+it('preserves the draft and avoids generation when the request exceeds the context budget', async () => {
+  const { onReview } = renderModal();
+  fireEvent.change(screen.getByLabelText(/What should they learn/), { target: { value: 'x'.repeat(120001) } });
+  fireEvent.click(screen.getByRole('button', { name: 'Customize and open editor' }));
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('too large'));
   expect(generate).not.toHaveBeenCalled();
   expect(onReview).not.toHaveBeenCalled();
 });
