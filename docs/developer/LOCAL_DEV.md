@@ -162,9 +162,10 @@ Notes on the loop:
 - **Every `pathId` in the fixture must match a real entry in the current catalogue**
   (`src/learning-paths/paths.json` for a non-cloud-migration-target stack, `paths-cloud.json`
   otherwise — see `paths-data.ts`), or App Platform's own custom-guide catalogue for a private path.
-  Unresolvable targets are silently dropped the same way a real deleted/unpublished path would be —
-  a fictional id renders nothing, with no error, which is easy to mistake for the UI itself being
-  broken.
+  Unresolvable targets are omitted from the cards. The hook logs
+  `[assignments] unresolvable target` (the path id is on the debug line only),
+  the same way a real deleted or unpublished path would disappear — a fictional
+  id renders nothing, which is easy to mistake for the UI itself being broken.
 
 - **The fixture is re-read on every request**, so editing `demo/assignments-fixture.json` and
   refreshing the browser is the whole iteration cycle — no rebuild, no plugin restart.

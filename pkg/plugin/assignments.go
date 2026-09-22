@@ -61,6 +61,9 @@ const (
 // silently. §7.4 names steady-state cardinality as a stated input: roughly
 // (assigned people × targets each × retained obligations) for the namespace,
 // since the LIST is namespace-wide and the filter to one caller happens here.
+// 50_000 is the one-kind completion-records budget carried over. §7.4 asks to
+// resize it once the live join holds this LIST and the completions LIST in
+// memory together; do not treat this number as that answer.
 // A var so tests can exercise the budget path.
 var assignmentListMaxTotalRecords = 50_000
 
@@ -105,6 +108,10 @@ type assignmentCapability struct {
 }
 
 // assignmentEntry is one obligation as "My Paths" renders it.
+//
+// pathId plus an optional trackId is a draft reading of the open §12.2
+// question (the RFC does not commit to field names). It is the shape this
+// proxy speaks today, not a settled Assignment schema.
 //
 // The envelope carries FACTS, not a rendered status. `satisfied`, `dueAt` and
 // `lifecycle` are separate fields and the UI derives its own display state from
@@ -268,7 +275,9 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 // shown as outstanding when it is met is a wrong nudge, whereas one shown met
 // when it is not would suppress work someone owes. It is also why the dev hook
 // supplies its own values — the UI has to render both states before the join
-// exists.
+// exists. The client stand-in (standInSatisfaction) ORs whole-path local
+// completion and ignores trackId; §7.1 wants the named track's own derived
+// check, which neither side does yet.
 func unevaluatedSatisfaction(assignmentSpec) bool { return false }
 
 // shapeAssignments filters a namespace-wide LIST to one caller's active
