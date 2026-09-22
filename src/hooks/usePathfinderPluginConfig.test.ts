@@ -407,6 +407,36 @@ describe('getConfigWithDefaults idempotence', () => {
 });
 
 describe('recovery after a failed settings read', () => {
+  it('keeps the fallback available during retries without publishing defaults as authoritative', async () => {
+    mockFetchTenant.mockRejectedValueOnce(new Error('token exchange failed'));
+    const { result } = renderHook(() => usePathfinderPluginConfig());
+    await waitFor(() => expect(result.current.hasError).toBe(true));
+
+    let recover!: (value: ReturnType<typeof tenantSnapshot>) => void;
+    mockFetchTenant.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          recover = resolve;
+        })
+    );
+    let retry!: ReturnType<typeof refreshPathfinderPluginConfig>;
+    act(() => {
+      retry = refreshPathfinderPluginConfig();
+    });
+
+    expect(result.current.hasError).toBe(true);
+    expect(result.current.isResolved).toBe(false);
+    expect(readGlobal()).toBeUndefined();
+
+    await act(async () => {
+      recover(tenantSnapshot({ enableLiveSessions: true }));
+      await retry;
+    });
+    expect(result.current.hasError).toBeUndefined();
+    expect(result.current.isResolved).toBe(true);
+    expect(result.current.config.enableLiveSessions).toBe(true);
+  });
+
   it('retries on a later mount, sharing that retry across concurrent callers', async () => {
     mockFetchPluginSettings.mockRejectedValueOnce(new Error('temporary outage'));
     const first = renderHook(() => usePathfinderPluginConfig());

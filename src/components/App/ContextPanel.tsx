@@ -41,17 +41,20 @@ export default function MemoizedContextPanel() {
 
 function SidebarContent() {
   const { config, isResolved, hasError } = usePathfinderPluginConfig();
-  if (hasError) {
-    return (
-      <Alert title="Could not load Pathfinder settings" severity="error">
-        <Button onClick={() => void refreshPathfinderPluginConfig()}>Try again</Button>
-      </Alert>
-    );
-  }
-  if (!isResolved) {
+  if (!isResolved && !hasError) {
     return <LoadingPlaceholder text="Loading Pathfinder settings" />;
   }
-  return <ResolvedSidebarContent config={config} />;
+  return (
+    <>
+      {hasError && (
+        <Alert title="Some learning settings are unavailable" severity="warning">
+          You can keep browsing while we use default settings.
+          <Button onClick={() => void refreshPathfinderPluginConfig()}>Try again</Button>
+        </Alert>
+      )}
+      <ResolvedSidebarContent config={config} />
+    </>
+  );
 }
 
 function ResolvedSidebarContent({ config }: { config: ResolvedPathfinderConfig }) {

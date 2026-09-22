@@ -53,11 +53,21 @@ it('waits for authoritative settings and preserves the scene and open content on
   expect(sync).toHaveBeenLastCalledWith(hydrated);
 });
 
-it('offers retry after a failed read without constructing a scene from defaults', () => {
+it('keeps browsing available during a settings failure and preserves content after recovery', () => {
   hook.mockReturnValue({ config: getConfigWithDefaults({}), isResolved: false, hasError: true });
-  render(<MemoizedContextPanel />);
-  expect(screen.getByText('Could not load Pathfinder settings')).toBeInTheDocument();
-  expect(construct).not.toHaveBeenCalled();
+  const { rerender } = render(<MemoizedContextPanel />);
+  expect(screen.getByText('Some learning settings are unavailable')).toBeInTheDocument();
+  expect(construct).toHaveBeenCalledWith(getConfigWithDefaults({}));
+  fireEvent.change(screen.getByLabelText('Open tab content'), { target: { value: 'unsaved content' } });
   fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
   expect(refreshPathfinderPluginConfig).toHaveBeenCalledTimes(1);
+
+  const recovered = getConfigWithDefaults({ enableLiveSessions: true });
+  hook.mockReturnValue({ config: recovered, isResolved: true });
+  rerender(<MemoizedContextPanel />);
+
+  expect(screen.queryByText('Some learning settings are unavailable')).not.toBeInTheDocument();
+  expect(construct).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText('Open tab content')).toHaveValue('unsaved content');
+  expect(sync).toHaveBeenLastCalledWith(recovered);
 });
