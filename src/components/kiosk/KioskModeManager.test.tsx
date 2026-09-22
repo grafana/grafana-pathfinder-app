@@ -1,4 +1,5 @@
 import React from 'react';
+import { locationService } from '@grafana/runtime';
 import { render, act } from '@testing-library/react';
 import { kioskState } from '../../global-state/kiosk';
 import { KioskModeManager } from './KioskModeManager';
@@ -87,14 +88,20 @@ describe('KioskModeManager', () => {
       '',
       '/?pathfinderKiosk=1&kioskRulesUrl=override&kiosk=tv&orgId=1#anchor'
     );
+    locationService.replace({
+      pathname: '/',
+      search: window.location.search,
+      hash: window.location.hash,
+      state: { retained: true },
+    });
     kioskState.set({ source: 'url', rulesUrl: 'override' });
     const { getByTestId, queryByTestId } = render(<KioskModeManager rulesUrl="default" />);
     expect(getByTestId('close-overlay')).toHaveTextContent('override');
     act(() => getByTestId('close-overlay').click());
     expect(queryByTestId('close-overlay')).toBeNull();
-    expect(window.location.search).toBe('?kiosk=tv&orgId=1');
-    expect(window.location.hash).toBe('#anchor');
-    expect(window.history.state).toEqual({ retained: true });
+    expect(locationService.getLocation().search).toBe('?kiosk=tv&orgId=1');
+    expect(locationService.getLocation().hash).toBe('#anchor');
+    expect(locationService.getLocation().state).toEqual({ retained: true });
     act(() => document.dispatchEvent(new CustomEvent('pathfinder-open-kiosk')));
     expect(getByTestId('close-overlay')).toHaveTextContent('default');
   });

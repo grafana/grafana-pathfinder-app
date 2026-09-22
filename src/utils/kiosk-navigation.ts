@@ -9,7 +9,11 @@ export function clearKioskLaunchParams(): void {
   const url = new URL(window.location.href);
   url.searchParams.delete('pathfinderKiosk');
   url.searchParams.delete('kioskRulesUrl');
-  window.history.replaceState(window.history.state, '', url.toString());
+  locationService.replace({
+    ...locationService.getLocation(),
+    search: url.search,
+    hash: url.hash,
+  });
 }
 
 export function installKioskNavigation(mount: () => void): boolean {

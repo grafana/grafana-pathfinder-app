@@ -4,7 +4,7 @@ import { installKioskNavigation, clearKioskLaunchParams } from './kiosk-navigati
 
 jest.mock('@grafana/runtime', () => ({
   config: { appSubUrl: '' },
-  locationService: { getHistory: jest.fn(), push: jest.fn() },
+  locationService: { getHistory: jest.fn(), getLocation: jest.fn(), replace: jest.fn(), push: jest.fn() },
 }));
 
 let navigate: () => void;
@@ -15,6 +15,15 @@ beforeEach(() => {
   jest.clearAllMocks();
   config.appSubUrl = '';
   document.body.replaceChildren();
+  (locationService.getLocation as jest.Mock).mockImplementation(() => ({
+    pathname: window.location.pathname,
+    search: window.location.search,
+    hash: window.location.hash,
+    state: window.history.state,
+  }));
+  (locationService.replace as jest.Mock).mockImplementation((location) => {
+    window.history.replaceState(location.state, '', `${location.pathname}${location.search}${location.hash}`);
+  });
   (locationService.getHistory as jest.Mock).mockReturnValue({
     listen: (handler: () => void) => {
       navigate = handler;
@@ -55,6 +64,9 @@ it('clears launch parameters without replaying a closed kiosk on navigation', ()
   window.history.replaceState({ keep: true }, '', '/?pathfinderKiosk=1&kioskRulesUrl=first&kiosk=tv#anchor');
   installKioskNavigation(jest.fn());
   clearKioskLaunchParams();
+  expect(locationService.replace).toHaveBeenCalledWith(
+    expect.objectContaining({ search: '?kiosk=tv', hash: '#anchor' })
+  );
   kioskState.set(null);
   navigate();
   expect(kioskState.getSnapshot()).toBeNull();

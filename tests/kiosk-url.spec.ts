@@ -205,3 +205,28 @@ test('opens an ordinary same-instance kiosk link without reloading Grafana', asy
   await expect(page.locator('#kiosk-demo-navigation-marker')).toBeAttached();
   expect(new URL(page.url()).searchParams.get('kioskRulesUrl')).toBe(customUrl);
 });
+
+test('does not replay a closed kiosk when Grafana updates dashboard query parameters', async ({ page }) => {
+  await page.goto(kioskSearch());
+  await expect(page.getByTestId(testIds.kioskMode.overlay)).toBeVisible();
+  await page.getByRole('button', { name: 'Exit kiosk', exact: true }).click();
+  const search = await page.evaluate(async () => {
+    const system = (
+      window as unknown as {
+        System: {
+          import: (name: string) => Promise<{
+            locationService: {
+              partial: (query: Record<string, string>, replace: boolean) => void;
+              getLocation: () => { search: string };
+            };
+          }>;
+        };
+      }
+    ).System;
+    const { locationService } = await system.import('@grafana/runtime');
+    locationService.partial({ from: 'now-30m' }, true);
+    return locationService.getLocation().search;
+  });
+  expect(new URLSearchParams(search).has('pathfinderKiosk')).toBe(false);
+  await expect(page.getByTestId(testIds.kioskMode.overlay)).not.toBeVisible();
+});
