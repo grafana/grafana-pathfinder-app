@@ -14,6 +14,7 @@ import {
 import { handleRequirementsWithFix } from '../requirements';
 import { codeblockDriver } from './codeblock';
 import { quizDriver } from './quiz';
+import { datasourceCheckDriver } from './datasource-check';
 import { terminalCommandDriver, terminalConnectDriver } from './terminal';
 import type { TestableStep } from '../types';
 import { clickSkipButtonAndSync, executeStandardStep, inspectCommonStep, isStepComplete } from './shared';
@@ -77,7 +78,10 @@ function supportedDriver(
 }
 
 function unsupportedDriver(
-  kind: Exclude<StepTypeKind, 'plain' | 'multistep' | 'guided' | 'codeblock' | 'terminal' | 'terminal-connect' | 'quiz'>
+  kind: Exclude<
+    StepTypeKind,
+    'plain' | 'multistep' | 'guided' | 'codeblock' | 'terminal' | 'terminal-connect' | 'quiz' | 'datasource-check'
+  >
 ): StepDriver {
   const unsupported = (): never => {
     throw new Error(`Step kind "${kind}" does not have an E2E driver`);
@@ -115,7 +119,7 @@ const drivers = [
   terminalConnectDriver,
   codeblockDriver,
   unsupportedDriver('challenge'),
-  unsupportedDriver('datasource-check'),
+  datasourceCheckDriver,
 ] as const satisfies readonly StepDriver[];
 
 export const STEP_DRIVERS: ReadonlyMap<StepTypeKind, StepDriver> = new Map(

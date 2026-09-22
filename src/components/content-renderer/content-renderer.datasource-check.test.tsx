@@ -9,7 +9,10 @@
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+
+import datasourceCheckFixture from '../../../tests/e2e-runner/fixtures/datasource-check/content.json';
+import { JsonGuideSchema } from '../../types/json-guide.schema';
 
 import type { RawContent } from '../../types/content.types';
 import { ContentRenderer } from './content-renderer';
@@ -26,13 +29,28 @@ jest.mock('@grafana/runtime', () => {
   };
 });
 
-// Grafana's Combobox sizes options through a <canvas> 2d context that jsdom
-// does not provide. Same local stub as ChallengeBlockForm.test.tsx.
+const originalObserver = window.IntersectionObserver;
+const originalGetContext = HTMLCanvasElement.prototype.getContext;
+const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')!;
+
+// Grafana's picker requires browser layout APIs that jsdom does not provide.
 beforeAll(() => {
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 300 });
   HTMLCanvasElement.prototype.getContext = jest.fn(() => ({
     measureText: () => ({ width: 0 }),
     font: '',
   })) as unknown as HTMLCanvasElement['getContext'];
+  window.IntersectionObserver = jest.fn(() => ({
+    observe: jest.fn(),
+    unobserve: jest.fn(),
+    disconnect: jest.fn(),
+  })) as unknown as typeof IntersectionObserver;
+});
+
+afterAll(() => {
+  window.IntersectionObserver = originalObserver;
+  HTMLCanvasElement.prototype.getContext = originalGetContext;
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalOffsetHeight);
 });
 
 const picker = (overrides: Record<string, unknown>) => ({
@@ -57,11 +75,27 @@ function renderGuide(block: Record<string, unknown>) {
 }
 
 describe('a data check authored in guide JSON', () => {
-  it('reaches the DOM as a tracked step when the author asked it to block', () => {
-    renderGuide(picker({ dataCheckQuery: 'up', dataCheckBlocking: true }));
+  it('renders the representative guide with the real Grafana picker contract', async () => {
+    expect(JsonGuideSchema.safeParse(datasourceCheckFixture).success).toBe(true);
+    await act(async () => {
+      renderGuide(datasourceCheckFixture.blocks[0]!);
+    });
 
-    expect(screen.getByTestId('datasource-check-step-metrics-check')).toBeInTheDocument();
-    expect(screen.getByTestId('datasource-check-run-metrics-check')).toBeInTheDocument();
+    const root = screen.getByTestId('datasource-check-step-metrics-check');
+    expect(root).toHaveAttribute('data-test-step-kind', 'datasource-check');
+    expect(root).toHaveAttribute('data-test-datasource-count', '1');
+    expect(root).toHaveAttribute('data-test-datasource-selected', '');
+    expect(root).toHaveAttribute('data-test-datasource-check-state', 'idle');
+    const input = screen.getByTestId('datasource-check-picker-metrics-check');
+    expect(input).toHaveAttribute('role', 'combobox');
+    fireEvent.click(input);
+    const option = await screen.findByRole('option', { name: /Prometheus/i });
+    expect(option.closest('[role="listbox"]')).toHaveAttribute('id', input.getAttribute('aria-controls'));
+    fireEvent.click(option);
+    await waitFor(() => expect(root).toHaveAttribute('data-test-datasource-selected', 'prom-1'));
+    expect(root).toHaveAttribute('data-test-datasource-can-run', 'true');
+    expect(root).toHaveAttribute('data-test-datasource-check-state', 'idle');
+    expect(screen.getByTestId('datasource-check-run-metrics-check')).toBeEnabled();
   });
 
   it('carries the authored query and failure message through to the rendered step', () => {

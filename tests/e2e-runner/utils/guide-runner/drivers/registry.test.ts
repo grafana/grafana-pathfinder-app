@@ -28,12 +28,21 @@ describe('STEP_DRIVERS', () => {
     expect([...STEP_DRIVERS.keys()]).toEqual(STEP_TYPE_KIND_KEYS);
   });
 
-  it('supports plain, multistep, guided, quiz, terminal, terminal-connect, and codeblock behavior', () => {
+  it('supports every tracked step kind except challenge', () => {
     const supported = [...STEP_DRIVERS.values()].filter((driver) => driver.supported).map((driver) => driver.kind);
     const unsupported = [...STEP_DRIVERS.values()].filter((driver) => !driver.supported).map((driver) => driver.kind);
 
-    expect(supported).toEqual(['plain', 'multistep', 'guided', 'quiz', 'terminal', 'terminal-connect', 'codeblock']);
-    expect(unsupported).toEqual(['challenge', 'datasource-check']);
+    expect(supported).toEqual([
+      'plain',
+      'multistep',
+      'guided',
+      'quiz',
+      'terminal',
+      'terminal-connect',
+      'codeblock',
+      'datasource-check',
+    ]);
+    expect(unsupported).toEqual(['challenge']);
   });
 });
 

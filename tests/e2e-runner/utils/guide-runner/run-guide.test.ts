@@ -8,6 +8,7 @@ import { openLegacyE2EGuide, replacePreviousE2EGuide } from './milestone-replace
 import { ensureGuidePanelOpen } from './panel-recovery';
 import { runGuideOnPage, type RunGuideOnPageOptions } from './run-guide';
 import { countInteractiveBlocks } from './static-analysis';
+import datasourceCheckFixture from '../../fixtures/datasource-check/content.json';
 import { createBrowserTerminationMonitor } from './termination-monitor';
 import type { AllStepsResult, StepCoverage, TestableStep } from './types';
 jest.mock('../console-reporter', () => ({
@@ -353,7 +354,7 @@ it('executes a codeblock-only guide and reports supported coverage', async () =>
   });
 });
 
-it.each(['terminal', 'terminal-connect', 'quiz'] as const)(
+it.each(['terminal', 'terminal-connect', 'quiz', 'datasource-check'] as const)(
   'executes a %s-only guide instead of skipping it',
   async (kind) => {
     const step: TestableStep = { ...supportedStep(), stepKind: kind, stepId: 'sandbox-step' };
@@ -385,12 +386,16 @@ it.each(['terminal', 'terminal-connect', 'quiz'] as const)(
         id: kind,
         title: 'Sandbox',
         path: `/${kind}/content.json`,
-        content: JSON.stringify({
-          id: kind,
-          blocks: [
-            { type: kind, ...(kind === 'terminal' ? { command: 'echo hello' } : {}), content: 'Use the sandbox' },
-          ],
-        }),
+        content: JSON.stringify(
+          kind === 'datasource-check'
+            ? datasourceCheckFixture
+            : {
+                id: kind,
+                blocks: [
+                  { type: kind, ...(kind === 'terminal' ? { command: 'echo hello' } : {}), content: 'Use the sandbox' },
+                ],
+              }
+        ),
       },
       options([])
     );

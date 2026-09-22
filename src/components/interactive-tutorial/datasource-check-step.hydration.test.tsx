@@ -79,14 +79,19 @@ it('restores the pick when storage resolves after mount', async () => {
   mockGetForGuide.mockReturnValue(new Promise((resolve) => (release = resolve)));
 
   renderInProvider();
-  // The provider starts empty, so a mount-time read sees nothing.
   expect(picker()).toHaveValue('');
+  expect(screen.getByTestId('datasource-check-step-check-1')).toHaveAttribute('data-test-datasource-loading', 'true');
 
   await act(async () => {
     release({ myDs: 'Prometheus staging' });
   });
 
   await waitFor(() => expect(picker()).toHaveValue('Prometheus staging'));
+  expect(screen.getByTestId('datasource-check-step-check-1')).toHaveAttribute('data-test-datasource-loading', 'false');
+  expect(screen.getByTestId('datasource-check-step-check-1')).toHaveAttribute(
+    'data-test-datasource-selected',
+    'prom-2'
+  );
   expect(screen.getByTestId(RUN_TEST_ID)).toBeEnabled();
 });
 

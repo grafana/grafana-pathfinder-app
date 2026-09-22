@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "datasource-check-fixture",
+  "title": "Check a Prometheus data source",
+  "blocks": [
+    {
+      "type": "input",
+      "id": "metrics-check",
+      "inputType": "datasource",
+      "variableName": "metricsDatasource",
+      "prompt": "Select a Prometheus data source with scrape targets.",
+      "datasourceFilter": "prometheus",
+      "dataCheckQuery": "up",
+      "dataCheckBlocking": true,
+      "dataCheckFailureMessage": "This data source has no scrape target data."
+    }
+  ]
+}

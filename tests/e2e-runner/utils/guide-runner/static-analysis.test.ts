@@ -28,6 +28,10 @@ describe('countInteractiveBlocks', () => {
     expect(countInteractiveBlocks(JSON.parse(json))).toBe(2);
   });
 
+  it('counts the representative blocking data source input as interactive', () => {
+    expect(countInteractiveBlocks(JSON.parse(loadFixture('datasource-check')))).toBe(1);
+  });
+
   it('counts every Pathfinder interactive block type', () => {
     const guide = {
       blocks: [

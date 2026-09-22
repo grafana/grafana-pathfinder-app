@@ -192,6 +192,24 @@ npm run e2e -- --config tests/e2e-runner/playwright.config.ts codeblock-driver.s
 
 These tests use a DOM fixture, not a real Monaco editor. They cover discovery, insertion ordering, the next-step gate, insertion errors, disabled Insert controls, and root detachment. Component contract tests cover the product's Insert and Skip controls and their state transitions.
 
+### Data source check steps
+
+The runner supports blocking `datasource-check` steps through the product picker and Run check control. Advisory checks inside ordinary input blocks remain outside this driver.
+
+The runner waits for saved responses to load and preserves a valid selected data source. If no source is selected, it selects the sole available option through the picker. It refuses to guess between multiple sources. Prepare the guide's data source selection before an unattended run when multiple options exist.
+
+Success requires an attached, completed step and a passed check against the same selected source. The product owns the authored query, time range, query limits, and backend request. The driver sends no separate query and does not retry a failed check. Empty results, query errors, selection changes, detachment, and missing completion fail the step.
+
+Unmet prerequisites fail mandatory steps. Optional steps can use the product's Skip control, with explicit completion afterward. A query failure remains a failure even when the step is optional.
+
+The representative guide is `tests/e2e-runner/fixtures/datasource-check/content.json`. It uses the authored `input` shape with `inputType: "datasource"` and `dataCheckBlocking: true`. The renderer contract test loads that guide and uses the real Grafana picker. A live run needs a Prometheus data source with `up` data.
+
+The browser fixtures use a synthetic picker portal and check results, not a live data source:
+
+```bash
+npm run e2e -- --config tests/e2e-runner/playwright.config.ts datasource-check-driver.spec.ts --project chromium --no-deps
+```
+
 ### Quiz steps
 
 The runner selects authored correct answers and clicks the product's Check answer control once. It uses answer metadata, not text inference or trial and error. Choice order does not matter. Multi-select quizzes select every correct choice and clear incorrect selections.

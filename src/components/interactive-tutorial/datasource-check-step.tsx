@@ -61,7 +61,6 @@ export function resetDatasourceCheckStepCounter(): void {
 const getStyles = (theme: GrafanaTheme2) => ({
   disabled: css({
     opacity: 0.5,
-    pointerEvents: 'none' as const,
   }),
   content: css({
     marginBottom: theme.spacing(1),
@@ -128,16 +127,12 @@ export function DatasourceCheckStep({
   const datasources = useMemo(() => filterDatasourcesByType(datasourceFilter), [datasourceFilter]);
   const datasourceOptions = useMemo(() => toDatasourceOptions(datasources), [datasources]);
 
-  // The pick lives in the guide response and arrives asynchronously, so reading
-  // it once into state would strand the picker empty on every reload. Local
-  // state is only for the case with nowhere to persist to.
+  // Read restored responses on every render so late hydration reaches the picker.
   const [uncontrolledName, setUncontrolledName] = useState<string | null>(null);
   const storedName = responseContext ? responseContext.getResponse(variableName) : uncontrolledName;
   const rememberedName = typeof storedName === 'string' && storedName ? storedName : null;
 
-  // A remembered name can belong to a data source that has since been deleted,
-  // or one the author's filter no longer offers. Trusting it would run a check
-  // against a data source the picker never offered.
+  // A restored selection must still belong to the author's filtered options.
   const selectedDatasource = rememberedName ? (datasources.find((ds) => ds.name === rememberedName) ?? null) : null;
 
   const { state, failureDetail, supportedType, canRun, run, reset } = useDataCheck({
@@ -161,7 +156,7 @@ export function DatasourceCheckStep({
     stepId: renderedStepId,
     isEligibleForChecking,
     skippable,
-    sectionId, // Lets the checker write skip / objectives transitions to the store
+    sectionId,
   });
 
   const markComplete = useCallback(
@@ -197,12 +192,7 @@ export function DatasourceCheckStep({
     checkerResetStep?.();
   }, [reset, persistReset, onStepReset, renderedStepId, checkerResetStep]);
 
-  // A completion belongs to the data source it was earned against, and the pick
-  // can be rewritten by anything that owns the same variable — a sibling
-  // advisory picker, a `{{var}}` write, a guide clear. Watching the resolved
-  // name rather than this component's own handler is what makes those paths
-  // retract too. A name arriving where there was none is hydration, not a
-  // change, so it must not wipe a durable pass on reload.
+  // External selection changes retract completion; initial hydration must preserve a durable pass.
   const verdictOwner = useRef<string | null>(rememberedName);
   useEffect(() => {
     const previous = verdictOwner.current;
@@ -220,14 +210,12 @@ export function DatasourceCheckStep({
       // The pick is deliberately kept — only the verdict is cleared.
       reset();
       persistReset();
-      // Section already wrote the store via `resetSteps(tailStepIds)`; suppress
-      // the per-child store write so the broadcast doesn't fan out and wipe
-      // preceding completions (parity with interactive-step).
+      // The section owns store resets so preceding completions survive a later step's redo.
       if (checkerResetStep) {
         checkerResetStep({ skipStoreWrite: true });
       }
     }
-  }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps -- only an explicit parent reset should clear the verdict
 
   const handleRedo = useCallback(() => {
     if (disabled || state === 'checking') {
@@ -236,7 +224,6 @@ export function DatasourceCheckStep({
     retract();
   }, [disabled, state, retract]);
 
-  // Writing the pick is all this does; the retraction rides on the name change.
   const handleDatasourceChange = useCallback(
     (option: ComboboxOption<string> | null) => {
       const name = option?.value ?? null;
@@ -267,8 +254,7 @@ export function DatasourceCheckStep({
       )
     );
     const { outcome, durationMs } = await run();
-    // A check the user gave up on, or one a newer run replaced, has no outcome
-    // to report and must not complete the step it no longer speaks for.
+    // An aborted or superseded check cannot complete the step.
     if (outcome === 'aborted') {
       return;
     }
@@ -292,8 +278,7 @@ export function DatasourceCheckStep({
 
   const markSkipped = checker.markSkipped;
   const handleSkip = useCallback(async () => {
-    // Giving up has to stop the query too: it would otherwise keep spending
-    // after the user moved on, and leave Redo inert until it finished.
+    // Stop the query before Skip completes the step.
     reset();
     reportAppInteraction(
       UserInteraction.DataCheckSkipped,
@@ -323,8 +308,6 @@ export function DatasourceCheckStep({
     stepState = STEP_STATES.ERROR;
   }
 
-  // Skip drives the checker to a terminal state, so the disabled blanket would
-  // land on the very step now rendering Redo and leave it unclickable.
   const containerClasses = [
     'interactive-step',
     isCompleted && 'completed',
@@ -351,13 +334,19 @@ export function DatasourceCheckStep({
       className={containerClasses}
       {...getTrackedStepRootAttributes('datasource-check', renderedStepId)}
       data-test-step-state={stepState}
+      data-test-skippable={skippable}
+      data-test-datasource-check-state={state}
+      data-test-datasource-selected={selectedDatasource?.uid ?? ''}
+      data-test-datasource-count={datasourceOptions.length}
+      data-test-datasource-loading={responseContext?.isLoading ?? false}
+      data-test-datasource-can-run={canRun}
       data-testid={testIds.dataCheck.step(renderedStepId)}
     >
       {children && <div className={styles.content}>{children}</div>}
 
-      {!isEnabled && !isCompleted && (checker.explanation || hints) && (
-        <div className={styles.requirementMessage}>
-          {checker.explanation}
+      {!isEnabled && !isCompleted && (
+        <div className={styles.requirementMessage} data-testid={testIds.interactive.requirementCheck(renderedStepId)}>
+          {checker.explanation || 'Complete previous step'}
           {hints && <div>{hints}</div>}
           {skipButton}
         </div>

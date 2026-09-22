@@ -158,6 +158,74 @@ describe('the premise: a check only runs when the user asks', () => {
   });
 });
 
+describe('runner DOM contract', () => {
+  it('exposes the filtered count and resolved selection without running a query', async () => {
+    renderStep();
+    const root = screen.getByTestId(TEST_IDS.step);
+    expect(root).toHaveAttribute('data-test-datasource-count', '2');
+    expect(root).toHaveAttribute('data-test-datasource-selected', '');
+    expect(root).toHaveAttribute('data-test-datasource-loading', 'false');
+    expect(root).toHaveAttribute('data-test-datasource-can-run', 'false');
+    expect(root).toHaveAttribute('data-test-datasource-check-state', 'idle');
+    await pick('Prometheus staging');
+    expect(root).toHaveAttribute('data-test-datasource-selected', 'prom-2');
+    expect(root).toHaveAttribute('data-test-datasource-can-run', 'true');
+    expect(mockRunQuery).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes a running query, a passed check, and section completion', async () => {
+    let finish!: (result: typeof hasData) => void;
+    mockRunQuery.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const { rerender } = renderStep();
+    await pick();
+    await click(TEST_IDS.run);
+    const root = screen.getByTestId(TEST_IDS.step);
+    expect(root).toHaveAttribute('data-test-datasource-check-state', 'checking');
+    expect(root).toHaveAttribute('data-test-step-state', 'executing');
+    await act(async () => {
+      finish(hasData);
+    });
+    expect(root).toHaveAttribute('data-test-datasource-check-state', 'passed');
+    expect(mockMarkStepCompleted).toHaveBeenCalledWith('check-1', undefined, 'manual');
+    mockStoredCompleted = true;
+    rerender(<DatasourceCheckStep {...baseProps} />);
+    expect(root).toHaveAttribute('data-test-step-state', 'completed');
+  });
+
+  it.each([
+    ['no-data', noData],
+    ['error', { ok: false, error: 'Query refused', failureKind: 'query' }],
+  ])('exposes %s without completion', async (state, result) => {
+    mockRunQuery.mockResolvedValue(result);
+    renderStep();
+    await pick();
+    await click(TEST_IDS.run);
+    expect(screen.getByTestId(TEST_IDS.step)).toHaveAttribute('data-test-datasource-check-state', state);
+    expect(screen.getByTestId(TEST_IDS.step)).toHaveAttribute('data-test-step-state', 'error');
+    expect(mockMarkStepCompleted).not.toHaveBeenCalled();
+  });
+
+  it('keeps optional prerequisite Skip reachable even without a checker explanation', async () => {
+    mockCheckerEnabled = false;
+    renderStep({ skippable: true });
+    expect(screen.getByTestId(TEST_IDS.step)).toHaveAttribute('data-test-skippable', 'true');
+    expect(screen.getByTestId('interactive-requirement-check-1')).toHaveTextContent('Complete previous step');
+    await click(TEST_IDS.skip);
+    expect(mockMarkStepCompleted).toHaveBeenCalledWith('check-1', undefined, 'skipped');
+    expect(mockRunQuery).not.toHaveBeenCalled();
+  });
+
+  it('exposes an invalid restored choice as unselected', () => {
+    mockStoredResponse = 'Deleted data source';
+    renderStep();
+    expect(screen.getByTestId(TEST_IDS.step)).toHaveAttribute('data-test-datasource-selected', '');
+  });
+});
+
 describe('the picker', () => {
   it('offers only data sources the filter matches', () => {
     renderStep();

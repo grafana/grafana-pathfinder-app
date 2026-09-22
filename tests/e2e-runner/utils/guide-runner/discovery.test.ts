@@ -107,6 +107,20 @@ describe('discoverStepsFromDOM', () => {
     expect(result.coverage).toMatchObject({ rendered: 2, supported: 2, unsupported: 0, unsupportedSteps: [] });
   });
 
+  it('discovers a data source check before the Run check control is rendered', async () => {
+    const page = pageWithRoots([
+      root({
+        'data-test-step-kind': 'datasource-check',
+        'data-test-step-id': 'check-1',
+        'data-test-step-state': 'idle',
+        'data-test-skippable': 'true',
+      }),
+    ]);
+    const result = await discoverStepsFromDOM(page);
+    expect(result.steps[0]).toMatchObject({ stepKind: 'datasource-check', hasDoItButton: false, skippable: true });
+    expect(result.coverage).toMatchObject({ supported: 1, unsupported: 0 });
+  });
+
   it('discovers a quiz before its Check answer control is rendered', async () => {
     const page = pageWithRoots([
       root({

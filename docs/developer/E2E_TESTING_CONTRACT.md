@@ -59,7 +59,7 @@ The legacy selector excludes `interactive-step-completed-*` badges. These badges
 
 One `StepDriver` registry owns metadata inspection, product controls, execution, skip behavior, and completion rules. The registry uses `data-test-step-kind` keys.
 
-The runner supports `plain`, `multistep`, `guided`, `codeblock`, `quiz`, `terminal`, and `terminal-connect`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
+The runner supports `plain`, `multistep`, `guided`, `codeblock`, `quiz`, `terminal`, `terminal-connect`, and `datasource-check`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
 
 Unsupported roots do not change the outcome when a guide also renders a supported root. The runner reports each unsupported kind and step ID.
 
@@ -94,6 +94,24 @@ Codeblocks do not expose an automatic Fix control. The driver waits for requirem
 Older plugin builds without the new skippability attribute fall back to the rendered Skip control. Without the error test ID or error state, an insertion failure can report a completion timeout instead of the product error. Builds without tracked codeblock roots remain outside codeblock discovery.
 
 Contract tests live in `src/components/interactive-tutorial/code-block-step.contract.test.tsx`. Browser regression tests live in `tests/e2e-runner/codeblock-driver.spec.ts`.
+
+### Data source check runner contract
+
+Blocking data source checks use `datasource-check-step-${stepId}`. Their roots expose `data-test-step-state` and `data-test-skippable`, plus:
+
+| Attribute                          | Meaning                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| `data-test-datasource-check-state` | Product verdict: `idle`, `checking`, `passed`, `no-data`, or `error`          |
+| `data-test-datasource-selected`    | Resolved data source UID, or an empty string when no valid source is selected |
+| `data-test-datasource-count`       | Number of options that match the authored filter                              |
+| `data-test-datasource-loading`     | Saved guide responses are still loading                                       |
+| `data-test-datasource-can-run`     | The selected type and authored query can run through the product              |
+
+The picker uses `datasource-check-picker-${stepId}`. Its `aria-controls` links to the Grafana listbox portal. The runner selects an option only when exactly one is available and no valid selection exists. Multiple unselected options are an unmet prerequisite, not permission to choose the first source.
+
+The action uses `datasource-check-run-${stepId}`; failure evidence uses `datasource-check-failure-${stepId}`. A passing action requires `completed` step state and a `passed` verdict with an unchanged selected UID. An existing in-flight check is awaited, not resubmitted. A prerequisite Skip uses `datasource-check-skip-${stepId}` and requires explicit completion, not a passed verdict. Previously completed steps retain the existing `pre_completed` outcome.
+
+Older builds without these attributes fail with a contract diagnostic. This adds no guide fields, query API, or report schema.
 
 ### Quiz runner contract
 
