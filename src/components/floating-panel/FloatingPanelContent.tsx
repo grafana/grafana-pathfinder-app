@@ -1,6 +1,9 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
+import { SegmentedGuideProgressBar } from '../guide-progress';
+import { getGuideIndex } from '../../global-state/active-guide-index';
+import { getContentKey } from '../../global-state/content-key';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
@@ -120,10 +123,14 @@ export function FloatingPanelContent({
 
   const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
 
+  // Get contentKey for the progress bar
+  const contentKeyValue = getContentKey();
+  const showProgressBar = !!getGuideIndex(contentKeyValue);
+
   return (
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>
       <div ref={contentRef}>
-        {showEmbeddedToolbar && activeTab && (
+        {showEmbeddedToolbar && activeTab ? (
           <div className={floatingStyles.stickyToolbar}>
             <LearningJourneyMilestoneToolbar
               panel={model}
@@ -134,7 +141,14 @@ export function FloatingPanelContent({
               onResetGuide={onResetGuide!}
               compact
             />
+            {showProgressBar && <SegmentedGuideProgressBar contentKey={contentKeyValue} />}
           </div>
+        ) : (
+          showProgressBar && (
+            <div className={floatingStyles.stickyToolbar}>
+              <SegmentedGuideProgressBar contentKey={contentKeyValue} />
+            </div>
+          )
         )}
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>

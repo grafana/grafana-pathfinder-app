@@ -5,6 +5,13 @@
  * Completing a guide in either surface must route through the shared, surface-neutral
  * emitter — see `surface-emission-owner`.
  */
+
+// Mock @grafana/runtime before imports that trigger user-storage.ts module loading
+jest.mock('@grafana/runtime', () => ({
+  usePluginUserStorage: jest.fn(),
+  getAppEvents: jest.fn(() => ({ publish: jest.fn() })),
+}));
+
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { DocsPanelModelOperations } from '../docs-panel/types';

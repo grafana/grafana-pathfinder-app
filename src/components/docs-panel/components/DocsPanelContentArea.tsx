@@ -38,6 +38,9 @@ import {
 import { recordGuideCompletionForSurface, journeyProgressFromMilestones } from '../../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
+import { SegmentedGuideProgressBar } from '../../guide-progress';
+import { getGuideIndex } from '../../../global-state/active-guide-index';
+import { getContentKey } from '../../../global-state/content-key';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
@@ -400,6 +403,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
               {/* Unified Content Renderer - works for both learning journeys and docs! */}
               <div id="inner-docs-content" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+                {stableContent && getGuideIndex(getContentKey()) && (
+                  <SegmentedGuideProgressBar contentKey={getContentKey()} />
+                )}
                 {stableContent && (
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
                     {activeTab?.pendingAlignment && (
