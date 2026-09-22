@@ -21,8 +21,13 @@ import { computeGuideBlockIndex, type CountableBlock, type GuideBlockIndex } fro
  * are byte-indistinguishable.
  *
  * NOT a content version: it says nothing about whether the guide changed.
+ *
+ * v2: the numerator side of the counting rule changed in #1953 (which step
+ * ids credit which position, via `branchChildPositions`). Stamped summary
+ * fields and denominators are unaffected and stay readable (#1970), but a
+ * pre-#1953 stamp and a post-#1953 stamp must not read as the same rule.
  */
-export const GUIDE_STATS_VERSION = 1;
+export const GUIDE_STATS_VERSION = 2;
 
 /**
  * Re-exported from tier 0, where the Zod schema owns the shape so the writer

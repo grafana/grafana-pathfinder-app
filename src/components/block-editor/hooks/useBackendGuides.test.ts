@@ -280,7 +280,7 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
         type: 'guide',
         repository: 'app-platform',
         additionalFields: {
-          stats: { version: 1, blockCount: 1, sectionCount: 0, completableBlockCount: 0, finalCompletablePosition: 0 },
+          stats: { version: 2, blockCount: 1, sectionCount: 0, completableBlockCount: 0, finalCompletablePosition: 0 },
         },
       },
     });
