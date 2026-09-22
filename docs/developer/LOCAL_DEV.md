@@ -82,6 +82,111 @@ administrator performs once, entering an enrollment key on the Coda plugin's own
 configuration page. Nothing in this repo can do it for you. See
 [`CODA.md`](CODA.md) for the two-plugin setup end to end.
 
+## Local dev against a virtualized App Platform (`/assignments/my`)
+
+The App Platform proxy routes cannot reach a real backend locally. The aggregator that serves
+Pathfinder's kinds runs only on hosted Grafana Cloud — `scripts/upsert-guide.sh` says so, and
+`grafana-pathfinder-backend` ships CRDs and a manifest rather than a service, so there is nothing
+to run in its place. `resolveAssignmentBackend` therefore reports `capability.available: false` on
+the Docker stack, with a reason naming which precondition is missing: a served aggregation layer
+for the `.app` group, an app URL, a namespace, or a provisioned CAP token to mint an on-behalf-of
+access token with. On top of those, the `Assignment` kind is not registered upstream yet, so even a
+real Cloud stack answers `upstream-404` today.
+
+To build "My Paths" against the real route anyway, `/assignments/my` carries a fixture that serves
+a canned envelope. It lives behind the **`pathfinderdev` build tag**
+(`pkg/plugin/assignments_dev.go`), so it is absent from every shipped artifact rather than merely
+disabled in one — substituting the upstream also means substituting the caller's identity, and an
+identity substitution switchable by configuration in a released binary is the fail-open the proxy's
+trust boundary exists to prevent (`docs/design/BACKEND_PROXY_PATTERN.md` §3).
+
+Build the frontend and a tagged backend, matching your Docker platform's architecture:
+
+```bash
+npm run build
+GOOS=linux GOARCH=arm64 go build -tags pathfinderdev \
+  -o dist/gpx_grafana-pathfinder-app_linux_arm64 ./pkg    # amd64 on Intel hosts
+```
+
+Then bring the stack up as usual — there is nothing to configure:
+
+```bash
+docker compose up -d
+```
+
+**If Grafana was already running, this is not enough.** Backend plugin processes are spawned once
+at Grafana's own startup and are not hot-reloaded when the binary on disk changes — `docker compose
+up -d` against an already-running container reports everything as unchanged and does not restart
+Grafana, so it keeps running whatever binary it originally spawned. Rebuilding the Go binary while
+the stack is already up silently no-ops until you also run:
+
+```bash
+docker compose restart grafana
+```
+
+Symptom if you skip this: `capability.available` comes back `false` with `reason:
+"feature-toggle-disabled"` — that is the _real_ route's answer (no App Platform aggregator locally),
+which is only reachable if the dev hook never ran, i.e. you are still talking to the stale binary.
+
+The tagged build looks for `demo/assignments-fixture.json`, which the repo already mounts into the
+container at `/root/grafana-pathfinder-app/demo/`. The file's presence is the on switch, and a
+missing one falls through to the real read path. (Grafana constructs the environment it launches a
+backend plugin with, so a variable set on the container is not reliably visible to the plugin
+process; that is why the gate is a path rather than an env var. `PATHFINDER_DEV_ASSIGNMENTS_FIXTURE`
+overrides the path if you run the binary directly.)
+
+Check the envelope before touching any UI:
+
+```bash
+curl -su admin:admin \
+  http://localhost:3000/api/plugins/grafana-pathfinder-app/resources/assignments/my | jq
+```
+
+If that 401s with `"auth.unauthorized"` even with the right admin/admin credentials, this stack has
+`GF_AUTH_BASIC_ENABLED=false` (check `docker compose exec grafana printenv | grep GF_AUTH`) — Basic
+Auth is off, not the password. Log in with a session cookie instead:
+
+```bash
+curl -s -c /tmp/graf_cookie.txt -X POST http://localhost:3000/login \
+  -H 'Content-Type: application/json' -d '{"user":"admin","password":"admin"}'
+curl -s -b /tmp/graf_cookie.txt \
+  http://localhost:3000/api/plugins/grafana-pathfinder-app/resources/assignments/my | jq
+```
+
+(If admin/admin itself is rejected by `/login` too — not just the `-u` flag — the `grafana-data`
+volume is persisting an admin password from an earlier session and `GF_SECURITY_ADMIN_PASSWORD` no
+longer applies; reset it with `docker compose exec grafana grafana cli admin reset-admin-password admin`.)
+
+Notes on the loop:
+
+- **Every path assignment's `targetId` in the fixture must match a real entry in the current catalogue**
+  (`src/learning-paths/paths.json` for a non-cloud-migration-target stack, `paths-cloud.json`
+  otherwise — see `paths-data.ts`), or App Platform's own custom-guide catalogue for a private path.
+  Unresolvable targets are omitted from the cards. The hook logs
+  `[assignments] unresolvable target` (the path id is on the debug line only),
+  the same way a real deleted or unpublished path would disappear — a fictional
+  id renders nothing, which is easy to mistake for the UI itself being broken.
+
+- **The fixture is re-read on every request**, so editing `demo/assignments-fixture.json` and
+  refreshing the browser is the whole iteration cycle — no rebuild, no plugin restart.
+- **It carries the display states the UI has to render**, including an obligation with no deadline
+  (the only shape MVP actually writes), a past `dueAt`, a satisfied one, a track-qualified target,
+  two records for one path from different rules, and a withdrawn record that the loader drops
+  exactly as the real route drops it.
+- **`satisfied` comes from the file** because the real route does not evaluate it yet — see
+  `unevaluatedSatisfaction` in `pkg/plugin/assignments.go` for what the completion join has to do
+  and why it must not reuse `collateByUser` as-is.
+- **The plugin logs a warning on the first fixture-served request.** If you do not see it, the tag
+  is missing or the file is not where the plugin looked, and you are looking at the real route's
+  capability envelope.
+- **Identity is still preferred over substitution.** The fixture serves the verified ID-token `sub`
+  when the local stack forwards one that verifies, and falls back to the file's own `subject`
+  (default `user:dev`) only when it does not — so switching which user you are looking at is
+  another edit to the same file.
+
+An untagged build has no fixture at all, which `TestMyAssignments_DevFixtureAbsentInDefaultBuild`
+pins. Use the ordinary `npm run build:all` for anything you intend to ship or hand to someone else.
+
 ## Testing against Grafana Cloud (Graft)
 
 Some contributors test their local `dist/` build against a live Grafana Cloud stack instead of (or alongside) the Docker Grafana above, using [Graft](https://github.com/grafana/plugin-graft) — an internal, Grafanista-only browser-extension + local-server tool that intercepts Cloud requests and serves your local build with hot reload. See [`GRAFT_TESTING.md`](GRAFT_TESTING.md) for what this means when debugging or reviewing changes.

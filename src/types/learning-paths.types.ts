@@ -187,6 +187,12 @@ export interface LearningPathCardProps {
   isLaunching?: boolean;
   /** Any launch is in flight — continue is disabled so clicks aren't silently dropped */
   launchDisabled?: boolean;
+  /** Outstanding assignment for this path, if any. */
+  assignment?: {
+    assignedBy?: string;
+    dueAt?: string;
+    overdue: boolean;
+  };
 }
 
 /**

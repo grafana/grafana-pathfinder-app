@@ -59,3 +59,5 @@ registerGuideCompletionBridge({
   markGuideCompleted: markGuideCompletedImpl,
   findPathByUrl: findPathByUrlImpl,
 });
+// Path Assignments
+export { useMyAssignments, daysUntilDue, type ResolvedAssignment } from './useMyAssignments';

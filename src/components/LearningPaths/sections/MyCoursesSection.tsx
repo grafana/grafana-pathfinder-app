@@ -1,23 +1,26 @@
 /**
  * My Courses Section
  *
- * The learning paths the user has (or could have) started — everything not yet
- * completed. Completed paths move to the Completed section.
+ * Incomplete catalogue paths. Assigned items with a due date lead, soonest
+ * first; everything else keeps the incoming order. Completed paths move to
+ * the Completed section.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Icon } from '@grafana/ui';
 import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
 import { testIds } from '../../../constants/testIds';
 import type { LearningPath, PathGuide } from '../../../types/learning-paths.types';
+import type { ResolvedAssignment } from '../../../learning-paths';
 import { useVerticalOverflow } from '../../../hooks';
 import { LearningPathCard } from '../LearningPathCard';
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
 
 interface MyCoursesSectionProps {
   courses: LearningPath[];
+  assignments: ResolvedAssignment[];
   getPathGuides: (pathId: string) => PathGuide[];
   getPathProgress: (pathId: string) => number;
   onContinue: (guideId: string, pathId: string) => void;
@@ -27,8 +30,26 @@ interface MyCoursesSectionProps {
   styles: ReturnType<typeof getMyLearningStyles>;
 }
 
+function orderCourses(courses: LearningPath[], byTargetId: Map<string, ResolvedAssignment>): LearningPath[] {
+  return [...courses].sort((a, b) => {
+    const aDue = byTargetId.get(a.id)?.dueAt;
+    const bDue = byTargetId.get(b.id)?.dueAt;
+    if (aDue && bDue) {
+      return aDue.localeCompare(bDue);
+    }
+    if (aDue) {
+      return -1;
+    }
+    if (bDue) {
+      return 1;
+    }
+    return 0;
+  });
+}
+
 export function MyCoursesSection({
   courses,
+  assignments,
   getPathGuides,
   getPathProgress,
   onContinue,
@@ -38,6 +59,8 @@ export function MyCoursesSection({
   styles,
 }: MyCoursesSectionProps) {
   const [listRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
+  const byTargetId = useMemo(() => new Map(assignments.map((a) => [a.targetId, a])), [assignments]);
+  const ordered = useMemo(() => orderCourses(courses, byTargetId), [courses, byTargetId]);
 
   return (
     <div className={cx(styles.section, styles.columnSection)} data-testid={testIds.learningPaths.myCoursesSection}>
@@ -46,10 +69,10 @@ export function MyCoursesSection({
         <h2 className={styles.sectionTitle}>{t('myLearning.myCourses', 'My paths')}</h2>
       </div>
       <p className={styles.sectionDescription}>
-        {t('myLearning.myCoursesDescription', 'Paths to explore and continue')}
+        {t('myLearning.myCoursesDescription', "Assigned paths and paths you've started")}
       </p>
 
-      {courses.length === 0 ? (
+      {ordered.length === 0 ? (
         <div className={styles.emptyMessage}>
           <Icon name="book" size="xl" className={styles.emptyIcon} />
           <p>{t('myLearning.myCoursesEmpty', 'No learning paths available yet')}</p>
@@ -59,9 +82,10 @@ export function MyCoursesSection({
           ref={listRef}
           className={cx(styles.pathsGrid, styles.scrollRegion, hasOverflow && styles.scrollRegionFaded)}
         >
-          {courses.map((path, index) => {
+          {ordered.map((path, index) => {
             const pathProgress = getPathProgress(path.id);
             const isFirstInProgress = index === 0 && pathProgress > 0;
+            const assignment = byTargetId.get(path.id);
 
             return (
               <LearningPathCard
@@ -75,6 +99,11 @@ export function MyCoursesSection({
                 defaultExpanded={isFirstInProgress}
                 isLaunching={launchingPathId === path.id}
                 launchDisabled={launchDisabled}
+                assignment={
+                  assignment
+                    ? { assignedBy: assignment.assignedBy, dueAt: assignment.dueAt, overdue: assignment.overdue }
+                    : undefined
+                }
               />
             );
           })}

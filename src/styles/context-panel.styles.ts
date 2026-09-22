@@ -128,6 +128,12 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     minWidth: 0,
     maxWidth: 'calc(100% - 100px)',
   }),
+  cardTagRow: css({
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: theme.spacing(0.5),
+  }),
   recommendationCardTitle: css({
     margin: 0,
     fontSize: theme.typography.h5.fontSize,

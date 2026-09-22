@@ -118,6 +118,14 @@ export function recordCustomGuideCatalogueUnavailable(reason: string): void {
   pushFaroEvent(TELEMETRY_EVENTS.customGuideCatalogueUnavailable, { reason });
 }
 
+// Mirrors recordCustomGuideCatalogueUnavailable above, for the /assignments/my
+// proxy (pkg/plugin/assignments.go). Same closed vocabulary of reasons
+// (capability.reason from the wire, or `http-<status>` / `transport-error`
+// for a rejected request) — never a path/track/rule id or the caller's identity.
+export function recordAssignmentsUnavailable(reason: string): void {
+  pushFaroEvent(TELEMETRY_EVENTS.assignmentsUnavailable, { reason });
+}
+
 /**
  * A sandbox-backed block could not run, with the rung of the ladder that
  * stopped it. Emitted once per block that had to degrade, not per render.

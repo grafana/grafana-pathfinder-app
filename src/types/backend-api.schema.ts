@@ -64,6 +64,50 @@ export const MyCompletionsResponseWireSchema = z.strictObject({
   asOf: z.string().optional(),
 });
 
+// ============ /assignments/my ============
+
+/**
+ * `assignmentCapability` (pkg/plugin/assignments.go).
+ * @coupling Go struct: assignmentCapability
+ */
+export const AssignmentCapabilityWireSchema = z.strictObject({
+  available: z.boolean(),
+  reason: z.string().optional(),
+});
+
+/**
+ * One assigned obligation.
+ * @coupling Go struct: assignmentEntry
+ */
+export const AssignmentEntryWireSchema = z.strictObject({
+  targetType: z.string(),
+  targetId: z.string(),
+  trackId: z.string().optional(),
+  ruleId: z.string().optional(),
+  assignedBy: z.string().optional(),
+  assignedAt: z.string().optional(),
+  dueAt: z.string().optional(),
+  acceptCompletionsFrom: z.string().optional(),
+  satisfied: z.boolean(),
+  lifecycle: z.string(),
+});
+
+/**
+ * `assignments` is a required array, never nullable and never `.catch([])`,
+ * for the same reason as `completions`: `shapeAssignments`.
+ * An empty array means the caller genuinely has no
+ * obligations, which is a different statement from `capability.available`
+ * being false — a `null` here is a Go bug that should fail loudly.
+ *
+ * @coupling Go struct: myAssignmentsResponse
+ */
+export const MyAssignmentsResponseWireSchema = z.strictObject({
+  capability: AssignmentCapabilityWireSchema,
+  userId: z.string().optional(),
+  assignments: z.array(AssignmentEntryWireSchema),
+  asOf: z.string().optional(),
+});
+
 // ============ /custom-guide-repository ============
 
 /** @coupling Go struct: customGuideCapability */
@@ -195,6 +239,9 @@ export const GO_STRUCT_SCHEMAS = {
   myCompletionsResponse: MyCompletionsResponseWireSchema,
   completionCapability: CompletionCapabilityWireSchema,
   collatedCompletion: CollatedCompletionWireSchema,
+  myAssignmentsResponse: MyAssignmentsResponseWireSchema,
+  assignmentCapability: AssignmentCapabilityWireSchema,
+  assignmentEntry: AssignmentEntryWireSchema,
 } as const;
 
 export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
@@ -210,11 +257,14 @@ export const BACKEND_RESPONSE_ENVELOPES = {
   'custom-guide-repository': 'customGuideRepositoryResponse',
   'completion-records-my': 'myCompletionsResponse',
   'completion-records-capability': 'completionCapability',
+  'assignments-my': 'myAssignmentsResponse',
 } as const satisfies Record<string, GoStructName>;
 
 export type BackendResponseEnvelopeKey = keyof typeof BACKEND_RESPONSE_ENVELOPES;
 
 export type MyCompletionsResponseWire = z.infer<typeof MyCompletionsResponseWireSchema>;
+export type MyAssignmentsResponseWire = z.infer<typeof MyAssignmentsResponseWireSchema>;
+export type AssignmentEntryWire = z.infer<typeof AssignmentEntryWireSchema>;
 export type CustomGuideRepositoryResponseWire = z.infer<typeof CustomGuideRepositoryResponseWireSchema>;
 export type PackageRecommendationsResponseWire = z.infer<typeof PackageRecommendationsResponseWireSchema>;
 export type CompletionCapabilityWire = z.infer<typeof CompletionCapabilityWireSchema>;

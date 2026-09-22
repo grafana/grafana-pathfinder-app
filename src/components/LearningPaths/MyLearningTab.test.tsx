@@ -58,8 +58,11 @@ jest.mock('@grafana/runtime', () => ({
 
 jest.mock('@grafana/i18n', () => ({
   t: (key: string, fallback: string, vars?: Record<string, unknown>) => {
-    const template =
-      key === 'myLearning.discoverMoreMilestones' && vars?.count === 1 ? '{{count}} milestone' : fallback;
+    const one =
+      vars?.count === 1
+        ? { 'myLearning.discoverMoreMilestones': '{{count}} milestone', 'myLearning.dueDayCount': '{{count}} day' }[key]
+        : undefined;
+    const template = one ?? fallback;
     return vars ? template.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k])) : template;
   },
 }));
@@ -89,6 +92,16 @@ let mockDiscoverItems: Array<{
   manifest?: Record<string, unknown>;
 }> = [];
 let mockDiscoverExcludeTitles: Set<string> | undefined;
+let mockAssignments: Array<{
+  targetType: string;
+  targetId: string;
+  title: string;
+  assignedBy?: string;
+  dueAt?: string;
+  overdue: boolean;
+  satisfied: boolean;
+  progress: number;
+}> = [];
 
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
@@ -109,6 +122,14 @@ jest.mock('../../learning-paths', () => ({
     streakInfo: { days: 0 },
     isLoading: false,
   }),
+  useMyAssignments: () => ({
+    notDone: mockAssignments,
+    completed: [],
+    isLoading: false,
+    hasLoaded: true,
+    refresh: jest.fn(),
+  }),
+  daysUntilDue: jest.requireActual('../../learning-paths/useMyAssignments').daysUntilDue,
 }));
 
 jest.mock('../SkeletonLoader', () => ({ SkeletonLoader: () => null }));
@@ -178,6 +199,7 @@ beforeEach(() => {
   mockBadges = [];
   mockDiscoverItems = [];
   mockDiscoverExcludeTitles = undefined;
+  mockAssignments = [];
   mockGetPathGuides.mockImplementation((id: string) =>
     id === 'path-done'
       ? [{ id: 'guide-2', title: 'Guide two', completed: true, isCurrent: false }]
@@ -321,6 +343,184 @@ describe('MyLearningTab launch flow', () => {
     expect(screen.getByTestId(testIds.learningPaths.badgesSection)).toBeInTheDocument();
     expect(screen.getByTestId(testIds.learningPaths.discoverMoreSection)).toBeInTheDocument();
     expect(screen.getByTestId(testIds.learningPaths.completedSection)).toBeInTheDocument();
+  });
+
+  it('puts the due badge on the header meta and assigned-by in the expanded details', () => {
+    mockPaths = [
+      {
+        id: 'path-1',
+        title: 'Started path',
+        guides: ['guide-1'],
+        estimatedMinutes: 20,
+      },
+      { id: 'path-new', title: 'New path', guides: ['guide-new'] },
+    ];
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-1',
+        title: 'Started path',
+        assignedBy: 'Org Admin',
+        dueAt: '2099-01-15T00:00:00Z',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const assigned = screen.getByTestId(testIds.learningPaths.card('path-1'));
+    const header = assigned.querySelector('.header');
+    const details = assigned.querySelector('.expandable');
+
+    expect(header).toHaveTextContent('Assigned');
+    expect(header).toHaveTextContent(/\d+ days/);
+    expect(header).not.toHaveTextContent('left');
+    expect(header).toHaveTextContent('0/1 guides');
+    expect(header).not.toHaveTextContent('min');
+    expect(header).not.toHaveTextContent('Assigned by');
+    expect(details).toHaveTextContent('Assigned by');
+    expect(details).toHaveTextContent('Org Admin');
+    expect(details).toHaveTextContent(/Due .+ — \d+ days left/);
+    expect(assigned).not.toHaveTextContent('Next:');
+
+    const unassigned = screen.getByTestId(testIds.learningPaths.card('path-new'));
+    expect(unassigned).not.toHaveTextContent('Started by you');
+    expect(unassigned).not.toHaveTextContent('Assigned by');
+    expect(unassigned).not.toHaveTextContent('Next:');
+  });
+
+  it('says Start on a 0% path and Continue once there is progress', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    expect(screen.getByTestId(testIds.learningPaths.continueButton('path-new'))).toHaveTextContent('Start');
+    expect(screen.getByTestId(testIds.learningPaths.continueButton('path-1'))).toHaveTextContent('Continue');
+  });
+
+  it('paints today yellow, overdue red, and later dates as the default badge', () => {
+    const dueAt = (daysFromToday: number) => {
+      const date = new Date();
+      date.setHours(12, 0, 0, 0);
+      date.setDate(date.getDate() + daysFromToday);
+      return date.toISOString();
+    };
+
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-new',
+        title: 'New path',
+        assignedBy: 'Org Admin',
+        dueAt: dueAt(0),
+        overdue: false,
+        satisfied: false,
+        progress: 0,
+      },
+      {
+        targetType: 'path',
+        targetId: 'edge-low',
+        title: 'Barely started',
+        assignedBy: 'Org Admin',
+        dueAt: dueAt(1),
+        overdue: false,
+        satisfied: false,
+        progress: 1,
+      },
+      {
+        targetType: 'path',
+        targetId: 'path-1',
+        title: 'Started path',
+        assignedBy: 'Org Admin',
+        dueAt: dueAt(-4),
+        overdue: true,
+        satisfied: false,
+        progress: 50,
+      },
+      {
+        targetType: 'path',
+        targetId: 'edge-high',
+        title: 'Almost done',
+        assignedBy: 'Org Admin',
+        dueAt: dueAt(7),
+        overdue: false,
+        satisfied: false,
+        progress: 99,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const today = screen.getByTestId(testIds.learningPaths.card('path-new'));
+    const tomorrow = screen.getByTestId(testIds.learningPaths.card('edge-low'));
+    const overdue = screen.getByTestId(testIds.learningPaths.card('path-1'));
+    const later = screen.getByTestId(testIds.learningPaths.card('edge-high'));
+
+    expect(today).toHaveTextContent('Assigned');
+    expect(today).toHaveTextContent('Today');
+    expect(today.className).toContain('cardUpcoming');
+    expect(tomorrow).toHaveTextContent('1 day');
+    expect(tomorrow).toHaveTextContent('1 day left');
+    expect(tomorrow.className).not.toContain('cardUpcoming');
+    expect(overdue).toHaveTextContent('Overdue');
+    expect(overdue.className).toContain('cardOverdue');
+    expect(overdue.className).not.toContain('cardUpcoming');
+    expect(later).toHaveTextContent('7 days');
+    expect(later).toHaveTextContent('7 days left');
+    expect(later.className).not.toContain('cardUpcoming');
+    expect(later.className).not.toContain('cardOverdue');
+  });
+
+  it('keeps guide count on the card header without an estimated time', () => {
+    mockPaths = [{ id: 'path-new', title: 'New path', guides: ['guide-new'], estimatedMinutes: 20 }];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const card = screen.getByTestId(testIds.learningPaths.card('path-new'));
+    const header = card.querySelector('.header');
+    const details = card.querySelector('.expandable');
+
+    expect(header).not.toBeNull();
+    expect(details).not.toBeNull();
+    expect(header).toHaveTextContent('0/1 guides');
+    expect(header).not.toHaveTextContent('min');
+    expect(details).not.toHaveTextContent('guides');
+    expect(details).not.toHaveTextContent('min');
+  });
+
+  it('lifts due-dated assignments above other courses, soonest first', () => {
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-new',
+        title: 'New path',
+        assignedBy: 'Org Admin',
+        dueAt: '2099-06-01T00:00:00Z',
+        overdue: false,
+        satisfied: false,
+        progress: 0,
+      },
+      {
+        targetType: 'path',
+        targetId: 'path-1',
+        title: 'Started path',
+        assignedBy: 'Org Admin',
+        dueAt: '2099-01-15T00:00:00Z',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const cards = [
+      ...screen
+        .getByTestId(testIds.learningPaths.myCoursesSection)
+        .querySelectorAll('[data-testid^="learning-path-card-"]'),
+    ].map((el) => el.getAttribute('data-testid'));
+
+    expect(cards.slice(0, 2)).toEqual(['learning-path-card-path-1', 'learning-path-card-path-new']);
   });
 
   it('labels Discover more path metadata as milestones', () => {

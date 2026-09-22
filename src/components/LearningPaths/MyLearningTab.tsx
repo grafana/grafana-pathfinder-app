@@ -15,7 +15,14 @@ import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/util
 import { resolvePackageNavLinks } from '../../docs-retrieval';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import type { LearningPath } from '../../types/learning-paths.types';
-import { useLearningPaths, useDiscoverMore, BADGES, getPathsData, type DiscoverMoreItem } from '../../learning-paths';
+import {
+  useLearningPaths,
+  useDiscoverMore,
+  useMyAssignments,
+  BADGES,
+  getPathsData,
+  type DiscoverMoreItem,
+} from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -83,6 +90,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     streakInfo,
     isLoading,
   } = useLearningPaths();
+
+  const { notDone: assignedNotDone } = useMyAssignments({
+    paths,
+    isPathCompleted,
+    getPathProgress,
+  });
 
   const inProgress = useMemo(() => {
     return paths
@@ -448,6 +461,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         <div className={styles.columnsRow}>
           <MyCoursesSection
             courses={courses}
+            assignments={assignedNotDone}
             getPathGuides={getPathGuides}
             getPathProgress={getPathProgress}
             onContinue={handleOpenGuide}
