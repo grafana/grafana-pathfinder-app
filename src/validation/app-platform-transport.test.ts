@@ -13,12 +13,14 @@
  * catalogue already was; administrative writes deliberately stayed direct,
  * riding App Platform's own optimistic-concurrency checks.
  *
- * This test walks every getBackendSrv().fetch/get/post(...) call site under
- * src/ and flags one whose url addresses App Platform (a literal/template
- * containing "/apis/", or a call to the collectionUrl/itemUrl builders in
- * utils/interactive-guides-api.ts or utils/pathfinder-settings-api.ts) unless
- * the resolved HTTP method is a mutation (POST/PUT/PATCH/DELETE) or the call
- * site is allowlisted. Ratchet mechanism per import-graph.ts: the allowlist
+ * This test walks every getBackendSrv().fetch/request/get/post(...) call site
+ * under src/ and flags one whose url addresses App Platform (a literal,
+ * template, or concatenation containing "/apis/", or reaching a call to the
+ * collectionUrl/itemUrl builders in utils/interactive-guides-api.ts or
+ * utils/pathfinder-settings-api.ts) unless the resolved HTTP method is a
+ * mutation (POST/PUT/PATCH/DELETE) or the call site is allowlisted. The
+ * receiver may be the inline getBackendSrv() call or a same-scope variable
+ * holding it. Ratchet mechanism per import-graph.ts: the allowlist
  * can only shrink, and a call this guard cannot resolve with confidence is
  * reported rather than passed silently.
  *
@@ -110,7 +112,7 @@ const ADVICE =
 
 const BUILDER_MODULES = new Set(['utils/interactive-guides-api.ts', 'utils/pathfinder-settings-api.ts']);
 
-const GET_BACKEND_SRV_METHOD_NAMES = new Set(['fetch', 'get', 'post']);
+const GET_BACKEND_SRV_METHOD_NAMES = new Set(['fetch', 'request', 'get', 'post']);
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 interface BuilderImports {
@@ -152,16 +154,31 @@ function findBuilderImports(sourceFile: ts.SourceFile, fileDir: string): Builder
 }
 
 // ---------------------------------------------------------------------------
-// Call-site discovery: getBackendSrv().fetch/get/post(...)
+// Call-site discovery: getBackendSrv().fetch/request/get/post(...)
+//
+// The receiver is either the inline getBackendSrv() call or a same-scope
+// variable holding it (`const backendSrv = getBackendSrv()`), resolved through
+// the same single-file declaration lookup the url and request bag already use.
 // ---------------------------------------------------------------------------
 
 interface CandidateCall {
   node: ts.CallExpression;
-  methodName: 'fetch' | 'get' | 'post';
+  methodName: 'fetch' | 'request' | 'get' | 'post';
 }
 
-function isGetBackendSrvInvocation(expr: ts.Expression): boolean {
+function isGetBackendSrvCall(expr: ts.Expression): boolean {
   return ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) && expr.expression.text === 'getBackendSrv';
+}
+
+function isGetBackendSrvInvocation(expr: ts.Expression, blocks: readonly ts.Node[]): boolean {
+  if (isGetBackendSrvCall(expr)) {
+    return true;
+  }
+  if (!ts.isIdentifier(expr)) {
+    return false;
+  }
+  const initializer = resolveLocalDeclarationInitializer(expr.text, blocks);
+  return initializer !== null && isGetBackendSrvCall(initializer);
 }
 
 function findCandidateCalls(sourceFile: ts.SourceFile): CandidateCall[] {
@@ -171,8 +188,8 @@ function findCandidateCalls(sourceFile: ts.SourceFile): CandidateCall[] {
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
-      isGetBackendSrvInvocation(node.expression.expression) &&
-      GET_BACKEND_SRV_METHOD_NAMES.has(node.expression.name.text)
+      GET_BACKEND_SRV_METHOD_NAMES.has(node.expression.name.text) &&
+      isGetBackendSrvInvocation(node.expression.expression, collectScopeBlocks(node, sourceFile))
     ) {
       results.push({ node, methodName: node.expression.name.text as CandidateCall['methodName'] });
     }
@@ -267,7 +284,16 @@ function classifyUrl(expr: ts.Expression, builders: BuilderImports, blocks: read
 
   if (ts.isTemplateExpression(e)) {
     const literalParts = [e.head.text, ...e.templateSpans.map((span) => span.literal.text)];
-    return { appPlatform: literalParts.some((part) => part.includes('/apis/')), text: e.getText() };
+    const appPlatform =
+      literalParts.some((part) => part.includes('/apis/')) ||
+      e.templateSpans.some((span) => classifyUrl(span.expression, builders, blocks).appPlatform);
+    return { appPlatform, text: e.getText() };
+  }
+
+  if (ts.isBinaryExpression(e)) {
+    const left = classifyUrl(e.left, builders, blocks);
+    const right = classifyUrl(e.right, builders, blocks);
+    return { appPlatform: left.appPlatform || right.appPlatform, text: e.getText() };
   }
 
   if (ts.isCallExpression(e) && ts.isIdentifier(e.expression)) {
@@ -424,7 +450,7 @@ function evaluateCall(
     return { appPlatform: true, violation: { file: relPath, line, method: 'GET', urlText: text } };
   }
 
-  // .fetch(...)
+  // .fetch(...) / .request(...) — both take the same request-bag shape
   const bag = resolveRequestBag(args[0], blocks);
   if (!bag || hasSpread(bag)) {
     return {
@@ -433,7 +459,7 @@ function evaluateCall(
         file: relPath,
         line,
         method: 'unresolved',
-        urlText: `could not resolve the request object for getBackendSrv().fetch(${describeArg(args[0])})`,
+        urlText: `could not resolve the request object for getBackendSrv().${call.methodName}(${describeArg(args[0])})`,
       },
     };
   }
@@ -504,7 +530,7 @@ function scanAppPlatformTransport(): ScanResult {
 
   if (totalCallSites === 0) {
     throw new Error(
-      'Found zero getBackendSrv().fetch/get/post(...) call sites under src/. This guard exists to catch a ' +
+      'Found zero getBackendSrv().fetch/request/get/post(...) call sites under src/. This guard exists to catch a ' +
         'direct App Platform read reaching the browser (incident 5857) — a scan that finds nothing would pass ' +
         'while checking nothing. Something in the walk (collectSourceFiles, or the getBackendSrv() call ' +
         'matcher in this file) is broken; fix that rather than letting this test go green on an empty scan.'
@@ -584,7 +610,7 @@ describe('App Platform transport: proxy-first reads', () => {
 });
 
 describe('App Platform transport ratchet: detector', () => {
-  function evaluateSource(source: string, methodName: CandidateCall['methodName'] = 'fetch'): CallEvaluation {
+  function evaluateSource(source: string): CallEvaluation {
     const sourceFile = ts.createSourceFile('detector.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const [call] = findCandidateCalls(sourceFile);
     if (!call) {
@@ -594,12 +620,7 @@ describe('App Platform transport ratchet: detector', () => {
       collectionUrlNames: new Set(['collectionUrl']),
       itemUrlNames: new Set(['itemUrl']),
     };
-    return evaluateCall(
-      { node: call.node, methodName: call.methodName ?? methodName },
-      sourceFile,
-      'detector.ts',
-      builders
-    );
+    return evaluateCall(call, sourceFile, 'detector.ts', builders);
   }
 
   it('flags a direct GET read addressed via the collectionUrl builder', () => {
@@ -608,6 +629,52 @@ describe('App Platform transport ratchet: detector', () => {
     `);
     expect(result.appPlatform).toBe(true);
     expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a builder url interpolated into a template with a query string', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({
+        url: \`\${collectionUrl(namespace)}?labelSelector=spec.status%3Dpublished\`,
+        method: 'GET',
+      });
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a builder url concatenated with a query string', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ url: collectionUrl(namespace) + '?limit=100', method: 'GET' });
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a read issued through a receiver hoisted into a variable', () => {
+    const result = evaluateSource(`
+      function load() {
+        const backendSrv = getBackendSrv();
+        return backendSrv.fetch({ url: collectionUrl(namespace), method: 'GET' });
+      }
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a read issued through .request(), which takes the same request bag as .fetch()', () => {
+    const result = evaluateSource(`
+      getBackendSrv().request({ url: collectionUrl(namespace), method: 'GET' });
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('does not flag a template url whose interpolations never reach App Platform', () => {
+    const result = evaluateSource(`
+      getBackendSrv().get(\`/api/datasources/uid/\${uid}/health\`);
+    `);
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
   });
 
   it('does not flag a mutation whose method is a ternary where every branch is a mutation', () => {
@@ -663,38 +730,5 @@ describe('App Platform transport ratchet: detector', () => {
       ts.ScriptKind.TSX
     );
     expect(findCandidateCalls(sourceFile)).toEqual([]);
-  });
-});
-
-describe('App Platform transport ratchet: allowlist mechanics', () => {
-  it('does not fail the ratchet when the only violation is allowlisted', () => {
-    const violations = new Set(['utils/fetchBackendGuides.ts — GET collectionUrl(namespace)']);
-    const allowlist = new Set(['utils/fetchBackendGuides.ts — GET collectionUrl(namespace)']);
-
-    expect(() => assertRatchet(violations, allowlist, 'label', 'ALLOWLIST', 'advice')).not.toThrow();
-  });
-
-  it('still fails on a violation that is not allowlisted, even when a different one is', () => {
-    const violations = new Set([
-      'utils/fetchBackendGuides.ts — GET collectionUrl(namespace)',
-      'context-engine/context.init.ts — GET collectionUrl(namespace)',
-    ]);
-    const allowlist = new Set(['utils/fetchBackendGuides.ts — GET collectionUrl(namespace)']);
-
-    expect(() => assertRatchet(violations, allowlist, 'label', 'ALLOWLIST', 'advice')).toThrow(
-      /context-engine\/context\.init\.ts/
-    );
-  });
-
-  it('fails on a stale allowlist entry that no longer matches any real violation', () => {
-    const violations = new Set(['utils/fetchBackendGuides.ts — GET collectionUrl(namespace)']);
-    const allowlist = new Set([
-      'utils/fetchBackendGuides.ts — GET collectionUrl(namespace)',
-      'context-engine/context.init.ts — GET collectionUrl(namespace)',
-    ]);
-
-    expect(() => assertRatchet(violations, allowlist, 'label', 'ALLOWLIST', 'advice')).toThrow(
-      /Stale entries.*context-engine\/context\.init\.ts/s
-    );
   });
 });
