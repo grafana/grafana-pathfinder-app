@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { usePathfinderPluginConfig, refreshPathfinderPluginConfig } from '../../hooks';
+import { usePathfinderPluginConfig } from '../../hooks';
 import type { ResolvedPathfinderConfig } from '../../constants';
-import { Alert, Button, LoadingPlaceholder } from '@grafana/ui';
+import { LoadingPlaceholder } from '@grafana/ui';
 import { CombinedLearningJourneyPanel } from 'components/docs-panel/docs-panel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
@@ -44,17 +44,7 @@ function SidebarContent() {
   if (!isResolved && !hasError) {
     return <LoadingPlaceholder text="Loading Pathfinder settings" />;
   }
-  return (
-    <>
-      {hasError && (
-        <Alert title="Some learning settings are unavailable" severity="warning">
-          You can keep browsing while we use default settings.
-          <Button onClick={() => void refreshPathfinderPluginConfig()}>Try again</Button>
-        </Alert>
-      )}
-      <ResolvedSidebarContent config={config} />
-    </>
-  );
+  return <ResolvedSidebarContent config={config} />;
 }
 
 function ResolvedSidebarContent({ config }: { config: ResolvedPathfinderConfig }) {
