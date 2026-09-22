@@ -172,6 +172,39 @@ beforeEach(() => {
 });
 
 describe('without gcx', () => {
+  it('exposes the connection contract and custom button control', () => {
+    renderStep({ buttonText: 'Start nginx', vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
+    const root = screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID));
+    expect(root).toHaveAttribute('data-test-terminal-status', 'disconnected');
+    expect(root).toHaveAttribute('data-test-terminal-gcx', 'false');
+    expect(root).toHaveAttribute('data-test-terminal-vm-requested', 'true');
+    expect(screen.getByTestId(testIds.interactive.terminalConnectButton(STEP_ID))).toHaveTextContent('Start nginx');
+  });
+
+  it('exposes a failed connection without marking completion', () => {
+    mockTerminalStatus = 'error';
+    renderStep();
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID))).toHaveAttribute(
+      'data-test-step-state',
+      'error'
+    );
+    expect(screen.getByTestId(testIds.interactive.errorMessage(STEP_ID))).toHaveTextContent(
+      'Terminal connection failed'
+    );
+    expect(mockMarkStepCompleted).not.toHaveBeenCalled();
+  });
+
+  it('exposes an unavailable sandbox as prerequisite evidence', () => {
+    mockSandboxUnavailable = 'This account cannot create sessions.';
+    renderStep();
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID))).toHaveAttribute(
+      'data-test-terminal-unavailable',
+      'true'
+    );
+    expect(screen.getByTestId(testIds.interactive.requirementCheck(STEP_ID))).toHaveTextContent(mockSandboxUnavailable);
+    expect(screen.queryByTestId(testIds.interactive.terminalConnectButton(STEP_ID))).not.toBeInTheDocument();
+  });
+
   it('connects and completes, never asking for a credential', async () => {
     connectResolves();
     const onComplete = jest.fn();
@@ -200,6 +233,15 @@ describe('without gcx', () => {
 });
 
 describe('with gcx', () => {
+  it('declares credential provisioning before any connect action', () => {
+    renderStep({ gcx: true });
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID))).toHaveAttribute(
+      'data-test-terminal-gcx',
+      'true'
+    );
+    expect(mockProvisionGcx).not.toHaveBeenCalled();
+  });
+
   it('provisions against the session id openTerminal resolved, not the rendered one', async () => {
     // Reading `sessionId` off the render can hand back the session being torn
     // down when the requested VM differs from the live one.

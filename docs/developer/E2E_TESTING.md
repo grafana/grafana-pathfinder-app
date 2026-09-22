@@ -154,7 +154,7 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - For each step:
      - Check if pre-completed (objectives already met)
      - Handle requirements (Fix buttons with retry)
-     - Operate the driver's action control: Do it, Show me, or codeblock Insert
+     - Operate the driver's action control: Do it, Show me, codeblock Insert, terminal Connect, or terminal Exec
      - Wait for the driver's completion signal
    - Session validated before each shared milestone and every 5 steps
 
@@ -191,6 +191,28 @@ npm run e2e -- --config tests/e2e-runner/playwright.config.ts codeblock-driver.s
 ```
 
 These tests use a DOM fixture, not a real Monaco editor. They cover discovery, insertion ordering, the next-step gate, insertion errors, disabled Insert controls, and root detachment. Component contract tests cover the product's Insert and Skip controls and their state transitions.
+
+### Terminal steps
+
+The runner supports `terminal-connect` and `terminal` through `drivers/terminal.ts`. Both require the [terminal DOM contract](./E2E_TESTING_CONTRACT.md#terminal-runner-contract) from the installed Pathfinder build.
+
+A connection step clicks its own Connect control and waits for a connected, completed root. An existing default connection uses Continue. An explicit VM request with an existing connection fails before Continue, because the product does not prove that the current VM matches. Disconnect that terminal before the run.
+
+A command step connects through its own control if necessary, then clicks Exec once. It never substitutes Copy. Completion means the product sent the command, not that the shell finished or returned exit code zero. The driver does not parse terminal output, append shell markers, or resend commands after errors.
+
+Connection steps allow 240 seconds for provisioning. Command steps allow 270 seconds, including connection. Root detachment, connection errors, dispatch errors, and missing completion do not count as success.
+
+Missing Coda or insufficient permissions produce unmet prerequisites. Mandatory steps fail and stop the guide under the existing result contract. Optional command steps can skip only through an available product Skip control, with explicit completion afterward.
+
+Connection steps with `gcx: true` fail as unmet prerequisites in this first implementation. The runner does not mint credentials, paste tokens, or click Continue without gcx. Challenge blocks remain unsupported.
+
+Run the browser fixtures without Coda or Grafana authentication:
+
+```bash
+npm run e2e -- --config tests/e2e-runner/playwright.config.ts terminal-driver.spec.ts --project chromium --no-deps
+```
+
+These fixtures do not provision VMs or send real commands. A live smoke test needs an enabled, registered Coda plugin and a disposable sandbox. Verify the authored command output separately from the runner verdict.
 
 ### Shared path and journey sessions
 

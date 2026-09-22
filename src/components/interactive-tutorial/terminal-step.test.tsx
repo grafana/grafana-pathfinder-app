@@ -5,6 +5,8 @@
 import React from 'react';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TerminalStep } from './terminal-step';
+import { testIds } from '../../constants/testIds';
+import { markStepCompleted } from '../../global-state/completion-store';
 
 // Mock Grafana UI components
 jest.mock('@grafana/ui', () => ({
@@ -122,6 +124,68 @@ describe('TerminalStep', () => {
     render(<TerminalStep command="ls -la" />);
 
     expect(screen.getByText('Connect terminal')).toBeInTheDocument();
+  });
+
+  it('exposes connection and execution controls without treating Copy as Exec', async () => {
+    render(<TerminalStep stepId="contract-command" command="echo hello" />);
+    const root = screen.getByTestId(testIds.interactive.terminalStep('contract-command'));
+    expect(root).toHaveAttribute('data-test-terminal-status', 'connected');
+    expect(root).toHaveAttribute('data-test-terminal-unavailable', 'false');
+    fireEvent.click(screen.getByTestId(testIds.interactive.terminalExecButton('contract-command')));
+    await waitFor(() => expect(markStepCompleted).toHaveBeenCalledWith('contract-command', undefined, 'manual'));
+    expect(mockSendCommand).toHaveBeenCalledWith('echo hello');
+    expect(mockWriteText).not.toHaveBeenCalled();
+  });
+
+  it('exposes dispatch errors without completing and clears the error on retry', async () => {
+    mockSendCommand.mockRejectedValueOnce(new Error('Disconnected'));
+    render(<TerminalStep stepId="dispatch-error" command="echo hello" />);
+    const exec = screen.getByTestId(testIds.interactive.terminalExecButton('dispatch-error'));
+    fireEvent.click(exec);
+    const error = await screen.findByTestId(testIds.interactive.errorMessage('dispatch-error'));
+    expect(error).toHaveTextContent('The command could not be sent');
+    expect(screen.getByTestId(testIds.interactive.terminalStep('dispatch-error'))).toHaveAttribute(
+      'data-test-step-state',
+      'error'
+    );
+    expect(markStepCompleted).not.toHaveBeenCalled();
+    fireEvent.click(exec);
+    await waitFor(() => expect(markStepCompleted).toHaveBeenCalled());
+    expect(screen.queryByTestId(testIds.interactive.errorMessage('dispatch-error'))).not.toBeInTheDocument();
+  });
+
+  it('exposes the unavailable prerequisite while retaining Copy for human use', () => {
+    mockTerminalStatus = 'disconnected';
+    mockSandboxUnavailable = 'The Coda plugin is missing.';
+    render(<TerminalStep stepId="missing-coda" command="echo hello" />);
+    expect(screen.getByTestId(testIds.interactive.terminalStep('missing-coda'))).toHaveAttribute(
+      'data-test-terminal-unavailable',
+      'true'
+    );
+    expect(screen.getByTestId(testIds.interactive.requirementCheck('missing-coda'))).toHaveTextContent(
+      mockSandboxUnavailable
+    );
+    expect(screen.getByTestId(testIds.interactive.terminalCopyButton('missing-coda'))).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.interactive.terminalConnectButton('missing-coda'))).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])('offers unavailable-Coda Skip only when authored skippable=%s', (skippable) => {
+    mockTerminalStatus = 'disconnected';
+    mockSandboxUnavailable = 'The Coda plugin is missing.';
+    render(<TerminalStep stepId="optional-unavailable" command="echo hello" skippable={skippable} />);
+
+    const skip = screen.queryByTestId(testIds.interactive.terminalSkipButton('optional-unavailable'));
+    if (skippable) {
+      expect(skip).toBeVisible();
+      fireEvent.click(skip!);
+      expect(markStepCompleted).toHaveBeenCalledWith('optional-unavailable', undefined, 'manual');
+    } else {
+      expect(skip).not.toBeInTheDocument();
+      expect(markStepCompleted).not.toHaveBeenCalled();
+    }
+    expect(mockSendCommand).not.toHaveBeenCalled();
+    expect(mockOpenTerminal).not.toHaveBeenCalled();
+    expect(mockWriteText).not.toHaveBeenCalled();
   });
 
   it('renders command and description', () => {

@@ -13,6 +13,7 @@ import {
 } from '../constants';
 import { handleRequirementsWithFix } from '../requirements';
 import { codeblockDriver } from './codeblock';
+import { terminalCommandDriver, terminalConnectDriver } from './terminal';
 import type { TestableStep } from '../types';
 import { clickSkipButtonAndSync, executeStandardStep, inspectCommonStep, isStepComplete } from './shared';
 import { executeGuidedStep } from './guided';
@@ -74,7 +75,9 @@ function supportedDriver(
   };
 }
 
-function unsupportedDriver(kind: Exclude<StepTypeKind, 'plain' | 'multistep' | 'guided' | 'codeblock'>): StepDriver {
+function unsupportedDriver(
+  kind: Exclude<StepTypeKind, 'plain' | 'multistep' | 'guided' | 'codeblock' | 'terminal' | 'terminal-connect'>
+): StepDriver {
   const unsupported = (): never => {
     throw new Error(`Step kind "${kind}" does not have an E2E driver`);
   };
@@ -107,8 +110,8 @@ const drivers = [
     executeGuidedStep
   ),
   unsupportedDriver('quiz'),
-  unsupportedDriver('terminal'),
-  unsupportedDriver('terminal-connect'),
+  terminalCommandDriver,
+  terminalConnectDriver,
   codeblockDriver,
   unsupportedDriver('challenge'),
   unsupportedDriver('datasource-check'),
