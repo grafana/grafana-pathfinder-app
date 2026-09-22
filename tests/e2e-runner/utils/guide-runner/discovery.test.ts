@@ -59,8 +59,8 @@ describe('discoverStepsFromDOM', () => {
         'data-test-substep-total': '3',
       }),
       root({
-        'data-test-step-kind': 'quiz',
-        'data-test-step-id': 'quiz-1',
+        'data-test-step-kind': 'challenge',
+        'data-test-step-id': 'challenge-1',
       }),
     ]);
 
@@ -77,7 +77,7 @@ describe('discoverStepsFromDOM', () => {
       supported: 3,
       executed: 0,
       unsupported: 1,
-      unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
+      unsupportedSteps: [{ stepKind: 'challenge', stepId: 'challenge-1' }],
     });
   });
 
@@ -105,6 +105,20 @@ describe('discoverStepsFromDOM', () => {
       actionCount: 0,
     });
     expect(result.coverage).toMatchObject({ rendered: 2, supported: 2, unsupported: 0, unsupportedSteps: [] });
+  });
+
+  it('discovers a quiz before its Check answer control is rendered', async () => {
+    const page = pageWithRoots([
+      root({
+        'data-test-step-kind': 'quiz',
+        'data-test-step-id': 'quiz-1',
+        'data-test-step-state': 'idle',
+        'data-test-skippable': 'true',
+      }),
+    ]);
+    const result = await discoverStepsFromDOM(page);
+    expect(result.steps[0]).toMatchObject({ stepKind: 'quiz', hasDoItButton: false, skippable: true });
+    expect(result.coverage).toMatchObject({ supported: 1, unsupported: 0 });
   });
 
   it('uses the legacy fallback when current roots are absent', async () => {
@@ -165,7 +179,7 @@ describe('withExecutedCoverage', () => {
         supported: 2,
         executed: 0,
         unsupported: 1,
-        unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
+        unsupportedSteps: [{ stepKind: 'challenge', stepId: 'challenge-1' }],
       },
       [
         {

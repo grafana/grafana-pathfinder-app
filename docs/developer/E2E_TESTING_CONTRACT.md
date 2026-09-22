@@ -59,7 +59,7 @@ The legacy selector excludes `interactive-step-completed-*` badges. These badges
 
 One `StepDriver` registry owns metadata inspection, product controls, execution, skip behavior, and completion rules. The registry uses `data-test-step-kind` keys.
 
-The runner supports `plain`, `multistep`, `guided`, `codeblock`, `terminal`, and `terminal-connect`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
+The runner supports `plain`, `multistep`, `guided`, `codeblock`, `quiz`, `terminal`, and `terminal-connect`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
 
 Unsupported roots do not change the outcome when a guide also renders a supported root. The runner reports each unsupported kind and step ID.
 
@@ -94,6 +94,14 @@ Codeblocks do not expose an automatic Fix control. The driver waits for requirem
 Older plugin builds without the new skippability attribute fall back to the rendered Skip control. Without the error test ID or error state, an insertion failure can report a completion timeout instead of the product error. Builds without tracked codeblock roots remain outside codeblock discovery.
 
 Contract tests live in `src/components/interactive-tutorial/code-block-step.contract.test.tsx`. Browser regression tests live in `tests/e2e-runner/codeblock-driver.spec.ts`.
+
+### Quiz runner contract
+
+Quiz roots use `interactive-quiz-${stepId}`. They expose `data-test-step-state`, `data-test-skippable`, and `data-test-quiz-multi-select`. `data-test-quiz-result` is `none`, `correct`, `incorrect`, or `revealed`; revealed completion is not a correct answer.
+
+Each choice exposes its authored boolean through `data-test-quiz-correct` and its selection through `aria-pressed`. These answers already exist in client-side guide content; this metadata is not a security boundary. The runner clicks choices, then `interactive-quiz-check-${stepId}`. It never changes the completion store directly.
+
+A passing action requires attached `completed` state and a `correct` result. Optional prerequisite skips use `interactive-quiz-skip-${stepId}` and require explicit completion. Previously completed quizzes retain the existing `pre_completed` outcome. Older builds without the selection-mode attribute fail with a contract diagnostic.
 
 ### Terminal runner contract
 

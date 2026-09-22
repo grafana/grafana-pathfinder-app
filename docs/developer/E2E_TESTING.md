@@ -192,6 +192,18 @@ npm run e2e -- --config tests/e2e-runner/playwright.config.ts codeblock-driver.s
 
 These tests use a DOM fixture, not a real Monaco editor. They cover discovery, insertion ordering, the next-step gate, insertion errors, disabled Insert controls, and root detachment. Component contract tests cover the product's Insert and Skip controls and their state transitions.
 
+### Quiz steps
+
+The runner selects authored correct answers and clicks the product's Check answer control once. It uses answer metadata, not text inference or trial and error. Choice order does not matter. Multi-select quizzes select every correct choice and clear incorrect selections.
+
+Success requires an attached, completed quiz with a correct result. Incorrect answers, max-attempts reveals, disabled controls, and root detachment do not count as success. Optional blocked quizzes use the product's Skip control and wait for completion.
+
+The browser fixtures are synthetic because the surveyed tutorial set contains no quiz blocks:
+
+```bash
+npm run e2e -- --config tests/e2e-runner/playwright.config.ts quiz-driver.spec.ts --project chromium --no-deps
+```
+
 ### Terminal steps
 
 The runner supports `terminal-connect` and `terminal` through `drivers/terminal.ts`. Both require the [terminal DOM contract](./E2E_TESTING_CONTRACT.md#terminal-runner-contract) from the installed Pathfinder build.

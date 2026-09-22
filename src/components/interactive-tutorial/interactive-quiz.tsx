@@ -11,6 +11,7 @@ import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
+import { STEP_STATES } from './step-states';
 
 // ============ Types ============
 
@@ -139,28 +140,18 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 }) => {
   const styles = useStyles2(getQuizStyles);
 
-  // Generate stable step ID using useState lazy initialization (runs once on mount)
   const [generatedStepId] = useState(() => {
     quizCounter += 1;
     return `quiz-${quizCounter}`;
   });
   const stepId = providedStepId ?? generatedStepId;
 
-  // State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [attempts, setAttempts] = useState(0);
 
-  // Completion lives in the store. Standalone quizzes (no `onStepComplete`)
-  // write directly; section-managed quizzes notify the section, which
-  // writes through its own persist effect.
   const { completed: storedCompleted } = useStepCompletion(stepId, sectionId);
   const isStandalone = !onStepComplete;
-  // `reason` flows into the `pathfinder:progress` event so downstream
-  // consumers can distinguish a correct-answer completion (`'manual'`)
-  // from a user-initiated skip (`'skipped'`). The checker's own skip
-  // bridge writes `'skipped'` first; without this reason plumbing the
-  // standalone store write here would silently overwrite it with
-  // `'manual'`, making the event lie about intent.
+  // Preserve the checker's skip reason when writing standalone completion.
   const persistCompletion = useCallback(
     (reason: ProgressReason = 'manual') => {
       if (isStandalone) {
@@ -179,17 +170,14 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   const [isRevealed, setIsRevealed] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
 
-  // Display order. Computed ONCE on mount via lazy init so a parent re-render
-  // cannot reorder choices mid-quiz. Re-shuffled only when the parent triggers
-  // a reset (see effect below). Selection, completion, hints, analytics, and
-  // test IDs are all id-keyed, so display-order changes never alter quiz state.
+  // Keep choices stable across renders; only a reset reshuffles them.
   const [displayChoices, setDisplayChoices] = useState<QuizChoice[]>(() =>
     shuffle ? shuffleQuizChoices(choices) : choices
   );
 
-  // Requirements checking
   const {
     isEnabled,
+    isChecking,
     isCompleted: stepCompleted,
     explanation,
     canSkip,
@@ -200,10 +188,9 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     stepId,
     isEligibleForChecking,
     skippable,
-    sectionId, // Lets the checker write skip transitions to the store
+    sectionId,
   });
 
-  // Handle reset trigger from parent section.
   /* eslint-disable react-hooks/set-state-in-effect -- Intentional: reset quiz state when the parent section increments resetTrigger */
   useEffect(() => {
     if (resetTrigger && resetTrigger > 0) {
@@ -215,24 +202,19 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       setIsRevealed(false);
       // Re-shuffle on retry so the user can't lean on remembered positions.
       setDisplayChoices(shuffle ? shuffleQuizChoices(choices) : choices);
-      // Section already wrote the store via `resetSteps(tailStepIds)`;
-      // suppress the per-child store write so the broadcast doesn't fan
-      // out and wipe preceding completions (parity with interactive-step).
+      // The section owns store resets so preceding completions survive a later step's redo.
       if (checkerResetStep) {
         checkerResetStep({ skipStoreWrite: true });
       }
     }
-  }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps -- only an explicit parent reset should reset quiz state
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Compute effective completion state
   const isCompleted = storedCompleted || stepCompleted;
 
-  // Get correct answer IDs
   const correctIds = useMemo(() => new Set(choices.filter((c) => c.correct).map((c) => c.id)), [choices]);
 
-  // Compute displayed selection: show correct answers if quiz is completed but no selection made yet
-  // This handles the case where quiz was completed in a previous session (page refresh)
+  // Restored completion has no local selection.
   const displayedSelection = useMemo(() => {
     if (isCompleted && selectedIds.size === 0) {
       return correctIds;
@@ -240,7 +222,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     return selectedIds;
   }, [isCompleted, selectedIds, correctIds]);
 
-  // Compute displayed result for completed quizzes with no selection
   const displayedResult = useMemo(() => {
     if (isCompleted && selectedIds.size === 0) {
       return 'correct' as const;
@@ -248,16 +229,13 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     return lastResult;
   }, [isCompleted, selectedIds.size, lastResult]);
 
-  // Check if current selection is correct
   const checkAnswer = useCallback((): boolean => {
     if (multiSelect) {
-      // For multi-select: all correct answers selected and no incorrect
       if (selectedIds.size !== correctIds.size) {
         return false;
       }
       return Array.from(selectedIds).every((id) => correctIds.has(id));
     } else {
-      // For single-select: exactly one correct answer selected
       if (selectedIds.size !== 1) {
         return false;
       }
@@ -265,27 +243,22 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     }
   }, [selectedIds, correctIds, multiSelect]);
 
-  // Build analytics properties for quiz interactions
   const buildQuizAnalyticsProps = useCallback(
     (isCorrect: boolean, attemptCount: number, revealed = false) => {
-      // Get selected answer texts (truncate if too long)
       const selectedAnswers = choices
         .filter((c) => selectedIds.has(c.id))
         .map((c) => c.text)
         .join(', ');
       const truncatedSelected = selectedAnswers.length > 200 ? selectedAnswers.slice(0, 200) + '...' : selectedAnswers;
 
-      // Get correct answer texts (truncate if too long)
       const correctAnswers = choices
         .filter((c) => c.correct)
         .map((c) => c.text)
         .join(', ');
       const truncatedCorrect = correctAnswers.length > 200 ? correctAnswers.slice(0, 200) + '...' : correctAnswers;
 
-      // Truncate question if too long
       const truncatedQuestion = question.length > 200 ? question.slice(0, 200) + '...' : question;
 
-      // Quiz-specific properties
       const quizProps = {
         quiz_question: truncatedQuestion,
         quiz_selected_answer: truncatedSelected,
@@ -299,7 +272,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         interaction_location: 'interactive_quiz',
       };
 
-      // Build complete analytics properties with document step context
       return buildInteractiveStepProperties(quizProps, {
         stepId,
         stepIndex,
@@ -311,8 +283,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     [choices, selectedIds, question, stepId, multiSelect, stepIndex, totalSteps, sectionId, sectionTitle]
   );
 
-  // Shared "was this correct" outcome handling, used by the single explicit
-  // Check Answer step both quiz modes share (see `handleCheckAnswer`).
   const evaluateAndApply = useCallback(
     (isCorrect: boolean, wrongChoice: QuizChoice | undefined) => {
       const newAttempts = attempts + 1;
@@ -333,7 +303,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         setShakeKey((k) => k + 1);
         setShowHint(wrongChoice?.hint ?? "That's not quite right. Try again!");
 
-        // Check if max attempts reached (for max-attempts mode)
         if (completionMode === 'max-attempts' && newAttempts >= maxAttempts) {
           setIsRevealed(true);
           persistCompletion();
@@ -349,14 +318,9 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     [attempts, persistCompletion, buildQuizAnalyticsProps, onStepComplete, stepId, completionMode, maxAttempts]
   );
 
-  // Handle choice selection — both quiz modes only ever select/toggle here.
-  // The answer isn't checked until the user clicks "Check Answer"
-  // (`handleCheckAnswer`), matching every other verification-style
-  // interactive block in the product (`challenge`'s "Check my work",
-  // `input`'s "Run check").
   const handleChoiceClick = useCallback(
     (choiceId: string) => {
-      if (isCompleted || isRevealed || !isEnabled) {
+      if (isCompleted || isRevealed || !isEnabled || disabled) {
         return;
       }
 
@@ -377,10 +341,9 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       setLastResult('none');
       setShowHint(null);
     },
-    [isCompleted, isRevealed, isEnabled, multiSelect]
+    [isCompleted, isRevealed, isEnabled, disabled, multiSelect]
   );
 
-  // Handle check answer
   const handleCheckAnswer = useCallback(() => {
     if (selectedIds.size === 0) {
       return;
@@ -391,7 +354,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     evaluateAndApply(isCorrect, wrongChoice);
   }, [selectedIds, checkAnswer, choices, evaluateAndApply]);
 
-  // Handle skip
   const handleSkip = useCallback(() => {
     if (markSkipped) {
       markSkipped();
@@ -402,10 +364,8 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     }
   }, [markSkipped, onStepComplete, stepId, persistCompletion]);
 
-  // Choice state type
   type ChoiceState = 'default' | 'selected' | 'correct' | 'incorrect' | 'revealed';
 
-  // Get choice state for styling (uses displayedSelection/displayedResult for rendering)
   const getChoiceState = useCallback(
     (choice: QuizChoice): ChoiceState => {
       if (isRevealed && choice.correct) {
@@ -425,7 +385,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     [isRevealed, isCompleted, displayedResult, displayedSelection]
   );
 
-  // Map choice state to style class
   const getChoiceClassName = (state: ChoiceState): string => {
     switch (state) {
       case 'selected':
@@ -444,19 +403,18 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     }
   };
 
-  // Determine if we should show the blocked state
-  const isBlocked = !isEnabled && !isCompleted;
+  const isBlocked = (!isEnabled || disabled) && !isCompleted;
+  const stepState = isCompleted
+    ? STEP_STATES.COMPLETED
+    : isChecking
+      ? STEP_STATES.CHECKING
+      : isBlocked
+        ? STEP_STATES.REQUIREMENTS_UNMET
+        : STEP_STATES.IDLE;
   const showCheckButton = !isCompleted && !isRevealed && displayedSelection.size > 0;
   const attemptsRemaining = completionMode === 'max-attempts' ? maxAttempts - attempts : null;
   const showAttemptsRemaining = attemptsRemaining !== null && !isCompleted && !isRevealed;
-  // Compact pill layout only for short single-select questions — a handful
-  // of short choices (True/False, single words) reads better side-by-side;
-  // longer or more numerous choices keep the stacked full-width rows. Exactly
-  // 4 short choices get a 2x2 grid instead of a single row of 4 — one row
-  // stays readable up to 3 pills, but a 4-wide row starts feeling cramped.
-  // Multi-select always keeps the stacked layout too: pills drop the leading
-  // indicator, and without the checkbox there's no visual cue that more than
-  // one choice can be selected.
+  // Multi-select keeps the checkbox indicator, which the compact layout omits.
   const useCompactChoiceLayout =
     !multiSelect &&
     displayChoices.length <= PILL_LAYOUT_MAX_CHOICES &&
@@ -470,8 +428,11 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       })}
       {...getTrackedStepRootAttributes('quiz', stepId)}
       data-testid={testIds.interactive.quiz(stepId)}
+      data-test-step-state={stepState}
+      data-test-skippable={skippable}
+      data-test-quiz-multi-select={multiSelect}
+      data-test-quiz-result={isRevealed ? 'revealed' : lastResult}
     >
-      {/* Label header */}
       <div className={styles.header}>
         <div className={styles.headerLabel}>
           <Icon name="pen" size="sm" className={styles.headerIcon} />
@@ -484,18 +445,15 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         )}
       </div>
 
-      {/* Question */}
       <div className={styles.questionContent}>{children}</div>
 
-      {/* Blocked message */}
       {isBlocked && (
-        <div className={styles.blockedMessage}>
+        <div className={styles.blockedMessage} data-testid={testIds.interactive.requirementCheck(stepId)}>
           <Icon name="lock" size="sm" />
           <span>{explanation || 'Complete previous step'}</span>
         </div>
       )}
 
-      {/* Choices */}
       <div
         className={cx(styles.choices, {
           [styles.choicesCompact]: useCompactChoiceLayout && !useGridChoiceLayout,
@@ -520,6 +478,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
               disabled={isCompleted || isRevealed || isBlocked}
               aria-pressed={isSelected}
               data-testid={testIds.interactive.quizChoice(stepId, choice.id)}
+              data-test-quiz-correct={choice.correct}
             >
               {!useCompactChoiceLayout && (
                 <span className={styles.choiceIndicator}>
@@ -541,7 +500,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         })}
       </div>
 
-      {/* Hint/Feedback */}
       {showHint && !isCompleted && (
         <div className={styles.hint}>
           <Icon name="info-circle" size="sm" />
@@ -549,7 +507,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         </div>
       )}
 
-      {/* Success message */}
       {isCompleted && displayedResult === 'correct' && (
         <div className={styles.success}>
           <Icon name="check-circle" size="lg" />
@@ -557,7 +514,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         </div>
       )}
 
-      {/* Revealed message */}
       {isRevealed && (
         <div className={styles.revealed}>
           <Icon name="info-circle" size="sm" />
@@ -565,12 +521,15 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         </div>
       )}
 
-      {/* Actions */}
       {(showCheckButton || (canSkip && !isCompleted)) && (
         <div className={styles.actions}>
           {showCheckButton && (
-            <Button onClick={handleCheckAnswer} disabled={disabled || isBlocked}>
-              Check Answer
+            <Button
+              onClick={handleCheckAnswer}
+              disabled={disabled || isBlocked}
+              data-testid={testIds.interactive.quizCheckButton(stepId)}
+            >
+              Check answer
             </Button>
           )}
 

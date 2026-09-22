@@ -272,7 +272,7 @@ it('reports mixed supported and unsupported tracked roots', async () => {
     supported: 1,
     executed: 0,
     unsupported: 1,
-    unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
+    unsupportedSteps: [{ stepKind: 'challenge', stepId: 'challenge-1' }],
   };
   setupInteractiveRun([step], coverage, {
     results: [
@@ -353,50 +353,55 @@ it('executes a codeblock-only guide and reports supported coverage', async () =>
   });
 });
 
-it.each(['terminal', 'terminal-connect'] as const)('executes a %s-only guide instead of skipping it', async (kind) => {
-  const step: TestableStep = { ...supportedStep(), stepKind: kind, stepId: 'sandbox-step' };
-  const coverage: StepCoverage = {
-    contractSource: 'current',
-    rendered: 1,
-    supported: 1,
-    executed: 0,
-    unsupported: 0,
-    unsupportedSteps: [],
-  };
-  setupInteractiveRun([step], coverage, {
-    results: [
+it.each(['terminal', 'terminal-connect', 'quiz'] as const)(
+  'executes a %s-only guide instead of skipping it',
+  async (kind) => {
+    const step: TestableStep = { ...supportedStep(), stepKind: kind, stepId: 'sandbox-step' };
+    const coverage: StepCoverage = {
+      contractSource: 'current',
+      rendered: 1,
+      supported: 1,
+      executed: 0,
+      unsupported: 0,
+      unsupportedSteps: [],
+    };
+    setupInteractiveRun([step], coverage, {
+      results: [
+        {
+          stepId: step.stepId,
+          stepKind: kind,
+          status: 'passed',
+          durationMs: 10,
+          currentUrl: '/',
+          consoleErrors: [],
+          skippable: false,
+        },
+      ],
+      aborted: false,
+    });
+    const result = await runGuideOnPage(
+      page([]),
       {
-        stepId: step.stepId,
-        stepKind: kind,
-        status: 'passed',
-        durationMs: 10,
-        currentUrl: '/',
-        consoleErrors: [],
-        skippable: false,
-      },
-    ],
-    aborted: false,
-  });
-  const result = await runGuideOnPage(
-    page([]),
-    {
-      id: kind,
-      title: 'Sandbox',
-      path: `/${kind}/content.json`,
-      content: JSON.stringify({
         id: kind,
-        blocks: [{ type: kind, ...(kind === 'terminal' ? { command: 'echo hello' } : {}), content: 'Use the sandbox' }],
-      }),
-    },
-    options([])
-  );
-  expect(executeAllStepsMock).toHaveBeenCalledWith(expect.anything(), [step], expect.anything());
-  expect(result).toMatchObject({
-    outcome: 'passed',
-    coverage: { ...coverage, executed: 1 },
-    results: [{ stepKind: kind, status: 'passed' }],
-  });
-});
+        title: 'Sandbox',
+        path: `/${kind}/content.json`,
+        content: JSON.stringify({
+          id: kind,
+          blocks: [
+            { type: kind, ...(kind === 'terminal' ? { command: 'echo hello' } : {}), content: 'Use the sandbox' },
+          ],
+        }),
+      },
+      options([])
+    );
+    expect(executeAllStepsMock).toHaveBeenCalledWith(expect.anything(), [step], expect.anything());
+    expect(result).toMatchObject({
+      outcome: 'passed',
+      coverage: { ...coverage, executed: 1 },
+      results: [{ stepKind: kind, status: 'passed' }],
+    });
+  }
+);
 
 it('reports an unsupported-only guide as skipped with complete coverage', async () => {
   const events: string[] = [];
@@ -408,7 +413,7 @@ it('reports an unsupported-only guide as skipped with complete coverage', async 
     unsupported: 3,
     unsupportedSteps: [
       { stepKind: 'challenge', stepId: 'challenge-1' },
-      { stepKind: 'quiz', stepId: 'quiz-1' },
+      { stepKind: 'challenge', stepId: 'challenge-3' },
       { stepKind: 'challenge', stepId: 'challenge-2' },
     ],
   };
@@ -426,7 +431,7 @@ it('reports an unsupported-only guide as skipped with complete coverage', async 
 
   expect(result).toMatchObject({
     outcome: 'skipped',
-    errorMessage: 'Guide unsupported rendered only unsupported step kinds: challenge, quiz',
+    errorMessage: 'Guide unsupported rendered only unsupported step kinds: challenge',
     results: [],
     coverage,
   });

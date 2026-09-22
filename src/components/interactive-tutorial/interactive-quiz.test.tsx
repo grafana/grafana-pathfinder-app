@@ -11,6 +11,8 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { InteractiveQuiz, resetQuizCounter, shuffleQuizChoices, type QuizChoice } from './interactive-quiz';
+import { testIds } from '../../constants/testIds';
+import { useStepChecker } from '../../requirements-manager';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -682,6 +684,79 @@ describe('InteractiveQuiz: single-select also requires an explicit Check Answer 
     fireEvent.click(screen.getByRole('button', { name: 'False' }));
     fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
     expect(screen.getByText(/Correct! Well done\./i)).toBeInTheDocument();
+  });
+});
+
+describe('quiz runner DOM contract', () => {
+  const choices: QuizChoice[] = [
+    { id: 'wrong', text: 'Wrong', correct: false },
+    { id: 'right', text: 'Right', correct: true },
+  ];
+  beforeEach(() => {
+    (require('../../global-state/completion-store') as { __resetMockStore: () => void }).__resetMockStore();
+    (useStepChecker as jest.Mock).mockReturnValue({
+      isEnabled: true,
+      isChecking: false,
+      isCompleted: false,
+      canSkip: false,
+    });
+  });
+
+  it('exposes authored answers and only completes after a correct check', () => {
+    render(<InteractiveQuiz stepId="contract" question="Q" choices={choices} shuffle={false} />);
+    const root = screen.getByTestId(testIds.interactive.quiz('contract'));
+    expect(root).toHaveAttribute('data-test-quiz-multi-select', 'false');
+    expect(root).toHaveAttribute('data-test-step-state', 'idle');
+    const wrong = screen.getByTestId(testIds.interactive.quizChoice('contract', 'wrong'));
+    expect(wrong).toHaveAttribute('data-test-quiz-correct', 'false');
+    fireEvent.click(wrong);
+    fireEvent.click(screen.getByTestId(testIds.interactive.quizCheckButton('contract')));
+    expect(root).toHaveAttribute('data-test-quiz-result', 'incorrect');
+    expect(root).toHaveAttribute('data-test-step-state', 'idle');
+    const right = screen.getByTestId(testIds.interactive.quizChoice('contract', 'right'));
+    expect(right).toHaveAttribute('data-test-quiz-correct', 'true');
+    fireEvent.click(right);
+    fireEvent.click(screen.getByTestId(testIds.interactive.quizCheckButton('contract')));
+    expect(root).toHaveAttribute('data-test-quiz-result', 'correct');
+    expect(root).toHaveAttribute('data-test-step-state', 'completed');
+  });
+
+  it('distinguishes revealed completion from a correct answer', () => {
+    render(
+      <InteractiveQuiz stepId="revealed" question="Q" choices={choices} completionMode="max-attempts" maxAttempts={1} />
+    );
+    fireEvent.click(screen.getByTestId(testIds.interactive.quizChoice('revealed', 'wrong')));
+    fireEvent.click(screen.getByTestId(testIds.interactive.quizCheckButton('revealed')));
+    const root = screen.getByTestId(testIds.interactive.quiz('revealed'));
+    expect(root).toHaveAttribute('data-test-step-state', 'completed');
+    expect(root).toHaveAttribute('data-test-quiz-result', 'revealed');
+  });
+
+  it('exposes requirement evidence and the authored Skip control', () => {
+    (useStepChecker as jest.Mock).mockReturnValue({
+      isEnabled: false,
+      isCompleted: false,
+      canSkip: true,
+      explanation: 'Complete previous step',
+    });
+    render(<InteractiveQuiz stepId="blocked" question="Q" choices={choices} skippable />);
+    expect(screen.getByTestId(testIds.interactive.quiz('blocked'))).toHaveAttribute(
+      'data-test-step-state',
+      'requirements-unmet'
+    );
+    expect(screen.getByTestId(testIds.interactive.requirementCheck('blocked'))).toHaveTextContent(
+      'Complete previous step'
+    );
+    expect(screen.getByTestId(testIds.interactive.quizSkipButton('blocked'))).toBeVisible();
+  });
+
+  it('does not allow answer selection when the parent disables the quiz', () => {
+    render(<InteractiveQuiz stepId="disabled" question="Q" choices={choices} disabled />);
+    expect(screen.getByTestId(testIds.interactive.quizChoice('disabled', 'right'))).toBeDisabled();
+    expect(screen.getByTestId(testIds.interactive.quiz('disabled'))).toHaveAttribute(
+      'data-test-step-state',
+      'requirements-unmet'
+    );
   });
 });
 
