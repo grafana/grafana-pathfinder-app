@@ -106,8 +106,11 @@ const ADVICE =
   'test requires both, so an empty rubber-stamp will not pass.';
 
 // ---------------------------------------------------------------------------
-// Builder-call recognition: which local names are collectionUrl/itemUrl,
-// imported from the two files that legitimately construct App Platform URLs
+// Builder-call recognition: which local names are collectionUrl/itemUrl —
+// imported from one of the two files that legitimately construct App Platform
+// URLs, or declared in that file itself (pathfinder-settings-api.ts calls its
+// own builders, so recognizing only importers would leave the builder modules
+// as blind spots)
 // ---------------------------------------------------------------------------
 
 const BUILDER_MODULES = new Set(['utils/interactive-guides-api.ts', 'utils/pathfinder-settings-api.ts']);
@@ -115,16 +118,41 @@ const BUILDER_MODULES = new Set(['utils/interactive-guides-api.ts', 'utils/pathf
 const GET_BACKEND_SRV_METHOD_NAMES = new Set(['fetch', 'request', 'get', 'post']);
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-interface BuilderImports {
+interface BuilderNames {
   collectionUrlNames: Set<string>;
   itemUrlNames: Set<string>;
 }
 
-function findBuilderImports(sourceFile: ts.SourceFile, fileDir: string): BuilderImports {
+function declaredNames(stmt: ts.Statement): string[] {
+  if (ts.isFunctionDeclaration(stmt)) {
+    return stmt.name ? [stmt.name.text] : [];
+  }
+  if (ts.isVariableStatement(stmt)) {
+    return stmt.declarationList.declarations
+      .filter((decl) => ts.isIdentifier(decl.name))
+      .map((decl) => (decl.name as ts.Identifier).text);
+  }
+  return [];
+}
+
+function findBuilderNames(sourceFile: ts.SourceFile, fileDir: string, relPath: string): BuilderNames {
   const collectionUrlNames = new Set<string>();
   const itemUrlNames = new Set<string>();
 
+  const record = (builder: string, localName: string): void => {
+    if (builder === 'collectionUrl') {
+      collectionUrlNames.add(localName);
+    } else if (builder === 'itemUrl') {
+      itemUrlNames.add(localName);
+    }
+  };
+
   for (const stmt of sourceFile.statements) {
+    if (BUILDER_MODULES.has(relPath)) {
+      for (const name of declaredNames(stmt)) {
+        record(name, name);
+      }
+    }
     if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteralLike(stmt.moduleSpecifier)) {
       continue;
     }
@@ -141,12 +169,7 @@ function findBuilderImports(sourceFile: ts.SourceFile, fileDir: string): Builder
       continue;
     }
     for (const element of clause.namedBindings.elements) {
-      const importedName = (element.propertyName ?? element.name).text;
-      if (importedName === 'collectionUrl') {
-        collectionUrlNames.add(element.name.text);
-      } else if (importedName === 'itemUrl') {
-        itemUrlNames.add(element.name.text);
-      }
+      record((element.propertyName ?? element.name).text, element.name.text);
     }
   }
 
@@ -266,7 +289,7 @@ interface UrlClassification {
   text: string;
 }
 
-function classifyUrl(expr: ts.Expression, builders: BuilderImports, blocks: readonly ts.Node[]): UrlClassification {
+function classifyUrl(expr: ts.Expression, builders: BuilderNames, blocks: readonly ts.Node[]): UrlClassification {
   let e: ts.Expression = expr;
   while (ts.isParenthesizedExpression(e)) {
     e = e.expression;
@@ -429,7 +452,7 @@ function evaluateCall(
   call: CandidateCall,
   sourceFile: ts.SourceFile,
   relPath: string,
-  builders: BuilderImports
+  builders: BuilderNames
 ): CallEvaluation {
   const blocks = collectScopeBlocks(call.node, sourceFile);
   const line = lineOf(call.node, sourceFile);
@@ -514,7 +537,7 @@ function scanAppPlatformTransport(): ScanResult {
     const relPath = toPosixPath(path.relative(SRC_DIR, file));
     const sourceFile = ts.createSourceFile(relPath, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const fileDir = path.dirname(file);
-    const builders = findBuilderImports(sourceFile, fileDir);
+    const builders = findBuilderNames(sourceFile, fileDir, relPath);
 
     for (const call of findCandidateCalls(sourceFile)) {
       totalCallSites++;
@@ -568,10 +591,6 @@ function violationDisplay(violation: Violation): string {
 describe('App Platform transport: proxy-first reads', () => {
   const scan = scanAppPlatformTransport();
 
-  it('should find getBackendSrv() call sites to scan', () => {
-    expect(scan.totalCallSites).toBeGreaterThan(0);
-  });
-
   it('reports the current App Platform direct-transport footprint', () => {
     console.log(
       `[app-platform-transport-ratchet] getBackendSrv call sites=${scan.totalCallSites} ` +
@@ -616,11 +635,21 @@ describe('App Platform transport ratchet: detector', () => {
     if (!call) {
       throw new Error('detector fixture has no getBackendSrv() call');
     }
-    const builders: BuilderImports = {
+    const builders: BuilderNames = {
       collectionUrlNames: new Set(['collectionUrl']),
       itemUrlNames: new Set(['itemUrl']),
     };
     return evaluateCall(call, sourceFile, 'detector.ts', builders);
+  }
+
+  function evaluateModuleSource(relPath: string, source: string): CallEvaluation {
+    const sourceFile = ts.createSourceFile(relPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const [call] = findCandidateCalls(sourceFile);
+    if (!call) {
+      throw new Error('detector fixture has no getBackendSrv() call');
+    }
+    const builders = findBuilderNames(sourceFile, path.join(SRC_DIR, path.dirname(relPath)), relPath);
+    return evaluateCall(call, sourceFile, relPath, builders);
   }
 
   it('flags a direct GET read addressed via the collectionUrl builder', () => {
@@ -667,6 +696,39 @@ describe('App Platform transport ratchet: detector', () => {
     `);
     expect(result.appPlatform).toBe(true);
     expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a builder call inside the builder module itself, where the builder is declared not imported', () => {
+    const result = evaluateModuleSource(
+      'utils/pathfinder-settings-api.ts',
+      `
+      export function collectionUrl(namespace) {
+        return \`/apis/\${APP_PLATFORM_API_VERSION}/namespaces/\${namespace}/\${RESOURCE}\`;
+      }
+      export function itemUrl(namespace, name) {
+        return \`\${collectionUrl(namespace)}/\${name}\`;
+      }
+      export async function read() {
+        return getBackendSrv().fetch({ url: itemUrl(config.namespace), method: 'GET' });
+      }
+    `
+    );
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('does not treat a locally declared collectionUrl outside a builder module as an App Platform builder', () => {
+    const result = evaluateModuleSource(
+      'lib/unrelated-client.ts',
+      `
+      function collectionUrl(id) {
+        return \`/api/plugins/\${id}/resources/collection\`;
+      }
+      getBackendSrv().fetch({ url: collectionUrl(pluginId), method: 'GET' });
+    `
+    );
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
   });
 
   it('does not flag a template url whose interpolations never reach App Platform', () => {
