@@ -13,16 +13,26 @@
  * catalogue already was; administrative writes deliberately stayed direct,
  * riding App Platform's own optimistic-concurrency checks.
  *
- * This test walks every getBackendSrv().fetch/request/get/post(...) call site
- * under src/ and flags one whose url addresses App Platform (a literal,
- * template, or concatenation containing "/apis/", or reaching a call to the
- * collectionUrl/itemUrl builders in utils/interactive-guides-api.ts or
- * utils/pathfinder-settings-api.ts) unless the resolved HTTP method is a
- * mutation (POST/PUT/PATCH/DELETE) or the call site is allowlisted. The
- * receiver may be the inline getBackendSrv() call or a same-scope variable
- * holding it. Ratchet mechanism per import-graph.ts: the allowlist
- * can only shrink, and a call this guard cannot resolve with confidence is
- * reported rather than passed silently.
+ * Scope: this guard covers the getBackendSrv() transport specifically. It
+ * walks every getBackendSrv().fetch/request/get/post(...) call site under src/
+ * and flags one whose url addresses App Platform unless the resolved HTTP
+ * method is a mutation (POST/PUT/PATCH/DELETE) or the call site is
+ * allowlisted. A url addresses App Platform when it is a literal, template, or
+ * concatenation containing "/apis/", or a call to a url-producing function
+ * that returns one. The receiver may be the inline getBackendSrv() call or a
+ * same-scope variable holding it. Ratchet mechanism per import-graph.ts: the
+ * allowlist can only shrink, and a call this guard cannot resolve with
+ * confidence is reported rather than passed silently.
+ *
+ * Two known bounds, both deliberate. A direct App Platform read on some other
+ * transport is out of scope: src/utils/openfeature.ts hands an "/apis/" base
+ * url to OFREPWebProvider, a Grafana-owned provider that predates and sits
+ * outside the #1966 contract for Pathfinder's own resources, and is not
+ * flagged. And a url-producing call this guard cannot resolve — a parameter, a
+ * dynamic dispatch, a default or namespace import, a package import, or a
+ * declaration that is not at its module's top level — is treated as a
+ * confident negative rather than a violation; recognition is strong, not
+ * absolute.
  *
  * Landed with two pre-existing violations grandfathered into
  * ALLOWED_DIRECT_APP_PLATFORM_READS below — the same failure mode as
@@ -85,9 +95,10 @@ const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [
 ];
 
 const ADVICE =
-  'A direct browser read of App Platform ("/apis/..." — or the shared collectionUrl/itemUrl ' +
-  'builders in src/utils/interactive-guides-api.ts and src/utils/pathfinder-settings-api.ts) must ' +
-  'be proxied through the plugin backend instead of being issued from the browser.\n\n' +
+  'A direct browser read of App Platform ("/apis/..." — spelled inline, or produced by a url ' +
+  'builder such as collectionUrl/itemUrl in src/utils/interactive-guides-api.ts and ' +
+  'src/utils/pathfinder-settings-api.ts) must be proxied through the plugin backend instead of ' +
+  'being issued from the browser.\n\n' +
   'Why: Pathfinder 2.18.0 broke for anonymous Play viewers this way (incident 5857, fixed by ' +
   "github.com/grafana/grafana-pathfinder-app/pull/1966). Play's anonymous Viewer role advertises " +
   "permission to read these resources, but the storage layer's delegated service-token check " +
@@ -105,54 +116,70 @@ const ADVICE =
   'ALLOWED_DIRECT_APP_PLATFORM_READS with a substantive reason and a tracking issue — a sibling ' +
   'test requires both, so an empty rubber-stamp will not pass.';
 
-// ---------------------------------------------------------------------------
-// Builder-call recognition: which local names are collectionUrl/itemUrl —
-// imported from one of the two files that legitimately construct App Platform
-// URLs, or declared in that file itself (pathfinder-settings-api.ts calls its
-// own builders, so recognizing only importers would leave the builder modules
-// as blind spots)
-// ---------------------------------------------------------------------------
-
-const BUILDER_MODULES = new Set(['utils/interactive-guides-api.ts', 'utils/pathfinder-settings-api.ts']);
-
 const GET_BACKEND_SRV_METHOD_NAMES = new Set(['fetch', 'request', 'get', 'post']);
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-interface BuilderNames {
-  collectionUrlNames: Set<string>;
-  itemUrlNames: Set<string>;
+// ---------------------------------------------------------------------------
+// url-producing call resolution
+//
+// A url is rarely spelled at the call site: both App Platform clients in the
+// repo factor their "/apis/..." template into a small builder, so that is the
+// shape the next one will take too. Recognition therefore follows the callee
+// rather than a list of blessed builder names and modules — a call resolves
+// to the expressions its function returns, and those run back through the
+// same classifier. Resolution is bounded to what a module and its relative
+// imports can show, and a callee it cannot reach is a confident negative (see
+// the url classification note below).
+// ---------------------------------------------------------------------------
+
+type CallableDeclaration = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
+
+interface ResolvedCallee {
+  declaration: CallableDeclaration;
+  sourceFile: ts.SourceFile;
+  fileDir: string;
 }
 
-function declaredNames(stmt: ts.Statement): string[] {
-  if (ts.isFunctionDeclaration(stmt)) {
-    return stmt.name ? [stmt.name.text] : [];
+const MODULE_CACHE = new Map<string, ts.SourceFile | null>();
+
+function loadModule(relPath: string): ts.SourceFile | null {
+  const cached = MODULE_CACHE.get(relPath);
+  if (cached !== undefined) {
+    return cached;
   }
-  if (ts.isVariableStatement(stmt)) {
-    return stmt.declarationList.declarations
-      .filter((decl) => ts.isIdentifier(decl.name))
-      .map((decl) => (decl.name as ts.Identifier).text);
-  }
-  return [];
+  const absolute = path.resolve(SRC_DIR, relPath);
+  const parsed = fs.existsSync(absolute)
+    ? ts.createSourceFile(relPath, fs.readFileSync(absolute, 'utf-8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+    : null;
+  MODULE_CACHE.set(relPath, parsed);
+  return parsed;
 }
 
-function findBuilderNames(sourceFile: ts.SourceFile, fileDir: string, relPath: string): BuilderNames {
-  const collectionUrlNames = new Set<string>();
-  const itemUrlNames = new Set<string>();
-
-  const record = (builder: string, localName: string): void => {
-    if (builder === 'collectionUrl') {
-      collectionUrlNames.add(localName);
-    } else if (builder === 'itemUrl') {
-      itemUrlNames.add(localName);
-    }
-  };
-
+function findCallableDeclaration(name: string, sourceFile: ts.SourceFile): CallableDeclaration | null {
   for (const stmt of sourceFile.statements) {
-    if (BUILDER_MODULES.has(relPath)) {
-      for (const name of declaredNames(stmt)) {
-        record(name, name);
+    if (ts.isFunctionDeclaration(stmt) && stmt.name?.text === name) {
+      return stmt;
+    }
+    if (!ts.isVariableStatement(stmt)) {
+      continue;
+    }
+    for (const decl of stmt.declarationList.declarations) {
+      const initializer = decl.initializer;
+      if (
+        ts.isIdentifier(decl.name) &&
+        decl.name.text === name &&
+        initializer &&
+        (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))
+      ) {
+        return initializer;
       }
     }
+  }
+  return null;
+}
+
+function findImportedCallable(name: string, sourceFile: ts.SourceFile, fileDir: string): ResolvedCallee | null {
+  for (const stmt of sourceFile.statements) {
     if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteralLike(stmt.moduleSpecifier)) {
       continue;
     }
@@ -160,20 +187,48 @@ function findBuilderNames(sourceFile: ts.SourceFile, fileDir: string, relPath: s
     if (!specifier.startsWith('.')) {
       continue;
     }
-    const resolved = resolveImportToFileNode(fileDir, specifier);
-    if (!resolved || !BUILDER_MODULES.has(resolved)) {
+    const bindings = stmt.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) {
       continue;
     }
-    const clause = stmt.importClause;
-    if (!clause?.namedBindings || !ts.isNamedImports(clause.namedBindings)) {
+    const element = bindings.elements.find((candidate) => candidate.name.text === name);
+    if (!element) {
       continue;
     }
-    for (const element of clause.namedBindings.elements) {
-      record((element.propertyName ?? element.name).text, element.name.text);
+    const relPath = resolveImportToFileNode(fileDir, specifier);
+    const module = relPath ? loadModule(relPath) : null;
+    if (!relPath || !module) {
+      return null;
     }
+    const declaration = findCallableDeclaration((element.propertyName ?? element.name).text, module);
+    return declaration
+      ? { declaration, sourceFile: module, fileDir: path.dirname(path.resolve(SRC_DIR, relPath)) }
+      : null;
+  }
+  return null;
+}
+
+function returnedExpressions(declaration: CallableDeclaration): ts.Expression[] {
+  const body = declaration.body;
+  if (!body) {
+    return [];
+  }
+  if (!ts.isBlock(body)) {
+    return [body];
   }
 
-  return { collectionUrlNames, itemUrlNames };
+  const found: ts.Expression[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
+      return;
+    }
+    if (ts.isReturnStatement(node) && node.expression) {
+      found.push(node.expression);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(body);
+  return found;
 }
 
 // ---------------------------------------------------------------------------
@@ -272,12 +327,10 @@ function resolveLocalDeclarationInitializer(name: string, blocks: readonly ts.No
 // url classification
 //
 // Terminates in a binary decision (addresses App Platform, or not) rather
-// than ever reporting "unresolved" on its own. An identifier that cannot be
-// traced to a local declaration (a function parameter, e.g.
-// gcx-service-account.ts's `readJson(url)`, or a cross-file import) fails
-// both positive-match criteria by construction — it is not a literal/template
-// containing "/apis/", and it is not a call to collectionUrl/itemUrl — so it
-// is a confident negative. "Cannot resolve with confidence" is instead
+// than ever reporting "unresolved" on its own. An identifier or callee that
+// cannot be traced (a function parameter, e.g. gcx-service-account.ts's
+// `readJson(url)`) fails every positive-match criterion by construction, so
+// it is a confident negative. "Cannot resolve with confidence" is instead
 // enforced one level up, at the request-BAG resolution for .fetch() below:
 // that is the shape the precision requirements actually describe (a request
 // object hoisted into a variable), and is where this guard truly cannot see
@@ -289,15 +342,49 @@ interface UrlClassification {
   text: string;
 }
 
-function classifyUrl(expr: ts.Expression, builders: BuilderNames, blocks: readonly ts.Node[]): UrlClassification {
+/** Where a url expression is being read from, and which callees the current chain already followed. */
+interface UrlScope {
+  sourceFile: ts.SourceFile;
+  fileDir: string;
+  blocks: readonly ts.Node[];
+  followedCallees: ReadonlySet<string>;
+}
+
+function calleeAddressesAppPlatform(name: string, scope: UrlScope): boolean {
+  const local = findCallableDeclaration(name, scope.sourceFile);
+  const resolved: ResolvedCallee | null = local
+    ? { declaration: local, sourceFile: scope.sourceFile, fileDir: scope.fileDir }
+    : findImportedCallable(name, scope.sourceFile, scope.fileDir);
+  if (!resolved) {
+    return false;
+  }
+
+  const key = `${resolved.sourceFile.fileName}#${name}`;
+  if (scope.followedCallees.has(key)) {
+    return false;
+  }
+  const followedCallees = new Set(scope.followedCallees).add(key);
+
+  return returnedExpressions(resolved.declaration).some(
+    (expr) =>
+      classifyUrl(expr, {
+        sourceFile: resolved.sourceFile,
+        fileDir: resolved.fileDir,
+        blocks: collectScopeBlocks(expr, resolved.sourceFile),
+        followedCallees,
+      }).appPlatform
+  );
+}
+
+function classifyUrl(expr: ts.Expression, scope: UrlScope): UrlClassification {
   let e: ts.Expression = expr;
   while (ts.isParenthesizedExpression(e)) {
     e = e.expression;
   }
 
   if (ts.isConditionalExpression(e)) {
-    const whenTrue = classifyUrl(e.whenTrue, builders, blocks);
-    const whenFalse = classifyUrl(e.whenFalse, builders, blocks);
+    const whenTrue = classifyUrl(e.whenTrue, scope);
+    const whenFalse = classifyUrl(e.whenFalse, scope);
     return { appPlatform: whenTrue.appPlatform || whenFalse.appPlatform, text: e.getText() };
   }
 
@@ -309,26 +396,24 @@ function classifyUrl(expr: ts.Expression, builders: BuilderNames, blocks: readon
     const literalParts = [e.head.text, ...e.templateSpans.map((span) => span.literal.text)];
     const appPlatform =
       literalParts.some((part) => part.includes('/apis/')) ||
-      e.templateSpans.some((span) => classifyUrl(span.expression, builders, blocks).appPlatform);
+      e.templateSpans.some((span) => classifyUrl(span.expression, scope).appPlatform);
     return { appPlatform, text: e.getText() };
   }
 
   if (ts.isBinaryExpression(e)) {
-    const left = classifyUrl(e.left, builders, blocks);
-    const right = classifyUrl(e.right, builders, blocks);
+    const left = classifyUrl(e.left, scope);
+    const right = classifyUrl(e.right, scope);
     return { appPlatform: left.appPlatform || right.appPlatform, text: e.getText() };
   }
 
   if (ts.isCallExpression(e) && ts.isIdentifier(e.expression)) {
-    const name = e.expression.text;
-    const appPlatform = builders.collectionUrlNames.has(name) || builders.itemUrlNames.has(name);
-    return { appPlatform, text: e.getText() };
+    return { appPlatform: calleeAddressesAppPlatform(e.expression.text, scope), text: e.getText() };
   }
 
   if (ts.isIdentifier(e)) {
-    const initializer = resolveLocalDeclarationInitializer(e.text, blocks);
+    const initializer = resolveLocalDeclarationInitializer(e.text, scope.blocks);
     if (initializer) {
-      return classifyUrl(initializer, builders, blocks);
+      return classifyUrl(initializer, scope);
     }
     return { appPlatform: false, text: e.getText() };
   }
@@ -452,16 +537,17 @@ function evaluateCall(
   call: CandidateCall,
   sourceFile: ts.SourceFile,
   relPath: string,
-  builders: BuilderNames
+  fileDir: string
 ): CallEvaluation {
   const blocks = collectScopeBlocks(call.node, sourceFile);
+  const scope: UrlScope = { sourceFile, fileDir, blocks, followedCallees: new Set() };
   const line = lineOf(call.node, sourceFile);
   const args = call.node.arguments;
 
   if (call.methodName === 'get' || call.methodName === 'post') {
     const urlArg = args[0];
     const { appPlatform, text } = urlArg
-      ? classifyUrl(urlArg, builders, blocks)
+      ? classifyUrl(urlArg, scope)
       : { appPlatform: false, text: '<missing url argument>' };
     if (!appPlatform) {
       return { appPlatform: false, violation: null };
@@ -495,7 +581,7 @@ function evaluateCall(
     };
   }
 
-  const { appPlatform, text: urlText } = classifyUrl(urlProp, builders, blocks);
+  const { appPlatform, text: urlText } = classifyUrl(urlProp, scope);
   if (!appPlatform) {
     return { appPlatform: false, violation: null };
   }
@@ -537,11 +623,10 @@ function scanAppPlatformTransport(): ScanResult {
     const relPath = toPosixPath(path.relative(SRC_DIR, file));
     const sourceFile = ts.createSourceFile(relPath, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const fileDir = path.dirname(file);
-    const builders = findBuilderNames(sourceFile, fileDir, relPath);
 
     for (const call of findCandidateCalls(sourceFile)) {
       totalCallSites++;
-      const result = evaluateCall(call, sourceFile, relPath, builders);
+      const result = evaluateCall(call, sourceFile, relPath, fileDir);
       if (result.appPlatform) {
         appPlatformCallSites++;
       }
@@ -629,27 +714,21 @@ describe('App Platform transport: proxy-first reads', () => {
 });
 
 describe('App Platform transport ratchet: detector', () => {
-  function evaluateSource(source: string): CallEvaluation {
-    const sourceFile = ts.createSourceFile('detector.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-    const [call] = findCandidateCalls(sourceFile);
-    if (!call) {
-      throw new Error('detector fixture has no getBackendSrv() call');
-    }
-    const builders: BuilderNames = {
-      collectionUrlNames: new Set(['collectionUrl']),
-      itemUrlNames: new Set(['itemUrl']),
-    };
-    return evaluateCall(call, sourceFile, 'detector.ts', builders);
-  }
-
   function evaluateModuleSource(relPath: string, source: string): CallEvaluation {
     const sourceFile = ts.createSourceFile(relPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const [call] = findCandidateCalls(sourceFile);
     if (!call) {
       throw new Error('detector fixture has no getBackendSrv() call');
     }
-    const builders = findBuilderNames(sourceFile, path.join(SRC_DIR, path.dirname(relPath)), relPath);
-    return evaluateCall(call, sourceFile, relPath, builders);
+    return evaluateCall(call, sourceFile, relPath, path.dirname(path.resolve(SRC_DIR, relPath)));
+  }
+
+  /** Sits beside the real utils/interactive-guides-api.ts, so `collectionUrl`/`itemUrl` resolve to the shipped builders. */
+  function evaluateSource(source: string): CallEvaluation {
+    return evaluateModuleSource(
+      'utils/detector-fixture.ts',
+      `import { collectionUrl, itemUrl } from './interactive-guides-api';\n${source}`
+    );
   }
 
   it('flags a direct GET read addressed via the collectionUrl builder', () => {
@@ -698,18 +777,15 @@ describe('App Platform transport ratchet: detector', () => {
     expect(result.violation?.method).toBe('GET');
   });
 
-  it('flags a builder call inside the builder module itself, where the builder is declared not imported', () => {
+  it('flags a GET through a url builder a brand-new client file declares for itself', () => {
     const result = evaluateModuleSource(
-      'utils/pathfinder-settings-api.ts',
+      'utils/learning-paths-api.ts',
       `
-      export function collectionUrl(namespace) {
-        return \`/apis/\${APP_PLATFORM_API_VERSION}/namespaces/\${namespace}/\${RESOURCE}\`;
+      function collectionUrl(namespace) {
+        return \`/apis/\${API_VERSION}/namespaces/\${namespace}/learningpaths\`;
       }
-      export function itemUrl(namespace, name) {
-        return \`\${collectionUrl(namespace)}/\${name}\`;
-      }
-      export async function read() {
-        return getBackendSrv().fetch({ url: itemUrl(config.namespace), method: 'GET' });
+      export async function listLearningPaths(namespace) {
+        return getBackendSrv().fetch({ url: collectionUrl(namespace), method: 'GET' });
       }
     `
     );
@@ -717,7 +793,22 @@ describe('App Platform transport ratchet: detector', () => {
     expect(result.violation?.method).toBe('GET');
   });
 
-  it('does not treat a locally declared collectionUrl outside a builder module as an App Platform builder', () => {
+  it('flags a GET through a builder that delegates to another builder', () => {
+    const result = evaluateModuleSource(
+      'utils/learning-paths-api.ts',
+      `
+      const collectionUrl = (namespace) => \`/apis/\${API_VERSION}/namespaces/\${namespace}/learningpaths\`;
+      function itemUrl(namespace, name) {
+        return \`\${collectionUrl(namespace)}/\${name}\`;
+      }
+      getBackendSrv().fetch({ url: itemUrl(namespace, name), method: 'GET' });
+    `
+    );
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('does not flag a GET through a local url builder that never reaches App Platform', () => {
     const result = evaluateModuleSource(
       'lib/unrelated-client.ts',
       `
@@ -725,6 +816,23 @@ describe('App Platform transport ratchet: detector', () => {
         return \`/api/plugins/\${id}/resources/collection\`;
       }
       getBackendSrv().fetch({ url: collectionUrl(pluginId), method: 'GET' });
+    `
+    );
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
+  });
+
+  it('does not recurse forever when two url builders delegate to each other', () => {
+    const result = evaluateModuleSource(
+      'utils/cyclic-api.ts',
+      `
+      function a(namespace) {
+        return b(namespace);
+      }
+      function b(namespace) {
+        return a(namespace);
+      }
+      getBackendSrv().fetch({ url: a(namespace), method: 'GET' });
     `
     );
     expect(result.appPlatform).toBe(false);

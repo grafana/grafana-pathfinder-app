@@ -718,9 +718,13 @@ An empty successful LIST is not classified as an authorization failure.
 
 The read/write split this document describes — a GET must go through a plugin-backend proxy,
 while an admin PUT/POST/PATCH/DELETE may stay on the direct App Platform API with its own
-optimistic-concurrency checks — is enforced by `src/validation/app-platform-transport.test.ts`.
-That test is the authority on the rule's exact precision (how a conditional method or a
-variable-held request object is resolved); see it rather than this paragraph for the mechanics.
+optimistic-concurrency checks — is enforced by `src/validation/app-platform-transport.test.ts`
+for reads issued through `getBackendSrv()`, which is how every Pathfinder-owned App Platform
+resource is fetched. A direct App Platform read on another transport is outside that check:
+`src/utils/openfeature.ts` hands an `/apis/` base url to `OFREPWebProvider`, a Grafana-owned
+provider that predates and sits outside the #1966 contract. That test is the authority on the
+rule's exact precision (how a conditional method, a url builder, or a variable-held request
+object is resolved); see it rather than this paragraph for the mechanics.
 
 Two pre-existing direct reads are grandfathered in that test's allowlist, tracked for pay-down in
 [#1975](https://github.com/grafana/grafana-pathfinder-app/issues/1975).
