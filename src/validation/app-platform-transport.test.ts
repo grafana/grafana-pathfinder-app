@@ -18,20 +18,20 @@
  * and flags one whose url addresses App Platform unless the resolved HTTP
  * method is a mutation (POST/PUT/PATCH/DELETE) or the call site is
  * allowlisted. A url addresses App Platform when it is a literal, template, or
- * concatenation containing "/apis/", or a call to a url-producing function
- * that returns one. The receiver may be the inline getBackendSrv() call or a
- * same-scope variable holding it. Ratchet mechanism per import-graph.ts: the
- * allowlist can only shrink, and a call this guard cannot resolve with
- * confidence is reported rather than passed silently.
+ * concatenation containing "/apis/", or a reference to a url-producing
+ * function or constant that resolves to one. The receiver may be the inline
+ * getBackendSrv() call or a same-scope variable holding it. Ratchet mechanism
+ * per import-graph.ts: the allowlist can only shrink, and a call this guard
+ * cannot resolve with confidence is reported rather than passed silently.
  *
  * Three known bounds, all deliberate. A direct App Platform read on some other
  * transport is out of scope: src/utils/openfeature.ts hands an "/apis/" base
  * url to OFREPWebProvider, a Grafana-owned provider that predates and sits
  * outside the #1966 contract for Pathfinder's own resources, and is not
- * flagged. A url-producing call this guard cannot resolve — a parameter, a
- * dynamic dispatch, a default or namespace import, a package import, or a
- * declaration that is not at its module's top level — is treated as a
- * confident negative rather than a violation; recognition is strong, not
+ * flagged. A url-producing call or constant this guard cannot resolve — a
+ * parameter, a dynamic dispatch, a default or namespace import, a package
+ * import, or a declaration that is not at its module's top level — is treated
+ * as a confident negative rather than a violation; recognition is strong, not
  * absolute. And because the allowlist key omits the line number (see
  * violationKey), a second violation structurally identical to a grandfathered
  * one — same file, same method, same url expression — collapses onto that
@@ -128,18 +128,25 @@ const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 //
 // A url is rarely spelled at the call site: both App Platform clients in the
 // repo factor their "/apis/..." template into a small builder, so that is the
-// shape the next one will take too. Recognition therefore follows the callee
+// shape the next one will take too. Recognition therefore follows the binding
 // rather than a list of blessed builder names and modules — a call resolves
-// to the expressions its function returns, and those run back through the
-// same classifier. Resolution is bounded to what a module and its relative
-// imports can show, and a callee it cannot reach is a confident negative (see
-// the url classification note below).
+// to the expressions its function returns, a constant to its initializer, and
+// those run back through the same classifier. Resolution is bounded to what a
+// module and its relative imports can show, and a binding it cannot reach is
+// a confident negative (see the url classification note below).
 // ---------------------------------------------------------------------------
 
 type CallableDeclaration = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
 
 interface ResolvedCallee {
   declaration: CallableDeclaration;
+  sourceFile: ts.SourceFile;
+  fileDir: string;
+}
+
+/** A named relative import resolved to the module that declares it, under the name that module uses. */
+interface ResolvedBinding {
+  exportedName: string;
   sourceFile: ts.SourceFile;
   fileDir: string;
 }
@@ -182,7 +189,7 @@ function findCallableDeclaration(name: string, sourceFile: ts.SourceFile): Calla
   return null;
 }
 
-function findImportedCallable(name: string, sourceFile: ts.SourceFile, fileDir: string): ResolvedCallee | null {
+function findImportedBinding(name: string, sourceFile: ts.SourceFile, fileDir: string): ResolvedBinding | null {
   for (const stmt of sourceFile.statements) {
     if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteralLike(stmt.moduleSpecifier)) {
       continue;
@@ -204,12 +211,22 @@ function findImportedCallable(name: string, sourceFile: ts.SourceFile, fileDir: 
     if (!relPath || !module) {
       return null;
     }
-    const declaration = findCallableDeclaration((element.propertyName ?? element.name).text, module);
-    return declaration
-      ? { declaration, sourceFile: module, fileDir: path.dirname(path.resolve(SRC_DIR, relPath)) }
-      : null;
+    return {
+      exportedName: (element.propertyName ?? element.name).text,
+      sourceFile: module,
+      fileDir: path.dirname(path.resolve(SRC_DIR, relPath)),
+    };
   }
   return null;
+}
+
+function findImportedCallable(name: string, sourceFile: ts.SourceFile, fileDir: string): ResolvedCallee | null {
+  const binding = findImportedBinding(name, sourceFile, fileDir);
+  if (!binding) {
+    return null;
+  }
+  const declaration = findCallableDeclaration(binding.exportedName, binding.sourceFile);
+  return declaration ? { declaration, sourceFile: binding.sourceFile, fileDir: binding.fileDir } : null;
 }
 
 function returnedExpressions(declaration: CallableDeclaration): ts.Expression[] {
@@ -346,12 +363,12 @@ interface UrlClassification {
   text: string;
 }
 
-/** Where a url expression is being read from, and which callees the current chain already followed. */
+/** Where a url expression is being read from, and which callees and constants the current chain already followed. */
 interface UrlScope {
   sourceFile: ts.SourceFile;
   fileDir: string;
   blocks: readonly ts.Node[];
-  followedCallees: ReadonlySet<string>;
+  followed: ReadonlySet<string>;
 }
 
 function calleeAddressesAppPlatform(name: string, scope: UrlScope): boolean {
@@ -364,10 +381,10 @@ function calleeAddressesAppPlatform(name: string, scope: UrlScope): boolean {
   }
 
   const key = `${resolved.sourceFile.fileName}#${name}`;
-  if (scope.followedCallees.has(key)) {
+  if (scope.followed.has(key)) {
     return false;
   }
-  const followedCallees = new Set(scope.followedCallees).add(key);
+  const followed = new Set(scope.followed).add(key);
 
   return returnedExpressions(resolved.declaration).some(
     (expr) =>
@@ -375,9 +392,33 @@ function calleeAddressesAppPlatform(name: string, scope: UrlScope): boolean {
         sourceFile: resolved.sourceFile,
         fileDir: resolved.fileDir,
         blocks: collectScopeBlocks(expr, resolved.sourceFile),
-        followedCallees,
+        followed,
       }).appPlatform
   );
+}
+
+function importedConstantAddressesAppPlatform(name: string, scope: UrlScope): boolean {
+  const binding = findImportedBinding(name, scope.sourceFile, scope.fileDir);
+  if (!binding) {
+    return false;
+  }
+
+  const key = `${binding.sourceFile.fileName}#${binding.exportedName}`;
+  if (scope.followed.has(key)) {
+    return false;
+  }
+
+  const initializer = resolveLocalDeclarationInitializer(binding.exportedName, [binding.sourceFile]);
+  if (!initializer) {
+    return false;
+  }
+
+  return classifyUrl(initializer, {
+    sourceFile: binding.sourceFile,
+    fileDir: binding.fileDir,
+    blocks: collectScopeBlocks(initializer, binding.sourceFile),
+    followed: new Set(scope.followed).add(key),
+  }).appPlatform;
 }
 
 function classifyUrl(expr: ts.Expression, scope: UrlScope): UrlClassification {
@@ -419,7 +460,7 @@ function classifyUrl(expr: ts.Expression, scope: UrlScope): UrlClassification {
     if (initializer) {
       return classifyUrl(initializer, scope);
     }
-    return { appPlatform: false, text: e.getText() };
+    return { appPlatform: importedConstantAddressesAppPlatform(e.text, scope), text: e.getText() };
   }
 
   return { appPlatform: false, text: e.getText() };
@@ -557,7 +598,7 @@ function evaluateCall(
   fileDir: string
 ): CallEvaluation {
   const blocks = collectScopeBlocks(call.node, sourceFile);
-  const scope: UrlScope = { sourceFile, fileDir, blocks, followedCallees: new Set() };
+  const scope: UrlScope = { sourceFile, fileDir, blocks, followed: new Set() };
   const line = lineOf(call.node, sourceFile);
   const args = call.node.arguments;
 
@@ -839,6 +880,50 @@ describe('App Platform transport ratchet: detector', () => {
     );
     expect(result.appPlatform).toBe(true);
     expect(result.violation?.method).toBe('GET');
+  });
+
+  /** Parses `source` as the module a fixture imports from, so a cross-file binding resolves without touching disk. */
+  function withStubbedModule<T>(relPath: string, source: string, run: () => T): T {
+    MODULE_CACHE.set(relPath, ts.createSourceFile(relPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
+    try {
+      return run();
+    } finally {
+      MODULE_CACHE.delete(relPath);
+    }
+  }
+
+  it('flags a GET whose url is a constant exported by another module', () => {
+    const result = withStubbedModule(
+      'utils/interactive-guides-api.ts',
+      'export const COLLECTION_URL = `/apis/${APP_PLATFORM_API_VERSION}/namespaces/default/interactiveguides`;',
+      () =>
+        evaluateModuleSource(
+          'utils/detector-fixture.ts',
+          `
+          import { COLLECTION_URL } from './interactive-guides-api';
+          getBackendSrv().fetch({ url: COLLECTION_URL, method: 'GET' });
+        `
+        )
+    );
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('does not flag a GET whose url is a constant exported by another module for a non-App-Platform API', () => {
+    const result = withStubbedModule(
+      'utils/interactive-guides-api.ts',
+      "export const COLLECTION_URL = '/api/plugins/grafana-grafanadocsplugin-app/resources/guides';",
+      () =>
+        evaluateModuleSource(
+          'utils/detector-fixture.ts',
+          `
+          import { COLLECTION_URL } from './interactive-guides-api';
+          getBackendSrv().fetch({ url: COLLECTION_URL, method: 'GET' });
+        `
+        )
+    );
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
   });
 
   it('does not flag a GET through a local url builder that never reaches App Platform', () => {

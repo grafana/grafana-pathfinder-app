@@ -18,7 +18,7 @@ Never paste a raw control byte into a tracked file — write it as an escape (`\
 
 ### App Platform access
 
-**App Platform reads go through the plugin backend.** A browser read of an App Platform resource (`/apis/<group>/...`) must go through a plugin-backend proxy route that mints a caller-scoped on-behalf-of token; a direct `getBackendSrv()` read returns 403 for anonymous and low-privilege viewers, because the storage layer rejects it before ever evaluating their own rights. This broke Pathfinder for anonymous visitors on Play (#1966). Administrative writes stay direct, with their own optimistic-concurrency checks. Read `docs/design/BACKEND_PROXY_PATTERN.md` before adding any App Platform client. `src/validation/app-platform-transport.test.ts` enforces this and follows one resolvable level of indirection — hiding the URL behind a helper evades the check, not the 403.
+**App Platform reads go through the plugin backend.** A browser read of an App Platform resource (`/apis/<group>/...`) must go through a plugin-backend proxy route that mints a caller-scoped on-behalf-of token; a direct `getBackendSrv()` read returns 403 for anonymous and low-privilege viewers, because the storage layer rejects it before ever evaluating their own rights. This broke Pathfinder for anonymous visitors on Play (#1966). Administrative writes stay direct, with their own optimistic-concurrency checks. Read `docs/design/BACKEND_PROXY_PATTERN.md` before adding any App Platform client. `src/validation/app-platform-transport.test.ts` enforces this and follows URLs through builders and constants — hiding the URL behind a helper evades the check, not the 403.
 
 ### Comments
 
