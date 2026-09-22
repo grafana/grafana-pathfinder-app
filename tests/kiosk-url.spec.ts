@@ -187,3 +187,21 @@ for (const offline of [false, true]) {
     expect(page.context().pages()).toHaveLength(pagesBefore);
   });
 }
+
+test('opens an ordinary same-instance kiosk link without reloading Grafana', async ({ page }) => {
+  await page.goto(kioskSearch());
+  await expect(page.getByTestId(testIds.kioskMode.overlay)).toBeVisible();
+  await page.getByRole('button', { name: 'Exit kiosk', exact: true }).click();
+  await page.evaluate((href) => {
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.textContent = 'Open demo learning kiosk';
+    anchor.id = 'kiosk-demo-navigation-marker';
+    Object.assign(anchor.style, { position: 'fixed', top: '100px', left: '100px', zIndex: '10000' });
+    document.body.appendChild(anchor);
+  }, kioskSearch(customUrl));
+  await page.getByRole('link', { name: 'Open demo learning kiosk' }).click();
+  await expect(page.getByRole('heading', { name: 'Custom kiosk', exact: true })).toBeVisible();
+  await expect(page.locator('#kiosk-demo-navigation-marker')).toBeAttached();
+  expect(new URL(page.url()).searchParams.get('kioskRulesUrl')).toBe(customUrl);
+});
