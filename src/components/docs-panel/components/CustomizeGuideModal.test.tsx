@@ -7,6 +7,7 @@ import { useAssistantGeneration, createGuideMetadataTool } from '../../../integr
 jest.mock('../../../integrations/assistant-integration', () => ({
   useAssistantGeneration: jest.fn(),
   getGuideCustomizationContext: jest.fn(() => ({ grafanaVersion: '13.2.2' })),
+  createGuideUiTool: jest.fn(() => ({ name: 'inspect_pathfinder_ui' })),
   createGuideMetadataTool: jest.fn(() => ({ name: 'fetch_datasource_metadata' })),
 }));
 
@@ -60,7 +61,7 @@ it('sends the full guide only on submission and hands validated output to the ed
   await submit();
   expect(JSON.parse(options.prompt).guide).toEqual(guide);
   expect(JSON.parse(options.prompt).grafanaContext).toEqual({ grafanaVersion: '13.2.2' });
-  expect(options.tools).toEqual([{ name: 'fetch_datasource_metadata' }]);
+  expect(options.tools).toEqual([{ name: 'inspect_pathfinder_ui' }, { name: 'fetch_datasource_metadata' }]);
   expect(JSON.parse(options.prompt).availableDataSources).toEqual([
     { name: 'play Pathfinder', type: 'prometheus', uid: 'play' },
   ]);

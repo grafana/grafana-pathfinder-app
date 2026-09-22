@@ -6,6 +6,7 @@ import {
   useAssistantGeneration,
   getGuideCustomizationContext,
   createGuideMetadataTool,
+  createGuideUiTool,
   type InlineToolRunnable,
 } from '../../../integrations/assistant-integration';
 import {
@@ -111,6 +112,11 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
       }
       const grafanaContext = getGuideCustomizationContext();
       metadataTools = [
+        createGuideUiTool(() => {
+          if (isCurrent()) {
+            setPhase('Checking current page controls…');
+          }
+        }, isCurrent),
         createGuideMetadataTool(
           dataSources,
           () => {

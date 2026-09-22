@@ -178,3 +178,25 @@ it('rejects oversized initial and repair prompts without truncating the guide', 
   expect(() => buildGuideRepairPrompt(source, answers, large, 'invalid')).toThrow(/too large/);
   expect(source.blocks).toHaveLength(1);
 });
+
+it('accepts a Monaco insertion block as an interactive replacement', () => {
+  const generated: JsonGuide = {
+    ...interactiveSource,
+    blocks: [
+      {
+        type: 'section',
+        id: 'setup',
+        title: 'Enter the query',
+        blocks: [
+          {
+            type: 'code-block',
+            reftarget: '{grafana:components.QueryField.container}',
+            code: 'up',
+            language: 'promql',
+          },
+        ],
+      },
+    ],
+  };
+  expect(parseCustomizedGuide(JSON.stringify(generated), interactiveSource, url)).toEqual(generated);
+});

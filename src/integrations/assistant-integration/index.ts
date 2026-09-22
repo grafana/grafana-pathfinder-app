@@ -102,3 +102,4 @@ export { createTool } from '@grafana/assistant';
 export type { InlineToolRunnable, ToolInvokeOptions, ToolOutput } from '@grafana/assistant';
 
 export { getGuideCustomizationContext, createGuideMetadataTool } from './guide-customization-context';
+export { createGuideUiTool } from './guide-ui-tool';
