@@ -24,15 +24,19 @@
  * allowlist can only shrink, and a call this guard cannot resolve with
  * confidence is reported rather than passed silently.
  *
- * Two known bounds, both deliberate. A direct App Platform read on some other
+ * Three known bounds, all deliberate. A direct App Platform read on some other
  * transport is out of scope: src/utils/openfeature.ts hands an "/apis/" base
  * url to OFREPWebProvider, a Grafana-owned provider that predates and sits
  * outside the #1966 contract for Pathfinder's own resources, and is not
- * flagged. And a url-producing call this guard cannot resolve — a parameter, a
+ * flagged. A url-producing call this guard cannot resolve — a parameter, a
  * dynamic dispatch, a default or namespace import, a package import, or a
  * declaration that is not at its module's top level — is treated as a
  * confident negative rather than a violation; recognition is strong, not
- * absolute.
+ * absolute. And because the allowlist key omits the line number (see
+ * violationKey), a second violation structurally identical to a grandfathered
+ * one — same file, same method, same url expression — collapses onto that
+ * existing key and stays silently grandfathered; the exposure is bounded to
+ * the two files in the baseline, and shrinks to nothing as #1975 is paid down.
  *
  * Landed with two pre-existing violations grandfathered into
  * ALLOWED_DIRECT_APP_PLATFORM_READS below — the same failure mode as
@@ -481,8 +485,21 @@ function findProperty(bag: ts.ObjectLiteralExpression, name: string): ts.Express
   return undefined;
 }
 
-function hasSpread(bag: ts.ObjectLiteralExpression): boolean {
-  return bag.properties.some((prop) => ts.isSpreadAssignment(prop));
+function isNamed(prop: ts.ObjectLiteralElementLike, name: string): boolean {
+  return (
+    (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === name) ||
+    (ts.isShorthandPropertyAssignment(prop) && prop.name.text === name)
+  );
+}
+
+/** True when a spread could still supply or overwrite `name` — it is absent, or a spread follows it. */
+function spreadMayOverride(bag: ts.ObjectLiteralExpression, name: string): boolean {
+  const lastSpread = bag.properties.reduce((last, prop, index) => (ts.isSpreadAssignment(prop) ? index : last), -1);
+  if (lastSpread === -1) {
+    return false;
+  }
+  const declared = bag.properties.findIndex((prop) => isNamed(prop, name));
+  return declared === -1 || lastSpread > declared;
 }
 
 /** Resolves the .fetch() argument to an inline object literal, tracing through at most one same-scope variable. */
@@ -554,6 +571,7 @@ function evaluateCall(
     }
     if (call.methodName === 'post') {
       // Confident mutation — .post() always issues POST regardless of url.
+      // Kept as a candidate so it still counts in the footprint; mutation policy belongs here, not in the method set.
       return { appPlatform: true, violation: null };
     }
     return { appPlatform: true, violation: { file: relPath, line, method: 'GET', urlText: text } };
@@ -561,7 +579,7 @@ function evaluateCall(
 
   // .fetch(...) / .request(...) — both take the same request-bag shape
   const bag = resolveRequestBag(args[0], blocks);
-  if (!bag || hasSpread(bag)) {
+  if (!bag) {
     return {
       appPlatform: true,
       violation: {
@@ -580,6 +598,17 @@ function evaluateCall(
       violation: { file: relPath, line, method: 'unresolved', urlText: 'no url property found on the request object' },
     };
   }
+  if (spreadMayOverride(bag, 'url')) {
+    return {
+      appPlatform: true,
+      violation: {
+        file: relPath,
+        line,
+        method: 'unresolved',
+        urlText: `a spread on the request object may overwrite its url (${urlProp.getText()})`,
+      },
+    };
+  }
 
   const { appPlatform, text: urlText } = classifyUrl(urlProp, scope);
   if (!appPlatform) {
@@ -587,7 +616,11 @@ function evaluateCall(
   }
 
   const methodProp = findProperty(bag, 'method');
-  const methodValues = methodProp ? resolveMethodValues(methodProp, blocks) : ['GET'];
+  const methodValues = spreadMayOverride(bag, 'method')
+    ? null
+    : methodProp
+      ? resolveMethodValues(methodProp, blocks)
+      : ['GET'];
   if (!methodValues) {
     return {
       appPlatform: true,
@@ -887,6 +920,36 @@ describe('App Platform transport ratchet: detector', () => {
   it('reports unresolved rather than passing silently when the request object cannot be traced', () => {
     const result = evaluateSource(`
       getBackendSrv().fetch(buildRequestOptions());
+    `);
+    expect(result.violation?.method).toBe('unresolved');
+  });
+
+  it('classifies a spread request bag by the url it still spells out', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ ...baseOptions, url: '/api/search', method: 'GET' });
+    `);
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
+  });
+
+  it('flags a spread request bag that spells out an App Platform url', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ ...baseOptions, url: collectionUrl(namespace), method: 'GET' });
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('reports unresolved when a trailing spread could overwrite the url', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ url: '/api/search', method: 'GET', ...baseOptions });
+    `);
+    expect(result.violation?.method).toBe('unresolved');
+  });
+
+  it('reports unresolved when a trailing spread could overwrite the method of an App Platform read', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ url: collectionUrl(namespace), ...baseOptions });
     `);
     expect(result.violation?.method).toBe('unresolved');
   });
