@@ -10,6 +10,8 @@ jest.mock('@grafana/runtime', () => ({
   config: {
     namespace: 'stacks-12345',
   },
+  createOpenFeatureLocalStorageProvider: jest.fn(() => ({ name: 'local-storage' })),
+  createOpenFeatureOFREPWebProvider: jest.fn(() => ({ name: 'ofrep-runtime' })),
 }));
 
 // Mock @openfeature/ofrep-web-provider
@@ -77,6 +79,10 @@ const createMockOpenFeature = () => {
       getClient: jest.fn(() => mockClient),
       addHooks: apiAddHooks,
     },
+    MultiProvider: jest.fn().mockImplementation((providers: any[]) => ({
+      name: 'multi-provider',
+      providers,
+    })),
     ClientProviderStatus: {
       NOT_READY: 'NOT_READY',
       READY: 'READY',
@@ -204,8 +210,37 @@ describe('openfeature', () => {
   });
 
   describe('initializeOpenFeature', () => {
-    it('should set provider with correct configuration using setProviderAndWait', async () => {
+    it('should set runtime providers with MultiProvider using setProviderAndWait', async () => {
       await jest.isolateModulesAsync(async () => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { initializeOpenFeature, OPENFEATURE_DOMAIN } = require('./openfeature');
+        await initializeOpenFeature();
+        const runtime = require('@grafana/runtime');
+
+        expect(mockOF.OpenFeature.setProviderAndWait).toHaveBeenCalledWith(
+          OPENFEATURE_DOMAIN,
+          expect.objectContaining({
+            name: 'multi-provider',
+            providers: [{ provider: { name: 'local-storage' } }, { provider: { name: 'ofrep-runtime' } }],
+          })
+        );
+        expect(runtime.createOpenFeatureLocalStorageProvider).toHaveBeenCalledTimes(1);
+        expect(runtime.createOpenFeatureOFREPWebProvider).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('should fall back to OFREPWebProvider when runtime provider methods are unavailable', async () => {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('@grafana/runtime', () => ({
+          config: {
+            namespace: 'stacks-12345',
+          },
+        }));
+
         const mockOF = createMockOpenFeature();
         const mockReact = createMockReactSdk();
         jest.doMock('@openfeature/web-sdk', () => mockOF);
@@ -227,7 +262,6 @@ describe('openfeature', () => {
           }),
           expect.objectContaining({
             targetingKey: 'stacks-12345',
-            namespace: 'stacks-12345',
           })
         );
       });

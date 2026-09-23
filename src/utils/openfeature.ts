@@ -1,7 +1,14 @@
-import { ClientProviderStatus, OpenFeature, ProviderEvents, type Client, type JsonValue } from '@openfeature/web-sdk';
+import {
+  ClientProviderStatus,
+  OpenFeature,
+  ProviderEvents,
+  MultiProvider,
+  type Client,
+  type JsonValue,
+} from '@openfeature/web-sdk';
 import { useBooleanFlagValue, useStringFlagValue, useNumberFlagValue } from '@openfeature/react-sdk';
 import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
-import { config } from '@grafana/runtime';
+import { config, createOpenFeatureLocalStorageProvider, createOpenFeatureOFREPWebProvider } from '@grafana/runtime';
 
 import { TrackingHook, reportFeatureFlagExposure } from './openfeature-tracking';
 import { StorageKeys } from '../lib/storage-keys';
@@ -260,20 +267,33 @@ export async function initializeOpenFeature(): Promise<void> {
     return;
   }
 
-  await OpenFeature.setProviderAndWait(
-    OPENFEATURE_DOMAIN,
-    new OFREPWebProvider({
-      baseUrl: `/apis/features.grafana.app/v0alpha1/namespaces/${namespace}`,
-      disableVisibilityRefresh: true, // Do not refresh
-      cacheMode: 'disabled', // Do not write to localStorage
-      timeoutMs: 10_000, // Timeout after 10 seconds
-    }),
-    {
-      targetingKey: config.namespace, // Dimension of uniqueness, to ensure flags are evaluated consistently for a given stack
-      namespace: config.namespace, // Required by the multi-tenant feature flag service
-      ...config.openFeatureContext,
-    }
-  );
+  if (
+    typeof createOpenFeatureLocalStorageProvider === 'function' &&
+    typeof createOpenFeatureOFREPWebProvider === 'function'
+  ) {
+    await OpenFeature.setProviderAndWait(
+      OPENFEATURE_DOMAIN,
+      new MultiProvider([
+        { provider: createOpenFeatureLocalStorageProvider() },
+        { provider: createOpenFeatureOFREPWebProvider() },
+      ])
+    );
+  } else {
+    await OpenFeature.setProviderAndWait(
+      OPENFEATURE_DOMAIN,
+      new OFREPWebProvider({
+        baseUrl: `${config.appSubUrl || ''}/apis/features.grafana.app/v0alpha1/namespaces/${config.namespace}`,
+        disableVisibilityRefresh: true, // Do not refresh
+        cacheMode: 'disabled', // Do not write to localStorage
+        timeoutMs: 10_000, // Timeout after 10 seconds
+      }),
+      {
+        // Standard context used by all plugins
+        targetingKey: config.namespace,
+        ...config.openFeatureContext,
+      }
+    );
+  }
 
   // Add TrackingHook at API level (not client level) so it applies to ALL clients
   // This is necessary because OpenFeature.getClient() may return different instances
