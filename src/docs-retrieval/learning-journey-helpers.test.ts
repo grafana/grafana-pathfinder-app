@@ -366,6 +366,24 @@ describe('getNextMilestoneUrl / getNextMilestoneId — active track selection', 
     expect(getNextMilestoneUrl(content, 'seller')).toBe('backend-guide:milestone-1');
   });
 
+  it('prefers this cover fetch\'s own live tracks over a stale persisted activeTrackMilestones snapshot', () => {
+    // The snapshot was captured on an earlier cover fetch (e.g. before a
+    // locked track milestone published) and never refreshed — the CURRENT
+    // cover fetch's own `tracks` is the fresher data and must win.
+    const liveTrack: CoverPageTrack = {
+      trackId: 'builder',
+      label: 'Builder',
+      milestones: [{ number: 1, title: 'Live one', url: 'backend-guide:live-one', isActive: false, id: 'live-one' }],
+    };
+    const staleSnapshot = [
+      { number: 1, title: 'Stale one', url: 'backend-guide:stale-one', isActive: false, id: 'stale-one' },
+    ];
+    const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [liveTrack]);
+
+    expect(getNextMilestoneUrl(content, 'builder', staleSnapshot)).toBe('backend-guide:live-one');
+    expect(getNextMilestoneId(content, 'builder', staleSnapshot)).toBe('live-one');
+  });
+
   it('falls back to Foundations past the cover when the loaded guide is not one of the active track\'s own guides', () => {
     // No `activeTrackMilestones` passed (the caller has nothing persisted for
     // this track), and the loaded guide's own URL isn't in the track — so

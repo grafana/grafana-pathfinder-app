@@ -73,8 +73,11 @@ function toAbsoluteGrafanaUrl(url: string): string {
 /**
  * The milestone sequence Next/Previous should traverse. On the cover page
  * (`currentMilestone === 0`), a selected track tab redirects to that track's
- * own guides via the content's own `tracks` field. Past the cover,
- * `content.metadata.learningJourney.tracks` is never populated (it's
+ * own guides via THIS content's own, freshly-fetched `tracks` field — never
+ * the caller's persisted `activeTrackMilestones` snapshot, which can be
+ * stale by the time the reader is back on the cover (e.g. a milestone that
+ * was locked when the snapshot was taken has since published). Past the
+ * cover, `content.metadata.learningJourney.tracks` is never populated (it's
  * cover-page-only data — see `LearningJourneyMetadata.tracks`'s own doc
  * comment), so staying track-aware there requires the caller to persist and
  * pass back the selected track's own resolved milestones
@@ -96,14 +99,15 @@ function resolveActiveMilestoneSequence(
 
   const lj = content.metadata.learningJourney;
   if (activeTrackId) {
-    const trackMilestones = activeTrackMilestones ?? lj.tracks?.find((t) => t.trackId === activeTrackId)?.milestones;
-    if (trackMilestones) {
-      if (lj.currentMilestone === 0) {
-        return { currentMilestone: 0, milestones: [...trackMilestones] };
+    if (lj.currentMilestone === 0) {
+      const track = lj.tracks?.find((t) => t.trackId === activeTrackId);
+      if (track) {
+        return { currentMilestone: 0, milestones: [...track.milestones] };
       }
-      const current = trackMilestones.find((m) => m.url === content.url);
+    } else if (activeTrackMilestones) {
+      const current = activeTrackMilestones.find((m) => m.url === content.url);
       if (current) {
-        return { currentMilestone: current.number, milestones: [...trackMilestones] };
+        return { currentMilestone: current.number, milestones: [...activeTrackMilestones] };
       }
     }
   }
