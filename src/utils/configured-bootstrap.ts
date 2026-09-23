@@ -1,4 +1,5 @@
 import type { ResolvedPathfinderConfig } from '../constants';
+import { installKioskNavigation } from './kiosk-navigation';
 
 interface ConfiguredBootstrapContext {
   pathfinderEnabled: boolean;
@@ -27,6 +28,7 @@ export async function initializeConfiguredSurfaces(
   if (!context.pathfinderEnabled) {
     return;
   }
+  const kioskRequested = installKioskNavigation(() => effects.mountKiosk(config));
   if (context.controllerRequested) {
     if (config.enableTwoTabController) {
       effects.mountController(config);
@@ -37,9 +39,11 @@ export async function initializeConfiguredSurfaces(
     effects.mountExecutor(config);
   }
   if (!context.hasDoc) {
-    if (config.enableKioskMode) {
+    if (config.enableKioskMode && !kioskRequested) {
       effects.mountKiosk(config);
     }
-    effects.setupAutoOpen(config);
+    if (!kioskRequested) {
+      effects.setupAutoOpen(config);
+    }
   }
 }

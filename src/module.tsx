@@ -243,30 +243,26 @@ plugin.init = function () {
           .catch((err) => logger.error('[Pathfinder] Failed to load cross-tab executor', { error: err }));
       },
       mountKiosk: (config) => {
-        window.__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
-        document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
-
-        if (!document.getElementById('pathfinder-kiosk-root')) {
-          import('./components/kiosk/KioskModeManager')
-            .then(async ({ KioskModeManager }) => {
-              if (document.getElementById('pathfinder-kiosk-root')) {
-                return;
-              }
-              const { createCompatRoot } = await import('./lib/create-root-compat');
-              const container = document.createElement('div');
-              container.id = 'pathfinder-kiosk-root';
-              document.body.appendChild(container);
-              const root = await createCompatRoot(container);
-              root.render(
-                React.createElement(KioskModeManager, {
-                  rulesUrl: config.kioskRulesUrl,
-                })
-              );
-            })
-            .catch((err) => {
-              logger.error('[Pathfinder] Failed to load kiosk mode', { error: err });
-            });
+        if (config.enableKioskMode) {
+          window.__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
+          document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
         }
+        if (document.getElementById('pathfinder-kiosk-root')) {
+          return;
+        }
+        const container = document.createElement('div');
+        container.id = 'pathfinder-kiosk-root';
+        document.body.appendChild(container);
+        import('./components/kiosk/KioskModeManager')
+          .then(async ({ KioskModeManager }) => {
+            const { createCompatRoot } = await import('./lib/create-root-compat');
+            const root = await createCompatRoot(container);
+            root.render(React.createElement(KioskModeManager, { rulesUrl: config.kioskRulesUrl }));
+          })
+          .catch((err) => {
+            container.remove();
+            logger.error('[Pathfinder] Failed to load kiosk mode', { error: err });
+          });
       },
       setupAutoOpen: (config) => {
         setupConfigAutoOpen({
