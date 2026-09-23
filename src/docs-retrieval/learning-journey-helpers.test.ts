@@ -464,3 +464,65 @@ describe('getPreviousMilestoneUrl — active track selection', () => {
     expect(getPreviousMilestoneId(content, 'builder', track.milestones)).toBe('builder-one');
   });
 });
+
+// Regression (Cursor Bugbot on PR #1993, "Track-only landing kills toolbar
+// nav"): a track-only guide (one the active track has that Foundations
+// `milestones` never did) carries no `learningJourney` at all —
+// `fetchPackageContent` only attaches journey metadata to milestone/cover
+// loads — so before this fix, resolveActiveMilestoneSequence's `!learningJourney`
+// early return made Next/Previous unconditionally disabled the moment such a
+// guide loaded, stranding the reader inside the track with no way to
+// continue or go back.
+describe('getNextMilestoneUrl / getPreviousMilestoneUrl — track-only guide with no learningJourney', () => {
+  const trackOnlyContent = (url: string): RawContent => ({
+    content: '',
+    type: 'interactive',
+    url,
+    lastFetched: new Date().toISOString(),
+    metadata: { title: 'Track-only guide' },
+  });
+
+  const track: CoverPageTrack = {
+    trackId: 'builder',
+    label: 'Builder',
+    milestones: [
+      { number: 1, title: 'Builder one', url: 'backend-guide:builder-one', isActive: false, id: 'builder-one' },
+      {
+        number: 2,
+        title: 'Builder two (track-only)',
+        url: 'backend-guide:extra-guide',
+        isActive: false,
+        id: 'extra-guide',
+      },
+      { number: 3, title: 'Builder three', url: 'backend-guide:builder-three', isActive: false, id: 'builder-three' },
+    ],
+  };
+
+  it('resolves Next from a middle track-only guide instead of disabling', () => {
+    const content = trackOnlyContent('backend-guide:extra-guide');
+    expect(getNextMilestoneUrl(content, 'builder', track.milestones)).toBe('backend-guide:builder-three');
+    expect(getNextMilestoneId(content, 'builder', track.milestones)).toBe('builder-three');
+  });
+
+  it('resolves Previous from a middle track-only guide instead of disabling', () => {
+    const content = trackOnlyContent('backend-guide:extra-guide');
+    expect(getPreviousMilestoneUrl(content, 'builder', track.milestones)).toBe('backend-guide:builder-one');
+    expect(getPreviousMilestoneId(content, 'builder', track.milestones)).toBe('builder-one');
+  });
+
+  it('leaves Previous disabled (not crashing) on the first track-only guide, same as before track-awareness existed', () => {
+    const content = trackOnlyContent('backend-guide:builder-one');
+    expect(getPreviousMilestoneUrl(content, 'builder', track.milestones)).toBeNull();
+  });
+
+  it('leaves Next disabled at the last track-only guide', () => {
+    const content = trackOnlyContent('backend-guide:builder-three');
+    expect(getNextMilestoneUrl(content, 'builder', track.milestones)).toBeNull();
+  });
+
+  it('returns null for a track-only guide when no activeTrackMilestones are provided at all', () => {
+    const content = trackOnlyContent('backend-guide:extra-guide');
+    expect(getNextMilestoneUrl(content, 'builder')).toBeNull();
+    expect(getPreviousMilestoneUrl(content, 'builder')).toBeNull();
+  });
+});

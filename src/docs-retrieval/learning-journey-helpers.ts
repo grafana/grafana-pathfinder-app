@@ -87,19 +87,27 @@ function toAbsoluteGrafanaUrl(url: string): string {
  * position within the track; when the current guide isn't one of the track's
  * own guides (a stale selection, or a guide reached by some other route),
  * this falls through to the Foundations sequence.
+ *
+ * The `activeTrackMilestones` match runs even when this guide carries no
+ * `learningJourney` at all — true for a track-only guide (one the active
+ * track has that Foundations `milestones` never did), since
+ * `fetchPackageContent` only attaches journey metadata to milestone/cover
+ * loads. Gating the match behind a `learningJourney` check would leave such
+ * a guide's own Next/Previous permanently disabled once opened — the reader
+ * lands on a guide the toolbar can no longer navigate away from — even
+ * though its position within the track is fully knowable from
+ * `activeTrackMilestones` alone (bugbot: "Track-only landing kills toolbar
+ * nav").
  */
 function resolveActiveMilestoneSequence(
   content: RawContent,
   activeTrackId?: string | null,
   activeTrackMilestones?: readonly Milestone[] | null
 ): { currentMilestone: number; milestones: Milestone[] } | null {
-  if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
-    return null;
-  }
+  const lj = content.type === 'learning-journey' ? content.metadata.learningJourney : undefined;
 
-  const lj = content.metadata.learningJourney;
   if (activeTrackId) {
-    if (lj.currentMilestone === 0) {
+    if (lj?.currentMilestone === 0) {
       const track = lj.tracks?.find((t) => t.trackId === activeTrackId);
       if (track) {
         return { currentMilestone: 0, milestones: [...track.milestones] };
@@ -112,7 +120,7 @@ function resolveActiveMilestoneSequence(
     }
   }
 
-  return { currentMilestone: lj.currentMilestone, milestones: lj.milestones };
+  return lj ? { currentMilestone: lj.currentMilestone, milestones: lj.milestones } : null;
 }
 
 export function getNextMilestoneUrl(
@@ -155,9 +163,13 @@ export function getPreviousMilestoneUrl(
     return prevMilestone.url;
   }
 
-  // Nothing resolved before this one — go back to the cover page (milestone 0).
-  // `sequence` is only non-null when `content.metadata.learningJourney` is set.
-  return content.metadata.learningJourney!.baseUrl;
+  // Nothing resolved before this one. A real journey (Foundations, or a
+  // track resolved from live cover-page data) has a cover to fall back to;
+  // a track-only guide with no `learningJourney` of its own does not — same
+  // as before any of this file's track-awareness existed, that guide never
+  // had a Previous control at all, and staying at "no previous" here is a
+  // safe no-op rather than a regression.
+  return content.type === 'learning-journey' ? (content.metadata.learningJourney?.baseUrl ?? null) : null;
 }
 
 /**
