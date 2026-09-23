@@ -212,13 +212,22 @@ const LEADING_HEADING_RE = /^#{1,6}\s+/;
  * it would lose real content, not a duplicate. `wrapExpectBlockInOrangeOutline`
  * (called first) can itself replace position 0 with the "what to expect" html
  * card when the leading block had no text before that heading, in which case
- * there is no duplicate to drop either. Leaves at least one block behind so a
- * guide with nothing else never renders empty.
+ * there is no duplicate to drop either.
+ *
+ * A genuinely empty `blocks: []` fails at render time — `ContentProcessor`
+ * treats zero parsed elements as a parsing error and shows an error banner,
+ * not a blank guide — so when this was the only block, it's replaced with an
+ * empty, real HTML element rather than removed outright. That renders as
+ * nothing visible, correctly: the hero already said everything that block did.
  */
 function dropLeadingTitleBlock(blocks: Array<{ type: string; content?: string }>): void {
   const first = blocks[0];
-  if (blocks.length > 1 && first?.type === 'markdown' && LEADING_HEADING_RE.test(first.content?.trimStart() ?? '')) {
-    blocks.shift();
+  if (first?.type === 'markdown' && LEADING_HEADING_RE.test(first.content?.trimStart() ?? '')) {
+    if (blocks.length > 1) {
+      blocks.shift();
+    } else {
+      blocks[0] = { type: 'html', content: '<div></div>' };
+    }
   }
 }
 

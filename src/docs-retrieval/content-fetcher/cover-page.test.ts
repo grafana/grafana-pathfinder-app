@@ -162,13 +162,17 @@ describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own duplicate l
     expect(blocks[0]).toEqual({ type: 'markdown', content: 'Intro paragraph.' });
   });
 
-  it('never empties the guide when the leading heading block is the only content', () => {
+  // The common minimal case (this task's own demo guide): the whole guide
+  // body was just the duplicated title+intro, nothing else. Rendering empty
+  // below the hero is correct — the hero already said everything it did.
+  // A truly empty `blocks: []` fails at render time (ContentProcessor treats
+  // zero parsed elements as a parsing error), so this must stay non-empty.
+  it('replaces the guide body with an empty, real element when the leading heading block was its only content', () => {
     const input = guide([{ type: 'markdown', content: '# Demo tracked learning path\n\nJust the title.' }]);
 
     const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
 
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0]!.content).toContain('Demo tracked learning path');
+    expect(blocks).toEqual([{ type: 'html', content: '<div></div>' }]);
   });
 });
 
