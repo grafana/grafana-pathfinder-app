@@ -673,6 +673,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       return;
     }
 
+    if (
+      nextState.activeTabId !== this.state.activeTabId &&
+      !nextState.tabs.find((tab) => tab.id === nextState.activeTabId)?.pendingAlignment
+    ) {
+      resumeGuideLoad(this.guideLoads.get(nextState.activeTabId));
+    }
     this.setState({
       tabs: nextState.tabs,
       activeTabId: nextState.activeTabId,

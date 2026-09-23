@@ -1362,6 +1362,37 @@ describe('passesActivityGate', () => {
 });
 
 describe('beforeSend wiring', () => {
+  it('keeps a fresh-home launch request correlated before any guide surface mounts', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    const { beginGuideLoad, observeGuideRequest, finishGuideLoad } = require('./telemetry/guide-load');
+    const { beforeSend } = mockInitializeFaro.mock.calls[0]![0];
+    const context = beginGuideLoad('backend-guide:private-home-launch');
+    await observeGuideRequest('backend-guide:private-home-launch', 'content-json', context, async () => ({
+      status: 503,
+    }));
+    finishGuideLoad(context, 'error', {
+      source: 'app-platform',
+      stage: 'fetch',
+      reason: 'http-error',
+      statusCode: 503,
+    });
+    const correlated = mockPushEvent.mock.calls.filter(
+      ([name]) => name === TELEMETRY_EVENTS.guideRequest || name === TELEMETRY_EVENTS.guideRender
+    );
+    expect(correlated).toHaveLength(2);
+    for (const [name, attributes] of correlated) {
+      expect(attributes.load_id).toBe(context.loadId);
+      const item = eventItem();
+      Object.assign(item.payload, { name, attributes });
+      expect(beforeSend(item)).not.toBeNull();
+    }
+    const uncorrelated = eventItem();
+    Object.assign(uncorrelated.payload, { name: TELEMETRY_EVENTS.guideRequest, attributes: {} });
+    expect(beforeSend(uncorrelated)).toBeNull();
+    expect(beforeSend(eventItem())).toBeNull();
+  });
+
   it('keeps the activity gate closed for a persisted mode until the surface mounts', async () => {
     localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
     const faro = freshFaro();

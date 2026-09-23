@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"net"
 	"net/http"
@@ -101,7 +102,14 @@ func logAppPlatformResult(logger log.Logger, namespace, resource, operation stri
 	if d.UpstreamStatus == 405 || d.UpstreamStatus == 501 || (d.UpstreamStatus == 404 && (resource == "pathfindersettings" || operation != "get")) || (d.UpstreamStatus == 409 && resource == "completionrecords" && operation == "create") {
 		return
 	}
-	logger.Warn("Pathfinder proxy operation failed", "event", "pathfinder_proxy_failure", "stack_namespace", namespace, "resource", resource, "operation", operation, "stage", d.Stage, "reason", d.Reason, "upstream_status", d.UpstreamStatus)
+	fields := []interface{}{"event", "pathfinder_proxy_failure", "stack_namespace", namespace, "resource", resource, "operation", operation, "stage", d.Stage, "reason", d.Reason, "upstream_status", d.UpstreamStatus}
+	if d.Reason == "unexpected-error" {
+		for errors.Unwrap(err) != nil {
+			err = errors.Unwrap(err)
+		}
+		fields = append(fields, "error_type", fmt.Sprintf("%T", err))
+	}
+	logger.Warn("Pathfinder proxy operation failed", fields...)
 }
 
 func (a *App) writeProxyError(w http.ResponseWriter, message string, status int, d *guideProxyDiagnostic) {

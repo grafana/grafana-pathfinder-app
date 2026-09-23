@@ -106,7 +106,7 @@ A guide open carries an in-memory `load_id` from launch preparation through cont
 
 Failure diagnostics contain `source`, `stage`, `reason`, optional `http_status`, and `validation_count`. Stages distinguish resolution, fetching, JSON decoding, schema validation, launch preparation, and rendering. A browser network failure is classified as `network-error`, without guessing whether CORS caused it. When every package resolver fails, the first diagnostic other than a routine lookup miss takes precedence; if every attempt misses, the first lookup diagnostic is retained. Later fallback misses do not replace an earlier index, content, or permission failure. This diagnostic selection does not change resolver order, returned error codes, or cache behavior. Native guide JSON that cannot be parsed is rejected; deliberate HTML documents and supported missing/null JSON fallbacks remain supported.
 
-A load has one terminal outcome. Closing or replacing its tab cancels it, hidden content pauses its budget, and alignment prompts pause the 60-second active-time budget until the learner responds. Render success is emitted from the committed valid content tree after snippet resolution, not from a readiness timer. Partial parser/snippet failures produce degradation signals; a later React crash after initial success is also a degradation rather than a second terminal outcome. Guide render errors and timeouts pass the activity gate even when preparation fails before a destination mounts; consent and environment gates still apply.
+A load has one terminal outcome. Closing or replacing its tab cancels it, hidden content pauses its budget, and alignment prompts pause the 60-second active-time budget until the learner responds. Render success is emitted from the committed valid content tree after snippet resolution, not from a readiness timer. Partial parser/snippet failures produce degradation signals; a later React crash after initial success is also a degradation rather than a second terminal outcome. Requests correlated to an explicitly initiated guide load, along with render errors and timeouts, pass the activity gate before a destination mounts. Uncorrelated requests and unrelated events remain gated; consent and environment gates still apply.
 
 Private guides use random opaque references held only in memory. Private resource names, namespaces, titles, content, raw validation messages, and upstream response bodies are not diagnostic attributes. Existing private-guide URL/view attributes are anonymized, and private guide actions omit authored metadata from the Faro mirror. Public content URLs retain only normalized hostname/path. No load state is written to tab storage. These changes do not redact historical telemetry.
 
@@ -134,14 +134,19 @@ Private guide content and settings reads use the plugin backend OBO proxy. The p
 
 ### App Platform proxy failures
 
-`pathfinder_proxy_failure` records sanitized optional backend diagnostics: `stage`,
+The frontend Faro event `pathfinder_proxy_failure` records sanitized optional proxy diagnostics: `stage`,
 `resource`, `operation`, `reason`, `upstream_status`, `outcome`, and `cache`.
 The browser parser allowlists these fields; raw errors, guide names, user identities,
 credentials and upstream response bodies are not event attributes. Faro app metadata
 supplies the plugin version. Older backend responses without diagnostics remain valid.
 `pathfinder_settings_store_resolved` remains the complementary settings outcome signal.
 
-Backend `event=pathfinder_proxy_failure` logs are the primary alert source, so browser
+Backend `event=pathfinder_proxy_failure` logs contain `stack_namespace` (the trusted
+plugin-context namespace), `resource`, `operation`, `stage`, `reason`, and
+`upstream_status`. Unexpected errors also carry `error_type`, the Go type of the
+unwrapped error, never its message. `outcome` and `cache` belong to the response/Faro
+envelope, not this per-operation log. Grafana supplies plugin version and trace context.
+These backend logs are the primary alert source, so browser
 initialization and Faro activity gating are not detection prerequisites. A silent period
 is not recovery proof; verify successful endpoint/user flows. Frontend degraded rendering
 and upstream service recovery are separate observations.

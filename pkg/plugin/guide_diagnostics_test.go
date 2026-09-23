@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -116,6 +118,7 @@ func TestProxyFailureLogsExcludeExpectedOutcomes(t *testing.T) {
 		{"exchange cancel", "completionrecords", "list", &tokenExchangeError{err: context.Canceled}, false},
 		{"settings absent", "pathfindersettings", "get", &appPlatformUpstreamError{status: 404}, false},
 		{"collection unsupported", "completionrecords", "list", &appPlatformUpstreamError{status: 404}, false},
+		{"method unsupported", "interactiveguides", "list", &appPlatformUpstreamError{status: 405}, false},
 		{"unsupported", "interactiveguides", "list", &appPlatformUpstreamError{status: 501}, false},
 		{"idempotent write", "completionrecords", "create", &appPlatformUpstreamError{status: 409}, false},
 		{"missing guide", "interactiveguides", "get", &appPlatformUpstreamError{status: 404}, true},
@@ -145,8 +148,30 @@ func (l *diagnosticLogger) Warn(msg string, fields ...interface{}) {
 func TestProxyFailureLogDoesNotExposeUpstreamError(t *testing.T) {
 	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
 	logAppPlatformResult(logger, "stacks-1", "completionrecords", "create", &tokenExchangeError{err: errors.New("private-token-and-body")})
-	body, err := json.Marshal(logger.fields)
-	if err != nil || strings.Contains(string(body), "private-token") || !strings.Contains(string(body), "token-exchange-failed") || !strings.Contains(string(body), "pathfinder_proxy_failure") {
-		t.Fatalf("unexpected structured log: %s", body)
+	fields := map[string]interface{}{}
+	for i := 0; i < len(logger.fields); i += 2 {
+		fields[logger.fields[i].(string)] = logger.fields[i+1]
+	}
+	want := map[string]interface{}{
+		"event": "pathfinder_proxy_failure", "stack_namespace": "stacks-1", "resource": "completionrecords", "operation": "create", "stage": "token-exchange", "reason": "token-exchange-failed", "upstream_status": 0,
+	}
+	if !reflect.DeepEqual(fields, want) {
+		t.Fatalf("unexpected fields: %#v", fields)
+	}
+}
+
+func TestUnexpectedFailureLogsOnlyErrorType(t *testing.T) {
+	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+	logAppPlatformResult(logger, "stacks-1", "interactiveguides", "get", fmt.Errorf("private wrapper: %w", errors.New("private-body")))
+	fields := map[string]interface{}{}
+	for i := 0; i < len(logger.fields); i += 2 {
+		fields[logger.fields[i].(string)] = logger.fields[i+1]
+	}
+	if fields["error_type"] != "*errors.errorString" || fields["reason"] != "unexpected-error" {
+		t.Fatalf("unexpected fields: %#v", fields)
+	}
+	body, _ := json.Marshal(fields)
+	if strings.Contains(string(body), "private") {
+		t.Fatal("error message leaked")
 	}
 }

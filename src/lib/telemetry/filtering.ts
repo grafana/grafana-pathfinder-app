@@ -223,16 +223,13 @@ export function markPathfinderActive(): void {
   pathfinderWasOpen ||= hasReportedPathfinderSurface() && isPathfinderOpen();
 }
 
-// Attribution (filterPathfinderTelemetry) asks "is this ours?"; this gate
-// asks "is Pathfinder actually in use?". Everything except exceptions and
-// error-level logs is dropped until Pathfinder is open in one of its
-// surfaces, so collector sessions mean "used Pathfinder or Pathfinder
-// errored", not "loaded a Grafana page".
+// Explicit launch diagnostics can precede the first mounted Pathfinder surface.
 export function passesActivityGate(item: TransportItem<APIEvent>): boolean {
   if (
     isEventItem(item) &&
-    item.payload.name === TELEMETRY_EVENTS.guideRender &&
-    (item.payload.attributes?.outcome === 'error' || item.payload.attributes?.outcome === 'timeout')
+    ((item.payload.name === TELEMETRY_EVENTS.guideRequest && Boolean(item.payload.attributes?.load_id)) ||
+      (item.payload.name === TELEMETRY_EVENTS.guideRender &&
+        (item.payload.attributes?.outcome === 'error' || item.payload.attributes?.outcome === 'timeout')))
   ) {
     return true;
   }

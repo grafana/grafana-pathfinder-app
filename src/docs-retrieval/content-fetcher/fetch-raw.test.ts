@@ -293,3 +293,23 @@ describe('generateUserFriendlyError', () => {
     );
   });
 });
+
+describe('CDN fallback failure attribution', () => {
+  it.each(['server-error', 'timeout'])('preserves %s when the HTML fallback is absent', async (kind) => {
+    const fetchMock = global.fetch as jest.Mock;
+    if (kind === 'timeout') {
+      fetchMock.mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'));
+    } else {
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 503, statusText: 'Unavailable' });
+    }
+    fetchMock.mockResolvedValue({ ok: false, status: 404, statusText: 'Not found' });
+    const result = await fetchRawHtml('https://interactive-learning.grafana.net/packages/test', {});
+    expect(result.error?.errorType).toBe(kind);
+    if (kind === 'server-error') {
+      expect(result.error?.statusCode).toBe(503);
+    } else {
+      expect(result.error?.diagnostic?.reason).toBe('timeout');
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

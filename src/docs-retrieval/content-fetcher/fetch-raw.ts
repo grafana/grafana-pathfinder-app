@@ -165,7 +165,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 
       // 404 means this variation doesn't exist - try next one
       if (response.status === 404) {
-        lastError = { message: 'Content not found', errorType: 'not-found', statusCode: 404 };
+        lastError ??= { message: 'Content not found', errorType: 'not-found', statusCode: 404 };
         continue;
       }
 
