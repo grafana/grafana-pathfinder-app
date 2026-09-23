@@ -99,9 +99,11 @@ let refreshFailed = false;
 
 export function refreshPathfinderPluginConfig(): Promise<ResolvedPathfinderConfig | undefined> {
   if (!refreshInFlight) {
-    refreshFailed = false;
     refreshInFlight = resolvePathfinderSettings()
-      .then((resolved) => publishPathfinderPluginConfig(resolved))
+      .then((resolved) => {
+        refreshFailed = false;
+        return publishPathfinderPluginConfig(resolved);
+      })
       .catch((error) => {
         refreshInFlight = null;
         refreshFailed = true;

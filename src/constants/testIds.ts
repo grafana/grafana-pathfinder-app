@@ -404,6 +404,7 @@ export const testIds = {
     searchClose: 'coda-terminal-search-close',
     vmExpiry: 'coda-terminal-vm-expiry',
     gcxButton: 'coda-terminal-gcx',
+    openIdeButton: 'coda-open-workspace', // Preserve the existing selector across the IDE rename.
     gcxMint: 'coda-terminal-gcx-mint',
     gcxToken: 'coda-terminal-gcx-token',
     gcxTokenLifetime: 'coda-terminal-gcx-token-lifetime',
