@@ -1,5 +1,6 @@
 import {
   recordContentFetch,
+  recordKioskCatalogLoaded,
   recordContentFetchFallback,
   recordCustomGuideCatalogueUnavailable,
   recordSettingsStoreResolved,
@@ -143,5 +144,13 @@ describe('measurement and event domain operations', () => {
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_settings_store_resolved', {
       outcome: 'kind-not-served',
     });
+  });
+});
+
+it('records the served kiosk tier and degradation without catalog content', () => {
+  recordKioskCatalogLoaded('bundled', true);
+  expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_kiosk_catalog_loaded', {
+    tier: 'bundled',
+    degraded: true,
   });
 });

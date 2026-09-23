@@ -29,7 +29,10 @@ export type CompletionWriteDegradation =
   | 'enqueue-failed'
   | 'drain-failed';
 
+export type KioskCatalogTier = 'override' | 'configured' | 'generic' | 'bundled';
+
 export const TELEMETRY_EVENTS = {
+  kioskCatalogLoaded: 'pathfinder_kiosk_catalog_loaded',
   recommenderFallback: 'pathfinder_recommender_fallback',
   contentFetchFallback: 'pathfinder_content_fetch_fallback',
   requirementsExhausted: 'pathfinder_requirements_exhausted',

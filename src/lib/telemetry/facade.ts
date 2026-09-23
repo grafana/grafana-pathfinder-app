@@ -5,6 +5,7 @@ import { normalizeTelemetryUrl } from './url';
 import { createInteractionName, UserInteraction } from '../analytics';
 import {
   TELEMETRY_EVENTS,
+  type KioskCatalogTier,
   TELEMETRY_MEASUREMENTS,
   type CompletionWriteDegradation,
   type ContentFetchOutcome,
@@ -176,4 +177,8 @@ export type GcxCredentialDegradation =
 
 export function recordGcxCredentialDegradation(reason: GcxCredentialDegradation): void {
   pushFaroEvent(TELEMETRY_EVENTS.gcxCredentialDegraded, { reason });
+}
+
+export function recordKioskCatalogLoaded(tier: KioskCatalogTier, degraded: boolean): void {
+  pushFaroEvent(TELEMETRY_EVENTS.kioskCatalogLoaded, { tier, degraded });
 }
