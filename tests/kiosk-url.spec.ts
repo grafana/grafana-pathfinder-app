@@ -96,7 +96,6 @@ test('blocks redirects before contacting an untrusted destination', async ({ pag
 });
 
 test('launches a guide on the selected page in the same tab and instance', async ({ page, context }) => {
-  await page.addInitScript((key) => localStorage.setItem(key, 'floating'), StorageKeys.PANEL_MODE);
   await page.route(customUrl, (route) =>
     route.fulfill({
       json: {
@@ -112,6 +111,9 @@ test('launches a guide on the selected page in the same tab and instance', async
     })
   );
   await page.goto(kioskSearch(customUrl));
+  await expect(page.getByTestId(testIds.kioskMode.tile(0))).toBeVisible();
+  await page.evaluate((key) => localStorage.setItem(key, 'floating'), StorageKeys.PANEL_MODE);
+  expect(await page.evaluate((key) => localStorage.getItem(key), StorageKeys.PANEL_MODE)).toBe('floating');
   const pagesBefore = context.pages().length;
   await page.getByTestId(testIds.kioskMode.tile(0)).click();
   await expect(page.getByTestId(testIds.kioskMode.overlay)).not.toBeVisible();
