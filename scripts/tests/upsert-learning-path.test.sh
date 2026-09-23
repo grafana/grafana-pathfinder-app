@@ -332,6 +332,29 @@ expect_code "a track with an empty guides list is rejected outright" 1
 expect_out "and names the empty track" "\"builder\""
 expect_out "and explains why" "empty guides list"
 
+# Regression: package.schema.ts's superRefine Rule 4 rejects a reserved or
+# duplicate trackId via the app's Zod schema, but this script doesn't call
+# that schema. Without an equivalent check, a manifest with a reserved or
+# duplicate trackId publishes successfully, and getManifestTracks silently
+# drops the offending track at read time — a tab the author believes is live
+# simply never renders.
+RESERVED_TRACK_PKG=$(path_pkg reserved-track)
+printf '{"id":"lp","type":"path","milestones":["m-a","m-b"],"tracks":[{"trackId":"foundations","label":"Foundations again","guides":["m-a"]}]}' \
+  >"${RESERVED_TRACK_PKG}/manifest.json"
+
+MODE=empty run --package "$RESERVED_TRACK_PKG"
+expect_code "a track using the reserved foundations trackId is rejected outright" 1
+expect_out "and explains why" "reserved for the default Foundations sequence"
+
+DUPLICATE_TRACK_PKG=$(path_pkg duplicate-track)
+printf '{"id":"lp","type":"path","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":["m-a"]},{"trackId":"builder","label":"Builder again","guides":["m-b"]}]}' \
+  >"${DUPLICATE_TRACK_PKG}/manifest.json"
+
+MODE=empty run --package "$DUPLICATE_TRACK_PKG"
+expect_code "a manifest with a duplicate trackId is rejected outright" 1
+expect_out "and names the duplicate" "\"builder\""
+expect_out "and explains why" "unique trackId"
+
 MODE=existing_ours run --package "$PKG"
 expect_code "re-running an already-uploaded package succeeds" 0
 expect_out "and reports updates rather than creates" "0 created, 3 updated"

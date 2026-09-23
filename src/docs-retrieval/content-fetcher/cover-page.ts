@@ -198,6 +198,7 @@ function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: 
 }
 
 const LEADING_HEADING_RE = /^#{1,6}\s+/;
+const LEADING_HEADING_RE_GLOBAL = /^#{1,6}\s+/m;
 
 /**
  * Drop the guide's own leading title+intro on the cover page. The React
@@ -238,7 +239,7 @@ function dropLeadingTitleBlock(blocks: Array<{ type: string; content?: string }>
 
   const headingLineEnd = trimmed.indexOf('\n');
   const afterHeadingLine = headingLineEnd === -1 ? '' : trimmed.slice(headingLineEnd + 1);
-  const { remainder } = splitAtNextHeading(afterHeadingLine);
+  const { remainder } = splitAtNextHeading(afterHeadingLine, LEADING_HEADING_RE_GLOBAL);
 
   if (remainder) {
     blocks[0] = { ...first, content: remainder };
@@ -252,11 +253,14 @@ function dropLeadingTitleBlock(blocks: Array<{ type: string; content?: string }>
   }
 }
 
-function splitAtNextHeading(text: string): { body: string; remainder: string } {
+function splitAtNextHeading(
+  text: string,
+  boundaryRe: RegExp = NEXT_HEADING_RE
+): { body: string; remainder: string } {
   if (!text) {
     return { body: '', remainder: '' };
   }
-  const nextMatch = text.match(NEXT_HEADING_RE);
+  const nextMatch = text.match(boundaryRe);
   if (!nextMatch) {
     return { body: text, remainder: '' };
   }

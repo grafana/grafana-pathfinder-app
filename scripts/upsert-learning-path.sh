@@ -458,6 +458,23 @@ if [[ -n "$EMPTY_TRACK" ]]; then
   exit 1
 fi
 
+# trackId must be unique and may not collide with the reserved Foundations
+# sentinel (package.schema.ts superRefine Rule 4) — each track is
+# independently addressable (cover-page tab selection, CRD projection), and a
+# duplicate or reserved id makes that lookup ambiguous. getManifestTracks
+# silently drops the offending track at read time, so without this check a
+# tab the author believes is live simply never renders.
+RESERVED_TRACK=$(jq -r --arg reserved "foundations" '(.tracks // [])[] | select(.trackId == $reserved) | .trackId' "$ROOT_MANIFEST" | head -n1)
+if [[ -n "$RESERVED_TRACK" ]]; then
+  echo "${ROOT_MANIFEST} has a track with trackId \"foundations\" — that id is reserved for the default Foundations sequence" >&2
+  exit 1
+fi
+DUPLICATE_TRACK=$(jq -r '[(.tracks // [])[].trackId] | group_by(.) | map(select(length > 1) | .[0]) | .[0] // empty' "$ROOT_MANIFEST")
+if [[ -n "$DUPLICATE_TRACK" ]]; then
+  echo "${ROOT_MANIFEST} has duplicate trackId \"${DUPLICATE_TRACK}\" — each track must have a unique trackId" >&2
+  exit 1
+fi
+
 # A track's own guides (Path Tracks RFC) are not implicitly milestones — a
 # track may reference a guide `milestones` never had — so build_manifest
 # above already emits them in spec.manifest.tracks, but nothing yet uploads

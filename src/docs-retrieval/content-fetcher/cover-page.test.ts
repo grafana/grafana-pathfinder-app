@@ -204,6 +204,28 @@ describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own duplicate l
     expect(blocks[0]!.content).toContain('## Block types overview');
     expect(blocks[0]!.content).toContain('Click any block in the editor');
   });
+
+  // Regression: the leading-heading detector matches H1-H6, but the
+  // "next heading" boundary it stopped at previously only matched H1-H3
+  // (borrowed from the unrelated "what to expect" card logic). An H4+
+  // leading title followed by an H4+ real section found no boundary and
+  // dropped the whole block, including the real section.
+  it('keeps a real H4 section after an H4 leading title+intro', () => {
+    const input = guide([
+      {
+        type: 'markdown',
+        content:
+          '#### My Guide Title\n\n' + 'Some intro.\n\n' + '#### Real deep section\n\n' + 'Content that matters.',
+      },
+    ]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks[0]!.content).not.toContain('My Guide Title');
+    expect(blocks[0]!.content).not.toContain('Some intro');
+    expect(blocks[0]!.content).toContain('#### Real deep section');
+    expect(blocks[0]!.content).toContain('Content that matters');
+  });
 });
 
 // simpleMarkdownToHtml has broad coverage in content-fetcher.test.ts; these
