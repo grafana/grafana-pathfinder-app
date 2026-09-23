@@ -90,3 +90,9 @@ What that means operationally:
 - **The kill switch is "no new recordings"**, not "recording stops now". Budget for the tail of long-lived tabs, now bounded by Pathfinder use rather than tab lifetime: a tab with no surface open stops five seconds after the last close, so the worst case is a docked sidebar left open on an auto-refreshing dashboard overnight.
 - **Recordings already ingested are not undone by the flip.** Removing them is a collector-side deletion request against the Frontend Observability app, not something a flag or a release can do.
 - If a recording must stop immediately on a known stack, the only in-band lever is a plugin release plus a forced reload; otherwise the flag flip plus natural page turnover is the mechanism.
+
+## Kiosk catalogs and launches
+
+`pathfinder_kiosk_catalog_loaded` records the served `tier` (`override`, `configured`, `generic`, or `bundled`) and whether loading `degraded`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason; rejected rule logs name the invalid field without its value.
+
+`KioskDemoStarted` includes `launch_mode` (`instance` or `presentation`). Since URL-selected kiosks were added, `target_instance` is the current origin for instance launches and the catalog target (or current origin) for presentation launches. Filter by `launch_mode = presentation` for booth-demo comparisons; older events lack this field. Catalog URLs, rule content, and raw failure messages are not added to catalog telemetry.

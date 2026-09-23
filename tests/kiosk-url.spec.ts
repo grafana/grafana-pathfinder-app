@@ -1,3 +1,4 @@
+import { StorageKeys } from '../src/lib/storage-keys';
 import { test, expect } from './fixtures';
 import genericCatalog from '../src/components/kiosk/default-kiosk.json';
 import { testIds } from '../src/constants/testIds';
@@ -65,7 +66,7 @@ test('falls back to the configured default after a failed override', async ({ pa
   await page.route(customUrl, (route) => route.fulfill({ status: 404, body: 'Missing' }));
   await page.goto(kioskSearch(customUrl));
   await expect(page.getByRole('heading', { name: 'Default kiosk', exact: true })).toBeVisible();
-  await expect(page.getByTestId(testIds.kioskMode.warning)).toContainText('Showing the default kiosk');
+  await expect(page.getByTestId(testIds.kioskMode.warning)).toContainText('Showing the configured default kiosk');
 });
 
 test('rejects untrusted sources without fetching them', async ({ page }) => {
@@ -110,12 +111,16 @@ test('launches a guide on the selected page in the same tab and instance', async
     })
   );
   await page.goto(kioskSearch(customUrl));
+  await expect(page.getByTestId(testIds.kioskMode.tile(0))).toBeVisible();
+  await page.evaluate((key) => localStorage.setItem(key, 'floating'), StorageKeys.PANEL_MODE);
+  expect(await page.evaluate((key) => localStorage.getItem(key), StorageKeys.PANEL_MODE)).toBe('floating');
   const pagesBefore = context.pages().length;
   await page.getByTestId(testIds.kioskMode.tile(0)).click();
   await expect(page.getByTestId(testIds.kioskMode.overlay)).not.toBeVisible();
   await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible();
   await expect(page.getByTestId(testIds.docsPanel.container)).toContainText('Welcome to Grafana');
   expect(context.pages()).toHaveLength(pagesBefore);
+  expect(await page.evaluate((key) => localStorage.getItem(key), StorageKeys.PANEL_MODE)).toBe('floating');
   expect(new URL(page.url()).pathname).toBe('/dashboards');
   expect(new URL(page.url()).searchParams.get('query')).toBe('kiosk');
   expect(new URL(page.url()).hostname).toBe('localhost');

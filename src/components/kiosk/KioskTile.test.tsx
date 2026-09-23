@@ -1,3 +1,5 @@
+import { panelModeManager } from '../../global-state/panel-mode';
+import { StorageKeys } from '../../lib/storage-keys';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { KioskTile } from './KioskTile';
@@ -7,6 +9,7 @@ import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 const mockPush = jest.fn();
 jest.mock('@grafana/runtime', () => ({
   config: {},
+  getAppEvents: () => ({ publish: jest.fn() }),
   locationService: {
     push: (...args: unknown[]) => mockPush(...args),
     getLocation: () => ({ pathname: '/dashboards', search: '?orgId=2&pathfinderKiosk=1', hash: '' }),
@@ -82,6 +85,7 @@ describe('KioskTile', () => {
       guide_title: rule.title,
       guide_type: rule.type,
       target_instance: rule.targetUrl,
+      launch_mode: 'presentation',
     });
 
     const analyticsCallOrder = (reportAppInteraction as jest.Mock).mock.invocationCallOrder[0]!;
@@ -161,6 +165,7 @@ describe('KioskTile', () => {
     expect(mockOpen).not.toHaveBeenCalled();
   });
   it('opens a guide on the current instance and tab, ignoring presentation targetUrl', () => {
+    panelModeManager.setModePersisted('floating');
     const onLaunch = jest.fn();
     render(
       <KioskTile rule={{ ...rule, page: '/explore?left=test#query' }} index={0} mode="instance" onLaunch={onLaunch} />
@@ -174,7 +179,13 @@ describe('KioskTile', () => {
     expect(url.searchParams.get('orgId')).toBe('2');
     expect(url.searchParams.get('doc')).toBe(rule.url);
     expect(url.searchParams.get('page')).toBe('/explore');
-    expect(url.searchParams.get('panelMode')).toBe('sidebar');
+    expect(url.searchParams.has('panelMode')).toBe(false);
+    expect(panelModeManager.getMode()).toBe('sidebar');
+    expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.KioskDemoStarted,
+      expect.objectContaining({ launch_mode: 'instance', target_instance: window.location.origin })
+    );
     expect(url.searchParams.has('pathfinderKiosk')).toBe(false);
     expect(url.hash).toBe('#query');
     expect(onLaunch.mock.invocationCallOrder[0]).toBeLessThan(mockPush.mock.invocationCallOrder[0]!);
