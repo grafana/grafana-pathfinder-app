@@ -1,3 +1,4 @@
+import { reportProxyFailure } from '../lib/proxy-diagnostics';
 import type { GuideDiagnostic, GuideLoadContext } from '../types/guide-diagnostics.types';
 import { diagnoseGuideError } from '../lib/guide-diagnostics';
 import { observeGuideRequest, finishGuideLoad } from '../lib/telemetry/guide-load';
@@ -126,6 +127,7 @@ async function probePublishedGuide(packageId: string, context?: GuideLoadContext
 
     return { ok: true, resource };
   } catch (err) {
+    reportProxyFailure(err);
     const status = (err as { status?: number })?.status;
     if (status === 404) {
       return {

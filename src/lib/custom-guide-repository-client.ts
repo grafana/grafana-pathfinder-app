@@ -1,4 +1,4 @@
-import { readProxyDiagnostics } from './proxy-diagnostics';
+import { readProxyDiagnostics, reportProxyFailure, reportProxyResponse } from './proxy-diagnostics';
 /**
  * Client for the /custom-guide-repository backend proxy — a slim,
  * denormalized catalogue of the caller's private InteractiveGuide packages
@@ -104,6 +104,7 @@ function classifyRequestFailure(err: unknown): string {
 }
 
 function reportCatalogueFetchFailure(err: unknown): void {
+  reportProxyFailure(err);
   try {
     const diagnostic = readProxyDiagnostics((err as { data?: { diagnostics?: unknown } })?.data?.diagnostics);
     const reason = diagnostic?.upstreamStatus
@@ -164,6 +165,7 @@ async function requestCatalogue(): Promise<CatalogueResult> {
     undefined,
     { showErrorAlert: false, showSuccessAlert: false }
   );
+  reportProxyResponse(response);
   if (!response?.capability?.available) {
     // Surface WHY the catalogue is empty — otherwise a degraded capability (e.g.
     // obo-unavailable) presents as "no guides" with nothing in the console, which

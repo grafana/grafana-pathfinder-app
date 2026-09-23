@@ -149,6 +149,13 @@
   ],
   "completionCapability": [
     {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*plugin.guideProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
+    {
       "field": "Available",
       "json": "available",
       "type": "bool",
@@ -285,6 +292,13 @@
   ],
   "customGuideRepositoryResponse": [
     {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*plugin.guideProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
+    {
       "field": "Capability",
       "json": "capability",
       "type": "plugin.customGuideCapability",
@@ -345,6 +359,27 @@
   ],
   "guideProxyDiagnostic": [
     {
+      "field": "Stage",
+      "json": "stage",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Resource",
+      "json": "resource",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Operation",
+      "json": "operation",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
       "field": "Outcome",
       "json": "outcome",
       "type": "string",
@@ -395,6 +430,13 @@
     }
   ],
   "myCompletionsResponse": [
+    {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*plugin.guideProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
     {
       "field": "Capability",
       "json": "capability",

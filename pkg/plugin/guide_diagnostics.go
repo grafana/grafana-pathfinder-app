@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"net"
+	"net/http"
 )
 
 type guideProxyDiagnostic struct {
+	Stage            string         `json:"stage,omitempty"`
+	Resource         string         `json:"resource,omitempty"`
+	Operation        string         `json:"operation,omitempty"`
 	Outcome          string         `json:"outcome"`
 	Reason           string         `json:"reason,omitempty"`
 	UpstreamStatus   int            `json:"upstreamStatus,omitempty"`
@@ -68,4 +73,44 @@ func packageResponseDiagnostics(resp *PackageRecommendationsResponse, err error,
 	diagnostic.Cache, diagnostic.CacheAgeMS = cache, max(0, age)
 	copyResponse.Diagnostics = &diagnostic
 	return &copyResponse, nil
+}
+
+func appPlatformDiagnostic(err error, resource, operation string) *guideProxyDiagnostic {
+	if err == nil {
+		return nil
+	}
+	d := classifyGuideProxyError(err)
+	d.Stage, d.Resource, d.Operation = "app-platform", resource, operation
+	if isTokenExchangeError(err) {
+		d.Stage = "token-exchange"
+		if !errors.Is(err, context.Canceled) {
+			d.Reason = "token-exchange-failed"
+		}
+	}
+	if d.UpstreamStatus == 401 || d.UpstreamStatus == 403 {
+		d.Reason = "authorization-denied"
+	}
+	return &d
+}
+
+func logAppPlatformResult(logger log.Logger, namespace, resource, operation string, err error) {
+	d := appPlatformDiagnostic(err, resource, operation)
+	if d == nil || errors.Is(err, context.Canceled) || d.Reason == "cancelled" {
+		return
+	}
+	if d.UpstreamStatus == 405 || d.UpstreamStatus == 501 || (d.UpstreamStatus == 404 && (resource == "pathfindersettings" || operation != "get")) || (d.UpstreamStatus == 409 && resource == "completionrecords" && operation == "create") {
+		return
+	}
+	logger.Warn("Pathfinder proxy operation failed", "event", "pathfinder_proxy_failure", "stack_namespace", namespace, "resource", resource, "operation", operation, "stage", d.Stage, "reason", d.Reason, "upstream_status", d.UpstreamStatus)
+}
+
+func (a *App) writeProxyError(w http.ResponseWriter, message string, status int, d *guideProxyDiagnostic) {
+	a.writeJSON(w, struct {
+		Error       string                `json:"error"`
+		Diagnostics *guideProxyDiagnostic `json:"diagnostics,omitempty"`
+	}{message, d}, status)
+}
+
+func proxyGateDiagnostic(reason, resource, operation, stage string) *guideProxyDiagnostic {
+	return &guideProxyDiagnostic{Outcome: "error", Stage: stage, Reason: reason, Resource: resource, Operation: operation}
 }

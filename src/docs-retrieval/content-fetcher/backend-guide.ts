@@ -1,3 +1,4 @@
+import { reportProxyFailure } from '../../lib/proxy-diagnostics';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 import { diagnoseGuideError } from '../../lib/guide-diagnostics';
 import { observeGuideRequest } from '../../lib/telemetry/guide-load';
@@ -157,6 +158,7 @@ export async function fetchBackendInteractive(url: string, context?: GuideLoadCo
     );
     return buildBackendGuideContent(response.data, url, resourceName);
   } catch (error) {
+    reportProxyFailure(error);
     return {
       content: null,
       error: `Failed to load custom guide: ${resourceName}`,

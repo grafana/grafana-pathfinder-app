@@ -130,4 +130,18 @@ Inspect CDN index degradation independently of guide-not-found outcomes:
 {app_id="77"} | logfmt | event_name="pathfinder_package_index" | event_data_outcome=~"error|degraded|suppressed"
 ```
 
-Private guide content reads go directly to the shared App Platform API. The plugin backend owns the private catalogue and public CDN index proxies. Adding instrumentation to the local Go handlers in `grafana-pathfinder-backend` does not add production reporting: that repository currently deploys the CRD manifest only.
+Private guide content and settings reads use the plugin backend OBO proxy. The plugin backend also owns the private catalogue, completion and public CDN index proxies. Adding instrumentation to the local Go handlers in `grafana-pathfinder-backend` does not add production reporting: that repository currently deploys the CRD manifest only.
+
+### App Platform proxy failures
+
+`pathfinder_proxy_failure` records sanitized optional backend diagnostics: `stage`,
+`resource`, `operation`, `reason`, `upstream_status`, `outcome`, and `cache`.
+The browser parser allowlists these fields; raw errors, guide names, user identities,
+credentials and upstream response bodies are not event attributes. Faro app metadata
+supplies the plugin version. Older backend responses without diagnostics remain valid.
+`pathfinder_settings_store_resolved` remains the complementary settings outcome signal.
+
+Backend `event=pathfinder_proxy_failure` logs are the primary alert source, so browser
+initialization and Faro activity gating are not detection prerequisites. A silent period
+is not recovery proof; verify successful endpoint/user flows. Frontend degraded rendering
+and upstream service recovery are separate observations.

@@ -102,9 +102,10 @@ type customGuideCapability struct {
 // (BACKEND_PROXY_PATTERN.md §6): a capability object, the always-non-null data
 // array, and asOf — when this request's underlying LIST completed.
 type customGuideRepositoryResponse struct {
-	Capability customGuideCapability        `json:"capability"`
-	Guides     []customGuideRepositoryEntry `json:"guides"`
-	AsOf       string                       `json:"asOf,omitempty"`
+	Diagnostics *guideProxyDiagnostic        `json:"diagnostics,omitempty"`
+	Capability  customGuideCapability        `json:"capability"`
+	Guides      []customGuideRepositoryEntry `json:"guides"`
+	AsOf        string                       `json:"asOf,omitempty"`
 }
 
 // customGuideListerOverride injects a fake lister in tests. nil selects the
@@ -131,8 +132,9 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 	// thrown 503, so a recovered stack stays dark until the entry expires.
 	if status := a.validIDToken(r); status != identityVerified {
 		a.writeJSON(w, customGuideRepositoryResponse{
-			Capability: customGuideCapability{Available: false, Reason: status.capabilityReason()},
-			Guides:     []customGuideRepositoryEntry{},
+			Diagnostics: proxyGateDiagnostic("identity-unavailable", "interactiveguides", "list", "identity"),
+			Capability:  customGuideCapability{Available: false, Reason: status.capabilityReason()},
+			Guides:      []customGuideRepositoryEntry{},
 		}, http.StatusOK)
 		return
 	}
@@ -140,8 +142,9 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 	lister, namespace, available, reason := a.resolveCustomGuideBackend(r)
 	if !available {
 		a.writeJSON(w, customGuideRepositoryResponse{
-			Capability: customGuideCapability{Available: false, Reason: reason},
-			Guides:     []customGuideRepositoryEntry{},
+			Diagnostics: proxyGateDiagnostic("proxy-unavailable", "interactiveguides", "list", "configuration"),
+			Capability:  customGuideCapability{Available: false, Reason: reason},
+			Guides:      []customGuideRepositoryEntry{},
 		}, http.StatusOK)
 		return
 	}
@@ -166,10 +169,11 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 			if errors.As(err, &upErr) {
 				reason = fmt.Sprintf("upstream-%d", upErr.status)
 			}
-			logger.Info("custom guide catalogue unavailable (terminal)", "namespace", namespace, "error", err)
+			logger.Info("custom guide catalogue unavailable (terminal)", "namespace", namespace, "reason", classifyGuideProxyError(err).Reason)
 			a.writeJSON(w, customGuideRepositoryResponse{
-				Capability: customGuideCapability{Available: false, Reason: reason},
-				Guides:     []customGuideRepositoryEntry{},
+				Diagnostics: appPlatformDiagnostic(err, "interactiveguides", "list"),
+				Capability:  customGuideCapability{Available: false, Reason: reason},
+				Guides:      []customGuideRepositoryEntry{},
 			}, http.StatusOK)
 			return
 		}
@@ -178,7 +182,7 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 		// Info (not Debug) so a wrong CAP token or unreachable auth-api — which 503s
 		// this route indefinitely — is diagnosable without raising the log level
 		// (matches getCompletionIndex on the completions route).
-		logger.Info("custom guide catalogue unavailable (transient)", "namespace", namespace, "error", err)
+		logger.Info("custom guide catalogue unavailable (transient)", "namespace", namespace, "reason", classifyGuideProxyError(err).Reason)
 		a.writeCustomGuideUnavailable(w, err)
 		return
 	}
@@ -196,7 +200,7 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 // retryable failure on this route answers in one shape.
 func (a *App) writeCustomGuideUnavailable(w http.ResponseWriter, err error) {
 	w.Header().Set("Retry-After", strconv.Itoa(customGuideRetryAfterSeconds))
-	a.writeJSON(w, map[string]interface{}{"error": "custom-guide-repository-unavailable", "diagnostics": classifyGuideProxyError(err)}, http.StatusServiceUnavailable)
+	a.writeJSON(w, map[string]interface{}{"error": "custom-guide-repository-unavailable", "diagnostics": appPlatformDiagnostic(err, "interactiveguides", "list")}, http.StatusServiceUnavailable)
 }
 
 // drainCustomGuides drains the namespace LIST across pages — up to the

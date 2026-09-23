@@ -74,3 +74,79 @@ func TestCustomCatalogueTransientDiagnostic(t *testing.T) {
 		t.Fatalf("unsafe or missing diagnostics: %s", response.Body.String())
 	}
 }
+
+func TestAppPlatformDiagnosticPreservesFailureStage(t *testing.T) {
+	cases := []struct {
+		err           error
+		stage, reason string
+		status        int
+	}{
+		{&tokenExchangeError{err: errors.New("secret-token")}, "token-exchange", "token-exchange-failed", 0},
+		{&tokenExchangeError{err: context.DeadlineExceeded}, "token-exchange", "token-exchange-failed", 0},
+		{context.DeadlineExceeded, "app-platform", "timeout", 0},
+		{context.Canceled, "app-platform", "cancelled", 0},
+		{&appPlatformUpstreamError{status: 403, msg: "private body"}, "app-platform", "authorization-denied", 403},
+		{&appPlatformUpstreamError{status: 429}, "app-platform", "http-error", 429},
+		{&appPlatformUpstreamError{status: 503}, "app-platform", "http-error", 503},
+	}
+	for _, tc := range cases {
+		d := appPlatformDiagnostic(tc.err, "completionrecords", "create")
+		if d.Stage != tc.stage || d.Reason != tc.reason || d.UpstreamStatus != tc.status {
+			t.Fatalf("unexpected classification: %+v", d)
+		}
+		w := httptest.NewRecorder()
+		(&App{}).writeProxyError(w, "completion-write-unavailable", 503, d)
+		if w.Code != 503 || strings.Contains(w.Body.String(), "secret-token") || strings.Contains(w.Body.String(), "private body") {
+			t.Fatalf("unsafe response: %s", w.Body.String())
+		}
+	}
+	if appPlatformDiagnostic(nil, "interactiveguides", "list") != nil {
+		t.Fatal("successful empty list must not imply denial")
+	}
+}
+
+func TestProxyFailureLogsExcludeExpectedOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name, resource, operation string
+		err                       error
+		want                      bool
+	}{
+		{"success", "interactiveguides", "list", nil, false},
+		{"cancel", "completionrecords", "list", context.Canceled, false},
+		{"exchange cancel", "completionrecords", "list", &tokenExchangeError{err: context.Canceled}, false},
+		{"settings absent", "pathfindersettings", "get", &appPlatformUpstreamError{status: 404}, false},
+		{"collection unsupported", "completionrecords", "list", &appPlatformUpstreamError{status: 404}, false},
+		{"unsupported", "interactiveguides", "list", &appPlatformUpstreamError{status: 501}, false},
+		{"idempotent write", "completionrecords", "create", &appPlatformUpstreamError{status: 409}, false},
+		{"missing guide", "interactiveguides", "get", &appPlatformUpstreamError{status: 404}, true},
+		{"denied", "pathfindersettings", "get", &appPlatformUpstreamError{status: 403}, true},
+		{"exchange", "completionrecords", "create", &tokenExchangeError{err: errors.New("secret")}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := newCapturingLogger()
+			logAppPlatformResult(logger, "stacks-1", tc.resource, tc.operation, tc.err)
+			if logger.warnedWith("Pathfinder proxy operation failed") != tc.want {
+				t.Fatal("unexpected failure log")
+			}
+		})
+	}
+}
+
+type diagnosticLogger struct {
+	capturingLogger
+	fields []interface{}
+}
+
+func (l *diagnosticLogger) Warn(msg string, fields ...interface{}) {
+	l.capturingLogger.Warn(msg, fields...)
+	l.fields = fields
+}
+
+func TestProxyFailureLogDoesNotExposeUpstreamError(t *testing.T) {
+	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+	logAppPlatformResult(logger, "stacks-1", "completionrecords", "create", &tokenExchangeError{err: errors.New("private-token-and-body")})
+	body, err := json.Marshal(logger.fields)
+	if err != nil || strings.Contains(string(body), "private-token") || !strings.Contains(string(body), "token-exchange-failed") || !strings.Contains(string(body), "pathfinder_proxy_failure") {
+		t.Fatalf("unexpected structured log: %s", body)
+	}
+}

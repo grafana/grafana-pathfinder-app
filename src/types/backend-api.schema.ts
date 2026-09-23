@@ -22,6 +22,19 @@ import { GuideStatsSummarySchema } from './guide-stats.schema';
 /** Any JSON value. Mirrors Go `json.RawMessage` / `interface{}` passthrough. */
 export const JsonValueSchema = z.json();
 
+export const GuideProxyDiagnosticWireSchema = z.strictObject({
+  stage: z.string().optional(),
+  resource: z.string().optional(),
+  operation: z.string().optional(),
+  outcome: z.enum(['ok', 'error', 'degraded']),
+  reason: z.string().optional(),
+  upstreamStatus: z.number().int().min(100).max(599).optional(),
+  cache: z.enum(['hit', 'shared', 'refresh', 'stale']).optional(),
+  cacheAgeMs: z.number().int().nonnegative(),
+  manifestFailures: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  budgetExhausted: z.boolean().optional(),
+});
+
 // ============ /completion-records/capability ============
 
 /**
@@ -29,6 +42,7 @@ export const JsonValueSchema = z.json();
  * @coupling Go struct: completionCapability
  */
 export const CompletionCapabilityWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   available: z.boolean(),
   reason: z.string().optional(),
 });
@@ -58,6 +72,7 @@ export const CollatedCompletionWireSchema = z.strictObject({
  * @coupling Go struct: myCompletionsResponse
  */
 export const MyCompletionsResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   capability: CompletionCapabilityWireSchema,
   userId: z.string().optional(),
   completions: z.array(CollatedCompletionWireSchema),
@@ -140,6 +155,7 @@ export const CustomGuideRepositoryEntryWireSchema = z.strictObject({
  * @coupling Go struct: customGuideRepositoryResponse
  */
 export const CustomGuideRepositoryResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   capability: CustomGuideCapabilityWireSchema,
   guides: z.array(CustomGuideRepositoryEntryWireSchema),
   asOf: z.string().optional(),
@@ -166,16 +182,6 @@ export const PackageEntryWireSchema = z.strictObject({
   type: z.string().optional(),
   targeting: PackageTargetingWireSchema.optional(),
   manifest: z.record(z.string(), JsonValueSchema).optional(),
-});
-
-export const GuideProxyDiagnosticWireSchema = z.strictObject({
-  outcome: z.enum(['ok', 'error', 'degraded']),
-  reason: z.string().optional(),
-  upstreamStatus: z.number().int().min(100).max(599).optional(),
-  cache: z.enum(['hit', 'shared', 'refresh']).optional(),
-  cacheAgeMs: z.number().int().nonnegative(),
-  manifestFailures: z.record(z.string(), z.number().int().nonnegative()).optional(),
-  budgetExhausted: z.boolean().optional(),
 });
 
 /** @coupling Go struct: PackageRecommendationsResponse */

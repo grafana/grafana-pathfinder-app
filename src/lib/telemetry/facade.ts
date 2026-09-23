@@ -1,5 +1,6 @@
 import { guideSource } from '../guide-diagnostics';
 import type {
+  ProxyDiagnostics,
   GuideDiagnostic,
   GuideLoadContext,
   GuideRenderOutcome,
@@ -258,4 +259,16 @@ export function recordPackageIndex(attributes: {
   budget_exhausted?: boolean;
 }): void {
   pushFaroEvent(TELEMETRY_EVENTS.packageIndex, attributes);
+}
+
+export function recordProxyFailure(diagnostic: ProxyDiagnostics): void {
+  pushFaroEvent(TELEMETRY_EVENTS.proxyFailure, {
+    outcome: diagnostic.outcome,
+    stage: diagnostic.stage ?? 'unknown',
+    resource: diagnostic.resource ?? 'unknown',
+    operation: diagnostic.operation ?? 'unknown',
+    reason: diagnostic.reason ?? 'unexpected-error',
+    upstream_status: diagnostic.upstreamStatus ?? 0,
+    cache: diagnostic.cache ?? 'none',
+  });
 }

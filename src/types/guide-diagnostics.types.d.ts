@@ -38,3 +38,16 @@ export interface GuideLoadContext {
 
 export type GuideRequestRole = 'content' | 'manifest' | 'index' | 'content-json' | 'unstyled-html' | 'page';
 export type GuideRenderOutcome = 'rendered' | 'error' | 'cancelled' | 'timeout' | 'awaiting-user' | 'degraded';
+
+export interface ProxyDiagnostics {
+  stage?: 'identity' | 'configuration' | 'token-exchange' | 'app-platform';
+  resource?: 'pathfindersettings' | 'interactiveguides' | 'completionrecords';
+  operation?: 'get' | 'list' | 'create';
+  outcome: 'ok' | 'error' | 'degraded';
+  reason?: string;
+  upstreamStatus?: number;
+  cache?: 'hit' | 'shared' | 'refresh' | 'stale';
+  cacheAgeMs?: number;
+  manifestFailures?: Record<string, number>;
+  budgetExhausted?: boolean;
+}
