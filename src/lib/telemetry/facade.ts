@@ -13,6 +13,7 @@ import { normalizeTelemetryUrl } from './url';
 import { createInteractionName, UserInteraction } from '../analytics';
 import {
   TELEMETRY_EVENTS,
+  type KioskCatalogTier,
   TELEMETRY_MEASUREMENTS,
   type CompletionWriteDegradation,
   type ContentFetchOutcome,
@@ -271,4 +272,8 @@ export function recordProxyFailure(diagnostic: ProxyDiagnostics): void {
     upstream_status: diagnostic.upstreamStatus ?? 0,
     cache: diagnostic.cache ?? 'none',
   });
+}
+
+export function recordKioskCatalogLoaded(tier: KioskCatalogTier, degraded: boolean): void {
+  pushFaroEvent(TELEMETRY_EVENTS.kioskCatalogLoaded, { tier, degraded });
 }

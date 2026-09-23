@@ -2,6 +2,7 @@ import {
   recordGuideRequest,
   recordGuideRender,
   recordContentFetch,
+  recordKioskCatalogLoaded,
   recordContentFetchFallback,
   recordCustomGuideCatalogueUnavailable,
   recordSettingsStoreResolved,
@@ -141,4 +142,12 @@ it('emits private guide diagnostics without private identifiers, bodies or messa
     'pathfinder_guide_render',
     expect.objectContaining({ http_status: '404', stage: 'fetch' })
   );
+});
+
+it('records the served kiosk tier and degradation without catalog content', () => {
+  recordKioskCatalogLoaded('bundled', true);
+  expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_kiosk_catalog_loaded', {
+    tier: 'bundled',
+    degraded: true,
+  });
 });

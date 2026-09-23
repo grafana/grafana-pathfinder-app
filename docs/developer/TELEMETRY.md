@@ -150,3 +150,9 @@ These backend logs are the primary alert source, so browser
 initialization and Faro activity gating are not detection prerequisites. A silent period
 is not recovery proof; verify successful endpoint/user flows. Frontend degraded rendering
 and upstream service recovery are separate observations.
+
+## Kiosk catalogs and launches
+
+`pathfinder_kiosk_catalog_loaded` records the served `tier` (`override`, `configured`, `generic`, or `bundled`) and whether loading `degraded`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason; rejected rule logs name the invalid field without its value.
+
+`KioskDemoStarted` includes `launch_mode` (`instance` or `presentation`). Since URL-selected kiosks were added, `target_instance` is the current origin for instance launches and the catalog target (or current origin) for presentation launches. Filter by `launch_mode = presentation` for booth-demo comparisons; older events lack this field. Catalog URLs, rule content, and raw failure messages are not added to catalog telemetry.
