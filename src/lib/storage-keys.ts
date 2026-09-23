@@ -51,10 +51,7 @@ export const StorageKeys = {
   // Interactive-learning banner dismissal (used with a hostname suffix). Hostname-scoped
   // to match the other experiment markers, so one reset sweep clears them together.
   INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',
-  // Dev/debug feature-flag overrides (localStorage). Read before the MTFF client.
-  FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
-  // This user's opt-in to developer surfaces (localStorage, like FLAG_OVERRIDES
-  // above). Per-user, so it lives here rather than in tenant settings — it
+  // This user's opt-in to developer surfaces (localStorage). Per-user, so it
   // replaces the old org-wide `devModeUserIds` array in plugin jsonData. Still
   // gated by the tenant-level `devMode`: both must be true.
   DEV_MODE_OPT_IN: 'grafana-pathfinder-app-dev-mode-opt-in',
