@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "2.18.1",
+  "version": "2.18.2",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
@@ -124,8 +124,8 @@
     "@grafana/coda-client": "npm:@grafana-coda/sandbox-client@^1.11.0",
     "@grafana/data": "13.2.2",
     "@grafana/e2e-selectors": "13.2.2",
-    "@grafana/faro-instrumentation-replay": "~2.11.0",
-    "@grafana/faro-web-sdk": "^2.8.2",
+    "@grafana/faro-instrumentation-replay": "~2.12.0",
+    "@grafana/faro-web-sdk": "^2.12.0",
     "@grafana/i18n": "13.2.2",
     "@grafana/runtime": "13.2.2",
     "@grafana/scenes": "^8.0.0",

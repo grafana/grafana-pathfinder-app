@@ -1,10 +1,18 @@
 import type { Locator, Page } from '@playwright/test';
 
+import { testIds } from '../../../../../src/constants/testIds';
 import {
   STEP_TYPE_KIND_KEYS,
   type StepTypeKind,
 } from '../../../../../src/components/interactive-tutorial/step-type-registry';
-import { DEFAULT_STEP_TIMEOUT_MS, TIMEOUT_PER_GUIDED_SUBSTEP_MS, TIMEOUT_PER_MULTISTEP_ACTION_MS } from '../constants';
+import {
+  DEFAULT_STEP_TIMEOUT_MS,
+  MAX_FIX_ATTEMPTS,
+  TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+  TIMEOUT_PER_MULTISTEP_ACTION_MS,
+} from '../constants';
+import { handleRequirementsWithFix } from '../requirements';
+import { codeblockDriver } from './codeblock';
 import type { TestableStep } from '../types';
 import { clickSkipButtonAndSync, executeStandardStep, inspectCommonStep, isStepComplete } from './shared';
 import { executeGuidedStep } from './guided';
@@ -54,6 +62,10 @@ function supportedDriver(
   return {
     kind,
     supported: true,
+    root: (page, stepId) => page.getByTestId(testIds.interactive.step(stepId)),
+    detachmentCompletes: true,
+    checkRequirements: ({ page, step, verbose }) =>
+      handleRequirementsWithFix(page, step, { verbose, attemptFix: true, maxFixAttempts: MAX_FIX_ATTEMPTS }),
     inspect,
     timeout,
     completionState: isStepComplete,
@@ -62,13 +74,16 @@ function supportedDriver(
   };
 }
 
-function unsupportedDriver(kind: Exclude<StepTypeKind, 'plain' | 'multistep' | 'guided'>): StepDriver {
+function unsupportedDriver(kind: Exclude<StepTypeKind, 'plain' | 'multistep' | 'guided' | 'codeblock'>): StepDriver {
   const unsupported = (): never => {
     throw new Error(`Step kind "${kind}" does not have an E2E driver`);
   };
   return {
     kind,
     supported: false,
+    root: unsupported,
+    detachmentCompletes: false,
+    checkRequirements: unsupported,
     inspect: unsupported,
     timeout: () => DEFAULT_STEP_TIMEOUT_MS,
     completionState: unsupported,
@@ -94,7 +109,7 @@ const drivers = [
   unsupportedDriver('quiz'),
   unsupportedDriver('terminal'),
   unsupportedDriver('terminal-connect'),
-  unsupportedDriver('codeblock'),
+  codeblockDriver,
   unsupportedDriver('challenge'),
   unsupportedDriver('datasource-check'),
 ] as const satisfies readonly StepDriver[];

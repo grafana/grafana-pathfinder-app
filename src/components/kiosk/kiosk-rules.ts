@@ -1,18 +1,19 @@
-/**
- * Kiosk mode rule types, bundled defaults, and CDN fetch logic.
- */
+import { logger } from '../../lib/logging';
+import { recordKioskCatalogLoaded, type KioskCatalogTier } from '../../lib/telemetry';
+import defaultKiosk from './default-kiosk.json';
+import { parseKioskWebUrl, validateKioskOverride } from '../../security/kiosk-url';
+import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
 
 export interface KioskRule {
   title: string;
   url: string;
   description: string;
   type: string;
-  /** Grafana instance to open the guide on. Defaults to current origin if omitted. */
   targetUrl?: string;
+  page?: string;
 }
 
 export interface KioskRulesResponse {
-  /** HTML banner rendered at the top of the kiosk overlay */
   banner?: string;
   rules: KioskRule[];
 }
@@ -22,195 +23,158 @@ export interface KioskData {
   rules: KioskRule[];
 }
 
-/**
- * Default HTML banner themed for GrafanaCON.
- */
 export const DEFAULT_BANNER = `
-<div style="display:flex;align-items:center;gap:32px;padding:32px 40px;border-radius:16px;background:linear-gradient(135deg,#1a0533 0%,#2d1b69 50%,#f55f3e 100%);border:1px solid rgba(245,95,62,0.3);margin-bottom:8px;overflow:hidden;">
-  <img src="https://a-us.storyblok.com/f/1022730/370x168/3b714f67ef/grafanacon-stack-logo-2026.svg" alt="GrafanaCON 2026" style="height:120px;flex-shrink:0;" />
-  <div style="flex:1;min-width:0;">
-    <h2 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#fff;letter-spacing:-0.01em;">Welcome to the Interactive Learning Booth</h2>
-    <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.75);line-height:1.6;">Choose a hands-on guide below to explore Grafana features at your own pace. Each guide opens in a new tab with step-by-step interactive instructions.</p>
-  </div>
-</div>
+<h2>Learn Grafana</h2>
+<p>Explore interactive guides.</p>
 `;
 
-/**
- * Bundled default rules used as fallback when CDN fetch fails or no URL is configured.
- */
-export const BUNDLED_KIOSK_RULES: KioskRule[] = [
-  {
-    title: 'Tour of Grafana Visualizations',
-    url: 'https://interactive-learning.grafana.net/guides/tour-of-visualizations',
-    description: "A quick tour of Grafana's visualization types\u2014when to use each one, with live examples.",
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Interactive Guide: Explore Drilldowns 101',
-    url: 'https://interactive-learning.grafana.net/guides/explore-drilldowns-101',
-    description: 'Hands-on guide: Explore drilldowns in Grafana.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Interactive Guide: Your First Dashboard',
-    url: 'https://interactive-learning.grafana.net/guides/first-dashboard',
-    description: 'Hands-on guide: Build your first Grafana dashboard.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Interactive Guide: Welcome to Grafana Play',
-    url: 'https://interactive-learning.grafana.net/guides/welcome-to-play/main-page',
-    description: 'Comprehensive walkthrough of Grafana Play features and capabilities.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Interactive Guide: Alerting 101',
-    url: 'https://interactive-learning.grafana.net/guides/alerting-101',
-    description: 'Hands-on guide: Learn how to create and test alerts in Grafana.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Interactive Guide: IRM Setup and Configuration',
-    url: 'https://interactive-learning.grafana.net/guides/irm-configuration',
-    description:
-      'Hands-on guide: Set up Grafana IRM for on-call notifications, including schedules and escalation chains.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'How to set up your first Synthetic Monitoring check',
-    url: 'https://interactive-learning.grafana.net/guides/sm-setting-up-your-first-check',
-    description: 'Hands-on guide: Create and configure HTTP checks in Grafana Cloud Synthetic Monitoring.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Interactive Guide: CPU Usage in Kubernetes',
-    url: 'https://interactive-learning.grafana.net/guides/k8s-cpu',
-    description: 'Hands-on guide: Explore CPU usage in Kubernetes Monitoring, from namespaces to containers.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Interactive Guide: Memory Usage in Kubernetes',
-    url: 'https://interactive-learning.grafana.net/guides/k8s-mem',
-    description: 'Hands-on guide: Explore memory usage in Kubernetes Monitoring, from namespaces to containers.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Interactive Guide: Enable Block Editor',
-    url: 'https://interactive-learning.grafana.net/guides/enable-block-editor',
-    description: 'Hands-on guide: Learn how to enable the Block Editor for first-time authors.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Connect a metrics data source to Grafana Cloud',
-    url: 'https://interactive-learning.grafana.net/guides/connect-metrics-data/content.json',
-    description: 'Hands-on guide: Learn how to connect a metrics data source to Grafana Cloud.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Introduction to data transformations',
-    url: 'https://interactive-learning.grafana.net/guides/find-transformations/content.json',
-    description: 'Hands-on guide: Learn how to use data transformations in Grafana.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Reduce log volume using Adaptive Logs recommendations',
-    url: 'https://interactive-learning.grafana.net/guides/reduce-log-volume-adaptive-logs/content.json',
-    description: 'Hands-on guide: Reduce log volume safely with Adaptive Logs.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Reduce metrics volume using Adaptive Metrics recommendations',
-    url: 'https://interactive-learning.grafana.net/guides/adaptive-metrics-recommendations/content.json',
-    description: 'Hands-on guide: Reduce metrics volume safely with Adaptive Metrics.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Welcome to Testing & Synthetics!',
-    url: 'https://interactive-learning.grafana.net/guides/test-sm-overview-tutorial',
-    description: 'Hands-on guide: Navigate Testing & Synthetics; Understanding K6 and Synthetic Monitoring.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Understanding the Four Golden Signals of Observability',
-    url: 'https://interactive-learning.grafana.net/guides/understanding-the-four-golden-signals-of-observability',
-    description:
-      'Learn about the Four Golden Signals \u2014 Latency, Traffic, Errors, and Saturation \u2014 with interactive examples.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Explore SQL Expressions with The Traitors UK Dashboard',
-    url: 'https://interactive-learning.grafana.net/guides/play-traitors-uk-tour/content.json',
-    description:
-      'A guided tour of the Traitors UK Series 4 dashboard, exploring how SQL expressions transform raw data into rich visualizations.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Fleet Management: Onboard Your First Collector',
-    url: 'https://interactive-learning.grafana.net/guides/fleet-management-onboarding/content.json',
-    description: 'Hands-on guide: Deploy and connect a Grafana Alloy collector to Fleet Management.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-  {
-    title: 'Tour the UK Carbon Intensity Dashboard',
-    url: 'https://interactive-learning.grafana.net/guides/play-carbon-intensity/content.json',
-    description: 'Explore live UK carbon intensity data with the Infinity data source and JQ expressions.',
-    type: 'interactive',
-    targetUrl: 'https://play.grafana.org',
-  },
-];
+export const DEFAULT_KIOSK_URL = 'https://interactive-learning.grafana.net/guides/kiosk/default/rules.json';
 
-function isValidRule(item: unknown): item is KioskRule {
-  if (!item || typeof item !== 'object') {
-    return false;
+export const BUNDLED_KIOSK_RULES: KioskRule[] = defaultKiosk.rules;
+
+type CatalogFailureReason = 'invalid_url' | 'http' | 'invalid_rules' | 'invalid_json' | 'timeout' | 'network';
+
+class CatalogError extends Error {
+  constructor(readonly reason: CatalogFailureReason) {
+    super(reason);
   }
-  const obj = item as Record<string, unknown>;
-  return typeof obj.title === 'string' && typeof obj.url === 'string' && typeof obj.description === 'string';
 }
 
-/**
- * Fetch kiosk data (banner + rules) from a CDN URL.
- * Returns bundled defaults when no URL is configured.
- * Throws when a URL IS configured but the fetch fails, so the caller
- * can surface a warning while falling back to bundled defaults.
- */
-export async function fetchKioskData(url: string): Promise<KioskData> {
+function invalidRuleField(item: unknown): string | undefined {
+  if (!item || typeof item !== 'object') {
+    return 'rule';
+  }
+  const obj = item as Record<string, unknown>;
+  for (const field of ['title', 'url', 'description'] as const) {
+    if (typeof obj[field] !== 'string') {
+      return field;
+    }
+  }
+  if (!isAllowedContentUrl(obj.url as string)) {
+    return 'url';
+  }
+  if (
+    obj.targetUrl !== undefined &&
+    (typeof obj.targetUrl !== 'string' || !parseKioskWebUrl(obj.targetUrl, window.location.origin))
+  ) {
+    return 'targetUrl';
+  }
+  if (obj.type !== undefined && typeof obj.type !== 'string') {
+    return 'type';
+  }
+  if (obj.page !== undefined && (typeof obj.page !== 'string' || validateInternalNavigationPath(obj.page) === null)) {
+    return 'page';
+  }
+  return undefined;
+}
+
+function catalogFailureReason(error: unknown): CatalogFailureReason {
+  if (error instanceof CatalogError) {
+    return error.reason;
+  }
+  if (error instanceof SyntaxError) {
+    return 'invalid_json';
+  }
+  return error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'network';
+}
+
+export async function fetchKioskData(
+  url: string,
+  signal?: AbortSignal,
+  tier: KioskCatalogTier = 'configured'
+): Promise<KioskData> {
   if (!url) {
     return { banner: DEFAULT_BANNER, rules: BUNDLED_KIOSK_RULES };
   }
-
-  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  const parsed = parseKioskWebUrl(url, window.location.origin);
+  if (!parsed) {
+    throw new CatalogError('invalid_url');
+  }
+  const response = await fetch(parsed.href, {
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000),
+    credentials: 'omit',
+    // Browsers cannot inspect cross-origin redirect targets before following them.
+    redirect: 'error',
+  });
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+    throw new CatalogError('http');
   }
 
   const data: KioskRulesResponse = await response.json();
   const rules = Array.isArray(data?.rules) ? data.rules : Array.isArray(data) ? data : [];
-  const valid = rules.filter(isValidRule).map((rule) => ({ ...rule, type: rule.type || 'guide' }));
-
+  const valid = rules
+    .filter((rule: unknown): rule is KioskRule => {
+      const field = invalidRuleField(rule);
+      if (field) {
+        logger.warn('Kiosk catalog rule rejected', { tier, field });
+        return false;
+      }
+      return true;
+    })
+    .map((rule) => ({ ...rule, type: rule.type || 'guide' }));
   if (valid.length === 0) {
-    throw new Error('No valid rules in response');
+    throw new CatalogError('invalid_rules');
   }
-
   return {
-    banner: typeof data?.banner === 'string' ? data.banner : DEFAULT_BANNER,
+    banner: typeof data?.banner === 'string' && data.banner.trim() ? data.banner : DEFAULT_BANNER,
     rules: valid,
   };
+}
+
+export async function loadKioskData(
+  defaultUrl: string,
+  overrideUrl?: string,
+  signal?: AbortSignal
+): Promise<KioskData & { warning?: string }> {
+  signal?.throwIfAborted();
+  const failed = new Set<KioskCatalogTier>();
+  const attempted = new Set<string>();
+  const override = overrideUrl ? validateKioskOverride(overrideUrl, defaultUrl, window.location.origin) : null;
+  const reject = (tier: KioskCatalogTier, reason: CatalogFailureReason) => {
+    failed.add(tier);
+    logger.warn('Kiosk catalog load failed', { tier, reason });
+  };
+  const finish = (data: KioskData, tier: KioskCatalogTier) => {
+    signal?.throwIfAborted();
+    recordKioskCatalogLoaded(tier, failed.size > 0);
+    if (failed.size === 0) {
+      return data;
+    }
+    const failure = failed.has('configured')
+      ? 'The configured kiosk could not be loaded.'
+      : 'The requested kiosk could not be loaded.';
+    const showing =
+      tier === 'configured'
+        ? 'Showing the configured default kiosk.'
+        : tier === 'generic'
+          ? 'Showing the generic learning kiosk.'
+          : 'Showing bundled guides.';
+    return { ...data, warning: `${failure} ${showing}` };
+  };
+  if (overrideUrl && !override) {
+    reject('override', 'invalid_url');
+  }
+  const candidates: Array<[KioskCatalogTier, string | null]> = [
+    ['override', override],
+    ['configured', defaultUrl],
+    ['generic', defaultUrl ? DEFAULT_KIOSK_URL : null],
+  ];
+  for (const [tier, candidate] of candidates) {
+    if (!candidate) {
+      continue;
+    }
+    const url = parseKioskWebUrl(candidate, window.location.origin)?.href ?? candidate;
+    if (attempted.has(url)) {
+      continue;
+    }
+    attempted.add(url);
+    signal?.throwIfAborted();
+    try {
+      return finish(await fetchKioskData(url, signal, tier), tier);
+    } catch (error) {
+      signal?.throwIfAborted();
+      reject(tier, catalogFailureReason(error));
+    }
+  }
+  return finish({ banner: DEFAULT_BANNER, rules: BUNDLED_KIOSK_RULES }, 'bundled');
 }

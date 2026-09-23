@@ -59,7 +59,7 @@ The legacy selector excludes `interactive-step-completed-*` badges. These badges
 
 One `StepDriver` registry owns metadata inspection, product controls, execution, skip behavior, and completion rules. The registry uses `data-test-step-kind` keys.
 
-The runner supports `plain`, `multistep`, and `guided`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
+The runner supports `plain`, `multistep`, `guided`, and `codeblock`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
 
 Unsupported roots do not change the outcome when a guide also renders a supported root. The runner reports each unsupported kind and step ID.
 
@@ -72,6 +72,28 @@ The CLI shows `Skipped (unsupported steps)` and exits with code 0. The skipped g
 Browser actions use only rendered DOM state. Raw guide JSON can identify authored interactive content, but it cannot control browser actions.
 
 These runner changes do not change root ownership, existing test IDs, state values, or product completion behavior.
+
+---
+
+## Codeblock runner contract
+
+A codeblock uses `code-block-step-${stepId}` as its root test ID, not `interactive-step-${stepId}`.
+
+The codeblock driver clicks `code-block-insert-${stepId}`. It never substitutes Show me or Copy for Insert, and it never reads code from guide JSON.
+
+The product owns editor resolution, insertion, and completion. The runner requires `data-test-step-state="completed"` after Insert or Skip. Root detachment alone does not establish completion.
+
+The root exposes `data-test-skippable="true"` or `"false"`, including before a blocked step shows its Skip control. This attribute keeps discovery independent of transient control visibility.
+
+Codeblock state values include `idle`, `checking`, `executing`, `completed`, `error`, and `requirements-unmet`. An insertion error uses `error` after execution settles. A successful retry clears the error. Completed state suppresses stale insertion errors.
+
+The requirement explanation uses `interactive-requirement-${stepId}` (`testIds.interactive.requirementCheck`). The insertion error uses `interactive-error-${stepId}` (`testIds.interactive.errorMessage`). The blocked, skippable step uses the existing `interactive-skip-${stepId}` control.
+
+Codeblocks do not expose an automatic Fix control. The driver waits for requirements checking, then reports an unmet mandatory requirement or operates the available Skip control.
+
+Older plugin builds without the new skippability attribute fall back to the rendered Skip control. Without the error test ID or error state, an insertion failure can report a completion timeout instead of the product error. Builds without tracked codeblock roots remain outside codeblock discovery.
+
+Contract tests live in `src/components/interactive-tutorial/code-block-step.contract.test.tsx`. Browser regression tests live in `tests/e2e-runner/codeblock-driver.spec.ts`.
 
 ---
 
