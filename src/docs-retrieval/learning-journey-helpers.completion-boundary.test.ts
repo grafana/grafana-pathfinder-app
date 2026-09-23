@@ -99,6 +99,7 @@ import {
   recordGuideCompletionForSurface,
   resolveActiveMilestoneSlug,
   getMilestoneSlug,
+  journeyMilestonePercentages,
 } from './learning-journey-helpers';
 import { resetGuideProgress } from '../components/docs-panel/hooks/resetGuideProgress';
 import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
@@ -853,6 +854,46 @@ describe('track-only guide completion (Path Tracks RFC — no learningJourney, n
     // real bundled milestone's own slug takes; reader and writer agree
     // either way since both go through this one function.
     expect(interactiveCompletionSetMock).toHaveBeenCalledWith('bundled:track-only/content.json', 100);
+  });
+
+  // Regression (moxious review on PR #1927,
+  // "track-only-completion-after-fully-failed-parent-lookup", HIGH,
+  // direct/deep-link entry point): when both the path's own resolve and its
+  // bypass-cache retry fail, `trackMemberBaseUrl` falls back to this guide's
+  // own contentUrl (package-content.ts) instead of dropping the write. Proves
+  // that fallback is actually usable end to end: the write still lands under
+  // this guide's own URL — the SAME key the cover page's per-track read
+  // (`journeyMilestonePercentages`) computes from that guide's own resolved
+  // `Milestone.url` — so the track's next row reads as unlocked/current, the
+  // same as a fully successful parent resolve would produce.
+  it("lets the track's next row read as current after a completion write against the fallback identity (both parent lookups failed)", async () => {
+    const firstGuideUrl = 'https://ex/builder/first-dashboard/content.json';
+    const secondGuideUrl = 'https://ex/builder/welcome-to-grafana/content.json';
+
+    recordGuideCompletionForSurface({
+      baseUrl: firstGuideUrl,
+      contentUrl: firstGuideUrl,
+      currentUrl: firstGuideUrl,
+      contentType: 'interactive',
+      metadata: {
+        title: '',
+        packageManifest: { id: 'the-path', repository: 'app-platform', type: 'path' },
+        // Neither `baseUrlResolution` nor its retry produced the path's own
+        // resolved URL — this guide's own contentUrl is all that's left.
+        trackMemberBaseUrl: firstGuideUrl,
+      },
+      guideTitle: 'First dashboard',
+    });
+    await flush();
+
+    const trackMilestones = [
+      { id: 'first-dashboard', number: 1, title: 'First dashboard', url: firstGuideUrl, isActive: false },
+      { id: 'welcome-to-grafana', number: 2, title: 'Welcome to Grafana', url: secondGuideUrl, isActive: false },
+    ];
+    const percentages = journeyMilestonePercentages('https://ex/lp/the-path/', trackMilestones);
+
+    expect(percentages[0]!.percent).toBe(100);
+    expect(percentages[1]!.percent).toBe(0);
   });
 });
 

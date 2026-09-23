@@ -148,10 +148,12 @@ export const FOUNDATIONS_TRACK_ID = 'foundations';
  * consumer should read through, so a malformed entry is dropped consistently
  * instead of each call site inventing its own guard.
  *
- * Also enforces the two invariants `ManifestJsonSchema` Rule 4 only checks at
- * authoring time (package.schema.ts's `superRefine`, exercised by the CLI's
- * `validate` command): no track may reuse the reserved `FOUNDATIONS_TRACK_ID`,
- * and no two tracks may share a `trackId`. Every runtime loader
+ * Also enforces the invariants authoring-time validation only checks through
+ * `ManifestJsonSchema` (package.schema.ts's `.min(1)` on `guides` baked into
+ * `ManifestTrackSchema`, and Rule 4's `superRefine`, both exercised by the
+ * CLI's `validate` command): no track may declare an empty `guides` list, no
+ * track may reuse the reserved `FOUNDATIONS_TRACK_ID`, and no two tracks may
+ * share a `trackId`. Every runtime loader
  * (app-platform-resolver.ts, online-cdn-resolver.ts, loader.ts,
  * package-info-from-url.ts, repository-client.ts) parses the unrefined
  * `ManifestJsonObjectSchema` instead, and `scripts/upsert-learning-path.sh`
@@ -177,7 +179,11 @@ export function getManifestTracks(source?: { tracks?: unknown } | null): Manifes
   const seenTrackIds = new Set<string>();
   const tracks: ManifestTrack[] = [];
   for (const candidate of source.tracks.filter(isManifestTrack)) {
-    if (candidate.trackId === FOUNDATIONS_TRACK_ID || seenTrackIds.has(candidate.trackId)) {
+    if (
+      candidate.trackId === FOUNDATIONS_TRACK_ID ||
+      seenTrackIds.has(candidate.trackId) ||
+      candidate.guides.length === 0
+    ) {
       continue;
     }
     seenTrackIds.add(candidate.trackId);

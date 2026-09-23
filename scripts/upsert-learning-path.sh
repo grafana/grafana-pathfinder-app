@@ -435,6 +435,29 @@ if [[ "$PKG_TYPE" != "guide" ]]; then
   fi
 fi
 
+# RFC 6.1 scopes `tracks` to path manifests only — a journey is a fixed
+# reading order, so tracks presenting the same content differently do not
+# apply to it. build_manifest (below) already drops `tracks` for anything
+# other than a path, but a silent drop hides a real authoring mistake from
+# whoever is running this script; reject it instead, the same way the app's
+# own ManifestJsonSchema (superRefine) rejects it (moxious review,
+# "shell-publisher-skips-path-only-enforcement" — this script doesn't call
+# that schema, so it needs the equivalent check of its own).
+if [[ "$PKG_TYPE" != "path" ]] && [[ "$(jq -r '(.tracks // []) | length' "$ROOT_MANIFEST")" != "0" ]]; then
+  echo "${ROOT_MANIFEST} is a ${PKG_TYPE} but declares tracks — the Path Tracks RFC scopes tracks to path manifests only" >&2
+  exit 1
+fi
+
+# Every track's own `guides` list must be non-empty, the same .min(1)
+# constraint ManifestJsonSchema enforces for both `milestones` and `tracks`.
+# Without this check, an empty list here publishes a track tab with nothing
+# in it, silently.
+EMPTY_TRACK=$(jq -r '(.tracks // [])[] | select((.guides // []) | length == 0) | .trackId // "(missing trackId)"' "$ROOT_MANIFEST" | head -n1)
+if [[ -n "$EMPTY_TRACK" ]]; then
+  echo "${ROOT_MANIFEST} has a track (\"${EMPTY_TRACK}\") with an empty guides list" >&2
+  exit 1
+fi
+
 # A track's own guides (Path Tracks RFC) are not implicitly milestones — a
 # track may reference a guide `milestones` never had — so build_manifest
 # above already emits them in spec.manifest.tracks, but nothing yet uploads

@@ -98,6 +98,25 @@ describe('getManifestTracks', () => {
       })
     ).toEqual([{ trackId: 'builder', label: 'Builder', guides: ['a'] }]);
   });
+
+  // Regression (moxious review on PR #1927,
+  // "shell-publisher-skips-path-only-enforcement", HIGH, runtime half):
+  // package.schema.ts's `ManifestTrackSchema` already rejects an empty
+  // `guides` list at authoring time (`.min(1)`), but that schema, like Rule
+  // 4's superRefine, only runs through the CLI's `validate` command — not
+  // every runtime loader, and not scripts/upsert-learning-path.sh. Enforcing
+  // it here too, the same way the reserved-trackId and duplicate-trackId
+  // checks above already are, makes it true on every path.
+  it('drops a track with an empty guides list', () => {
+    expect(
+      getManifestTracks({
+        tracks: [
+          { trackId: 'builder', label: 'Builder', guides: [] },
+          { trackId: 'seller', label: 'Seller', guides: ['a'] },
+        ],
+      })
+    ).toEqual([{ trackId: 'seller', label: 'Seller', guides: ['a'] }]);
+  });
 });
 
 describe('getAllTrackGuideIds', () => {

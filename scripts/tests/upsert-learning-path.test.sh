@@ -297,29 +297,40 @@ else
   nope "track-guide upload ordering" "order: $(write_order)"
 fi
 
-# Regression (moxious review flagging the identical bug fixed in
-# package.schema.ts's Rule 3): RFC §6.1 scopes tracks to paths only — a
-# journey is a fixed reading order, and tracks presenting the same content
-# differently don't apply to it. build_manifest's $isMeta gate covered both
-# path and journey for tracks, so a journey manifest with tracks would have
-# projected them into spec.manifest anyway.
+# Regression (moxious review, "shell-publisher-skips-path-only-enforcement",
+# HIGH): RFC §6.1 scopes tracks to paths only — a journey is a fixed reading
+# order, and tracks presenting the same content differently don't apply to
+# it. This script doesn't call ManifestJsonSchema (the app-side Zod schema
+# that already rejects this shape via superRefine — package.schema.ts's Rule
+# 3), so build_manifest's own $isPath gate used to just silently DROP tracks
+# from a journey's spec.manifest rather than rejecting the upload — hiding a
+# real authoring mistake from whoever ran this script. It must fail loudly
+# instead, before any write.
 JOURNEY_TRACKED=$(path_pkg journey-tracked)
 printf '{"id":"lp","type":"journey","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":["m-a","m-b"]}]}' \
   >"${JOURNEY_TRACKED}/manifest.json"
 
 MODE=empty run --package "$JOURNEY_TRACKED"
-expect_code "a journey with tracks still uploads" 0
-COVER_BODY=$(printf '%s\n' "$RUN_LOG" | grep -E '^BODY\s' | grep '"name": *"lp"')
-if [[ "$COVER_BODY" != *'"tracks"'* ]]; then
-  ok "tracks are dropped from a journey's spec.manifest, not just a path's"
+expect_code "a journey with tracks is rejected outright, not silently uploaded without them" 1
+expect_out "and explains why" "scopes tracks to path manifests only"
+if [[ "$(writes)" == "0" ]]; then
+  ok "the rejected journey-with-tracks package writes nothing at all"
 else
-  nope "journey tracks should be dropped" "$COVER_BODY"
+  nope "a rejected package should write nothing" "$RUN_LOG"
 fi
-if [[ "$COVER_BODY" == *'"milestones"'* ]]; then
-  ok "milestones still project for a journey"
-else
-  nope "journey milestones should still project" "$COVER_BODY"
-fi
+
+# Regression (moxious review, "shell-publisher-skips-path-only-enforcement",
+# HIGH, second half): a track's own `guides` list must be non-empty, the
+# same .min(1) constraint ManifestJsonSchema enforces. Without this check, an
+# empty list here would publish a track tab with nothing in it, silently.
+EMPTY_TRACK_PKG=$(path_pkg empty-track)
+printf '{"id":"lp","type":"path","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":[]}]}' \
+  >"${EMPTY_TRACK_PKG}/manifest.json"
+
+MODE=empty run --package "$EMPTY_TRACK_PKG"
+expect_code "a track with an empty guides list is rejected outright" 1
+expect_out "and names the empty track" "\"builder\""
+expect_out "and explains why" "empty guides list"
 
 MODE=existing_ours run --package "$PKG"
 expect_code "re-running an already-uploaded package succeeds" 0
