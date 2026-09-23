@@ -408,6 +408,32 @@ describe('LearningPathTableOfContents', () => {
       expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'true');
     });
 
+    // Regression: the active track tab used to be purely local state, never
+    // reaching the panel model — so its own Next/Previous (the milestone
+    // toolbar and, until removed, the legacy bottom nav) always resolved
+    // against Foundations regardless of the selected tab (captain-reported).
+    // onActiveTrackChange is how the model learns which tab is selected.
+    it('reports the selected tab via onActiveTrackChange, including on mount', () => {
+      setCompletedSlugs(new Set());
+      const onActiveTrackChange = jest.fn();
+      render(
+        <LearningPathTableOfContents
+          milestones={milestones}
+          baseUrl={baseUrl}
+          tracks={tracks}
+          onActiveTrackChange={onActiveTrackChange}
+        />
+      );
+
+      expect(onActiveTrackChange).toHaveBeenLastCalledWith(null);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
+      expect(onActiveTrackChange).toHaveBeenLastCalledWith('builder');
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Foundations' }));
+      expect(onActiveTrackChange).toHaveBeenLastCalledWith(null);
+    });
+
     // Regression (human review on PR #1927, "Stale track tab across
     // paths", MEDIUM): activeTabId was initialized once and never reset
     // when the props changed, and there is no remount key between paths —

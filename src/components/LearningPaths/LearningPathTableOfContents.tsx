@@ -1,4 +1,4 @@
-import React, { useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { useStyles2, Icon, TabsBar, Tab } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
@@ -41,6 +41,15 @@ export interface LearningPathTableOfContentsProps {
    * a single flat list, no tabs.
    */
   tracks?: CoverPageTrack[];
+  /**
+   * Notified whenever the selected tab changes — `null` for the default
+   * Foundations sequence, a track's own `trackId` otherwise — including once
+   * on mount/path-change so the panel model's own record never starts stale.
+   * Lets `docs-panel.tsx`'s `canNavigateNext`/`navigateToNextMilestone` (and
+   * the Previous pair) resolve Next/Previous against the selected track's
+   * own guides instead of always falling through to Foundations.
+   */
+  onActiveTrackChange?: (trackId: string | null) => void;
 }
 
 export function LearningPathTableOfContents({
@@ -50,6 +59,7 @@ export function LearningPathTableOfContents({
   title,
   description,
   tracks,
+  onActiveTrackChange,
 }: LearningPathTableOfContentsProps) {
   const styles = useStyles2(getTableOfContentsStyles);
   const badge = pathId ? getBadgeForPath(pathId) : undefined;
@@ -74,6 +84,14 @@ export function LearningPathTableOfContents({
       ? tracks!.find((track) => track.trackId === activeTabId)
       : undefined;
   const activeMilestones = activeTrack?.milestones ?? milestones;
+
+  // Report the selected tab to the panel model — including on mount and on
+  // the baseUrl-driven reset above — so its own record of "which track is
+  // active" never starts or goes stale. See this prop's own doc comment.
+  useEffect(() => {
+    onActiveTrackChange?.(activeTrack?.trackId ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the selection itself and its owning path should re-fire this, not a fresh onActiveTrackChange identity every render
+  }, [activeTrack?.trackId, baseUrl]);
   // The active sequence's own name, not the path's — reused below to scope
   // the progress ring's accessible label. A track is a presentation
   // ordering only (COMPLETION-MODEL.md), so its ring must read as "progress

@@ -8,13 +8,15 @@ import {
   generateJourneyContentWithExtras,
   getJourneyProgress,
   getMilestoneSlug,
+  getNextMilestoneId,
   getNextMilestoneUrl,
+  getPreviousMilestoneId,
   journeyMilestonePercentages,
   getPreviousMilestoneUrl,
   isLastMilestone,
 } from './learning-journey-helpers';
 import { StorageKeys } from '../lib/storage-keys';
-import type { RawContent, Milestone, LearningJourneyMetadata } from '../types/content.types';
+import type { RawContent, Milestone, LearningJourneyMetadata, CoverPageTrack } from '../types/content.types';
 
 function milestone(number: number, overrides: Partial<Milestone> = {}): Milestone {
   return {
@@ -26,7 +28,12 @@ function milestone(number: number, overrides: Partial<Milestone> = {}): Mileston
   };
 }
 
-function journeyContent(currentMilestone: number, milestones: Milestone[], baseUrl = 'backend-guide:path'): RawContent {
+function journeyContent(
+  currentMilestone: number,
+  milestones: Milestone[],
+  baseUrl = 'backend-guide:path',
+  tracks?: CoverPageTrack[]
+): RawContent {
   return {
     content: '',
     type: 'learning-journey',
@@ -39,6 +46,7 @@ function journeyContent(currentMilestone: number, milestones: Milestone[], baseU
         totalMilestones: milestones.length,
         milestones,
         baseUrl,
+        ...(tracks && { tracks }),
       },
     },
   };
@@ -238,6 +246,22 @@ describe('generateJourneyContentWithExtras — locked-milestone handling', () =>
     const html = generateJourneyContentWithExtras('', ljMetadata(1, [milestone(1), milestone(2), milestone(3)]));
     expect(html).toContain('Next →');
   });
+
+  // The React cover-page hero (LearningPathTableOfContents) already renders
+  // its own Resume/Start CTA and, once a tab is selected, the sticky
+  // toolbar's own Next/Previous cover the same job — this legacy block
+  // duplicated both, and its own Next/Previous ignored Path Tracks tab
+  // selection entirely (captain-reported bug; see cover-page.ts).
+  it('omits the bottom nav entirely on the cover page, regardless of skipReadyToBegin', () => {
+    const metadata = ljMetadata(0, [milestone(1), milestone(2)]);
+    expect(generateJourneyContentWithExtras('', metadata, false)).not.toContain('journey-bottom-navigation');
+    expect(generateJourneyContentWithExtras('', metadata, true)).not.toContain('journey-bottom-navigation');
+  });
+
+  it('still renders the bottom nav on a real milestone', () => {
+    const html = generateJourneyContentWithExtras('', ljMetadata(1, [milestone(1), milestone(2), milestone(3)]));
+    expect(html).toContain('journey-bottom-navigation');
+  });
 });
 
 describe('getNextMilestoneUrl', () => {
@@ -307,5 +331,72 @@ describe('getPreviousMilestoneUrl', () => {
   it('returns null when already on the cover page (milestone 0)', () => {
     const content = journeyContent(0, [milestone(1), milestone(2)]);
     expect(getPreviousMilestoneUrl(content)).toBeNull();
+  });
+});
+
+// Path Tracks: a selected track tab on the cover page should redirect
+// Next/Previous into that track's own guides instead of always falling
+// through to the Foundations `milestones` sequence — the bug the captain
+// flagged live (Builder tab selected and 100% complete, but the toolbar's
+// Next arrow still landed on Foundations "Introduction").
+describe('getNextMilestoneUrl / getNextMilestoneId — active track selection', () => {
+  const builderTrack = (): CoverPageTrack => ({
+    trackId: 'builder',
+    label: 'Builder',
+    milestones: [
+      { number: 1, title: 'Builder one', url: 'backend-guide:builder-one', isActive: false, id: 'builder-one' },
+      { number: 2, title: 'Builder two', url: 'backend-guide:builder-two', isActive: false, id: 'builder-two' },
+    ],
+  });
+
+  it('resolves next within the active track on the cover page, not Foundations', () => {
+    const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [builderTrack()]);
+    expect(getNextMilestoneUrl(content, 'builder')).toBe('backend-guide:builder-one');
+    expect(getNextMilestoneId(content, 'builder')).toBe('builder-one');
+  });
+
+  it('falls back to Foundations when no track is active', () => {
+    const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [builderTrack()]);
+    expect(getNextMilestoneUrl(content, null)).toBe('backend-guide:milestone-1');
+    expect(getNextMilestoneUrl(content)).toBe('backend-guide:milestone-1');
+  });
+
+  it('falls back to Foundations for an unknown track id', () => {
+    const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [builderTrack()]);
+    expect(getNextMilestoneUrl(content, 'seller')).toBe('backend-guide:milestone-1');
+  });
+
+  it('ignores a stale active track once past the cover (currentMilestone > 0)', () => {
+    // Mirrors the real shape once a Foundations milestone has actually loaded
+    // — activeTrackId can still be set from before the reader left the cover,
+    // and must not be applied to an in-progress Foundations traversal.
+    const content = journeyContent(1, [milestone(1), milestone(2)], 'backend-guide:cover', [builderTrack()]);
+    expect(getNextMilestoneUrl(content, 'builder')).toBe('backend-guide:milestone-2');
+  });
+
+  it('skips a locked entry within the active track the same way Foundations does', () => {
+    const track: CoverPageTrack = {
+      trackId: 'builder',
+      label: 'Builder',
+      milestones: [
+        { number: 1, title: 'Locked', url: '', isActive: false, isLocked: true },
+        { number: 2, title: 'Builder two', url: 'backend-guide:builder-two', isActive: false, id: 'builder-two' },
+      ],
+    };
+    const content = journeyContent(0, [milestone(1)], 'backend-guide:cover', [track]);
+    expect(getNextMilestoneUrl(content, 'builder')).toBe('backend-guide:builder-two');
+  });
+});
+
+describe('getPreviousMilestoneUrl — active track selection', () => {
+  it('stays null on the cover page regardless of the active track (nothing before the cover)', () => {
+    const track: CoverPageTrack = {
+      trackId: 'builder',
+      label: 'Builder',
+      milestones: [{ number: 1, title: 'Builder one', url: 'backend-guide:builder-one', isActive: false }],
+    };
+    const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [track]);
+    expect(getPreviousMilestoneUrl(content, 'builder')).toBeNull();
+    expect(getPreviousMilestoneId(content, 'builder')).toBeUndefined();
   });
 });

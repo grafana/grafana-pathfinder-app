@@ -137,6 +137,41 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
   });
 });
 
+// The React cover-page hero (LearningPathTableOfContents) already renders
+// this path's own title and description — a guide authored the older,
+// hero-less way opens with the same title+intro as its own leading block,
+// which reads as a plain duplicate once the hero exists (captain-reported).
+describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own duplicate leading title block", () => {
+  it('drops a leading markdown block that starts with a heading', () => {
+    const input = guide([
+      { type: 'markdown', content: '# Demo tracked learning path\n\nA local demo path exercising Path Tracks.' },
+      { type: 'markdown', content: 'Real, unique milestone-list prose.' },
+    ]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks[0]).toEqual({ type: 'markdown', content: 'Real, unique milestone-list prose.' });
+    expect(blocks.some((b) => b.content?.includes('Demo tracked learning path'))).toBe(false);
+  });
+
+  it('leaves a leading block alone when it has no heading of its own (unique prose, not a duplicated title)', () => {
+    const input = guide([{ type: 'markdown', content: "Intro paragraph.\n\n## Here's what to expect\n\n- A thing" }]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks[0]).toEqual({ type: 'markdown', content: 'Intro paragraph.' });
+  });
+
+  it('never empties the guide when the leading heading block is the only content', () => {
+    const input = guide([{ type: 'markdown', content: '# Demo tracked learning path\n\nJust the title.' }]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.content).toContain('Demo tracked learning path');
+  });
+});
+
 // simpleMarkdownToHtml has broad coverage in content-fetcher.test.ts; these
 // assert the behaviors the cover-page card relies on (link sanitization).
 describe('simpleMarkdownToHtml — link safety used by cover cards', () => {

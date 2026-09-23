@@ -134,6 +134,7 @@ export function injectJourneyExtrasIntoJsonGuide(
     }
 
     wrapExpectBlockInOrangeOutline(parsed.blocks);
+    dropLeadingTitleBlock(parsed.blocks);
 
     const extrasHtml = generateJourneyContentWithExtras('', metadata, skipReadyToBegin);
     const blocks = extrasHtml.trim() ? [...parsed.blocks, { type: 'html', content: extrasHtml }] : parsed.blocks;
@@ -193,6 +194,31 @@ function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: 
 
     blocks.splice(i, 1, ...replacement);
     return;
+  }
+}
+
+const LEADING_HEADING_RE = /^#{1,6}\s+/;
+
+/**
+ * Drop the guide's own leading title+intro block on the cover page. The React
+ * cover-page hero (`LearningPathTableOfContents`) already renders this path's
+ * title and description above the module list; a guide authored the older,
+ * hero-less way opens with that same title as a heading, which reads as a
+ * plain duplicate once the hero exists.
+ *
+ * Only ever removes position 0, and only when its content actually starts
+ * with a markdown heading — a leading block of plain, heading-less prose
+ * (unique intro copy with no title of its own) is left alone, since dropping
+ * it would lose real content, not a duplicate. `wrapExpectBlockInOrangeOutline`
+ * (called first) can itself replace position 0 with the "what to expect" html
+ * card when the leading block had no text before that heading, in which case
+ * there is no duplicate to drop either. Leaves at least one block behind so a
+ * guide with nothing else never renders empty.
+ */
+function dropLeadingTitleBlock(blocks: Array<{ type: string; content?: string }>): void {
+  const first = blocks[0];
+  if (blocks.length > 1 && first?.type === 'markdown' && LEADING_HEADING_RE.test(first.content?.trimStart() ?? '')) {
+    blocks.shift();
   }
 }
 

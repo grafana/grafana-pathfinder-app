@@ -450,6 +450,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onContinueToNextMilestone={
                         model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
                       }
+                      onActiveTrackChange={
+                        activeTab ? (trackId) => model.setActiveTrackId(activeTab.id, trackId) : undefined
+                      }
                     />
                   </AlignmentPendingContext.Provider>
                 )}

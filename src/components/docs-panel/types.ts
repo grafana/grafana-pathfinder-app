@@ -120,6 +120,15 @@ export interface DocsPanelModelOperations {
   /** Check if navigation to previous milestone is possible */
   canNavigatePrevious(): boolean;
 
+  /**
+   * Record which Path Tracks tab is currently selected on a tab's cover
+   * page, so `canNavigateNext`/`navigateToNextMilestone` (and the Previous
+   * pair) resolve within that track's own guides instead of Foundations.
+   * `null` restores the default Foundations sequence. Called by
+   * `LearningPathTableOfContents` via `onActiveTrackChange`.
+   */
+  setActiveTrackId(tabId: string, trackId: string | null): void;
+
   /** Open the dev tools tab (or switch to it if already open) */
   openDevToolsTab(): void;
 

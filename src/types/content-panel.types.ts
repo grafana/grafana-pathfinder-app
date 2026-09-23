@@ -60,6 +60,17 @@ export interface LearningJourneyTab {
   pathContext?: PathContext;
   /** Set when the implied-0th-step alignment check decides a prompt is needed. */
   pendingAlignment?: PendingAlignment;
+  /**
+   * The Path Tracks tab currently selected on this tab's cover page, when any
+   * — `null`/undefined means the always-present Foundations sequence. Set by
+   * `LearningPathTableOfContents` via `onActiveTrackChange` so the milestone
+   * toolbar's and legacy bottom-nav's Next/Previous (`canNavigateNext` /
+   * `navigateToNextMilestone` in docs-panel.tsx) resolve against the
+   * selected track's own guides instead of always falling through to
+   * Foundations. Stale once the reader leaves the cover for a real
+   * milestone — `resolveActiveMilestoneSequence` ignores it there.
+   */
+  activeTrackId?: string | null;
 }
 
 /**

@@ -170,6 +170,7 @@ export function FloatingPanelContent({
             onGuideComplete?.();
           }}
           onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}
+          onActiveTrackChange={activeTab ? (trackId) => model.setActiveTrackId(activeTab.id, trackId) : undefined}
         />
       </div>
     </AlignmentPendingContext.Provider>

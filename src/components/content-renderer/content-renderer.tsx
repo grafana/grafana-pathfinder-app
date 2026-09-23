@@ -134,6 +134,13 @@ interface ContentRendererProps {
    * control itself is never conditional.
    */
   onContinueToNextMilestone?: () => void;
+  /**
+   * Fires whenever the cover page's own track-tab selection changes
+   * (`null` for the default Foundations sequence). Lets the panel model
+   * record which track is active so milestone Next/Previous resolves within
+   * it — see `LearningPathTableOfContents`'s own prop doc.
+   */
+  onActiveTrackChange?: (trackId: string | null) => void;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -173,6 +180,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   onContentReady,
   onGuideComplete,
   onContinueToNextMilestone,
+  onActiveTrackChange,
   className,
   containerRef,
 }: ContentRendererProps) {
@@ -504,6 +512,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
         title={content.metadata.title}
         description={pathDescription}
         tracks={journey.tracks}
+        onActiveTrackChange={onActiveTrackChange}
       />
     ) : null;
 

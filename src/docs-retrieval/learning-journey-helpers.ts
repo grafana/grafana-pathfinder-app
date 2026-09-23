@@ -69,28 +69,57 @@ function toAbsoluteGrafanaUrl(url: string): string {
 /**
  * Navigation helpers - these work with metadata, not DOM
  */
-export function getNextMilestoneUrl(content: RawContent): string | null {
+
+/**
+ * The milestone sequence Next/Previous should traverse. A selected track tab
+ * only ever redirects the cover page's OWN outgoing target — the RFC treats a
+ * track as a presentation ordering scoped to the cover, never a second
+ * position inside an already-open guide — so once the reader has actually
+ * left the cover (`currentMilestone > 0`, whether into Foundations or a track
+ * guide), `activeTrackId` is ignored and this always falls through to the
+ * Foundations sequence, matching every milestone-to-milestone Next/Previous
+ * today.
+ */
+function resolveActiveMilestoneSequence(
+  content: RawContent,
+  activeTrackId?: string | null
+): { currentMilestone: number; milestones: Milestone[] } | null {
   if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
     return null;
   }
 
-  const { currentMilestone, milestones } = content.metadata.learningJourney;
+  const lj = content.metadata.learningJourney;
+  if (activeTrackId && lj.currentMilestone === 0) {
+    const track = lj.tracks?.find((t) => t.trackId === activeTrackId);
+    if (track) {
+      return { currentMilestone: 0, milestones: track.milestones };
+    }
+  }
+
+  return { currentMilestone: lj.currentMilestone, milestones: lj.milestones };
+}
+
+export function getNextMilestoneUrl(content: RawContent, activeTrackId?: string | null): string | null {
+  const sequence = resolveActiveMilestoneSequence(content, activeTrackId);
+  if (!sequence) {
+    return null;
+  }
 
   // Milestones are sequentially numbered from 1. Locked (unresolved) entries
   // aren't navigable, so skip forward past any run of them to the next
   // resolved milestone — a path whose next member hasn't published yet
   // shouldn't dead-end the toolbar (RFC CUSTOM-GUIDE-PACKAGES.md §6.5).
-  const nextMilestone = milestones.find((m) => m.number > currentMilestone && !m.isLocked);
+  const nextMilestone = sequence.milestones.find((m) => m.number > sequence.currentMilestone && !m.isLocked);
   return nextMilestone ? nextMilestone.url : null;
 }
 
-export function getPreviousMilestoneUrl(content: RawContent): string | null {
-  if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
+export function getPreviousMilestoneUrl(content: RawContent, activeTrackId?: string | null): string | null {
+  const sequence = resolveActiveMilestoneSequence(content, activeTrackId);
+  if (!sequence) {
     return null;
   }
 
-  const { currentMilestone, milestones, baseUrl } = content.metadata.learningJourney;
-
+  const { currentMilestone, milestones } = sequence;
   if (currentMilestone < 1) {
     return null;
   }
@@ -103,7 +132,8 @@ export function getPreviousMilestoneUrl(content: RawContent): string | null {
   }
 
   // Nothing resolved before this one — go back to the cover page (milestone 0).
-  return baseUrl;
+  // `sequence` is only non-null when `content.metadata.learningJourney` is set.
+  return content.metadata.learningJourney!.baseUrl;
 }
 
 /**
@@ -114,13 +144,12 @@ export function getPreviousMilestoneUrl(content: RawContent): string | null {
  * Alt+Right shortcut classify the resulting load by direct id lookup instead
  * of the fallback URL comparison — see `fetchPackageContent`'s own doc comment.
  */
-export function getNextMilestoneId(content: RawContent): string | undefined {
-  if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
+export function getNextMilestoneId(content: RawContent, activeTrackId?: string | null): string | undefined {
+  const sequence = resolveActiveMilestoneSequence(content, activeTrackId);
+  if (!sequence) {
     return undefined;
   }
-
-  const { currentMilestone, milestones } = content.metadata.learningJourney;
-  return milestones.find((m) => m.number > currentMilestone && !m.isLocked)?.id;
+  return sequence.milestones.find((m) => m.number > sequence.currentMilestone && !m.isLocked)?.id;
 }
 
 /**
@@ -129,12 +158,13 @@ export function getNextMilestoneId(content: RawContent): string | undefined {
  * back to the cover page, which has no guide id of its own) and at the first
  * milestone (no previous at all). See `getNextMilestoneId`'s own doc comment.
  */
-export function getPreviousMilestoneId(content: RawContent): string | undefined {
-  if (content.type !== 'learning-journey' || !content.metadata.learningJourney) {
+export function getPreviousMilestoneId(content: RawContent, activeTrackId?: string | null): string | undefined {
+  const sequence = resolveActiveMilestoneSequence(content, activeTrackId);
+  if (!sequence) {
     return undefined;
   }
 
-  const { currentMilestone, milestones } = content.metadata.learningJourney;
+  const { currentMilestone, milestones } = sequence;
   if (currentMilestone < 1) {
     return undefined;
   }
@@ -434,13 +464,17 @@ export function generateJourneyContentWithExtras(
     enhancedContent = addConclusionImageToContent(enhancedContent, currentMilestone.conclusionImage);
   }
 
-  // Add bottom navigation to all milestones including cover page (milestone 0)
-  enhancedContent = appendBottomNavigationToContent(
-    enhancedContent,
-    metadata.currentMilestone,
-    metadata.totalMilestones,
-    metadata.milestones
-  );
+  // Bottom navigation duplicates the React cover-page hero's own Resume/Start
+  // CTA (and, once tracks exist, the sticky milestone toolbar's own Next
+  // arrow) on the cover page — skip it there. Real milestones still get it.
+  if (metadata.currentMilestone !== 0) {
+    enhancedContent = appendBottomNavigationToContent(
+      enhancedContent,
+      metadata.currentMilestone,
+      metadata.totalMilestones,
+      metadata.milestones
+    );
+  }
 
   return enhancedContent;
 }
