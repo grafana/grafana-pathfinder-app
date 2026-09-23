@@ -236,7 +236,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("app platform list: decode: %w", err)
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform list: decode: %w", err)}
 	}
 
 	specs := make([]json.RawMessage, 0, len(list.Items))

@@ -88,10 +88,10 @@ func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource
 		return nil, err
 	}
 	if int64(len(body)) > maxBytes {
-		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large"}, err: fmt.Errorf("invalid app platform upstream response")}
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("invalid app platform upstream response")}
 	}
 	if !json.Valid(body) {
-		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json"}, err: fmt.Errorf("invalid app platform upstream response")}
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("invalid app platform upstream response")}
 	}
 	return json.RawMessage(body), nil
 }
