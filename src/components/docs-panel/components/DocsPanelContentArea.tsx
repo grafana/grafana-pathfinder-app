@@ -1,4 +1,8 @@
 import { usePathfinderPluginConfig } from '../../../hooks';
+import {
+  getGuideIndexPublicationRevision,
+  subscribeGuideIndexPublications,
+} from '../../../global-state/active-guide-index';
 /**
  * Content area for the docs panel — the 5+ branch switch that lives below
  * the tab bar.
@@ -128,6 +132,17 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   // out of storage during render, so this re-render is what keeps it from
   // painting a stale fill once evidence lands while the tab stays mounted.
   useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
+
+  // Subscribe to guide index publications so the progress bar appears when
+  // the index is published (after the content renderer's passive effect runs).
+  // This is the same fix as FloatingPanelContent — the sidebar can also open
+  // a guide cold, and without this subscription the bar would stay missing
+  // until an unrelated render.
+  useSyncExternalStore(
+    subscribeGuideIndexPublications,
+    getGuideIndexPublicationRevision,
+    getGuideIndexPublicationRevision
+  );
 
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>

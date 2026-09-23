@@ -1,9 +1,13 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useSyncExternalStore } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
 import { GuideProgressBar } from '../guide-progress';
-import { getGuideIndex } from '../../global-state/active-guide-index';
-import { getContentKey } from '../../global-state/content-key';
+import {
+  getGuideIndex,
+  subscribeGuideIndexPublications,
+  getGuideIndexPublicationRevision,
+} from '../../global-state/active-guide-index';
+import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
@@ -113,6 +117,15 @@ export function FloatingPanelContent({
     [alignmentIsPending, alignmentStartingLocation]
   );
 
+  // Subscribe to guide index publications so the progress bar appears when
+  // the index is published (after the content renderer's passive effect runs).
+  // Must be called before early return to maintain hook order.
+  const indexPublicationRevision = useSyncExternalStore(
+    subscribeGuideIndexPublications,
+    getGuideIndexPublicationRevision,
+    getGuideIndexPublicationRevision
+  );
+
   if (!content) {
     return (
       <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-secondary)' }}>No guide content loaded</div>
@@ -124,7 +137,10 @@ export function FloatingPanelContent({
   const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
 
   // Show the step progress bar whenever a guide is active in this surface.
-  const showProgressBar = !!getGuideIndex(getContentKey());
+  // Use resolveGuideContentKey(content.url) for consistency with ContentRenderer.
+  // The read of getGuideIndex must be inside the render so it re-evaluates
+  // when indexPublicationRevision changes (subscription above triggers re-render).
+  const showProgressBar = !!getGuideIndex(resolveGuideContentKey(content.url)) && indexPublicationRevision >= 0;
 
   return (
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>

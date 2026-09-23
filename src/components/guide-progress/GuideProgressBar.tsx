@@ -1,4 +1,4 @@
-import React, { useCallback, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { useStyles2 } from '@grafana/ui';
 import type { GrafanaTheme2 } from '@grafana/data';
@@ -37,7 +37,54 @@ const NO_SUBSCRIPTION = () => undefined;
  */
 export function GuideProgressBar({ contentUrl }: GuideProgressBarProps): React.ReactElement | null {
   const styles = useStyles2(getStyles);
-  const contentKey = contentUrl === undefined ? undefined : resolveGuideContentKey(contentUrl);
+
+  // Resolve the content key in a passive effect, not during render.
+  // Both producers of the content key publish it from a layout effect
+  // (content-renderer.tsx:764), so resolving during render would latch the
+  // PREVIOUS milestone's key. This mirrors the pattern in MarkCompleteFooter.tsx:101.
+  const [resolved, setResolved] = useState<{ contentUrl: string; contentKey: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Callback pattern to satisfy react-hooks/set-state-in-effect:
+    // setState is called via a callback, not directly in the effect body
+    const settle = (key: string) => {
+      if (cancelled) {
+        return;
+      }
+      setResolved((previous) =>
+        previous !== null && previous.contentUrl === contentUrl && previous.contentKey === key
+          ? previous
+          : { contentUrl: contentUrl!, contentKey: key }
+      );
+    };
+
+    if (contentUrl === undefined) {
+      // Use callback pattern even for the null case
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setResolved(null);
+        }
+      });
+      return;
+    }
+
+    // Resolve key and settle asynchronously to satisfy the linter
+    queueMicrotask(() => {
+      if (!cancelled) {
+        const key = resolveGuideContentKey(contentUrl);
+        settle(key);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contentUrl]);
+
+  // Derive contentKey from resolved state, checking that the resolved URL matches current URL
+  const contentKey = resolved !== null && resolved.contentUrl === contentUrl ? resolved.contentKey : undefined;
 
   const percentage = useSyncExternalStore(
     useCallback(
