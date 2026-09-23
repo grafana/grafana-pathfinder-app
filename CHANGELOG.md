@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.18.2
+
+### Fixed
+
+- **Keep the learning sidebar available when settings fail**: Continue browsing with default settings when settings requests fail, logging a warning without displaying an error banner. Settings saves still require a successful authoritative read. (#1977)
+
+- **Interactive steps inside conditional blocks earn progress credit**: Steps inside `whenTrue`/`whenFalse` branches now count toward guide completion. Previously the completion index treated conditionals as opaque, so branch-child steps contributed no progress even though they completed and persisted correctly. (#1953)
+
+- **Session replay pauses through Faro's public API**: Telemetry session replay now pauses and resumes via Faro's public `pauseRecording()`/`resumeRecording()` methods instead of a private-method cast workaround, following the `@grafana/faro-web-sdk` 2.12.0 upgrade. (#1827)
+
 ## 2.18.1
 
 ### Fixed

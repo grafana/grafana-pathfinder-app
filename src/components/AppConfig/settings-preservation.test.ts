@@ -191,6 +191,17 @@ describe('saveTenantSettings — legacy jsonData fallback', () => {
 });
 
 describe('saveTenantSettings — the kind is not served here', () => {
+  it.each([403, 502])('does not save to either store when the authoritative read fails with %s', async (status) => {
+    mockFetchTenant.mockRejectedValue(Object.assign(new Error('settings unavailable'), { status }));
+
+    await expect(saveTenantSettings({ pluginId: PLUGIN_ID, changes: { enableLiveSessions: true } })).rejects.toThrow(
+      'settings unavailable'
+    );
+
+    expect(mockSaveTenant).not.toHaveBeenCalled();
+    expect(mockUpdatePlugin).not.toHaveBeenCalled();
+  });
+
   it('falls back to jsonData rather than failing the save', async () => {
     // The GAP aggregation toggle is shared with InteractiveGuide, so it can be on
     // while `pathfindersettings` is not served — a stack running the plugin ahead
