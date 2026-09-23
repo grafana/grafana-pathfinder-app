@@ -551,9 +551,13 @@ path's durable percentage — Foundations membership alone — reads lower for
 the same completed work). The ring's accessible label names the active
 sequence (`{{percent}}% through {{sequence}}`) so it reads as progress
 through that presentation ordering, never as a path-wide completion claim.
-My Learning's percentage is unaffected: `app-platform-paths.ts` and
-`calculatePathRollup` still build `LearningPath.guides` from `milestones`
-alone, per this decision.
+My Learning's percentage for App Platform paths now includes track-only
+guides: `app-platform-paths.ts` builds `LearningPath.guides` from
+`getManifestMemberIds` (milestones plus every track-only guide) so `resetPath`
+can clear track-only completions, and `calculatePathRollup` shares that same
+field for its path-wide percentage. This is a known, accepted side effect of
+that reset fix, not a reconsideration of this decision's per-tab/path-wide
+split above.
 
 **What we are not doing here.** Per-track completion — a track earning its
 own persisted percentage, badge, or "N of M" count — is a
