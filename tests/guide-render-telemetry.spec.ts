@@ -38,27 +38,27 @@ test('correlates private and CDN failures with committed rendering without leaki
       },
     });
   });
-  await page.route(
-    '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/*/interactiveguides/*',
-    async (route) => {
-      const id = new URL(route.request().url()).pathname.split('/').pop();
-      if (id === 'private-missing') {
-        await route.fulfill({ status: 404, json: { message: 'private upstream body' } });
-        return;
-      }
-      await route.fulfill({
-        json: {
-          metadata: { name: id },
-          spec: {
-            id,
-            title: 'Private fixture title',
-            status: 'published',
-            blocks: [{ type: 'markdown', content: id === 'private-invalid' ? 42 : 'Private fixture rendered' }],
-          },
-        },
-      });
-    }
+  await page.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
+    route.fulfill({ status: 404, json: { error: 'settings-upstream-unavailable' } })
   );
+  await page.route('**/api/plugins/grafana-pathfinder-app/resources/custom-guide?*', async (route) => {
+    const id = new URL(route.request().url()).searchParams.get('name');
+    if (id === 'private-missing') {
+      await route.fulfill({ status: 404, json: { error: 'private upstream body' } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        metadata: { name: id },
+        spec: {
+          id,
+          title: 'Private fixture title',
+          status: 'published',
+          blocks: [{ type: 'markdown', content: id === 'private-invalid' ? 42 : 'Private fixture rendered' }],
+        },
+      },
+    });
+  });
   await page.route('https://interactive-learning.grafana.net/packages/telemetry-test/*', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{invalid json' })
   );
