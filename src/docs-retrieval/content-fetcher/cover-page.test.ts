@@ -174,6 +174,36 @@ describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own duplicate l
 
     expect(blocks).toEqual([{ type: 'html', content: '<div></div>' }]);
   });
+
+  // Regression: block-editor-tutorial/content.json's own leading block opens
+  // with a heading (duplicate-looking title+intro) but goes on to cover real
+  // sections ("What are guides?", "Block types overview") inside that SAME
+  // block. Dropping the whole block would silently delete that real content —
+  // only the title+intro portion, up to the first real section heading, may
+  // go.
+  it("keeps a leading heading block's own real sections, dropping only its title+intro", () => {
+    const input = guide([
+      {
+        type: 'markdown',
+        content:
+          '# Welcome to the guide editor! 🎉\n\n' +
+          'This template demonstrates all the **block types** you can use to create interactive guides.\n\n' +
+          '## What are guides?\n\n' +
+          'Guides are interactive tutorials that help users learn Grafana.\n\n' +
+          '## Block types overview\n\n' +
+          'Click any block in the editor to see its structure.',
+      },
+    ]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks[0]!.content).not.toContain('Welcome to the guide editor');
+    expect(blocks[0]!.content).not.toContain('This template demonstrates');
+    expect(blocks[0]!.content).toContain('## What are guides?');
+    expect(blocks[0]!.content).toContain('Guides are interactive tutorials');
+    expect(blocks[0]!.content).toContain('## Block types overview');
+    expect(blocks[0]!.content).toContain('Click any block in the editor');
+  });
 });
 
 // simpleMarkdownToHtml has broad coverage in content-fetcher.test.ts; these

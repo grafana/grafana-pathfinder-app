@@ -6,7 +6,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
 
-import { RawContent, ContentParseResult, GuideCountingSource } from '../../types/content.types';
+import { RawContent, ContentParseResult, GuideCountingSource, Milestone } from '../../types/content.types';
 import { logger } from '../../lib/logging';
 import {
   parseHTMLToComponents,
@@ -136,11 +136,12 @@ interface ContentRendererProps {
   onContinueToNextMilestone?: () => void;
   /**
    * Fires whenever the cover page's own track-tab selection changes
-   * (`null` for the default Foundations sequence). Lets the panel model
-   * record which track is active so milestone Next/Previous resolves within
-   * it — see `LearningPathTableOfContents`'s own prop doc.
+   * (`null`/`null` for the default Foundations sequence). Lets the panel
+   * model record which track is active, and its own resolved guides, so
+   * milestone Next/Previous resolves within it — see
+   * `LearningPathTableOfContents`'s own prop doc.
    */
-  onActiveTrackChange?: (trackId: string | null) => void;
+  onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }

@@ -425,13 +425,13 @@ describe('LearningPathTableOfContents', () => {
         />
       );
 
-      expect(onActiveTrackChange).toHaveBeenLastCalledWith(null);
+      expect(onActiveTrackChange).toHaveBeenLastCalledWith(null, null);
 
       fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
-      expect(onActiveTrackChange).toHaveBeenLastCalledWith('builder');
+      expect(onActiveTrackChange).toHaveBeenLastCalledWith('builder', builderMilestones);
 
       fireEvent.click(screen.getByRole('tab', { name: 'Foundations' }));
-      expect(onActiveTrackChange).toHaveBeenLastCalledWith(null);
+      expect(onActiveTrackChange).toHaveBeenLastCalledWith(null, null);
     });
 
     // Regression (human review on PR #1927, "Stale track tab across

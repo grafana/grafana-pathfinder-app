@@ -366,12 +366,42 @@ describe('getNextMilestoneUrl / getNextMilestoneId — active track selection', 
     expect(getNextMilestoneUrl(content, 'seller')).toBe('backend-guide:milestone-1');
   });
 
-  it('ignores a stale active track once past the cover (currentMilestone > 0)', () => {
-    // Mirrors the real shape once a Foundations milestone has actually loaded
-    // — activeTrackId can still be set from before the reader left the cover,
-    // and must not be applied to an in-progress Foundations traversal.
+  it('falls back to Foundations past the cover when the loaded guide is not one of the active track\'s own guides', () => {
+    // No `activeTrackMilestones` passed (the caller has nothing persisted for
+    // this track), and the loaded guide's own URL isn't in the track — so
+    // there is nothing to resolve the reader's position against, and this
+    // stays on the in-progress Foundations traversal.
     const content = journeyContent(1, [milestone(1), milestone(2)], 'backend-guide:cover', [builderTrack()]);
     expect(getNextMilestoneUrl(content, 'builder')).toBe('backend-guide:milestone-2');
+  });
+
+  it('stays track-aware past the cover when the active track is threaded through as activeTrackMilestones', () => {
+    // The captain's exact reported failure: a track guide that shares its
+    // URL/position with a Foundations milestone must not silently fall back
+    // to Foundations for Next/Previous once the reader is inside it —
+    // `activeTrackMilestones` is what the caller persists across milestone
+    // loads (content.metadata.learningJourney.tracks is cover-page-only).
+    const foundations = [
+      milestone(1),
+      milestone(2, { url: 'backend-guide:shared' }),
+      milestone(3),
+    ];
+    const track: CoverPageTrack = {
+      trackId: 'builder',
+      label: 'Builder',
+      milestones: [
+        { number: 1, title: 'Builder one', url: 'backend-guide:builder-one', isActive: false, id: 'builder-one' },
+        { number: 2, title: 'Shared', url: 'backend-guide:shared', isActive: false, id: 'shared' },
+        { number: 3, title: 'Builder three', url: 'backend-guide:builder-three', isActive: false, id: 'builder-three' },
+      ],
+    };
+    const content: RawContent = {
+      ...journeyContent(2, foundations, 'backend-guide:cover'),
+      url: 'backend-guide:shared',
+    };
+
+    expect(getNextMilestoneUrl(content, 'builder', track.milestones)).toBe('backend-guide:builder-three');
+    expect(getNextMilestoneId(content, 'builder', track.milestones)).toBe('builder-three');
   });
 
   it('skips a locked entry within the active track the same way Foundations does', () => {
@@ -398,5 +428,25 @@ describe('getPreviousMilestoneUrl — active track selection', () => {
     const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [track]);
     expect(getPreviousMilestoneUrl(content, 'builder')).toBeNull();
     expect(getPreviousMilestoneId(content, 'builder')).toBeUndefined();
+  });
+
+  it('stays track-aware past the cover when the active track is threaded through as activeTrackMilestones', () => {
+    const foundations = [milestone(1), milestone(2, { url: 'backend-guide:shared' }), milestone(3)];
+    const track: CoverPageTrack = {
+      trackId: 'builder',
+      label: 'Builder',
+      milestones: [
+        { number: 1, title: 'Builder one', url: 'backend-guide:builder-one', isActive: false, id: 'builder-one' },
+        { number: 2, title: 'Shared', url: 'backend-guide:shared', isActive: false, id: 'shared' },
+        { number: 3, title: 'Builder three', url: 'backend-guide:builder-three', isActive: false, id: 'builder-three' },
+      ],
+    };
+    const content: RawContent = {
+      ...journeyContent(2, foundations, 'backend-guide:cover'),
+      url: 'backend-guide:shared',
+    };
+
+    expect(getPreviousMilestoneUrl(content, 'builder', track.milestones)).toBe('backend-guide:builder-one');
+    expect(getPreviousMilestoneId(content, 'builder', track.milestones)).toBe('builder-one');
   });
 });

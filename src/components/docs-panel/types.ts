@@ -5,7 +5,7 @@
 import { RefObject } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { LearningJourneyTab, PackageOpenInfo } from '../../types/content-panel.types';
-import { PreparedRawContent, RawContent } from '../../types/content.types';
+import { Milestone, PreparedRawContent, RawContent } from '../../types/content.types';
 import type { LaunchSource } from '../../recovery';
 
 /**
@@ -124,10 +124,13 @@ export interface DocsPanelModelOperations {
    * Record which Path Tracks tab is currently selected on a tab's cover
    * page, so `canNavigateNext`/`navigateToNextMilestone` (and the Previous
    * pair) resolve within that track's own guides instead of Foundations.
-   * `null` restores the default Foundations sequence. Called by
-   * `LearningPathTableOfContents` via `onActiveTrackChange`.
+   * `null` restores the default Foundations sequence. `milestones` is the
+   * selected track's own resolved guides (undefined/null for Foundations),
+   * persisted alongside the id so navigation stays track-aware past the
+   * cover page too — see `LearningJourneyTab.activeTrackMilestones`. Called
+   * by `LearningPathTableOfContents` via `onActiveTrackChange`.
    */
-  setActiveTrackId(tabId: string, trackId: string | null): void;
+  setActiveTrackId(tabId: string, trackId: string | null, milestones?: Milestone[] | null): void;
 
   /** Open the dev tools tab (or switch to it if already open) */
   openDevToolsTab(): void;
