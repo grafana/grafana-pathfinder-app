@@ -221,6 +221,30 @@ describe('handlePathfinderDeepLink', () => {
     expect(window.location.search).toBe('?doc=bundled%3Awelcome-to-grafana&type=docs');
   });
 
+  it('preserves the destination query when Grafana is served from a subpath', async () => {
+    setPathname('/grafana/dashboards', '/dashboards');
+    setSearch('?doc=bundled:welcome-to-grafana&page=/dashboards&query=kiosk');
+    handlePathfinderDeepLink(mkDeps());
+    await flushPromises();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe('/grafana/dashboards');
+    expect(window.location.search).toBe('?query=kiosk');
+  });
+
+  it('honors an explicit sidebar request for same-tab kiosk guide launches', () => {
+    setSearch('?panelMode=sidebar');
+    handlePathfinderDeepLink(mkDeps());
+    expect(mockSetModePersisted).toHaveBeenCalledWith('sidebar');
+    expect(window.location.search).toBe('');
+  });
+
+  it('leaves kiosk launch links to the kiosk handler even when panelMode is supplied', () => {
+    const deps = mkDeps();
+    setSearch('?pathfinderKiosk=1&panelMode=fullscreen');
+    expect(handlePathfinderDeepLink(deps)).toBe(false);
+    expect(window.location.search).toBe('?pathfinderKiosk=1&panelMode=fullscreen');
+  });
+
   it('still captures kiosk_session on the full-screen route while leaving ?doc= for FullScreenPanel', async () => {
     setPathname('/a/grafana-pathfinder-app/fullscreen');
     setSearch('?doc=bundled%3Awelcome&kiosk_session=sess-123');

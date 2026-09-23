@@ -1,20 +1,58 @@
 import React, { useCallback } from 'react';
+import { locationService } from '@grafana/runtime';
+import { stripPathfinderParams } from '../../utils/pathfinder-search-params';
 import { Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getKioskOverlayStyles } from './kiosk-mode.styles';
 import type { KioskRule } from './kiosk-rules';
+import { parseKioskWebUrl } from '../../security/kiosk-url';
+import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
+
+export type KioskMode = 'instance' | 'presentation';
 
 interface KioskTileProps {
   rule: KioskRule;
   index: number;
+  mode?: KioskMode;
+  onLaunch?: () => void;
 }
 
-export const KioskTile: React.FC<KioskTileProps> = ({ rule, index }) => {
+export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'presentation', onLaunch }) => {
   const styles = useStyles2(getKioskOverlayStyles);
 
   const handleClick = useCallback(() => {
-    const base = (rule.targetUrl || window.location.origin).replace(/\/+$/, '');
+    const page = rule.page === undefined ? undefined : validateInternalNavigationPath(rule.page);
+    if (page === null || !isAllowedContentUrl(rule.url)) {
+      return;
+    }
+    const current = locationService.getLocation();
+    const url =
+      mode === 'instance'
+        ? new URL(page ?? `${current.pathname}${current.search}${current.hash}`, window.location.origin)
+        : parseKioskWebUrl(rule.targetUrl || window.location.origin, window.location.origin);
+    if (!url) {
+      return;
+    }
+    if (mode === 'presentation') {
+      url.pathname = `${url.pathname.replace(/\/+$/, '')}/`;
+      url.search = '';
+      url.hash = '';
+      if (page) {
+        url.searchParams.set('page', page);
+      }
+    } else {
+      const orgId = new URLSearchParams(current.search).get('orgId');
+      if (orgId && !url.searchParams.has('orgId')) {
+        url.searchParams.set('orgId', orgId);
+      }
+      stripPathfinderParams(url);
+      url.searchParams.set('panelMode', 'sidebar');
+      if (page) {
+        // The destination query and fragment are already on the URL; prevent a second redirect.
+        url.searchParams.set('page', url.pathname);
+      }
+    }
     const sessionId = crypto.randomUUID();
 
     reportAppInteraction(UserInteraction.KioskDemoStarted, {
@@ -22,49 +60,38 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index }) => {
       guide_url: rule.url,
       guide_title: rule.title,
       guide_type: rule.type,
-      target_instance: rule.targetUrl || window.location.origin,
+      target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
     });
 
-    const url = new URL(base + '/');
     url.searchParams.set('doc', rule.url);
     url.searchParams.set('kiosk_session', sessionId);
-    window.open(url.toString(), '_blank', 'noopener,noreferrer');
-  }, [rule.targetUrl, rule.url, rule.title, rule.type]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        handleClick();
-      }
-    },
-    [handleClick]
-  );
+    if (rule.type === 'learning-journey') {
+      url.searchParams.set('type', 'learning-journey');
+    }
+    if (mode === 'instance') {
+      onLaunch?.();
+      locationService.push(`${url.pathname}${url.search}${url.hash}`);
+    } else {
+      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+    }
+  }, [rule.targetUrl, rule.url, rule.title, rule.type, rule.page, mode, onLaunch]);
 
   return (
-    <div
-      className={styles.tile}
-      style={{ animationDelay: `${index * 0.05}s` }}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-      role="button"
-      tabIndex={0}
-      data-testid={testIds.kioskMode.tile(index)}
-    >
-      <div className={styles.tileIconRow}>
-        <div className={styles.tileIcon}>
+    <button type="button" className={styles.tile} onClick={handleClick} data-testid={testIds.kioskMode.tile(index)}>
+      <span className={styles.tileIconRow}>
+        <span className={styles.tileIcon}>
           <Icon name="compass" size="lg" />
-        </div>
+        </span>
         <span className={styles.tileBadge}>{rule.type}</span>
-      </div>
-      <h3 className={styles.tileTitle} data-testid={testIds.kioskMode.tileTitle(index)}>
+      </span>
+      <span className={styles.tileTitle} data-testid={testIds.kioskMode.tileTitle(index)}>
         {rule.title}
-      </h3>
-      <p className={styles.tileDescription}>{rule.description}</p>
-      <div className={styles.tileArrow}>
+      </span>
+      <span className={styles.tileDescription}>{rule.description}</span>
+      <span className={styles.tileArrow}>
         <span>Launch guide</span>
         <Icon name="arrow-right" size="sm" />
-      </div>
-    </div>
+      </span>
+    </button>
   );
 };
