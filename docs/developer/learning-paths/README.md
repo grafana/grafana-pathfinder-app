@@ -67,7 +67,7 @@ The `useLearningPaths()` hook merges these dynamically fetched guides into the p
 
 ### App Platform paths
 
-`fetchAppPlatformLearningPaths()` reads the stack's private custom-guide catalogue through `fetchCustomGuideRepository()`. It includes only published packages whose manifest type is `path` or `journey`, and includes only published milestone members in each synthesized path. The adapter marks every synthesized path with `isPrivate: true` and builds metadata for every published catalogue entry, using `backend-guide:{id}` URLs so path members launch through the App Platform content resolver.
+`fetchAppPlatformLearningPaths()` reads the stack's private custom-guide catalogue through `fetchCustomGuideRepository()`. It includes only published packages whose manifest type is `path` or `journey`, and includes every published member returned by `getManifestMemberIds()` — `milestones` plus any guide referenced only by a `tracks[].guides` entry (Path Tracks RFC) — in each synthesized path. The adapter marks every synthesized path with `isPrivate: true` and builds metadata for every published catalogue entry, using `backend-guide:{id}` URLs so path members launch through the App Platform content resolver.
 
 These paths are fetched when `config.namespace` is available and appended after the bundled and URL-based paths. Their package manifest is carried on the `LearningPath` so the My Learning launch flow can preserve milestone context. In-progress private paths appear in the separate **Private paths** section, completed private paths join the shared **Completed** section, and their titles remain excluded from **Discover more**.
 

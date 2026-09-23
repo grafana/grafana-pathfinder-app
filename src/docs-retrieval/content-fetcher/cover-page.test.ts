@@ -214,8 +214,7 @@ describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own duplicate l
     const input = guide([
       {
         type: 'markdown',
-        content:
-          '#### My Guide Title\n\n' + 'Some intro.\n\n' + '#### Real deep section\n\n' + 'Content that matters.',
+        content: '#### My Guide Title\n\n' + 'Some intro.\n\n' + '#### Real deep section\n\n' + 'Content that matters.',
       },
     ]);
 

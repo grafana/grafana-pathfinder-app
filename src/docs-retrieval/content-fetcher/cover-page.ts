@@ -253,10 +253,7 @@ function dropLeadingTitleBlock(blocks: Array<{ type: string; content?: string }>
   }
 }
 
-function splitAtNextHeading(
-  text: string,
-  boundaryRe: RegExp = NEXT_HEADING_RE
-): { body: string; remainder: string } {
+function splitAtNextHeading(text: string, boundaryRe: RegExp = NEXT_HEADING_RE): { body: string; remainder: string } {
   if (!text) {
     return { body: '', remainder: '' };
   }
