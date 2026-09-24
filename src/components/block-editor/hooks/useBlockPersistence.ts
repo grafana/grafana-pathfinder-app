@@ -9,6 +9,7 @@ import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { BLOCK_EDITOR_STORAGE_KEY } from '../constants';
 import type { JsonGuide, JsonModeState, ViewMode } from '../types';
 import { logger } from '../../../lib/logging';
+import { serializeEditorDraft, type StoredEditorDraft } from '../editor-draft';
 
 /**
  * Debounce delay for auto-save (ms)
@@ -48,23 +49,6 @@ export interface UseBlockPersistenceReturn {
   /** Write any pending debounced draft immediately (e.g. before chrome reset on unmount) */
   flush: () => void;
 }
-
-/**
- * Storage format that includes metadata
- */
-interface StoredGuide {
-  guide: JsonGuide;
-  /** Block IDs to preserve across page refreshes (added in v2) */
-  blockIds?: string[];
-  /** View mode to preserve across pop out/dock remounts (optional — absent in older stored guides) */
-  viewMode?: ViewMode;
-  /** Unapplied JSON draft state (optional — absent in older stored guides) */
-  jsonModeState?: JsonModeState;
-  savedAt: string;
-  version: number;
-}
-
-const STORAGE_VERSION = 2;
 
 function restoreViewMode(value: unknown): ViewMode | undefined {
   if (value === undefined) {
@@ -116,15 +100,15 @@ export function useBlockPersistence({
 
   const save = useCallback(() => {
     try {
-      const stored: StoredGuide = {
-        guide,
-        blockIds,
-        viewMode,
-        jsonModeState: viewMode === 'json' ? (jsonModeState ?? undefined) : undefined,
-        savedAt: new Date().toISOString(),
-        version: STORAGE_VERSION,
-      };
-      localStorage.setItem(storageKey, JSON.stringify(stored));
+      localStorage.setItem(
+        storageKey,
+        serializeEditorDraft({
+          guide,
+          blockIds,
+          viewMode,
+          jsonModeState: viewMode === 'json' ? (jsonModeState ?? undefined) : undefined,
+        })
+      );
       lastGuideRef.current = JSON.stringify(guide);
       pendingSaveRef.current = false;
       onSave?.();
@@ -209,7 +193,7 @@ export function useBlockPersistence({
       try {
         const stored = localStorage.getItem(storageKey);
         if (stored) {
-          const parsed: StoredGuide = JSON.parse(stored);
+          const parsed: StoredEditorDraft = JSON.parse(stored);
           onLoad(
             parsed.guide,
             parsed.blockIds,
