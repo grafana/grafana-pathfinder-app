@@ -234,17 +234,23 @@ describe('generateJourneyContentWithExtras — locked-milestone handling', () =>
     expect(html).not.toContain('data-journey-start');
   });
 
-  it('hides the bottom "Next →" when every remaining milestone is locked', () => {
-    const html = generateJourneyContentWithExtras(
+  // Static content generation can't decide real Next/Previous visibility —
+  // it runs at fetch time, before a tab's active Path Track (if any) is
+  // known, and a track can make either button correct or incorrect
+  // regardless of the raw Foundations milestone sequence (see
+  // appendBottomNavigationToContent's own doc comment). Both buttons always
+  // render now; useLinkClickHandler's layout effect corrects real visibility
+  // against the live, track-aware canNavigateNext()/canNavigatePrevious().
+  it('always renders "Next →" and "← Previous" regardless of the raw milestone sequence — real visibility is decided live, not here', () => {
+    const lockedHtml = generateJourneyContentWithExtras(
       '',
       ljMetadata(2, [milestone(1), milestone(2), milestone(3, { isLocked: true, url: '' })])
     );
-    expect(html).not.toContain('Next →');
-  });
+    expect(lockedHtml).toContain('Next →');
+    expect(lockedHtml).toContain('← Previous');
 
-  it('still renders "Next →" when an unlocked successor exists', () => {
-    const html = generateJourneyContentWithExtras('', ljMetadata(1, [milestone(1), milestone(2), milestone(3)]));
-    expect(html).toContain('Next →');
+    const unlockedHtml = generateJourneyContentWithExtras('', ljMetadata(1, [milestone(1), milestone(2), milestone(3)]));
+    expect(unlockedHtml).toContain('Next →');
   });
 
   // The React cover-page hero (LearningPathTableOfContents) already renders

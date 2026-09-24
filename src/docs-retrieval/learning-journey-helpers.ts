@@ -512,12 +512,7 @@ export function generateJourneyContentWithExtras(
   // CTA (and, once tracks exist, the sticky milestone toolbar's own Next
   // arrow) on the cover page — skip it there. Real milestones still get it.
   if (metadata.currentMilestone !== 0) {
-    enhancedContent = appendBottomNavigationToContent(
-      enhancedContent,
-      metadata.currentMilestone,
-      metadata.totalMilestones,
-      metadata.milestones
-    );
+    enhancedContent = appendBottomNavigationToContent(enhancedContent, metadata.currentMilestone, metadata.totalMilestones);
   }
 
   return enhancedContent;
@@ -635,49 +630,27 @@ function addConclusionImageToContent(content: string, conclusionImage: Conclusio
   return content + conclusionImageHtml;
 }
 
-function appendBottomNavigationToContent(
-  content: string,
-  currentMilestone: number,
-  totalMilestones: number,
-  milestones: Milestone[]
-): string {
-  // "Last" for the Next control = no UNLOCKED milestone after the current one.
-  // A locked trailing member isn't navigable, so rendering Next there would be a
-  // dead control (the click handler's canNavigateNext already returns null).
-  const isLastMilestone = !milestones.some((m) => m.number > currentMilestone && !m.isLocked);
-  const isCoverPage = currentMilestone === 0;
-
-  // Conditionally render Previous button (hide on cover page)
-  const prevButton = isCoverPage
-    ? ''
-    : `
-    <button class="btn btn--primary journey-nav-prev" 
-            data-journey-nav="prev">
-      ← Previous
-    </button>
-  `;
-
-  // Conditionally render Next button (hide on last milestone)
-  const nextButton = isLastMilestone
-    ? ''
-    : `
-    <button class="btn btn--primary journey-nav-next" 
-            data-journey-nav="next">
-      Next →
-    </button>
-  `;
-
-  // Show appropriate progress text
-  const progressText = isCoverPage
-    ? `Introduction (${totalMilestones} milestone${totalMilestones !== 1 ? 's' : ''})`
-    : `Step ${currentMilestone} of ${totalMilestones}`;
-
+// Next/Previous presence here is a placeholder, not a decision: this HTML is
+// generated at content-fetch time, before a tab's active Path Track (if any)
+// is known, so a guide reachable from more than one context (plain
+// Foundations vs. an active track) can't have its true availability decided
+// here — a track can end before Foundations does, or continue past where
+// Foundations ends. Both buttons always render; `useLinkClickHandler`'s
+// layout effect corrects real visibility against the live, track-aware
+// `canNavigateNext()`/`canNavigatePrevious()` right after mount.
+function appendBottomNavigationToContent(content: string, currentMilestone: number, totalMilestones: number): string {
   const navigationHtml = `
     <div class="journey-bottom-navigation">
       <div class="journey-bottom-nav-container">
-        ${prevButton}
-        <span class="journey-progress-text">${progressText}</span>
-        ${nextButton}
+        <button class="btn btn--primary journey-nav-prev"
+                data-journey-nav="prev">
+          ← Previous
+        </button>
+        <span class="journey-progress-text">Step ${currentMilestone} of ${totalMilestones}</span>
+        <button class="btn btn--primary journey-nav-next"
+                data-journey-nav="next">
+          Next →
+        </button>
       </div>
     </div>
   `;

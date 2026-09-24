@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import {
@@ -616,6 +616,27 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
     }
     return undefined;
   }, [contentRef, theme, activeTab?.content, activeTab?.baseUrl, activeTab?.title, model]);
+
+  // The bottom-nav buttons' presence in the fetched HTML (appendBottomNavigationToContent)
+  // is only a Foundations-based placeholder — it can't know the tab's active
+  // Path Track, so it always renders both. This corrects real visibility
+  // against the same track-aware canNavigateNext()/canNavigatePrevious() the
+  // click handler above already uses, before paint so there's no flash of
+  // the wrong buttons.
+  useLayoutEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) {
+      return;
+    }
+    const nextButton = contentElement.querySelector<HTMLElement>('.journey-nav-next');
+    const prevButton = contentElement.querySelector<HTMLElement>('.journey-nav-prev');
+    if (nextButton) {
+      nextButton.hidden = !model.canNavigateNext();
+    }
+    if (prevButton) {
+      prevButton.hidden = !model.canNavigatePrevious();
+    }
+  }, [contentRef, activeTab?.content, activeTab?.activeTrackId, activeTab?.activeTrackMilestones, model]);
 }
 
 // `_theme` is unread: the modal is still hard-coded to fixed colours.
