@@ -134,13 +134,7 @@ interface ContentRendererProps {
    * control itself is never conditional.
    */
   onContinueToNextMilestone?: () => void;
-  /**
-   * Fires whenever the cover page's own track-tab selection changes
-   * (`null`/`null` for the default Foundations sequence). Lets the panel
-   * model record which track is active, and its own resolved guides, so
-   * milestone Next/Previous resolves within it — see
-   * `LearningPathTableOfContents`'s own prop doc.
-   */
+  /** Forwards the cover page's own track-tab selection — see `LearningPathTableOfContents`'s prop doc. */
   onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;

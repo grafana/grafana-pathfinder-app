@@ -253,11 +253,9 @@ describe('generateJourneyContentWithExtras — locked-milestone handling', () =>
     expect(unlockedHtml).toContain('Next →');
   });
 
-  // The React cover-page hero (LearningPathTableOfContents) already renders
-  // its own Resume/Start CTA and, once a tab is selected, the sticky
-  // toolbar's own Next/Previous cover the same job — this legacy block
-  // duplicated both, and its own Next/Previous ignored Path Tracks tab
-  // selection entirely (captain-reported bug; see cover-page.ts).
+  // The React cover-page hero already renders its own Resume/Start CTA, and
+  // the sticky toolbar's Next/Previous cover the same job once a tab is
+  // selected — this legacy block duplicated both.
   it('omits the bottom nav entirely on the cover page, regardless of skipReadyToBegin', () => {
     const metadata = ljMetadata(0, [milestone(1), milestone(2)]);
     expect(generateJourneyContentWithExtras('', metadata, false)).not.toContain('journey-bottom-navigation');
@@ -342,9 +340,7 @@ describe('getPreviousMilestoneUrl', () => {
 
 // Path Tracks: a selected track tab on the cover page should redirect
 // Next/Previous into that track's own guides instead of always falling
-// through to the Foundations `milestones` sequence — the bug the captain
-// flagged live (Builder tab selected and 100% complete, but the toolbar's
-// Next arrow still landed on Foundations "Introduction").
+// through to the Foundations `milestones` sequence.
 describe('getNextMilestoneUrl / getNextMilestoneId — active track selection', () => {
   const builderTrack = (): CoverPageTrack => ({
     trackId: 'builder',
@@ -400,11 +396,10 @@ describe('getNextMilestoneUrl / getNextMilestoneId — active track selection', 
   });
 
   it('stays track-aware past the cover when the active track is threaded through as activeTrackMilestones', () => {
-    // The captain's exact reported failure: a track guide that shares its
-    // URL/position with a Foundations milestone must not silently fall back
-    // to Foundations for Next/Previous once the reader is inside it —
-    // `activeTrackMilestones` is what the caller persists across milestone
-    // loads (content.metadata.learningJourney.tracks is cover-page-only).
+    // A track guide that shares its URL/position with a Foundations
+    // milestone must not silently fall back to Foundations for Next/Previous
+    // once the reader is inside it — `activeTrackMilestones` is what the
+    // caller persists across milestone loads (tracks is cover-page-only).
     const foundations = [milestone(1), milestone(2, { url: 'backend-guide:shared' }), milestone(3)];
     const track: CoverPageTrack = {
       trackId: 'builder',
@@ -471,14 +466,11 @@ describe('getPreviousMilestoneUrl — active track selection', () => {
   });
 });
 
-// Regression (Cursor Bugbot on PR #1993, "Track-only landing kills toolbar
-// nav"): a track-only guide (one the active track has that Foundations
+// A track-only guide (one the active track has that Foundations
 // `milestones` never did) carries no `learningJourney` at all —
 // `fetchPackageContent` only attaches journey metadata to milestone/cover
-// loads — so before this fix, resolveActiveMilestoneSequence's `!learningJourney`
-// early return made Next/Previous unconditionally disabled the moment such a
-// guide loaded, stranding the reader inside the track with no way to
-// continue or go back.
+// loads — so Next/Previous must still resolve from `activeTrackMilestones`
+// alone rather than disabling once such a guide loads.
 describe('getNextMilestoneUrl / getPreviousMilestoneUrl — track-only guide with no learningJourney', () => {
   const trackOnlyContent = (url: string): RawContent => ({
     content: '',

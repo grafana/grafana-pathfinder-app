@@ -42,13 +42,10 @@ export interface LearningPathTableOfContentsProps {
    */
   tracks?: CoverPageTrack[];
   /**
-   * Notified whenever the selected tab changes — `null`/`null` for the
-   * default Foundations sequence, a track's own `trackId` plus its own
-   * resolved guides otherwise — including once on mount/path-change so the
-   * panel model's own record never starts stale. Lets `docs-panel.tsx`'s
-   * `canNavigateNext`/`navigateToNextMilestone` (and the Previous pair)
-   * resolve Next/Previous against the selected track's own guides instead of
-   * always falling through to Foundations, even past the cover page (see
+   * Notified whenever the selected track tab changes, including once on
+   * mount — `null`/`null` for the default Foundations sequence, a track's
+   * own `trackId` plus its resolved guides otherwise. Lets Next/Previous
+   * resolve within the selected track past the cover page too (see
    * `LearningJourneyTab.activeTrackMilestones`).
    */
   onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
@@ -87,9 +84,7 @@ export function LearningPathTableOfContents({
       : undefined;
   const activeMilestones = activeTrack?.milestones ?? milestones;
 
-  // Report the selected tab to the panel model — including on mount and on
-  // the baseUrl-driven reset above — so its own record of "which track is
-  // active" never starts or goes stale. See this prop's own doc comment.
+  // Fires on mount too, so the panel model's active-track record never starts stale.
   useEffect(() => {
     onActiveTrackChange?.(activeTrack?.trackId ?? null, activeTrack?.milestones ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only the selection itself and its owning path should re-fire this, not a fresh onActiveTrackChange identity every render

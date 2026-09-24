@@ -71,33 +71,18 @@ function toAbsoluteGrafanaUrl(url: string): string {
  */
 
 /**
- * The milestone sequence Next/Previous should traverse. On the cover page
- * (`currentMilestone === 0`), a selected track tab redirects to that track's
- * own guides via THIS content's own, freshly-fetched `tracks` field — never
- * the caller's persisted `activeTrackMilestones` snapshot, which can be
- * stale by the time the reader is back on the cover (e.g. a milestone that
- * was locked when the snapshot was taken has since published). Past the
- * cover, `content.metadata.learningJourney.tracks` is never populated (it's
- * cover-page-only data — see `LearningJourneyMetadata.tracks`'s own doc
- * comment), so staying track-aware there requires the caller to persist and
- * pass back the selected track's own resolved milestones
- * (`activeTrackMilestones`, threaded from the cover page's `tracks` at
- * selection time — see `LearningJourneyTab.activeTrackMilestones`). Those
- * milestones are matched against this content's own URL to find the reader's
- * position within the track; when the current guide isn't one of the track's
- * own guides (a stale selection, or a guide reached by some other route),
- * this falls through to the Foundations sequence.
+ * The milestone sequence Next/Previous should traverse. On the cover page,
+ * a selected track redirects to that track's guides via this content's own
+ * fresh `tracks` field, not the caller's persisted `activeTrackMilestones`
+ * snapshot (see `LearningJourneyTab.activeTrackMilestones`), which can go
+ * stale. Past the cover, `tracks` is never populated, so staying
+ * track-aware there requires that persisted snapshot instead, matched
+ * against this content's own URL. Falls through to Foundations when the
+ * current guide isn't part of the active track.
  *
- * The `activeTrackMilestones` match runs even when this guide carries no
- * `learningJourney` at all — true for a track-only guide (one the active
- * track has that Foundations `milestones` never did), since
- * `fetchPackageContent` only attaches journey metadata to milestone/cover
- * loads. Gating the match behind a `learningJourney` check would leave such
- * a guide's own Next/Previous permanently disabled once opened — the reader
- * lands on a guide the toolbar can no longer navigate away from — even
- * though its position within the track is fully knowable from
- * `activeTrackMilestones` alone (bugbot: "Track-only landing kills toolbar
- * nav").
+ * The match runs even with no `learningJourney` at all, since a track-only
+ * guide carries none — gating on it would leave such a guide's Next/Previous
+ * permanently disabled once opened.
  */
 function resolveActiveMilestoneSequence(
   content: RawContent,
@@ -163,12 +148,8 @@ export function getPreviousMilestoneUrl(
     return prevMilestone.url;
   }
 
-  // Nothing resolved before this one. A real journey (Foundations, or a
-  // track resolved from live cover-page data) has a cover to fall back to;
-  // a track-only guide with no `learningJourney` of its own does not — same
-  // as before any of this file's track-awareness existed, that guide never
-  // had a Previous control at all, and staying at "no previous" here is a
-  // safe no-op rather than a regression.
+  // A track-only guide carries no learningJourney and so has no cover to
+  // fall back to — staying at "no previous" is a safe no-op, not a regression.
   return content.type === 'learning-journey' ? (content.metadata.learningJourney?.baseUrl ?? null) : null;
 }
 
@@ -508,9 +489,8 @@ export function generateJourneyContentWithExtras(
     enhancedContent = addConclusionImageToContent(enhancedContent, currentMilestone.conclusionImage);
   }
 
-  // Bottom navigation duplicates the React cover-page hero's own Resume/Start
-  // CTA (and, once tracks exist, the sticky milestone toolbar's own Next
-  // arrow) on the cover page — skip it there. Real milestones still get it.
+  // Duplicates the React cover-page hero's Resume/Start CTA and the
+  // toolbar's Next arrow — skip it on the cover page.
   if (metadata.currentMilestone !== 0) {
     enhancedContent = appendBottomNavigationToContent(enhancedContent, metadata.currentMilestone, metadata.totalMilestones);
   }
@@ -630,14 +610,10 @@ function addConclusionImageToContent(content: string, conclusionImage: Conclusio
   return content + conclusionImageHtml;
 }
 
-// Next/Previous presence here is a placeholder, not a decision: this HTML is
-// generated at content-fetch time, before a tab's active Path Track (if any)
-// is known, so a guide reachable from more than one context (plain
-// Foundations vs. an active track) can't have its true availability decided
-// here — a track can end before Foundations does, or continue past where
-// Foundations ends. Both buttons always render; `useLinkClickHandler`'s
-// layout effect corrects real visibility against the live, track-aware
-// `canNavigateNext()`/`canNavigatePrevious()` right after mount.
+// Next/Previous visibility can't be decided here — this runs at
+// content-fetch time, before a tab's active Path Track is known. Both
+// always render; useLinkClickHandler's live, track-aware sync decides real
+// visibility after mount.
 function appendBottomNavigationToContent(content: string, currentMilestone: number, totalMilestones: number): string {
   const navigationHtml = `
     <div class="journey-bottom-navigation">

@@ -426,10 +426,9 @@ describe('useLinkClickHandler', () => {
     });
   });
 
-  // Regression (Cursor Bugbot on #1993): appendBottomNavigationToContent
-  // generates the bottom nav at fetch time, before a tab's active Path Track
-  // is known, so it always renders both buttons now — this layout effect is
-  // what decides their real visibility, against the same track-aware
+  // The bottom nav renders at fetch time, before a tab's active Path Track
+  // is known, so both buttons always render — this layout effect decides
+  // their real visibility against the same track-aware
   // canNavigateNext()/canNavigatePrevious() the click handler already uses.
   describe('Bottom-nav button visibility sync', () => {
     function appendBottomNavButtons() {
@@ -475,9 +474,9 @@ describe('useLinkClickHandler', () => {
       expect(prevButton.hidden).toBe(true);
     });
 
-    // The concrete Bugbot scenario: a track that continues past where
-    // Foundations ends must still show Next, and one that ends before
-    // Foundations does must hide it — for the exact same underlying guide.
+    // A track that continues past where Foundations ends must still show
+    // Next; one that ends before Foundations does must hide it — for the
+    // same underlying guide.
     it('re-syncs Next visibility when the active track changes without the guide itself changing', () => {
       const { nextButton } = appendBottomNavButtons();
       mockModel.canNavigateNext.mockReturnValue(false);
@@ -494,12 +493,9 @@ describe('useLinkClickHandler', () => {
       expect(nextButton.hidden).toBe(false);
     });
 
-    // Regression (Cursor Bugbot on #1993, "Bottom-nav hide lost after
-    // remount"): ContentProcessor's snippet-ref inlining resolves
-    // asynchronously and swaps in a freshly reparsed DOM tree via its own
-    // internal state — activeTab.content itself never changes, so this
-    // effect's dependency array alone would never re-run. The DOM swap
-    // itself (not a prop/rerender) must be what re-triggers the sync.
+    // ContentProcessor's snippet-ref inlining can swap in a freshly reparsed
+    // DOM tree without activeTab.content itself changing, so the DOM swap
+    // itself — not a prop/rerender — must be what re-triggers the sync.
     it('re-syncs Next visibility after a DOM swap that leaves activeTab.content unchanged', async () => {
       const { nextButton: originalNextButton } = appendBottomNavButtons();
       mockModel.canNavigateNext.mockReturnValue(false);

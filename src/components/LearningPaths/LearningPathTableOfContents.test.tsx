@@ -409,10 +409,9 @@ describe('LearningPathTableOfContents', () => {
     });
 
     // Regression: the active track tab used to be purely local state, never
-    // reaching the panel model — so its own Next/Previous (the milestone
-    // toolbar and, until removed, the legacy bottom nav) always resolved
-    // against Foundations regardless of the selected tab (captain-reported).
-    // onActiveTrackChange is how the model learns which tab is selected.
+    // reaching the panel model, so Next/Previous always resolved against
+    // Foundations regardless of the selected tab. onActiveTrackChange is how
+    // the model learns which tab is selected.
     it('reports the selected tab via onActiveTrackChange, including on mount', () => {
       setCompletedSlugs(new Set());
       const onActiveTrackChange = jest.fn();
