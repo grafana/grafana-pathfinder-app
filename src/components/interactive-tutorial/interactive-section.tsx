@@ -91,7 +91,7 @@ import {
   computeStepEligibility,
   type AcknowledgementAnalysis,
 } from './step-section-utils';
-import { classifySectionChild } from './section-child-classifier';
+import { classifySectionChild, mapSectionChild, unwrapSectionChild } from './section-child-classifier';
 import { useDocumentStepProgress } from './hooks/use-document-step-progress';
 import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
 import { useSectionPersistence } from './hooks/use-section-persistence';
@@ -250,26 +250,16 @@ export function InteractiveSection({
   // Use executeInteractiveAction directly (no wrapper needed)
   // Section-level blocking is managed separately at the section level
 
-  // Extract step information from children. Iterates the children once,
-  // resolves each child to its `StepTypeSchema` via STEP_TYPE_LOOKUP,
-  // and builds the StepInfo entry from the schema's `toStepInfoExtension`.
-  // Non-step children (markdown / media / wrapper) are skipped.
   const stepComponents = useMemo((): StepInfo[] => {
     const steps: StepInfo[] = [];
     let stepIndex = 0;
 
-    React.Children.forEach(children, (child) => {
+    React.Children.forEach(children, (wrappedChild) => {
+      const child = unwrapSectionChild(wrappedChild);
       const schema = lookupStepSchema(child);
       if (!schema) {
         return;
       }
-      // Prefer the author/parser-supplied stable stepId on the child over
-      // the positional fallback. The JSON parser threads `props.stepId`
-      // through every interactive-block converter (either the author's
-      // `id` or `deriveStepId(...)`); without this preference the
-      // `cloneElement` in `enhancedChildren` below would overwrite the
-      // stable ID with the positional one on every section render,
-      // re-orphaning completion whenever a sibling block is inserted.
       const childProps = (child as React.ReactElement<any>).props;
       const stepId: string =
         typeof childProps?.stepId === 'string' && childProps.stepId.length > 0
@@ -1194,11 +1184,6 @@ export function InteractiveSection({
     completedSteps,
   });
 
-  // Render enhanced children with coordination props. For each child:
-  //   1. Look up its `StepTypeSchema` (undefined → pass-through).
-  //   2. Build the cloneElement bag via `schema.toEnhancedProps(ctx)`.
-  //   3. Attach a `ref` callback based on `schema.refTarget`
-  //      ('stepRefs' / 'multiStepRefs' / 'none').
   const enhancedChildren = useMemo(() => {
     let stepIndex = 0;
 
@@ -1214,54 +1199,55 @@ export function InteractiveSection({
       };
 
     // eslint-disable-next-line react-hooks/refs -- the stepRefs/multiStepRefs Maps are read inside the ref callback, which runs at commit time, not during render
-    return React.Children.map(children, (child) => {
-      const schema = lookupStepSchema(child);
-      if (!schema) {
-        return child;
-      }
-      const stepInfo = stepComponents[stepIndex];
-      if (!stepInfo) {
-        return child;
-      }
+    return React.Children.map(children, (wrappedChild) =>
+      mapSectionChild(wrappedChild, (child) => {
+        const schema = lookupStepSchema(child);
+        if (!schema) {
+          return child;
+        }
+        const stepInfo = stepComponents[stepIndex];
+        if (!stepInfo) {
+          return child;
+        }
 
-      const isEligibleForChecking = stepEligibility[stepIndex] ?? false;
-      const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-      const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-        sectionId,
-        stepIndex
-      );
+        const isEligibleForChecking = stepEligibility[stepIndex] ?? false;
+        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
+        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+          sectionId,
+          stepIndex
+        );
 
-      const enhanceCtx: EnhanceContext = {
-        stepInfo,
-        isEligibleForChecking,
-        isCurrentlyExecuting,
-        documentStepIndex,
-        documentTotalSteps,
-        sectionId,
-        sectionTitle: title,
-        baseDisabled: disabled,
-        isRunning,
-        sectionRequirementsPassed: sectionRequirementsStatus.passed,
-        resetTrigger,
-        onStepComplete: handleStepComplete,
-        onStepReset: handleStepReset,
-      };
+        const enhanceCtx: EnhanceContext = {
+          stepInfo,
+          isEligibleForChecking,
+          isCurrentlyExecuting,
+          documentStepIndex,
+          documentTotalSteps,
+          sectionId,
+          sectionTitle: title,
+          baseDisabled: disabled,
+          isRunning,
+          sectionRequirementsPassed: sectionRequirementsStatus.passed,
+          resetTrigger,
+          onStepComplete: handleStepComplete,
+          onStepReset: handleStepReset,
+        };
 
-      const enhancedProps = schema.toEnhancedProps(enhanceCtx);
+        const enhancedProps = schema.toEnhancedProps(enhanceCtx);
 
-      // `ref` and `key` are React-special — they must go onto the
-      // cloneElement props directly, not into `enhancedProps`.
-      const refCallback = schema.refTarget === 'none' ? undefined : makeRefCallback(schema.refTarget, stepInfo.stepId);
+        const refCallback =
+          schema.refTarget === 'none' ? undefined : makeRefCallback(schema.refTarget, stepInfo.stepId);
 
-      stepIndex++;
+        stepIndex++;
 
-      return React.cloneElement(child as React.ReactElement<any>, {
-        ...(child as React.ReactElement<any>).props,
-        ...enhancedProps,
-        key: stepInfo.stepId,
-        ...(refCallback ? { ref: refCallback } : {}),
-      });
-    });
+        return React.cloneElement(child as React.ReactElement<any>, {
+          ...(child as React.ReactElement<any>).props,
+          ...enhancedProps,
+          key: stepInfo.stepId,
+          ...(refCallback ? { ref: refCallback } : {}),
+        });
+      })
+    );
   }, [
     children,
     stepComponents,
