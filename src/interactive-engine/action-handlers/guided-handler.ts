@@ -1,5 +1,6 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager, type CommentBoxStepInfo } from '../navigation-manager';
+import { INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS } from '../constants';
 import { InteractiveElementData } from '../../types/interactive.types';
 import {
   describeElement,
@@ -37,7 +38,7 @@ interface ActiveListener {
 
 interface GuidedStepArbiter {
   promise: Promise<CompletionResult>;
-  settle: (result: CompletionResult, beforeSettle?: () => void) => CompletionResult;
+  settle: (result: CompletionResult, beforeSettle?: () => void) => Promise<CompletionResult>;
   getResult: () => CompletionResult | null;
 }
 
@@ -47,6 +48,7 @@ export class GuidedHandler {
   private pendingIntervals: Array<ReturnType<typeof setInterval>> = [];
   private currentAbortController: AbortController | null = null;
   private completedSteps: number[] = [];
+  private currentCommentBox: HTMLElement | null = null;
 
   constructor(
     private stateManager: InteractiveStateManager,
@@ -102,7 +104,7 @@ export class GuidedHandler {
     );
   }
 
-  private createGuidedStepArbiter(): GuidedStepArbiter {
+  private createGuidedStepArbiter(stepIndex: number, totalSteps: number): GuidedStepArbiter {
     let result: CompletionResult | null = null;
     let resolvePromise!: (result: CompletionResult) => void;
     const promise = new Promise<CompletionResult>((resolve) => {
@@ -111,7 +113,7 @@ export class GuidedHandler {
 
     return {
       promise,
-      settle: (nextResult, beforeSettle) => {
+      settle: async (nextResult, beforeSettle) => {
         if (result !== null) {
           return result;
         }
@@ -123,6 +125,37 @@ export class GuidedHandler {
           logger.error('Guided completion callback failed', { error });
           result = 'error';
         }
+
+        const isFinalStep = stepIndex === totalSteps - 1;
+        const isSuccessfulCompletion = result === 'completed' || result === 'skipped';
+
+        if (isFinalStep && isSuccessfulCompletion) {
+          const progressBarUpdated = this.updateProgressBarTo100();
+          if (progressBarUpdated) {
+            // Wait for the configured delay to let the user see 100% completion
+            // Make this cancellable - if the step is aborted during the delay, resolve immediately
+            await new Promise<void>((resolveDelay) => {
+              const delayTimeoutId = setTimeout(() => {
+                resolveDelay();
+              }, INTERACTIVE_CONFIG.guided.progressBarCompletionDelayMs);
+              this.pendingTimeouts.push(delayTimeoutId);
+
+              // If already aborted, resolve immediately
+              if (this.currentAbortController?.signal.aborted) {
+                clearTimeout(delayTimeoutId);
+                resolveDelay();
+              } else {
+                // Listen for abort during the delay
+                const handleAbort = () => {
+                  clearTimeout(delayTimeoutId);
+                  resolveDelay();
+                };
+                this.currentAbortController?.signal.addEventListener('abort', handleAbort, { once: true });
+              }
+            });
+          }
+        }
+
         resolvePromise(result);
         return result;
       },
@@ -137,10 +170,11 @@ export class GuidedHandler {
     timeout: number,
     onActionCompleted?: () => void
   ): Promise<CompletionResult> {
-    const arbiter = this.createGuidedStepArbiter();
+    const arbiter = this.createGuidedStepArbiter(stepIndex, totalSteps);
 
     try {
       this.cleanupListeners();
+      this.currentCommentBox = null;
       if (action.targetAction === 'noop') {
         return await this.executeNoopStep(action, stepIndex, totalSteps, timeout);
       }
@@ -157,7 +191,7 @@ export class GuidedHandler {
         logger.warn(`Guided step ${stepIndex + 1} uses an action the guided handler cannot drive`, {
           targetAction: action.targetAction,
         });
-        return this.finishGuidedStep(arbiter.settle(action.isSkippable ? 'skipped' : 'error'), stepIndex);
+        return this.finishGuidedStep(await arbiter.settle(action.isSkippable ? 'skipped' : 'error'), stepIndex);
       }
 
       const refTarget = action.refTarget;
@@ -212,12 +246,15 @@ export class GuidedHandler {
       } else if (settledResult !== 'error') {
         logger.warn(`Guided step ${stepIndex + 1} settled before setup failed`, { error, result: settledResult });
       }
-      const result = settledResult ?? arbiter.settle('error');
+      const result = settledResult ?? (await arbiter.settle('error'));
       return this.finishGuidedStep(result, stepIndex);
     }
   }
 
   private finishGuidedStep(result: CompletionResult, stepIndex: number): CompletionResult {
+    if ((result === 'completed' || result === 'skipped') && !this.completedSteps.includes(stepIndex)) {
+      this.completedSteps.push(stepIndex);
+    }
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;
@@ -226,9 +263,6 @@ export class GuidedHandler {
       this.cleanupListeners(true);
     } catch (error) {
       logger.error('Guided cleanup failed', { error });
-    }
-    if ((result === 'completed' || result === 'skipped') && !this.completedSteps.includes(stepIndex)) {
-      this.completedSteps.push(stepIndex);
     }
     return result;
   }
@@ -244,7 +278,7 @@ export class GuidedHandler {
     timeout: number
   ): Promise<CompletionResult> {
     this.cleanupListeners();
-    const arbiter = this.createGuidedStepArbiter();
+    const arbiter = this.createGuidedStepArbiter(stepIndex, totalSteps);
     this.currentAbortController = new AbortController();
     const signal = this.currentAbortController.signal;
     if (action.isSkippable) {
@@ -252,9 +286,9 @@ export class GuidedHandler {
     }
     this.createCancelListener(stepIndex, arbiter);
     const completionPromise = this.createNoopCompletionListener(stepIndex, timeout);
-    void completionPromise.then((result) => arbiter.settle(result));
+    void completionPromise.then((result) => void arbiter.settle(result));
     const handleAbort = () => {
-      arbiter.settle('cancelled');
+      void arbiter.settle('cancelled');
     };
     signal.addEventListener('abort', handleAbort, { once: true });
     this.activeListeners.push({
@@ -618,6 +652,9 @@ export class GuidedHandler {
       }
     );
 
+    // Capture the current comment box for progress bar updates
+    this.currentCommentBox = document.querySelector('.interactive-comment-box') as HTMLElement | null;
+
     // Add a persistent highlight class that won't auto-remove
     element.classList.add('interactive-guided-active');
   }
@@ -655,7 +692,7 @@ export class GuidedHandler {
     if (actionType === 'button' || actionType === 'highlight') {
       const target = parseTargetState(action.targetState);
       if (target && satisfiesTargetState(resolveStateSource(targetElement, target), target) === true) {
-        arbiter.settle('completed');
+        void arbiter.settle('completed');
         return;
       }
     }
@@ -671,17 +708,17 @@ export class GuidedHandler {
       onActionCompleted
     );
     void completionPromise.then(
-      (result) => arbiter.settle(result),
+      (result) => void arbiter.settle(result),
       (error) => {
         logger.error('Guided completion listener failed', { error });
-        arbiter.settle('error');
+        void arbiter.settle('error');
       }
     );
 
-    const timeoutId = setTimeout(() => arbiter.settle('timeout'), timeout);
+    const timeoutId = setTimeout(() => void arbiter.settle('timeout'), timeout);
     this.pendingTimeouts.push(timeoutId);
     const handleAbort = () => {
-      arbiter.settle('cancelled');
+      void arbiter.settle('cancelled');
     };
     signal.addEventListener('abort', handleAbort, { once: true });
     this.activeListeners.push({
@@ -696,7 +733,7 @@ export class GuidedHandler {
     const handleSkip = (event: Event) => {
       const customEvent = event as CustomEvent<{ stepIndex: number }>;
       if (customEvent.detail.stepIndex === stepIndex) {
-        arbiter.settle('skipped');
+        void arbiter.settle('skipped');
       }
     };
 
@@ -712,12 +749,12 @@ export class GuidedHandler {
     const handleCancel = (event: Event) => {
       const customEvent = event as CustomEvent<{ stepIndex: number }>;
       if (customEvent.detail.stepIndex === stepIndex) {
-        arbiter.settle('cancelled');
+        void arbiter.settle('cancelled');
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        arbiter.settle('cancelled');
+        void arbiter.settle('cancelled');
       }
     };
 
@@ -837,11 +874,18 @@ export class GuidedHandler {
         }
         resolve(result);
       };
-      const complete = () => {
-        if (isResolved) {
+      let completing = false;
+      const complete = async () => {
+        if (isResolved || completing) {
           return;
         }
-        cleanup(arbiter.settle('completed', onActionCompleted));
+        completing = true;
+        try {
+          cleanup(await arbiter.settle('completed', onActionCompleted));
+        } catch (error) {
+          logger.error('Guided completion failed', { error });
+          cleanup('error');
+        }
       };
       rectUpdateInterval = setInterval(() => {
         if (!element.isConnected) {
@@ -851,7 +895,7 @@ export class GuidedHandler {
       this.pendingIntervals.push(rectUpdateInterval);
 
       const handleClick = (event: Event) => {
-        if (isResolved) {
+        if (isResolved || completing) {
           return;
         }
 
@@ -861,7 +905,7 @@ export class GuidedHandler {
         const isTargetOrChild = element === clickedElement || element.contains(clickedElement);
 
         if (isTargetOrChild) {
-          complete();
+          void complete();
           return;
         }
 
@@ -880,7 +924,7 @@ export class GuidedHandler {
           if (element.isConnected) {
             element.click();
           }
-          complete();
+          void complete();
         }
       };
 
@@ -1143,6 +1187,16 @@ export class GuidedHandler {
       this.navigationManager.clearAllHighlights();
     }
   }
+  private updateProgressBarTo100(): boolean {
+    const container = this.currentCommentBox ?? document;
+    const progressBar = container.querySelector(`.${INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS}`) as HTMLElement | null;
+    if (!progressBar) {
+      return false;
+    }
+    progressBar.style.width = '100%';
+    return true;
+  }
+
   cancel(): void {
     if (this.currentAbortController) {
       this.currentAbortController.abort();
