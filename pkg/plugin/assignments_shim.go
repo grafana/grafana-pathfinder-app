@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"sync"
+
+	"github.com/grafana/grafana-pathfinder-app/src/learning-paths"
 )
 
 // shimHandleMyAssignments is the local stand-in for handleMyAssignments,
@@ -56,6 +58,23 @@ var (
 
 func init() {
 	shimHandleMyAssignments = shimHandleMyAssignmentsFromFile
+	ossPathShim = ossPathShimFromFile
+}
+
+var (
+	ossShimOnce  sync.Once
+	ossShimPaths []bundledPath
+	ossShimErr   error
+)
+
+func ossPathShimFromFile() ([]bundledPath, error) {
+	ossShimOnce.Do(func() {
+		var file bundledCatalogue
+		if ossShimErr = json.Unmarshal(learningpaths.PathsJSON, &file); ossShimErr == nil {
+			ossShimPaths = file.Paths
+		}
+	})
+	return ossShimPaths, ossShimErr
 }
 
 // shimHandleMyAssignmentsFromFile reads the file on every request — deliberately

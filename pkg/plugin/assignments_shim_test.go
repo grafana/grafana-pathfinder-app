@@ -99,7 +99,7 @@ func TestShimHandleMyAssignments_EvaluateCases(t *testing.T) {
 	t.Setenv(assignmentShimEnvVar, filepath.Join("..", "..", "demo", "assignments-fixture.json"))
 	t.Setenv(completionRecordsShimEnvVar, filepath.Join("..", "..", "demo", "completions-fixture.json"))
 	prev := pathIndexFetch
-	pathIndexFetch = func(context.Context, string) ([]guideRef, error) {
+	pathIndexFetch = func(context.Context, string) ([]string, error) {
 		return nil, os.ErrClosed
 	}
 	t.Cleanup(func() { pathIndexFetch = prev })
