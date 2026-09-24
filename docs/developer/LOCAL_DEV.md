@@ -95,7 +95,7 @@ real Cloud stack answers `upstream-404` today.
 
 To build "My Paths" against the real route anyway, `/assignments/my` carries a fixture that serves
 a canned envelope. It lives behind the **`pathfinderdev` build tag**
-(`pkg/plugin/assignments_dev.go`), so it is absent from every shipped artifact rather than merely
+(`pkg/plugin/assignments_shim.go`), so it is absent from every shipped artifact rather than merely
 disabled in one — substituting the upstream also means substituting the caller's identity, and an
 identity substitution switchable by configuration in a released binary is the fail-open the proxy's
 trust boundary exists to prevent (`docs/design/BACKEND_PROXY_PATTERN.md` §3).
@@ -130,7 +130,7 @@ which is only reachable if the dev hook never ran, i.e. you are still talking to
 
 The tagged build looks for `demo/assignments-fixture.json`, which the repo already mounts into the
 container at `/root/grafana-pathfinder-app/demo/`. The file's presence is the on switch, and a
-missing one falls through to the real read path. (Grafana constructs the environment it launches a
+missing one falls through to handleMyAssignments. (Grafana constructs the environment it launches a
 backend plugin with, so a variable set on the container is not reliably visible to the plugin
 process; that is why the gate is a path rather than an env var. `PATHFINDER_DEV_ASSIGNMENTS_FIXTURE`
 overrides the path if you run the binary directly.)
@@ -171,11 +171,17 @@ Notes on the loop:
   refreshing the browser is the whole iteration cycle — no rebuild, no plugin restart.
 - **It carries the display states the UI has to render**, including an obligation with no deadline
   (the only shape MVP actually writes), a past `dueAt`, a satisfied one, a track-qualified target,
-  two records for one path from different rules, and a withdrawn record that the loader drops
-  exactly as the real route drops it.
-- **`satisfied` comes from the file** because the real route does not evaluate it yet — see
-  `unevaluatedSatisfaction` in `pkg/plugin/assignments.go` for what the completion join has to do
-  and why it must not reuse `collateByUser` as-is.
+  and a withdrawn record that the loader drops exactly as the real route drops it. Dated against
+  2026-09-23, the path rows are `alerting-basics` (completed), `linux-monitoring` (not started),
+  `observability-basics` (one guide missing), and `getting-started` (middle guide completed before
+  `acceptCompletionsFrom`).
+- **`satisfied` in the assignment fixture is ignored.** The route evaluates each row against
+  `demo/completions-fixture.json` (same build tag, same re-read-every-request rule). A missing
+  completions file falls through to the real completion list, and with no App Platform that list
+  is empty, so every obligation stays unmet. With the committed completions fixture,
+  `alerting-basics` is met. `linux-monitoring` has no completions. `observability-basics` is
+  missing `prometheus-advanced-queries`. `getting-started` has a completion for every guide, but
+  `prometheus-grafana-101` is before that row's `acceptCompletionsFrom`. Track-qualified rows stay unmet.
 - **The plugin logs a warning on the first fixture-served request.** If you do not see it, the tag
   is missing or the file is not where the plugin looked, and you are looking at the real route's
   capability envelope.
@@ -184,8 +190,9 @@ Notes on the loop:
   (default `user:dev`) only when it does not — so switching which user you are looking at is
   another edit to the same file.
 
-An untagged build has no fixture at all, which `TestMyAssignments_DevFixtureAbsentInDefaultBuild`
-pins. Use the ordinary `npm run build:all` for anything you intend to ship or hand to someone else.
+An untagged build has no shim at all: `shimHandleMyAssignments` and `shimCompletionRecords`
+stay nil, which is the only form that ships. Use the ordinary `npm run build:all` for anything
+you intend to ship or hand to someone else.
 
 ## Testing against Grafana Cloud (Graft)
 

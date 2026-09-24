@@ -64,11 +64,23 @@ func buildAppPlatformURL(appURL, groupVersion, namespace, resource string) strin
 		url.PathEscape(namespace), url.PathEscape(resource))
 }
 
-// appPlatformListPage is one raw page of a namespace LIST: each item's `spec`
-// undecoded, plus the Kubernetes continue token (empty when drained).
+// appPlatformListPage is one page of a namespace LIST, in the shape the API
+// server returned. metadata.continue is empty when the list is drained.
 type appPlatformListPage struct {
-	Specs    []json.RawMessage
-	Continue string
+	Metadata struct {
+		Continue string `json:"continue"`
+	} `json:"metadata"`
+	Items []appPlatformListItem `json:"items"`
+}
+
+// appPlatformListItem is one LIST element. metadata.name addresses the object.
+// spec and status stay raw so each kind decodes its own schema.
+type appPlatformListItem struct {
+	Metadata struct {
+		Name string `json:"name"`
+	} `json:"metadata"`
+	Spec   json.RawMessage `json:"spec"`
+	Status json.RawMessage `json:"status"`
 }
 
 // accessTokenMinter exchanges a caller's ID token for a short-lived access
@@ -226,23 +238,11 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 		return nil, fmt.Errorf("app platform list: page response exceeded %d bytes", maxBytes)
 	}
 
-	var list struct {
-		Metadata struct {
-			Continue string `json:"continue"`
-		} `json:"metadata"`
-		Items []struct {
-			Spec json.RawMessage `json:"spec"`
-		} `json:"items"`
-	}
-	if err := json.Unmarshal(body, &list); err != nil {
+	var page appPlatformListPage
+	if err := json.Unmarshal(body, &page); err != nil {
 		return nil, fmt.Errorf("app platform list: decode: %w", err)
 	}
-
-	specs := make([]json.RawMessage, 0, len(list.Items))
-	for _, item := range list.Items {
-		specs = append(specs, item.Spec)
-	}
-	return &appPlatformListPage{Specs: specs, Continue: list.Metadata.Continue}, nil
+	return &page, nil
 }
 
 // create POSTs a single object to a namespace collection (the write companion
@@ -301,6 +301,47 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 	// failure: the write has already committed, and surfacing an error would mask a
 	// durable success as failed. Drain best-effort up to the cap (bounding bytes
 	// transferred) so the connection can be reused, and swallow any error.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBytes))
+	return nil
+}
+
+// updateStatus PUTs a kind's status subresource. The body is the status
+// document the caller encoded. A non-2xx carries the upstream status, the
+// same way create does.
+func (c *appPlatformListClient) updateStatus(ctx context.Context, groupVersion, namespace, resource, name string, obj []byte, maxBytes int64) error {
+	if namespace == "" || name == "" {
+		return fmt.Errorf("app platform status: empty name")
+	}
+	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource) + "/" + url.PathEscape(name) + "/status"
+
+	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
+	defer cancel()
+
+	accessToken, err := mintAccessToken(reqCtx, c.minter, namespace, c.idToken)
+	if err != nil {
+		return fmt.Errorf("app platform status: %w", err)
+	}
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPut, endpoint, bytes.NewReader(obj))
+	if err != nil {
+		return fmt.Errorf("app platform status: build request: %w", err)
+	}
+	req.Header.Set(auth.AccessTokenHeader, accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("app platform status: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return &appPlatformUpstreamError{
+			status:     resp.StatusCode,
+			retryAfter: resp.Header.Get("Retry-After"),
+			msg:        fmt.Sprintf("app platform status %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(body))),
+		}
+	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBytes))
 	return nil
 }

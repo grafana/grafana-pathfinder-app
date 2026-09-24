@@ -272,16 +272,16 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 
 	// Decode each spec directly into the slim entry: spec.blocks has no field
 	// here, so encoding/json drops it — that omission IS the block-stripping.
-	entries := make([]customGuideRepositoryEntry, 0, len(page.Specs))
+	entries := make([]customGuideRepositoryEntry, 0, len(page.Items))
 	warn := func(msg string, args ...any) {
 		c.decodeWarns++
 		if c.decodeWarns <= customGuideDecodeWarnPerDrain {
 			c.inner.logger.Warn(msg, append([]any{"namespace", namespace}, args...)...)
 		}
 	}
-	for _, raw := range page.Specs {
+	for _, item := range page.Items {
 		var entry customGuideRepositoryEntry
-		err := json.Unmarshal(raw, &entry)
+		err := json.Unmarshal(item.Spec, &entry)
 		if m := entry.Manifest; m != nil {
 			if m.Stats != nil && !m.Stats.complete {
 				m.Stats = nil
@@ -306,5 +306,5 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 		}
 		entries = append(entries, entry)
 	}
-	return &customGuidePage{Entries: entries, Continue: page.Continue}, nil
+	return &customGuidePage{Entries: entries, Continue: page.Metadata.Continue}, nil
 }

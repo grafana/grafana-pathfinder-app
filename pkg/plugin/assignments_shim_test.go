@@ -3,6 +3,7 @@
 package plugin
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,11 +13,11 @@ import (
 // The committed fixture is the local loop's whole input, and nothing else reads
 // it — so without this it can rot into invalid JSON or a stale field name and
 // the only symptom is a confusing empty panel days later.
-func TestDevAssignmentFixture_CommittedFileLoads(t *testing.T) {
-	t.Setenv(assignmentFixtureEnvVar, filepath.Join("..", "..", "demo", "assignments-fixture.json"))
+func TestShimHandleMyAssignments_CommittedFileLoads(t *testing.T) {
+	t.Setenv(assignmentShimEnvVar, filepath.Join("..", "..", "demo", "assignments-fixture.json"))
 
 	r, _ := http.NewRequest(http.MethodGet, "/assignments/my", nil)
-	entries, subject, handled := serveDevAssignmentFixture(newTestApp(t), r)
+	entries, subject, handled := shimHandleMyAssignmentsFromFile(newTestApp(t), r)
 
 	if !handled {
 		t.Fatal("committed fixture did not load; check demo/assignments-fixture.json")
@@ -32,7 +33,7 @@ func TestDevAssignmentFixture_CommittedFileLoads(t *testing.T) {
 		if entry.TargetID == "deprecated-onboarding" {
 			t.Error("a withdrawn obligation reached the client; the lifecycle filter regressed")
 		}
-		if entry.TargetType != "path" || entry.TargetID == "" {
+		if (entry.TargetType != "path" && entry.TargetType != "guide") || entry.TargetID == "" {
 			t.Errorf("entry = %+v; the fixture must name targetType and targetId", entry)
 		}
 		if entry.Lifecycle != assignmentLifecycleActive {
@@ -66,10 +67,10 @@ func TestDevAssignmentFixture_CommittedFileLoads(t *testing.T) {
 	}
 }
 
-// A missing or malformed fixture must fall through to the real read path, not
+// A missing or malformed file must fall through to handleMyAssignments, not
 // break the route: a typo in the JSON should look like the ordinary capability
 // envelope plus a log line.
-func TestDevAssignmentFixture_FallsThroughOnBadInput(t *testing.T) {
+func TestShimHandleMyAssignments_FallsThroughOnBadInput(t *testing.T) {
 	cases := map[string]string{
 		"missing file": filepath.Join(t.TempDir(), "nope.json"),
 		"malformed":    writeTempFixture(t, "{ not json"),
@@ -78,10 +79,10 @@ func TestDevAssignmentFixture_FallsThroughOnBadInput(t *testing.T) {
 
 	for name, path := range cases {
 		t.Run(name, func(t *testing.T) {
-			t.Setenv(assignmentFixtureEnvVar, path)
+			t.Setenv(assignmentShimEnvVar, path)
 
 			r, _ := http.NewRequest(http.MethodGet, "/assignments/my", nil)
-			_, _, handled := serveDevAssignmentFixture(newTestApp(t), r)
+			_, _, handled := shimHandleMyAssignmentsFromFile(newTestApp(t), r)
 
 			if handled {
 				t.Error("handled a fixture it could not read; the route must fall through instead")
@@ -90,14 +91,50 @@ func TestDevAssignmentFixture_FallsThroughOnBadInput(t *testing.T) {
 	}
 }
 
-// A verified ID token beats the fixture's subject, so the local loop exercises
-// the real identity path whenever the stack can satisfy it.
-func TestDevAssignmentFixture_VerifiedSubjectWinsOverFixture(t *testing.T) {
-	t.Setenv(assignmentFixtureEnvVar, writeTempFixture(t,
+// The committed fixtures are the local loop's input, dated 2026-09-23.
+// alerting-basics is met. linux-monitoring has no completions.
+// observability-basics is missing one guide. getting-started's middle guide
+// is before acceptCompletionsFrom. The track-qualified row stays unmet.
+func TestShimHandleMyAssignments_EvaluateCases(t *testing.T) {
+	t.Setenv(assignmentShimEnvVar, filepath.Join("..", "..", "demo", "assignments-fixture.json"))
+	t.Setenv(completionRecordsShimEnvVar, filepath.Join("..", "..", "demo", "completions-fixture.json"))
+	prev := pathIndexFetch
+	pathIndexFetch = func(context.Context, string) ([]guideRef, error) {
+		return nil, os.ErrClosed
+	}
+	t.Cleanup(func() { pathIndexFetch = prev })
+
+	r, _ := http.NewRequest(http.MethodGet, "/assignments/my", nil)
+	_, resp := doMyAssignmentsReq(t, r)
+	got := map[string]bool{}
+	for _, entry := range resp.Assignments {
+		got[entry.TargetID] = entry.Satisfied
+	}
+	want := map[string]bool{
+		"alerting-basics":      true,
+		"linux-monitoring":     false,
+		"observability-basics": false,
+		"getting-started":      false,
+		"logs-dashboards":      false,
+	}
+	for id, satisfied := range want {
+		gotSatisfied, ok := got[id]
+		if !ok {
+			t.Errorf("missing %s: %+v", id, resp.Assignments)
+			continue
+		}
+		if gotSatisfied != satisfied {
+			t.Errorf("%s satisfied = %v, want %v", id, gotSatisfied, satisfied)
+		}
+	}
+}
+
+func TestShimHandleMyAssignments_VerifiedSubjectWins(t *testing.T) {
+	t.Setenv(assignmentShimEnvVar, writeTempFixture(t,
 		`{"subject":"user:dev","assignments":[{"targetType":"path","targetId":"p","satisfied":false}]}`))
 
 	r := completionRequest(t, "/assignments/my", "user:real")
-	entries, subject, handled := serveDevAssignmentFixture(newTestApp(t), r)
+	entries, subject, handled := shimHandleMyAssignmentsFromFile(newTestApp(t), r)
 	if !handled || len(entries) != 1 {
 		t.Fatalf("handled = %v, entries = %+v", handled, entries)
 	}

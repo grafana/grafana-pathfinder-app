@@ -19,6 +19,8 @@ export interface WriteQueueDeps {
   drainBudget?: number;
   /** Retention horizon in ms; older items are dropped. Defaults to MAX_RETENTION_MS. */
   maxRetentionMs?: number;
+  /** Fired after POST /completion-records returns success. Not fired on enqueue. */
+  onCreated?: () => void;
 }
 
 export interface ProcessResult {
@@ -60,6 +62,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   const maxBackoffMs = deps.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
   const drainBudget = deps.drainBudget ?? DRAIN_BUDGET_PER_PASS;
   const maxRetentionMs = deps.maxRetentionMs ?? MAX_RETENTION_MS;
+  const onCreated = deps.onCreated;
 
   let items: QueuedWrite[] = [];
   let disarmed = false;
@@ -230,6 +233,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
 
       if (outcome.kind === 'created') {
         remove(item);
+        onCreated?.();
         continue;
       }
       if (outcome.kind === 'route-missing' || outcome.kind === 'forbidden') {

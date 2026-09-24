@@ -172,6 +172,10 @@ var (
 	completionStats        map[string]*completionCacheStats
 	completionGenerations  map[string]uint64
 
+	// shimCompletionRecords is nil in every shipped build. completion_records_shim.go,
+	// behind the pathfinderdev build tag, is the only thing that sets it.
+	shimCompletionRecords func(*App, *http.Request) (records []completionRecordSpec, subject string, handled bool)
+
 	// completionListerOverride injects a fake lister in tests. nil selects the
 	// real per-request HTTP client. Config resolution (feature toggle, app
 	// URL, namespace) is checked BEFORE this override so the structural-
@@ -394,6 +398,20 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 // buildCompletionIndex drains the namespace LIST across pages — up to the
 // aggregate record budget — and collates the records into a per-user index.
 func buildCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, logger log.Logger) (*completionIndex, int, error) {
+	records, pages, err := drainCompletionRecords(ctx, namespace, lister, logger)
+	if err != nil {
+		return nil, pages, err
+	}
+	return &completionIndex{
+		byUser: collateByUser(records),
+		asOf:   timeNow(),
+	}, pages, nil
+}
+
+// drainCompletionRecords is the raw LIST buildCompletionIndex collates. The
+// assignment join uses it directly: collation drops the per-row completedAt
+// the obligation criteria test.
+func drainCompletionRecords(ctx context.Context, namespace string, lister completionRecordLister, logger log.Logger) ([]completionRecordSpec, int, error) {
 	var records []completionRecordSpec
 	continueToken := ""
 	pages := 0
@@ -414,11 +432,7 @@ func buildCompletionIndex(ctx context.Context, namespace string, lister completi
 		}
 		continueToken = page.Continue
 	}
-
-	return &completionIndex{
-		byUser: collateByUser(records),
-		asOf:   timeNow(),
-	}, pages, nil
+	return records, pages, nil
 }
 
 // collateByUser groups records by userId, then collapses each user's records to
@@ -535,6 +549,23 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	// Nil in every shipped build (see shimCompletionRecords).
+	if shimCompletionRecords != nil {
+		if records, subject, handled := shimCompletionRecords(a, r); handled {
+			completions := collateByUser(records)[subject]
+			if completions == nil {
+				completions = []collatedCompletion{}
+			}
+			a.writeMyCompletions(w, myCompletionsResponse{
+				Capability:  completionCapability{Available: true},
+				UserID:      subject,
+				Completions: completions,
+				AsOf:        timeNow().UTC().Format(time.RFC3339),
+			})
+			return
+		}
 	}
 
 	// Identity gate first — cache hit or miss, warm bytes are never served to

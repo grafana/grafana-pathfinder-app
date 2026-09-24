@@ -83,6 +83,7 @@ export const AssignmentEntryWireSchema = z.strictObject({
   targetType: z.string(),
   targetId: z.string(),
   trackId: z.string().optional(),
+  targetSource: z.string().optional(),
   ruleId: z.string().optional(),
   assignedBy: z.string().optional(),
   assignedAt: z.string().optional(),

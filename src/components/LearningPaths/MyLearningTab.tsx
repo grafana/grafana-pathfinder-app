@@ -93,7 +93,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const { notDone: assignedNotDone } = useMyAssignments({
     paths,
-    isPathCompleted,
     getPathProgress,
   });
 

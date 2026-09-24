@@ -29,6 +29,26 @@ export interface WriteHookDeps {
   clearTimer: (handle: ReturnType<typeof setTimeout>) => void;
 }
 
+const publishedListeners = new Set<() => void>();
+
+/** Fires after a queued completion POST succeeds. Subscribe to refetch assignments. */
+export function onCompletionPublished(listener: () => void): () => void {
+  publishedListeners.add(listener);
+  return () => {
+    publishedListeners.delete(listener);
+  };
+}
+
+function notifyCompletionPublished(): void {
+  for (const listener of publishedListeners) {
+    try {
+      listener();
+    } catch (error) {
+      logger.warn('completion write: published listener threw', { error: String(error) });
+    }
+  }
+}
+
 const defaultDeps: WriteHookDeps = {
   send: postCompletionRecord,
   ownerKey: currentCompletionQueueOwnerKey,
@@ -58,6 +78,7 @@ class CompletionWriteController {
           send: deps.send,
           random: deps.random,
           storage: deps.storage(ownerKey),
+          onCreated: notifyCompletionPublished,
         })
       : null;
   }

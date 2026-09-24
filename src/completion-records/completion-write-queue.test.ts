@@ -103,6 +103,17 @@ function createWriteQueue(deps: Omit<WriteQueueDeps, 'storage'> & { storage?: Co
 }
 
 describe('write queue — enqueue and eviction', () => {
+  it('notifies onCreated after the POST succeeds', async () => {
+    const created = jest.fn();
+    const s = makeSender([{ kind: 'created' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send, onCreated: created });
+    q.enqueue(body());
+    expect(created).not.toHaveBeenCalled();
+
+    await q.processDue();
+    expect(created).toHaveBeenCalledTimes(1);
+  });
+
   it('enqueues and, on created, removes the item', async () => {
     const s = makeSender([{ kind: 'created' }]);
     const q = createWriteQueue({ now: () => 0, send: s.send });

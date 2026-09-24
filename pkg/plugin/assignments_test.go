@@ -274,10 +274,9 @@ func TestMyAssignments_AbsentTimeBoundsAreOmitted(t *testing.T) {
 	}
 }
 
-// The completion join is not built yet (unevaluatedSatisfaction). False is the
-// safe direction — an obligation shown outstanding when it is met is a wrong
-// nudge; one shown met when it is not would suppress work someone owes.
-func TestMyAssignments_SatisfactionIsUnevaluatedAndFalse(t *testing.T) {
+// With no completion list, every obligation stays unmet. Showing work as done
+// when the join could not run would suppress it.
+func TestMyAssignments_SatisfactionIsUnmetWithoutCompletions(t *testing.T) {
 	withAssignmentLister(t, singlePageAssignmentLister(
 		asg("user:1", "security-awareness", "", "annual-compliance", "2026-07-01T09:00:00Z"),
 	))
@@ -288,7 +287,7 @@ func TestMyAssignments_SatisfactionIsUnevaluatedAndFalse(t *testing.T) {
 		t.Fatalf("assignments = %+v", resp.Assignments)
 	}
 	if resp.Assignments[0].Satisfied {
-		t.Error("satisfied = true, but nothing evaluates it yet; see unevaluatedSatisfaction")
+		t.Error("satisfied = true, but no completion list was available")
 	}
 }
 

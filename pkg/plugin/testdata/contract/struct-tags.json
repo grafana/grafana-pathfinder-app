@@ -114,6 +114,13 @@
       "omitempty": true
     },
     {
+      "field": "TargetSource",
+      "json": "targetSource",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
       "field": "RuleID",
       "json": "ruleId",
       "type": "string",
