@@ -197,52 +197,29 @@ function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: 
   }
 }
 
-const LEADING_HEADING_RE = /^#{1,6}\s+/;
-const LEADING_HEADING_RE_GLOBAL = /^#{1,6}\s+/m;
-
 /**
- * Drop the guide's own leading title+intro on the cover page. The React
- * cover-page hero (`LearningPathTableOfContents`) already renders this path's
- * title and description above the module list; a guide authored the older,
- * hero-less way opens with that same title as a heading, which reads as a
- * plain duplicate once the hero exists.
- *
- * Only ever touches position 0, and only when its content actually starts
- * with a markdown heading — a leading block of plain, heading-less prose
- * (unique intro copy with no title of its own) is left alone, since dropping
- * it would lose real content, not a duplicate. `wrapExpectBlockInOrangeOutline`
- * (called first) can itself replace position 0 with the "what to expect" html
- * card when the leading block had no text before that heading, in which case
- * there is no duplicate to drop either.
- *
- * The leading heading's own block can carry real content beyond the
- * duplicate title+intro — a guide whose block 0 continues into its own
- * sections after that heading (not a hypothetical: see
- * `block-editor-tutorial/content.json`'s "Welcome" block, which goes on to
- * cover "What are guides?" and "Block types overview"). Only the portion up
- * to the next heading — the duplicate title+intro itself — is dropped; a
- * subsequent heading and everything after it is real content and stays.
+ * Drop the guide's own leading block on the cover page, unconditionally. The
+ * React cover-page hero (`LearningPathTableOfContents`) already renders this
+ * path's title and description above the module list, and this is the Path
+ * resource's own body content — not a milestone guide's — which doesn't fit
+ * the cover-page design regardless of its shape: a bare duplicate title, a
+ * title followed by what looks like real sections, or anything else. A
+ * full-catalog census of every real published path found none with content
+ * in this position worth keeping (0 of 76), so this always suppresses
+ * position 0 rather than trying to detect and preserve a "real content"
+ * case that doesn't occur in practice. `wrapExpectBlockInOrangeOutline`
+ * (called first) can itself replace position 0 with the "what to expect"
+ * html card, in which case there is nothing left to drop here.
  *
  * A genuinely empty `blocks: []` fails at render time — `ContentProcessor`
  * treats zero parsed elements as a parsing error and shows an error banner,
- * not a blank guide — so when nothing survives (no subsequent heading, and
- * this was the only block), it's replaced with an empty, real HTML element
- * rather than removed outright. That renders as nothing visible, correctly:
- * the hero already said everything that block did.
+ * not a blank guide — so when this was the only block, it's replaced with an
+ * empty, real HTML element rather than removed outright. That renders as
+ * nothing visible, correctly: the hero already said everything that block did.
  */
 function dropLeadingTitleBlock(blocks: Array<{ type: string; content?: string }>): void {
   const first = blocks[0];
-  const trimmed = first?.content?.trimStart() ?? '';
-  if (first?.type !== 'markdown' || !LEADING_HEADING_RE.test(trimmed)) {
-    return;
-  }
-
-  const headingLineEnd = trimmed.indexOf('\n');
-  const afterHeadingLine = headingLineEnd === -1 ? '' : trimmed.slice(headingLineEnd + 1);
-  const { remainder } = splitAtNextHeading(afterHeadingLine, LEADING_HEADING_RE_GLOBAL);
-
-  if (remainder) {
-    blocks[0] = { ...first, content: remainder };
+  if (first?.type !== 'markdown') {
     return;
   }
 
@@ -253,11 +230,11 @@ function dropLeadingTitleBlock(blocks: Array<{ type: string; content?: string }>
   }
 }
 
-function splitAtNextHeading(text: string, boundaryRe: RegExp = NEXT_HEADING_RE): { body: string; remainder: string } {
+function splitAtNextHeading(text: string): { body: string; remainder: string } {
   if (!text) {
     return { body: '', remainder: '' };
   }
-  const nextMatch = text.match(boundaryRe);
+  const nextMatch = text.match(NEXT_HEADING_RE);
   if (!nextMatch) {
     return { body: text, remainder: '' };
   }

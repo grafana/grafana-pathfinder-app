@@ -39,14 +39,18 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
     expect(card!.content).toContain('<li>Build a dashboard</li>');
   });
 
-  it('preserves content before the heading as its own markdown block', () => {
+  it('wraps the "what to expect" card even when the leading intro before it gets dropped', () => {
+    // wrapExpectBlockInOrangeOutline splits "Intro paragraph." into its own
+    // markdown block, but dropLeadingTitleBlock (unconditional per the
+    // captain's decision) then removes it — this is the Path resource's own
+    // leading content, not the "what to expect" card, and is never kept.
     const input = guide([{ type: 'markdown', content: "Intro paragraph.\n\n## Here's what to expect\n\n- A thing" }]);
 
     const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata));
 
-    expect(blocks[0]).toEqual({ type: 'markdown', content: 'Intro paragraph.' });
-    expect(blocks[1]!.type).toBe('html');
-    expect(blocks[1]!.content).toContain('orange-outline-list');
+    expect(blocks.some((b) => b.content === 'Intro paragraph.')).toBe(false);
+    expect(blocks[0]!.type).toBe('html');
+    expect(blocks[0]!.content).toContain('orange-outline-list');
   });
 
   it('preserves content after the next heading as a trailing markdown block', () => {
@@ -105,8 +109,11 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
     expect(last.type).toBe('html');
     expect(last.content).toContain('journey-ready-to-begin');
     expect(last.content).toContain('Ready to Begin');
-    // No expect heading present → the original markdown block is preserved verbatim.
-    expect(blocks[0]).toEqual({ type: 'markdown', content: 'Just some prose, no expect heading.' });
+    // No expect heading present, but the leading block is still dropped
+    // unconditionally — it was the sole block, so it's replaced with an
+    // empty element rather than left empty (ContentProcessor errors on
+    // zero elements).
+    expect(blocks[0]).toEqual({ type: 'html', content: '<div></div>' });
   });
 
   it('omits the Ready to Begin block entirely when skipReadyToBegin is true', () => {
@@ -141,8 +148,14 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
 // this path's own title and description — a guide authored the older,
 // hero-less way opens with the same title+intro as its own leading block,
 // which reads as a plain duplicate once the hero exists (captain-reported).
-describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own duplicate leading title block", () => {
-  it('drops a leading markdown block that starts with a heading', () => {
+// Captain's decision: don't try to preserve real content in the Path
+// resource's own leading block — a full-catalog census of every real
+// published path found none with content in this position worth keeping
+// (0 of 76), so this is always suppressed regardless of shape, rather than
+// detecting and preserving a "real content" case that doesn't occur in
+// practice.
+describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own leading block, unconditionally", () => {
+  it('drops a leading markdown block that is just a duplicated title+intro', () => {
     const input = guide([
       { type: 'markdown', content: '# Demo tracked learning path\n\nA local demo path exercising Path Tracks.' },
       { type: 'markdown', content: 'Real, unique milestone-list prose.' },
@@ -154,34 +167,21 @@ describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own duplicate l
     expect(blocks.some((b) => b.content?.includes('Demo tracked learning path'))).toBe(false);
   });
 
-  it('leaves a leading block alone when it has no heading of its own (unique prose, not a duplicated title)', () => {
-    const input = guide([{ type: 'markdown', content: "Intro paragraph.\n\n## Here's what to expect\n\n- A thing" }]);
+  it('drops a leading block with no heading at all — shape never matters, only position 0', () => {
+    const input = guide([
+      { type: 'markdown', content: "Intro paragraph, no heading.\n\n## Here's what to expect\n\n- A thing" },
+    ]);
 
     const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
 
-    expect(blocks[0]).toEqual({ type: 'markdown', content: 'Intro paragraph.' });
+    expect(blocks.some((b) => b.content?.includes('Intro paragraph, no heading'))).toBe(false);
   });
 
-  // The common minimal case (this task's own demo guide): the whole guide
-  // body was just the duplicated title+intro, nothing else. Rendering empty
-  // below the hero is correct — the hero already said everything it did.
-  // A truly empty `blocks: []` fails at render time (ContentProcessor treats
-  // zero parsed elements as a parsing error), so this must stay non-empty.
-  it('replaces the guide body with an empty, real element when the leading heading block was its only content', () => {
-    const input = guide([{ type: 'markdown', content: '# Demo tracked learning path\n\nJust the title.' }]);
-
-    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
-
-    expect(blocks).toEqual([{ type: 'html', content: '<div></div>' }]);
-  });
-
-  // Regression: block-editor-tutorial/content.json's own leading block opens
-  // with a heading (duplicate-looking title+intro) but goes on to cover real
-  // sections ("What are guides?", "Block types overview") inside that SAME
-  // block. Dropping the whole block would silently delete that real content —
-  // only the title+intro portion, up to the first real section heading, may
-  // go.
-  it("keeps a leading heading block's own real sections, dropping only its title+intro", () => {
+  it('drops a leading block whose heading is followed by what looks like real sections — no narrowing, the whole block goes', () => {
+    // block-editor-tutorial/content.json's own leading block has this exact
+    // shape (a heading, then "What are guides?"/"Block types overview"
+    // sections) — the census confirmed this is not real cover-page content
+    // worth keeping, so the whole block is dropped like any other.
     const input = guide([
       {
         type: 'markdown',
@@ -197,33 +197,29 @@ describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own duplicate l
 
     const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
 
-    expect(blocks[0]!.content).not.toContain('Welcome to the guide editor');
-    expect(blocks[0]!.content).not.toContain('This template demonstrates');
-    expect(blocks[0]!.content).toContain('## What are guides?');
-    expect(blocks[0]!.content).toContain('Guides are interactive tutorials');
-    expect(blocks[0]!.content).toContain('## Block types overview');
-    expect(blocks[0]!.content).toContain('Click any block in the editor');
+    expect(blocks).toEqual([{ type: 'html', content: '<div></div>' }]);
   });
 
-  // Regression: the leading-heading detector matches H1-H6, but the
-  // "next heading" boundary it stopped at previously only matched H1-H3
-  // (borrowed from the unrelated "what to expect" card logic). An H4+
-  // leading title followed by an H4+ real section found no boundary and
-  // dropped the whole block, including the real section.
-  it('keeps a real H4 section after an H4 leading title+intro', () => {
-    const input = guide([
-      {
-        type: 'markdown',
-        content: '#### My Guide Title\n\n' + 'Some intro.\n\n' + '#### Real deep section\n\n' + 'Content that matters.',
-      },
-    ]);
+  // The common minimal case (this task's own demo guide): the whole guide
+  // body was just one leading block, nothing else. Rendering empty below
+  // the hero is correct — the hero already said everything worth saying.
+  // A truly empty `blocks: []` fails at render time (ContentProcessor treats
+  // zero parsed elements as a parsing error), so this must stay non-empty.
+  it('replaces the guide body with an empty, real element when the leading block was its only content', () => {
+    const input = guide([{ type: 'markdown', content: '# Demo tracked learning path\n\nJust the title.' }]);
 
     const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
 
-    expect(blocks[0]!.content).not.toContain('My Guide Title');
-    expect(blocks[0]!.content).not.toContain('Some intro');
-    expect(blocks[0]!.content).toContain('#### Real deep section');
-    expect(blocks[0]!.content).toContain('Content that matters');
+    expect(blocks).toEqual([{ type: 'html', content: '<div></div>' }]);
+  });
+
+  it('leaves a non-markdown block 0 alone (e.g. the "what to expect" card wrapExpectBlockInOrangeOutline already produced)', () => {
+    const input = guide([{ type: 'markdown', content: "## Here's what to expect\n\n- A thing" }]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks[0]!.type).toBe('html');
+    expect(blocks[0]!.content).toContain('orange-outline-list');
   });
 });
 
