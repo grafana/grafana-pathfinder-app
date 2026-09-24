@@ -329,8 +329,15 @@ export async function fetchPackageContent(
   // guide referenced only by a track (never by milestones, which the RFC
   // explicitly allows) would otherwise be misclassified as index 0 and
   // render as the path's cover instead of as itself.
-  const manifestTracks = needsMilestones ? getManifestTracks(packageManifest) : [];
-  const shouldResolveTracks = needsMilestones && manifestTracks.length > 0;
+  //
+  // Gated to type === 'path' specifically, not needsMilestones (true for
+  // journey too): RFC §6.1 / schema Rule 3 restrict tracks to paths, but
+  // that rule only runs in superRefine, which many runtime loaders skip by
+  // parsing the unrefined object schema directly — a journey manifest that
+  // still carries a stray tracks array must not grow cover-page tabs.
+  const tracksEligible = needsMilestones && packageManifest?.type === 'path';
+  const manifestTracks = tracksEligible ? getManifestTracks(packageManifest) : [];
+  const shouldResolveTracks = tracksEligible && manifestTracks.length > 0;
 
   // Run content fetch, milestone resolution, track resolution, and baseUrl
   // resolution in parallel. These are independent: the page body doesn't

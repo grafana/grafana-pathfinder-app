@@ -136,6 +136,8 @@ interface ContentRendererProps {
   onContinueToNextMilestone?: () => void;
   /** Forwards the cover page's own track-tab selection — see `LearningPathTableOfContents`'s prop doc. */
   onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
+  /** Forwarded to `LearningPathTableOfContents`'s own prop of the same name — see its doc. */
+  initialActiveTrackId?: string | null;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -176,6 +178,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   onGuideComplete,
   onContinueToNextMilestone,
   onActiveTrackChange,
+  initialActiveTrackId,
   className,
   containerRef,
 }: ContentRendererProps) {
@@ -508,6 +511,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
         description={pathDescription}
         tracks={journey.tracks}
         onActiveTrackChange={onActiveTrackChange}
+        initialActiveTrackId={initialActiveTrackId}
       />
     ) : null;
 

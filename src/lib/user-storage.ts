@@ -863,18 +863,26 @@ export const milestoneCompletionStorage = {
    * (`learning-paths.hook.ts`) already clears this store entirely for that
    * reason; this only removes the one slug being reset, leaving the rest of
    * the journey's legacy record intact.
+   *
+   * `milestoneUrls` mirrors `getCompleted`/`getCompletedSync`'s own alias
+   * matching (`getStoredMilestoneSlugs`'s `exactKeys`): a pre-migration
+   * record can be stored under a milestone's own URL rather than under any
+   * key that canonicalizes to the journey base, so canonical-only matching
+   * would leave such a record in place while the read path still reports it
+   * as complete.
    */
-  async removeCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<void> {
+  async removeCompleted(journeyBaseUrl: string, milestoneSlug: string, milestoneUrls: string[] = []): Promise<void> {
     try {
       const storage = createUserStorage();
       const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
       const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+      const exactKeys = new Set([journeyBaseUrl, ...milestoneUrls].map((key) => key.replace(/\/+$/, '')));
       let mutated = false;
       for (const storedKey of Object.keys(data)) {
         const storedSlugs = data[storedKey];
         if (
           storedSlugs &&
-          getLearningJourneyBaseUrl(storedKey) === canonicalKey &&
+          (getLearningJourneyBaseUrl(storedKey) === canonicalKey || exactKeys.has(storedKey.replace(/\/+$/, ''))) &&
           storedSlugs.includes(milestoneSlug)
         ) {
           data[storedKey] = storedSlugs.filter((slug) => slug !== milestoneSlug);

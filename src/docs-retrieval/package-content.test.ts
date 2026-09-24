@@ -891,6 +891,35 @@ describe('fetchPackageContent path-type enrichment', () => {
     expect(journey.tracks![0]!.milestones[0]!.title).toBe('Milestone: builder-1');
   });
 
+  it('omits learningJourney.tracks for a journey manifest even when tracks is present (regression: RFC restricts tracks to paths)', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'first-dashboard',
+      type: 'journey',
+      milestones: ['step-1', 'step-2'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    const journey = result.content!.metadata.learningJourney!;
+    expect(journey.tracks).toBeUndefined();
+  });
+
   it('omits learningJourney.tracks when the manifest declares no tracks (regression: unchanged default)', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockImplementation((id: string) =>

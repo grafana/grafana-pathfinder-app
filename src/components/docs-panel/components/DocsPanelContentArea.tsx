@@ -455,6 +455,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                           ? (trackId, milestones) => model.setActiveTrackId(activeTab.id, trackId, milestones)
                           : undefined
                       }
+                      initialActiveTrackId={activeTab?.activeTrackId}
                     />
                   </AlignmentPendingContext.Provider>
                 )}

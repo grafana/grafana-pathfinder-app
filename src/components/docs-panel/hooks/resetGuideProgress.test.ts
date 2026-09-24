@@ -112,7 +112,8 @@ describe('resetGuideProgress', () => {
 
     expect(mockMilestoneCompletionStorage.removeCompleted).toHaveBeenCalledWith(
       'https://grafana.com/docs/learning-journeys/demo/',
-      'milestone-2'
+      'milestone-2',
+      ['https://grafana.com/docs/learning-journeys/demo/milestone-2/content.json']
     );
   });
 
@@ -148,7 +149,8 @@ describe('resetGuideProgress', () => {
 
     expect(mockMilestoneCompletionStorage.removeCompleted).toHaveBeenCalledWith(
       'bundled:the-path/content.json',
-      'track-only'
+      'track-only',
+      ['bundled:track-only/content.json']
     );
   });
 });

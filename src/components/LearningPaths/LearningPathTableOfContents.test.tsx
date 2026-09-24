@@ -425,6 +425,45 @@ describe('LearningPathTableOfContents', () => {
       expect(onActiveTrackChange).toHaveBeenLastCalledWith(null, null);
     });
 
+    // Regression: every navigation remounts this component (ContentRenderer
+    // keys on the loaded URL), including leaving a milestone via Previous
+    // back to this same cover page. Without initialActiveTrackId, the fresh
+    // mount always starts at Foundations and its own mount-time
+    // onActiveTrackChange call immediately overwrites the caller's stored
+    // selection with it — silently dropping a reader back to Foundations
+    // after working through a track.
+    it('restores the selected tab from initialActiveTrackId instead of defaulting to Foundations on mount', () => {
+      setCompletedSlugs(new Set());
+      const onActiveTrackChange = jest.fn();
+      render(
+        <LearningPathTableOfContents
+          milestones={milestones}
+          baseUrl={baseUrl}
+          tracks={tracks}
+          initialActiveTrackId="builder"
+          onActiveTrackChange={onActiveTrackChange}
+        />
+      );
+
+      expect(screen.getByRole('tab', { name: 'Builder' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByText('Builder one')).toBeInTheDocument();
+      expect(onActiveTrackChange).toHaveBeenLastCalledWith('builder', builderMilestones);
+    });
+
+    it('falls back to Foundations when initialActiveTrackId names no real track (a different path\'s leftover selection)', () => {
+      setCompletedSlugs(new Set());
+      render(
+        <LearningPathTableOfContents
+          milestones={milestones}
+          baseUrl={baseUrl}
+          tracks={tracks}
+          initialActiveTrackId="some-other-path-track"
+        />
+      );
+
+      expect(screen.getByRole('tab', { name: 'Foundations' })).toHaveAttribute('aria-selected', 'true');
+    });
+
     // content-renderer.tsx reuses this component instance across
     // navigation, with no remount key between paths — activeTabId must
     // reset when the props change, or a track selected on one path either

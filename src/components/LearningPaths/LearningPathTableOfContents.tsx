@@ -49,6 +49,19 @@ export interface LearningPathTableOfContentsProps {
    * `LearningJourneyTab.activeTrackMilestones`).
    */
   onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
+  /**
+   * The track selected the last time this path's cover page was shown, if
+   * any — restores the tab selection on mount instead of defaulting to
+   * Foundations. Every navigation away from and back to the cover page
+   * remounts this component (ContentRenderer keys on the loaded URL), so
+   * without this a reader who picks a track, works through it, then hits
+   * Previous back to the cover loses that selection: the fresh mount starts
+   * at Foundations and its own mount-time `onActiveTrackChange` call
+   * immediately overwrites the caller's own record with it. Ignored when it
+   * doesn't name a real track in `tracks` (a different path's leftover
+   * selection) — same fallback `activeTrack` below already applies.
+   */
+  initialActiveTrackId?: string | null;
 }
 
 export function LearningPathTableOfContents({
@@ -59,12 +72,17 @@ export function LearningPathTableOfContents({
   description,
   tracks,
   onActiveTrackChange,
+  initialActiveTrackId,
 }: LearningPathTableOfContentsProps) {
   const styles = useStyles2(getTableOfContentsStyles);
   const badge = pathId ? getBadgeForPath(pathId) : undefined;
 
   const hasTracks = tracks !== undefined && tracks.length > 0;
-  const [activeTabId, setActiveTabId] = useState<string>(FOUNDATIONS_TAB_ID);
+  const [activeTabId, setActiveTabId] = useState<string>(() =>
+    initialActiveTrackId != null && tracks?.some((track) => track.trackId === initialActiveTrackId)
+      ? initialActiveTrackId
+      : FOUNDATIONS_TAB_ID
+  );
   // Adjusting state during render (same React-endorsed reset pattern as the
   // percentages/progress below): baseUrl is this path's own identity, so
   // navigating to a DIFFERENT path resets the tab selection back to

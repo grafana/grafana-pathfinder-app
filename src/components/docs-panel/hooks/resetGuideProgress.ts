@@ -57,7 +57,7 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
   await interactiveCompletionStorage.clear(contentKey);
   await guideCompletionMarkStorage.clear(contentKey);
   if (identity?.milestoneSlug && identity.journeyBaseUrl) {
-    await milestoneCompletionStorage.removeCompleted(identity.journeyBaseUrl, identity.milestoneSlug);
+    await milestoneCompletionStorage.removeCompleted(identity.journeyBaseUrl, identity.milestoneSlug, [contentKey]);
   }
   // Storage removal does not invalidate mounted completion-store subscribers.
   evictContentCache(contentKey);
