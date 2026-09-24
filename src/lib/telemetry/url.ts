@@ -29,24 +29,19 @@ export function normalizeTelemetryUrl(url: string): string {
   }
 }
 
-// The path is kept because a dashboard title is not a secret. These two are:
-// the segment after them is the whole credential — anyone holding a
-// public-dashboard access token or a snapshot key can open it unauthenticated.
+// Public-dashboard tokens and snapshot keys grant unauthenticated access.
 const CAPABILITY_PATH = /^(\/(?:public-dashboards|dashboard\/snapshot)\/)[^/]+/;
 
 function redactCapabilityToken(pathname: string): string {
   return pathname.replace(CAPABILITY_PATH, '$1redacted');
 }
 
-// Session replay carries URLs its player resolves, so normalizeTelemetryUrl's
-// scheme-less `hostname/path` would break every `src`. Same redaction, but the
-// URL stays loadable.
+// Page metadata and resource timings require full URLs rather than hostname/path labels.
 export function stripUrlSecrets(url: string): string {
   if (!url) {
     return '';
   }
-  // Every Grafana icon is a `<use href="#icon-x">` — here the fragment is the
-  // whole reference, not a discardable tail.
+  // A fragment-only URL is an in-document reference.
   if (url.startsWith('#')) {
     return url;
   }
@@ -55,9 +50,6 @@ export function stripUrlSecrets(url: string): string {
   }
   try {
     const parsed = new URL(url, window.location.origin);
-    // Only schemes a replay player has any reason to resolve. Drops
-    // javascript:/vbscript:/blob: and friends, none of which mean anything on
-    // playback and all of which are better not round-tripped.
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return '';
     }
@@ -65,9 +57,6 @@ export function stripUrlSecrets(url: string): string {
     parsed.hash = '';
     parsed.username = '';
     parsed.password = '';
-    // The path is kept, dashboard title slug included: it is what makes a
-    // replay navigable and it is not a secret. Capability tokens in the path
-    // are, and the query carries `var-*` filter values, so both of those go.
     parsed.pathname = redactCapabilityToken(parsed.pathname);
     const isAbsolute = /^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//');
     return (isAbsolute ? parsed.href : `${parsed.pathname}`).slice(0, MAX_TELEMETRY_URL_LENGTH);

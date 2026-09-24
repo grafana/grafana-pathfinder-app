@@ -7,7 +7,6 @@ export {
   pushFaroError,
   pushFaroLog,
   pushFaroUserAction,
-  resolveSessionReplayOptions,
   setFaroSessionAttributes,
   setFaroUserActionAttributes,
   setFaroView,

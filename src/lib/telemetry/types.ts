@@ -41,8 +41,6 @@ export const TELEMETRY_EVENTS = {
   requirementsExhausted: 'pathfinder_requirements_exhausted',
   sequenceActionError: 'pathfinder_sequence_action_error',
   completionWriteDegraded: 'pathfinder_completion_write_degraded',
-  sessionReplayActivationFailed: 'pathfinder_session_replay_activation_failed',
-  sessionReplaySamplingFallback: 'pathfinder_session_replay_sampling_fallback',
   customGuideCatalogueUnavailable: 'pathfinder_custom_guide_catalogue_unavailable',
   sandboxUnavailable: 'pathfinder_sandbox_unavailable',
   proxyFailure: 'pathfinder_proxy_failure',

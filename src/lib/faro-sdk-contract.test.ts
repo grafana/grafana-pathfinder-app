@@ -71,10 +71,7 @@ describe('faro-web-sdk user action contract', () => {
   });
 });
 
-// setFaroSessionAttributes re-stamps the whole session meta on every surface
-// change (sidebar open, close, pop-out). If the SDK treated that as a new
-// session, one visit would fan out into a session per open — and with session
-// replay that means a recording per open, not per visit.
+// Surface changes must preserve one session per visit rather than one per open.
 describe('faro-web-sdk session identity contract', () => {
   const transport = new CaptureTransport();
   const faro = initializeFaro({

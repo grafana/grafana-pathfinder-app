@@ -45,9 +45,6 @@ describe('stripUrlSecrets', () => {
     );
   });
 
-  // The path is kept whole — the dashboard title slug is what makes a replay
-  // navigable and is visible to anyone who can see the recording. Only the
-  // query, which carries `var-*` filter values, is dropped.
   it.each([
     ['a dashboard', '/d/abc123/acme-q3-revenue'],
     ['a solo panel', '/d-solo/abc123/acme-q3-revenue'],
@@ -98,7 +95,7 @@ describe('stripUrlSecrets', () => {
   });
 
   it.each(['javascript:alert(1)', 'vbscript:msgbox(1)', 'blob:https://acme.grafana.net/abc', 'mailto:a@b.c'])(
-    'drops %s, which a replay player has no reason to resolve',
+    'drops non-HTTP URL %s',
     (url) => {
       expect(stripUrlSecrets(url)).toBe('');
     }

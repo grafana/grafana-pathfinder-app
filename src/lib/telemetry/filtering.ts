@@ -144,15 +144,7 @@ function redactEmbeddedUrls(text: string): string {
     .replace(/backend-guide:[^\s"'<>()[\]]+/g, (match) => normalizeTelemetryUrl(match));
 }
 
-// Whitelist, not blocklist: Grafana core and other app plugins run their own
-// Faro instances on the same page, so exceptions/logs must be attributable to
-// Pathfinder, and PerformanceInstrumentation's resource entries must be
-// attributable to a domain we actually fetch from. Page-wide navigation
-// timing (the whole page's load, not a specific resource) is always dropped.
-// Everything else — our own pushed events/user-actions/measurements, plus the
-// faro.session_recording.* stream — only ever originates from this isolated
-// instance's own API, so it passes through unfiltered. Replay payloads are
-// scrubbed at their own source, in telemetry/replay-scrub.
+// Shared-page exceptions/logs and resource timings must be attributable to Pathfinder.
 export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): TransportItem<APIEvent> | null {
   if (isExceptionItem(item)) {
     const isExplicit = item.payload.context?.[EXPLICIT_REPORT_MARKER] === 'true';
@@ -215,10 +207,7 @@ export function redactPageUrl(item: TransportItem<APIEvent>): TransportItem<APIE
 // after unmount, when the docked key is already gone.
 let pathfinderWasOpen = false;
 
-// Latching on the surface transition rather than only on the next item to
-// come through: a surface that opens and closes before anything is pushed
-// would otherwise leave the gate shut, and session replay is the payload most
-// likely to arrive late — its chunk is fetched on that same open.
+// Latch at the transition so a brief open still admits payloads arriving after close.
 export function markPathfinderActive(): void {
   pathfinderWasOpen ||= hasReportedPathfinderSurface() && isPathfinderOpen();
 }
