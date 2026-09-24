@@ -321,12 +321,11 @@ describe('buildStats', () => {
     expect(result.errors[0]).toContain('the-path: milestone or track guide "leaf" is reachable twice (also via "mid")');
   });
 
-  // Regression (Cursor Bugbot on PR #1927, "Nested track overlap fails
-  // stats", MEDIUM): a track's guides are a presentation ordering, never a
-  // second ownership claim (COMPLETION-MODEL.md decision 10) — a guide a
-  // track names that some nested milestone already owns is that guide's
-  // real owner being featured again, not a diamond, so it must not be
-  // summed a second time or hard-error the parent.
+  // A track's guides are a presentation ordering, never a second ownership
+  // claim (COMPLETION-MODEL.md decision 10) — a guide a track names that
+  // some nested milestone already owns is that guide's real owner being
+  // featured again, not a diamond, so it must not be summed a second time
+  // or hard-error the parent.
   it('does not double-count or error on a track guide already owned by a nested milestone', async () => {
     writeGuide(tmpDir, 'leaf', { blocks: [markdown] });
     writeGuide(tmpDir, 'mid', { type: 'path', milestones: ['leaf'], blocks: [] });
@@ -363,12 +362,11 @@ describe('buildStats', () => {
     expect(readManifest(tmpDir, 'top').stats).toMatchObject({ blockCount: 1 });
   });
 
-  // Regression (code-review self-check on PR #1927, round 4): an earlier
-  // version of this fix skipped any already-reached guide as long as the
-  // CURRENT reference came from a track, regardless of whether the guide
-  // had a real owner yet. Two unrelated siblings each track-referencing the
-  // same otherwise-unowned guide slipped through uncaught, silently
-  // double-counting it in their common ancestor's rollup.
+  // Skipping any already-reached guide as long as the CURRENT reference
+  // comes from a track, regardless of whether the guide had a real owner
+  // yet, misses this case: two unrelated siblings each track-referencing
+  // the same otherwise-unowned guide, which must not be double-counted in
+  // their common ancestor's rollup.
   it('errors when two siblings each track-reference the same unowned guide', async () => {
     writeGuide(tmpDir, 'leaf', { blocks: [markdown, markdown] });
     writeGuide(tmpDir, 'pkg-a', {

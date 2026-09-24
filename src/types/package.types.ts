@@ -144,33 +144,16 @@ export const FOUNDATIONS_TRACK_ID = 'foundations';
 
 /**
  * Safely reads a manifest-shaped value's `tracks` array, tolerating an
- * untyped/untrusted source (a raw JSON manifest, a network payload) the same
- * way `milestones` readers already do ad hoc. The one place every tracks
- * consumer should read through, so a malformed entry is dropped consistently
- * instead of each call site inventing its own guard.
+ * untyped/untrusted source the same way `milestones` readers already do.
+ * The one place every tracks consumer should read through.
  *
- * Also enforces the invariants authoring-time validation only checks through
- * `ManifestJsonSchema` (package.schema.ts's `.min(1)` on `guides` baked into
- * `ManifestTrackSchema`, and Rule 4's `superRefine`, both exercised by the
- * CLI's `validate` command): no track may declare an empty `guides` list, no
- * track may reuse the reserved `FOUNDATIONS_TRACK_ID`, and no two tracks may
- * share a `trackId`. Every runtime loader
- * (app-platform-resolver.ts, online-cdn-resolver.ts, loader.ts,
- * package-info-from-url.ts, repository-client.ts) parses the unrefined
- * `ManifestJsonObjectSchema` instead, and `scripts/upsert-learning-path.sh`
- * runs no Zod validation at all — so a manifest that reaches the runtime
- * without ever passing through `validate` could otherwise carry a track named
- * "foundations" or a duplicate trackId straight to the cover page. Enforcing
- * here, in the one place every tracks consumer reads through, makes that true
- * on every path rather than only the CLI/authoring one — a violating entry is
- * silently dropped (first occurrence wins on a duplicate trackId), never
- * rendered. Silent by necessity: this is a Tier 0 module (package.types.ts),
- * so it cannot depend on the Tier 1 Faro-backed logger (`src/lib/logging.ts`)
- * or call `console.warn`/`console.error` directly (banned outside `src/cli/**`
- * and `logging.ts` by design — see `eslint.config.mjs`'s `no-console` rule).
- * A caller in a position to log (e.g. `resolvePackageTracks` in
- * `package-content.ts`, which already logs an unresolvable guide the same
- * way) may compare its input/output length to detect a drop and log it.
+ * Also enforces invariants authoring-time validation checks via
+ * `ManifestJsonSchema`'s superRefine (non-empty `guides`, no reserved or
+ * duplicate `trackId`) — several runtime loaders parse the unrefined
+ * `ManifestJsonObjectSchema` instead, so this is the only place those
+ * invariants hold on every path. A violating entry is silently dropped
+ * (first occurrence wins on a duplicate trackId) rather than logged: this
+ * is a Tier 0 module with no logger access.
  */
 export function getManifestTracks(source?: { tracks?: unknown } | null): ManifestTrack[] {
   if (!source || !Array.isArray(source.tracks)) {

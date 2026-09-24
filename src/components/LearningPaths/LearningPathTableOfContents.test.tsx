@@ -122,11 +122,9 @@ describe('LearningPathTableOfContents', () => {
     expect(document.querySelectorAll('.guideIconBadge [data-icon="play"]')).toHaveLength(1);
   });
 
-  // Regression coverage (Cursor Bugbot, "Cover CTA resumes before progress
-  // loads"): the read used to be async, so an in-progress path briefly read
-  // as "0% done, start at module 1" before it resolved. The shared
-  // calculation is synchronous (storage-backed, not a promise), so real
-  // progress is what the very first render sees — no loading window to race.
+  // The shared calculation is synchronous (storage-backed, not a promise),
+  // so real progress is what the very first render sees — no loading
+  // window where an in-progress path could briefly read as 0%.
   it('shows the real CTA target on the very first render, with no loading window', () => {
     setCompletedSlugs(new Set(['set-up']));
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
@@ -135,12 +133,11 @@ describe('LearningPathTableOfContents', () => {
     expect(document.querySelector('[data-journey-start]')).toHaveAttribute('data-milestone-url', milestones[1]!.url);
   });
 
-  // Regression (Cursor Bugbot on PR #1927, "Row click sends fallback ordinal
-  // id"): the module list's React key falls back to an ordinal (e.g. "2")
-  // when a Milestone carries no real manifest id (the `milestones` fixture
-  // above never sets one) — GuideList must never forward that fallback as
-  // data-milestone-id, since an ordinal would never match a real manifest id
-  // and would misclassify the next load as the cover page.
+  // The module list's React key falls back to an ordinal (e.g. "2") when a
+  // Milestone carries no real manifest id (the `milestones` fixture above
+  // never sets one) — GuideList must never forward that fallback as
+  // data-milestone-id, since an ordinal would never match a real manifest
+  // id and would misclassify the next load as the cover page.
   it('never sends a fallback ordinal id as data-milestone-id when milestones carry no real id', () => {
     setCompletedSlugs(new Set(['set-up']));
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
@@ -374,11 +371,8 @@ describe('LearningPathTableOfContents', () => {
       expect(screen.getByRole('tab', { name: 'Seller' })).toBeInTheDocument();
     });
 
-    // Regression (captain-scoped fix on PR #1927, round 8): the tab strip
-    // rendered flush against the hero card's bottom border, with no gap
-    // between them — visually confirmed against the design mockups. The
-    // tabs bar needs its own top margin because `hero`'s bottom margin is
-    // deliberately 0 (so the no-tracks case above stays pixel-for-pixel
+    // The tabs bar needs its own top margin because `hero`'s bottom margin
+    // is deliberately 0 (so the no-tracks case above stays pixel-for-pixel
     // unchanged) and `@grafana/ui`'s TabsBar carries none of its own.
     it('gives the tabs bar its own top margin, separate from the hero card', () => {
       setCompletedSlugs(new Set());
@@ -387,12 +381,10 @@ describe('LearningPathTableOfContents', () => {
       expect(screen.getByRole('tablist').className).toContain('tracksTabs');
     });
 
-    // Regression (human review on PR #1927, "foundations-sentinel-unenforced-
-    // at-runtime", MEDIUM): getManifestTracks (the shared utility every
-    // tracks consumer reads through) now drops a reserved-id or duplicate
-    // trackId before it ever reaches this component, so the tab bar this
-    // component renders from its (already-clean) `tracks` prop never shows
-    // two tabs simultaneously marked active — never a "duplicate/dead tab".
+    // getManifestTracks (the shared utility every tracks consumer reads
+    // through) drops a reserved-id or duplicate trackId before it ever
+    // reaches this component, so the tab bar renders from an already-clean
+    // `tracks` prop and never shows two tabs simultaneously marked active.
     it('marks exactly one tab active at a time, whichever tab is selected', () => {
       setCompletedSlugs(new Set());
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
@@ -408,13 +400,11 @@ describe('LearningPathTableOfContents', () => {
       expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'true');
     });
 
-    // Regression (human review on PR #1927, "Stale track tab across
-    // paths", MEDIUM): activeTabId was initialized once and never reset
-    // when the props changed, and there is no remount key between paths —
     // content-renderer.tsx reuses this component instance across
-    // navigation. A track selected on one path either left no tab active
-    // on the next (its trackId doesn't exist there) or silently
-    // pre-selected a same-named track the reader never clicked.
+    // navigation, with no remount key between paths — activeTabId must
+    // reset when the props change, or a track selected on one path either
+    // leaves no tab active on the next (its trackId doesn't exist there)
+    // or silently pre-selects a same-named track the reader never clicked.
     it('resets the active tab to Foundations when the path changes (no remount key between paths)', () => {
       setCompletedSlugs(new Set());
       const { rerender } = render(
@@ -466,13 +456,9 @@ describe('LearningPathTableOfContents', () => {
       );
     });
 
-    // Regression coverage (same Cursor Bugbot finding as the top-level "no
-    // loading window" test above, applied to a tab switch): the shared
-    // percentage calculation is synchronous and re-runs on every render, so
-    // switching tabs cannot leave the CTA/click target live against the
-    // PREVIOUS tab's stale completion data — there is no promise to await,
-    // and therefore no window where a reader could be sent to the wrong
-    // module after switching.
+    // The shared percentage calculation is synchronous and re-runs on
+    // every render, so switching tabs cannot leave the CTA/click target
+    // live against the PREVIOUS tab's stale completion data.
     it('shows the new tab CTA immediately on tab switch, with no stale window', () => {
       setCompletedSlugs(new Set());
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
@@ -515,12 +501,11 @@ describe('LearningPathTableOfContents', () => {
       expect(screen.getByText('1 modules')).toBeInTheDocument();
     });
 
-    // Regression (human review on PR #1927, "track-completion-member-set-
-    // divergence"): a track is a presentation ordering only, never a second
-    // completion authority (COMPLETION-MODEL.md) — the durable, path-wide
-    // percentage shown elsewhere (My Learning) can legitimately read lower
-    // than this ring's own number for the same guides, since it stays keyed
-    // to Foundations membership alone. The ring must not read as path
+    // A track is a presentation ordering only, never a second completion
+    // authority (COMPLETION-MODEL.md) — the durable, path-wide percentage
+    // shown elsewhere (My Learning) can legitimately read lower than this
+    // ring's own number for the same guides, since it stays keyed to
+    // Foundations membership alone. The ring must not read as path
     // completion; its accessible label names the active sequence instead.
     it("scopes the progress ring's accessible label to the active sequence, not the path as a whole", () => {
       setCompletedSlugs(new Set(['set-up', 'seller-one']));

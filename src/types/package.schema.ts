@@ -139,23 +139,12 @@ export const PackageTypeSchema = z.enum(['guide', 'path', 'journey']) satisfies 
  * is a track's own complete ordering, not a subset or reordering of
  * `milestones`.
  *
- * Structurally tolerant by design, matching `milestones`' own base-schema
- * shape: this schema composes into `ManifestJsonObjectSchema`, which many
- * runtime loaders (`package-engine/loader.ts`, `online-cdn-resolver.ts`,
- * `app-platform-resolver.ts`, `recommender-resolver.ts`,
- * `package-info-from-url.ts`, and others) parse directly, deliberately
- * without `ManifestJsonSchema`'s superRefine, so a partially-authored
- * manifest still loads. A hard `.min(1)` here on `guides` (or on `trackId`/
- * `label`) would fail that BASE parse for a malformed `tracks` entry on ANY
- * manifest — even a plain guide, where `tracks` isn't valid at all — before
- * Rule 3/4/5's friendlier `superRefine` messages ever run, surfacing a raw
- * Zod error instead of either a clean load or a helpful message
- * (moxious review, "track-shape-strictness-demotes-whole-path"). The
- * non-empty-sequence invariant this used to enforce here is Rule 5 below;
- * `getManifestTracks` (package.types.ts) also independently drops a track
- * with an empty `guides` array at runtime, so a manifest that never passes
- * through `ManifestJsonSchema` at all still can't reach the cover page with
- * one.
+ * Structurally tolerant, matching `milestones`' own base-schema treatment:
+ * several runtime loaders parse `ManifestJsonObjectSchema` directly, without
+ * `ManifestJsonSchema`'s superRefine, so a hard `.min(1)` here would fail
+ * that parse for any manifest with a malformed `tracks` entry. The
+ * non-empty-sequence invariant lives in Rule 5 below instead;
+ * `getManifestTracks` also drops an empty-`guides` track at runtime.
  * @coupling Type: ManifestTrack
  */
 export const ManifestTrackSchema = z.object({
@@ -300,12 +289,9 @@ export const ManifestJsonSchema = ManifestJsonObjectSchema.superRefine((manifest
     });
   }
 
-  // Rule 5: shape strictness the base schema deliberately does not enforce
-  // (see ManifestTrackSchema's own doc comment) — a track's trackId and
-  // label must be non-empty strings, and guides must be a non-empty
-  // sequence of non-empty strings. RFC §6.11: an empty guides list isn't a
-  // sequence, the same non-empty-sequence rule Rule 1 enforces for
-  // `milestones`.
+  // Rule 5: trackId and label must be non-empty, and guides must be a
+  // non-empty sequence of non-empty strings — the same non-empty-sequence
+  // rule Rule 1 enforces for `milestones`.
   if (hasTracks) {
     manifest.tracks!.forEach((track, index) => {
       if (track.trackId.length === 0) {

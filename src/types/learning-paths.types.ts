@@ -69,14 +69,10 @@ export interface PathGuide {
   url?: string;
   /**
    * The real manifest guide id, when the producer had one — separate from
-   * `id` above, which some producers (LearningPathTableOfContents) fall back
-   * to a React-key-only ordinal for when no real id is available. GuideList
-   * threads this through `data-milestone-id` on the clickable current row so
-   * fetchPackageContent can classify the next load by direct lookup; only
-   * ever forward a real id here, never a fallback — an ordinal like "3"
-   * would never match a manifest id and would misclassify the load as the
-   * cover page (Cursor Bugbot on PR #1927, "Row click sends fallback ordinal
-   * id").
+   * `id` above, which some producers fall back to a React-key-only ordinal
+   * for when no real id is available. Only ever set to a real id, never a
+   * fallback: an ordinal like "3" would never match a manifest id and would
+   * misclassify the next load as the cover page.
    */
   guideId?: string;
 }

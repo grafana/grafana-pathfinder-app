@@ -129,16 +129,12 @@ describe('resetGuideProgress integration', () => {
   });
 });
 
-// Regression (captain-approved fix on PR #1927, "legacy-milestone-backfill
-// -resurrects-reset", HIGH): a completion recorded before the #1925
-// milestone-storage migration lives only in the legacy
-// `milestoneCompletionStorage`. Reading a journey's progress backfills that
-// legacy completion into `interactiveCompletionStorage`
+// A completion recorded before the milestone-storage migration lives only
+// in the legacy `milestoneCompletionStorage`. Reading a journey's progress
+// backfills that into `interactiveCompletionStorage`
 // (`backfillLegacyMilestoneCompletion`) — real, load-bearing behavior for
-// pre-migration users, not itself the bug. The bug was that resetting that
-// SAME milestone only cleared `interactiveCompletionStorage`, leaving the
-// legacy record in place, so the very next read backfilled it right back to
-// 100% — the reset appeared to work for one paint, then silently reverted.
+// pre-migration users. Resetting that same milestone must also clear the
+// legacy record, or the very next read backfills it right back to 100%.
 describe('resetGuideProgress integration — a milestone reset stays reset despite legacy backfill', () => {
   const JOURNEY_BASE = 'https://grafana.com/docs/learning-journeys/demo/';
   const MILESTONE_URL = 'https://grafana.com/docs/learning-journeys/demo/milestone-2/content.json';

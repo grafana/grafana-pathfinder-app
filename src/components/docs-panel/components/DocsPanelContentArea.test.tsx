@@ -315,12 +315,11 @@ describe('DocsPanelContentArea', () => {
       expect(screen.getByTestId('devtools-tab-content')).toBeInTheDocument();
     });
 
-    // Regression (moxious review on PR #1927, "cover-load-url-mismatch"):
-    // PrTester/UrlTester's devtools cover-open wrapper derives explicitGuideId
-    // from packageInfo.packageManifest.id so a raw PR URL differing from the
-    // resolver's published one is never misread as track membership. Pins
-    // that derivation at its actual call site, not just inside
-    // fetchPackageContent's own unit tests.
+    // PrTester/UrlTester's devtools cover-open wrapper derives
+    // explicitGuideId from packageInfo.packageManifest.id so a raw PR URL
+    // differing from the resolver's published one is never misread as
+    // track membership. Pins that derivation at its actual call site, not
+    // just inside fetchPackageContent's own unit tests.
     it("passes the package manifest's own id as explicitGuideId when opening a devtools cover", () => {
       const openDocsPage = jest.fn();
       render(

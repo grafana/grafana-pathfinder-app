@@ -346,10 +346,8 @@ describe('ManifestJsonSchema — tracks (Path Tracks RFC)', () => {
     }
   });
 
-  // Regression (moxious review on backend PR #93's sibling review, flagging
-  // the identical bug here): RFC §6.11 requires the same non-empty-sequence
-  // rule milestones already has — a track's own `guides` array constrained
-  // each string's length but not the array itself, so `guides: []` passed.
+  // RFC §6.11 requires the same non-empty-sequence rule milestones already
+  // has for its own array.
   it('should reject a track with an empty guides array — a track must name at least one guide', () => {
     const result = ManifestJsonSchema.safeParse({
       id: 'test-path',
@@ -360,20 +358,11 @@ describe('ManifestJsonSchema — tracks (Path Tracks RFC)', () => {
     expect(result.success).toBe(false);
   });
 
-  // Regression (moxious review, "track-shape-strictness-demotes-whole-path",
-  // HIGH): the base ManifestJsonObjectSchema — the schema many runtime
-  // loaders (package-engine/loader.ts, online-cdn-resolver.ts,
-  // app-platform-resolver.ts, recommender-resolver.ts,
-  // package-info-from-url.ts) parse directly, without ManifestJsonSchema's
-  // superRefine — used to hard-code `.min(1)` on guides (and on trackId/
-  // label) straight into ManifestTrackSchema. That meant a malformed
-  // `tracks` entry on ANY manifest, even a plain guide where `tracks` isn't
-  // valid at all, failed the BASE parse with a raw Zod error before Rule
-  // 3/4/5's friendlier superRefine messages ever ran — a loader got a raw
-  // validation failure instead of a clean load or a helpful message. The
-  // base schema must tolerate a malformed tracks shape; only
-  // ManifestJsonSchema (superRefine, Rule 5) is expected to reject it, with
-  // a clear message.
+  // The base ManifestJsonObjectSchema — the schema several runtime loaders
+  // parse directly, without ManifestJsonSchema's superRefine — must tolerate
+  // a malformed tracks shape rather than fail the whole parse over it, even
+  // on a type where tracks isn't valid at all. Only ManifestJsonSchema
+  // (Rule 5) is expected to reject it, with a clear message.
   it('tolerates a malformed tracks shape at the base-schema level runtime loaders actually parse against', () => {
     const malformed = {
       id: 'plain-guide',
@@ -419,10 +408,7 @@ describe('ManifestJsonSchema — tracks (Path Tracks RFC)', () => {
     expect(result.success).toBe(false);
   });
 
-  // Regression (moxious review on backend PR #93's sibling review, flagging
-  // the identical bug here): RFC §6.1 scopes tracks to paths only, not
-  // journeys — a journey is a fixed reading order, and tracks presenting the
-  // same content in a different order don't apply to it. Milestones are
+  // RFC §6.1 scopes tracks to paths only, not journeys. Milestones are
   // present so only the tracks-on-journey rule is exercised (Rule 1 would
   // otherwise also fire on a bare journey with no milestones).
   it('should reject tracks set on a journey-type manifest (Rule 3) — tracks are path-only', () => {

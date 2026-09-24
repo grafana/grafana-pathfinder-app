@@ -899,11 +899,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Captured before this tab's content is replaced below: a track-exclusive
     // guide is only ever reached by clicking it FROM its own path's cover,
     // in this same tab — so the outgoing content, right up until this load
-    // overwrites it, is that cover's own learningJourney. Threaded through as
-    // a fallback so a transient failure of THIS load's own independent
+    // overwrites it, is that cover's own learningJourney. Threaded through
+    // as a fallback so a transient failure of THIS load's own independent
     // re-resolve of the path's id doesn't silently drop the guide's
-    // completion when the caller already knows the answer (moxious review,
-    // "track-only-parent-resolution-loses-completion").
+    // completion when the caller already knows the answer.
     const outgoingContent = this.state.tabs.find((t) => t.id === tabId)?.content;
     const knownBaseUrl =
       outgoingContent?.metadata?.learningJourney?.baseUrl ?? outgoingContent?.metadata?.trackMemberBaseUrl;

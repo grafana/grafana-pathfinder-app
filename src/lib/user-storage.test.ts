@@ -193,11 +193,9 @@ describe('milestoneCompletionStorage', () => {
     expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
   });
 
-  // Regression (captain-approved fix on PR #1927, "legacy-milestone-backfill
-  // -resurrects-reset", HIGH): the per-milestone toolbar reset needs to
-  // remove exactly ONE slug from a journey's legacy record — `clear` above
-  // drops the whole journey, which would silently un-reset every OTHER
-  // milestone in the same journey.
+  // The per-milestone toolbar reset needs to remove exactly ONE slug from a
+  // journey's legacy record — `clear` above drops the whole journey, which
+  // would silently un-reset every OTHER milestone in the same journey.
   it('removeCompleted removes only the named slug, across canonical and legacy URL variants, leaving siblings intact', async () => {
     await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'install-alloy');
     await milestoneCompletionStorage.markCompleted(`${journeyUrl}/view-data/content.json`, 'view-data');

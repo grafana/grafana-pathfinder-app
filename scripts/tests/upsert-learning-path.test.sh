@@ -275,12 +275,9 @@ else
   nope "milestone-before-cover ordering" "order: $(write_order)"
 fi
 
-# Regression (Cursor Bugbot on PR #1927, "Track-only guides never
-# uploaded", HIGH): build_manifest already emits `tracks` on the cover
-# resource's own spec.manifest, but the upload SET itself was still built
-# from `.milestones` alone — a guide named only by a track was never
-# written, so App Platform's cover tabs resolved it as locked/missing even
-# though the reference existed. `m-a` is deliberately listed in both
+# A guide named only by a track (never by milestones) must still be
+# uploaded, or App Platform's cover tabs resolve it as locked/missing even
+# though the reference exists. `m-a` is deliberately listed in both
 # `milestones` and the track (RFC-allowed overlap) to prove it uploads once,
 # not twice.
 TRACKED=$(path_pkg tracked)
@@ -297,15 +294,11 @@ else
   nope "track-guide upload ordering" "order: $(write_order)"
 fi
 
-# Regression (moxious review, "shell-publisher-skips-path-only-enforcement",
-# HIGH): RFC §6.1 scopes tracks to paths only — a journey is a fixed reading
-# order, and tracks presenting the same content differently don't apply to
-# it. This script doesn't call ManifestJsonSchema (the app-side Zod schema
-# that already rejects this shape via superRefine — package.schema.ts's Rule
-# 3), so build_manifest's own $isPath gate used to just silently DROP tracks
-# from a journey's spec.manifest rather than rejecting the upload — hiding a
-# real authoring mistake from whoever ran this script. It must fail loudly
-# instead, before any write.
+# RFC §6.1 scopes tracks to paths only. This script calls no Zod
+# validation, so build_manifest's own $isPath gate would otherwise just
+# silently drop tracks from a journey's spec.manifest rather than rejecting
+# the upload — hiding a real authoring mistake. It must fail loudly instead,
+# before any write.
 JOURNEY_TRACKED=$(path_pkg journey-tracked)
 printf '{"id":"lp","type":"journey","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":["m-a","m-b"]}]}' \
   >"${JOURNEY_TRACKED}/manifest.json"
@@ -319,10 +312,9 @@ else
   nope "a rejected package should write nothing" "$RUN_LOG"
 fi
 
-# Regression (moxious review, "shell-publisher-skips-path-only-enforcement",
-# HIGH, second half): a track's own `guides` list must be non-empty, the
-# same .min(1) constraint ManifestJsonSchema enforces. Without this check, an
-# empty list here would publish a track tab with nothing in it, silently.
+# A track's own `guides` list must be non-empty, the same constraint
+# ManifestJsonSchema enforces — without this check, an empty list here
+# would publish a track tab with nothing in it, silently.
 EMPTY_TRACK_PKG=$(path_pkg empty-track)
 printf '{"id":"lp","type":"path","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":[]}]}' \
   >"${EMPTY_TRACK_PKG}/manifest.json"
