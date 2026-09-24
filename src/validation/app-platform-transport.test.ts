@@ -1032,11 +1032,12 @@ describe('App Platform transport ratchet: detector', () => {
     expect(result.violation?.method).toBe('unresolved');
   });
 
-  it('reports unresolved when a trailing spread could overwrite the method of an App Platform read', () => {
+  it('reports unresolved when a spread could supply the method of an App Platform read', () => {
     const result = evaluateSource(`
-      getBackendSrv().fetch({ url: collectionUrl(namespace), ...baseOptions });
+      getBackendSrv().fetch({ ...baseOptions, url: collectionUrl(namespace) });
     `);
     expect(result.violation?.method).toBe('unresolved');
+    expect(result.violation?.urlText).toBe('collectionUrl(namespace)');
   });
 
   it('does not anchor on "/apis/" outside a getBackendSrv() call', () => {
