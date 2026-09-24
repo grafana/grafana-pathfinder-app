@@ -135,15 +135,15 @@ Add `UserInteraction` members in `src/lib/analytics.ts` for the arm's own intera
 
 ### 7. Make it QA-able
 
-`window.__pathfinderExperiment.setOverride` works for any registered flag automatically. Beyond that:
+Use Grafana's feature-control UI with `?featureControl=true` to set registered flags during QA. Beyond that:
 
-- Fire `reportFeatureFlagExposure` explicitly on the override branch of your reader — overrides bypass the client, so `TrackingHook` never sees them and QA runs would otherwise produce no analytics.
+- Keep flag evaluation on the OpenFeature client so `TrackingHook` records the exposure normally.
 - For a lazy experiment, add a **getter** to `src/utils/experiments/experiment-debug.ts`, following whichever lazy experiment is current. A captured snapshot would always read as not-enrolled, and a getter that evaluates would enroll the tester by opening DevTools.
 
 ### 8. Test
 
 - Arm resolution: each variant, plus rejection cases (unknown variant, missing field, non-object, null, thrown evaluation) all landing on `excluded`.
-- Override honoured, and a rejected override falling through to remote.
+- Feature-control values honoured, and rejected values falling back to `excluded`.
 - Enrichment: arm absent from `getActiveExperiments` when excluded.
 - For a lazy experiment: **no evaluation before enrollment**, exactly one evaluation across repeated calls, and `getActiveExperiments` not evaluating. Plus the call-site tripwire from step 3.
 - Treatment UI: renders for `treatment`, renders nothing for `control` and `excluded`, and each analytics event fires with the expected payload.

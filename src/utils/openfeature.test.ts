@@ -10,6 +10,8 @@ jest.mock('@grafana/runtime', () => ({
   config: {
     namespace: 'stacks-12345',
   },
+  createOpenFeatureLocalStorageProvider: jest.fn(() => ({ name: 'local-storage' })),
+  createOpenFeatureOFREPWebProvider: jest.fn(() => ({ name: 'ofrep-runtime' })),
 }));
 
 // Mock @openfeature/ofrep-web-provider
@@ -77,6 +79,10 @@ const createMockOpenFeature = () => {
       getClient: jest.fn(() => mockClient),
       addHooks: apiAddHooks,
     },
+    MultiProvider: jest.fn().mockImplementation((providers: any[]) => ({
+      name: 'multi-provider',
+      providers,
+    })),
     ClientProviderStatus: {
       NOT_READY: 'NOT_READY',
       READY: 'READY',
@@ -204,8 +210,37 @@ describe('openfeature', () => {
   });
 
   describe('initializeOpenFeature', () => {
-    it('should set provider with correct configuration using setProviderAndWait', async () => {
+    it('should set runtime providers with MultiProvider using setProviderAndWait', async () => {
       await jest.isolateModulesAsync(async () => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { initializeOpenFeature, OPENFEATURE_DOMAIN } = require('./openfeature');
+        await initializeOpenFeature();
+        const runtime = require('@grafana/runtime');
+
+        expect(mockOF.OpenFeature.setProviderAndWait).toHaveBeenCalledWith(
+          OPENFEATURE_DOMAIN,
+          expect.objectContaining({
+            name: 'multi-provider',
+            providers: [{ provider: { name: 'local-storage' } }, { provider: { name: 'ofrep-runtime' } }],
+          })
+        );
+        expect(runtime.createOpenFeatureLocalStorageProvider).toHaveBeenCalledTimes(1);
+        expect(runtime.createOpenFeatureOFREPWebProvider).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('should fall back to OFREPWebProvider when runtime provider methods are unavailable', async () => {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('@grafana/runtime', () => ({
+          config: {
+            namespace: 'stacks-12345',
+          },
+        }));
+
         const mockOF = createMockOpenFeature();
         const mockReact = createMockReactSdk();
         jest.doMock('@openfeature/web-sdk', () => mockOF);
@@ -227,7 +262,6 @@ describe('openfeature', () => {
           }),
           expect.objectContaining({
             targetingKey: 'stacks-12345',
-            namespace: 'stacks-12345',
           })
         );
       });
@@ -454,342 +488,6 @@ describe('openfeature', () => {
         expect(consoleSpy).toHaveBeenCalled();
 
         consoleSpy.mockRestore();
-      });
-    });
-  });
-
-  describe('flag overrides', () => {
-    beforeEach(() => {
-      localStorage.clear();
-      mockReportFeatureFlagExposure.mockClear();
-    });
-
-    it('getFlagOverrides should return empty object when no overrides set', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getFlagOverrides } = require('./openfeature');
-        expect(getFlagOverrides()).toEqual({});
-      });
-    });
-
-    it('setFlagOverride should persist to localStorage', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, getFlagOverrides } = require('./openfeature');
-        setFlagOverride('pathfinder.auto-open-sidebar', true);
-
-        expect(getFlagOverrides()).toEqual({ 'pathfinder.auto-open-sidebar': true });
-      });
-    });
-
-    it('removeFlagOverride should remove a single override', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, removeFlagOverride, getFlagOverrides } = require('./openfeature');
-        setFlagOverride('pathfinder.auto-open-sidebar', true);
-        setFlagOverride('pathfinder.highlighted-guide-experiment', { variant: 'control', pages: [] });
-
-        removeFlagOverride('pathfinder.auto-open-sidebar');
-
-        const overrides = getFlagOverrides();
-        expect('pathfinder.auto-open-sidebar' in overrides).toBe(false);
-        expect('pathfinder.highlighted-guide-experiment' in overrides).toBe(true);
-      });
-    });
-
-    it('clearFlagOverrides should remove all overrides', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, clearFlagOverrides, getFlagOverrides } = require('./openfeature');
-        setFlagOverride('pathfinder.auto-open-sidebar', true);
-        setFlagOverride('pathfinder.highlighted-guide-experiment', { variant: 'control', pages: [] });
-
-        clearFlagOverrides();
-
-        expect(getFlagOverrides()).toEqual({});
-      });
-    });
-
-    it('getFeatureFlagValue should use override when set', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getBooleanValue.mockReturnValue(false);
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-        const { setFlagOverride, getFeatureFlagValue } = require('./openfeature');
-        setFlagOverride('pathfinder.auto-open-sidebar', true);
-
-        const result = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
-
-        expect(result).toBe(true);
-        expect(mockOF.mockClient.getBooleanValue).not.toHaveBeenCalled();
-        consoleSpy.mockRestore();
-      });
-    });
-
-    it('getFeatureFlagValue should ignore non-boolean overrides', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getBooleanValue.mockReturnValue(false);
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, getFeatureFlagValue } = require('./openfeature');
-        setFlagOverride('pathfinder.auto-open-sidebar', 'not-a-boolean');
-
-        const result = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
-
-        expect(result).toBe(false);
-        expect(mockOF.mockClient.getBooleanValue).toHaveBeenCalled();
-      });
-    });
-
-    it('getHighlightedGuideConfig should fire exposure event when returning via override', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.highlighted-guide-experiment', {
-          variant: 'treatment',
-          pages: ['/a/grafana-irm-app*'],
-          guideId: 'bundled:my-guide',
-          autoOpen: true,
-        });
-
-        getHighlightedGuideConfig();
-
-        expect(mockReportFeatureFlagExposure).toHaveBeenCalledTimes(1);
-        expect(mockReportFeatureFlagExposure).toHaveBeenCalledWith(
-          'pathfinder.highlighted-guide-experiment',
-          expect.objectContaining({
-            variant: 'treatment',
-            pages: ['/a/grafana-irm-app*'],
-            guideId: 'bundled:my-guide',
-            autoOpen: true,
-          })
-        );
-        expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalled();
-
-        consoleSpy.mockRestore();
-      });
-    });
-
-    it('getHighlightedGuideConfig should NOT fire exposure when override is invalid and falls through', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'excluded',
-          pages: [],
-          guideId: '',
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
-        // Missing `guideId` — invalid override per validateHighlightedGuideValue.
-        setFlagOverride('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
-
-        getHighlightedGuideConfig();
-
-        expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
-        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
-      });
-    });
-
-    it('getHighlightedGuideConfig should not take the override short-circuit when the variant is unrecognized', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'excluded',
-          pages: [],
-          guideId: '',
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.highlighted-guide-experiment', {
-          variant: 'treament',
-          pages: ['/a/grafana-irm-app*'],
-          guideId: 'bundled:my-guide',
-        });
-
-        getHighlightedGuideConfig();
-
-        expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
-        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
-      });
-    });
-
-    it('getHighlightedGuideConfig should return the remote value when the override is rejected', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        const remoteConfig = {
-          variant: 'treatment',
-          pages: ['/a/grafana-irm-app*'],
-          guideId: 'bundled:remote-guide',
-          autoOpen: true,
-          resetCache: false,
-        };
-        mockOF.mockClient.getObjectValue.mockReturnValue(remoteConfig);
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.highlighted-guide-experiment', {
-          variant: 'treament',
-          pages: ['/a/grafana-irm-app*'],
-          guideId: 'bundled:my-override-guide',
-        });
-
-        // A rejected override is ignored in favor of the remote MTFF value — it
-        // does NOT fall back to DEFAULT_HIGHLIGHTED_GUIDE_CONFIG.
-        expect(getHighlightedGuideConfig()).toEqual(remoteConfig);
-      });
-    });
-
-    it('getHighlightedGuideConfig should warn once per page load when the override is rejected', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({ variant: 'excluded', pages: [], guideId: '' });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.highlighted-guide-experiment', {
-          variant: 'treament',
-          pages: [],
-          guideId: 'bundled:my-guide',
-        });
-
-        getHighlightedGuideConfig();
-        getHighlightedGuideConfig();
-        getHighlightedGuideConfig();
-
-        const rejectionWarns = consoleSpy.mock.calls.filter((call) =>
-          String(call[0]).includes("Rejected the override payload for 'pathfinder.highlighted-guide-experiment'")
-        );
-        expect(rejectionWarns).toHaveLength(1);
-        expect(rejectionWarns[0]?.[1]).toEqual({ reason: 'unknown_variant' });
-
-        consoleSpy.mockRestore();
-      });
-    });
-
-    it('getHighlightedGuideConfig should fall through when pages contain only non-string elements', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        const remoteConfig = {
-          variant: 'control',
-          pages: ['/connections/datasources*'],
-          guideId: 'bundled:remote-guide',
-        };
-        mockOF.mockClient.getObjectValue.mockReturnValue(remoteConfig);
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.highlighted-guide-experiment', {
-          variant: 'treatment',
-          pages: [1, 2],
-          guideId: 'bundled:my-guide',
-        });
-
-        expect(getHighlightedGuideConfig()).toEqual({
-          ...remoteConfig,
-          autoOpen: true,
-          resetCache: false,
-        });
-        expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
-        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
-      });
-    });
-
-    it('getHighlightedGuideConfig should fall through when pages mix valid and non-string elements', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        const remoteConfig = {
-          variant: 'control',
-          pages: ['/connections/datasources*'],
-          guideId: 'bundled:remote-guide',
-        };
-        mockOF.mockClient.getObjectValue.mockReturnValue(remoteConfig);
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.highlighted-guide-experiment', {
-          variant: 'treatment',
-          pages: ['/explore', 1],
-          guideId: 'bundled:my-guide',
-        });
-
-        expect(getHighlightedGuideConfig()).toEqual({
-          ...remoteConfig,
-          autoOpen: true,
-          resetCache: false,
-        });
-        expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
-        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
-      });
-    });
-
-    it('getHighlightedGuideConfig should accept pages with all string elements', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
-        setFlagOverride('pathfinder.highlighted-guide-experiment', {
-          variant: 'treatment',
-          pages: ['/explore', '/other'],
-          guideId: 'bundled:my-guide',
-        });
-
-        expect(getHighlightedGuideConfig()).toEqual({
-          variant: 'treatment',
-          pages: ['/explore', '/other'],
-          guideId: 'bundled:my-guide',
-          autoOpen: true,
-          resetCache: false,
-        });
-        expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalled();
       });
     });
   });

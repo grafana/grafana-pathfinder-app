@@ -1,10 +1,16 @@
-import { ClientProviderStatus, OpenFeature, ProviderEvents, type Client, type JsonValue } from '@openfeature/web-sdk';
+import {
+  ClientProviderStatus,
+  OpenFeature,
+  ProviderEvents,
+  MultiProvider,
+  type Client,
+  type JsonValue,
+} from '@openfeature/web-sdk';
 import { useBooleanFlagValue, useStringFlagValue, useNumberFlagValue } from '@openfeature/react-sdk';
 import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
-import { config } from '@grafana/runtime';
+import { config, createOpenFeatureLocalStorageProvider, createOpenFeatureOFREPWebProvider } from '@grafana/runtime';
 
-import { TrackingHook, reportFeatureFlagExposure } from './openfeature-tracking';
-import { StorageKeys } from '../lib/storage-keys';
+import { TrackingHook } from './openfeature-tracking';
 import { logger } from '../lib/logging';
 import {
   EXPERIMENT_VARIANTS,
@@ -260,20 +266,33 @@ export async function initializeOpenFeature(): Promise<void> {
     return;
   }
 
-  await OpenFeature.setProviderAndWait(
-    OPENFEATURE_DOMAIN,
-    new OFREPWebProvider({
-      baseUrl: `/apis/features.grafana.app/v0alpha1/namespaces/${namespace}`,
-      disableVisibilityRefresh: true, // Do not refresh
-      cacheMode: 'disabled', // Do not write to localStorage
-      timeoutMs: 10_000, // Timeout after 10 seconds
-    }),
-    {
-      targetingKey: config.namespace, // Dimension of uniqueness, to ensure flags are evaluated consistently for a given stack
-      namespace: config.namespace, // Required by the multi-tenant feature flag service
-      ...config.openFeatureContext,
-    }
-  );
+  if (
+    typeof createOpenFeatureLocalStorageProvider === 'function' &&
+    typeof createOpenFeatureOFREPWebProvider === 'function'
+  ) {
+    await OpenFeature.setProviderAndWait(
+      OPENFEATURE_DOMAIN,
+      new MultiProvider([
+        { provider: createOpenFeatureLocalStorageProvider() },
+        { provider: createOpenFeatureOFREPWebProvider() },
+      ])
+    );
+  } else {
+    await OpenFeature.setProviderAndWait(
+      OPENFEATURE_DOMAIN,
+      new OFREPWebProvider({
+        baseUrl: `${config.appSubUrl || ''}/apis/features.grafana.app/v0alpha1/namespaces/${config.namespace}`,
+        disableVisibilityRefresh: true, // Do not refresh
+        cacheMode: 'disabled', // Do not write to localStorage
+        timeoutMs: 10_000, // Timeout after 10 seconds
+      }),
+      {
+        // Standard context used by all plugins
+        targetingKey: config.namespace,
+        ...config.openFeatureContext,
+      }
+    );
+  }
 
   // Add TrackingHook at API level (not client level) so it applies to ALL clients
   // This is necessary because OpenFeature.getClient() may return different instances
@@ -365,58 +384,6 @@ export async function evaluateFeatureFlag<T extends FeatureFlagName>(flagName: T
 }
 
 // ============================================================================
-// LOCAL OVERRIDES (for browser console testing)
-// ============================================================================
-
-const FLAG_OVERRIDE_STORAGE_KEY = StorageKeys.FLAG_OVERRIDES;
-
-/**
- * Read all flag overrides from localStorage.
- * Returns an empty object if none are set or localStorage is unavailable.
- */
-export function getFlagOverrides(): Record<string, unknown> {
-  try {
-    const raw = localStorage.getItem(FLAG_OVERRIDE_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Set a local override for a feature flag.
- * The override is stored in localStorage and takes effect on the next page load.
- *
- * @param flagName - The flag to override (e.g. 'pathfinder.after-24h-experiment')
- * @param value - The override value (boolean, string, number, or object)
- */
-export function setFlagOverride(flagName: string, value: unknown): void {
-  const overrides = getFlagOverrides();
-  overrides[flagName] = value;
-  localStorage.setItem(FLAG_OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
-}
-
-/**
- * Remove a single flag override.
- */
-export function removeFlagOverride(flagName: string): void {
-  const overrides = getFlagOverrides();
-  delete overrides[flagName];
-  if (Object.keys(overrides).length === 0) {
-    localStorage.removeItem(FLAG_OVERRIDE_STORAGE_KEY);
-  } else {
-    localStorage.setItem(FLAG_OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
-  }
-}
-
-/**
- * Remove all flag overrides.
- */
-export function clearFlagOverrides(): void {
-  localStorage.removeItem(FLAG_OVERRIDE_STORAGE_KEY);
-}
-
-// ============================================================================
 // BACKWARDS COMPATIBLE SYNC FUNCTIONS
 // ============================================================================
 // Note: All sync functions below are automatically tracked by the TrackingHook
@@ -439,12 +406,6 @@ export function clearFlagOverrides(): void {
  */
 export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): boolean => {
   try {
-    const overrides = getFlagOverrides();
-    if (flagName in overrides && typeof overrides[flagName] === 'boolean') {
-      logger.warn(`[OpenFeature] Using local override for '${flagName}'`, { override: overrides[flagName] });
-      return overrides[flagName] as boolean;
-    }
-
     const client = getFeatureFlagClient();
     return client.getBooleanValue(flagName, defaultValue);
   } catch (error) {
@@ -469,12 +430,6 @@ export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): bo
  */
 export const getNumberFlagValue = (flagName: string, defaultValue: number): number => {
   try {
-    const overrides = getFlagOverrides();
-    if (flagName in overrides && typeof overrides[flagName] === 'number') {
-      logger.warn(`[OpenFeature] Using local override for '${flagName}'`, { override: overrides[flagName] });
-      return overrides[flagName] as number;
-    }
-
     const client = getFeatureFlagClient();
     return client.getNumberValue(flagName, defaultValue);
   } catch (error) {
@@ -514,15 +469,8 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
  * `guideId`, or carries a variant outside the known arms. Rejection is
  * whole-payload — `resetCache` and `pages` are discarded with the rest.
  *
- * The two sources fall back differently, which matters when debugging:
- *   - Remote (MTFF) payload rejected, or evaluation throws ⇒
- *     `DEFAULT_HIGHLIGHTED_GUIDE_CONFIG` (variant: 'excluded').
- *   - localStorage override rejected ⇒ the override is *ignored* and the remote
- *     MTFF value applies instead. Locally there is no MTFF provider, so the
- *     client returns the default we pass it — which is why this looks like the
- *     same thing in dev but is not on a Cloud stack.
- *
- * Supports the localStorage flag-override mechanism for QA / demos.
+ * A rejected remote payload or evaluation error returns
+ * `DEFAULT_HIGHLIGHTED_GUIDE_CONFIG` (variant: 'excluded').
  *
  * @returns The validated highlighted-guide config or the safe default
  *
@@ -535,21 +483,6 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
 export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
   const flagName = 'pathfinder.highlighted-guide-experiment';
   try {
-    const overrides = getFlagOverrides();
-    if (flagName in overrides) {
-      const override = overrides[flagName];
-      const validated = validateHighlightedGuideValue(override);
-      if (validated) {
-        logger.warn(`[OpenFeature] Using local override for '${flagName}'`, { override: validated });
-        // Fire the exposure event so override-driven QA / demo runs produce
-        // the same analytics as a real MTFF assignment. The dedup state is
-        // shared with the OpenFeature hook path — see openfeature-tracking.ts.
-        reportFeatureFlagExposure(flagName, validated as unknown as JsonValue);
-        return validated;
-      }
-      warnExperimentRejection('override', flagName, override);
-    }
-
     const client = getFeatureFlagClient();
     const value = client.getObjectValue(flagName, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue);
     const validatedRemote = validateHighlightedGuideValue(value);
@@ -567,7 +500,7 @@ const VALID_VARIANTS: ReadonlySet<string> = new Set(EXPERIMENT_VARIANTS);
 
 const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set(['docs-page', 'learning-journey', 'interactive']);
 
-export type ExperimentRejectionSource = 'override' | 'remote';
+export type ExperimentRejectionSource = 'remote';
 
 // Once per source per flag per page load: getActiveExperiments re-reads these flags
 // on every reportAppInteraction, so an unguarded warn would flood the console and Faro.
@@ -608,13 +541,12 @@ export function warnExperimentRejection(source: ExperimentRejectionSource, flagN
   }
   warnedRejectionSources.add(warnKey);
 
-  const consequence =
-    source === 'override'
-      ? 'ignoring it and using the MTFF value instead (locally, with no MTFF provider, that is the safe excluded default)'
-      : 'using the safe excluded default, so nobody is enrolled';
-  logger.warn(`[OpenFeature] Rejected the ${source} payload for '${flagName}' — ${consequence}`, {
-    reason: classifyExperimentRejection(value),
-  });
+  logger.warn(
+    `[OpenFeature] Rejected the remote payload for '${flagName}' — using the safe excluded default, so nobody is enrolled`,
+    {
+      reason: classifyExperimentRejection(value),
+    }
+  );
 }
 
 function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig | null {

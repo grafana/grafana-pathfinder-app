@@ -43,11 +43,11 @@ Load these files **only when working in the relevant domain**.
 
 ## Release, flags, and CI
 
-| File                    | When to load                                                                                                                                      | Auto-triggered by globs                                        |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `RELEASE_PROCESS.md`    | Releasing, deploying, versioning                                                                                                                  | --                                                             |
-| `FEATURE_FLAGS.md`      | Feature flags, A/B experiments                                                                                                                    | `openfeature.ts`                                               |
-| `EXPERIMENT_TESTING.md` | Manual experiment override recipes (DevTools `__pathfinderExperiment.setOverride`), reset snippets, per-arm test scenarios, analytics dedup notes | `src/utils/experiments/*`, `src/utils/openfeature-tracking.ts` |
+| File                    | When to load                                                                           | Auto-triggered by globs                                        |
+| ----------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `RELEASE_PROCESS.md`    | Releasing, deploying, versioning                                                       | --                                                             |
+| `FEATURE_FLAGS.md`      | Feature flags, A/B experiments                                                         | `openfeature.ts`                                               |
+| `EXPERIMENT_TESTING.md` | Feature-control recipes, reset snippets, per-arm test scenarios, analytics dedup notes | `src/utils/experiments/*`, `src/utils/openfeature-tracking.ts` |
 
 ## CLI and MCP
 
