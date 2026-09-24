@@ -21,7 +21,17 @@ import type { ControllerPairingLaunch } from '../lib/pairing-manager';
  * `searchParams.set` — no user-controlled keys are ever set.
  */
 
-export const PATHFINDER_PARAMS = ['doc', 'type', 'source', 'page', 'kiosk_session', 'panelMode', 'controller'] as const;
+export const PATHFINDER_PARAMS = [
+  'doc',
+  'type',
+  'source',
+  'page',
+  'kiosk_session',
+  'panelMode',
+  'controller',
+  'pathfinderKiosk',
+  'kioskRulesUrl',
+] as const;
 export type PathfinderParam = (typeof PATHFINDER_PARAMS)[number];
 
 // Subset of PATHFINDER_PARAMS that activate the deep-link handler
@@ -58,6 +68,8 @@ export interface DeepLinkParams {
   /** Surface mode from `?panelMode=`. Strict whitelist; unknowns drop to undefined. */
   panelMode?: PathfinderDeepLinkPanelMode;
   controller?: boolean;
+  pathfinderKiosk?: boolean;
+  kioskRulesUrl?: string;
 }
 
 const ALLOWED_TYPES: ReadonlySet<PathfinderDeepLinkType> = new Set(['learning-journey', 'docs', 'interactive']);
@@ -85,6 +97,8 @@ export function parsePathfinderDeepLink(search: string): DeepLinkParams {
     kioskSession: params.get('kiosk_session') ?? undefined,
     panelMode,
     controller: params.get('controller') === '1',
+    pathfinderKiosk: params.get('pathfinderKiosk') === '1',
+    kioskRulesUrl: params.get('kioskRulesUrl')?.trim() || undefined,
   };
 }
 

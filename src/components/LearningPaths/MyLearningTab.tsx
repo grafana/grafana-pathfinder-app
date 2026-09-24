@@ -11,6 +11,8 @@ import { useStyles2, Icon } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
+import { beginGuideLoad, finishGuideLoad } from '../../lib/telemetry/guide-load';
+import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { resolvePackageNavLinks } from '../../docs-retrieval';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
@@ -63,10 +65,13 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   // stays the correctness guard. Shared by course cards and Discover More.
   const [launchingId, setLaunchingId] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const preparingLoadRef = useRef<GuideLoadContext | undefined>(undefined);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      finishGuideLoad(preparingLoadRef.current, 'cancelled');
+      preparingLoadRef.current = undefined;
     };
   }, []);
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
@@ -101,30 +106,22 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   );
   const { items: discoverItems, isLoading: discoverLoading } = useDiscoverMore({ excludeTitles });
 
-  // Fetch + snippet-expand + classify the target, then hand the prepared
-  // launch to the host so it can pick the surface without re-fetching. The
-  // fetch happens while My Learning stays mounted; on failure My Learning stays
-  // visible and the error is surfaced rather than committing a surface.
-  // Shared by every launch path (URL-based, manifest cover, static/App
-  // Platform guide) — assumes the caller already holds launchInFlightRef.
   const performLaunch = useCallback(
     async (url: string, title: string, packageInfo?: PackageOpenInfo) => {
-      const result = await prepareGuideLaunch(url, { title, source: 'home_page', packageInfo });
-      // The prepare step can outlive this page (the fetches are bounded but
-      // slow-CDN cases run tens of seconds). If the user navigated away,
-      // drop the result — launching now would yank them to /fullscreen from
-      // wherever they landed.
       if (!mountedRef.current) {
         return;
       }
+      const loadContext = beginGuideLoad(url);
+      preparingLoadRef.current = loadContext;
+      const result = await prepareGuideLaunch(url, { title, source: 'home_page', packageInfo, loadContext });
+      if (!mountedRef.current) {
+        return;
+      }
+      preparingLoadRef.current = undefined;
       if (result.ok) {
         onOpenGuide(result.launch);
       } else {
-        // Log context reaches Faro attributes verbatim, so only stable,
-        // low-cardinality values go in: the URL loses its query and fragment,
-        // and the classification code stands in for `result.error`, whose free
-        // text can echo fetched-guide values. The user sees a translated
-        // generic message either way.
+        // Fetched error messages can contain private guide content.
         logger.error('[MyLearning] Guide launch preparation failed', {
           content_url: normalizeTelemetryUrl(url),
           error_code: result.errorCode,

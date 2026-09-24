@@ -1,3 +1,5 @@
+import { identifyGuideLoad } from '../../lib/telemetry/guide-load';
+import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 // Package content integration (Phase 4g).
 //
 // Holds the module-level PackageResolver singleton injected by Tier 3/4 wiring
@@ -169,13 +171,13 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
     const id = packageIds[i]!;
 
     if (result.status === 'rejected') {
-      logger.warn(`[resolvePackageNavLinks] Error resolving package ${id}`, { reason: result.reason });
+      logger.warn('[resolvePackageNavLinks] Error resolving package');
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
-      logger.warn(`[resolvePackageNavLinks] Skipping unresolvable package: ${id}`);
+      logger.warn('[resolvePackageNavLinks] Skipping unresolvable package');
       continue;
     }
 
@@ -304,6 +306,7 @@ async function resolvePackageUrlBypassCache(packageId: string): Promise<string |
  * @param preFetchedContent - Optional content the caller already fetched (avoids re-issuing an identical request)
  * @param explicitGuideId - The manifest guide id this load's click target already carried (GuideList's current row, the cover page's CTA — threaded through link-handler.hook.ts / docs-panel.tsx). When present, classification is a direct id lookup against `milestones`/`tracks` instead of comparing resolved URLs — see the comment on `milestoneIndex` below. Absent for loads with no click behind them (the initial cover-page open, a deep link, a bookmark), which fall back to a direct match against each track's own resolved guide URL (with one bypass-cache retry for a track guide whose own resolve failed) rather than any URL comparison against the path's own resolved base.
  * @param knownBaseUrl - The owning path's own base URL, when the caller already has it (docs-panel.tsx carries forward the cover page's own `learningJourney.baseUrl`/`trackMemberBaseUrl` from the tab's outgoing content when a track member is clicked FROM that same cover — the only way a track-exclusive guide is reached WITH a prior cover-page click behind it). Used as a fallback for `trackMemberBaseUrl` when this SAME request's own `baseUrlResolution` fails. A direct or deep-link load has no `knownBaseUrl` either — that case falls through one more time to {@link resolvePackageUrlBypassCache} before falling back to this guide's own `contentUrl`.
+ * @param loadContext - Diagnostic context for the guide-load telemetry pipeline. Identified here directly (not only inside `fetchContent`) so a `preFetchedContent` caller — which never calls `fetchContent` at all — still gets its load identified; `identifyGuideLoad` is idempotent (a no-op once `context.source` is no longer `'other'`), so the second identification inside `fetchContent` below is safe.
  */
 export async function fetchPackageContent(
   contentUrl: string,
@@ -312,8 +315,10 @@ export async function fetchPackageContent(
   repository?: string,
   preFetchedContent?: ContentFetchResult,
   explicitGuideId?: string,
-  knownBaseUrl?: string
+  knownBaseUrl?: string,
+  loadContext?: GuideLoadContext
 ): Promise<ContentFetchResult> {
+  identifyGuideLoad(loadContext, contentUrl);
   const renderType = getPackageRenderType(packageManifest);
   const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
 
@@ -341,9 +346,10 @@ export async function fetchPackageContent(
   // need milestones/tracks and milestones/tracks don't need the page body.
   // The baseUrl branch awaits getPackageResolver() itself (rather than a
   // resolver fetched ahead of this array) so a cold resolver's chunk fetch
-  // overlaps fetchContent(contentUrl) instead of serializing in front of it.
+  // overlaps fetchContent(contentUrl, { loadContext }) instead of
+  // serializing in front of it.
   const [result, resolvedMilestones, baseUrlResolution, resolvedTracks] = await Promise.all([
-    preFetchedContent ?? fetchContent(contentUrl),
+    preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
     manifestId
       ? getPackageResolver().then((resolver) =>
@@ -532,6 +538,7 @@ export async function fetchPackageContent(
     ...result,
     content: {
       ...result.content,
+      ...(loadContext && { loadContext }),
       content: contentString,
       type: renderType,
       metadata: {
@@ -565,7 +572,8 @@ export async function fetchPackageContent(
 export async function fetchPackageById(
   packageId: string,
   packageManifest?: Record<string, unknown>,
-  repository?: string
+  repository?: string,
+  loadContext?: GuideLoadContext
 ): Promise<ContentFetchResult> {
   const resolver = await getPackageResolver();
   if (!resolver) {
@@ -581,12 +589,13 @@ export async function fetchPackageById(
   // tab restore), so a draft opened by bare id is only caught here. The baseUrl
   // hydration resolve() in fetchPackageContent stays unverified — it runs on
   // every milestone fetch and its id is already known-good.
-  const resolution = await resolver.resolve(packageId, { loadContent: false, verifyPublished: true });
+  const resolution = await resolver.resolve(packageId, { loadContent: false, verifyPublished: true, loadContext });
 
   if (!resolution.ok) {
     return {
       content: null,
-      error: `Failed to resolve package: ${packageId}`,
+      error: 'Failed to resolve package',
+      diagnostic: resolution.error.diagnostic,
       errorType: resolution.error.code === 'not-found' ? 'not-found' : 'other',
     };
   }
@@ -605,6 +614,9 @@ export async function fetchPackageById(
     packageManifest,
     undefined,
     repository ?? resolution.repository,
-    preFetched
+    preFetched,
+    undefined,
+    undefined,
+    loadContext
   );
 }

@@ -33,10 +33,13 @@ beforeEach(() => {
 it('reads an existing resource with its concurrency token', async () => {
   fetchMock.mockReturnValueOnce(of({ data: { metadata: { resourceVersion: '42' }, spec: base.spec } }));
   expect(await fetchPathfinderSettingsSnapshot()).toEqual(base);
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.objectContaining({ method: 'GET', url: '/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings' })
+  );
 });
 
 it.each([404, 405, 501])('permits legacy fallback when the API is absent (%i)', async (status) => {
-  fetchMock.mockReturnValueOnce(error(status));
+  fetchMock.mockReturnValueOnce(throwError(() => ({ status, data: { error: 'settings-upstream-unavailable' } })));
   expect(await fetchPathfinderSettingsSnapshot()).toBeNull();
 });
 
@@ -44,7 +47,7 @@ it.each([400, 401, 403, 500, 503])(
   'does not mutate either store after an authoritative read fails (%i)',
   async (status) => {
     fetchMock.mockImplementation(({ url }: { url: string }) =>
-      url.startsWith('/api/plugins/')
+      url.endsWith('/settings')
         ? of({ data: { jsonData: { stackId: '123' }, enabled: true, pinned: true } })
         : error(status)
     );
@@ -151,7 +154,7 @@ describe('existing resource update recovery', () => {
     let spec = base.spec;
     let attempts = 0;
     fetchMock.mockImplementation(({ method, url, data }) => {
-      if (url.startsWith('/api/plugins/')) {
+      if (url.endsWith('/settings')) {
         if (method !== 'GET') {
           throw new Error('An existing resource must not write to legacy settings');
         }
@@ -194,4 +197,9 @@ it('does not call the settings resource without a namespace', async () => {
   expect(await fetchPathfinderSettingsSnapshot()).toBeNull();
   expect(await savePathfinderSettings({})).toBe(false);
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it.each([404, 405, 501])('rejects missing proxy routes instead of treating settings as absent (%i)', async (status) => {
+  fetchMock.mockReturnValueOnce(error(status));
+  await expect(fetchPathfinderSettingsSnapshot()).rejects.toMatchObject({ status });
 });

@@ -100,9 +100,11 @@ jest.mock('../../lib/user-storage', () => ({
 }));
 
 jest.mock('../../lib/analytics', () => ({
+  createInteractionName: (name: string) => `pathfinder_${name}`,
   setupScrollTracking: jest.fn(),
   reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
   UserInteraction: {
+    DocsPanelInteraction: 'docs_panel_interaction',
     AlignmentPromptShown: 'alignment_prompt_shown',
     AlignmentPromptConfirmed: 'alignment_prompt_confirmed',
     AlignmentPromptDismissed: 'alignment_prompt_dismissed',
@@ -138,10 +140,7 @@ jest.mock('../../global-state/link-interception', () => ({
   linkInterceptionState: { addToQueue: jest.fn() },
 }));
 
-// Pass-through that captures the loader's resolved outcome.
-const mockWithGuideOpenAction = jest.fn(async (_url: string, work: () => Promise<unknown>) => work());
 jest.mock('../../lib/telemetry', () => ({
-  withGuideOpenAction: (...args: [string, () => Promise<unknown>]) => mockWithGuideOpenAction(...args),
   recordPanelReady: jest.fn(),
 }));
 
@@ -385,7 +384,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
         title: 'Test Guide',
         baseUrl: 'bundled:launch/content.json',
         currentUrl: 'bundled:fetched/content.json',
-        content: fetchedContent,
+        content: { ...fetchedContent, loadContext: expect.objectContaining({ loadId: expect.any(String) }) },
         isLoading: false,
         error: null,
         type: 'learning-journey',
@@ -466,7 +465,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
         title: 'Test Guide',
         baseUrl: 'https://grafana.com/docs/grafana/latest/',
         currentUrl: 'https://grafana.com/docs/grafana/latest/',
-        content: fetchedContent,
+        content: { ...fetchedContent, loadContext: expect.objectContaining({ loadId: expect.any(String) }) },
         isLoading: false,
         error: null,
         type: 'docs',
@@ -1054,28 +1053,6 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       const tab = getTab(panel, tabId);
       expect(tab.isLoading).toBe(false);
       expect(tab.error).toBe('Failed to load documentation');
-    });
-
-    it('reports a completed guide-open outcome for successful loads', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
-      const panel = new CombinedLearningJourneyPanel();
-
-      await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
-      await new Promise((r) => setTimeout(r, 0));
-
-      expect(mockWithGuideOpenAction).toHaveBeenCalledWith('bundled:connections-guide', expect.any(Function));
-      await expect(mockWithGuideOpenAction.mock.results[0]!.value).resolves.toBe('completed');
-    });
-
-    it('reports an error guide-open outcome when the loader stores the failure and resolves', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue({ content: null, error: 'boom' });
-      const panel = new CombinedLearningJourneyPanel();
-
-      const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
-      await new Promise((r) => setTimeout(r, 0));
-
-      expect(getTab(panel, tabId).error).toBe('boom');
-      await expect(mockWithGuideOpenAction.mock.results[0]!.value).resolves.toBe('error');
     });
 
     it('reaches the docs loader via the packageInfo trigger when shouldUseDocsLoader is false', async () => {

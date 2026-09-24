@@ -153,25 +153,26 @@ describe('fetchBackendInteractive — happy path', () => {
 });
 
 describe('fetchBackendInteractive — path traversal guard (F3)', () => {
-  it('percent-encodes the resource name into the endpoint path', async () => {
+  it('encodes the resource name as a query parameter', async () => {
     mockFetch.mockReturnValue(of(okResource()));
 
     await fetchBackendInteractive('backend-guide:../../etc/passwd');
 
     const calledUrl = mockFetch.mock.calls[0]![0].url as string;
-    expect(calledUrl).toContain('/interactiveguides/');
-    // The traversal sequence is encoded, so no raw path separators leak into the segment.
+    expect(calledUrl).toContain('/resources/custom-guide?name=');
     expect(calledUrl).toContain(encodeURIComponent('../../etc/passwd'));
-    expect(calledUrl).not.toContain('/interactiveguides/../../');
+    expect(new URL(calledUrl, 'http://localhost').pathname).toBe(
+      '/api/plugins/grafana-pathfinder-app/resources/custom-guide'
+    );
   });
 
-  it('scopes the request to the current namespace', async () => {
+  it('leaves namespace selection to the backend', async () => {
     mockFetch.mockReturnValue(of(okResource()));
 
     await fetchBackendInteractive('backend-guide:my-guide');
 
     const calledUrl = mockFetch.mock.calls[0]![0].url as string;
-    expect(calledUrl).toContain('/namespaces/stacks-123/');
+    expect(calledUrl).toBe('/api/plugins/grafana-pathfinder-app/resources/custom-guide?name=my-guide');
   });
 });
 
@@ -258,6 +259,35 @@ describe('fetchBackendInteractive — completion identity', () => {
     expect(result.content!.metadata.packageManifest).toMatchObject({
       id: 'guide-id',
       repository: 'app-platform',
+    });
+  });
+});
+
+describe('private guide diagnostics', () => {
+  it.each([401, 403, 404, 429, 500, 503])(
+    'retains HTTP %i without forwarding backend response text',
+    async (status) => {
+      mockFetch.mockReturnValue(throwError(() => ({ status, data: { message: 'private payload' } })));
+      const result = await fetchBackendInteractive('backend-guide:private-resource');
+      expect(result.diagnostic).toEqual({
+        source: 'app-platform',
+        stage: 'fetch',
+        reason: 'http-error',
+        statusCode: status,
+      });
+      expect(JSON.stringify(result.diagnostic)).not.toContain('private');
+    }
+  );
+
+  it('reports schema failure using safe counts', async () => {
+    mockFetch.mockReturnValue(of(okResource()));
+    mockValidateGuide.mockReturnValue({ isValid: false, errors: [{ message: 'private field value' }] });
+    const result = await fetchBackendInteractive('backend-guide:private-resource');
+    expect(result.diagnostic).toEqual({
+      source: 'app-platform',
+      stage: 'validate',
+      reason: 'schema-invalid',
+      validationCount: 1,
     });
   });
 });

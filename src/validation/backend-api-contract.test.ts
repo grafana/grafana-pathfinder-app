@@ -143,7 +143,7 @@ function normalizedZodWireType(schema: z.core.$ZodType): string {
   if (schema instanceof z.ZodNullable) {
     return `nullable<${normalizedZodWireType(schema.unwrap())}>`;
   }
-  if (schema instanceof z.ZodString) {
+  if (schema instanceof z.ZodString || schema instanceof z.ZodEnum) {
     return 'string';
   }
   if (schema instanceof z.ZodBoolean) {

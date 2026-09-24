@@ -309,6 +309,50 @@ it('reports mixed supported and unsupported tracked roots', async () => {
   expect(stepRoots.filter).toHaveBeenCalledWith({ visible: true });
 });
 
+it('executes a codeblock-only guide and reports supported coverage', async () => {
+  const step: TestableStep = { ...supportedStep(), stepKind: 'codeblock', stepId: 'insert-query' };
+  const coverage: StepCoverage = {
+    contractSource: 'current',
+    rendered: 1,
+    supported: 1,
+    executed: 0,
+    unsupported: 0,
+    unsupportedSteps: [],
+  };
+  setupInteractiveRun([step], coverage, {
+    results: [
+      {
+        stepId: step.stepId,
+        stepKind: 'codeblock',
+        status: 'passed',
+        durationMs: 10,
+        currentUrl: '/explore',
+        consoleErrors: [],
+        skippable: false,
+      },
+    ],
+    aborted: false,
+  });
+
+  const result = await runGuideOnPage(
+    page([]),
+    {
+      id: 'codeblock',
+      title: 'Insert a query',
+      path: '/codeblock/content.json',
+      content: '{"id":"codeblock","blocks":[{"type":"code-block","code":"up","reftarget":"#editor"}]}',
+    },
+    options([])
+  );
+
+  expect(executeAllStepsMock).toHaveBeenCalledWith(expect.anything(), [step], expect.anything());
+  expect(result).toMatchObject({
+    outcome: 'passed',
+    coverage: { ...coverage, executed: 1 },
+    results: [{ stepKind: 'codeblock', status: 'passed' }],
+  });
+});
+
 it('reports an unsupported-only guide as skipped with complete coverage', async () => {
   const events: string[] = [];
   const coverage: StepCoverage = {

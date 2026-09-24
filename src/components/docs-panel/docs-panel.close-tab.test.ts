@@ -123,7 +123,6 @@ jest.mock('../../global-state/link-interception', () => ({
 }));
 
 jest.mock('../../lib/telemetry', () => ({
-  withGuideOpenAction: jest.fn(async (_url: string, work: () => Promise<unknown>) => work()),
   recordPanelReady: jest.fn(),
 }));
 
@@ -228,6 +227,9 @@ jest.mock('../../hooks', () => ({}));
 // Import under test
 // ---------------------------------------------------------------------------
 
+jest.mock('../../lib/telemetry/facade', () => ({ recordGuideRender: jest.fn(), recordGuideRequest: jest.fn() }));
+
+import { recordGuideRender } from '../../lib/telemetry/facade';
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import { tabStorage } from '../../lib/user-storage';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
@@ -436,5 +438,62 @@ describe('CombinedLearningJourneyPanel.saveTabsToStorage', () => {
     resolveActiveTab();
     await save;
     expect(settled).toBe(true);
+  });
+});
+
+describe('closing the active tab resumes the visible load budget', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+  });
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it.each([false, true])('respects pending alignment: %s', (pending) => {
+    const a = { ...tab('guide-a', 'docs'), isLoading: true };
+    if (pending) {
+      a.pendingAlignment = {
+        startingLocation: '/d/start',
+        currentPath: '/',
+        launchSource: 'content_link',
+        decidedAt: 0,
+      };
+    }
+    const b: LearningJourneyTab = {
+      ...tab('guide-b', 'docs'),
+      content: {
+        content: '{}',
+        metadata: { title: 'B' },
+        type: 'single-doc',
+        url: 'https://grafana.com/docs/',
+        lastFetched: '2026-09-23T00:00:00Z',
+      },
+    };
+    const panel = panelWith([RECOMMENDATIONS, a, b], a.id);
+    jest.spyOn(panel as any, 'loadDocsTabContent').mockImplementation(() => new Promise(() => {}));
+    void panel.loadTab(a.id, 'https://grafana.com/docs/grafana/latest/');
+    jest.advanceTimersByTime(10_000);
+    panel.setActiveTab('guide-b');
+    jest.advanceTimersByTime(120_000);
+    expect(recordGuideRender).not.toHaveBeenCalled();
+    panel.closeTab('guide-b');
+    expect(stateOf(panel).activeTabId).toBe(a.id);
+    jest.advanceTimersByTime(49_999);
+    expect(recordGuideRender).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    if (pending) {
+      expect(recordGuideRender).not.toHaveBeenCalled();
+    } else {
+      expect(recordGuideRender).toHaveBeenCalledWith(
+        expect.anything(),
+        'timeout',
+        60_000,
+        expect.objectContaining({ reason: 'timeout' })
+      );
+    }
+    panel.closeTab(a.id);
   });
 });

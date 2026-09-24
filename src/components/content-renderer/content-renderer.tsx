@@ -1,3 +1,6 @@
+import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBoundary';
+import { finishGuideLoad, pauseGuideLoad, resumeGuideLoad } from '../../lib/telemetry/guide-load';
+import { useIsAlignmentPaused } from '../../global-state/alignment-pending-context';
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -25,7 +28,7 @@ import {
   isJourneyCoverPage,
   getCurrentMilestone,
 } from '../../docs-retrieval';
-import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
+import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
 import {
   InteractiveSection,
@@ -113,10 +116,10 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
         targetElement!.classList.remove('fragment-highlight');
       }, 3000);
     } else {
-      logger.warn(`Fragment element not found: #${fragment}`);
+      logger.warn('Fragment element not found');
     }
-  } catch (error) {
-    logger.warn(`Error scrolling to fragment #${fragment}`, { error });
+  } catch {
+    logger.warn('Error scrolling to fragment');
   }
 }
 
@@ -145,7 +148,27 @@ const selectionStyle = css`
 
 // Memoize ContentRenderer to prevent re-renders when parent re-renders
 // but content prop hasn't changed
-export const ContentRenderer = React.memo(function ContentRenderer({
+export const ContentRenderer = React.memo(function ContentRenderer(props: ContentRendererProps) {
+  const context = props.content.loadContext;
+  const paused = useIsAlignmentPaused();
+  useEffect(() => {
+    if (paused) {
+      pauseGuideLoad(context, true);
+    } else {
+      resumeGuideLoad(context);
+    }
+    return () => pauseGuideLoad(context);
+  }, [context, paused]);
+  return (
+    <GuideRenderBoundary key={context?.loadId ?? props.content.url} context={context}>
+      <GuideLoadTelemetryContext.Provider value={context}>
+        <ContentRendererInner {...props} />
+      </GuideLoadTelemetryContext.Provider>
+    </GuideRenderBoundary>
+  );
+});
+
+const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
   onGuideComplete,
@@ -441,14 +464,6 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processedContent, content.hashFragment]);
 
-  useEffect(() => {
-    if (onContentReady) {
-      const timer = setTimeout(onContentReady, 50);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [processedContent, onContentReady]);
-
   // Derive guide ID from content URL for response storage
   const guideId = useMemo(() => {
     // Use the URL path as the guide identifier, or fallback to 'default'
@@ -682,8 +697,11 @@ function ContentProcessor({
   baseUrl,
   responses,
   fullScreenFallbackLocation,
+  onReady,
 }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const loadContext = React.useContext(GuideLoadTelemetryContext);
+  const alignmentPaused = useIsAlignmentPaused();
 
   // Reset interactive counters only when content changes (not on every render)
   // This must run BEFORE parsing to ensure clean state for section registration
@@ -796,7 +814,7 @@ function ContentProcessor({
       logger.warn(
         '[ContentRenderer] Expanded guide carries no usable pre-inlining tree; no canonical index published',
         {
-          content_key: contentKey,
+          reason: 'counting-source-unavailable',
         }
       );
       return;
@@ -830,7 +848,11 @@ function ContentProcessor({
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.
   const overlayKey = `${html}\x00${baseUrl}`;
-  const [snippetOverlay, setSnippetOverlay] = useState<{ key: string; result: ContentParseResult } | null>(null);
+  const [snippetOverlay, setSnippetOverlay] = useState<{
+    key: string;
+    result: ContentParseResult;
+    degraded: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!guideWithSnippetRefs) {
@@ -838,20 +860,52 @@ function ContentProcessor({
     }
     let cancelled = false;
     (async () => {
-      const resolved = await inlineSnippetRefsInGuide(guideWithSnippetRefs);
+      const resolved = await inlineSnippetRefsInGuideWithStatus(guideWithSnippetRefs);
       if (cancelled) {
         return;
       }
-      setSnippetOverlay({ key: overlayKey, result: parseJsonGuide(resolved, baseUrl) });
-    })();
+      setSnippetOverlay({
+        key: overlayKey,
+        result: parseJsonGuide(resolved.guide, baseUrl),
+        degraded: resolved.unresolvedSnippetIds.length > 0,
+      });
+    })().catch(() => {
+      if (!cancelled) {
+        setSnippetOverlay({ key: overlayKey, result: baseParseResult, degraded: true });
+      }
+    });
     return () => {
       cancelled = true;
     };
-  }, [guideWithSnippetRefs, baseUrl, overlayKey]);
+  }, [guideWithSnippetRefs, baseUrl, overlayKey, baseParseResult]);
 
   const overlayMatchesCurrent = snippetOverlay?.key === overlayKey;
-  const parseResult = overlayMatchesCurrent && snippetOverlay ? snippetOverlay.result : baseParseResult;
+  const currentSnippetOverlay = overlayMatchesCurrent ? snippetOverlay : null;
+  const parseResult = currentSnippetOverlay?.result ?? baseParseResult;
   const isResolvingSnippets = guideWithSnippetRefs !== null && !overlayMatchesCurrent;
+
+  const readyReported = useRef<string | null>(null);
+  useEffect(() => {
+    if (isResolvingSnippets || alignmentPaused || readyReported.current === overlayKey) {
+      return;
+    }
+    readyReported.current = overlayKey;
+    const source = loadContext?.source ?? 'other';
+    if (!parseResult.isValid || !parseResult.data) {
+      finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'parse-error' });
+    } else if (parseResult.data.elements.length === 0) {
+      finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'empty-content' });
+    } else {
+      if (parseResult.warnings.length > 0 && !currentSnippetOverlay?.degraded) {
+        finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'parse-error' });
+      }
+      if (currentSnippetOverlay?.degraded) {
+        finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'snippet-unavailable' });
+      }
+      finishGuideLoad(loadContext, 'rendered');
+      onReady?.();
+    }
+  }, [parseResult, isResolvingSnippets, alignmentPaused, overlayKey, loadContext, onReady, currentSnippetOverlay]);
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {
@@ -935,7 +989,7 @@ function ContentProcessor({
 
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
-    logger.error('Content parsing failed', { errors: parseResult.errors });
+    // Parser details can contain private guide content; only the typed outcome is reported.
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -1755,7 +1809,7 @@ function renderParsedElement(
 
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
-        logger.error('Invalid element type for parsed element', { element });
+        logger.error('Invalid element type for parsed element');
         throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
 

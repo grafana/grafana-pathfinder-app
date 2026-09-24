@@ -120,11 +120,6 @@ export const testIds = {
     // Full screen mode (used by element picker and recording)
     fullScreen: {
       domPathTooltip: 'dev-tools-fullscreen-tooltip',
-      minimizedSidebar: {
-        container: 'dev-tools-minimized-sidebar',
-        button: 'dev-tools-minimized-button',
-        badge: 'dev-tools-minimized-badge',
-      },
     },
   },
 
@@ -406,6 +401,7 @@ export const testIds = {
     searchClose: 'coda-terminal-search-close',
     vmExpiry: 'coda-terminal-vm-expiry',
     gcxButton: 'coda-terminal-gcx',
+    openIdeButton: 'coda-open-workspace', // Preserve the existing selector across the IDE rename.
     gcxMint: 'coda-terminal-gcx-mint',
     gcxToken: 'coda-terminal-gcx-token',
     gcxTokenLifetime: 'coda-terminal-gcx-token-lifetime',

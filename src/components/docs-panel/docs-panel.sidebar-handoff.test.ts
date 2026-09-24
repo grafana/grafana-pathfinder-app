@@ -141,9 +141,7 @@ jest.mock('../../global-state/link-interception', () => ({
   linkInterceptionState: { addToQueue: jest.fn() },
 }));
 
-const mockWithGuideOpenAction = jest.fn(async (_url: string, work: () => Promise<unknown>) => work());
 jest.mock('../../lib/telemetry', () => ({
-  withGuideOpenAction: (...args: [string, () => Promise<unknown>]) => mockWithGuideOpenAction(...args),
   recordPanelReady: jest.fn(),
 }));
 
