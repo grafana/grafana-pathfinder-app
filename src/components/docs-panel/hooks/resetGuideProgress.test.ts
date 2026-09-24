@@ -99,13 +99,11 @@ describe('resetGuideProgress', () => {
     expect(mockInvalidateEmittedCompletion).toHaveBeenCalledWith('interactive-tutorials', 'milestone-2');
   });
 
-  // Regression (captain-approved fix on PR #1927, "legacy-milestone-backfill
-  // -resurrects-reset", HIGH): resetting a milestone used to leave the legacy
-  // `milestoneCompletionStorage` record untouched, so
-  // `backfillLegacyMilestoneCompletion` (learning-journey-helpers.ts) read
-  // that still-populated record on the very next render/read and silently
-  // rewrote the just-reset milestone back to 100%. A per-milestone reset must
-  // also clear this legacy record for the SAME slug.
+  // A per-milestone reset must also clear the legacy
+  // `milestoneCompletionStorage` record for the same slug — otherwise
+  // `backfillLegacyMilestoneCompletion` (learning-journey-helpers.ts) reads
+  // that still-populated record on the very next render and silently
+  // rewrites the just-reset milestone back to 100%.
   it('clears the legacy milestoneCompletionStorage record when resetting a milestone', async () => {
     await resetGuideProgress('https://grafana.com/docs/learning-journeys/demo/milestone-2/content.json', {
       milestoneSlug: 'milestone-2',

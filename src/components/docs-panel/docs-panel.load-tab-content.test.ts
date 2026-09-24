@@ -286,12 +286,10 @@ describe('CombinedLearningJourneyPanel.loadTab — empty tab URL', () => {
   });
 });
 
-// Regression (code-review self-check on PR #1927, round 5): the toolbar's
-// Next/Previous arrows and Alt+arrow shortcuts are a click just like
-// GuideList's row or the cover CTA — the target milestone's id is already
-// known at the call site, so it must reach loadTab's explicitGuideId instead
-// of leaving this, the most common navigation action, on the URL-comparison
-// fallback fetchPackageContent's structural fix was meant to retire.
+// The toolbar's Next/Previous arrows and Alt+arrow shortcuts are a click
+// just like GuideList's row or the cover CTA — the target milestone's id is
+// already known at the call site, so it must reach loadTab's
+// explicitGuideId.
 describe('CombinedLearningJourneyPanel — milestone toolbar navigation threads explicitGuideId', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -350,15 +348,14 @@ describe('CombinedLearningJourneyPanel — milestone toolbar navigation threads 
   });
 });
 
-// Regression (moxious review on PR #1927,
-// "track-only-parent-resolution-loses-completion", MEDIUM): a track-only
-// guide is only ever reached by clicking it FROM its own path's cover, in
-// the same tab — so the tab's OUTGOING content, right up until this load
-// overwrites it, is that cover's own learningJourney (or, for a track guide
-// clicked from another track guide, that guide's own trackMemberBaseUrl).
-// Carrying it forward as knownBaseUrl lets fetchPackageContent recover a
-// track-only guide's completion identity even if THIS load's own
-// independent re-resolve of the path's id transiently fails.
+// A track-only guide is only ever reached by clicking it FROM its own
+// path's cover, in the same tab — so the tab's OUTGOING content, right up
+// until this load overwrites it, is that cover's own learningJourney (or,
+// for a track guide clicked from another track guide, that guide's own
+// trackMemberBaseUrl). Carrying it forward as knownBaseUrl lets
+// fetchPackageContent recover a track-only guide's completion identity
+// even if THIS load's own independent re-resolve of the path's id
+// transiently fails.
 describe('CombinedLearningJourneyPanel.loadDocsTabContent — knownBaseUrl fallback', () => {
   beforeEach(() => {
     jest.clearAllMocks();

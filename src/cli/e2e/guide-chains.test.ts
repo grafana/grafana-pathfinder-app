@@ -214,10 +214,9 @@ describe('planPackageExecution', () => {
     expect(plan.errors.some((error) => error.includes('Cycle in tracks'))).toBe(true);
   });
 
-  // Regression (Cursor Bugbot on PR #1927): the combined cycle walk only
-  // covered depends+milestones, so a cycle that only closes once a tracks
-  // edge joins depends went undetected and the plan would have accepted a
-  // genuinely cyclic graph.
+  // A cycle can close only once a tracks edge joins depends — the combined
+  // cycle walk must cover tracks alongside depends+milestones, not just
+  // the latter two.
   it('detects a cycle that crosses tracks and depends relationships', () => {
     const repository: RepositoryJson = {
       path: {

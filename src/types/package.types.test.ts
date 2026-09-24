@@ -69,14 +69,9 @@ describe('getManifestTracks', () => {
     ).toEqual([{ trackId: 'builder', label: 'Builder', guides: ['a'] }]);
   });
 
-  // Regression (human review on PR #1927, "foundations-sentinel-unenforced-
-  // at-runtime", MEDIUM): the reserved trackId and cross-track uniqueness
-  // checks previously only ran in ManifestJsonSchema's superRefine, which
-  // only the CLI's `validate` command exercises — every runtime loader, and
-  // scripts/upsert-learning-path.sh (no Zod validation at all), could reach
-  // the cover page with a track named "foundations" or a duplicate trackId.
-  // Enforcing here, the one place every tracks consumer reads through, makes
-  // that true on every path.
+  // The reserved trackId and cross-track uniqueness checks also run in
+  // ManifestJsonSchema's superRefine, which not every runtime loader
+  // exercises — enforcing them here too makes them true on every path.
   it('drops a track that reuses the reserved Foundations trackId', () => {
     expect(
       getManifestTracks({
@@ -99,14 +94,9 @@ describe('getManifestTracks', () => {
     ).toEqual([{ trackId: 'builder', label: 'Builder', guides: ['a'] }]);
   });
 
-  // Regression (moxious review on PR #1927,
-  // "shell-publisher-skips-path-only-enforcement", HIGH, runtime half):
-  // package.schema.ts's `ManifestTrackSchema` already rejects an empty
-  // `guides` list at authoring time (`.min(1)`), but that schema, like Rule
-  // 4's superRefine, only runs through the CLI's `validate` command — not
-  // every runtime loader, and not scripts/upsert-learning-path.sh. Enforcing
-  // it here too, the same way the reserved-trackId and duplicate-trackId
-  // checks above already are, makes it true on every path.
+  // Empty guides is rejected at authoring time by ManifestJsonSchema's Rule
+  // 5, which not every runtime loader exercises either — enforced here too,
+  // the same way the checks above are.
   it('drops a track with an empty guides list', () => {
     expect(
       getManifestTracks({

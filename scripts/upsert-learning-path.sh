@@ -438,11 +438,8 @@ fi
 # RFC 6.1 scopes `tracks` to path manifests only — a journey is a fixed
 # reading order, so tracks presenting the same content differently do not
 # apply to it. build_manifest (below) already drops `tracks` for anything
-# other than a path, but a silent drop hides a real authoring mistake from
-# whoever is running this script; reject it instead, the same way the app's
-# own ManifestJsonSchema (superRefine) rejects it (moxious review,
-# "shell-publisher-skips-path-only-enforcement" — this script doesn't call
-# that schema, so it needs the equivalent check of its own).
+# other than a path, but a silent drop hides a real authoring mistake; this
+# script calls no Zod validation, so it needs its own equivalent check.
 if [[ "$PKG_TYPE" != "path" ]] && [[ "$(jq -r '(.tracks // []) | length' "$ROOT_MANIFEST")" != "0" ]]; then
   echo "${ROOT_MANIFEST} is a ${PKG_TYPE} but declares tracks — the Path Tracks RFC scopes tracks to path manifests only" >&2
   exit 1

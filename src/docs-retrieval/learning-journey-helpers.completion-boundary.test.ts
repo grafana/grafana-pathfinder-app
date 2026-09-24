@@ -770,18 +770,12 @@ describe('surface emitter routing matrix (bundled/remote × milestone/standalone
   });
 });
 
-// Regression (Cursor Bugbot on PR #1927, "Track-only guides skip completion
-// writes", HIGH): the fix for the earlier -1 sentinel leak left
-// `learningJourney` entirely undefined for a guide referenced only by a
-// track, but `recordGuideCompletionForSurface`'s milestone-write branch
-// requires `metadata.learningJourney.baseUrl` — so that guide's completion
-// silently reached neither `milestoneCompletionStorage` (App Platform: the
-// standalone-guide fallback's `type === 'path'` bail, meant for the cover
-// page, caught it too) nor anything durable (bundled: it fell into
-// `setJourneyCompletionPercentage` keyed on the guide's OWN url, not the
-// journey's). `trackMemberBaseUrl` (content.types.ts) restores the write
-// through the guide's own identity — its own URL-derived slug — without
-// resurrecting a fake milestone index or number.
+// A guide referenced only by a track has `learningJourney` entirely
+// undefined, but `recordGuideCompletionForSurface`'s milestone-write branch
+// requires `metadata.learningJourney.baseUrl` — so without a fallback that
+// guide's completion would reach nothing durable. `trackMemberBaseUrl`
+// (content.types.ts) restores the write through the guide's own identity
+// — its own URL-derived slug — without resurrecting a fake milestone index.
 describe('track-only guide completion (Path Tracks RFC — no learningJourney, no fake milestone index)', () => {
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -856,16 +850,15 @@ describe('track-only guide completion (Path Tracks RFC — no learningJourney, n
     expect(interactiveCompletionSetMock).toHaveBeenCalledWith('bundled:track-only/content.json', 100);
   });
 
-  // Regression (moxious review on PR #1927,
-  // "track-only-completion-after-fully-failed-parent-lookup", HIGH,
-  // direct/deep-link entry point): when both the path's own resolve and its
-  // bypass-cache retry fail, `trackMemberBaseUrl` falls back to this guide's
-  // own contentUrl (package-content.ts) instead of dropping the write. Proves
-  // that fallback is actually usable end to end: the write still lands under
-  // this guide's own URL — the SAME key the cover page's per-track read
-  // (`journeyMilestonePercentages`) computes from that guide's own resolved
-  // `Milestone.url` — so the track's next row reads as unlocked/current, the
-  // same as a fully successful parent resolve would produce.
+  // When both the path's own resolve and its bypass-cache retry fail,
+  // `trackMemberBaseUrl` falls back to this guide's own contentUrl
+  // (package-content.ts) instead of dropping the write. Proves that
+  // fallback is actually usable end to end: the write lands under this
+  // guide's own URL — the SAME key the cover page's per-track read
+  // (`journeyMilestonePercentages`) computes from that guide's own
+  // resolved `Milestone.url` — so the track's next row reads as
+  // unlocked/current, the same as a fully successful parent resolve would
+  // produce.
   it("lets the track's next row read as current after a completion write against the fallback identity (both parent lookups failed)", async () => {
     const firstGuideUrl = 'https://ex/builder/first-dashboard/content.json';
     const secondGuideUrl = 'https://ex/builder/welcome-to-grafana/content.json';

@@ -253,10 +253,8 @@ describe('CompositePackageResolver', () => {
       expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
     });
 
-    // Regression (moxious review on PR #1927, "track-only-retry-hits-
-    // negative-cache", HIGH): a caller that already knows the prior call for
-    // this exact packageId/loadContent/verifyPublished combination failed
-    // (package-content.ts's retryTrackMemberBaseUrlResolution) needs a way
+    // A caller that already knows the prior call for this exact
+    // packageId/loadContent/verifyPublished combination failed needs a way
     // to force a genuinely fresh attempt for a static-tier (bundled/CDN)
     // failure — the kind this suite's own test just above proves is
     // negatively cached and NOT evicted on failure, unlike app-platform's.

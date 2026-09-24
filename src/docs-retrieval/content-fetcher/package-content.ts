@@ -248,30 +248,21 @@ export function ensureNonEmptyCoverContent(jsonContent: string): string {
 
 /**
  * An extra independent resolve of a package id, bypassing whatever this
- * SAME request's own earlier resolve of that id already cached. Two
- * unrelated call sites need this exact shape:
- *  - the path's own id, tried after both this request's own
- *    `baseUrlResolution` and the caller's `knownBaseUrl` have come up empty
- *    (moxious review, "track-only-parent-resolution-loses-completion"): a
- *    direct or deep-link load of a track-only guide never goes through a
- *    cover-page click, so it never gets a `knownBaseUrl` either.
- *  - a track guide id left as a locked placeholder by `resolvePackageTracks`
- *    (its own resolve failed), given one more chance before this load with
- *    no `explicitGuideId` falls back to being classified as the cover page
- *    (moxious review, "cover-load-url-mismatch": the URL-comparison fallback
- *    this replaced misread ANY resolved-parent/loaded-URL mismatch as proof
- *    of track membership, which also misclassified the REAL cover page
- *    whenever it was loaded via a URL that merely differs from the
- *    resolver's own canonical one, such as a raw or PR-tester URL).
+ * SAME request's own earlier resolve of that id already cached. Two call
+ * sites need this:
+ *  - the path's own id, after both `baseUrlResolution` and the caller's
+ *    `knownBaseUrl` come up empty (a direct/deep-link load of a track-only
+ *    guide never has a `knownBaseUrl`, since it never goes through a
+ *    cover-page click).
+ *  - a track guide id left as a locked placeholder by `resolvePackageTracks`,
+ *    given one more chance before a load with no `explicitGuideId` falls
+ *    back to being classified as the cover page.
  *
- * `bypassCache: true` is required, not optional: this call uses the exact
- * same `packageId:loadContent:verifyPublished` cache key an earlier resolve
- * of the same id already used through the same singleton
- * `CompositePackageResolver`, and that resolver preserves a static-tier
- * (bundled/CDN) negative result rather than evicting it on failure (only an
- * app-platform-tagged result is). Without this flag, "retry" would silently
- * return the identical already-failed cached promise for the common
- * (non-app-platform) case — never a fresh attempt at all.
+ * `bypassCache: true` is required: this call reuses the exact cache key an
+ * earlier resolve of the same id already used through the same singleton
+ * `CompositePackageResolver`, which preserves a static-tier (bundled/CDN)
+ * negative result rather than evicting it on failure. Without this flag,
+ * "retry" would silently return the identical already-failed promise.
  *
  * Returns the resolved contentUrl, or `undefined` if this attempt also fails.
  */
@@ -379,41 +370,30 @@ export async function fetchPackageContent(
 
     if (milestones && milestones.length > 0) {
       // Structural classification: a direct id lookup against the manifest's
-      // own `milestones`/`tracks` arrays, not a comparison of resolved URLs.
-      // Four review rounds broke a different case each time under the old
-      // URL-comparison approach (guide-loads-as-cover-page, a -1 sentinel,
-      // a skipped completion write, a resolve failure misclassified as the
-      // cover, then an ordinary cover misclassified as a track member) —
-      // every one of those was a symptom of inferring identity from a
-      // side-channel (a resolved URL) instead of checking the identity
-      // itself. `explicitGuideId` IS that identity, threaded straight from
-      // the click target (GuideList's current row, the cover page's CTA —
-      // see Milestone.id's own doc comment) through link-handler.hook.ts and
-      // docs-panel.tsx, so this is a plain string membership check against
-      // `milestoneIds`/`manifestTracks` — both raw manifest data, already in
-      // scope, no resolve involved.
+      // own `milestones`/`tracks` arrays, not a comparison of resolved URLs
+      // — inferring identity from a resolved URL (a side-channel) rather
+      // than checking the identity itself is the failure mode this replaces.
+      // `explicitGuideId` IS that identity, threaded from the click target
+      // (GuideList's current row, the cover page's CTA) through
+      // link-handler.hook.ts and docs-panel.tsx, so this is a plain string
+      // membership check against `milestoneIds`/`manifestTracks` — both raw
+      // manifest data, already in scope, no resolve involved.
       const milestoneIndex = explicitGuideId
         ? milestoneIds.indexOf(explicitGuideId)
         : milestones.findIndex((m) => m.url === contentUrl);
 
-      // Only reachable with no `explicitGuideId` to check structurally
-      // against — a load with no click behind it (the initial cover-page
-      // open, a deep link, a bookmark). Confirmed by a direct match against
-      // a track's own resolved guide URL, retried once for any track guide
-      // whose OWN resolve inside `resolvePackageTracks` failed (a locked
-      // placeholder, url ''). Deliberately NOT confirmed by comparing this
-      // load's URL against baseUrlResolution's (this SAME request's resolve
-      // of the path's OWN manifestId): that comparison used to read ANY
-      // mismatch as proof of track membership (moxious review,
-      // "cover-load-url-mismatch"), but a mismatch alone proves nothing — a
-      // raw or PR-tester cover URL differs, byte for byte, from the
-      // resolver's own canonical URL for the SAME manifestId just as
-      // reliably as a genuine track guide's URL does, so that heuristic
-      // misclassified the REAL cover page as an unresolvable track member
-      // whenever it was loaded via such a URL, tracks declared or not. When
-      // neither the direct match nor its retry can confirm a track member,
-      // this defaults to being the cover page — the same default this
-      // branch used before tracks existed.
+      // Only reachable with no `explicitGuideId` — a load with no click
+      // behind it (the initial cover-page open, a deep link, a bookmark).
+      // Confirmed by a direct match against a track's own resolved guide
+      // URL, retried once for a track guide whose OWN resolve failed (a
+      // locked placeholder, url ''). Deliberately NOT confirmed by comparing
+      // this load's URL against baseUrlResolution's: a raw or PR-tester
+      // cover URL differs, byte for byte, from the resolver's own canonical
+      // URL for the SAME manifestId just as reliably as a genuine track
+      // guide's URL does, so that comparison alone proves nothing. When
+      // neither the direct match nor its retry confirms a track member,
+      // this defaults to the cover page — the same default as before
+      // tracks existed.
       let isConfirmedTrackMember =
         milestoneIndex < 0 &&
         (explicitGuideId
@@ -500,30 +480,23 @@ export async function fetchPackageContent(
       } else if (manifestId) {
         // Neither of the above had an answer — most commonly a direct or
         // deep-link load of a track-only guide, which never went through a
-        // cover-page click and so was never given a `knownBaseUrl` (moxious
-        // review, "track-only-parent-resolution-loses-completion"). One more
+        // cover-page click and so was never given a `knownBaseUrl`. One more
         // independent resolve gives a transient resolver hiccup a second
         // chance before this guide's completion is dropped for real.
         const retriedBaseUrl = await resolvePackageUrlBypassCache(manifestId);
         if (retriedBaseUrl) {
           trackMemberBaseUrl = retriedBaseUrl;
         } else {
-          // Even the retry came up empty: this request has no way left to
-          // learn the path's own resolved URL. Falling back to this guide's
-          // OWN contentUrl still preserves a completion identity rather than
-          // dropping the write entirely (moxious review,
-          // "track-only-completion-after-fully-failed-parent-lookup"): for a
-          // track-only guide, `trackMemberBaseUrl` is read back only as the
-          // truthiness gate `resolveActiveMilestoneSlug` checks (there is no
-          // `learningJourney`/`expectedMilestoneUrls` for this branch — see
-          // this field's own doc comment below), while the actual write key
-          // `markMilestoneDone` derives (`resolveMilestoneContentKey`) and
-          // the cover page's own per-track read
-          // (`journeyMilestonePercentages` -> `resolvePathMemberPercentages`
-          // -> `pathMemberContentKeyGroups`) both key on THIS guide's own
-          // resolved URL already, never on `trackMemberBaseUrl`'s value — so
-          // any truthy fallback round-trips through the identical key a
-          // fully-successful resolve would have produced.
+          // Even the retry came up empty. Falling back to this guide's own
+          // contentUrl still preserves a completion identity rather than
+          // dropping the write: for a track-only guide, `trackMemberBaseUrl`
+          // is read back only as the truthiness gate
+          // `resolveActiveMilestoneSlug` checks, while the actual write key
+          // (`markMilestoneDone`) and the cover page's read
+          // (`journeyMilestonePercentages`) both key on THIS guide's own
+          // resolved URL, never on `trackMemberBaseUrl`'s value — so any
+          // truthy fallback round-trips through the same key a successful
+          // resolve would have produced.
           trackMemberBaseUrl = contentUrl;
           logger.warn(
             `[fetchPackageContent] Could not resolve path base URL for track-only guide; using its own contentUrl as a fallback completion identity: ${contentUrl}`,

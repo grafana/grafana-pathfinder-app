@@ -138,14 +138,19 @@ export const PackageTypeSchema = z.enum(['guide', 'path', 'journey']) satisfies 
  * One named, independently-ordered guide sequence (Path Tracks RFC). `guides`
  * is a track's own complete ordering, not a subset or reordering of
  * `milestones`.
+ *
+ * Structurally tolerant, matching `milestones`' own base-schema treatment:
+ * several runtime loaders parse `ManifestJsonObjectSchema` directly, without
+ * `ManifestJsonSchema`'s superRefine, so a hard `.min(1)` here would fail
+ * that parse for any manifest with a malformed `tracks` entry. The
+ * non-empty-sequence invariant lives in Rule 5 below instead;
+ * `getManifestTracks` also drops an empty-`guides` track at runtime.
  * @coupling Type: ManifestTrack
  */
 export const ManifestTrackSchema = z.object({
-  trackId: z.string().min(1),
-  label: z.string().min(1),
-  // RFC §6.11: a track's own ordered sequence, same non-empty-sequence rule
-  // milestones enforces (Rule 1 below) — an empty list isn't a sequence.
-  guides: z.array(z.string().min(1)).min(1, 'A track must declare at least one guide'),
+  trackId: z.string(),
+  label: z.string(),
+  guides: z.array(z.string()),
 }) satisfies z.ZodType<ManifestTrack>;
 
 // ============ MANIFEST SCHEMA (manifest.json) ============
@@ -221,6 +226,7 @@ export const ManifestJsonObjectSchema = z.looseObject({
  * - Conditional ERROR: milestones only valid when type is "path" or "journey" (Rule 2)
  * - Conditional ERROR: tracks only valid when type is "path" (Rule 3)
  * - Conditional ERROR: trackId must be unique within one manifest's tracks (Rule 4)
+ * - Conditional ERROR: each track's trackId, label, and guides must be non-empty (Rule 5)
  *
  * @coupling Type: ManifestJson
  */
@@ -280,6 +286,44 @@ export const ManifestJsonSchema = ManifestJsonObjectSchema.superRefine((manifest
         });
       }
       seenTrackIds.add(track.trackId);
+    });
+  }
+
+  // Rule 5: trackId and label must be non-empty, and guides must be a
+  // non-empty sequence of non-empty strings — the same non-empty-sequence
+  // rule Rule 1 enforces for `milestones`.
+  if (hasTracks) {
+    manifest.tracks!.forEach((track, index) => {
+      if (track.trackId.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: '"tracks" trackId must be a non-empty string',
+          path: ['tracks', index, 'trackId'],
+        });
+      }
+      if (track.label.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: '"tracks" label must be a non-empty string',
+          path: ['tracks', index, 'label'],
+        });
+      }
+      if (track.guides.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'A track must declare at least one guide',
+          path: ['tracks', index, 'guides'],
+        });
+      }
+      track.guides.forEach((guideId, guideIndex) => {
+        if (guideId.length === 0) {
+          ctx.addIssue({
+            code: 'custom',
+            message: '"tracks" guides must not contain an empty string',
+            path: ['tracks', index, 'guides', guideIndex],
+          });
+        }
+      });
     });
   }
 });

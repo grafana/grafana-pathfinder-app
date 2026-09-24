@@ -1,11 +1,10 @@
 /**
- * Regression (moxious review on PR #1927, "track-only-reset-completion-identity",
- * HIGH): a track-only guide carries no `learningJourney` (COMPLETION-MODEL.md
+ * A track-only guide carries no `learningJourney` (COMPLETION-MODEL.md
  * decision 10) — without a trackMemberBaseUrl fallback, milestoneSlug never
  * resolves, and resetGuideProgress falls through to the manifest-preferring
  * identity, which for a track-only guide's retained PARENT-path manifest
  * invalidates the PARENT's completion guard instead of this guide's own.
- * `useContentReset.ts` now mirrors `recordGuideCompletionForSurface`'s (the
+ * `useContentReset.ts` mirrors `recordGuideCompletionForSurface`'s (the
  * writer's) exact same trackMemberBaseUrl fallback — this file pins the
  * `milestoneSlug` it passes to `resetGuideProgress` in isolation, since the
  * sibling `useContentReset.test.ts` exercises `resetGuideProgress` for real

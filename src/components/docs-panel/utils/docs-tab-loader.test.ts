@@ -90,12 +90,11 @@ describe('loadDocsTabContentResult', () => {
     );
   });
 
-  // Regression (moxious review on PR #1927, "track-only-parent-resolution
-  // -loses-completion"): the cover page's own base URL, when docs-panel.tsx
-  // already knows it (the tab's outgoing content, right before a
-  // track-member click overwrites it), must reach fetchPackageContent so a
-  // transient failure of that request's OWN independent re-resolve doesn't
-  // silently drop the track-only guide's completion.
+  // The cover page's own base URL, when docs-panel.tsx already knows it
+  // (the tab's outgoing content, right before a track-member click
+  // overwrites it), must reach fetchPackageContent so a transient failure
+  // of that request's OWN independent re-resolve doesn't silently drop the
+  // track-only guide's completion.
   it('threads knownBaseUrl through to fetchPackageContent', async () => {
     mockFetchPackageContent.mockResolvedValueOnce({ content: null, error: 'x', errorType: 'other' });
 

@@ -44,12 +44,10 @@ describe('milestone navigation boundaries', () => {
   });
 });
 
-// Regression (code-review self-check on PR #1927, round 5, structural
-// classification fix): the toolbar's Next/Previous arrows and Alt+arrow
-// shortcuts call docs-panel.tsx's navigateToNextMilestone/
-// navigateToPreviousMilestone, which thread these ids through loadTab's
-// explicitGuideId so that navigation also classifies by direct id lookup,
-// not the URL-comparison fallback.
+// The toolbar's Next/Previous arrows and Alt+arrow shortcuts call
+// docs-panel.tsx's navigateToNextMilestone/navigateToPreviousMilestone,
+// which thread these ids through loadTab's explicitGuideId so that
+// navigation also classifies by direct id lookup.
 const idMilestones: Milestone[] = [
   { id: 'step-one', number: 1, title: 'One', url: `${baseUrl}one/`, isActive: false },
   { id: 'step-two', number: 2, title: 'Two', url: `${baseUrl}two/`, isActive: false },

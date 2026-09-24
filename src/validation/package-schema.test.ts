@@ -346,10 +346,8 @@ describe('ManifestJsonSchema — tracks (Path Tracks RFC)', () => {
     }
   });
 
-  // Regression (moxious review on backend PR #93's sibling review, flagging
-  // the identical bug here): RFC §6.11 requires the same non-empty-sequence
-  // rule milestones already has — a track's own `guides` array constrained
-  // each string's length but not the array itself, so `guides: []` passed.
+  // RFC §6.11 requires the same non-empty-sequence rule milestones already
+  // has for its own array.
   it('should reject a track with an empty guides array — a track must name at least one guide', () => {
     const result = ManifestJsonSchema.safeParse({
       id: 'test-path',
@@ -360,15 +358,57 @@ describe('ManifestJsonSchema — tracks (Path Tracks RFC)', () => {
     expect(result.success).toBe(false);
   });
 
+  // The base ManifestJsonObjectSchema — the schema several runtime loaders
+  // parse directly, without ManifestJsonSchema's superRefine — must tolerate
+  // a malformed tracks shape rather than fail the whole parse over it, even
+  // on a type where tracks isn't valid at all. Only ManifestJsonSchema
+  // (Rule 5) is expected to reject it, with a clear message.
+  it('tolerates a malformed tracks shape at the base-schema level runtime loaders actually parse against', () => {
+    const malformed = {
+      id: 'plain-guide',
+      type: 'guide',
+      tracks: [{ trackId: '', label: '', guides: [] }],
+    };
+
+    // The base schema every runtime loader parses against: must not throw a
+    // raw structural error over a malformed tracks entry, even on a type
+    // (guide) where tracks isn't semantically valid at all — that's Rule 3's
+    // job, at the superRefine layer, not the base parse's.
+    expect(ManifestJsonObjectSchema.safeParse(malformed).success).toBe(true);
+
+    // The authoring-time schema still catches it, with a clear message —
+    // both the shape violation (Rule 5) and the type violation (Rule 3).
+    const refined = ManifestJsonSchema.safeParse(malformed);
+    expect(refined.success).toBe(false);
+    if (!refined.success) {
+      const messages = refined.error.issues.map((issue) => issue.message);
+      expect(messages).toContain('A track must declare at least one guide');
+      expect(messages.some((m) => m.includes('only valid when type is "path"'))).toBe(true);
+    }
+  });
+
+  it('Rule 5 reports a clear message for each shape violation independently', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [{ trackId: '', label: '', guides: [''] }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((issue) => issue.message);
+      expect(messages).toContain('"tracks" trackId must be a non-empty string');
+      expect(messages).toContain('"tracks" label must be a non-empty string');
+      expect(messages).toContain('"tracks" guides must not contain an empty string');
+    }
+  });
+
   it('should reject tracks set on a guide-type manifest (Rule 3)', () => {
     const result = ManifestJsonSchema.safeParse({ id: 'test', type: 'guide', tracks: [track] });
     expect(result.success).toBe(false);
   });
 
-  // Regression (moxious review on backend PR #93's sibling review, flagging
-  // the identical bug here): RFC §6.1 scopes tracks to paths only, not
-  // journeys — a journey is a fixed reading order, and tracks presenting the
-  // same content in a different order don't apply to it. Milestones are
+  // RFC §6.1 scopes tracks to paths only, not journeys. Milestones are
   // present so only the tracks-on-journey rule is exercised (Rule 1 would
   // otherwise also fire on a bare journey with no milestones).
   it('should reject tracks set on a journey-type manifest (Rule 3) — tracks are path-only', () => {
