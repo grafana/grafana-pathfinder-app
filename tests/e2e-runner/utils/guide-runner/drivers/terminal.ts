@@ -35,19 +35,59 @@ async function textEvidence(root: Locator, testId: string): Promise<string | und
   return (await message.count()) > 0 ? (await message.textContent())?.trim() || undefined : undefined;
 }
 
+async function expandCompletedSection(page: Page, sectionId: string | undefined, timeout: number): Promise<boolean> {
+  if (!sectionId) {
+    return false;
+  }
+  const section = page.getByTestId(testIds.interactive.section(sectionId));
+  const collapsed = await section.evaluateAll((elements) =>
+    elements.some((element) => element.classList.contains('completed') && element.classList.contains('collapsed'))
+  );
+  if (!collapsed) {
+    return false;
+  }
+  await section
+    .getByTestId(testIds.interactive.sectionToggle(sectionId))
+    .and(section.getByRole('button', { name: 'Expand section', exact: true }))
+    .click({ timeout });
+  return true;
+}
+
 async function waitForTerminal(
   page: Page,
   root: Locator,
   stepId: string,
   deadline: number,
   requireCompletion: boolean,
-  retrying = false
+  retrying = false,
+  sectionId?: string
 ): Promise<void> {
   const retryStartDeadline = Math.min(deadline, Date.now() + TERMINAL_RETRY_START_TIMEOUT_MS);
   let awaitingRetryStart = retrying;
   let sawConnecting = false;
+  let expanded = false;
   while (Date.now() < deadline) {
-    const { state, connection } = await readStatus(root, Math.max(1, deadline - Date.now()));
+    const status = await root.evaluateAll((elements) => {
+      const element = elements[0];
+      return element
+        ? {
+            state: element.getAttribute('data-test-step-state'),
+            connection: element.getAttribute('data-test-terminal-status'),
+          }
+        : null;
+    });
+    if (!status) {
+      if (!expanded && (await expandCompletedSection(page, sectionId, Math.max(1, deadline - Date.now())))) {
+        expanded = true;
+        await root.waitFor({ state: 'attached', timeout: Math.max(1, deadline - Date.now()) });
+        continue;
+      }
+      throw new Error(`Terminal step ${stepId} detached before completion could be verified.`);
+    }
+    const { state, connection } = status;
+    if (!connection) {
+      throw new Error('Terminal execution requires a Pathfinder build with the terminal runner DOM contract.');
+    }
     // openTerminal defers reconnect, briefly leaving the previous attempt's error visible.
     awaitingRetryStart &&= connection === 'error' && Date.now() < retryStartDeadline;
     if (((state === 'error' || connection === 'error') && !awaitingRetryStart) || state === 'cancelled') {
@@ -56,10 +96,10 @@ async function waitForTerminal(
       );
     }
     sawConnecting ||= connection === 'connecting';
-    if (connection === 'disconnected' && (requireCompletion || sawConnecting)) {
+    if (connection === 'disconnected' && (requireCompletion || sawConnecting || expanded)) {
       throw new Error(`Terminal step ${stepId} disconnected before completion.`);
     }
-    if (connection === 'connected' && (!requireCompletion || state === 'completed')) {
+    if (connection === 'connected' && ((!requireCompletion && !expanded) || state === 'completed')) {
       return;
     }
     await page.waitForTimeout(Math.min(COMPLETION_POLL_INTERVAL_MS, Math.max(1, deadline - Date.now())));
@@ -174,7 +214,7 @@ function terminalDriver(kind: TerminalKind): StepDriver {
             .getByTestId(testIds.interactive.terminalConnectButton(step.stepId))
             .click({ timeout: remaining() });
         }
-        await waitForTerminal(page, root, step.stepId, deadline, false, connection === 'error');
+        await waitForTerminal(page, root, step.stepId, deadline, false, connection === 'error', step.sectionId);
       }
       if ((await root.getAttribute('data-test-step-state')) !== 'completed') {
         const actionId =
@@ -184,7 +224,7 @@ function terminalDriver(kind: TerminalKind): StepDriver {
         await dismissBadgeCelebrations(page);
         await root.getByTestId(actionId).click({ timeout: remaining() });
       }
-      await waitForTerminal(page, root, step.stepId, deadline, true);
+      await waitForTerminal(page, root, step.stepId, deadline, true, false, step.sectionId);
       return { outcome: 'completed' };
     },
   };

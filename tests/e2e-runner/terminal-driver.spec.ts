@@ -204,6 +204,68 @@ for (const outcome of ['error', 'detach', 'disconnect', 'hang'] as const) {
   });
 }
 
+for (const kind of ['terminal', 'terminal-connect'] as const) {
+  for (const restored of ['completed', 'idle', 'disconnected', 'missing'] as const) {
+    test(`${kind} verifies its own state after section collapse: ${restored}`, async ({ page }) => {
+      await loadFixture(page, { connected: kind === 'terminal' });
+      await page.evaluate(
+        ({ rootId, sectionId, toggleId, restored }) => {
+          const root = document.querySelector<HTMLElement>(`[data-testid="${rootId}"]`)!;
+          const section = document.createElement('div');
+          section.dataset.testid = sectionId;
+          root.before(section);
+          section.append(root);
+          const toggle = document.createElement('button');
+          toggle.dataset.testid = toggleId;
+          toggle.setAttribute('aria-label', 'Expand section');
+          toggle.textContent = 'Expand';
+          document.body.dataset.expandCount = '0';
+          toggle.onclick = () => {
+            document.body.dataset.expandCount = String(Number(document.body.dataset.expandCount) + 1);
+            section.classList.remove('collapsed');
+            toggle.setAttribute('aria-label', 'Collapse section');
+            if (restored !== 'missing') {
+              root.setAttribute('data-test-step-state', restored === 'idle' ? 'idle' : 'completed');
+              root.setAttribute(
+                'data-test-terminal-status',
+                restored === 'disconnected' ? 'disconnected' : 'connected'
+              );
+              section.append(root);
+            }
+          };
+          const observer = new MutationObserver(() => {
+            if (root.getAttribute('data-test-step-state') === 'completed') {
+              observer.disconnect();
+              section.classList.add('completed', 'collapsed');
+              root.remove();
+              section.append(toggle);
+            }
+          });
+          observer.observe(root, { attributes: true });
+        },
+        {
+          rootId:
+            kind === 'terminal'
+              ? testIds.interactive.terminalStep('command')
+              : testIds.interactive.terminalConnectStep('connect'),
+          sectionId: testIds.interactive.section('setup'),
+          toggleId: testIds.interactive.sectionToggle('setup'),
+          restored,
+        }
+      );
+      const { steps } = await discoverStepsFromDOM(page);
+      const step = steps.find((step) => step.stepKind === kind)!;
+      expect(step.sectionId).toBe('setup');
+      expect(await executeStep(page, step, { timeout: 1500 })).toMatchObject({
+        status: restored === 'completed' ? 'passed' : 'failed',
+      });
+      await expect(page.locator('body')).toHaveAttribute('data-expand-count', '1');
+      await expect(page.locator('body')).toHaveAttribute('data-exec-count', kind === 'terminal' ? '1' : '0');
+      await expect(page.locator('body')).toHaveAttribute('data-connect-count', kind === 'terminal' ? '0' : '1');
+    });
+  }
+}
+
 test('refuses missing Coda and stops before the command', async ({ page }) => {
   const { steps } = await loadFixture(page, { unavailable: true });
   const result = await executeAllSteps(page, steps, { sessionValidator: async () => ({ valid: true }) });

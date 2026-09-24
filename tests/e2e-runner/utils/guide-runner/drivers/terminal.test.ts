@@ -68,6 +68,10 @@ function setup(kind: 'terminal' | 'terminal-connect' = 'terminal') {
   ]);
   const root = {
     count: jest.fn(async () => 1),
+    evaluateAll: jest.fn(async () => ({
+      state: attributes['data-test-step-state'] ?? null,
+      connection: attributes['data-test-terminal-status'] ?? null,
+    })),
     getAttribute: jest.fn(async (name: string) => attributes[name] ?? null),
     getByTestId: jest.fn((id: string) => controls.get(id) ?? absent),
     scrollIntoViewIfNeeded: jest.fn(async () => undefined),
