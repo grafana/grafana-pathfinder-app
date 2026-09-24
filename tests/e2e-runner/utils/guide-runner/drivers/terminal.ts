@@ -12,7 +12,7 @@ import {
 import type { StepDriver } from './types';
 
 export const TERMINAL_CONNECTION_TIMEOUT_MS = 240_000;
-const TERMINAL_RETRY_START_TIMEOUT_MS = 1_000;
+const TERMINAL_CONNECTION_START_TIMEOUT_MS = 1_000;
 type TerminalKind = 'terminal' | 'terminal-connect';
 
 function terminalRoot(page: Page, kind: TerminalKind, stepId: string): Locator {
@@ -59,11 +59,11 @@ async function waitForTerminal(
   stepId: string,
   deadline: number,
   goal: 'connected' | 'completed' | 'skipped',
-  retrying = false,
+  startingFrom: string | null = null,
   sectionId?: string
 ): Promise<void> {
-  const retryStartDeadline = Math.min(deadline, Date.now() + TERMINAL_RETRY_START_TIMEOUT_MS);
-  let awaitingRetryStart = retrying;
+  const startDeadline = Math.min(deadline, Date.now() + TERMINAL_CONNECTION_START_TIMEOUT_MS);
+  let awaitingStart = startingFrom === 'error' || startingFrom === 'disconnected';
   let sawConnecting = false;
   let expanded = false;
   while (Date.now() < deadline) {
@@ -91,15 +91,20 @@ async function waitForTerminal(
     if (goal === 'skipped' && state === 'completed') {
       return;
     }
-    // openTerminal defers reconnect, briefly leaving the previous attempt's error visible.
-    awaitingRetryStart &&= connection === 'error' && Date.now() < retryStartDeadline;
-    if (((state === 'error' || connection === 'error') && !awaitingRetryStart) || state === 'cancelled') {
+    // openTerminal defers connection, briefly retaining the previous status.
+    awaitingStart &&= connection === startingFrom && Date.now() < startDeadline;
+    if (((state === 'error' || connection === 'error') && !awaitingStart) || state === 'cancelled') {
       throw new Error(
         (await textEvidence(root, testIds.interactive.errorMessage(stepId))) ?? `Terminal step ${stepId} failed.`
       );
     }
     sawConnecting ||= connection === 'connecting';
-    if (goal !== 'skipped' && connection === 'disconnected' && (goal === 'completed' || sawConnecting || expanded)) {
+    if (
+      goal !== 'skipped' &&
+      connection === 'disconnected' &&
+      !awaitingStart &&
+      (goal === 'completed' || sawConnecting || expanded || startingFrom === 'disconnected')
+    ) {
       throw new Error(`Terminal step ${stepId} disconnected before completion.`);
     }
     if (
@@ -205,7 +210,7 @@ function terminalDriver(kind: TerminalKind): StepDriver {
       );
       await dismissBadgeCelebrations(page);
       await root.getByTestId(testIds.interactive.terminalSkipButton(stepId)).click({ timeout: remaining() });
-      await waitForTerminal(page, root, stepId, deadline, 'skipped', false, sectionId);
+      await waitForTerminal(page, root, stepId, deadline, 'skipped', null, sectionId);
     },
     async execute({ page, step, timeout }) {
       const root = terminalRoot(page, kind, step.stepId);
@@ -235,7 +240,7 @@ function terminalDriver(kind: TerminalKind): StepDriver {
           step.stepId,
           deadline,
           kind === 'terminal-connect' ? 'completed' : 'connected',
-          connection === 'error',
+          connection,
           step.sectionId
         );
         if (kind === 'terminal-connect') {
@@ -250,7 +255,7 @@ function terminalDriver(kind: TerminalKind): StepDriver {
         await dismissBadgeCelebrations(page);
         await root.getByTestId(actionId).click({ timeout: remaining() });
       }
-      await waitForTerminal(page, root, step.stepId, deadline, 'completed', false, step.sectionId);
+      await waitForTerminal(page, root, step.stepId, deadline, 'completed', null, step.sectionId);
       return { outcome: 'completed' };
     },
   };

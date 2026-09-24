@@ -123,6 +123,31 @@ it('does not read or click the connection root again after observing connected c
   expect(f.skip.click).not.toHaveBeenCalled();
 });
 
+it.each(['terminal', 'terminal-connect'] as const)(
+  'rejects a %s disconnect after startup without using the remaining startup grace',
+  async (kind) => {
+    const f = setup(kind);
+    f.attributes['data-test-terminal-status'] = 'disconnected';
+    f.connect.click.mockImplementation(async () => {
+      (f.page.waitForTimeout as jest.Mock)
+        .mockClear()
+        .mockImplementationOnce(async () => {
+          f.attributes['data-test-terminal-status'] = 'connecting';
+        })
+        .mockImplementationOnce(async () => {
+          f.attributes['data-test-terminal-status'] = 'disconnected';
+        });
+    });
+    expect(await executeStep(f.page, await f.step())).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('disconnected before completion'),
+    });
+    expect(f.page.waitForTimeout).toHaveBeenCalledTimes(2);
+    expect(f.connect.click).toHaveBeenCalledTimes(1);
+    expect(f.exec.click).not.toHaveBeenCalled();
+  }
+);
+
 it('reserves a provisioning budget for both terminal kinds', async () => {
   const f = setup();
   expect(terminalConnectDriver.timeout(await f.step())).toBe(TERMINAL_CONNECTION_TIMEOUT_MS);

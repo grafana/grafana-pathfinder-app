@@ -19,6 +19,7 @@ async function loadFixture(
     skippable?: boolean;
     requirementsUnmet?: boolean;
     retry?: 'complete' | 'error' | 'hang';
+    startup?: 'complete' | 'disconnect' | 'hang';
   } = {}
 ) {
   await page.setContent(`
@@ -97,7 +98,9 @@ async function loadFixture(
         root.setAttribute('data-test-terminal-status', 'connecting');
         setTimeout(
           () => {
-            if (options.retry === 'error') {
+            if (options.startup === 'disconnect') {
+              root.setAttribute('data-test-terminal-status', 'disconnected');
+            } else if (options.retry === 'error') {
               root.setAttribute('data-test-terminal-status', 'error');
               root.setAttribute('data-test-step-state', 'error');
             } else {
@@ -105,15 +108,15 @@ async function loadFixture(
               root.setAttribute('data-test-step-state', root === connect ? 'completed' : 'idle');
             }
           },
-          options.retry ? 350 : 50
+          options.retry || options.startup ? 350 : 50
         );
       };
       const requestConnection = (root: HTMLElement) => {
         document.body.dataset.connectCount = String(Number(document.body.dataset.connectCount) + 1);
-        if (options.retry === 'hang') {
+        if (options.retry === 'hang' || options.startup === 'hang') {
           return;
         }
-        if (options.retry) {
+        if (options.retry || options.startup) {
           setTimeout(() => start(root), 100);
         } else {
           start(root);
@@ -182,6 +185,22 @@ test('discovers and executes connection then command without copying', async ({ 
   await expect(page.locator('body')).toHaveAttribute('data-exec-count', '1');
   await expect(page.locator('body')).toHaveAttribute('data-copy-count', '0');
 });
+
+for (const stepIndex of [0, 1]) {
+  for (const startup of ['complete', 'disconnect', 'hang'] as const) {
+    test(`bounds delayed startup for terminal step ${stepIndex}: ${startup}`, async ({ page }) => {
+      const { steps } = await loadFixture(page, { startup });
+      expect(await executeStep(page, steps[stepIndex]!, { timeout: 1600 })).toMatchObject({
+        status: startup === 'complete' ? 'passed' : 'failed',
+      });
+      await expect(page.locator('body')).toHaveAttribute('data-connect-count', '1');
+      await expect(page.locator('body')).toHaveAttribute(
+        'data-exec-count',
+        startup === 'complete' && stepIndex === 1 ? '1' : '0'
+      );
+    });
+  }
+}
 
 test('connects through a standalone terminal step before executing', async ({ page }) => {
   const { steps } = await loadFixture(page);
