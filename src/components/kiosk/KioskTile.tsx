@@ -1,3 +1,4 @@
+import { panelModeManager } from '../../global-state/panel-mode';
 import React, { useCallback } from 'react';
 import { locationService } from '@grafana/runtime';
 import { stripPathfinderParams } from '../../utils/pathfinder-search-params';
@@ -47,7 +48,6 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
         url.searchParams.set('orgId', orgId);
       }
       stripPathfinderParams(url);
-      url.searchParams.set('panelMode', 'sidebar');
       if (page) {
         // The destination query and fragment are already on the URL; prevent a second redirect.
         url.searchParams.set('page', url.pathname);
@@ -60,6 +60,7 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
       guide_url: rule.url,
       guide_title: rule.title,
       guide_type: rule.type,
+      launch_mode: mode,
       target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
     });
 
@@ -70,6 +71,7 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
     }
     if (mode === 'instance') {
       onLaunch?.();
+      panelModeManager.setModeTransient('sidebar');
       locationService.push(`${url.pathname}${url.search}${url.hash}`);
     } else {
       window.open(url.toString(), '_blank', 'noopener,noreferrer');

@@ -181,9 +181,9 @@
   },
   "prometheus-advanced-queries": {
     "path": "prometheus-advanced-queries/",
-    "title": "Advanced Prometheus Queries",
+    "title": "Advanced Prometheus queries",
     "type": "guide",
-    "description": "Master advanced PromQL patterns including aggregations, histograms, predictions, and SLO calculations. Queries can be customized with Assistant for your datasources.",
+    "description": "Practice advanced PromQL in Explore: aggregation, joins, time comparisons, histograms, and rule expressions. Customize queries for your data with Grafana Assistant.",
     "category": "querying",
     "author": {
       "name": "Interactive Learning",
@@ -193,19 +193,23 @@
     "recommends": ["prometheus-grafana-101", "loki-grafana-101"],
     "targeting": {
       "match": {
-        "urlPrefix": "/explore"
+        "or": [
+          {
+            "urlPrefix": "/explore"
+          }
+        ]
       }
     },
     "testEnvironment": {
-      "tier": "local",
+      "tier": "cloud",
       "minVersion": "12.2.0"
     },
     "stats": {
       "version": 2,
-      "blockCount": 70,
-      "sectionCount": 0,
-      "completableBlockCount": 20,
-      "finalCompletablePosition": 68
+      "blockCount": 59,
+      "sectionCount": 19,
+      "completableBlockCount": 38,
+      "finalCompletablePosition": 58
     }
   },
   "prometheus-grafana-101": {

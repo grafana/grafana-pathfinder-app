@@ -89,8 +89,9 @@ func (a *App) deriveCompletionUserID(r *http.Request) (string, identityStatus) {
 // does not verify write permission (the write hook must not treat it as a
 // write guarantee).
 type completionCapability struct {
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
+	Diagnostics *guideProxyDiagnostic `json:"diagnostics,omitempty"`
+	Available   bool                  `json:"available"`
+	Reason      string                `json:"reason,omitempty"`
 }
 
 // collatedCompletion is one entry per (guideSource, guideId) for a single user.
@@ -108,10 +109,11 @@ type collatedCompletion struct {
 
 // myCompletionsResponse is the GET /completion-records/my envelope.
 type myCompletionsResponse struct {
-	Capability  completionCapability `json:"capability"`
-	UserID      string               `json:"userId,omitempty"`
-	Completions []collatedCompletion `json:"completions"`
-	AsOf        string               `json:"asOf,omitempty"`
+	Diagnostics *guideProxyDiagnostic `json:"diagnostics,omitempty"`
+	Capability  completionCapability  `json:"capability"`
+	UserID      string                `json:"userId,omitempty"`
+	Completions []collatedCompletion  `json:"completions"`
+	AsOf        string                `json:"asOf,omitempty"`
 }
 
 // completionIndex is the collated, per-user view of a namespace's records.
@@ -370,7 +372,7 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 		// Refresh attempts are throttled by TTL + cooldown, so this logs state
 		// transitions, not every request.
 		logger.Info("completion index refresh failed",
-			"namespace", namespace, "error", err,
+			"namespace", namespace, "reason", classifyGuideProxyError(err).Reason,
 			"namespaceGlobal", namespaceGlobal, "servingStale", entry != nil,
 			"refreshFailures", stats.refreshFailures)
 		if entry != nil {
@@ -547,7 +549,7 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	userID, status := a.deriveCompletionUserID(r)
 	if status != identityVerified {
 		a.writeMyCompletions(w, myCompletionsResponse{
-			Capability:  completionCapability{Available: false, Reason: status.capabilityReason()},
+			Capability:  completionCapability{Available: false, Reason: status.capabilityReason(), Diagnostics: proxyGateDiagnostic("identity-unavailable", "completionrecords", "list", "identity")},
 			Completions: []collatedCompletion{},
 		})
 		return
@@ -556,7 +558,7 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	lister, namespace, available, reason := a.resolveCompletionBackend(r)
 	if !available {
 		a.writeMyCompletions(w, myCompletionsResponse{
-			Capability:  completionCapability{Available: false, Reason: reason},
+			Capability:  completionCapability{Available: false, Reason: reason, Diagnostics: proxyGateDiagnostic("proxy-unavailable", "completionrecords", "list", "configuration")},
 			Completions: []collatedCompletion{},
 		})
 		return
@@ -569,22 +571,28 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 		if isTerminalCompletionError(err) {
 			// Structurally can't serve for this caller ("never works here").
 			a.writeMyCompletions(w, myCompletionsResponse{
-				Capability:  completionCapability{Available: false, Reason: reasonBackendUnavailable},
+				Capability:  completionCapability{Available: false, Reason: reasonBackendUnavailable, Diagnostics: appPlatformDiagnostic(err, "completionrecords", "list")},
 				Completions: []collatedCompletion{},
 			})
 			return
 		}
-		a.ctxLogger(r.Context()).Debug("completion records unavailable (cold)", "error", err)
-		a.writeCompletionUnavailable(w)
+		a.ctxLogger(r.Context()).Debug("completion records unavailable (cold)", "reason", classifyGuideProxyError(err).Reason)
+		a.writeCompletionUnavailable(w, err)
 		return
 	}
 
+	diagnostic := appPlatformDiagnostic(err, "completionrecords", "list")
+	if diagnostic != nil {
+		diagnostic.Outcome, diagnostic.Cache = "degraded", "stale"
+		diagnostic.CacheAgeMS = max(0, timeNow().Sub(idx.asOf).Milliseconds())
+	}
 	entries := idx.byUser[userID]
 	if entries == nil {
 		entries = []collatedCompletion{}
 	}
 	a.writeMyCompletions(w, myCompletionsResponse{
 		Capability:  completionCapability{Available: true},
+		Diagnostics: diagnostic,
 		UserID:      userID,
 		Completions: entries,
 		AsOf:        idx.asOf.UTC().Format(time.RFC3339),
@@ -603,13 +611,13 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 	}
 
 	if _, status := a.deriveCompletionUserID(r); status != identityVerified {
-		a.writeJSON(w, completionCapability{Available: false, Reason: status.capabilityReason()}, http.StatusOK)
+		a.writeJSON(w, completionCapability{Available: false, Reason: status.capabilityReason(), Diagnostics: proxyGateDiagnostic("identity-unavailable", "completionrecords", "list", "identity")}, http.StatusOK)
 		return
 	}
 
 	lister, namespace, available, reason := a.resolveCompletionBackend(r)
 	if !available {
-		a.writeJSON(w, completionCapability{Available: false, Reason: reason}, http.StatusOK)
+		a.writeJSON(w, completionCapability{Available: false, Reason: reason, Diagnostics: proxyGateDiagnostic("proxy-unavailable", "completionrecords", "list", "configuration")}, http.StatusOK)
 		return
 	}
 
@@ -618,13 +626,18 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 	idx, err := getCompletionIndex(r.Context(), namespace, lister, false, a.ctxLogger(r.Context()))
 	if idx == nil {
 		if isTerminalCompletionError(err) {
-			a.writeJSON(w, completionCapability{Available: false, Reason: reasonBackendUnavailable}, http.StatusOK)
+			a.writeJSON(w, completionCapability{Available: false, Reason: reasonBackendUnavailable, Diagnostics: appPlatformDiagnostic(err, "completionrecords", "list")}, http.StatusOK)
 			return
 		}
-		a.writeCompletionUnavailable(w)
+		a.writeCompletionUnavailable(w, err)
 		return
 	}
-	a.writeJSON(w, completionCapability{Available: true}, http.StatusOK)
+	diagnostic := appPlatformDiagnostic(err, "completionrecords", "list")
+	if diagnostic != nil {
+		diagnostic.Outcome, diagnostic.Cache = "degraded", "stale"
+		diagnostic.CacheAgeMS = max(0, timeNow().Sub(idx.asOf).Milliseconds())
+	}
+	a.writeJSON(w, completionCapability{Available: true, Diagnostics: diagnostic}, http.StatusOK)
 }
 
 func (a *App) writeMyCompletions(w http.ResponseWriter, resp myCompletionsResponse) {
@@ -634,9 +647,9 @@ func (a *App) writeMyCompletions(w http.ResponseWriter, resp myCompletionsRespon
 // writeCompletionUnavailable serves BACKEND_PROXY_PATTERN.md §7's transient
 // hiccup — 503 plus a Retry-After hint, never a capability envelope — so both
 // completion routes answer every retryable failure in one shape.
-func (a *App) writeCompletionUnavailable(w http.ResponseWriter) {
+func (a *App) writeCompletionUnavailable(w http.ResponseWriter, err error) {
 	w.Header().Set("Retry-After", strconv.Itoa(completionRetryAfterSeconds))
-	a.writeError(w, "completion-records-unavailable", http.StatusServiceUnavailable)
+	a.writeProxyError(w, "completion-records-unavailable", http.StatusServiceUnavailable, appPlatformDiagnostic(err, "completionrecords", "list"))
 }
 
 // resolveCompletionBackend determines whether the aggregated CRUD API is

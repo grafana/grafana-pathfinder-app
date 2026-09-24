@@ -1,3 +1,4 @@
+import type { GuideDiagnostic, GuideLoadContext } from './guide-diagnostics.types';
 /**
  * Package Type Definitions
  *
@@ -255,6 +256,7 @@ export interface PackageResolutionSuccess {
  * Structured error from a failed resolution attempt.
  */
 export interface ResolutionError {
+  diagnostic?: GuideDiagnostic;
   code: 'not-found' | 'permission-denied' | 'network-error' | 'parse-error' | 'validation-error';
   message: string;
 }
@@ -282,6 +284,7 @@ export type PackageResolution = PackageResolutionSuccess | PackageResolutionFail
  * Options for {@link PackageResolver.resolve}.
  */
 export interface ResolveOptions {
+  loadContext?: GuideLoadContext;
   /**
    * Controls how much content to load alongside the resolution result.
    * - `true`: fetch and populate both manifest and content (full payload)

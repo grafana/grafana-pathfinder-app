@@ -1,8 +1,8 @@
 /**
  * Tests for experiment-debug module
  *
- * Tests the trimmed debug surface exposed on window.__pathfinderExperiment:
- * flag overrides + analytics exposure inspection for the highlighted-guide experiment.
+ * Tests the debug surface exposed on window.__pathfinderExperiment:
+ * analytics exposure inspection for the highlighted-guide experiment.
  */
 
 jest.mock('../../lib/storage-keys', () => ({
@@ -11,19 +11,7 @@ jest.mock('../../lib/storage-keys', () => ({
   },
 }));
 
-const mockOverrides: Record<string, unknown> = {};
-
 jest.mock('../openfeature', () => ({
-  setFlagOverride: (flag: string, value: unknown) => {
-    mockOverrides[flag] = value;
-  },
-  removeFlagOverride: (flag: string) => {
-    delete mockOverrides[flag];
-  },
-  clearFlagOverrides: () => {
-    Object.keys(mockOverrides).forEach((key) => delete mockOverrides[key]);
-  },
-  getFlagOverrides: () => ({ ...mockOverrides }),
   pathfinderFeatureFlags: {
     'pathfinder.enabled': { valueType: 'boolean', defaultValue: true },
     'pathfinder.auto-open-sidebar': { valueType: 'boolean', defaultValue: false },
@@ -47,7 +35,6 @@ describe('experiment-debug', () => {
     sessionStorage.clear();
     localStorage.clear();
     jest.clearAllMocks();
-    Object.keys(mockOverrides).forEach((key) => delete mockOverrides[key]);
     delete (window as any).__pathfinderExperiment;
   });
 
@@ -68,96 +55,12 @@ describe('experiment-debug', () => {
       expect(debugger_.loadedAt).toBeDefined();
     });
 
-    describe('flag overrides', () => {
-      it('should expose known flag names', () => {
-        createExperimentDebugger(mockConfig);
+    it('should expose known flag names', () => {
+      createExperimentDebugger(mockConfig);
 
-        const debugger_ = (window as any).__pathfinderExperiment;
-        expect(debugger_.flags).toContain('pathfinder.auto-open-sidebar');
-        expect(debugger_.flags).toContain('pathfinder.highlighted-guide-experiment');
-      });
-
-      it('setOverride should store an override', () => {
-        createExperimentDebugger(mockConfig);
-
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
-        (window as any).__pathfinderExperiment.setOverride('pathfinder.highlighted-guide-experiment', {
-          variant: 'control',
-          pages: [],
-        });
-
-        expect(mockOverrides['pathfinder.highlighted-guide-experiment']).toEqual({ variant: 'control', pages: [] });
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining("Override set for 'pathfinder.highlighted-guide-experiment'"),
-          expect.anything()
-        );
-        consoleSpy.mockRestore();
-      });
-
-      it('setOverride should warn for unknown flags', () => {
-        createExperimentDebugger(mockConfig);
-
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-        (window as any).__pathfinderExperiment.setOverride('pathfinder.unknown-flag', true);
-
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining("Unknown flag 'pathfinder.unknown-flag'"),
-          expect.anything()
-        );
-        consoleSpy.mockRestore();
-      });
-
-      it('removeOverride should remove an override', () => {
-        createExperimentDebugger(mockConfig);
-
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
-        mockOverrides['pathfinder.highlighted-guide-experiment'] = { variant: 'control', pages: [] };
-        (window as any).__pathfinderExperiment.removeOverride('pathfinder.highlighted-guide-experiment');
-
-        expect(mockOverrides).not.toHaveProperty('pathfinder.highlighted-guide-experiment');
-        consoleSpy.mockRestore();
-      });
-
-      it('clearOverrides should remove all overrides', () => {
-        createExperimentDebugger(mockConfig);
-
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
-        mockOverrides['pathfinder.auto-open-sidebar'] = true;
-        mockOverrides['pathfinder.highlighted-guide-experiment'] = { variant: 'control', pages: [] };
-        (window as any).__pathfinderExperiment.clearOverrides();
-
-        expect(Object.keys(mockOverrides)).toHaveLength(0);
-        consoleSpy.mockRestore();
-      });
-
-      it('showOverrides should display active overrides', () => {
-        createExperimentDebugger(mockConfig);
-
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
-        mockOverrides['pathfinder.highlighted-guide-experiment'] = { variant: 'control', pages: [] };
-        const result = (window as any).__pathfinderExperiment.showOverrides();
-
-        expect(result).toEqual({ 'pathfinder.highlighted-guide-experiment': { variant: 'control', pages: [] } });
-        expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Active flag overrides'));
-        consoleSpy.mockRestore();
-      });
-
-      it('showOverrides should indicate when no overrides set', () => {
-        createExperimentDebugger(mockConfig);
-
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
-        const result = (window as any).__pathfinderExperiment.showOverrides();
-
-        expect(result).toEqual({});
-        expect(consoleSpy).toHaveBeenCalledWith('[Pathfinder] No flag overrides set.');
-        consoleSpy.mockRestore();
-      });
+      const debugger_ = (window as any).__pathfinderExperiment;
+      expect(debugger_.flags).toContain('pathfinder.auto-open-sidebar');
+      expect(debugger_.flags).toContain('pathfinder.highlighted-guide-experiment');
     });
 
     describe('analytics exposure helpers', () => {

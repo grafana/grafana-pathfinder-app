@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.18.3
+
+### Added
+
+- **Shareable learning kiosks**: Open a learning catalog through a URL without changing instance-wide settings. Guides open on the current Grafana instance, with theme-aware cards and a visible exit control. (#1971)
+
+- **Codeblock insertion in guide tests**: The E2E runner executes Insert steps, waits for completion, and reports insertion failures. Optional codeblocks retain usable Skip controls when requirements are unmet. (#1979)
+
+### Fixed
+
+- **Preserve kiosk panel preferences**: Launching a kiosk guide no longer overwrites the saved panel mode. Unconfigured kiosks use bundled cards immediately, and catalog fallback warnings identify the catalog actually shown. (#1986)
+
+- **Clean up abandoned terminal provisioning**: Leaving a challenge while its terminal is connecting no longer leaves a stale session holder that prevents later challenges from disconnecting. (#1955)
+
+- **Keep the first-dashboard guide compatible**: Updated visualization, data-source, unit, and save selectors support newer Grafana versions while preserving the guide flow on Grafana 12.3–13.1. (#1382)
+
+- **Diagnose guide and App Platform failures**: Correlated diagnostics distinguish guide loading, validation, rendering, and upstream proxy failures while preserving existing retries and fallback behavior. Diagnostic events omit credentials and raw upstream error content. (#1936)
+
 ## 2.18.2
 
 ### Fixed

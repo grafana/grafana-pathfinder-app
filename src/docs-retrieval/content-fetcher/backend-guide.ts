@@ -1,3 +1,7 @@
+import { reportProxyFailure } from '../../lib/proxy-diagnostics';
+import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
+import { diagnoseGuideError } from '../../lib/guide-diagnostics';
+import { observeGuideRequest } from '../../lib/telemetry/guide-load';
 // Loader for `backend-guide:` content URLs — custom interactive guides served
 // by the Pathfinder backend's Kubernetes-style resource API, scoped to the
 // current Grafana namespace.
@@ -64,10 +68,15 @@ export function buildBackendGuideContent(
   url: string,
   resourceName: string
 ): ContentFetchResult {
-  if (!guideResource?.spec?.blocks || !guideResource.spec.title) {
+  if (
+    !Array.isArray(guideResource?.spec?.blocks) ||
+    typeof guideResource.spec.title !== 'string' ||
+    !guideResource.spec.title.trim()
+  ) {
     return {
       content: null,
-      error: `Custom guide is missing required fields: ${resourceName}`,
+      error: 'Custom guide is missing required fields',
+      diagnostic: { source: 'app-platform', stage: 'validate', reason: 'missing-fields' },
       errorType: 'other',
     };
   }
@@ -85,6 +94,12 @@ export function buildBackendGuideContent(
     return {
       content: null,
       error: `Invalid custom guide: ${errorMessage}`,
+      diagnostic: {
+        source: 'app-platform',
+        stage: 'validate',
+        reason: 'schema-invalid',
+        validationCount: validationResult.errors.length,
+      },
       errorType: 'other',
     };
   }
@@ -109,32 +124,45 @@ export function buildBackendGuideContent(
 // publish status here would break "copy workshop link" and a live workshop
 // whose author flips a guide to draft mid-session. The publish gate lives at
 // fetchPackageById instead (see #1561).
-export async function fetchBackendInteractive(url: string): Promise<ContentFetchResult> {
+export async function fetchBackendInteractive(url: string, context?: GuideLoadContext): Promise<ContentFetchResult> {
   const resourceName = url.replace('backend-guide:', '').trim();
   const namespace = config.namespace;
 
   if (!resourceName) {
-    return { content: null, error: 'Invalid backend guide resource name', errorType: 'other' };
+    return {
+      content: null,
+      error: 'Invalid backend guide resource name',
+      errorType: 'other',
+      diagnostic: { source: 'app-platform', stage: 'resolve', reason: 'invalid-url' },
+    };
   }
 
   if (!namespace) {
-    return { content: null, error: 'No namespace available to load custom guide', errorType: 'other' };
+    return {
+      content: null,
+      error: 'No namespace available to load custom guide',
+      errorType: 'other',
+      diagnostic: { source: 'app-platform', stage: 'resolve', reason: 'namespace-unavailable' },
+    };
   }
 
   try {
-    const response = await lastValueFrom(
-      getBackendSrv().fetch<BackendGuideResource>({
-        url: guideReadUrl(resourceName),
-        method: 'GET',
-        // Optional rollout endpoint: don't show a global toast when unavailable.
-        showErrorAlert: false,
-      })
+    const response = await observeGuideRequest(guideReadUrl(resourceName), 'content', context, () =>
+      lastValueFrom(
+        getBackendSrv().fetch<BackendGuideResource>({
+          url: guideReadUrl(resourceName),
+          method: 'GET',
+          showErrorAlert: false,
+        })
+      )
     );
     return buildBackendGuideContent(response.data, url, resourceName);
   } catch (error) {
+    reportProxyFailure(error);
     return {
       content: null,
       error: `Failed to load custom guide: ${resourceName}`,
+      diagnostic: diagnoseGuideError(error, 'app-platform'),
       errorType: 'other',
       statusCode: (error as { status?: number })?.status,
     };
