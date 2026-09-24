@@ -32,6 +32,9 @@ export type CompletionWriteDegradation =
 export type KioskCatalogTier = 'override' | 'configured' | 'generic' | 'bundled';
 
 export const TELEMETRY_EVENTS = {
+  guideRequest: 'pathfinder_guide_request',
+  guideRender: 'pathfinder_guide_render',
+  packageIndex: 'pathfinder_package_index',
   kioskCatalogLoaded: 'pathfinder_kiosk_catalog_loaded',
   recommenderFallback: 'pathfinder_recommender_fallback',
   contentFetchFallback: 'pathfinder_content_fetch_fallback',
@@ -42,6 +45,7 @@ export const TELEMETRY_EVENTS = {
   sessionReplaySamplingFallback: 'pathfinder_session_replay_sampling_fallback',
   customGuideCatalogueUnavailable: 'pathfinder_custom_guide_catalogue_unavailable',
   sandboxUnavailable: 'pathfinder_sandbox_unavailable',
+  proxyFailure: 'pathfinder_proxy_failure',
   settingsStoreResolved: 'pathfinder_settings_store_resolved',
   gcxCredentialDegraded: 'pathfinder_gcx_credential_degraded',
 } as const;

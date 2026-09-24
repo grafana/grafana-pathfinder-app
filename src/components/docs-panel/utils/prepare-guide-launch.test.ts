@@ -1,3 +1,4 @@
+import { beginGuideLoad, finishGuideLoad } from '../../../lib/telemetry/guide-load';
 import { prepareGuideLaunch } from './prepare-guide-launch';
 import { loadDocsTabContentResult } from './docs-tab-loader';
 import { fetchPackageInfoFromUrl, isPackageContentUrl } from '../../../docs-retrieval';
@@ -64,6 +65,16 @@ describe('prepareGuideLaunch', () => {
     jest.clearAllMocks();
     mockIsPackage.mockReturnValue(false);
     mockInline.mockImplementation((guide: JsonGuide) => realInlineSnippetRefs(guide, neverResolvingResolver));
+  });
+
+  it('preserves the caller-owned attempt through fetching and the prepared handoff', async () => {
+    const url = 'https://grafana.com/docs/x';
+    const loadContext = beginGuideLoad(url);
+    fetchResolves({ id: 'g', title: 'g', blocks: [{ type: 'markdown', content: 'hi' }] });
+    const result = await prepareGuideLaunch(url, { title: 'X', source: 'home_page', loadContext });
+    expect(mockLoad).toHaveBeenCalledWith(url, expect.objectContaining({ loadContext }));
+    expect(result.ok && result.launch.preparedContent.loadContext).toBe(loadContext);
+    finishGuideLoad(loadContext, 'cancelled');
   });
 
   it('fetches the content exactly once', async () => {

@@ -1,3 +1,5 @@
+import { recordPackageIndex } from './telemetry/facade';
+jest.mock('./telemetry/facade', () => ({ recordPackageIndex: jest.fn() }));
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
 }));
@@ -229,4 +231,23 @@ describe('buildPackageFileUrl', () => {
     // producing `https://.../packages//content.json`.
     expect(buildPackageFileUrl('https://x.example/packages/', '///', 'content.json')).toBe('');
   });
+});
+
+it('distinguishes index failure from an empty successful catalogue and deduplicates suppression reporting', async () => {
+  mockGet.mockRejectedValue({
+    status: 503,
+    data: { diagnostics: { outcome: 'error', reason: 'timeout', cache: 'hit', cacheAgeMs: 200 } },
+  });
+  const failed = await fetchOnlinePackageRecommendations();
+  expect(failed.available).toBe(false);
+  expect(failed.diagnostics?.reason).toBe('timeout');
+  await fetchOnlinePackageRecommendations();
+  await fetchOnlinePackageRecommendations();
+  expect(recordPackageIndex).toHaveBeenCalledTimes(2);
+  expect(recordPackageIndex).toHaveBeenLastCalledWith({ outcome: 'suppressed', reason: 'timeout' });
+  window.dispatchEvent(new Event('online'));
+  mockGet.mockResolvedValue({ baseUrl: 'https://interactive-learning.grafana.net/packages/', packages: [] });
+  const empty = await fetchOnlinePackageRecommendations();
+  expect(empty.available).not.toBe(false);
+  expect(empty.packages).toEqual([]);
 });

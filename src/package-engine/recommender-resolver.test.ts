@@ -100,6 +100,12 @@ describe('RecommenderPackageResolver', () => {
       if (!result.ok) {
         expect(result.error.code).toBe('not-found');
         expect(result.error.message).toBe('package not found');
+        expect(result.error.diagnostic).toEqual({
+          source: 'cdn',
+          stage: 'resolve',
+          reason: 'not-found',
+          statusCode: 404,
+        });
       }
     });
 
@@ -115,6 +121,12 @@ describe('RecommenderPackageResolver', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe('not-found');
+        expect(result.error.diagnostic).toEqual({
+          source: 'cdn',
+          stage: 'resolve',
+          reason: 'not-found',
+          statusCode: 400,
+        });
       }
     });
 
@@ -130,6 +142,12 @@ describe('RecommenderPackageResolver', () => {
       if (!result.ok) {
         expect(result.error.code).toBe('network-error');
         expect(result.error.message).toContain('500');
+        expect(result.error.diagnostic).toEqual({
+          source: 'cdn',
+          stage: 'resolve',
+          reason: 'http-error',
+          statusCode: 500,
+        });
       }
     });
 
