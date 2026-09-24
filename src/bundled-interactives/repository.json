@@ -15,7 +15,7 @@
       "minVersion": "12.2.0"
     },
     "stats": {
-      "version": 1,
+      "version": 2,
       "blockCount": 16,
       "sectionCount": 3,
       "completableBlockCount": 7,
@@ -38,7 +38,7 @@
       "minVersion": "12.2.0"
     },
     "stats": {
-      "version": 1,
+      "version": 2,
       "blockCount": 5,
       "sectionCount": 0,
       "completableBlockCount": 3,
@@ -75,7 +75,7 @@
       "minVersion": "12.2.0"
     },
     "stats": {
-      "version": 1,
+      "version": 2,
       "blockCount": 19,
       "sectionCount": 2,
       "completableBlockCount": 14,
@@ -112,7 +112,7 @@
       "minVersion": "13.2.0"
     },
     "stats": {
-      "version": 1,
+      "version": 2,
       "blockCount": 25,
       "sectionCount": 3,
       "completableBlockCount": 19,
@@ -135,7 +135,7 @@
       "minVersion": "12.2.0"
     },
     "stats": {
-      "version": 1,
+      "version": 2,
       "blockCount": 33,
       "sectionCount": 6,
       "completableBlockCount": 12,
@@ -172,7 +172,7 @@
       "minVersion": "12.2.0"
     },
     "stats": {
-      "version": 1,
+      "version": 2,
       "blockCount": 26,
       "sectionCount": 2,
       "completableBlockCount": 21,
@@ -201,7 +201,7 @@
       "minVersion": "12.2.0"
     },
     "stats": {
-      "version": 1,
+      "version": 2,
       "blockCount": 70,
       "sectionCount": 0,
       "completableBlockCount": 20,
@@ -238,7 +238,7 @@
       "minVersion": "12.2.0"
     },
     "stats": {
-      "version": 1,
+      "version": 2,
       "blockCount": 33,
       "sectionCount": 3,
       "completableBlockCount": 27,
@@ -274,7 +274,7 @@
       "minVersion": "12.2.0"
     },
     "stats": {
-      "version": 1,
+      "version": 2,
       "blockCount": 10,
       "sectionCount": 1,
       "completableBlockCount": 7,
@@ -310,7 +310,7 @@
       "minVersion": "12.2.0"
     },
     "stats": {
-      "version": 1,
+      "version": 2,
       "blockCount": 10,
       "sectionCount": 1,
       "completableBlockCount": 7,
