@@ -512,24 +512,21 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (options?.source) {
       this._pendingLaunchSource = options.source;
     }
-    // Loaders resolve on failure (failTab stores the error in tab state), so
-    // their returned outcome — not promise settlement — stamps the action.
-    await withGuideOpenAction(url, async () => {
-      const tab = this.state.tabs.find((t) => t.id === tabId);
-      const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
-      if (needsDocsLoader) {
-        return this.loadDocsTabContent(
-          tabId,
-          url,
-          options?.skipReadyToBegin,
-          options?.packageInfo,
-          options?.prefetched,
-          options?.explicitGuideId,
-          loadContext
-        );
-      }
-      return this.loadTabContent(tabId, url, options?.prefetched, loadContext);
-    });
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+    if (needsDocsLoader) {
+      await this.loadDocsTabContent(
+        tabId,
+        url,
+        options?.skipReadyToBegin,
+        options?.packageInfo,
+        options?.prefetched,
+        options?.explicitGuideId,
+        loadContext
+      );
+    } else {
+      await this.loadTabContent(tabId, url, options?.prefetched, loadContext);
+    }
   }
 
   private async loadTabContent(
