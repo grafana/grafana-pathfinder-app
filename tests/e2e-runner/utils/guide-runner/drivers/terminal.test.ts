@@ -68,6 +68,7 @@ function setup(kind: 'terminal' | 'terminal-connect' = 'terminal') {
   ]);
   const root = {
     count: jest.fn(async () => 1),
+    evaluate: jest.fn(async () => undefined),
     evaluateAll: jest.fn(async () => ({
       state: attributes['data-test-step-state'] ?? null,
       connection: attributes['data-test-terminal-status'] ?? null,
@@ -104,6 +105,22 @@ function setup(kind: 'terminal' | 'terminal-connect' = 'terminal') {
 afterEach(() => {
   jest.restoreAllMocks();
   jest.clearAllMocks();
+});
+
+it('does not read or click the connection root again after observing connected completion', async () => {
+  const f = setup('terminal-connect');
+  f.attributes['data-test-terminal-status'] = 'disconnected';
+  const step = await f.step();
+  f.connect.click.mockImplementation(async () => {
+    f.attributes['data-test-terminal-status'] = 'connected';
+    f.attributes['data-test-step-state'] = 'completed';
+    f.root.getAttribute.mockImplementation(async () => {
+      throw new Error('Section collapsed after the connection wait');
+    });
+  });
+  expect(await executeStep(f.page, step)).toMatchObject({ status: 'passed' });
+  expect(f.connect.click).toHaveBeenCalledTimes(1);
+  expect(f.skip.click).not.toHaveBeenCalled();
 });
 
 it('reserves a provisioning budget for both terminal kinds', async () => {

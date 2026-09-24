@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { testIds } from '../../src/constants/testIds';
 import { discoverStepsFromDOM } from './utils/guide-runner/discovery';
+import { terminalCommandDriver } from './utils/guide-runner/drivers/terminal';
 import { calculateStepTimeout, executeAllSteps, executeStep } from './utils/guide-runner/execution';
 
 // These fixtures exercise real Playwright controls, not a real Coda session.
@@ -204,15 +205,21 @@ for (const outcome of ['error', 'detach', 'disconnect', 'hang'] as const) {
   });
 }
 
-for (const kind of ['terminal', 'terminal-connect'] as const) {
+for (const kind of ['terminal', 'terminal-connect', 'skip'] as const) {
   for (const restored of ['completed', 'idle', 'disconnected', 'missing'] as const) {
     test(`${kind} verifies its own state after section collapse: ${restored}`, async ({ page }) => {
-      await loadFixture(page, { connected: kind === 'terminal' });
+      await loadFixture(page, {
+        connected: kind === 'terminal',
+        unavailable: kind === 'skip',
+        skippable: kind === 'skip',
+      });
       await page.evaluate(
         ({ rootId, sectionId, toggleId, restored }) => {
           const root = document.querySelector<HTMLElement>(`[data-testid="${rootId}"]`)!;
           const section = document.createElement('div');
           section.dataset.testid = sectionId;
+          section.id = 'setup';
+          section.dataset.interactiveSection = 'true';
           root.before(section);
           section.append(root);
           const toggle = document.createElement('button');
@@ -245,23 +252,32 @@ for (const kind of ['terminal', 'terminal-connect'] as const) {
         },
         {
           rootId:
-            kind === 'terminal'
-              ? testIds.interactive.terminalStep('command')
-              : testIds.interactive.terminalConnectStep('connect'),
+            kind === 'terminal-connect'
+              ? testIds.interactive.terminalConnectStep('connect')
+              : testIds.interactive.terminalStep('command'),
           sectionId: testIds.interactive.section('setup'),
           toggleId: testIds.interactive.sectionToggle('setup'),
           restored,
         }
       );
       const { steps } = await discoverStepsFromDOM(page);
-      const step = steps.find((step) => step.stepKind === kind)!;
+      const step = steps.find((step) => step.stepKind === (kind === 'skip' ? 'terminal' : kind))!;
       expect(step.sectionId).toBe('setup');
-      expect(await executeStep(page, step, { timeout: 1500 })).toMatchObject({
-        status: restored === 'completed' ? 'passed' : 'failed',
-      });
+      if (kind === 'skip') {
+        const skipped = terminalCommandDriver.skip(page, step.stepId, 1500);
+        if (restored === 'completed' || restored === 'disconnected') {
+          await expect(skipped).resolves.toBeUndefined();
+        } else {
+          await expect(skipped).rejects.toThrow();
+        }
+      } else {
+        expect(await executeStep(page, step, { timeout: 1500 })).toMatchObject({
+          status: restored === 'completed' ? 'passed' : 'failed',
+        });
+      }
       await expect(page.locator('body')).toHaveAttribute('data-expand-count', '1');
       await expect(page.locator('body')).toHaveAttribute('data-exec-count', kind === 'terminal' ? '1' : '0');
-      await expect(page.locator('body')).toHaveAttribute('data-connect-count', kind === 'terminal' ? '0' : '1');
+      await expect(page.locator('body')).toHaveAttribute('data-connect-count', kind === 'terminal-connect' ? '1' : '0');
     });
   }
 }

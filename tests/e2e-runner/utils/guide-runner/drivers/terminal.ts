@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { type Locator, type Page } from '@playwright/test';
 
 import { testIds } from '../../../../../src/constants/testIds';
 import { dismissBadgeCelebrations } from '../badge-celebrations';
@@ -58,7 +58,7 @@ async function waitForTerminal(
   root: Locator,
   stepId: string,
   deadline: number,
-  requireCompletion: boolean,
+  goal: 'connected' | 'completed' | 'skipped',
   retrying = false,
   sectionId?: string
 ): Promise<void> {
@@ -88,6 +88,9 @@ async function waitForTerminal(
     if (!connection) {
       throw new Error('Terminal execution requires a Pathfinder build with the terminal runner DOM contract.');
     }
+    if (goal === 'skipped' && state === 'completed') {
+      return;
+    }
     // openTerminal defers reconnect, briefly leaving the previous attempt's error visible.
     awaitingRetryStart &&= connection === 'error' && Date.now() < retryStartDeadline;
     if (((state === 'error' || connection === 'error') && !awaitingRetryStart) || state === 'cancelled') {
@@ -96,16 +99,20 @@ async function waitForTerminal(
       );
     }
     sawConnecting ||= connection === 'connecting';
-    if (connection === 'disconnected' && (requireCompletion || sawConnecting || expanded)) {
+    if (goal !== 'skipped' && connection === 'disconnected' && (goal === 'completed' || sawConnecting || expanded)) {
       throw new Error(`Terminal step ${stepId} disconnected before completion.`);
     }
-    if (connection === 'connected' && ((!requireCompletion && !expanded) || state === 'completed')) {
+    if (
+      goal !== 'skipped' &&
+      connection === 'connected' &&
+      ((goal === 'connected' && !expanded) || state === 'completed')
+    ) {
       return;
     }
     await page.waitForTimeout(Math.min(COMPLETION_POLL_INTERVAL_MS, Math.max(1, deadline - Date.now())));
   }
   throw new Error(
-    `Terminal step ${stepId} did not reach ${requireCompletion ? 'connected completion' : 'connected state'} before its deadline.`
+    `Terminal step ${stepId} did not reach ${goal === 'connected' ? 'connected state' : goal === 'skipped' ? 'skipped completion' : 'connected completion'} before its deadline.`
   );
 }
 
@@ -142,13 +149,14 @@ function terminalDriver(kind: TerminalKind): StepDriver {
       const root = terminalRoot(page, kind, step.stepId);
       const deadline = Date.now() + Math.min(timeout, REQUIREMENTS_CHECK_TIMEOUT_MS);
       const settleDeadline = Date.now() + Math.min(timeout, REQUIREMENTS_SETTLE_TIMEOUT_MS);
+      const readAttribute = (name: string) => root.getAttribute(name, { timeout: Math.max(1, deadline - Date.now()) });
       let state: string | null;
       while (true) {
         ({ state } = await readStatus(root, Math.max(1, deadline - Date.now())));
-        const checking = state === 'checking' || (await root.getAttribute('data-test-terminal-checking')) === 'true';
+        const checking = state === 'checking' || (await readAttribute('data-test-terminal-checking')) === 'true';
         const settling =
           Date.now() < settleDeadline &&
-          (state === 'requirements-unmet' || (await root.getAttribute('data-test-terminal-unavailable')) === 'true');
+          (state === 'requirements-unmet' || (await readAttribute('data-test-terminal-unavailable')) === 'true');
         if (!checking && !settling) {
           break;
         }
@@ -157,12 +165,12 @@ function terminalDriver(kind: TerminalKind): StepDriver {
         }
         await page.waitForTimeout(Math.min(COMPLETION_POLL_INTERVAL_MS, Math.max(1, deadline - Date.now())));
       }
-      const gcx = (await root.getAttribute('data-test-terminal-gcx')) === 'true';
-      const unavailable = (await root.getAttribute('data-test-terminal-unavailable')) === 'true';
+      const gcx = (await readAttribute('data-test-terminal-gcx')) === 'true';
+      const unavailable = (await readAttribute('data-test-terminal-unavailable')) === 'true';
       const existingSandbox =
         kind === 'terminal-connect' &&
-        ['connected', 'connecting'].includes((await root.getAttribute('data-test-terminal-status')) ?? '') &&
-        (await root.getAttribute('data-test-terminal-vm-requested')) === 'true';
+        ['connected', 'connecting'].includes((await readAttribute('data-test-terminal-status')) ?? '') &&
+        (await readAttribute('data-test-terminal-vm-requested')) === 'true';
       const unmet = gcx || unavailable || existingSandbox || state === 'requirements-unmet';
       return {
         requirements: {
@@ -188,22 +196,29 @@ function terminalDriver(kind: TerminalKind): StepDriver {
         throw new Error('Terminal connection steps cannot be skipped by the runner.');
       }
       const root = terminalRoot(page, kind, stepId);
+      const deadline = Date.now() + timeout;
+      const remaining = () => Math.max(1, deadline - Date.now());
+      const sectionId = await root.evaluate(
+        (element) => element.closest('[data-interactive-section="true"]')?.getAttribute('id') ?? undefined,
+        undefined,
+        { timeout: remaining() }
+      );
       await dismissBadgeCelebrations(page);
-      await root.getByTestId(testIds.interactive.terminalSkipButton(stepId)).click({ timeout });
-      await expect(root).toHaveAttribute('data-test-step-state', 'completed', { timeout });
+      await root.getByTestId(testIds.interactive.terminalSkipButton(stepId)).click({ timeout: remaining() });
+      await waitForTerminal(page, root, stepId, deadline, 'skipped', false, sectionId);
     },
     async execute({ page, step, timeout }) {
       const root = terminalRoot(page, kind, step.stepId);
       const deadline = Date.now() + timeout;
       const remaining = () => Math.max(1, deadline - Date.now());
-      if ((await root.getAttribute('data-test-terminal-gcx')) === 'true') {
+      if ((await root.getAttribute('data-test-terminal-gcx', { timeout: remaining() })) === 'true') {
         throw new Error('Automatic gcx credential provisioning is not supported by the terminal runner.');
       }
       const { connection } = await readStatus(root, remaining());
       if (
         kind === 'terminal-connect' &&
         ['connected', 'connecting'].includes(connection) &&
-        (await root.getAttribute('data-test-terminal-vm-requested')) === 'true'
+        (await root.getAttribute('data-test-terminal-vm-requested', { timeout: remaining() })) === 'true'
       ) {
         throw new Error('Disconnect the existing terminal before connecting to the requested sandbox.');
       }
@@ -214,9 +229,20 @@ function terminalDriver(kind: TerminalKind): StepDriver {
             .getByTestId(testIds.interactive.terminalConnectButton(step.stepId))
             .click({ timeout: remaining() });
         }
-        await waitForTerminal(page, root, step.stepId, deadline, false, connection === 'error', step.sectionId);
+        await waitForTerminal(
+          page,
+          root,
+          step.stepId,
+          deadline,
+          kind === 'terminal-connect' ? 'completed' : 'connected',
+          connection === 'error',
+          step.sectionId
+        );
+        if (kind === 'terminal-connect') {
+          return { outcome: 'completed' };
+        }
       }
-      if ((await root.getAttribute('data-test-step-state')) !== 'completed') {
+      if ((await root.getAttribute('data-test-step-state', { timeout: remaining() })) !== 'completed') {
         const actionId =
           kind === 'terminal'
             ? testIds.interactive.terminalExecButton(step.stepId)
@@ -224,7 +250,7 @@ function terminalDriver(kind: TerminalKind): StepDriver {
         await dismissBadgeCelebrations(page);
         await root.getByTestId(actionId).click({ timeout: remaining() });
       }
-      await waitForTerminal(page, root, step.stepId, deadline, true, false, step.sectionId);
+      await waitForTerminal(page, root, step.stepId, deadline, 'completed', false, step.sectionId);
       return { outcome: 'completed' };
     },
   };
