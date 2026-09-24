@@ -193,6 +193,37 @@ describe('milestoneCompletionStorage', () => {
     expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
   });
 
+  // Regression (captain-approved fix on PR #1927, "legacy-milestone-backfill
+  // -resurrects-reset", HIGH): the per-milestone toolbar reset needs to
+  // remove exactly ONE slug from a journey's legacy record — `clear` above
+  // drops the whole journey, which would silently un-reset every OTHER
+  // milestone in the same journey.
+  it('removeCompleted removes only the named slug, across canonical and legacy URL variants, leaving siblings intact', async () => {
+    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'install-alloy');
+    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/view-data/content.json`, 'view-data');
+
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy');
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['view-data']));
+    const stored = JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}');
+    expect(stored[journeyUrl]).toEqual(['view-data']);
+    expect(stored[`${journeyUrl}/`]).toEqual(['view-data']);
+    expect(stored[`${journeyUrl}/view-data/content.json`]).toEqual(['view-data']);
+  });
+
+  it('removeCompleted is a no-op when the slug was never marked complete', async () => {
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'install-alloy');
+
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'never-completed');
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['install-alloy']));
+  });
+
+  it('removeCompleted is a no-op when the journey has no record at all', async () => {
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy');
+    expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
+  });
+
   describe('getCompletedSync', () => {
     it('returns an empty set before anything is written', () => {
       expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set());
