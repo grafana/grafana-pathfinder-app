@@ -120,11 +120,6 @@ export const testIds = {
     // Full screen mode (used by element picker and recording)
     fullScreen: {
       domPathTooltip: 'dev-tools-fullscreen-tooltip',
-      minimizedSidebar: {
-        container: 'dev-tools-minimized-sidebar',
-        button: 'dev-tools-minimized-button',
-        badge: 'dev-tools-minimized-badge',
-      },
     },
   },
 
