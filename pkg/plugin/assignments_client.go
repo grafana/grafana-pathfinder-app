@@ -39,10 +39,13 @@ const (
 var assignmentsAggregationToggle = aggregationToggle(appPlatformGroup)
 
 // assignmentSpec mirrors the Assignment `spec` this read proxy consumes.
-// Unlisted fields, including status.satisfied, are ignored by encoding/json.
-// Field names track kinds/assignment.cue. Optional scalars unmarshal as ""
-// when absent.
+// Name and StatusSatisfied come from metadata and status, not spec.
+// StatusSatisfied is nil when status.satisfied is absent. Optional spec
+// scalars unmarshal as "" when absent. Field names track kinds/assignment.cue.
 type assignmentSpec struct {
+	Name            string `json:"-"`
+	StatusSatisfied *bool  `json:"-"`
+
 	UserID       string `json:"userId"`
 	TargetType   string `json:"targetType"`
 	TargetID     string `json:"targetId"`
@@ -77,6 +80,12 @@ type assignmentLister interface {
 	ListPage(ctx context.Context, namespace, continueToken string) (*assignmentPage, error)
 }
 
+// assignmentStatusWriter updates status.satisfied. The LIST lister implements
+// it; a test fake that only lists does not, and the status write skips.
+type assignmentStatusWriter interface {
+	UpdateStatus(ctx context.Context, namespace, name string, satisfied bool) error
+}
+
 // assignmentHTTPClient is the per-kind wrapper over the shared App Platform
 // LIST client: it supplies the assignments coordinates and decodes each
 // `items[].spec` into an assignmentSpec.
@@ -102,13 +111,38 @@ func (c *assignmentHTTPClient) ListPage(ctx context.Context, namespace, continue
 		return nil, err
 	}
 
-	records := make([]assignmentSpec, 0, len(page.Specs))
-	for _, raw := range page.Specs {
+	records := make([]assignmentSpec, 0, len(page.Items))
+	for _, item := range page.Items {
 		var spec assignmentSpec
-		if err := json.Unmarshal(raw, &spec); err != nil {
+		if err := json.Unmarshal(item.Spec, &spec); err != nil {
 			return nil, fmt.Errorf("assignments: decode spec: %w", err)
+		}
+		spec.Name = item.Metadata.Name
+		if len(item.Status) > 0 && string(item.Status) != "null" {
+			var status struct {
+				Satisfied *bool `json:"satisfied"`
+			}
+			if err := json.Unmarshal(item.Status, &status); err != nil {
+				return nil, fmt.Errorf("assignments: decode status: %w", err)
+			}
+			spec.StatusSatisfied = status.Satisfied
 		}
 		records = append(records, spec)
 	}
-	return &assignmentPage{Records: records, Continue: page.Continue}, nil
+	return &assignmentPage{Records: records, Continue: page.Metadata.Continue}, nil
+}
+
+// UpdateStatus writes one obligation's evaluated satisfaction. The completion
+// write calls this; a 403 is the caller's to log, not a failed completion.
+func (c *assignmentHTTPClient) UpdateStatus(ctx context.Context, namespace, name string, satisfied bool) error {
+	body, err := json.Marshal(map[string]any{
+		"apiVersion": assignmentsGroupVersion,
+		"kind":       "Assignment",
+		"metadata":   map[string]string{"name": name, "namespace": namespace},
+		"status":     map[string]bool{"satisfied": satisfied},
+	})
+	if err != nil {
+		return fmt.Errorf("assignments: encode status: %w", err)
+	}
+	return c.inner.updateStatus(ctx, assignmentsGroupVersion, namespace, assignmentsResource, name, body, assignmentListMaxBytes)
 }

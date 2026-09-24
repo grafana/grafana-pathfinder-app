@@ -1183,10 +1183,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   } = usePublishedGuides();
   const [customGuidesExpanded, setCustomGuidesExpanded] = useState(true);
   const [suggestedGuidesExpanded, setSuggestedGuidesExpanded] = useState(true);
-  const { paths, isPathCompleted, getPathProgress } = useLearningPaths();
+  const { paths, getPathProgress } = useLearningPaths();
   const { notDone: assignedNotDone } = useMyAssignments({
     paths,
-    isPathCompleted,
     getPathProgress,
   });
 

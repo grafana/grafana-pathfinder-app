@@ -1,6 +1,6 @@
 /**
- * Window merge, due-date math, and catalogue lookup for assignments.
- * useMyAssignments.ts owns the fetch.
+ * Due-date math and catalogue lookup for assignments.
+ * useMyAssignments.ts owns the fetch. Satisfaction is the wire boolean.
  */
 import type { AssignmentEntry } from '../lib/assignments-client';
 import type { LearningPath } from '../types/learning-paths.types';
@@ -17,10 +17,7 @@ export interface ResolvedAssignment {
   dueAt?: string;
   /** True when `dueAt` is in the past and the obligation isn't satisfied. */
   overdue: boolean;
-  /**
-   * Wire `satisfied` OR the path's local completion state
-   * (useLearningPaths().isPathCompleted)
-   */
+  /** Wire `satisfied` from GET /assignments/my. */
   satisfied: boolean;
   progress: number;
 }
@@ -38,69 +35,6 @@ function formatTrackLabel(trackId: string): string {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-}
-
-/** [acceptCompletionsFrom ?? assignedAt, dueAt]; absent bounds are unbounded. */
-function assignmentWindow(assignment: AssignmentEntry): { start: number; end: number } {
-  const startRaw = assignment.acceptCompletionsFrom ?? assignment.assignedAt;
-  const start = startRaw ? Date.parse(startRaw) : -Infinity;
-  const end = assignment.dueAt ? Date.parse(assignment.dueAt) : Infinity;
-  return {
-    start: Number.isFinite(start) ? start : -Infinity,
-    end: Number.isFinite(end) ? end : Infinity,
-  };
-}
-
-function assignmentTargetKey(assignment: AssignmentEntry): string {
-  return `${assignment.targetType}\0${assignment.targetId}`;
-}
-
-/** Merges one cluster's records into a single entry; a lone record passes through unchanged. */
-function collapseCluster(cluster: AssignmentEntry[]): AssignmentEntry {
-  return cluster.reduce((acc, assignment) => {
-    const soonestDueAt = [acc.dueAt, assignment.dueAt].filter((d): d is string => Boolean(d)).sort()[0];
-    return {
-      ...acc,
-      trackId: acc.trackId === assignment.trackId ? acc.trackId : undefined,
-      dueAt: soonestDueAt,
-      satisfied: acc.satisfied || assignment.satisfied,
-    };
-  });
-}
-
-/**
- * Same (targetType, targetId) and overlapping windows become one record.
- * A shared targetId with a different targetType does not merge. Disjoint
- * windows stay separate.
- */
-export function collapseOverlappingWindows(assignments: AssignmentEntry[]): AssignmentEntry[] {
-  const byTarget = new Map<string, AssignmentEntry[]>();
-  for (const assignment of assignments) {
-    const key = assignmentTargetKey(assignment);
-    const records = byTarget.get(key) ?? [];
-    records.push(assignment);
-    byTarget.set(key, records);
-  }
-
-  const merged: AssignmentEntry[] = [];
-  for (const records of byTarget.values()) {
-    const sorted = [...records].sort((a, b) => assignmentWindow(a).start - assignmentWindow(b).start);
-    let cluster: AssignmentEntry[] = [];
-    let clusterEnd = -Infinity;
-    for (const record of sorted) {
-      const window = assignmentWindow(record);
-      if (cluster.length > 0 && window.start > clusterEnd) {
-        merged.push(collapseCluster(cluster));
-        cluster = [];
-      }
-      cluster.push(record);
-      clusterEnd = Math.max(clusterEnd, window.end);
-    }
-    if (cluster.length > 0) {
-      merged.push(collapseCluster(cluster));
-    }
-  }
-  return merged;
 }
 
 const DAY_MS = 86_400_000;
@@ -135,24 +69,13 @@ function isOverdue(dueAt: string | undefined, satisfied: boolean, now: number): 
   return days !== undefined && days < 0;
 }
 
-/** Wire `satisfied`, or local path completion for a path target. Track scope is not checked yet. */
-export function standInSatisfaction(
-  assignment: AssignmentEntry,
-  isPathCompleted: (pathId: string) => boolean
-): boolean {
-  return (
-    assignment.satisfied || (assignment.targetType === PATH_ASSIGNMENT_TARGET && isPathCompleted(assignment.targetId))
-  );
-}
-
 /**
  * Path targets only. Unmatched path targetIds land in `unresolvedTargetIds`;
- * other target types are omitted.
+ * other target types are omitted. One record stays one row.
  */
 export function resolveAssignments(
   assignments: AssignmentEntry[],
   paths: readonly LearningPath[],
-  isPathCompleted: (pathId: string) => boolean,
   getPathProgress: (pathId: string) => number,
   now: number = Date.now()
 ): ResolvedAssignments {
@@ -160,14 +83,14 @@ export function resolveAssignments(
   const unresolvedTargetIds: string[] = [];
 
   const pathAssignments = assignments.filter((assignment) => assignment.targetType === PATH_ASSIGNMENT_TARGET);
-  const resolved = collapseOverlappingWindows(pathAssignments)
+  const resolved = pathAssignments
     .map((assignment): ResolvedAssignment | null => {
       const path = byId.get(assignment.targetId);
       if (!path) {
         unresolvedTargetIds.push(assignment.targetId);
         return null;
       }
-      const satisfied = standInSatisfaction(assignment, isPathCompleted);
+      const satisfied = assignment.satisfied;
       return {
         targetType: assignment.targetType,
         targetId: path.id,

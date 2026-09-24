@@ -34,10 +34,9 @@ import (
 //     panel open, at the same cadence as the catalogue this mirrors.
 //   - §7.4 requires satisfaction to be evaluated as the route serves, so a
 //     learner sees their own completion reflected immediately. A cached
-//     envelope reintroduces exactly the staleness that requirement exists to
-//     forbid, so the cache would have to sit under the join rather than over
-//     it. Adding one now, before the join exists, would be caching the wrong
-//     layer.
+//     envelope would sit over that join and reintroduce the staleness the
+//     requirement exists to forbid. The join reads raw completion rows, not
+//     the collated completion index.
 //
 // If load ever justifies caching, the safe reintroduction is a per-identity
 // partitioned cache of the raw LIST beneath a live join — a deliberate future
@@ -71,10 +70,9 @@ const assignmentLifecycleActive = "active"
 // path stays testable.
 var assignmentListerOverride assignmentLister
 
-// assignmentDevHook is nil in every shipped build. assignments_dev.go, behind
-// the pathfinderdev build tag, is the only thing that sets it, so a local
-// fixture cannot be switched on by configuration. See docs/developer/LOCAL_DEV.md.
-var assignmentDevHook func(*App, *http.Request) (entries []assignmentEntry, subject string, handled bool)
+// shimHandleMyAssignments is nil in every shipped build. assignments_shim.go,
+// behind the pathfinderdev build tag, is the only thing that sets it.
+var shimHandleMyAssignments func(*App, *http.Request) (entries []assignmentEntry, subject string, handled bool)
 
 // assignmentCapability is the availability signal "My Paths" gates on.
 // `available` is read-derived: identity presence plus read-path reachability
@@ -88,9 +86,10 @@ type assignmentCapability struct {
 // (targetType, targetId); this route does not filter on targetType.
 // Optional omitempty scalars are absent, not empty, when unset.
 type assignmentEntry struct {
-	TargetType string `json:"targetType"`
-	TargetID   string `json:"targetId"`
-	TrackID    string `json:"trackId,omitempty"`
+	TargetType   string `json:"targetType"`
+	TargetID     string `json:"targetId"`
+	TrackID      string `json:"trackId,omitempty"`
+	TargetSource string `json:"targetSource,omitempty"`
 
 	RuleID     string `json:"ruleId,omitempty"`
 	AssignedBy string `json:"assignedBy,omitempty"`
@@ -130,11 +129,13 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Dev-build escape hatch, checked before anything else so a local stack
-	// needs none of the four structural preconditions below. nil in every
-	// shipped build (see assignmentDevHook).
-	if assignmentDevHook != nil {
-		if entries, subject, handled := assignmentDevHook(a, r); handled {
+	// Nil in every shipped build (see shimHandleMyAssignments).
+	if shimHandleMyAssignments != nil {
+		if entries, subject, handled := shimHandleMyAssignments(a, r); handled {
+			satisfied := a.satisfactionFunc(r, subject)
+			for i := range entries {
+				entries[i].Satisfied = satisfied(specFromEntry(entries[i], subject))
+			}
 			a.writeMyAssignments(w, myAssignmentsResponse{
 				Capability:  assignmentCapability{Available: true},
 				UserID:      subject,
@@ -204,7 +205,7 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries := shapeAssignments(records, userID, unevaluatedSatisfaction)
+	entries := shapeAssignments(records, userID, a.satisfactionFunc(r, userID))
 	logger.Debug("assignments served",
 		"namespace", namespace, "pages", pages, "namespaceRecords", len(records), "callerAssignments", len(entries))
 	a.writeMyAssignments(w, myAssignmentsResponse{
@@ -214,12 +215,6 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 		AsOf:        timeNow().UTC().Format(time.RFC3339),
 	})
 }
-
-// unevaluatedSatisfaction reports every obligation unsatisfied until the
-// completion join lands. False is the safe direction: showing work as done
-// when it is not would suppress it. Do not build that join on collateByUser;
-// that aggregate can report a satisfaction no single completion achieved.
-func unevaluatedSatisfaction(assignmentSpec) bool { return false }
 
 // shapeAssignments keeps one caller's active obligations, newest first.
 // Target type is not a filter. Two rules for the same target stay two
@@ -237,6 +232,7 @@ func shapeAssignments(records []assignmentSpec, userID string, satisfied func(as
 			TargetType:            rec.TargetType,
 			TargetID:              rec.TargetID,
 			TrackID:               rec.TrackID,
+			TargetSource:          rec.TargetSource,
 			RuleID:                rec.RuleID,
 			AssignedBy:            rec.AssignedBy,
 			AssignedAt:            rec.AssignedAt,

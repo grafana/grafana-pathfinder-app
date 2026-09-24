@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { config } from '@grafana/runtime';
 
+import { onCompletionPublished } from '../completion-records/completion-write-hook';
 import { fetchMyAssignments, type AssignmentEntry } from '../lib/assignments-client';
 import { logger } from '../lib/logging';
 import type { LearningPath } from '../types/learning-paths.types';
@@ -17,7 +18,6 @@ export { daysUntilDue, type ResolvedAssignment } from './assignments-core';
 interface UseMyAssignmentsOptions {
   /** The caller's learning-paths catalogue — resolution drops targets not found here. */
   paths: readonly LearningPath[];
-  isPathCompleted: (pathId: string) => boolean;
   getPathProgress: (pathId: string) => number;
 }
 
@@ -30,7 +30,7 @@ interface UseMyAssignmentsResult {
 }
 
 export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignmentsResult {
-  const { paths, isPathCompleted, getPathProgress } = options;
+  const { paths, getPathProgress } = options;
   const [rawAssignments, setRawAssignments] = useState<AssignmentEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -76,9 +76,15 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch once on mount; namespace is session-stable and putting refresh in the array would refetch whenever the callback identity changes
   }, []);
 
+  useEffect(() => {
+    return onCompletionPublished(() => {
+      void refresh();
+    });
+  }, [refresh]);
+
   const resolved = useMemo(
-    () => resolveAssignments(rawAssignments, paths, isPathCompleted, getPathProgress),
-    [rawAssignments, paths, isPathCompleted, getPathProgress]
+    () => resolveAssignments(rawAssignments, paths, getPathProgress),
+    [rawAssignments, paths, getPathProgress]
   );
   // §12.13 left hide-vs-error open. Hiding stays; the ids are the signal.
   // targetIds stay off the warn — that context bridges to Faro.

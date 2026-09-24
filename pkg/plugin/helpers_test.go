@@ -64,8 +64,16 @@ func (l capturingLogger) record(level, msg string) {
 
 // warnedWith reports whether any captured warn line's message contains substr.
 func (l capturingLogger) warnedWith(substr string) bool {
+	return l.loggedWith("warn", substr)
+}
+
+func (l capturingLogger) erroredWith(substr string) bool {
+	return l.loggedWith("error", substr)
+}
+
+func (l capturingLogger) loggedWith(level, substr string) bool {
 	for _, line := range *l.lines {
-		if line.level == "warn" && strings.Contains(line.msg, substr) {
+		if line.level == level && strings.Contains(line.msg, substr) {
 			return true
 		}
 	}

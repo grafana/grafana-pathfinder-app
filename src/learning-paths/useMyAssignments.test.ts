@@ -38,7 +38,6 @@ function assignment(overrides: Partial<AssignmentEntry> & { targetId: string }):
 }
 
 const noProgress = () => 0;
-const neverCompleted = () => false;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -49,9 +48,7 @@ describe('useMyAssignments', () => {
   it('reports empty and does not fetch when no namespace is available', async () => {
     mockNamespace = undefined;
 
-    const { result } = renderHook(() =>
-      useMyAssignments({ paths: [], isPathCompleted: neverCompleted, getPathProgress: noProgress })
-    );
+    const { result } = renderHook(() => useMyAssignments({ paths: [], getPathProgress: noProgress }));
 
     await waitFor(() => expect(result.current.hasLoaded).toBe(true));
 
@@ -67,7 +64,6 @@ describe('useMyAssignments', () => {
     const { result } = renderHook(() =>
       useMyAssignments({
         paths: [path({ id: 'fundamentals', title: 'Grafana Fundamentals' })],
-        isPathCompleted: neverCompleted,
         getPathProgress: noProgress,
       })
     );
@@ -85,7 +81,6 @@ describe('useMyAssignments', () => {
     const { result } = renderHook(() =>
       useMyAssignments({
         paths: [path({ id: 'real-path', title: 'Real Path' })],
-        isPathCompleted: neverCompleted,
         getPathProgress: noProgress,
       })
     );
