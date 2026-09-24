@@ -621,21 +621,41 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
   // is only a Foundations-based placeholder — it can't know the tab's active
   // Path Track, so it always renders both. This corrects real visibility
   // against the same track-aware canNavigateNext()/canNavigatePrevious() the
-  // click handler above already uses, before paint so there's no flash of
-  // the wrong buttons.
+  // click handler above already uses.
   useLayoutEffect(() => {
     const contentElement = contentRef.current;
     if (!contentElement) {
       return;
     }
-    const nextButton = contentElement.querySelector<HTMLElement>('.journey-nav-next');
-    const prevButton = contentElement.querySelector<HTMLElement>('.journey-nav-prev');
-    if (nextButton) {
-      nextButton.hidden = !model.canNavigateNext();
-    }
-    if (prevButton) {
-      prevButton.hidden = !model.canNavigatePrevious();
-    }
+
+    const syncBottomNavVisibility = () => {
+      const nextButton = contentElement.querySelector<HTMLElement>('.journey-nav-next');
+      const prevButton = contentElement.querySelector<HTMLElement>('.journey-nav-prev');
+      if (nextButton) {
+        nextButton.hidden = !model.canNavigateNext();
+      }
+      if (prevButton) {
+        prevButton.hidden = !model.canNavigatePrevious();
+      }
+    };
+
+    // Runs synchronously before paint so there's no flash of the wrong
+    // buttons on mount or when our own dependencies change below.
+    syncBottomNavVisibility();
+
+    // ContentProcessor can swap its rendered DOM tree without activeTab.content
+    // ever changing — snippet-ref inlining resolves asynchronously and swaps
+    // in a freshly reparsed tree via its own internal state, remounting fresh
+    // (always-visible) bottom-nav buttons this effect's own dependency array
+    // never observes. A MutationObserver reapplies the same sync on every such
+    // swap. `childList`/`subtree` only, so the `hidden` attribute writes above
+    // don't retrigger this observer themselves.
+    const observer = new MutationObserver(syncBottomNavVisibility);
+    observer.observe(contentElement, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+    };
   }, [contentRef, activeTab?.content, activeTab?.activeTrackId, activeTab?.activeTrackMilestones, model]);
 }
 

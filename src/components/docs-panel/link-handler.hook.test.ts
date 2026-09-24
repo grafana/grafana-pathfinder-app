@@ -1,4 +1,4 @@
-import { renderHook, fireEvent } from '@testing-library/react';
+import { renderHook, fireEvent, waitFor } from '@testing-library/react';
 import { useLinkClickHandler } from './link-handler.hook';
 import { UserInteraction } from '../../lib/analytics';
 
@@ -492,6 +492,32 @@ describe('useLinkClickHandler', () => {
       rerender({ activeTab: { ...mockModel.getActiveTab(), activeTrackId: 'builder', activeTrackMilestones: [] } });
 
       expect(nextButton.hidden).toBe(false);
+    });
+
+    // Regression (Cursor Bugbot on #1993, "Bottom-nav hide lost after
+    // remount"): ContentProcessor's snippet-ref inlining resolves
+    // asynchronously and swaps in a freshly reparsed DOM tree via its own
+    // internal state — activeTab.content itself never changes, so this
+    // effect's dependency array alone would never re-run. The DOM swap
+    // itself (not a prop/rerender) must be what re-triggers the sync.
+    it('re-syncs Next visibility after a DOM swap that leaves activeTab.content unchanged', async () => {
+      const { nextButton: originalNextButton } = appendBottomNavButtons();
+      mockModel.canNavigateNext.mockReturnValue(false);
+
+      renderHook(() =>
+        useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
+      );
+      expect(originalNextButton.hidden).toBe(true);
+
+      // Simulate the remount: a brand-new element, defaulting to visible,
+      // replaces the original with no React rerender involved at all.
+      const freshNextButton = document.createElement('button');
+      freshNextButton.className = 'journey-nav-next';
+      originalNextButton.replaceWith(freshNextButton);
+
+      await waitFor(() => {
+        expect(freshNextButton.hidden).toBe(true);
+      });
     });
   });
 

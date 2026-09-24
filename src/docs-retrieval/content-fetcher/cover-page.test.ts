@@ -41,7 +41,7 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
 
   it('wraps the "what to expect" card even when the leading intro before it gets dropped', () => {
     // wrapExpectBlockInOrangeOutline splits "Intro paragraph." into its own
-    // markdown block, but dropLeadingTitleBlock (unconditional per the
+    // markdown block, but dropLeadingPathBodyBlock (unconditional per the
     // captain's decision) then removes it — this is the Path resource's own
     // leading content, not the "what to expect" card, and is never kept.
     const input = guide([{ type: 'markdown', content: "Intro paragraph.\n\n## Here's what to expect\n\n- A thing" }]);
@@ -145,16 +145,16 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
 });
 
 // The React cover-page hero (LearningPathTableOfContents) already renders
-// this path's own title and description — a guide authored the older,
-// hero-less way opens with the same title+intro as its own leading block,
-// which reads as a plain duplicate once the hero exists (captain-reported).
-// Captain's decision: don't try to preserve real content in the Path
-// resource's own leading block — a full-catalog census of every real
-// published path found none with content in this position worth keeping
-// (0 of 76), so this is always suppressed regardless of shape, rather than
-// detecting and preserving a "real content" case that doesn't occur in
-// practice.
-describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own leading block, unconditionally", () => {
+// this Path's own title and description — a Path authored the older,
+// hero-less way opens with the same title+intro as its own leading body
+// block, which reads as a plain duplicate once the hero exists
+// (captain-reported). Captain's decision: don't try to preserve real content
+// in the Path resource's own leading block — a full-catalog census of every
+// real published Path found none with content in this position worth
+// keeping (0 of 76), so this is always suppressed regardless of shape,
+// rather than detecting and preserving a "real content" case that doesn't
+// occur in practice.
+describe("injectJourneyExtrasIntoJsonGuide — drops the Path's own leading body block, unconditionally", () => {
   it('drops a leading markdown block that is just a duplicated title+intro', () => {
     const input = guide([
       { type: 'markdown', content: '# Demo tracked learning path\n\nA local demo path exercising Path Tracks.' },
@@ -200,12 +200,12 @@ describe("injectJourneyExtrasIntoJsonGuide — drops the guide's own leading blo
     expect(blocks).toEqual([{ type: 'html', content: '<div></div>' }]);
   });
 
-  // The common minimal case (this task's own demo guide): the whole guide
+  // The common minimal case (this task's own demo Path): the whole Path
   // body was just one leading block, nothing else. Rendering empty below
   // the hero is correct — the hero already said everything worth saying.
   // A truly empty `blocks: []` fails at render time (ContentProcessor treats
   // zero parsed elements as a parsing error), so this must stay non-empty.
-  it('replaces the guide body with an empty, real element when the leading block was its only content', () => {
+  it('replaces the Path body with an empty, real element when the leading block was its only content', () => {
     const input = guide([{ type: 'markdown', content: '# Demo tracked learning path\n\nJust the title.' }]);
 
     const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));

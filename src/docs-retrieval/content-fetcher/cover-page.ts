@@ -134,7 +134,7 @@ export function injectJourneyExtrasIntoJsonGuide(
     }
 
     wrapExpectBlockInOrangeOutline(parsed.blocks);
-    dropLeadingTitleBlock(parsed.blocks);
+    dropLeadingPathBodyBlock(parsed.blocks);
 
     const extrasHtml = generateJourneyContentWithExtras('', metadata, skipReadyToBegin);
     const blocks = extrasHtml.trim() ? [...parsed.blocks, { type: 'html', content: extrasHtml }] : parsed.blocks;
@@ -198,13 +198,15 @@ function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: 
 }
 
 /**
- * Drop the guide's own leading block on the cover page, unconditionally. The
- * React cover-page hero (`LearningPathTableOfContents`) already renders this
- * path's title and description above the module list, and this is the Path
- * resource's own body content — not a milestone guide's — which doesn't fit
- * the cover-page design regardless of its shape: a bare duplicate title, a
- * title followed by what looks like real sections, or anything else. A
- * full-catalog census of every real published path found none with content
+ * Drop the Path resource's own leading body block on its cover page,
+ * unconditionally. This only ever runs for a Path's cover page (milestone 0
+ * of a `learningJourney`) — never for a milestone guide's own content, which
+ * this function never sees. The React cover-page hero
+ * (`LearningPathTableOfContents`) already renders this Path's title and
+ * description above the module list, so its own leading body block doesn't
+ * fit the cover-page design regardless of its shape: a bare duplicate title,
+ * a title followed by what looks like real sections, or anything else. A
+ * full-catalog census of every real published Path found none with content
  * in this position worth keeping (0 of 76), so this always suppresses
  * position 0 rather than trying to detect and preserve a "real content"
  * case that doesn't occur in practice. `wrapExpectBlockInOrangeOutline`
@@ -213,11 +215,11 @@ function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: 
  *
  * A genuinely empty `blocks: []` fails at render time — `ContentProcessor`
  * treats zero parsed elements as a parsing error and shows an error banner,
- * not a blank guide — so when this was the only block, it's replaced with an
+ * not a blank Path — so when this was the only block, it's replaced with an
  * empty, real HTML element rather than removed outright. That renders as
  * nothing visible, correctly: the hero already said everything that block did.
  */
-function dropLeadingTitleBlock(blocks: Array<{ type: string; content?: string }>): void {
+function dropLeadingPathBodyBlock(blocks: Array<{ type: string; content?: string }>): void {
   const first = blocks[0];
   if (first?.type !== 'markdown') {
     return;
