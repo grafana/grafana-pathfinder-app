@@ -1,4 +1,4 @@
-import { renderHook, fireEvent } from '@testing-library/react';
+import { renderHook, fireEvent, waitFor } from '@testing-library/react';
 import { useLinkClickHandler } from './link-handler.hook';
 import { UserInteraction } from '../../lib/analytics';
 
@@ -423,6 +423,97 @@ describe('useLinkClickHandler', () => {
           interaction_location: 'bottom_navigation',
         })
       );
+    });
+  });
+
+  // The bottom nav renders at fetch time, before a tab's active Path Track
+  // is known, so both buttons always render — this layout effect decides
+  // their real visibility against the same track-aware
+  // canNavigateNext()/canNavigatePrevious() the click handler already uses.
+  describe('Bottom-nav button visibility sync', () => {
+    function appendBottomNavButtons() {
+      const prevButton = document.createElement('button');
+      prevButton.className = 'journey-nav-prev';
+      const nextButton = document.createElement('button');
+      nextButton.className = 'journey-nav-next';
+      contentDiv.appendChild(prevButton);
+      contentDiv.appendChild(nextButton);
+      return { prevButton, nextButton };
+    }
+
+    it('hides the Next button on mount when canNavigateNext() returns false', () => {
+      const { nextButton } = appendBottomNavButtons();
+      mockModel.canNavigateNext.mockReturnValue(false);
+
+      renderHook(() =>
+        useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
+      );
+
+      expect(nextButton.hidden).toBe(true);
+    });
+
+    it('shows the Next button on mount when canNavigateNext() returns true', () => {
+      const { nextButton } = appendBottomNavButtons();
+      mockModel.canNavigateNext.mockReturnValue(true);
+
+      renderHook(() =>
+        useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
+      );
+
+      expect(nextButton.hidden).toBe(false);
+    });
+
+    it('hides the Previous button on mount when canNavigatePrevious() returns false', () => {
+      const { prevButton } = appendBottomNavButtons();
+      mockModel.canNavigatePrevious.mockReturnValue(false);
+
+      renderHook(() =>
+        useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
+      );
+
+      expect(prevButton.hidden).toBe(true);
+    });
+
+    // A track that continues past where Foundations ends must still show
+    // Next; one that ends before Foundations does must hide it — for the
+    // same underlying guide.
+    it('re-syncs Next visibility when the active track changes without the guide itself changing', () => {
+      const { nextButton } = appendBottomNavButtons();
+      mockModel.canNavigateNext.mockReturnValue(false);
+
+      const { rerender } = renderHook(
+        ({ activeTab }) => useLinkClickHandler({ contentRef, activeTab, theme: mockTheme, model: mockModel }),
+        { initialProps: { activeTab: mockModel.getActiveTab() } }
+      );
+      expect(nextButton.hidden).toBe(true);
+
+      mockModel.canNavigateNext.mockReturnValue(true);
+      rerender({ activeTab: { ...mockModel.getActiveTab(), activeTrackId: 'builder', activeTrackMilestones: [] } });
+
+      expect(nextButton.hidden).toBe(false);
+    });
+
+    // ContentProcessor's snippet-ref inlining can swap in a freshly reparsed
+    // DOM tree without activeTab.content itself changing, so the DOM swap
+    // itself — not a prop/rerender — must be what re-triggers the sync.
+    it('re-syncs Next visibility after a DOM swap that leaves activeTab.content unchanged', async () => {
+      const { nextButton: originalNextButton } = appendBottomNavButtons();
+      mockModel.canNavigateNext.mockReturnValue(false);
+
+      renderHook(() =>
+        useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
+      );
+      expect(originalNextButton.hidden).toBe(true);
+
+      // Simulate the remount: a brand-new element, defaulting to visible,
+      // replaces the original with no React rerender involved at all.
+      const freshNextButton = document.createElement('button');
+      freshNextButton.className = 'journey-nav-next';
+      originalNextButton.replaceWith(freshNextButton);
+
+      await waitFor(() => {
+        expect(freshNextButton.hidden).toBe(true);
+      });
     });
   });
 

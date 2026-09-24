@@ -75,6 +75,7 @@ function panelModel(): DocsPanelModelOperations {
     navigateToPreviousMilestone: jest.fn(),
     canNavigateNext: jest.fn(),
     canNavigatePrevious: jest.fn(),
+    setActiveTrackId: jest.fn(),
     openDevToolsTab: jest.fn(),
     openEditorTab: jest.fn(),
     updateEditorTabTitle: jest.fn(),

@@ -1,4 +1,4 @@
-import React, { useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { useStyles2, Icon, TabsBar, Tab } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
@@ -41,6 +41,14 @@ export interface LearningPathTableOfContentsProps {
    * a single flat list, no tabs.
    */
   tracks?: CoverPageTrack[];
+  /**
+   * Notified whenever the selected track tab changes, including once on
+   * mount — `null`/`null` for the default Foundations sequence, a track's
+   * own `trackId` plus its resolved guides otherwise. Lets Next/Previous
+   * resolve within the selected track past the cover page too (see
+   * `LearningJourneyTab.activeTrackMilestones`).
+   */
+  onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
 }
 
 export function LearningPathTableOfContents({
@@ -50,6 +58,7 @@ export function LearningPathTableOfContents({
   title,
   description,
   tracks,
+  onActiveTrackChange,
 }: LearningPathTableOfContentsProps) {
   const styles = useStyles2(getTableOfContentsStyles);
   const badge = pathId ? getBadgeForPath(pathId) : undefined;
@@ -74,6 +83,12 @@ export function LearningPathTableOfContents({
       ? tracks!.find((track) => track.trackId === activeTabId)
       : undefined;
   const activeMilestones = activeTrack?.milestones ?? milestones;
+
+  // Fires on mount too, so the panel model's active-track record never starts stale.
+  useEffect(() => {
+    onActiveTrackChange?.(activeTrack?.trackId ?? null, activeTrack?.milestones ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the selection itself and its owning path should re-fire this, not a fresh onActiveTrackChange identity every render
+  }, [activeTrack?.trackId, baseUrl]);
   // The active sequence's own name, not the path's — reused below to scope
   // the progress ring's accessible label. A track is a presentation
   // ordering only (COMPLETION-MODEL.md), so its ring must read as "progress

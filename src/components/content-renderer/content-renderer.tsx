@@ -6,7 +6,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
 
-import { RawContent, ContentParseResult, GuideCountingSource } from '../../types/content.types';
+import { RawContent, ContentParseResult, GuideCountingSource, Milestone } from '../../types/content.types';
 import { logger } from '../../lib/logging';
 import {
   parseHTMLToComponents,
@@ -134,6 +134,8 @@ interface ContentRendererProps {
    * control itself is never conditional.
    */
   onContinueToNextMilestone?: () => void;
+  /** Forwards the cover page's own track-tab selection — see `LearningPathTableOfContents`'s prop doc. */
+  onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -173,6 +175,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   onContentReady,
   onGuideComplete,
   onContinueToNextMilestone,
+  onActiveTrackChange,
   className,
   containerRef,
 }: ContentRendererProps) {
@@ -504,6 +507,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
         title={content.metadata.title}
         description={pathDescription}
         tracks={journey.tracks}
+        onActiveTrackChange={onActiveTrackChange}
       />
     ) : null;
 

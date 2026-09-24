@@ -400,6 +400,31 @@ describe('LearningPathTableOfContents', () => {
       expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'true');
     });
 
+    // Regression: the active track tab used to be purely local state, never
+    // reaching the panel model, so Next/Previous always resolved against
+    // Foundations regardless of the selected tab. onActiveTrackChange is how
+    // the model learns which tab is selected.
+    it('reports the selected tab via onActiveTrackChange, including on mount', () => {
+      setCompletedSlugs(new Set());
+      const onActiveTrackChange = jest.fn();
+      render(
+        <LearningPathTableOfContents
+          milestones={milestones}
+          baseUrl={baseUrl}
+          tracks={tracks}
+          onActiveTrackChange={onActiveTrackChange}
+        />
+      );
+
+      expect(onActiveTrackChange).toHaveBeenLastCalledWith(null, null);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
+      expect(onActiveTrackChange).toHaveBeenLastCalledWith('builder', builderMilestones);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Foundations' }));
+      expect(onActiveTrackChange).toHaveBeenLastCalledWith(null, null);
+    });
+
     // content-renderer.tsx reuses this component instance across
     // navigation, with no remount key between paths — activeTabId must
     // reset when the props change, or a track selected on one path either

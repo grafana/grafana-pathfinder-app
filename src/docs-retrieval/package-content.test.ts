@@ -1512,7 +1512,7 @@ describe('fetchPackageContent path-type enrichment', () => {
     expect(result.content!.metadata.repository).toBe('app-platform');
   });
 
-  it('suppresses the legacy Ready to Begin button on the cover, keeping the bottom nav', async () => {
+  it('suppresses both the legacy Ready to Begin button and the bottom nav on the cover', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockImplementation((id: string) =>
         Promise.resolve({
@@ -1537,12 +1537,16 @@ describe('fetchPackageContent path-type enrichment', () => {
     };
 
     // The React cover-page TOC (LearningPathTableOfContents) owns the
-    // Start/Resume affordance now; the legacy HTML button always said "Ready
-    // to Begin" and always targeted milestone 1, regardless of progress.
+    // Start/Resume affordance now, and its own Next/Previous milestone
+    // toolbar arrows cover the same job the legacy bottom nav did; the
+    // legacy HTML button always said "Ready to Begin" and always targeted
+    // milestone 1, regardless of progress, and the legacy bottom nav always
+    // targeted the Foundations sequence regardless of which track tab (if
+    // any) was selected. Both are redundant on the cover now.
     const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
 
     expect(result.content!.content).not.toContain('journey-ready-to-begin');
-    expect(result.content!.content).toContain('journey-bottom-navigation');
+    expect(result.content!.content).not.toContain('journey-bottom-navigation');
   });
 
   it('does not add learningJourney for guide-type packages', async () => {

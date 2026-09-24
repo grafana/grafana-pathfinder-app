@@ -66,9 +66,14 @@ const milestone = (number: number): Milestone => ({
   isActive: false,
 });
 
-/** Milestone 0, so the journey rewrite appends its trailing extras block. */
-const coverMetadata: LearningJourneyMetadata = {
-  currentMilestone: 0,
+/**
+ * A real milestone (not the cover, milestone 0 — the cover's own bottom-nav
+ * extras block is deliberately suppressed now, since it duplicated the React
+ * cover-page hero's Resume/Start CTA and the sticky toolbar's own Next/Previous),
+ * so the journey rewrite still appends its trailing bottom-nav extras block.
+ */
+const journeyMetadata: LearningJourneyMetadata = {
+  currentMilestone: 1,
   totalMilestones: 2,
   milestones: [milestone(1), milestone(2)],
   baseUrl: 'https://grafana.com/docs/learning-journeys/snippets/',
@@ -108,9 +113,9 @@ const nestedRefResolver: SnippetResolver = {
   })),
 };
 
-/** What `docs-panel.tsx` does to a milestone-0 journey payload before it renders. */
+/** What `docs-panel.tsx` does to a journey payload before it renders. */
 function withJourneyExtras(content: RawContent): RawContent {
-  return rewriteGuideTrees(content, (guideJson) => injectJourneyExtrasIntoJsonGuide(guideJson, coverMetadata, true));
+  return rewriteGuideTrees(content, (guideJson) => injectJourneyExtrasIntoJsonGuide(guideJson, journeyMetadata, true));
 }
 
 /** One reference expanding into two blocks, beside one ordinary sibling. */
@@ -423,12 +428,12 @@ describe('canonical snippet counts across direct and prepared launches', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('no usable pre-inlining tree'), expect.anything());
   });
 
-  // `docs-panel.tsx` injects the cover-page extras into a milestone-0 journey
-  // AFTER the launch handoff, and that injection appends a counted block. A
-  // loader that rewrote only the render tree would leave the prepared path
-  // counting a pre-injection denominator and reopen the cross-path split —
-  // exactly what `rewriteGuideTrees` exists to prevent, here through the real
-  // journey rewrite rather than a synthetic one.
+  // `docs-panel.tsx` injects a journey milestone's extras AFTER the launch
+  // handoff, and that injection appends a counted block. A loader that
+  // rewrote only the render tree would leave the prepared path counting a
+  // pre-injection denominator and reopen the cross-path split — exactly what
+  // `rewriteGuideTrees` exists to prevent, here through the real journey
+  // rewrite rather than a synthetic one.
   it('agrees after a structural loader rewrite lands on both trees', async () => {
     const guide = refPlusSibling();
 

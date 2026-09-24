@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import {
@@ -616,6 +616,38 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
     }
     return undefined;
   }, [contentRef, theme, activeTab?.content, activeTab?.baseUrl, activeTab?.title, model]);
+
+  // Bottom-nav buttons always render (appendBottomNavigationToContent) — real
+  // visibility is decided here, live, against the track-aware model.
+  useLayoutEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) {
+      return;
+    }
+
+    const syncBottomNavVisibility = () => {
+      const nextButton = contentElement.querySelector<HTMLElement>('.journey-nav-next');
+      const prevButton = contentElement.querySelector<HTMLElement>('.journey-nav-prev');
+      if (nextButton) {
+        nextButton.hidden = !model.canNavigateNext();
+      }
+      if (prevButton) {
+        prevButton.hidden = !model.canNavigatePrevious();
+      }
+    };
+
+    syncBottomNavVisibility();
+
+    // ContentProcessor can swap the DOM tree without activeTab.content
+    // changing (e.g. async snippet inlining) — re-sync on any such mutation.
+    // childList/subtree only, so the `hidden` writes above don't retrigger this.
+    const observer = new MutationObserver(syncBottomNavVisibility);
+    observer.observe(contentElement, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [contentRef, activeTab?.content, activeTab?.activeTrackId, activeTab?.activeTrackMilestones, model]);
 }
 
 // `_theme` is unread: the modal is still hard-coded to fixed colours.

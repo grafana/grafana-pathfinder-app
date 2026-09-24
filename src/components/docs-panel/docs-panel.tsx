@@ -140,7 +140,7 @@ import {
 // Import centralized types
 import { LearningJourneyTab, CombinedPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
-import type { RawContent } from '../../types/content.types';
+import type { Milestone, RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
 /**
@@ -723,7 +723,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   public async navigateToNextMilestone() {
     const activeTab = this.getActiveTab();
     if (activeTab && activeTab.content) {
-      const nextUrl = getNextMilestoneUrlFromContent(activeTab.content);
+      const nextUrl = getNextMilestoneUrlFromContent(
+        activeTab.content,
+        activeTab.activeTrackId,
+        activeTab.activeTrackMilestones
+      );
       if (nextUrl) {
         // Unified dispatcher: package-backed journeys need the docs
         // loader so the next milestone re-resolves the manifest.
@@ -732,7 +736,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         // is already known here, so this load classifies by direct lookup
         // too, not the URL-comparison fallback (undefined only when the
         // target is a locked placeholder with no real id).
-        this.loadTab(activeTab.id, nextUrl, { explicitGuideId: getNextMilestoneIdFromContent(activeTab.content) });
+        this.loadTab(activeTab.id, nextUrl, {
+          explicitGuideId: getNextMilestoneIdFromContent(
+            activeTab.content,
+            activeTab.activeTrackId,
+            activeTab.activeTrackMilestones
+          ),
+        });
       }
     }
   }
@@ -740,14 +750,22 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   public async navigateToPreviousMilestone() {
     const activeTab = this.getActiveTab();
     if (activeTab && activeTab.content) {
-      const prevUrl = getPreviousMilestoneUrlFromContent(activeTab.content);
+      const prevUrl = getPreviousMilestoneUrlFromContent(
+        activeTab.content,
+        activeTab.activeTrackId,
+        activeTab.activeTrackMilestones
+      );
       if (prevUrl) {
         // explicitGuideId is undefined when Previous falls back to the cover
         // page (see getPreviousMilestoneIdFromContent) — correct, since the
         // cover page has no guide id of its own and must stay on the
         // no-explicit-id default (isCoverPageLoad true).
         this.loadTab(activeTab.id, prevUrl, {
-          explicitGuideId: getPreviousMilestoneIdFromContent(activeTab.content),
+          explicitGuideId: getPreviousMilestoneIdFromContent(
+            activeTab.content,
+            activeTab.activeTrackId,
+            activeTab.activeTrackMilestones
+          ),
         });
       }
     }
@@ -757,14 +775,31 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return this.state.tabs.find((t) => t.id === this.state.activeTabId) || null;
   }
 
+  public setActiveTrackId(tabId: string, trackId: string | null, milestones?: Milestone[] | null): void {
+    this.setState({
+      tabs: this.state.tabs.map((tab) =>
+        tab.id === tabId ? { ...tab, activeTrackId: trackId, activeTrackMilestones: milestones } : tab
+      ),
+    });
+  }
+
   public canNavigateNext(): boolean {
     const activeTab = this.getActiveTab();
-    return activeTab?.content ? getNextMilestoneUrlFromContent(activeTab.content) !== null : false;
+    return activeTab?.content
+      ? getNextMilestoneUrlFromContent(activeTab.content, activeTab.activeTrackId, activeTab.activeTrackMilestones) !==
+          null
+      : false;
   }
 
   public canNavigatePrevious(): boolean {
     const activeTab = this.getActiveTab();
-    return activeTab?.content ? getPreviousMilestoneUrlFromContent(activeTab.content) !== null : false;
+    return activeTab?.content
+      ? getPreviousMilestoneUrlFromContent(
+          activeTab.content,
+          activeTab.activeTrackId,
+          activeTab.activeTrackMilestones
+        ) !== null
+      : false;
   }
 
   /**
