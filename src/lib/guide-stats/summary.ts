@@ -22,10 +22,7 @@ import { computeGuideBlockIndex, type CountableBlock, type GuideBlockIndex } fro
  *
  * NOT a content version: it says nothing about whether the guide changed.
  *
- * v2: the numerator side of the counting rule changed in #1953 (which step
- * ids credit which position, via `branchChildPositions`). Stamped summary
- * fields and denominators are unaffected and stay readable (#1970), but a
- * pre-#1953 stamp and a post-#1953 stamp must not read as the same rule.
+ * v2 distinguishes stamps before and after conditional branch-child credit.
  */
 export const GUIDE_STATS_VERSION = 2;
 
