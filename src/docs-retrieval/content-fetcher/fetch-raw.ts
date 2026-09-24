@@ -220,16 +220,12 @@ async function tryGrafanaDocsContentLadder(
   const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
   let fallback: GuideDiagnostic | undefined;
 
-  // Determine if this URL type supports content.json
-  // Learning paths and interactive learning URLs have content.json
-  // Regular docs pages only have unstyled.html
   const urlPath = new URL(finalUrl).pathname;
   const hasContentJson =
     urlPath.includes('/learning-journeys/') ||
     urlPath.includes('/learning-paths/') ||
     isInteractiveLearningUrl(finalUrl);
 
-  // Try content.json first only for URLs that support it
   if (hasContentJson && jsonUrl !== finalUrl) {
     try {
       const jsonResponse = await fetchGuideResource(
@@ -240,7 +236,6 @@ async function tryGrafanaDocsContentLadder(
       if (jsonResponse.ok) {
         const jsonContent = await jsonResponse.text();
         if (jsonContent && jsonContent.trim()) {
-          // Check if server returned null as a signal to try unstyled.html
           if (jsonContent.trim() !== 'null') {
             return {
               html: jsonContent,
@@ -265,7 +260,6 @@ async function tryGrafanaDocsContentLadder(
     }
   }
 
-  // Fetch unstyled.html (fallback for learning journeys, primary for regular docs)
   if (htmlUrl !== finalUrl) {
     try {
       const htmlResponse = await fetchGuideResource(
@@ -283,6 +277,24 @@ async function tryGrafanaDocsContentLadder(
             fallback,
           };
         }
+      }
+      if (htmlResponse.status === 404 && fallback && fallback.statusCode !== 404 && fallback.reason !== 'json-null') {
+        return {
+          html: null,
+          error: {
+            diagnostic: fallback,
+            message: 'Cannot load Grafana content. Please try again later.',
+            errorType:
+              fallback.reason === 'timeout'
+                ? 'timeout'
+                : fallback.reason === 'network-error'
+                  ? 'network'
+                  : fallback.statusCode !== undefined && fallback.statusCode >= 500
+                    ? 'server-error'
+                    : 'other',
+            statusCode: fallback.statusCode,
+          },
+        };
       }
       return {
         html: null,

@@ -313,3 +313,31 @@ describe('CDN fallback failure attribution', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('Grafana docs fallback failure attribution', () => {
+  const url = 'https://grafana.com/docs/learning-journeys/test/';
+
+  it.each(['server-error', 'timeout', 'not-found'] as const)('preserves %s across an HTML 404', async (kind) => {
+    const fetchMock = global.fetch as jest.Mock;
+    fetchMock.mockResolvedValueOnce(htmlResponse('<html>landing page</html>', url));
+    if (kind === 'timeout') {
+      fetchMock.mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'));
+    } else {
+      fetchMock.mockResolvedValueOnce({ ok: false, status: kind === 'server-error' ? 503 : 404 });
+    }
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 404 });
+    const result = await fetchRawHtml(url, {});
+    expect(result.error?.errorType).toBe(kind);
+    expect(result.error?.diagnostic).toEqual(
+      expect.objectContaining(
+        kind === 'timeout'
+          ? { reason: 'timeout' }
+          : { reason: 'http-error', statusCode: kind === 'server-error' ? 503 : 404 }
+      )
+    );
+    expect(generateUserFriendlyError(result.error, url)).toBe(
+      generateUserFriendlyError({ message: '', errorType: kind }, url)
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
