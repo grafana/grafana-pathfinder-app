@@ -249,7 +249,10 @@ describe('generateJourneyContentWithExtras — locked-milestone handling', () =>
     expect(lockedHtml).toContain('Next →');
     expect(lockedHtml).toContain('← Previous');
 
-    const unlockedHtml = generateJourneyContentWithExtras('', ljMetadata(1, [milestone(1), milestone(2), milestone(3)]));
+    const unlockedHtml = generateJourneyContentWithExtras(
+      '',
+      ljMetadata(1, [milestone(1), milestone(2), milestone(3)])
+    );
     expect(unlockedHtml).toContain('Next →');
   });
 

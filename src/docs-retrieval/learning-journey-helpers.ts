@@ -492,7 +492,11 @@ export function generateJourneyContentWithExtras(
   // Duplicates the React cover-page hero's Resume/Start CTA and the
   // toolbar's Next arrow — skip it on the cover page.
   if (metadata.currentMilestone !== 0) {
-    enhancedContent = appendBottomNavigationToContent(enhancedContent, metadata.currentMilestone, metadata.totalMilestones);
+    enhancedContent = appendBottomNavigationToContent(
+      enhancedContent,
+      metadata.currentMilestone,
+      metadata.totalMilestones
+    );
   }
 
   return enhancedContent;

@@ -450,7 +450,7 @@ describe('LearningPathTableOfContents', () => {
       expect(onActiveTrackChange).toHaveBeenLastCalledWith('builder', builderMilestones);
     });
 
-    it('falls back to Foundations when initialActiveTrackId names no real track (a different path\'s leftover selection)', () => {
+    it("falls back to Foundations when initialActiveTrackId names no real track (a different path's leftover selection)", () => {
       setCompletedSlugs(new Set());
       render(
         <LearningPathTableOfContents
