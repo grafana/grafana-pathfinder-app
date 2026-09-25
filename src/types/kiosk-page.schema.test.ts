@@ -73,3 +73,20 @@ it('rejects unsupported command languages', () => {
     }).success
   ).toBe(false);
 });
+
+it.each(['standard', 'banner'])('accepts the %s hero variant', (variant) => {
+  expect(
+    KioskCatalogSchema.safeParse({
+      ...demo,
+      page: { version: 1, blocks: [{ type: 'hero', title: 'Grafana Cloud', variant }] },
+    }).success
+  ).toBe(true);
+});
+it('rejects arbitrary hero styling', () => {
+  expect(
+    KioskCatalogSchema.safeParse({
+      ...demo,
+      page: { version: 1, blocks: [{ type: 'hero', title: 'Grafana Cloud', variant: 'custom', color: 'red' }] },
+    }).success
+  ).toBe(false);
+});

@@ -1,9 +1,10 @@
+import { resolveKioskCommand } from '../../lib/kiosk-command';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-bash';
 import { KioskLaunchError } from '../../lib/kiosk-launch-error';
 import { logger } from '../../lib/logging';
 import React, { useEffect, useId, useRef, useState, useMemo } from 'react';
-import { Button, Field, Input, Combobox, useStyles2 } from '@grafana/ui';
+import { Button, Field, Input, Combobox, Icon, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
 import type { KioskPage as Page, KioskPageBlock, KioskMode } from '../../types/kiosk-page.schema';
@@ -38,6 +39,17 @@ const getStyles = (theme: GrafanaTheme2) => ({
       margin: 'auto',
     },
   }),
+  heroBanner: css({
+    padding: theme.spacing(4),
+    background: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    '& h1': { fontSize: 'clamp(1.75rem, 3vw, 2.5rem)', margin: theme.spacing(2, 0) },
+    '& p': { maxWidth: 680, fontSize: theme.typography.body.fontSize },
+    [theme.breakpoints.down('sm')]: { padding: theme.spacing(3, 2) },
+  }),
+  heroBrand: css({ display: 'inline-flex', alignItems: 'center', gap: theme.spacing(1.5) }),
+  bannerEyebrow: css({ color: theme.colors.text.secondary, fontWeight: theme.typography.fontWeightMedium }),
   eyebrow: css({ color: theme.colors.primary.text, fontWeight: theme.typography.fontWeightMedium }),
   secondary: css({ color: theme.colors.text.secondary }),
   form: css({ maxWidth: 850, width: '100%', margin: '0 auto' }),
@@ -133,9 +145,13 @@ function Command({
 }) {
   const styles = useStyles2(getStyles);
   const [status, setStatus] = useState('');
+  const resolvedCommand = resolveKioskCommand(command, window.location.origin);
   const highlighted = useMemo(
-    () => (language === 'bash' ? renderCommandTokens(Prism.tokenize(command, Prism.languages.bash)) : command),
-    [command, language]
+    () =>
+      language === 'bash'
+        ? renderCommandTokens(Prism.tokenize(resolvedCommand, Prism.languages.bash))
+        : resolvedCommand,
+    [resolvedCommand, language]
   );
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(resetTimer.current), []);
@@ -152,7 +168,7 @@ function Command({
           onClick={async () => {
             clearTimeout(resetTimer.current);
             try {
-              await navigator.clipboard.writeText(command);
+              await navigator.clipboard.writeText(resolvedCommand);
               setStatus('Copied');
               resetTimer.current = setTimeout(() => setStatus(''), 2000);
               reportKioskInteraction(mode, blockIndex, { component: 'command', action: 'copy', outcome: 'success' });
@@ -329,8 +345,18 @@ export function KioskPage({ page, rules, mode, onLaunch }: Props) {
         switch (block.type) {
           case 'hero':
             return (
-              <section key={index} className={`${styles.hero} ${block.alignment === 'start' ? '' : styles.center}`}>
-                {block.eyebrow && <span className={styles.eyebrow}>{block.eyebrow}</span>}
+              <section
+                key={index}
+                className={`${styles.hero} ${block.variant === 'banner' ? styles.heroBanner : ''} ${block.alignment === 'start' ? '' : styles.center}`}
+              >
+                <div className={styles.heroBrand}>
+                  {block.variant === 'banner' && <Icon name="grafana" size="xxl" aria-label="Grafana" />}
+                  {block.eyebrow && (
+                    <span className={block.variant === 'banner' ? styles.bannerEyebrow : styles.eyebrow}>
+                      {block.eyebrow}
+                    </span>
+                  )}
+                </div>
                 <h1>{block.title}</h1>
                 {block.description && <p>{block.description}</p>}
               </section>

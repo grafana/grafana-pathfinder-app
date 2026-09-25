@@ -73,6 +73,10 @@
               "type": "string",
               "const": "hero"
             },
+            "variant": {
+              "type": "string",
+              "enum": ["standard", "banner"]
+            },
             "eyebrow": {
               "$ref": "#/$defs/__schema8"
             },
