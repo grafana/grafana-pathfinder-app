@@ -143,6 +143,10 @@
             },
             "command": {
               "$ref": "#/$defs/__schema8"
+            },
+            "language": {
+              "type": "string",
+              "enum": ["bash", "text"]
             }
           },
           "required": ["type", "command"],

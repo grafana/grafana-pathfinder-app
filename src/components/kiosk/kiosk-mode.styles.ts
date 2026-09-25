@@ -21,7 +21,13 @@ export const getKioskOverlayStyles = (theme: GrafanaTheme2) => ({
     [theme.breakpoints.down('sm')]: { padding: theme.spacing(0, 2, 3) },
   }),
   standardWidth: css({ maxWidth: 960 }),
-  minimalHeader: css({ justifyContent: 'flex-end', borderBottom: 'none', position: 'static' }),
+  brand: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: theme.spacing(2, 0),
+    opacity: 0.7,
+  }),
   header: css({
     position: 'sticky',
     top: 0,
@@ -35,7 +41,8 @@ export const getKioskOverlayStyles = (theme: GrafanaTheme2) => ({
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     [theme.breakpoints.down('sm')]: { alignItems: 'flex-start', padding: theme.spacing(2, 0) },
   }),
-  titleGroup: css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(1) }),
+  minimalHeader: css({ justifyContent: 'flex-end', borderBottom: 'none', position: 'static' }),
+  titleGroup: css({ flex: 1, display: 'flex', flexDirection: 'column', gap: theme.spacing(1) }),
   title: css({
     display: 'flex',
     alignItems: 'center',

@@ -51,3 +51,11 @@ it('does not misrepresent local progress as progress on another instance', () =>
   expect(screen.queryByText(/% complete/)).not.toBeInTheDocument();
   expect(interactiveCompletionStorage.get).not.toHaveBeenCalled();
 });
+
+it('reads the sanitized interactive completion key', async () => {
+  const url = `https://example.com/${'a'.repeat(220)}..`;
+  jest.mocked(interactiveCompletionStorage.get).mockResolvedValue(100);
+  render(<KioskTile rule={{ ...rule, url }} index={0} mode="instance" />);
+  await screen.findByText('100% complete');
+  expect(interactiveCompletionStorage.get).toHaveBeenCalledWith(url.replace(/\.\./g, '').slice(0, 200));
+});

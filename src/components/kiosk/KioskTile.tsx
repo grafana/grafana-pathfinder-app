@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'r
 import { Icon, useStyles2 } from '@grafana/ui';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../global-state/progress-events';
 import { interactiveCompletionStorage, journeyCompletionStorage } from '../../lib/user-storage';
+import { sanitizeContentKey } from '../../global-state/content-key';
 import { testIds } from '../../constants/testIds';
 import { getKioskOverlayStyles } from './kiosk-mode.styles';
 import type { KioskRule } from './kiosk-rules';
@@ -30,7 +31,7 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
     }
     let cancelled = false;
     const storage = rule.type === 'learning-journey' ? journeyCompletionStorage : interactiveCompletionStorage;
-    void storage.get(rule.url).then((value) => {
+    void storage.get(rule.type === 'learning-journey' ? rule.url : sanitizeContentKey(rule.url)).then((value) => {
       if (!cancelled) {
         const percentage = Number.isFinite(value) ? Math.max(0, Math.min(100, Math.floor(value))) : 0;
         setProgress({ url: rule.url, type: rule.type, percentage });

@@ -219,3 +219,28 @@ it('launches without inputs silently while logging bounded diagnostics', async (
   expect(report).toHaveBeenLastCalledWith('kiosk_interaction', expect.objectContaining({ action: 'fallback' }));
   expect(JSON.stringify(jest.mocked(logger.warn).mock.calls)).not.toMatch(/private/i);
 });
+
+it('highlights Bash as inert code and supports plain text', () => {
+  const command = 'echo "<img src=x onerror=alert(1)>"';
+  const { rerender } = render(
+    <KioskPage
+      page={{ version: 1, blocks: [{ type: 'command', command, language: 'bash' }] }}
+      rules={rules}
+      mode="presentation"
+      onLaunch={jest.fn()}
+    />
+  );
+  expect(document.querySelector('code')?.textContent).toBe(command);
+  expect(document.querySelector('code .token')).not.toBeNull();
+  expect(document.querySelector('code img')).toBeNull();
+  rerender(
+    <KioskPage
+      page={{ version: 1, blocks: [{ type: 'command', command: 'plain text', language: 'text' }] }}
+      rules={rules}
+      mode="presentation"
+      onLaunch={jest.fn()}
+    />
+  );
+  expect(document.querySelector('code')?.textContent).toBe('plain text');
+  expect(document.querySelector('code .token')).toBeNull();
+});

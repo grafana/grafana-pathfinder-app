@@ -148,7 +148,12 @@ test('copy action reports success and failure without running the command', asyn
     })
   );
   await page.goto(`/?pathfinderKiosk=1&kioskRulesUrl=${encodeURIComponent(catalogUrl)}`);
-  await page.getByRole('button', { name: 'Copy', exact: true }).click();
+  const copy = page.getByRole('button', { name: 'Copy', exact: true });
+  const before = await copy.boundingBox();
+  expect(before!.height).toBeGreaterThanOrEqual(44);
+  await copy.click();
+  await expect(copy).toHaveText('Copied');
+  expect(await copy.boundingBox()).toEqual(before);
   await expect(page.getByTestId(testIds.kioskMode.overlay).getByRole('status')).toContainText('Copied');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('echo kiosk-demo');
   await page.evaluate(() => {

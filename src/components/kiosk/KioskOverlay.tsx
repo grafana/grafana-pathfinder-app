@@ -124,13 +124,17 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
       if (popupId && document.getElementById(popupId)?.contains(target)) {
         return;
       }
-      (lastFocus?.isConnected && !lastFocus.matches(':disabled') ? lastFocus : exitRef.current)?.focus();
+      (lastFocus?.isConnected && !lastFocus.matches(':disabled') ? lastFocus : overlayRef.current)?.focus();
     };
     const handleFocusIn = (event: FocusEvent) => retainFocus(event.target);
     const handleFocusOut = () => {
       clearTimeout(restoreTimer);
       // Blur can leave focus on body without emitting a matching focusin event.
-      restoreTimer = setTimeout(() => retainFocus(document.activeElement), 0);
+      restoreTimer = setTimeout(() => {
+        if (document.hasFocus()) {
+          retainFocus(document.activeElement);
+        }
+      }, 0);
     };
     document.addEventListener('focusin', handleFocusIn);
     document.addEventListener('focusout', handleFocusOut);
@@ -154,6 +158,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
       onKeyDown={handleKeyDown}
       className={styles.backdrop}
       data-testid={testIds.kioskMode.overlay}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label="Kiosk mode"
@@ -236,6 +241,9 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
             ))}
           </div>
         )}
+        <div className={styles.brand} role="img" aria-label="Grafana">
+          <Icon name="grafana" size="xl" aria-hidden="true" />
+        </div>
       </div>
     </div>,
     document.body
