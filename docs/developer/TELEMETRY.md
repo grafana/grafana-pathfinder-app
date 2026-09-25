@@ -167,6 +167,8 @@ Structured kiosk controls emit `kiosk_interaction`, mirrored to Faro through the
 
 Explicit exits emit the same event with `component=kiosk`, `action=exit`, and `method=button` or `escape`. Launching a guide is not counted as an exit, and dismissing a child dropdown is not counted either.
 
-All carry `launch_mode`; page controls also carry zero-based `block_index`. `ready` means destination validation and input persistence succeeded; it does not assert that the guide rendered. Existing `KioskDemoStarted` and guide-render telemetry cover the subsequent launch. Alternative cards and links use that same launch event. Input engagement is measured on the first change, not focus or each keystroke. Unmounted/aborted forms do not emit a terminal outcome.
+All carry `launch_mode`; page controls also carry zero-based `block_index`. `fallback` means the guide opened without transferring inputs because its declarations or variable usage were incompatible. This is silent for visitors. `ready` means destination validation and input persistence succeeded; it does not assert that the guide rendered. Existing `KioskDemoStarted` and guide-render telemetry cover the subsequent launch. Alternative cards and links use that same launch event. Input engagement is measured on the first change, not focus or each keystroke. Unmounted/aborted forms do not emit a terminal outcome.
 
 These events deliberately omit values, selected data source names, variable names, prompts, command text, catalog URLs, and raw exceptions. They use the existing consent gates and analytics-to-Faro bridge; they do not introduce another telemetry client.
+
+Kiosk input launch failures log a bounded stage and reason through the shared logger (console and Faro), for example `destination/input-format-mismatch`. Diagnostics exclude submitted values, guide URLs, authored text, and raw exceptions. Ordinary input validation errors are not operational error logs.

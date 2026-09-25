@@ -1,3 +1,4 @@
+import { KioskLaunchError } from '../../lib/kiosk-launch-error';
 import { KioskFormError } from '../../lib/input-value';
 import type { KioskInput, KioskMode } from '../../types/kiosk-page.schema';
 import type { KioskRule } from './kiosk-rules';
@@ -22,7 +23,11 @@ export async function prepareKioskInputs(
     (rule.targetUrl && new URL(rule.targetUrl).origin !== window.location.origin) ||
     (rule.page !== undefined && validateInternalNavigationPath(rule.page) === null)
   ) {
-    throw new Error('Input forms require a standalone guide in this Grafana instance');
+    throw new KioskLaunchError(
+      'destination',
+      'unsupported-destination',
+      'Input forms require a standalone guide in this Grafana instance'
+    );
   }
   const values = validateKioskValues(inputs, draft);
   for (const input of inputs) {
@@ -41,7 +46,7 @@ export async function prepareKioskInputs(
   });
   signal.throwIfAborted();
   if (!result.ok) {
-    throw new Error('The guide could not be validated. Try again');
+    throw new KioskLaunchError('prepare', result.errorCode, 'The guide could not be validated. Try again');
   }
   const { launch } = result;
   if (
@@ -49,9 +54,17 @@ export async function prepareKioskInputs(
     launch.packageInfo?.packageManifest?.type === 'path' ||
     launch.preparedContent.metadata.learningJourney
   ) {
-    throw new Error('Input forms require a standalone guide');
+    throw new KioskLaunchError('destination', 'unsupported-destination', 'Input forms require a standalone guide');
   }
-  validateKioskDestination(JSON.parse(launch.preparedContent.content), inputs);
+  try {
+    validateKioskDestination(JSON.parse(launch.preparedContent.content), inputs);
+  } catch (error) {
+    if (!(error instanceof KioskLaunchError)) {
+      throw error;
+    }
+    signal.throwIfAborted();
+    return { launch, inputTransfer: 'skipped' as const, reason: error.reason };
+  }
   signal.throwIfAborted();
   try {
     await guideResponseStorage.mergeResponses(
@@ -62,5 +75,5 @@ export async function prepareKioskInputs(
     throw new KioskFormError('Could not save inputs. Try again', 'storage');
   }
   signal.throwIfAborted();
-  return launch;
+  return { launch, inputTransfer: 'saved' as const };
 }

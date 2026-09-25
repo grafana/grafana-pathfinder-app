@@ -1,3 +1,4 @@
+import { KioskLaunchError } from '../lib/kiosk-launch-error';
 import { normalizeJsonGuideAliases } from '../validation/normalize-guide-aliases';
 import type { JsonGuide } from '../types/json-guide.types';
 import type { KioskInput } from '../types/kiosk-page.schema';
@@ -19,12 +20,16 @@ function validateDisplay(content: string, names: Set<string>): void {
   function inspect(element: ParsedElement | string, inCode = false): void {
     if (typeof element === 'string') {
       if (inCode && containsMarker(element)) {
-        throw new Error('Inputs cannot be used in code');
+        throw new KioskLaunchError('destination', 'unsafe-code', 'Inputs cannot be used in code');
       }
       return;
     }
     if (containsMarker(element.props)) {
-      throw new Error('Inputs cannot be used in HTML attributes or links');
+      throw new KioskLaunchError(
+        'destination',
+        'unsafe-attribute',
+        'Inputs cannot be used in HTML attributes or links'
+      );
     }
     element.children.forEach((child) => inspect(child, inCode || element.type === 'code' || element.type === 'pre'));
   }
@@ -48,7 +53,11 @@ export function validateKioskDestination(guide: JsonGuide, inputs: KioskInput[])
         (['title', 'prompt', 'description'].includes(field ?? '') && parent?.type !== 'html');
       const formfill = field === 'targetvalue' && parent?.action === 'formfill';
       if (!display && !formfill) {
-        throw new Error('Guide inputs may only be used in displayed text and form-fill values');
+        throw new KioskLaunchError(
+          'destination',
+          'unsafe-variable-sink',
+          'Guide inputs may only be used in displayed text and form-fill values'
+        );
       }
       if (display) {
         validateDisplay(value, names);
@@ -64,14 +73,22 @@ export function validateKioskDestination(guide: JsonGuide, inputs: KioskInput[])
     }
     const object = value as Record<string, unknown>;
     if (object.type === 'snippet-ref') {
-      throw new Error('All snippets must resolve before transferring inputs');
+      throw new KioskLaunchError(
+        'destination',
+        'unresolved-snippet',
+        'All snippets must resolve before transferring inputs'
+      );
     }
     if (object.type === 'input' && typeof object.variableName === 'string' && names.has(object.variableName)) {
       declarations.set(object.variableName, [...(declarations.get(object.variableName) ?? []), object]);
     }
     for (const [key, child] of Object.entries(object)) {
       if (hasVariable(key)) {
-        throw new Error('Input variables cannot be used as field names');
+        throw new KioskLaunchError(
+          'destination',
+          'variable-field-name',
+          'Input variables cannot be used as field names'
+        );
       }
       walk(child, object, key);
     }
@@ -80,22 +97,34 @@ export function validateKioskDestination(guide: JsonGuide, inputs: KioskInput[])
   for (const input of inputs) {
     const matches = declarations.get(input.variableName) ?? [];
     const destination = matches[0];
+    if (matches.length === 1 && destination && destination.format !== input.format) {
+      throw new KioskLaunchError(
+        'destination',
+        'input-format-mismatch',
+        'The guide input format must match the kiosk input format'
+      );
+    }
     if (
       matches.length !== 1 ||
       !destination ||
       destination.inputType !== input.inputType ||
-      destination.format !== input.format ||
       destination.datasourceFilter !== input.datasourceFilter ||
       (destination.required === true && input.required !== true)
     ) {
-      throw new Error('Each kiosk input must match one compatible input in the guide');
+      throw new KioskLaunchError(
+        'destination',
+        'incompatible-input',
+        'Each kiosk input must match one compatible input in the guide'
+      );
     }
     if (
       destination.pattern !== undefined ||
       destination.dataCheckQuery !== undefined ||
       destination.dataCheckBlocking
     ) {
-      throw new Error(
+      throw new KioskLaunchError(
+        'destination',
+        'unsupported-validation',
         'Kiosk handoff does not support regex validation or data checks; collect this input in the guide'
       );
     }

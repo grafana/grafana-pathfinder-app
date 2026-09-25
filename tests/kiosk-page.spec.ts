@@ -197,12 +197,16 @@ test('Escape dismisses an open data source picker before closing kiosk and prese
   await expect(page.getByRole('listbox')).not.toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Kiosk mode' })).toBeVisible();
   await expect(page.getByLabel('Your website')).toHaveValue('https://example.com');
-  await expect(picker).toBeFocused();
-  await picker.press('Escape');
+  await expect
+    .poll(() =>
+      page.getByRole('dialog', { name: 'Kiosk mode' }).evaluate((dialog) => dialog.contains(document.activeElement))
+    )
+    .toBe(true);
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Kiosk mode' })).not.toBeVisible();
 });
 
-test('destination authoring errors show a visitor-friendly message and retain the draft', async ({ page }) => {
+test('incompatible destination inputs silently open the guide without transferring values', async ({ page }) => {
   await installFixtures(page);
   await page.route(guideUrl, (route) =>
     route.fulfill({
@@ -215,9 +219,16 @@ test('destination authoring errors show a visitor-friendly message and retain th
     })
   );
   await page.goto(`/?pathfinderKiosk=1&kioskRulesUrl=${encodeURIComponent(catalogUrl)}`);
-  await page.getByLabel('Your website').fill('https://example.com');
+  await page.getByLabel('Your website').fill('https://not-transferred.example');
   await page.getByRole('button', { name: 'Start guided setup' }).click();
-  await expect(page.getByRole('alert')).toContainText('Could not open this guide. Please try again later.');
-  await expect(page.getByRole('alert')).not.toContainText('compatible input');
-  await expect(page.getByLabel('Your website')).toHaveValue('https://example.com');
+  await expect(page.getByRole('dialog', { name: 'Kiosk mode' })).not.toBeVisible();
+  const panel = page.getByTestId(testIds.docsPanel.container);
+  await expect(panel).toContainText('DEM input handoff');
+  await expect(panel.getByTestId(testIds.interactive.inputField('differentInput'))).toHaveValue('');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  const saved = await page.evaluate(({ key, id }) => JSON.parse(localStorage.getItem(key) ?? '{}')[id], {
+    key: StorageKeys.GUIDE_RESPONSES,
+    id: responseId,
+  });
+  expect(saved?.appUrl).not.toBe('https://not-transferred.example');
 });

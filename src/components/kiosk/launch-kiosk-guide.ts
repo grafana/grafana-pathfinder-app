@@ -46,10 +46,6 @@ export function launchKioskGuide(
       url.searchParams.set('orgId', orgId);
     }
     stripPathfinderParams(url);
-    if (page) {
-      // The destination query and fragment are already on the URL; prevent a second redirect.
-      url.searchParams.set('page', url.pathname);
-    }
   }
   const sessionId = crypto.randomUUID();
 

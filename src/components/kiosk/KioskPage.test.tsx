@@ -3,9 +3,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { KioskPage } from './KioskPage';
 import { prepareKioskInputs } from './prepare-kiosk-inputs';
 import { launchKioskGuide } from './launch-kiosk-guide';
+import { logger } from '../../lib/logging';
+import { KioskLaunchError } from '../../lib/kiosk-launch-error';
 import { KioskFormError } from '../../lib/input-value';
 import { reportAppInteraction } from '../../lib/analytics';
 import type { KioskPage as Page } from '../../types/kiosk-page.schema';
+
+jest.mock('../../lib/logging', () => ({ logger: { error: jest.fn(), warn: jest.fn() } }));
 
 jest.mock('./prepare-kiosk-inputs', () => ({ prepareKioskInputs: jest.fn() }));
 jest.mock('./launch-kiosk-guide', () => ({ launchKioskGuide: jest.fn() }));
@@ -169,4 +173,49 @@ it('reports native required validation without submitting or recording content',
     input_index: 0,
   });
   expect(prepare).not.toHaveBeenCalled();
+});
+
+it.each([
+  [
+    new KioskLaunchError('destination', 'input-format-mismatch', 'Private authoring details'),
+    'destination',
+    'input-format-mismatch',
+  ],
+  [new KioskLaunchError('prepare', 'fetch-failed', 'https://private.example'), 'prepare', 'fetch-failed'],
+  [new KioskFormError('Private storage details', 'storage'), 'storage', 'write-failed'],
+  [new Error('https://private.example'), 'launch', 'unexpected-error'],
+])('logs bounded launch diagnostics without values or raw exceptions', async (error, stage, reason) => {
+  prepare.mockRejectedValue(error);
+  render(<KioskPage page={page} rules={rules} mode="instance" onLaunch={jest.fn()} />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'https://private.example' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Launch' }));
+  await screen.findByRole('alert');
+  expect(logger.error).toHaveBeenLastCalledWith(`Kiosk guide launch failed: ${stage}/${reason}`, {
+    stage,
+    reason,
+    launch_mode: 'instance',
+  });
+  expect(JSON.stringify(jest.mocked(logger.error).mock.calls)).not.toMatch(/private/i);
+});
+
+it('does not log ordinary invalid input as an operational failure', async () => {
+  prepare.mockRejectedValue(new KioskFormError('Enter a valid origin'));
+  render(<KioskPage page={page} rules={rules} mode="instance" onLaunch={jest.fn()} />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'invalid' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Launch' }));
+  await screen.findByRole('alert');
+  expect(logger.error).not.toHaveBeenCalled();
+});
+
+it('launches without inputs silently while logging bounded diagnostics', async () => {
+  const launch = {} as Awaited<ReturnType<typeof prepareKioskInputs>>['launch'];
+  prepare.mockResolvedValue({ launch, inputTransfer: 'skipped', reason: 'input-format-mismatch' });
+  render(<KioskPage page={page} rules={rules} mode="instance" onLaunch={jest.fn()} />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'https://private.example' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Launch' }));
+  await waitFor(() =>
+    expect(launchKioskGuide).toHaveBeenCalledWith(rules[0], 'instance', expect.any(Function), launch)
+  );
+  expect(report).toHaveBeenLastCalledWith('kiosk_interaction', expect.objectContaining({ action: 'fallback' }));
+  expect(JSON.stringify(jest.mocked(logger.warn).mock.calls)).not.toMatch(/private/i);
 });

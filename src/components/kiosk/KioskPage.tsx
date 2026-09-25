@@ -1,3 +1,5 @@
+import { KioskLaunchError } from '../../lib/kiosk-launch-error';
+import { logger } from '../../lib/logging';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { Button, Field, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
@@ -139,11 +141,35 @@ function LaunchForm({
         try {
           const prepared = await prepareKioskInputs(rule, mode, block.inputs, draft, controller.signal);
           if (!controller.signal.aborted) {
-            reportKioskInteraction(mode, blockIndex, { component: 'launch-form', action: 'ready' });
-            launchKioskGuide(rule, mode, onLaunch, prepared);
+            if (prepared.inputTransfer === 'skipped') {
+              logger.warn(`Kiosk input transfer skipped: destination/${prepared.reason}`, {
+                stage: 'destination',
+                reason: prepared.reason,
+                launch_mode: mode,
+              });
+              reportKioskInteraction(mode, blockIndex, { component: 'launch-form', action: 'fallback' });
+            } else {
+              reportKioskInteraction(mode, blockIndex, { component: 'launch-form', action: 'ready' });
+            }
+            launchKioskGuide(rule, mode, onLaunch, prepared.launch);
           }
         } catch (cause) {
           if (!controller.signal.aborted) {
+            if (!(cause instanceof KioskFormError) || cause.reason === 'storage') {
+              const stage =
+                cause instanceof KioskLaunchError
+                  ? cause.stage
+                  : cause instanceof KioskFormError
+                    ? 'storage'
+                    : 'launch';
+              const reason =
+                cause instanceof KioskLaunchError
+                  ? cause.reason
+                  : cause instanceof KioskFormError
+                    ? 'write-failed'
+                    : 'unexpected-error';
+              logger.error(`Kiosk guide launch failed: ${stage}/${reason}`, { stage, reason, launch_mode: mode });
+            }
             reportKioskInteraction(mode, blockIndex, {
               component: 'launch-form',
               action: 'error',

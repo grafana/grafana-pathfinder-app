@@ -57,7 +57,7 @@ beforeEach(() => {
 });
 it('validates and saves before returning the exact prepared payload', async () => {
   const prepared = await prepareKioskInputs(rule, 'instance', [input], draft, signal());
-  expect(prepared).toEqual(result().launch);
+  expect(prepared).toEqual({ launch: result().launch, inputTransfer: 'saved' });
   expect(prepareGuideLaunch).toHaveBeenCalledWith(rule.url, expect.objectContaining({ requireResolvedSnippets: true }));
   expect(guideResponseStorage.mergeResponses).toHaveBeenCalledWith('packages-demo-content.json', {
     appUrl: 'https://example.com',
@@ -87,7 +87,7 @@ it('does not return a launch when persistence fails or expose storage error deta
 it('rejects inputs not in the destination and unavailable data sources', async () => {
   await expect(
     prepareKioskInputs(rule, 'instance', [{ ...input, variableName: 'unknown' }], { unknown: draft.appUrl }, signal())
-  ).rejects.toThrow('compatible');
+  ).resolves.toMatchObject({ inputTransfer: 'skipped', reason: 'incompatible-input' });
   await expect(
     prepareKioskInputs(
       rule,
@@ -98,5 +98,20 @@ it('rejects inputs not in the destination and unavailable data sources', async (
     )
   ).rejects.toThrow('data source');
   expect(filterDatasourcesByType).toHaveBeenCalled();
+  expect(guideResponseStorage.mergeResponses).not.toHaveBeenCalled();
+});
+
+it.each([
+  [{ type: 'input', ...input, format: undefined }, 'input-format-mismatch'],
+  [{ type: 'code-block', code: '{{appUrl}}' }, 'unsafe-variable-sink'],
+])('opens a validated guide without transferring incompatible or unsafe inputs', async (block, reason) => {
+  const response = result();
+  response.launch.preparedContent.content = JSON.stringify({ id: 'demo', title: 'Demo', blocks: [block] });
+  jest.mocked(prepareGuideLaunch).mockResolvedValue(response as Awaited<ReturnType<typeof prepareGuideLaunch>>);
+  expect(await prepareKioskInputs(rule, 'instance', [input], draft, signal())).toEqual({
+    launch: response.launch,
+    inputTransfer: 'skipped',
+    reason,
+  });
   expect(guideResponseStorage.mergeResponses).not.toHaveBeenCalled();
 });

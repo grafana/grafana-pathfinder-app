@@ -66,17 +66,17 @@ The destination guide must declare exactly one compatible input for each transfe
 
 Use `{{appUrl}}` in displayed text and `targetvalue` of a `formfill` step. Gate dependent sections with `"requirements": ["var-appUrl:*"]`. The guide input remains available for direct entry and editing.
 
-Origins require explicit `http://` or `https://`, permit a port and trailing slash, and normalize to scheme plus host plus port. Credentials, paths, queries, fragments, whitespace, and control characters are rejected. No website request or scan is performed. Inputs with regex validation or data checks must remain inside the guide; kiosk handoff rejects them.
+Origins require explicit `http://` or `https://`, permit a port and trailing slash, and normalize to scheme plus host plus port. Credentials, paths, queries, fragments, whitespace, and control characters are rejected. No website request or scan is performed. Inputs with regex validation or data checks must remain inside the guide; kiosk handoff skips transferring values to them.
 
 ## Persistence and security
 
 Forms launch only standalone guides in the same Grafana instance and tab (`?pathfinderKiosk=1`). Presentation-mode forms are disabled. Alternative guide links remain usable without completing the form. Other-instance and learning-path input transfer are unsupported.
 
-Drafts stay in memory. Submission fetches and validates the guide through the trusted loader, resolves snippets, and checks every transferred variable's uses before persisting. Commands, selectors, navigation URLs, HTML attributes, and executable contexts cannot receive these inputs. Display fields pass through the existing Markdown parser and DOMPurify pipeline; transferred variables must resolve to text nodes, not attributes, link targets, or code. The exact validated guide payload is handed to the sidebar without fetching it again.
+Drafts stay in memory. Submission fetches and validates the guide through the trusted loader, resolves snippets, and checks every transferred variable's uses before persisting. Commands, selectors, navigation URLs, HTML attributes, and executable contexts cannot receive these inputs. Display fields pass through the existing Markdown parser and DOMPurify pipeline; transferred variables must resolve to text nodes, not attributes, link targets, or code. If the destination declarations or variable uses are incompatible, the guide opens normally without transferring any submitted inputs or showing a visitor warning. A bounded diagnostic and fallback event identify the issue for authors. Fetch and schema failures still block launch. The exact validated guide payload is handed to the sidebar without fetching it again.
 
 Inputs are configuration, not secrets. Successful submissions persist in the existing per-user, per-guide response store, with its existing Grafana user-storage synchronization and local fallback. Submitted keys replace previous values; other keys and other guides are preserved. Empty optional fields are omitted and leave earlier saved values unchanged. Values are not placed in launch URLs, logs, or analytics. Storage failure keeps the form open with a retry message.
 
-The current InteractiveGuide App Platform CRD does not declare `format`; origin-validated guides should be served as JSON packages until that backend schema is extended. The upload script warns about this field, and kiosk handoff rejects a destination whose format was removed.
+The current InteractiveGuide App Platform CRD does not declare `format`; origin-validated guides should be served as JSON packages until that backend schema is extended. The upload script warns about this field, and kiosk handoff skips transferring inputs when the destination format was removed.
 
 Publish the plugin renderer before migrating catalogs. Older plugin versions cannot render structured pages. The DEM files in interactive-tutorials are a coordinated content update, not a deployment performed by this source change.
 

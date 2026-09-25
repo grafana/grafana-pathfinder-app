@@ -184,7 +184,7 @@ describe('KioskTile', () => {
     expect(url.searchParams.get('left')).toBe('test');
     expect(url.searchParams.get('orgId')).toBe('2');
     expect(url.searchParams.get('doc')).toBe(rule.url);
-    expect(url.searchParams.get('page')).toBe('/explore');
+    expect(url.searchParams.has('page')).toBe(false);
     expect(url.searchParams.has('panelMode')).toBe(false);
     expect(panelModeManager.getMode()).toBe('sidebar');
     expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');

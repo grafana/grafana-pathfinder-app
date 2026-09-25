@@ -3,7 +3,7 @@ import { reportAppInteraction, UserInteraction } from './analytics';
 type KioskInteraction =
   | { component: 'kiosk'; action: 'exit'; method: 'button' | 'escape' }
   | { component: 'input'; action: 'change' | 'invalid'; inputType: 'text' | 'datasource'; inputIndex: number }
-  | { component: 'launch-form'; action: 'submit' | 'ready' }
+  | { component: 'launch-form'; action: 'submit' | 'ready' | 'fallback' }
   | { component: 'launch-form'; action: 'error'; reason: 'validation' | 'storage' | 'unavailable' }
   | { component: 'command'; action: 'copy'; outcome: 'success' | 'error' };
 

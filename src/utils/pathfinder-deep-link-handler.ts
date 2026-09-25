@@ -136,7 +136,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       const docsPage = findDocPage(ctx.docsParam);
 
       // SECURITY: page only processed when doc is also present (not a general redirector).
-      const rawRedirectTarget = ctx.pageParam || docsPage?.targetPage;
+      const rawRedirectTarget = ctx.pageParam || (kioskSessionParam ? undefined : docsPage?.targetPage);
       const redirectTarget = rawRedirectTarget ? validateRedirectPath(rawRedirectTarget) : null;
 
       if (!docsPage) {
