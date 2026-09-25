@@ -15,7 +15,8 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 ## Source map for agents
 
 - `src/cli/commands/e2e.ts` — options, input resolution, dependency planning, pre-flight orchestration, environment routing, and Playwright invocation selection.
-- `src/cli/e2e/e2e-local-package.ts` — local path/journey manifest validation, repository loading, milestone expansion, target gating, and guide hydration.
+- `src/cli/e2e/e2e-local-package.ts` — local package validation, checkout catalogs, source checks, milestone expansion, target gating, and guide hydration.
+- `src/cli/e2e/local-cloud-preflight.ts` — health, version, and plugin checks against the provisioned target for local cloud packages.
 - `src/cli/e2e/e2e-runner-contract.ts` — environment variables and the validated shared-chain file contract.
 - `src/cli/e2e/e2e-package.ts` — remote package and repository resolution, content fetch, schema validation, side-effect classification, and pre-run skip reasons.
 - `src/cli/e2e/guide-chains.ts` — pure package graph planning across hard dependencies, capabilities, and recursive milestones, followed by leaf-guide hydration.
@@ -73,6 +74,7 @@ npx pathfinder-cli e2e [options] [files...]
 | `--clean`                                  | Run against an isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`). Resets between dependency chains and tears down at the end. | `false`                           |
 | `--clean-ready-timeout-ms <ms>`            | How long to wait for the isolated Grafana to become healthy after a `--clean` reset                                                                      | `120000`                          |
 | `--package <dirOrId>`                      | Test a local or remote guide, path, or journey package. Local paths/journeys also require `--repository` so milestone IDs resolve.                       | None                              |
+| `--repository <path>`                      | Repository index file, or checkout directory for an explicit local cloud package. Directory input builds an in-memory index.                             | Bundled index                     |
 | `--tier <tier>`                            | Current environment tier (`local` or `cloud`); `cloud` guides are skipped on a `local` environment                                                       | `local`                           |
 | `--remote`                                 | Resolve and test every package from the CDN repository index                                                                                             | `false`                           |
 | `--repo-url <url>`                         | CDN base URL for `--remote`                                                                                                                              | Public package repository         |
@@ -91,7 +93,7 @@ The CLI accepts these input formats:
 1. **File paths**: `npx pathfinder-cli e2e ./my-guide.json ./another.json`
 2. **Bundled flag**: `npx pathfinder-cli e2e --bundled` (tests all guides in `src/bundled-interactives/`)
 3. **Bundled by name**: `npx pathfinder-cli e2e bundled:welcome-to-grafana`
-4. **Local package directory**: `npx pathfinder-cli e2e --package ./my-package/` (reads `content.json` + `manifest.json`; add `--repository <path>` for a path or journey)
+4. **Local package directory**: `node dist/cli/cli/index.js e2e --package ./my-package/` (reads `content.json` + `manifest.json`; use `--repository <index-file>` for a local-target path or journey, or `--repository <checkout-directory>` for an explicit cloud-tier package)
 5. **Remote package ID**: `npx pathfinder-cli e2e --package alerting-101` (guides, paths, and journeys resolve via the recommender; see [Remote package-aware testing](#remote-package-aware-testing))
 6. **Remote repository**: `npx pathfinder-cli e2e --remote` (every package in the CDN index)
 
@@ -306,6 +308,8 @@ A no-op or objective-based step can complete, or its element can detach, between
 
 Overall success requires zero mandatory failures and either at least one verified pass or zero failed steps. A run where every step is skipped cleanly succeeds; a run with no verified pass and any failed skippable step fails.
 
+Local-source cloud runs add a stricter report check: without a verified passed step, the guide receives `skipped`, not `passed`. See [local-source cloud runs](#local-source-cloud-runs).
+
 ## Artifacts and reporting
 
 ### Console output
@@ -468,7 +472,7 @@ npx pathfinder-cli e2e bundled:e2e-framework-test
 
 ## Dependency-aware ordering
 
-Before running, the CLI builds an execution plan from a `repository.json` index (the bundled `src/bundled-interactives/repository.json` by default, or `--repository <path>`). Guides linked by a hard `depends` prerequisite are run in dependency order and grouped into **chains**; unrelated guides form independent single-guide chains.
+Before running, the CLI builds an execution plan from a `repository.json` index (the bundled `src/bundled-interactives/repository.json` by default, or `--repository <path>`). Local-source cloud runs instead build their catalog from the explicit checkout directory, without using a committed index. Guides linked by a hard `depends` prerequisite are run in dependency order and grouped into **chains**; unrelated guides form independent single-guide chains.
 
 - **Auto-included prerequisites**: if you test a guide whose prerequisite is not in the selection (for example `bundled:loki-grafana-101` alone), the missing prerequisite (`prometheus-grafana-101`) is pulled in from the repository and run first.
 - **Virtual capabilities**: a `depends` target may be a capability name; it resolves to whichever guide `provides` it.
@@ -712,6 +716,71 @@ Use the verifier to run the shared path and the isolated negative case:
 GRAFANA_URL=http://localhost:3000 \
   bash tests/e2e-runner/fixtures/shared-session-path/verify.sh
 ```
+
+## Local-source cloud runs
+
+The runner can test unpublished guides, prerequisites, paths, and journeys from a local checkout against Grafana Cloud. Uncommitted content is supported. No commit, PR, coordinator, generated `repository.json`, or CDN publication is required.
+
+### Run a local package against a leased stack
+
+1. Build the CLI with `npm run build:cli`.
+2. Set `POOL_MANAGER_TOKEN` through your approved credential source, outside the guide checkout.
+3. Select a package whose manifest declares `testEnvironment.tier: "cloud"`.
+4. Replace the checkout, package, manager URL, and pool ID in this command.
+5. Run the command against an approved disposable pool.
+
+The token flag takes an environment variable name, not the token value. The pool ID must already exist on the platform.
+
+```bash
+TUTORIALS_CHECKOUT=/path/to/interactive-tutorials
+node dist/cli/cli/index.js e2e \
+  --package "$TUTORIALS_CHECKOUT/your-cloud-guide" \
+  --repository "$TUTORIALS_CHECKOUT" \
+  --tier cloud \
+  --cloud-stack-pool-manager-url https://pool-manager.example.com \
+  --cloud-stack-pool-manager-token POOL_MANAGER_TOKEN \
+  --cloud-stack-pool-id approved-disposable-pool \
+  --output ./artifacts/local-cloud-report.json \
+  --artifacts ./artifacts/local-cloud
+```
+
+The runner uses the Pathfinder version already installed on the target. This command does not deploy local plugin changes.
+
+The report records each executed guide's identity, local content digest, and actual target URL. Failure artifacts use the directory from `--artifacts`. The runner retires leased stacks during cleanup. A retirement failure appears in `cleanupWarnings`.
+
+### Source and target selection
+
+The CLI builds an in-memory catalog from `--repository` on every run. It resolves the selected package, milestones, and prerequisites from that checkout, including renamed package directories. Missing required packages and duplicate IDs in the selected graph stop the run before leasing.
+
+For these cloud runs, `--repository <index-file>` also works: its parent directory becomes the checkout root. The CLI rebuilds the catalog instead of trusting the index contents. Local-target paths and published-source runs retain their existing index behavior.
+
+Source validation rejects symbolic links, hard links, and special files before reading manifests when `--repository` is supplied. The scan includes assets but excludes the root `.git`, `.github`, `node_modules`, and `scripts` directories. It does not freeze the checkout or prevent later edits.
+
+Cloud execution reuses the existing pool and named-target policies. A named target still needs its matching `--cloud-instance-admin-token` binding. Existing shared-target safety refusals still apply. See [remote package-aware testing](#remote-package-aware-testing) for those policies.
+
+After provisioning, the runner checks health and manifest requirements against the actual target. For `minVersion`, it reads `buildInfo.version` from authenticated `/api/frontend/settings`. Missing, invalid, or insufficient versions stop execution. The runner does not substitute the version from `/api/health`. Plugin checks also use the target's runner token.
+
+### Non-execution results
+
+The following cases produce skipped reports rather than an unqualified pass:
+
+- A local-tier package selected with `--tier cloud`. This skip needs neither `--repository` nor cloud credentials.
+- A selected guide, prerequisite, or milestone with no interactive blocks. The report lists the selected root and all planned leaves as unexecuted.
+- A `snippet-ref` block, including nested references.
+- A navigate action with `openGuide`, or a `reftarget`/`refTarget` URL with a nonempty `doc` query value.
+- A browser result that claims a pass without a verified passed step, including all-skipped and not-reached results.
+
+The first four checks happen before provisioning. A path report retains passed sibling results but does not claim an overall pass when another milestone skips. Exit code 0 alone does not prove execution. Consumers must inspect the report outcome and per-guide results.
+
+### Trust and isolation limits
+
+This capability is for trusted local checkouts. It does not provide safe PR archive extraction, an immutable snapshot, or a worker download-digest check. An automated worker must establish those boundaries before passing source to the CLI.
+
+Source checks do not pin every guide-owned URL. Markdown links, arbitrary URL-valued fields, and navigation targets without a `doc` query remain outside these checks. The browser is not network-isolated.
+
+Untrusted PR execution requires a separate security review and approval. These local-source checks do not establish a sandbox or complete source isolation.
+
+A trusted live fixture ran an uncommitted prerequisite and reached an intentional browser failure in the selected guide. Its report contained both local digests and a failure screenshot, and the lease retired. That feasibility result is not acceptance evidence for an untrusted PR service.
 
 ## Remote package-aware testing
 

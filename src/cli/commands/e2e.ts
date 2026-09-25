@@ -14,7 +14,7 @@ import { validateGuideFromString, toLegacyResult } from '../../validation';
 import { defineCommand } from '../contracts';
 import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
 import type { CommandOutcome } from '../utils/output';
-import { planGuideExecution, type ExecutionPlan } from '../e2e/guide-chains';
+import { deriveGuideId, planGuideExecution, type ExecutionPlan } from '../e2e/guide-chains';
 import { type E2EErrorCode, type E2EExecutionOutcome, type ExecutionSelection } from '../e2e/schemas/e2e-report.schema';
 import {
   contentDigest,
@@ -27,8 +27,12 @@ import {
 } from '../e2e/e2e-reporter';
 import { checkTier, loadManifestFromDir, runManifestPreflight } from '../e2e/manifest-preflight';
 import {
+  assertLocalCloudCheckoutSources,
   loadLocalRepositorySource,
   LocalMetapackageResolutionError,
+  LocalCloudNonExecutionError,
+  assertExecutableLocalCloudSources,
+  resolveLocalCloudGuide,
   resolveLocalMetapackage,
   type LocalRepositorySource,
 } from '../e2e/e2e-local-package';
@@ -39,6 +43,7 @@ import {
   type ResolvedRemoteGuide,
 } from '../e2e/e2e-package';
 import { checkGrafanaHealth } from '../e2e/grafana-health';
+import { preflightLocalCloudGuides } from '../e2e/local-cloud-preflight';
 import { CleanEnvironment, CLEAN_COMPOSE_PROJECT, CLEAN_GRAFANA_URL } from '../e2e/clean-environment';
 import { ExitCode } from '../e2e/exit-codes';
 import {
@@ -142,7 +147,7 @@ export const E2eCommand = z.object({
     .string()
     .optional()
     .describe(
-      'Path to repository.json (default: bundled index for guide dependencies; required for local path/journey milestones)'
+      'Path to repository.json, or a checkout directory for a local cloud package (default: bundled index for local guides)'
     )
     .meta(io),
   remote: z
@@ -224,6 +229,8 @@ interface RunInputs {
   cloudStackPoolManagerConfig?: CloudStackPoolManagerConfig;
   /** Local package directory for manifest pre-flight, when applicable. */
   localPackageDir?: string;
+  /** Local package plus explicit repository source whose cloud checks run after provisioning. */
+  localCloudSource?: boolean;
 }
 
 type GuideValidationError = { file: string; errors: string[] };
@@ -233,7 +240,9 @@ class E2ECommandError extends Error {
     message: string,
     readonly exitCode: number,
     readonly errorCode: E2EErrorCode = 'CONFIGURATION_ERROR',
-    readonly selection?: ExecutionSelection
+    readonly selection?: ExecutionSelection,
+    readonly reportGuide?: LoadedGuide,
+    readonly cleanupWarnings: string[] = []
   ) {
     super(message);
     this.name = 'E2ECommandError';
@@ -252,8 +261,10 @@ function failCommand(
 function writeCommandFailureReport(
   options: E2ECommandOptions,
   error: unknown,
-  guide?: LoadedGuide,
-  selection?: ExecutionSelection
+  guide: LoadedGuide | undefined,
+  selection: ExecutionSelection | undefined,
+  targetUrl: string | undefined,
+  cleanupWarnings: string[] = []
 ): number {
   const message = error instanceof Error ? error.message : 'Unknown error';
   const commandError = error instanceof E2ECommandError ? error : undefined;
@@ -294,16 +305,20 @@ function writeCommandFailureReport(
       id: guideId,
       title: guideTitle,
       path: guide?.path ?? selection?.id ?? 'unknown',
-      targetUrl: options.grafanaUrl,
+      ...(targetUrl ? { targetUrl } : {}),
       ...(guide ? { contentDigest: contentDigest(guide.content) } : {}),
     },
     outcome: outcomeByCode[errorCode] ?? 'configuration_error',
     errorCode,
     errorMessage: message,
   });
+  const warnings = cleanupWarnings.length > 0 ? { cleanupWarnings } : {};
   const reportSchemaValid = selection
-    ? writeMultiGuideReport(generateMultiGuideReport([data], undefined, selection), outputPath)
-    : writeReport(generateReport(data), outputPath);
+    ? writeMultiGuideReport({ ...generateMultiGuideReport([data], undefined, selection), ...warnings }, outputPath)
+    : writeReport({ ...generateReport(data), ...warnings }, outputPath);
+  for (const warning of cleanupWarnings) {
+    console.warn(`   ⚠ ${warning}`);
+  }
   if (!options.output) {
     console.error(`📄 JSON report written to: ${outputPath}`);
   }
@@ -611,7 +626,8 @@ async function maybeCleanStart(cleanEnv: CleanEnvironment, options: E2ECommandOp
 async function runPreflightChecks(
   options: E2ECommandOptions,
   targetUrls: string[],
-  packageDir?: string
+  packageDir?: string,
+  deferCloudRequirements = false
 ): Promise<ManifestJson | null> {
   console.log('\n🔍 Running pre-flight checks...');
 
@@ -679,6 +695,15 @@ async function runPreflightChecks(
   // 2. Manifest pre-flight — version and plugin checks (local package dir only).
   //    A local package dir is always a single local target (options.grafanaUrl).
   if (packageDir) {
+    if (packageManifest && deferCloudRequirements && options.tier === 'cloud') {
+      const tierResult = checkTier(packageManifest.testEnvironment ?? {}, options.tier);
+      if (tierResult.status === 'skip' && tierResult.code === 'tier-mismatch') {
+        failCommand(tierResult.reason, ExitCode.SUCCESS, 'TIER_MISMATCH');
+      }
+      console.log('   → Deferring cloud version and plugin checks until the target is provisioned');
+      return packageManifest;
+    }
+
     if (packageManifest) {
       console.log('   → Running manifest pre-flight checks...');
       const outcome = await runManifestPreflight(packageManifest, {
@@ -730,6 +755,20 @@ async function runPreflightChecks(
  * failed within a chain are skipped. Returns per-guide results plus whether
  * everything passed and whether a session expired.
  */
+function withoutUnexecutedLocalCloudPass(data: TestResultsData): TestResultsData {
+  if (
+    guideStatusFromResultsData(data) !== 'passed' ||
+    (data.coverage?.executed !== 0 && data.results.some((step) => step.status === 'passed'))
+  ) {
+    return data;
+  }
+  return {
+    ...data,
+    outcome: 'skipped',
+    errorMessage: 'No guide steps executed on the cloud target; this local source was not tested.',
+  };
+}
+
 async function runChains(
   plan: ExecutionPlan,
   options: E2ECommandOptions,
@@ -738,7 +777,9 @@ async function runChains(
   cloudAuth?: CloudAuthPolicy,
   cloudStackPoolManagerConfig?: CloudStackPoolManagerConfig,
   cloudChainCleanup?: CloudChainCleanupRegistry,
-  selection?: ExecutionSelection
+  selection?: ExecutionSelection,
+  localCloudSource = false,
+  onLocalCloudTargetResolved?: (targetUrl: string | undefined) => void
 ): Promise<ChainRunOutcome> {
   console.log('\n🎭 Running Playwright tests...\n');
 
@@ -753,6 +794,9 @@ async function runChains(
     throw new Error(`Invalid ${selection.type} execution plan: expected one milestone chain.`);
   }
   for (const [chainIndex, chain] of plan.chains.entries()) {
+    if (localCloudSource) {
+      onLocalCloudTargetResolved?.(undefined);
+    }
     if (options.clean && chainIndex > 0) {
       console.log(`\n🧹 Resetting docker compose between chains...`);
       try {
@@ -775,6 +819,7 @@ async function runChains(
     }
     let provisionedTargets: Awaited<ReturnType<typeof provisionCloudTargetsForChain>>;
     let chainHadFailure = false;
+    let localCloudPreflightError: E2ECommandError | undefined;
     const startingLocations = createStartingLocationTracker();
     try {
       provisionedTargets = await provisionCloudTargetsForChain({
@@ -796,6 +841,49 @@ async function runChains(
       continue;
     }
     try {
+      if (localCloudSource) {
+        try {
+          const guides = chain.map((planned) => {
+            const meta = packageMetaById.get(planned.id);
+            const requestedTarget = meta?.targetUrl ?? options.grafanaUrl;
+            const targetUrl = provisionedTargets.targetUrlForGuide(planned.id, requestedTarget);
+            return {
+              id: planned.id,
+              sourcePath: planned.guide.path,
+              targetUrl,
+              token: provisionedTargets.tokenForGuide(planned.id, requestedTarget),
+            };
+          });
+          if (selection && options.package) {
+            const firstGuide = chain[0];
+            const meta = firstGuide ? packageMetaById.get(firstGuide.id) : undefined;
+            const requestedTarget = meta?.targetUrl ?? options.grafanaUrl;
+            guides.unshift({
+              id: selection.id,
+              sourcePath: join(options.package, 'content.json'),
+              targetUrl: firstGuide
+                ? provisionedTargets.targetUrlForGuide(firstGuide.id, requestedTarget)
+                : requestedTarget,
+              token: firstGuide ? provisionedTargets.tokenForGuide(firstGuide.id, requestedTarget) : undefined,
+            });
+          }
+          const firstTarget = guides[0];
+          if (firstTarget?.token) {
+            onLocalCloudTargetResolved?.(firstTarget.targetUrl);
+          }
+          await preflightLocalCloudGuides(guides);
+        } catch (error) {
+          chainHadFailure = true;
+          localCloudPreflightError = new E2ECommandError(
+            error instanceof Error ? error.message : 'Local cloud pre-flight failed',
+            ExitCode.CONFIGURATION_ERROR,
+            'CONFIGURATION_ERROR',
+            selection,
+            chain.find((planned) => !planned.autoIncluded)?.guide ?? chain[0]?.guide
+          );
+          throw localCloudPreflightError;
+        }
+      }
       if (selection) {
         const resolvedTargets = chain.map((planned) => {
           const meta = packageMetaById.get(planned.id);
@@ -859,7 +947,8 @@ async function runChains(
           const meta = packageMetaById.get(planned.id);
           applyPackageMeta(data, meta);
           const failedPrerequisite = planned.dependencies.find((dependency) => blocked.has(dependency));
-          const status = guideStatusFromResultsData(data);
+          const normalizedData = localCloudSource ? withoutUnexecutedLocalCloudPass(data) : data;
+          const status = guideStatusFromResultsData(normalizedData);
           const exitCode =
             status === 'passed' || status === 'skipped_prereq' || status === 'skipped_unsupported_steps'
               ? ExitCode.SUCCESS
@@ -877,8 +966,8 @@ async function runChains(
             ...(data.abortReason === 'AUTH_EXPIRED' || data.abortReason === 'MANDATORY_FAILURE'
               ? { abortReason: data.abortReason }
               : {}),
-            abortMessage: data.abortMessage ?? data.errorMessage,
-            resultsData: data,
+            abortMessage: normalizedData.abortMessage ?? normalizedData.errorMessage,
+            resultsData: normalizedData,
             autoIncluded: planned.autoIncluded,
             ...(failedPrerequisite ? { failedPrerequisite } : {}),
           });
@@ -901,7 +990,7 @@ async function runChains(
           } else if (status === 'skipped_prereq') {
             console.log(`   ⊘ Skipped: prerequisite "${failedPrerequisite}" did not pass`);
           } else if (status === 'skipped_unsupported_steps') {
-            console.log(`   ⊘ Skipped: ${data.errorMessage}`);
+            console.log(`   ⊘ Skipped: ${normalizedData.errorMessage}`);
           } else if (status === 'auth_expired') {
             console.log(`   ❌ Session expired: ${data.errorMessage ?? data.abortMessage}`);
           } else {
@@ -985,9 +1074,13 @@ async function runChains(
           continue;
         }
         applyPackageMeta(result.resultsData, meta);
+        const resultsData =
+          localCloudSource && result.resultsData
+            ? withoutUnexecutedLocalCloudPass(result.resultsData)
+            : result.resultsData;
         const status: GuideStatus =
-          result.success && result.resultsData
-            ? guideStatusFromResultsData(result.resultsData)
+          result.success && resultsData
+            ? guideStatusFromResultsData(resultsData)
             : result.abortReason === 'AUTH_EXPIRED'
               ? 'auth_expired'
               : 'failed';
@@ -999,14 +1092,14 @@ async function runChains(
           exitCode: result.exitCode,
           traceFile: result.traceFile,
           abortReason: result.abortReason,
-          abortMessage: result.abortMessage ?? result.resultsData?.errorMessage,
-          resultsData: result.resultsData,
+          abortMessage: result.abortMessage ?? resultsData?.errorMessage,
+          resultsData,
           autoIncluded: planned.autoIncluded,
         });
 
         if (status === 'skipped_unsupported_steps') {
           blocked.add(planned.id);
-          console.log(`   ⊘ Skipped: ${result.resultsData?.errorMessage}`);
+          console.log(`   ⊘ Skipped: ${resultsData?.errorMessage}`);
         } else if (!result.success) {
           allPassed = false;
           chainHadFailure = true;
@@ -1018,23 +1111,23 @@ async function runChains(
           } else {
             console.log(`   ❌ Test failed (exit code: ${result.exitCode})`);
           }
-        } else {
+        } else if (status === 'passed') {
           console.log(`   ✅ Test passed`);
         }
-        startingLocations.record(status === 'passed', result.resultsData, targetUrl);
+        startingLocations.record(status === 'passed', resultsData, targetUrl);
 
         if (result.traceFile && options.trace) {
           console.log(`   📊 Trace file: ${result.traceFile}`);
         }
       }
     } finally {
-      cleanupWarnings.push(
-        ...(await provisionedTargets.teardownAll({
-          outcome: chainHadFailure ? 'failed' : 'passed',
-          used: true,
-          summary: chainHadFailure ? 'One or more guides failed' : 'Chain completed',
-        }))
-      );
+      const warnings = await provisionedTargets.teardownAll({
+        outcome: chainHadFailure ? 'failed' : 'passed',
+        used: true,
+        summary: chainHadFailure ? 'One or more guides failed' : 'Chain completed',
+      });
+      cleanupWarnings.push(...warnings);
+      localCloudPreflightError?.cleanupWarnings.push(...warnings);
     }
   }
 
@@ -1061,12 +1154,13 @@ function reportResults(
   results: GuideRunResult[],
   options: E2ECommandOptions,
   cleanupWarnings: string[] = [],
-  selection?: ExecutionSelection
+  selection?: ExecutionSelection,
+  localCloudSource = false
 ): void {
   printSummary(results, cleanupWarnings);
   const hasNonPassOutcome = results.length === 0 || results.some((result) => result.status !== 'passed');
   const outputPath = options.output ?? (hasNonPassOutcome ? join(options.artifacts, 'report.json') : undefined);
-  const reportSchemaValid = writeJsonReport(results, outputPath, cleanupWarnings, selection);
+  const reportSchemaValid = writeJsonReport(results, outputPath, cleanupWarnings, selection, localCloudSource);
   exitFromResults(results, reportSchemaValid);
 }
 
@@ -1082,25 +1176,147 @@ function remoteLoadGuideById(
   return (id: string) => byId.get(id) ?? null;
 }
 
+function skippedLocalCloudPackage(
+  packageDir: string,
+  manifest: ManifestJson,
+  reason: string,
+  issue?: LocalCloudNonExecutionError
+): RunInputs {
+  const selectedId = manifest.id;
+  const affectedId = issue ? deriveGuideId(issue.guide) : selectedId;
+  const skippedGuides: GuideRunResult[] = issue
+    ? issue.plannedGuides.map((planned) => ({
+        guide: planned.guide.path,
+        id: planned.id,
+        status: planned.id === selectedId && planned.id !== affectedId ? 'prerequisite_failed' : 'resolution_failed',
+        exitCode: ExitCode.SUCCESS,
+        autoIncluded: planned.autoIncluded,
+        abortMessage:
+          planned.id === affectedId
+            ? reason
+            : `Selected package "${selectedId}" did not execute because guide "${affectedId}" could not run: ${reason}`,
+        tier: manifest.testEnvironment?.tier,
+      }))
+    : [
+        {
+          guide: packageDir,
+          id: selectedId,
+          status: 'skipped_tier_mismatch',
+          exitCode: ExitCode.SUCCESS,
+          autoIncluded: false,
+          abortMessage: reason,
+          tier: manifest.testEnvironment?.tier ?? 'local',
+        },
+      ];
+  if (issue && !skippedGuides.some((guide) => guide.id === selectedId)) {
+    skippedGuides.push({
+      guide: packageDir,
+      id: selectedId,
+      status: 'prerequisite_failed',
+      exitCode: ExitCode.SUCCESS,
+      autoIncluded: false,
+      abortMessage: `Selected package did not execute because guide "${affectedId}" could not run: ${reason}`,
+      tier: manifest.testEnvironment?.tier,
+    });
+  }
+  return {
+    mode: 'local',
+    guides: [],
+    preRunSkipped: skippedGuides,
+    packageMetaById: new Map(),
+    ...(manifest.type === 'path' || manifest.type === 'journey'
+      ? { selection: { id: selectedId, type: manifest.type } }
+      : {}),
+  };
+}
+
 function resolveLocalRunInputs(files: string[], options: E2ECommandOptions): RunInputs {
   if (options.package) {
     try {
-      const metapackage = resolveLocalMetapackage({
+      const explicitLocalCloudPackage = options.tier === 'cloud';
+      if (explicitLocalCloudPackage && options.repository) {
+        assertLocalCloudCheckoutSources(options.repository, options.package);
+      }
+      const manifest = explicitLocalCloudPackage ? loadManifestFromDir(options.package) : null;
+      if (manifest && manifest.testEnvironment?.tier !== 'cloud') {
+        return skippedLocalCloudPackage(
+          options.package,
+          manifest,
+          `Package requires tier "${manifest.testEnvironment?.tier ?? 'local'}" rather than cloud.`
+        );
+      }
+      const cloudAuth = explicitLocalCloudPackage
+        ? createCloudAuthPolicy({ cloudInstanceAdminTokenSpecs: options.cloudInstanceAdminToken })
+        : undefined;
+      const cloudStackPoolManagerConfig = explicitLocalCloudPackage
+        ? createCloudStackPoolManagerConfig({
+            managerUrl: options.cloudStackPoolManagerUrl,
+            tokenEnvVar: options.cloudStackPoolManagerToken,
+            poolId: options.cloudStackPoolId,
+            maxWaitSeconds: options.cloudStackMaxWaitSeconds,
+          })
+        : undefined;
+      const cloudTargetCapabilities = explicitLocalCloudPackage
+        ? { ...cloudAuth!.targets, isolatedStack: Boolean(cloudStackPoolManagerConfig) }
+        : undefined;
+      const localPackageOptions = {
         packageDir: options.package,
         repositoryPath: options.repository,
         grafanaUrl: options.grafanaUrl,
         currentTier: options.tier,
         cloudUrl: options.cloudUrl,
         verbose: options.verbose,
-      });
+        cloudTargetCapabilities,
+      };
+      if (explicitLocalCloudPackage) {
+        try {
+          const metapackage = resolveLocalMetapackage(localPackageOptions);
+          if (metapackage) {
+            if (metapackage.executionPlan) {
+              assertExecutableLocalCloudSources(metapackage.executionPlan);
+            }
+            return {
+              mode: 'local',
+              ...metapackage,
+              cloudAuth,
+              cloudStackPoolManagerConfig,
+              localCloudSource: true,
+            };
+          }
+          const guide = resolveLocalCloudGuide(localPackageOptions);
+          if (!guide.executionPlan) {
+            throw new Error('Local cloud guide has no execution plan.');
+          }
+          assertExecutableLocalCloudSources(guide.executionPlan);
+          return {
+            mode: 'local',
+            ...guide,
+            cloudAuth,
+            cloudStackPoolManagerConfig,
+            localCloudSource: true,
+          };
+        } catch (error) {
+          if (error instanceof LocalCloudNonExecutionError && manifest) {
+            return skippedLocalCloudPackage(options.package, manifest, error.message, error);
+          }
+          throw error;
+        }
+      }
+      const metapackage = resolveLocalMetapackage(localPackageOptions);
       if (metapackage) {
         return { mode: 'local', ...metapackage };
       }
     } catch (error) {
+      if (error instanceof E2ECommandError) {
+        throw error;
+      }
       if (error instanceof LocalMetapackageResolutionError) {
         throw new E2ECommandError(error.message, ExitCode.CONFIGURATION_ERROR, 'CONFIGURATION_ERROR', error.selection);
       }
-      throw error;
+      throw new E2ECommandError(
+        error instanceof Error ? error.message : 'Failed to resolve local package.',
+        ExitCode.CONFIGURATION_ERROR
+      );
     }
   }
   let repoSource: LocalRepositorySource;
@@ -1201,6 +1417,8 @@ export async function runE2e(options: E2eInput): Promise<CommandOutcome> {
   if (options.clean && options.grafanaUrl === DEFAULT_GRAFANA_URL) {
     options.grafanaUrl = CLEAN_GRAFANA_URL;
   }
+  let failureReportTargetUrl: string | undefined =
+    options.tier === 'cloud' && options.package && resolveRunMode(options) === 'local' ? undefined : options.grafanaUrl;
 
   try {
     const inputs = await resolveRunInputs(files, options);
@@ -1231,14 +1449,17 @@ export async function runE2e(options: E2eInput): Promise<CommandOutcome> {
     });
     const localManifest = await runPreflightChecks(
       options,
-      preflightTargetUrlsForPlan({
-        plan,
-        packageMetaById: inputs.packageMetaById,
-        cloudAuth: inputs.cloudAuth,
-        cloudStackPoolManagerConfig: inputs.cloudStackPoolManagerConfig,
-        globalUrl: options.grafanaUrl,
-      }),
-      inputs.localPackageDir
+      inputs.localCloudSource
+        ? []
+        : preflightTargetUrlsForPlan({
+            plan,
+            packageMetaById: inputs.packageMetaById,
+            cloudAuth: inputs.cloudAuth,
+            cloudStackPoolManagerConfig: inputs.cloudStackPoolManagerConfig,
+            globalUrl: options.grafanaUrl,
+          }),
+      inputs.localPackageDir,
+      inputs.localCloudSource
     );
     if (localManifest) {
       applyLocalManifestStartingLocation(localManifest, inputs.packageMetaById);
@@ -1252,10 +1473,22 @@ export async function runE2e(options: E2eInput): Promise<CommandOutcome> {
       inputs.cloudAuth,
       inputs.cloudStackPoolManagerConfig,
       cloudChainCleanup,
-      inputs.selection
+      inputs.selection,
+      inputs.localCloudSource,
+      inputs.localCloudSource
+        ? (targetUrl) => {
+            failureReportTargetUrl = targetUrl;
+          }
+        : undefined
     );
 
-    reportResults([...inputs.preRunSkipped, ...outcome.results], options, outcome.cleanupWarnings, inputs.selection);
+    reportResults(
+      [...inputs.preRunSkipped, ...outcome.results],
+      options,
+      outcome.cleanupWarnings,
+      inputs.selection,
+      inputs.localCloudSource
+    );
     return { status: 'ok', summary: `${outcome.results.length} guide(s) run` };
   } catch (error) {
     const isSuccessExit = error instanceof E2ECommandError && error.exitCode === ExitCode.SUCCESS;
@@ -1267,8 +1500,10 @@ export async function runE2e(options: E2eInput): Promise<CommandOutcome> {
       exitCode = writeCommandFailureReport(
         options,
         error,
-        reportGuide,
-        reportSelection ?? (error instanceof E2ECommandError ? error.selection : undefined)
+        (error instanceof E2ECommandError ? error.reportGuide : undefined) ?? reportGuide,
+        reportSelection ?? (error instanceof E2ECommandError ? error.selection : undefined),
+        failureReportTargetUrl,
+        error instanceof E2ECommandError ? error.cleanupWarnings : []
       );
     } catch {
       exitCode = error instanceof E2ECommandError ? error.exitCode : ExitCode.CONFIGURATION_ERROR;
