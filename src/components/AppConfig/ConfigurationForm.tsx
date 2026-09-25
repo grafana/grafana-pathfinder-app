@@ -2,6 +2,7 @@ import React, { useState, ChangeEvent } from 'react';
 import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
+import { t } from '@grafana/i18n';
 import { testIds } from '../../constants/testIds';
 import {
   PathfinderPluginConfig,
@@ -25,10 +26,12 @@ import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { isCodaTerminalForcedByFlag } from '../../utils/coda-enablement';
 import { logger } from '../../lib/logging';
 import { CodaBackendStatus } from './CodaBackendStatus';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 
 type JsonData = PathfinderPluginConfig;
 
 type State = {
+  pathfinderEnabled: boolean;
   recommenderServiceUrl: string;
   tutorialUrl: string;
   interceptGlobalDocsLinks: boolean;
@@ -43,6 +46,7 @@ type State = {
 
 function buildStateFromConfig(config: ResolvedPathfinderConfig): State {
   return {
+    pathfinderEnabled: config.pathfinderEnabled,
     recommenderServiceUrl:
       config.recommenderServiceUrl && !isKnownRecommenderUrl(config.recommenderServiceUrl)
         ? config.recommenderServiceUrl
@@ -235,6 +239,27 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         </Alert>
       )}
       <FieldSet label="Plugin configuration" className={s.marginTopXl}>
+        <Field
+          label={t('appConfig.pathfinderEnabled', 'Enable Pathfinder')}
+          description={t(
+            'appConfig.pathfinderEnabledDescription',
+            'Show Pathfinder for everyone in this organization. Changes apply when users reload Grafana.'
+          )}
+        >
+          <Switch
+            id="pathfinder-enabled"
+            value={state.pathfinderEnabled}
+            onChange={(event) => editDraft({ pathfinderEnabled: event.currentTarget.checked })}
+          />
+        </Field>
+        {!getFeatureFlagValue('pathfinder.enabled', true) && (
+          <Alert title={t('appConfig.pathfinderRemotelyDisabled', 'Pathfinder is disabled remotely')} severity="info">
+            {t(
+              'appConfig.pathfinderRemotelyDisabledDescription',
+              'The remote switch currently prevents Pathfinder from running. Your saved preference will apply when Pathfinder is enabled remotely again.'
+            )}
+          </Alert>
+        )}
         {showAdvancedConfig && (
           <>
             <Field

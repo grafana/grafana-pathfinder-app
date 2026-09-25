@@ -157,6 +157,24 @@ describe('TabBarActions', () => {
   });
 
   describe('Settings menu item permissions', () => {
+    it.each([
+      ['Admin', false, true],
+      ['Viewer', true, true],
+      ['Editor', false, false],
+      ['Viewer', false, false],
+    ])('shows public preview opt-out for %s, Grafana admin %s: %s', (orgRole, isGrafanaAdmin, visible) => {
+      mockConfig.bootData.user = { orgRole, isGrafanaAdmin };
+      render(<TabBarActions />);
+      fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+      const item = screen.queryByRole('menuitem', { name: 'Revert public preview' });
+      if (visible) {
+        expect(item).toBeInTheDocument();
+        fireEvent.click(item!);
+        expect(mockPush).toHaveBeenCalledWith('/plugins/grafana-pathfinder-app?page=configuration');
+      } else {
+        expect(item).not.toBeInTheDocument();
+      }
+    });
     beforeEach(() => {
       // Reset mock config to Admin for each test
       mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };

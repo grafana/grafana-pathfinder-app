@@ -178,6 +178,13 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
                 </span>
               </Tooltip>
             )}
+            {canAccessPluginSettings && (
+              <Menu.Item
+                label={t('docsPanel.revertPublicPreview', 'Revert public preview')}
+                icon="cog"
+                onClick={handleSettingsClick}
+              />
+            )}
             {isDevMode && onOpenDevToolsTab && (
               <Menu.Item label={t('docsPanel.devTools', 'Dev tools')} icon="bug" onClick={handleDevToolsClick} />
             )}
