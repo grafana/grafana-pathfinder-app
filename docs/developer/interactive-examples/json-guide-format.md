@@ -787,20 +787,21 @@ Collects user responses that can be stored as variables and used elsewhere in th
 }
 ```
 
-| Field               | Type                                      | Required | Default | Description                                                                          |
-| ------------------- | ----------------------------------------- | -------- | ------- | ------------------------------------------------------------------------------------ |
-| `prompt`            | string                                    | ✅       | —       | Question/instruction shown to user (supports markdown)                               |
-| `inputType`         | `"text"` \| `"boolean"` \| `"datasource"` | ✅       | —       | Input type: text field, checkbox, or datasource picker                               |
-| `variableName`      | string                                    | ✅       | —       | Identifier for storing/referencing the response                                      |
-| `placeholder`       | string                                    | ❌       | —       | Placeholder text for text input                                                      |
-| `checkboxLabel`     | string                                    | ❌       | —       | Label for boolean checkbox                                                           |
-| `defaultValue`      | string \| boolean                         | ❌       | —       | Default value for the input                                                          |
-| `required`          | boolean                                   | ❌       | `false` | Whether a response is required to proceed                                            |
-| `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                                    |
-| `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                           |
-| `datasourceFilter`  | string                                    | ❌       | —       | Filter datasources by type (e.g., `"prometheus"`). Only for `"datasource"` inputType |
-| `requirements`      | string[]                                  | ❌       | —       | Honoured only on a blocking data check; inert on every other input (see below)       |
-| `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                                    |
+| Field               | Type                                      | Required | Default | Description                                                                                                                                          |
+| ------------------- | ----------------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`            | string                                    | ✅       | —       | Question/instruction shown to user (supports markdown)                                                                                               |
+| `inputType`         | `"text"` \| `"boolean"` \| `"datasource"` | ✅       | —       | Input type: text field, checkbox, or datasource picker                                                                                               |
+| `variableName`      | string                                    | ✅       | —       | Identifier for storing/referencing the response                                                                                                      |
+| `format`            | `"http-origin"`                           | ❌       | —       | For text inputs: validate and normalize an HTTP(S) origin; rejects paths, credentials, queries, fragments, and whitespace. Maximum 2,048 characters. |
+| `placeholder`       | string                                    | ❌       | —       | Placeholder text for text input                                                                                                                      |
+| `checkboxLabel`     | string                                    | ❌       | —       | Label for boolean checkbox                                                                                                                           |
+| `defaultValue`      | string \| boolean                         | ❌       | —       | Default value for the input                                                                                                                          |
+| `required`          | boolean                                   | ❌       | `false` | Whether a response is required to proceed                                                                                                            |
+| `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                                                                                                    |
+| `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                                                                                           |
+| `datasourceFilter`  | string                                    | ❌       | —       | Filter datasources by type (e.g., `"prometheus"`). Only for `"datasource"` inputType                                                                 |
+| `requirements`      | string[]                                  | ❌       | —       | Honoured only on a blocking data check; inert on every other input (see below)                                                                       |
+| `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                                                                                                    |
 
 Data check fields, all for `"datasource"` inputType only. `dataCheckQuery` is what enables the check; the rest are rejected without it.
 

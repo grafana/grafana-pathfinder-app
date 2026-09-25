@@ -85,3 +85,5 @@ registerLearningJourneyContentBridge({
   resolvePackageNavLinks,
   derivePathSlug,
 });
+
+export { validateKioskDestination } from './kiosk-inputs';

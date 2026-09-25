@@ -18,6 +18,7 @@ import {
   unwrapEnvelope,
   wrapEnvelope,
 } from './user-storage';
+import { StorageEvents } from './event-names';
 import { StorageKeys, buildVersionedSectionStorageKey } from './storage-keys';
 
 // Mock `@grafana/runtime` so the quota-toast helper can publish through a
@@ -1100,5 +1101,51 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
       setGlobalStorage(createLocalStorage());
       jest.useRealTimers();
     }
+  });
+});
+
+describe('kiosk response persistence', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setGlobalStorage(createLocalStorage());
+  });
+  it('announces merged responses with the guide-scoped wildcard event', async () => {
+    const listener = jest.fn();
+    window.addEventListener(StorageEvents.GuideResponseChanged, listener);
+    try {
+      await guideResponseStorage.mergeResponses('first', { appUrl: 'https://example.com' });
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener.mock.calls[0][0].detail).toEqual({ guideId: 'first', variableName: '*', value: undefined });
+    } finally {
+      window.removeEventListener(StorageEvents.GuideResponseChanged, listener);
+    }
+  });
+  it('merges submitted keys, survives a storage reload and isolates guides', async () => {
+    await guideResponseStorage.setResponse('first', 'other', 'preserved');
+    await guideResponseStorage.mergeResponses('second', { appUrl: 'https://second.example' });
+    await guideResponseStorage.mergeResponses('first', { appUrl: 'https://old.example' });
+    await guideResponseStorage.mergeResponses('first', { appUrl: 'https://new.example' });
+    setGlobalStorage(createLocalStorage());
+    expect(await guideResponseStorage.getForGuide('first')).toEqual({
+      other: 'preserved',
+      appUrl: 'https://new.example',
+    });
+    expect(await guideResponseStorage.getForGuide('second')).toEqual({ appUrl: 'https://second.example' });
+  });
+  it('reports storage failures instead of claiming success', async () => {
+    setGlobalStorage({
+      ...createLocalStorage(),
+      setItem: async () => {
+        throw new Error('Unavailable');
+      },
+    });
+    await expect(guideResponseStorage.mergeResponses('first', { appUrl: 'https://example.com' })).rejects.toThrow(
+      'Unavailable'
+    );
+  });
+  it('rejects prototype keys', async () => {
+    await expect(guideResponseStorage.mergeResponses('first', JSON.parse('{"__proto__":"x"}'))).rejects.toThrow(
+      'Invalid'
+    );
   });
 });

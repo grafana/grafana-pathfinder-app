@@ -402,7 +402,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
         // Use proper URL parsing to prevent domain hijacking attacks
         const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
-        if (shouldFetchContent) {
+        if (shouldFetchContent && !isJsonContentUrl(finalUrl)) {
           const ladderResult = await tryGrafanaDocsContentLadder(
             finalUrl,
             baseFetchOptions,

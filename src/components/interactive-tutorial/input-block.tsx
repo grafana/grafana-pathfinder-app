@@ -1,3 +1,4 @@
+import { normalizeHttpOrigin } from '../../lib/input-value';
 /**
  * Input Block Renderer
  *
@@ -25,6 +26,7 @@ export interface InputBlockProps {
   prompt: string;
   /** Input type: text, boolean, or datasource */
   inputType: 'text' | 'boolean' | 'datasource';
+  format?: 'http-origin';
   /** Variable name for storing the response */
   variableName: string;
   /** Placeholder for text input */
@@ -102,9 +104,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-/**
- * Input Block component for collecting user responses.
- */
 export function InputBlock({
   inputType,
   variableName,
@@ -113,6 +112,7 @@ export function InputBlock({
   defaultValue,
   required = false,
   pattern,
+  format,
   validationMessage,
   skippable = false,
   children,
@@ -125,7 +125,6 @@ export function InputBlock({
   const styles = useStyles2(getStyles);
   const responseContext = useGuideResponsesOptional();
 
-  // Get datasources (memoized to avoid re-fetching on every render)
   const datasources = useMemo(
     () => (inputType === 'datasource' ? filterDatasourcesByType(datasourceFilter) : []),
     [inputType, datasourceFilter]
@@ -177,7 +176,6 @@ export function InputBlock({
     timeTo: dataCheckTimeTo,
   });
 
-  // Compile pattern regex if provided
   const patternRegex = useMemo(() => {
     if (!pattern) {
       return null;
@@ -190,11 +188,16 @@ export function InputBlock({
     }
   }, [pattern]);
 
-  // Validate text input
   const validateTextInput = useCallback(
     (value: string): boolean => {
       if (required && !value.trim()) {
         setValidationError('This field is required');
+        return false;
+      }
+      if (format === 'http-origin' && value && normalizeHttpOrigin(value) === null) {
+        setValidationError(
+          'Enter an HTTP(S) origin, such as https://example.com, without a path, credentials, query, or fragment'
+        );
         return false;
       }
       if (patternRegex && value.trim() && !patternRegex.test(value)) {
@@ -204,10 +207,9 @@ export function InputBlock({
       setValidationError(null);
       return true;
     },
-    [required, patternRegex, validationMessage]
+    [required, patternRegex, validationMessage, format]
   );
 
-  // Validate datasource selection
   const validateDatasourceInput = useCallback(
     (value: string | null): boolean => {
       if (required && !value) {
@@ -265,7 +267,6 @@ export function InputBlock({
     });
   }, [runDataCheck, dataCheckType, variableName]);
 
-  // Handle reset/clear
   const handleReset = useCallback(() => {
     if (responseContext) {
       responseContext.deleteResponse(variableName);
@@ -283,7 +284,6 @@ export function InputBlock({
     setValidationError(null);
   }, [responseContext, variableName, inputType, defaultValue, resetDataCheck]);
 
-  // Handle save
   const handleSave = useCallback(() => {
     if (inputType === 'text') {
       if (!validateTextInput(textValue)) {
@@ -291,10 +291,12 @@ export function InputBlock({
       }
       if (responseContext) {
         const wasAlreadySaved = isSaved;
-        responseContext.setResponse(variableName, textValue.trim());
+        responseContext.setResponse(
+          variableName,
+          format === 'http-origin' && textValue ? normalizeHttpOrigin(textValue)! : textValue.trim()
+        );
         setIsSaved(true);
 
-        // Track submission (no input values captured for privacy)
         reportAppInteraction(UserInteraction.InputBlockSubmit, {
           input_type: inputType,
           variable_name: variableName,
@@ -307,7 +309,6 @@ export function InputBlock({
         responseContext.setResponse(variableName, boolValue);
         setIsSaved(true);
 
-        // Track submission (no input values captured for privacy)
         reportAppInteraction(UserInteraction.InputBlockSubmit, {
           input_type: inputType,
           variable_name: variableName,
@@ -323,7 +324,6 @@ export function InputBlock({
         responseContext.setResponse(variableName, datasourceValue ?? '');
         setIsSaved(true);
 
-        // Track submission (no input values captured for privacy)
         reportAppInteraction(UserInteraction.InputBlockSubmit, {
           input_type: inputType,
           variable_name: variableName,
@@ -337,19 +337,17 @@ export function InputBlock({
     boolValue,
     datasourceValue,
     validateTextInput,
+    format,
     validateDatasourceInput,
     responseContext,
     variableName,
     isSaved,
   ]);
 
-  // Handle skip
   const handleSkip = useCallback(() => {
     setIsSaved(true);
   }, []);
 
-  // Sync with external changes to the response (e.g., reset, initial load, cross-device sync)
-  // Uses event subscription pattern to satisfy lint rules about setState in effects
   // Also handles initial sync when context finishes loading via a custom event
   useEffect(() => {
     // Handler for response changes (including initial load completion)

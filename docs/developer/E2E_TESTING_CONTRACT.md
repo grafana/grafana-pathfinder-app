@@ -59,7 +59,7 @@ The legacy selector excludes `interactive-step-completed-*` badges. These badges
 
 One `StepDriver` registry owns metadata inspection, product controls, execution, skip behavior, and completion rules. The registry uses `data-test-step-kind` keys.
 
-The runner supports `plain`, `multistep`, `guided`, and `codeblock`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
+The runner supports `plain`, `multistep`, `guided`, `codeblock`, `terminal`, and `terminal-connect`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
 
 Unsupported roots do not change the outcome when a guide also renders a supported root. The runner reports each unsupported kind and step ID.
 
@@ -94,6 +94,31 @@ Codeblocks do not expose an automatic Fix control. The driver waits for requirem
 Older plugin builds without the new skippability attribute fall back to the rendered Skip control. Without the error test ID or error state, an insertion failure can report a completion timeout instead of the product error. Builds without tracked codeblock roots remain outside codeblock discovery.
 
 Contract tests live in `src/components/interactive-tutorial/code-block-step.contract.test.tsx`. Browser regression tests live in `tests/e2e-runner/codeblock-driver.spec.ts`.
+
+### Terminal runner contract
+
+Terminal roots retain their tracked kind and stable step ID. The root test IDs are `interactive-terminal-${stepId}` and `interactive-terminal-connect-${stepId}`.
+
+| Attribute                         | Meaning                                                              |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `data-test-terminal-status`       | Live connection status from the terminal context                     |
+| `data-test-terminal-unavailable`  | A disconnected terminal has an unmet availability or permission gate |
+| `data-test-terminal-checking`     | The Coda availability probe has not settled                          |
+| `data-test-terminal-gcx`          | Connection step requests credential provisioning                     |
+| `data-test-terminal-vm-requested` | Connection step specifies a VM template, app, or scenario            |
+| `data-test-skippable`             | Command step permits an authored Skip                                |
+
+The controls use `interactive-terminal-connect-button-${stepId}` and `interactive-terminal-exec-${stepId}`. `interactive-terminal-skip-${stepId}` is Skip on a blocked command step and Continue on a connected connection step. The runner never uses Copy or the gcx refusal controls as execution substitutes.
+
+Errors use `interactive-error-${stepId}`. Requirement and availability messages use `interactive-requirement-${stepId}`. Command dispatch errors and connection errors expose `data-test-step-state="error"`.
+
+After an action, success requires an attached root with `data-test-step-state="completed"` and `data-test-terminal-status="connected"`. An authored Skip requires explicit completion but does not require a connected terminal. Previously completed roots retain the existing `pre_completed` skip behavior.
+
+A command completion proves product dispatch only. It does not prove process exit, exit code zero, or expected output. The runner sends no extra shell commands and does not use the Coda exec API.
+
+The runner refuses `gcx: true` before connection because credential provisioning is outside this implementation. An explicit VM request also refuses an existing connection rather than silently accepting an unverified VM. This includes connected or connecting sessions started by earlier steps in the same run; a later VM-requesting step fails as an unmet prerequisite. A missing `data-test-terminal-status` fails with a plugin-contract diagnostic.
+
+Component tests in `terminal-step.test.tsx` and `terminal-connect-step.test.tsx` cover these attributes and controls. `tests/e2e-runner/terminal-driver.spec.ts` covers driver execution with browser DOM fixtures.
 
 ---
 

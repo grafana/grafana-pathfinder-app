@@ -144,7 +144,7 @@ for (const theme of ['light', 'dark']) {
     );
     await page.goto(`${kioskSearch(customUrl)}&theme=${theme}`);
     const overlay = page.getByTestId(testIds.kioskMode.overlay);
-    const exit = page.getByRole('button', { name: 'Exit kiosk', exact: true });
+    const exit = page.getByRole('button', { name: 'Back to Grafana', exact: true });
     await expect(exit).toBeFocused();
     await expect(page.getByRole('heading', { name: 'Learn Grafana' })).toBeVisible();
     await expect(page.getByTestId(testIds.kioskMode.tile(29))).toBeAttached();
@@ -198,7 +198,7 @@ for (const offline of [false, true]) {
 test('opens an ordinary same-instance kiosk link without reloading Grafana', async ({ page }) => {
   await page.goto(kioskSearch());
   await expect(page.getByTestId(testIds.kioskMode.overlay)).toBeVisible();
-  await page.getByRole('button', { name: 'Exit kiosk', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to Grafana', exact: true }).click();
   await page.evaluate((href) => {
     const anchor = document.createElement('a');
     anchor.href = href;
@@ -216,7 +216,7 @@ test('opens an ordinary same-instance kiosk link without reloading Grafana', asy
 test('does not replay a closed kiosk when Grafana updates dashboard query parameters', async ({ page }) => {
   await page.goto(kioskSearch());
   await expect(page.getByTestId(testIds.kioskMode.overlay)).toBeVisible();
-  await page.getByRole('button', { name: 'Exit kiosk', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to Grafana', exact: true }).click();
   const search = await page.evaluate(async () => {
     const system = (
       window as unknown as {
