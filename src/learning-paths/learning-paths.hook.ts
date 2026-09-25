@@ -109,13 +109,22 @@ function formatLegacyBadgeTitle(badgeId: string): string {
  * drops out the same way it already does for the pre-tracks flat rollup.
  * `path.manifest` is unset for a URL-based path (no tracks concept there —
  * `path.guides` alone is that path's one and only sequence).
+ *
+ * Tracks are gated on `manifest.type === 'path'` specifically (RFC §6.1 /
+ * schema Rule 3), the same guard `fetchPackageContent` applies: that rule
+ * only runs in superRefine, which runtime loaders skip, so a journey
+ * manifest that still carries a stray `tracks` array must not grow an
+ * extra scored sequence here either.
  */
 function pathSequences(path: LearningPath): string[][] {
   const guideIds = new Set(path.guides);
   const foundations = path.manifest
     ? getManifestMilestoneIds(path.manifest).filter((id) => guideIds.has(id))
     : path.guides;
-  const tracks = getManifestTracks(path.manifest).map((track) => track.guides.filter((id) => guideIds.has(id)));
+  const tracks =
+    path.manifest?.type === 'path'
+      ? getManifestTracks(path.manifest).map((track) => track.guides.filter((id) => guideIds.has(id)))
+      : [];
   return [foundations, ...tracks].filter((sequence) => sequence.length > 0);
 }
 

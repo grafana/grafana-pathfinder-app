@@ -259,7 +259,10 @@ describe('useLearningPaths — best-of-sequence path rollup for Path Tracks (dec
   const FOUNDATIONS = ['found-1', 'found-2', 'found-3', 'found-4', 'found-5'];
   const BUILDER_GUIDES = Array.from({ length: 10 }, (_, i) => `builder-${i + 1}`);
 
-  function useTracksPath(tracks: Array<{ trackId: string; label: string; guides: string[] }>): void {
+  function useTracksPath(
+    tracks: Array<{ trackId: string; label: string; guides: string[] }>,
+    manifestType: 'path' | 'journey' = 'path'
+  ): void {
     const allGuides = [...FOUNDATIONS, ...tracks.flatMap((track) => track.guides)];
     mockPathsData = {
       paths: [
@@ -269,7 +272,7 @@ describe('useLearningPaths — best-of-sequence path rollup for Path Tracks (dec
           description: '',
           guides: allGuides,
           badgeId: '',
-          manifest: { id: 'tracks-demo', type: 'path', milestones: FOUNDATIONS, tracks },
+          manifest: { id: 'tracks-demo', type: manifestType, milestones: FOUNDATIONS, tracks },
         },
       ],
       guideMetadata: Object.fromEntries(allGuides.map((id) => [id, { title: id, estimatedMinutes: 5 }])),
@@ -312,6 +315,27 @@ describe('useLearningPaths — best-of-sequence path rollup for Path Tracks (dec
     const { result } = renderHook(() => useLearningPaths());
 
     await waitFor(() => expect(result.current.getPathProgress('tracks-demo')).toBe(40));
+    expect(result.current.isPathCompleted('tracks-demo')).toBe(false);
+  });
+
+  // RFC §6.1 / schema Rule 3 scope tracks to type: 'path', but that rule
+  // only runs in superRefine, which runtime loaders skip — a journey
+  // manifest that still carries a stray tracks array must not grow an
+  // extra scored sequence.
+  it('ignores a stray tracks array on a journey manifest — only type: "path" scores tracks as sequences', async () => {
+    useTracksPath(
+      [{ trackId: 'builder', label: 'Builder', guides: ['builder-1', 'builder-2', 'builder-3'] }],
+      'journey'
+    );
+    // Foundations: 1 of 5 complete (20%). Builder (ignored): all 3 complete.
+    mockProgressGet.mockResolvedValue({
+      ...EMPTY_PROGRESS,
+      completedGuides: ['found-1', 'builder-1', 'builder-2', 'builder-3'],
+    });
+
+    const { result } = renderHook(() => useLearningPaths());
+
+    await waitFor(() => expect(result.current.getPathProgress('tracks-demo')).toBe(20));
     expect(result.current.isPathCompleted('tracks-demo')).toBe(false);
   });
 });
