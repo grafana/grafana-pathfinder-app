@@ -187,7 +187,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
               <>
                 <Menu.Divider />
                 <Menu.Item
-                  label={t('docsPanel.revertToOldHelpMenu', 'Revert to old Help menu')}
+                  label={t('docsPanel.switchToClassicHelpMenu', 'Switch to classic Help menu')}
                   icon="history"
                   className={previewMenuItemClass}
                   component={PreviewBadge}
