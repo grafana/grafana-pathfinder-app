@@ -3,7 +3,7 @@ import 'prismjs/components/prism-bash';
 import { KioskLaunchError } from '../../lib/kiosk-launch-error';
 import { logger } from '../../lib/logging';
 import React, { useEffect, useId, useRef, useState, useMemo } from 'react';
-import { Button, Field, Input, Combobox, useStyles2 } from '@grafana/ui';
+import { Button, Field, Input, Combobox, Icon, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
 import type { KioskPage as Page, KioskPageBlock, KioskMode } from '../../types/kiosk-page.schema';
@@ -38,6 +38,17 @@ const getStyles = (theme: GrafanaTheme2) => ({
       margin: 'auto',
     },
   }),
+  heroBanner: css({
+    padding: theme.spacing(4),
+    background: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    '& h1': { fontSize: 'clamp(1.75rem, 3vw, 2.5rem)', margin: theme.spacing(2, 0) },
+    '& p': { maxWidth: 680, fontSize: theme.typography.body.fontSize },
+    [theme.breakpoints.down('sm')]: { padding: theme.spacing(3, 2) },
+  }),
+  heroBrand: css({ display: 'inline-flex', alignItems: 'center', gap: theme.spacing(1.5) }),
+  bannerEyebrow: css({ color: theme.colors.text.secondary, fontWeight: theme.typography.fontWeightMedium }),
   eyebrow: css({ color: theme.colors.primary.text, fontWeight: theme.typography.fontWeightMedium }),
   secondary: css({ color: theme.colors.text.secondary }),
   form: css({ maxWidth: 850, width: '100%', margin: '0 auto' }),
@@ -329,8 +340,18 @@ export function KioskPage({ page, rules, mode, onLaunch }: Props) {
         switch (block.type) {
           case 'hero':
             return (
-              <section key={index} className={`${styles.hero} ${block.alignment === 'start' ? '' : styles.center}`}>
-                {block.eyebrow && <span className={styles.eyebrow}>{block.eyebrow}</span>}
+              <section
+                key={index}
+                className={`${styles.hero} ${block.variant === 'banner' ? styles.heroBanner : ''} ${block.alignment === 'start' ? '' : styles.center}`}
+              >
+                <div className={styles.heroBrand}>
+                  {block.variant === 'banner' && <Icon name="grafana" size="xxl" aria-label="Grafana" />}
+                  {block.eyebrow && (
+                    <span className={block.variant === 'banner' ? styles.bannerEyebrow : styles.eyebrow}>
+                      {block.eyebrow}
+                    </span>
+                  )}
+                </div>
                 <h1>{block.title}</h1>
                 {block.description && <p>{block.description}</p>}
               </section>
