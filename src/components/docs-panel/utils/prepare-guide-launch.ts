@@ -75,6 +75,7 @@ export type PrepareGuideLaunchResult =
   { ok: true; launch: PreparedGuideLaunch } | { ok: false; error: string; errorCode: PrepareGuideLaunchErrorCode };
 
 interface PrepareGuideLaunchContext {
+  requireResolvedSnippets?: boolean;
   loadContext?: GuideLoadContext;
   title: string;
   source: LaunchSource;
@@ -143,6 +144,14 @@ export async function prepareGuideLaunch(
     // Expand the parsed guide, never `validation.guide`: only the root schema is
     // loose, so the validated copy has dropped unknown fields nested in blocks.
     const { guide: expandedGuide, unresolvedSnippetIds } = await inlineSnippetRefsInGuideWithStatus(guide);
+    if (unresolvedSnippetIds.length > 0 && context.requireResolvedSnippets) {
+      finishGuideLoad(loadContext, 'error', {
+        source: loadContext.source,
+        stage: 'prepare',
+        reason: 'snippet-unavailable',
+      });
+      return { ok: false, error: 'All snippets must resolve before transferring inputs', errorCode: 'schema-invalid' };
+    }
     if (unresolvedSnippetIds.length > 0) {
       finishGuideLoad(loadContext, 'degraded', {
         source: loadContext.source,

@@ -13,6 +13,7 @@ jest.mock('@grafana/ui', () => ({
   useStyles2: () => ({}),
 }));
 jest.mock('./kiosk-rules', () => ({ loadKioskData: jest.fn(), DEFAULT_BANNER: 'default-banner' }));
+jest.mock('./KioskPage', () => ({ KioskPage: () => <div>Structured page</div> }));
 jest.mock('./KioskTile', () => ({ KioskTile: ({ rule }: { rule: { title: string } }) => <div>{rule.title}</div> }));
 
 const load = jest.mocked(loadKioskData);
@@ -86,4 +87,22 @@ it('brands the default banner as Grafana learning material', async () => {
   expect(await screen.findByRole('heading', { name: 'Learn Grafana' })).toBeInTheDocument();
   expect(screen.getByText('Grafana learning')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Exit kiosk' })).toBeInTheDocument();
+});
+
+it('renders a structured page instead of the legacy banner and grid', async () => {
+  load.mockResolvedValue({
+    ...data('Legacy guide'),
+    banner: '<h2>Legacy banner</h2>',
+    page: {
+      version: 1,
+      header: 'minimal',
+      blocks: [{ type: 'hero', title: 'Demo' }],
+    },
+  });
+  render(<KioskOverlay rulesUrl="default" onClose={jest.fn()} />);
+  expect(await screen.findByText('Structured page')).toBeVisible();
+  expect(screen.queryByText('Legacy banner')).toBeNull();
+  expect(screen.queryByText('Legacy guide')).toBeNull();
+  expect(screen.queryByText('Interactive guides')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Exit kiosk' })).toBeVisible();
 });

@@ -1051,3 +1051,38 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
     }
   });
 });
+
+describe('kiosk response persistence', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setGlobalStorage(createLocalStorage());
+  });
+  it('merges submitted keys, survives a storage reload and isolates guides', async () => {
+    await guideResponseStorage.setResponse('first', 'other', 'preserved');
+    await guideResponseStorage.mergeResponses('second', { appUrl: 'https://second.example' });
+    await guideResponseStorage.mergeResponses('first', { appUrl: 'https://old.example' });
+    await guideResponseStorage.mergeResponses('first', { appUrl: 'https://new.example' });
+    setGlobalStorage(createLocalStorage());
+    expect(await guideResponseStorage.getForGuide('first')).toEqual({
+      other: 'preserved',
+      appUrl: 'https://new.example',
+    });
+    expect(await guideResponseStorage.getForGuide('second')).toEqual({ appUrl: 'https://second.example' });
+  });
+  it('reports storage failures instead of claiming success', async () => {
+    setGlobalStorage({
+      ...createLocalStorage(),
+      setItem: async () => {
+        throw new Error('Unavailable');
+      },
+    });
+    await expect(guideResponseStorage.mergeResponses('first', { appUrl: 'https://example.com' })).rejects.toThrow(
+      'Unavailable'
+    );
+  });
+  it('rejects prototype keys', async () => {
+    await expect(guideResponseStorage.mergeResponses('first', JSON.parse('{"__proto__":"x"}'))).rejects.toThrow(
+      'Invalid'
+    );
+  });
+});

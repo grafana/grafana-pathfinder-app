@@ -20,6 +20,8 @@ export const getKioskOverlayStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(3),
     [theme.breakpoints.down('sm')]: { padding: theme.spacing(0, 2, 3) },
   }),
+  standardWidth: css({ maxWidth: 960 }),
+  minimalHeader: css({ justifyContent: 'flex-end', borderBottom: 'none', position: 'static' }),
   header: css({
     position: 'sticky',
     top: 0,
