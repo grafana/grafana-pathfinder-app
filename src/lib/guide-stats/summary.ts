@@ -22,7 +22,7 @@ import { computeGuideBlockIndex, type CountableBlock, type GuideBlockIndex } fro
  *
  * NOT a content version: it says nothing about whether the guide changed.
  *
- * v2 distinguishes stamps before and after conditional branch-child credit.
+ * v2 separates stamps before and after conditional branch-child credit.
  */
 export const GUIDE_STATS_VERSION = 2;
 
@@ -96,3 +96,4 @@ export function rollUpGuideStats(parts: readonly GuideStatsSummary[]): GuideStat
 
   return { version: GUIDE_STATS_VERSION, blockCount, sectionCount, completableBlockCount, finalCompletablePosition };
 }
+
