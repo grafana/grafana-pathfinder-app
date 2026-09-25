@@ -196,7 +196,7 @@ These tests use a DOM fixture, not a real Monaco editor. They cover discovery, i
 
 The runner supports `terminal-connect` and `terminal` through `drivers/terminal.ts`. Both require the [terminal DOM contract](./E2E_TESTING_CONTRACT.md#terminal-runner-contract) from the installed Pathfinder build.
 
-A connection step clicks its own Connect control and waits for a connected, completed root. An existing default connection uses Continue. An explicit VM request with an existing connection fails before Continue, because the product does not prove that the current VM matches. Disconnect that terminal before the run.
+A connection step clicks its own Connect control and waits for a connected, completed root. An existing default connection uses Continue. An explicit VM request with an existing connection fails before Continue, because the product does not prove that the current VM matches. This also applies when an earlier step in the same run opened the connection. Disconnecting before the run does not enable later steps to switch VMs.
 
 A command step connects through its own control if necessary, then clicks Exec once. It never substitutes Copy. Completion means the product sent the command, not that the shell finished or returned exit code zero. The driver does not parse terminal output, append shell markers, or resend commands after errors.
 

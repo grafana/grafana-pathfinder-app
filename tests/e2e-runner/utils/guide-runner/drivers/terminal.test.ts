@@ -68,8 +68,9 @@ function setup(kind: 'terminal' | 'terminal-connect' = 'terminal') {
   ]);
   const root = {
     count: jest.fn(async () => 1),
-    evaluate: jest.fn(async () => undefined),
-    evaluateAll: jest.fn(async () => ({
+    evaluate: jest.fn(async (): Promise<string | undefined> => undefined),
+    waitFor: jest.fn(async () => undefined),
+    evaluateAll: jest.fn(async (): Promise<{ state: string | null; connection: string | null } | null> => ({
       state: attributes['data-test-step-state'] ?? null,
       connection: attributes['data-test-terminal-status'] ?? null,
     })),
@@ -77,8 +78,18 @@ function setup(kind: 'terminal' | 'terminal-connect' = 'terminal') {
     getByTestId: jest.fn((id: string) => controls.get(id) ?? absent),
     scrollIntoViewIfNeeded: jest.fn(async () => undefined),
   };
+  const toggle = { click: jest.fn(async () => undefined), and: jest.fn() };
+  toggle.and.mockReturnValue(toggle);
+  const section = {
+    evaluateAll: jest.fn(async () => false),
+    getByTestId: jest.fn(() => toggle),
+    getByRole: jest.fn(() => toggle),
+  };
   const page = {
     getByTestId: jest.fn((id: string) => {
+      if (id === testIds.interactive.section('setup')) {
+        return section;
+      }
       if (id !== testIds.interactive.terminalStep('step') && id !== testIds.interactive.terminalConnectStep('step')) {
         throw new Error('Wrong terminal root');
       }
@@ -99,7 +110,7 @@ function setup(kind: 'terminal' | 'terminal-connect' = 'terminal') {
     locator: root as unknown as Locator,
     ...(await driver.inspect(page, root as unknown as Locator, 'step')),
   });
-  return { attributes, driver, root, page, step, exec, connect, skip, absent };
+  return { attributes, driver, root, page, step, exec, connect, skip, absent, section, toggle };
 }
 
 afterEach(() => {
@@ -147,6 +158,57 @@ it.each(['terminal', 'terminal-connect'] as const)(
     expect(f.exec.click).not.toHaveBeenCalled();
   }
 );
+
+it('continues an existing pending connection without starting another', async () => {
+  const f = setup('terminal-connect');
+  f.attributes['data-test-terminal-status'] = 'connecting';
+  f.root.evaluateAll.mockImplementationOnce(async () => {
+    f.attributes['data-test-terminal-status'] = 'connected';
+    return { state: 'idle', connection: 'connected' };
+  });
+  expect(await executeStep(f.page, await f.step())).toMatchObject({ status: 'passed' });
+  expect(f.connect.click).not.toHaveBeenCalled();
+  expect(f.skip.click).toHaveBeenCalledTimes(1);
+});
+
+it('fails detached command completion without a known parent section', async () => {
+  const f = setup();
+  f.root.evaluateAll.mockResolvedValueOnce(null);
+  expect(await executeStep(f.page, await f.step())).toMatchObject({
+    status: 'failed',
+    error: expect.stringContaining('detached'),
+  });
+});
+
+it.each(['completed', 'idle', 'disconnected'] as const)(
+  're-expands once and verifies restored state: %s',
+  async (restored) => {
+    const f = setup();
+    f.section.evaluateAll.mockResolvedValue(true);
+    f.root.evaluateAll.mockResolvedValueOnce(null);
+    f.exec.click.mockImplementation(async () => {
+      f.attributes['data-test-step-state'] = restored === 'idle' ? 'idle' : 'completed';
+      f.attributes['data-test-terminal-status'] = restored === 'disconnected' ? 'disconnected' : 'connected';
+    });
+    expect(await executeStep(f.page, { ...(await f.step()), sectionId: 'setup' }, { timeout: 600 })).toMatchObject({
+      status: restored === 'completed' ? 'passed' : 'failed',
+    });
+    expect(f.toggle.click).toHaveBeenCalledTimes(1);
+    expect(f.exec.click).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('synchronizes Skip after section collapse without requiring a connection', async () => {
+  const f = setup();
+  f.attributes['data-test-terminal-status'] = 'disconnected';
+  f.root.evaluate.mockResolvedValue('setup');
+  f.root.evaluateAll.mockResolvedValueOnce(null);
+  f.section.evaluateAll.mockResolvedValue(true);
+  await expect(f.driver.skip(f.page, 'step', 600)).resolves.toBeUndefined();
+  expect(f.toggle.click).toHaveBeenCalledTimes(1);
+  expect(f.skip.click).toHaveBeenCalledTimes(1);
+  expect(f.exec.click).not.toHaveBeenCalled();
+});
 
 it('reserves a provisioning budget for both terminal kinds', async () => {
   const f = setup();

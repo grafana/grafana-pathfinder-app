@@ -209,6 +209,25 @@ test('connects through a standalone terminal step before executing', async ({ pa
   await expect(page.locator('body')).toHaveAttribute('data-exec-count', '1');
 });
 
+test('waits for an existing pending connection and clicks Continue once', async ({ page }) => {
+  const { steps } = await loadFixture(page);
+  const root = page.getByTestId(testIds.interactive.terminalConnectStep('connect'));
+  await root.evaluate((element) => {
+    element.setAttribute('data-test-terminal-status', 'connecting');
+    const button = element.querySelector<HTMLButtonElement>('button[hidden]')!;
+    button.addEventListener('click', () => {
+      document.body.dataset.continueCount = String(Number(document.body.dataset.continueCount ?? '0') + 1);
+    });
+    setTimeout(() => {
+      element.setAttribute('data-test-terminal-status', 'connected');
+      button.hidden = false;
+    }, 1000);
+  });
+  expect(await executeStep(page, steps[0]!, { timeout: 3000 })).toMatchObject({ status: 'passed' });
+  await expect(page.locator('body')).toHaveAttribute('data-connect-count', '0');
+  await expect(page.locator('body')).toHaveAttribute('data-continue-count', '1');
+});
+
 test('uses Continue for an existing connection without provisioning again', async ({ page }) => {
   const { steps } = await loadFixture(page, { connected: true });
   expect(await executeStep(page, steps[0]!)).toMatchObject({ status: 'passed' });

@@ -294,7 +294,9 @@ export const TerminalStep = forwardRef<
     );
 
     const terminalError =
-      execError ?? (terminalCtx?.status === 'error' ? terminalCtx.error || 'Terminal connection failed.' : null);
+      isEligibleForChecking && isEnabled && !checker.isChecking
+        ? (execError ?? (terminalCtx?.status === 'error' ? terminalCtx.error || 'Terminal connection failed.' : null))
+        : null;
 
     let stepState: StepStateValue = STEP_STATES.IDLE;
     if (isCompleted) {
@@ -339,7 +341,7 @@ export const TerminalStep = forwardRef<
         {!isEnabled && !isCompleted && checker.explanation && (
           <div className={styles.requirementMessage} data-testid={testIds.interactive.requirementCheck(renderedStepId)}>
             {checker.explanation}
-            {skippable && (
+            {skippable && isEligibleForChecking && checker.canSkip && (
               <Button
                 size="sm"
                 variant="secondary"
@@ -414,7 +416,10 @@ export const TerminalStep = forwardRef<
         )}
 
         {terminalError && !isCompleted && (
-          <div role="alert" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
+          <div
+            role={execError && terminalCtx?.status !== 'error' ? 'alert' : undefined}
+            data-testid={testIds.interactive.errorMessage(renderedStepId)}
+          >
             {terminalError}
           </div>
         )}

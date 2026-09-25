@@ -305,12 +305,17 @@ export const TerminalConnectStep = forwardRef<
       SANDBOX_SUBJECT
     );
 
+    const connectionError =
+      isEligibleForChecking && isEnabled && !checker.isChecking && terminalCtx?.status === 'error'
+        ? terminalCtx.error || 'Terminal connection failed.'
+        : null;
+
     let stepState: StepStateValue = STEP_STATES.IDLE;
     if (isCompleted) {
       stepState = STEP_STATES.COMPLETED;
     } else if (isTerminalConnecting || isCurrentlyExecuting || (gcx && gcxState === 'provisioning')) {
       stepState = STEP_STATES.EXECUTING;
-    } else if (terminalCtx?.status === 'error') {
+    } else if (connectionError) {
       stepState = STEP_STATES.ERROR;
     } else if (checker.isChecking) {
       stepState = STEP_STATES.CHECKING;
@@ -417,10 +422,8 @@ export const TerminalConnectStep = forwardRef<
           </>
         )}
 
-        {terminalCtx?.status === 'error' && !isCompleted && (
-          <div role="alert" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
-            {terminalCtx.error || 'Terminal connection failed.'}
-          </div>
+        {connectionError && !isCompleted && (
+          <div data-testid={testIds.interactive.errorMessage(renderedStepId)}>{connectionError}</div>
         )}
 
         {isCompleted && (

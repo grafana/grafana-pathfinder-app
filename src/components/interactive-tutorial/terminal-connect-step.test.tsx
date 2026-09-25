@@ -194,6 +194,38 @@ describe('without gcx', () => {
     expect(mockMarkStepCompleted).not.toHaveBeenCalled();
   });
 
+  it('keeps shared connection errors off blocked steps and leaves announcements to the panel', () => {
+    mockTerminalStatus = 'error';
+    render(
+      <>
+        <TerminalConnectStep stepId="current" />
+        <TerminalConnectStep stepId="blocked" isEligibleForChecking={false} />
+      </>
+    );
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep('current'))).toHaveAttribute(
+      'data-test-step-state',
+      'error'
+    );
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep('blocked'))).toHaveAttribute(
+      'data-test-step-state',
+      'requirements-unmet'
+    );
+    expect(screen.queryByTestId(testIds.interactive.errorMessage('blocked'))).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.errorMessage('current'))).toBeVisible();
+    expect(screen.queryAllByRole('alert')).toHaveLength(0);
+  });
+
+  it('preserves checking state during a shared connection error', () => {
+    mockTerminalStatus = 'error';
+    mockCheckerStatusOverride = 'checking';
+    renderStep();
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID))).toHaveAttribute(
+      'data-test-step-state',
+      'checking'
+    );
+    expect(screen.queryByTestId(testIds.interactive.errorMessage(STEP_ID))).not.toBeInTheDocument();
+  });
+
   it('exposes an unavailable sandbox as prerequisite evidence', () => {
     mockSandboxUnavailable = 'This account cannot create sessions.';
     renderStep();

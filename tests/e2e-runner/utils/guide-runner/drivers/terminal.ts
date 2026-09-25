@@ -239,11 +239,11 @@ function terminalDriver(kind: TerminalKind): StepDriver {
           root,
           step.stepId,
           deadline,
-          kind === 'terminal-connect' ? 'completed' : 'connected',
+          kind === 'terminal-connect' && connection !== 'connecting' ? 'completed' : 'connected',
           connection,
           step.sectionId
         );
-        if (kind === 'terminal-connect') {
+        if (kind === 'terminal-connect' && connection !== 'connecting') {
           return { outcome: 'completed' };
         }
       }

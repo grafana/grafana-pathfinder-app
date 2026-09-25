@@ -116,7 +116,7 @@ After an action, success requires an attached root with `data-test-step-state="c
 
 A command completion proves product dispatch only. It does not prove process exit, exit code zero, or expected output. The runner sends no extra shell commands and does not use the Coda exec API.
 
-The runner refuses `gcx: true` before connection because credential provisioning is outside this implementation. An explicit VM request also refuses an existing connection rather than silently accepting an unverified VM. A missing `data-test-terminal-status` fails with a plugin-contract diagnostic.
+The runner refuses `gcx: true` before connection because credential provisioning is outside this implementation. An explicit VM request also refuses an existing connection rather than silently accepting an unverified VM. This includes connected or connecting sessions started by earlier steps in the same run; a later VM-requesting step fails as an unmet prerequisite. A missing `data-test-terminal-status` fails with a plugin-contract diagnostic.
 
 Component tests in `terminal-step.test.tsx` and `terminal-connect-step.test.tsx` cover these attributes and controls. `tests/e2e-runner/terminal-driver.spec.ts` covers driver execution with browser DOM fixtures.
 
