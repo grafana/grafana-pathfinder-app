@@ -44,7 +44,8 @@ argument.
 
 **A vocabulary warning before you read further.** "Journey" in decision 5 means a
 level _above_ paths — a path of paths. That is not what "journey" means in the
-code today: `milestoneCompletionStorage` is keyed by `journeyBaseUrl`,
+code today: `milestoneCompletionStorage` — now a read-only legacy store, kept
+only for backfill and reset — is keyed by `journeyBaseUrl`,
 `getLearningJourneyBaseUrl` canonicalizes it, and `rollUpGuideStats` treats "a
 path or journey" as one thing with milestones under it. In current code a
 learning journey sits at the same level as a path, not above it. If decision 5 is
@@ -315,14 +316,20 @@ reader looking for its last page.
 **What this changes.** Learning-path completion used to be
 milestone-click-based: the path rollup in
 `src/learning-paths/learning-paths.hook.ts` counted milestones present in a
-completed-guides list, and `milestoneCompletionStorage` records milestone slugs.
-It is now `calculatePathRollup`, the mean of its members' own percentages, so a
-milestone reaches 100% the same way a guide does and navigation past it does
-not. This is exactly the baseline the
+completed-guides list, and `milestoneCompletionStorage` recorded milestone
+slugs. It is now `calculatePathRollup`, the mean of its members' own
+percentages, so a milestone reaches 100% the same way a guide does and
+navigation past it does not. This is exactly the baseline the
 rejected alternative argues against discarding, so the change is deliberate and
 its cost is known: the
 existing milestone-click series is not comparable to what comes after it, and any
 before/after read across the cutover needs to say which model produced each side.
+`markMilestoneDone` now writes a milestone's completion into
+`interactiveCompletionStorage`, under the same sanitized-URL content key
+`calculatePathRollup` and `journeyMilestonePercentages` read back;
+`milestoneCompletionStorage` is a read-only legacy store today, consulted only
+for a one-time backfill into `interactiveCompletionStorage` and still cleared,
+never written, by the reset flows.
 
 ### Decision 7 — a separate `markCompleteClicked` event ships alongside the completion event
 
@@ -466,8 +473,9 @@ are paired, which is here and not in storage.
 
 **The key spaces `resetPath` clears are not one space.**
 `interactiveCompletionStorage` and `interactiveStepStorage` are keyed by the
-sanitized content key; `milestoneCompletionStorage` and
-`journeyCompletionStorage` are keyed by the raw launch URL. `resetPath` builds
+sanitized content key; `milestoneCompletionStorage` (legacy-only, kept for
+backfill and reset) and `journeyCompletionStorage` are keyed by the raw launch
+URL. `resetPath` builds
 both from the join — `pathMemberContentKeys` for the sanitized namespaces,
 `pathMemberIdSchemeKeys` for the raw ones.
 
