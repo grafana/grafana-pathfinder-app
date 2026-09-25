@@ -56,3 +56,20 @@ it('accepts remaining presentation blocks without arbitrary styling', () => {
     }).success
   ).toBe(true);
 });
+
+it.each(['bash', 'text'])('accepts command language %s', (language) => {
+  expect(
+    KioskCatalogSchema.safeParse({
+      ...demo,
+      page: { version: 1, blocks: [{ type: 'command', command: 'echo demo', language }] },
+    }).success
+  ).toBe(true);
+});
+it('rejects unsupported command languages', () => {
+  expect(
+    KioskCatalogSchema.safeParse({
+      ...demo,
+      page: { version: 1, blocks: [{ type: 'command', command: 'echo demo', language: 'html' }] },
+    }).success
+  ).toBe(false);
+});

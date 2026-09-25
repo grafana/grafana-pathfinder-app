@@ -91,3 +91,5 @@ GRAFANA_URL=http://localhost:3301 npx playwright test tests/kiosk-page.spec.ts -
 ```
 
 It saves screenshots under the Playwright test output directory. This demonstrates layout, persistence, and form filling; it does not certify live Synthetic Monitoring or Frontend Observability provisioning.
+
+Command blocks use Bash syntax highlighting by default. Set `"language": "text"` for plain text, or `"language": "bash"` explicitly. Highlighting uses Grafana theme colors; copying always copies only the original command, without the decorative shell prompt.
