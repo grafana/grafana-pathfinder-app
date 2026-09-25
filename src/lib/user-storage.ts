@@ -1,3 +1,4 @@
+import { isSafeResponseName, MAX_INPUT_LENGTH } from './input-value';
 /**
  * User storage abstraction for the Grafana Docs Plugin
  *
@@ -1926,6 +1927,24 @@ export const learningProgressStorage = {
  * }
  */
 export const guideResponseStorage = {
+  async mergeResponses(guideId: string, responses: Record<string, string>): Promise<void> {
+    if (
+      ['__proto__', 'prototype', 'constructor'].includes(guideId) ||
+      Object.entries(responses).some(([key, value]) => !isSafeResponseName(key) || value.length > MAX_INPUT_LENGTH)
+    ) {
+      throw new Error('Invalid guide inputs');
+    }
+    const storage = createUserStorage();
+    const all = await guideResponseStorage.getAll();
+    const previous = Object.hasOwn(all, guideId) ? all[guideId] : {};
+    await storage.setItem(StorageKeys.GUIDE_RESPONSES, { ...all, [guideId]: { ...previous, ...responses } });
+    window.dispatchEvent(
+      new CustomEvent(StorageEvents.GuideResponseChanged, {
+        detail: { guideId, variableName: '*', value: undefined },
+      })
+    );
+  },
+
   /**
    * Gets all responses with Zod validation for defense-in-depth
    */

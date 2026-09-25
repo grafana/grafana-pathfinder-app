@@ -114,6 +114,17 @@ describe('handlePathfinderDeepLink', () => {
     mockGetHistoryImpl = () => ({ listen: mockHistoryListen });
   });
 
+  it('keeps the route selected by kiosk without a page query that conflicts with app routing', async () => {
+    setPathname('/a/grafana-synthetic-monitoring-app/home');
+    setSearch('?doc=bundled%3Afoo&kiosk_session=test');
+    mockFindDocPage.mockReturnValue({ type: 'docs-page', url: 'bundled:foo', title: 'Foo', targetPage: '/explore' });
+    const deps = mkDeps();
+    handlePathfinderDeepLink(deps);
+    await flushPromises();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).toHaveBeenCalled();
+  });
+
   it('returns false and does no work when no Pathfinder params are present', () => {
     setSearch('?keep=this');
     const deps = mkDeps();

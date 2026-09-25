@@ -1,3 +1,5 @@
+import { reportKioskInteraction } from '../../lib/kiosk-analytics';
+import { KioskPage } from './KioskPage';
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify';
@@ -5,7 +7,8 @@ import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { getKioskOverlayStyles } from './kiosk-mode.styles';
 import { loadKioskData, DEFAULT_BANNER, type KioskData } from './kiosk-rules';
-import { KioskTile, type KioskMode } from './KioskTile';
+import { KioskTile } from './KioskTile';
+import type { KioskMode } from '../../types/kiosk-page.schema';
 
 // SECURITY: Remote banners allow layout styles but must pass through DOMPurify.
 const BANNER_SANITIZE_CONFIG: DOMPurifyConfig = {
@@ -37,6 +40,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
   const current = result?.rulesUrl === rulesUrl && result?.overrideUrl === overrideUrl ? result.data : null;
   const loading = current === null;
   const rules = current?.rules ?? [];
+  const page = current?.page;
   const banner = current?.banner ?? '';
   const warning = current?.warning;
 
@@ -71,15 +75,27 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
     return () => controller.abort();
   }, [rulesUrl, overrideUrl]);
 
+  const handleExit = useCallback(
+    (method: 'button' | 'escape') => {
+      reportKioskInteraction(mode, undefined, { component: 'kiosk', action: 'exit', method });
+      onClose();
+    },
+    [mode, onClose]
+  );
+
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.defaultPrevented) {
+        return;
+      }
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        e.stopPropagation();
+        handleExit('escape');
       }
       if (e.key === 'Tab') {
         const controls = overlayRef.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), a[href], [tabindex="0"]'
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]'
         );
         const first = controls?.[0];
         const last = controls?.[controls.length - 1];
@@ -89,59 +105,90 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
         }
       }
     },
-    [onClose]
+    [handleExit]
   );
 
   useEffect(() => {
     const previousFocus = document.activeElement;
+    let lastFocus: HTMLElement | null = exitRef.current;
+    let restoreTimer: ReturnType<typeof setTimeout> | undefined;
+    const retainFocus = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (overlayRef.current?.contains(target)) {
+        lastFocus = target;
+        return;
+      }
+      const popupId = lastFocus?.getAttribute('aria-controls');
+      if (popupId && document.getElementById(popupId)?.contains(target)) {
+        return;
+      }
+      (lastFocus?.isConnected && !lastFocus.matches(':disabled') ? lastFocus : exitRef.current)?.focus();
+    };
+    const handleFocusIn = (event: FocusEvent) => retainFocus(event.target);
+    const handleFocusOut = () => {
+      clearTimeout(restoreTimer);
+      // Blur can leave focus on body without emitting a matching focusin event.
+      restoreTimer = setTimeout(() => retainFocus(document.activeElement), 0);
+    };
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
     exitRef.current?.focus();
-    document.addEventListener('keydown', handleKeyDown);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      clearTimeout(restoreTimer);
+      document.removeEventListener('focusin', handleFocusIn);
+      document.removeEventListener('focusout', handleFocusOut);
       document.body.style.overflow = previousOverflow;
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
         previousFocus.focus();
       }
     };
-  }, [handleKeyDown]);
+  }, []);
 
   return createPortal(
     <div
       ref={overlayRef}
+      onKeyDown={handleKeyDown}
       className={styles.backdrop}
       data-testid={testIds.kioskMode.overlay}
       role="dialog"
       aria-modal="true"
       aria-label="Kiosk mode"
     >
-      <div className={styles.container}>
-        <div className={styles.header} data-testid={testIds.kioskMode.header}>
-          <div className={styles.titleGroup}>
-            <h1 className={styles.title}>
-              <Icon name="presentation-play" size="lg" /> Interactive guides
-            </h1>
-            <p className={styles.subtitle}>
-              {mode === 'instance'
-                ? 'Choose a guide to follow in this Grafana instance'
-                : 'Select a guide to launch it in a new tab'}
-            </p>
-          </div>
+      <div className={`${styles.container} ${page && page.width !== 'wide' ? styles.standardWidth : ''}`}>
+        <div
+          className={`${styles.header} ${page?.header === 'minimal' ? styles.minimalHeader : ''}`}
+          data-testid={testIds.kioskMode.header}
+        >
+          {page?.header !== 'minimal' && (
+            <div className={styles.titleGroup}>
+              <h1 className={styles.title}>
+                <Icon name="presentation-play" size="lg" /> Interactive guides
+              </h1>
+              <p className={styles.subtitle}>
+                {mode === 'instance'
+                  ? 'Choose a guide to follow in this Grafana instance'
+                  : 'Select a guide to launch it in a new tab'}
+              </p>
+            </div>
+          )}
           <Button
             ref={exitRef}
             variant="secondary"
-            icon="times"
+            icon="arrow-left"
             className={styles.closeButton}
-            onClick={onClose}
-            aria-label="Exit kiosk"
+            onClick={() => handleExit('button')}
+            aria-label="Back to Grafana"
             data-testid={testIds.kioskMode.closeButton}
           >
-            Exit kiosk
+            Back to Grafana
           </Button>
         </div>
 
-        {!loading && banner === DEFAULT_BANNER && (
+        {!loading && !page && banner === DEFAULT_BANNER && (
           <section className={styles.learningBanner} aria-labelledby="kiosk-learning-title">
             <div className={styles.learningMark} aria-hidden="true">
               <Icon name="book-open" size="xxxl" />
@@ -156,7 +203,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
           </section>
         )}
 
-        {!loading && sanitizedBanner && (
+        {!loading && !page && sanitizedBanner && (
           // eslint-disable-next-line no-restricted-syntax -- remote kiosk banner sanitized with DOMPurify
           <div className={styles.banner} dangerouslySetInnerHTML={{ __html: sanitizedBanner }} />
         )}
@@ -173,7 +220,16 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
           </div>
         )}
 
-        {!loading && (
+        {!loading && page && (
+          <KioskPage
+            key={`${rulesUrl}-${overrideUrl ?? ''}`}
+            page={page}
+            rules={rules}
+            mode={mode}
+            onLaunch={onClose}
+          />
+        )}
+        {!loading && !page && (
           <div className={styles.grid} data-testid={testIds.kioskMode.tileGrid}>
             {rules.map((rule, index) => (
               <KioskTile key={rule.url} rule={rule} index={index} mode={mode} onLaunch={onClose} />
