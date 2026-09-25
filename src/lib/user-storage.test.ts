@@ -18,6 +18,7 @@ import {
   unwrapEnvelope,
   wrapEnvelope,
 } from './user-storage';
+import { StorageEvents } from './event-names';
 import { StorageKeys, buildVersionedSectionStorageKey } from './storage-keys';
 
 // Mock `@grafana/runtime` so the quota-toast helper can publish through a
@@ -1056,6 +1057,17 @@ describe('kiosk response persistence', () => {
   beforeEach(() => {
     localStorage.clear();
     setGlobalStorage(createLocalStorage());
+  });
+  it('announces merged responses with the guide-scoped wildcard event', async () => {
+    const listener = jest.fn();
+    window.addEventListener(StorageEvents.GuideResponseChanged, listener);
+    try {
+      await guideResponseStorage.mergeResponses('first', { appUrl: 'https://example.com' });
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener.mock.calls[0][0].detail).toEqual({ guideId: 'first', variableName: '*', value: undefined });
+    } finally {
+      window.removeEventListener(StorageEvents.GuideResponseChanged, listener);
+    }
   });
   it('merges submitted keys, survives a storage reload and isolates guides', async () => {
     await guideResponseStorage.setResponse('first', 'other', 'preserved');

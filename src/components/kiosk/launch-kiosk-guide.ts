@@ -2,7 +2,9 @@ import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-laun
 import { guideLaunchStore } from '../../global-state/guide-launch';
 import { sidebarState } from '../../global-state/sidebar';
 import { linkInterceptionState } from '../../global-state/link-interception';
-import { AUTO_OPEN_DOCS_EVENT } from '../../lib/event-names';
+import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
+import pluginJson from '../../plugin.json';
+import { AUTO_OPEN_DOCS_EVENT, REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { locationService } from '@grafana/runtime';
 import { stripPathfinderParams } from '../../utils/pathfinder-search-params';
@@ -68,6 +70,22 @@ export function launchKioskGuide(
     url.searchParams.set('type', 'learning-journey');
   }
   if (mode === 'instance') {
+    if (prepared && (panelModeManager.getMode() === 'floating' || isExtensionSidebarOwnedByOther(pluginJson.id))) {
+      window.__pathfinderKioskSessionId = sessionId;
+      panelModeManager.setPendingGuide({
+        url: prepared.url,
+        title: prepared.title,
+        type: prepared.type,
+        packageInfo: prepared.packageInfo,
+        preparedContent: prepared.preparedContent,
+        source: prepared.source,
+      });
+      onLaunch?.();
+      panelModeManager.setModeTransient('floating');
+      locationService.push(`${url.pathname}${url.search}${url.hash}`);
+      document.dispatchEvent(new CustomEvent(REQUEST_FLOATING_GUIDE_EVENT));
+      return;
+    }
     onLaunch?.();
     panelModeManager.setModeTransient('sidebar');
     locationService.push(`${url.pathname}${url.search}${url.hash}`);

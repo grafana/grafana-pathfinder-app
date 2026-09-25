@@ -1,3 +1,4 @@
+import { KioskFormError } from '../../lib/input-value';
 import type { KioskInput, KioskMode } from '../../types/kiosk-page.schema';
 import type { KioskRule } from './kiosk-rules';
 import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
@@ -30,7 +31,7 @@ export async function prepareKioskInputs(
       values[input.variableName] &&
       !filterDatasourcesByType(input.datasourceFilter).some((ds) => ds.name === values[input.variableName])
     ) {
-      throw new Error('Choose an available data source');
+      throw new KioskFormError('Choose an available data source');
     }
   }
   const result = await prepareGuideLaunch(rule.url, {
@@ -58,7 +59,7 @@ export async function prepareKioskInputs(
       values
     );
   } catch {
-    throw new Error('Could not save inputs. Try again');
+    throw new KioskFormError('Could not save inputs. Try again', 'storage');
   }
   signal.throwIfAborted();
   return launch;

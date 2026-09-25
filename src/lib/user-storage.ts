@@ -1940,7 +1940,7 @@ export const guideResponseStorage = {
     await storage.setItem(StorageKeys.GUIDE_RESPONSES, { ...all, [guideId]: { ...previous, ...responses } });
     window.dispatchEvent(
       new CustomEvent(StorageEvents.GuideResponseChanged, {
-        detail: { guideId, type: 'initial-load' },
+        detail: { guideId, variableName: '*', value: undefined },
       })
     );
   },

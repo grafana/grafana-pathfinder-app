@@ -66,7 +66,7 @@ for (const theme of ['light', 'dark']) {
     await installFixtures(page);
     await page.goto(`/?pathfinderKiosk=1&kioskRulesUrl=${encodeURIComponent(catalogUrl)}&theme=${theme}`);
     await expect(page.getByRole('heading', { name: 'See how real users experience your app' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Exit kiosk' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Back to Grafana' })).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.getByLabel('Your website')).toBeFocused();
     await page.getByLabel('Your website').fill('https://example.com/private?token=secret');
@@ -158,4 +158,66 @@ test('copy action reports success and failure without running the command', asyn
   });
   await page.getByRole('button', { name: 'Copy', exact: true }).click();
   await expect(page.getByTestId(testIds.kioskMode.overlay).getByRole('status')).toContainText('Could not copy');
+});
+
+test('Escape dismisses an open data source picker before closing kiosk and preserves the draft', async ({ page }) => {
+  await installFixtures(page);
+  const form = catalog.page.blocks.find((block) => block.type === 'launch-form')!;
+  await page.route(catalogUrl, (route) =>
+    route.fulfill({
+      json: {
+        ...catalog,
+        page: {
+          ...catalog.page,
+          blocks: [
+            {
+              ...form,
+              inputs: [
+                ...('inputs' in form ? form.inputs : []),
+                {
+                  inputType: 'datasource',
+                  variableName: 'datasource',
+                  prompt: 'Data source',
+                  datasourceFilter: 'testdata',
+                  required: true,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    })
+  );
+  await page.goto(`/?pathfinderKiosk=1&kioskRulesUrl=${encodeURIComponent(catalogUrl)}`);
+  await page.getByLabel('Your website').fill('https://example.com');
+  const picker = page.getByRole('combobox');
+  await picker.click();
+  await expect(page.getByRole('option', { name: 'gdev-testdata' })).toBeVisible();
+  await picker.press('Escape');
+  await expect(page.getByRole('listbox')).not.toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Kiosk mode' })).toBeVisible();
+  await expect(page.getByLabel('Your website')).toHaveValue('https://example.com');
+  await expect(picker).toBeFocused();
+  await picker.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Kiosk mode' })).not.toBeVisible();
+});
+
+test('destination authoring errors show a visitor-friendly message and retain the draft', async ({ page }) => {
+  await installFixtures(page);
+  await page.route(guideUrl, (route) =>
+    route.fulfill({
+      json: {
+        ...guide,
+        blocks: guide.blocks.map((block) =>
+          block.type === 'input' ? { ...block, variableName: 'differentInput' } : block
+        ),
+      },
+    })
+  );
+  await page.goto(`/?pathfinderKiosk=1&kioskRulesUrl=${encodeURIComponent(catalogUrl)}`);
+  await page.getByLabel('Your website').fill('https://example.com');
+  await page.getByRole('button', { name: 'Start guided setup' }).click();
+  await expect(page.getByRole('alert')).toContainText('Could not open this guide. Please try again later.');
+  await expect(page.getByRole('alert')).not.toContainText('compatible input');
+  await expect(page.getByLabel('Your website')).toHaveValue('https://example.com');
 });

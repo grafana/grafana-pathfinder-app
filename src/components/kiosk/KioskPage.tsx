@@ -3,8 +3,9 @@ import { Button, Field, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
 import type { KioskPage as Page, KioskPageBlock, KioskMode } from '../../types/kiosk-page.schema';
+import { reportKioskInteraction } from '../../lib/kiosk-analytics';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
-import { MAX_INPUT_LENGTH } from '../../lib/input-value';
+import { KioskFormError, MAX_INPUT_LENGTH } from '../../lib/input-value';
 import { filterDatasourcesByType, toDatasourceOptions } from '../interactive-tutorial/datasource-options';
 import type { KioskRule } from './kiosk-rules';
 import { launchKioskGuide } from './launch-kiosk-guide';
@@ -67,7 +68,7 @@ interface Props {
   onLaunch: () => void;
 }
 
-function Command({ command }: { command: string }) {
+function Command({ command, mode, blockIndex }: { command: string; mode: KioskMode; blockIndex: number }) {
   const styles = useStyles2(getStyles);
   const [status, setStatus] = useState('');
   return (
@@ -80,8 +81,10 @@ function Command({ command }: { command: string }) {
             try {
               await navigator.clipboard.writeText(command);
               setStatus('Copied');
+              reportKioskInteraction(mode, blockIndex, { component: 'command', action: 'copy', outcome: 'success' });
             } catch {
               setStatus('Could not copy. Select and copy the command manually');
+              reportKioskInteraction(mode, blockIndex, { component: 'command', action: 'copy', outcome: 'error' });
             }
           }}
         >
@@ -95,11 +98,13 @@ function Command({ command }: { command: string }) {
 
 function LaunchForm({
   block,
+  blockIndex,
   rule,
   mode,
   onLaunch,
 }: {
   block: Extract<KioskPageBlock, { type: 'launch-form' }>;
+  blockIndex: number;
   rule: KioskRule;
   mode: KioskMode;
   onLaunch: () => void;
@@ -110,6 +115,13 @@ function LaunchForm({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const request = useRef<AbortController | null>(null);
+  const changedInputs = useRef(new Set<number>());
+  const reportChange = (inputIndex: number, inputType: 'text' | 'datasource') => {
+    if (!changedInputs.current.has(inputIndex)) {
+      changedInputs.current.add(inputIndex);
+      reportKioskInteraction(mode, blockIndex, { component: 'input', action: 'change', inputIndex, inputType });
+    }
+  };
   useEffect(() => () => request.current?.abort(), []);
   return (
     <form
@@ -119,6 +131,7 @@ function LaunchForm({
         if (request.current) {
           return;
         }
+        reportKioskInteraction(mode, blockIndex, { component: 'launch-form', action: 'submit' });
         const controller = new AbortController();
         request.current = controller;
         setBusy(true);
@@ -126,11 +139,19 @@ function LaunchForm({
         try {
           const prepared = await prepareKioskInputs(rule, mode, block.inputs, draft, controller.signal);
           if (!controller.signal.aborted) {
+            reportKioskInteraction(mode, blockIndex, { component: 'launch-form', action: 'ready' });
             launchKioskGuide(rule, mode, onLaunch, prepared);
           }
         } catch (cause) {
           if (!controller.signal.aborted) {
-            setError(cause instanceof Error ? cause.message : 'Could not save inputs. Try again');
+            reportKioskInteraction(mode, blockIndex, {
+              component: 'launch-form',
+              action: 'error',
+              reason: cause instanceof KioskFormError ? cause.reason : 'unavailable',
+            });
+            setError(
+              cause instanceof KioskFormError ? cause.message : 'Could not open this guide. Please try again later.'
+            );
           }
         } finally {
           if (!controller.signal.aborted) {
@@ -141,7 +162,7 @@ function LaunchForm({
       }}
     >
       <div className={styles.fields}>
-        {block.inputs.map((input) => (
+        {block.inputs.map((input, inputIndex) => (
           <Field
             key={input.variableName}
             label={input.prompt}
@@ -154,9 +175,10 @@ function LaunchForm({
                 disabled={busy}
                 options={toDatasourceOptions(filterDatasourcesByType(input.datasourceFilter))}
                 value={draft[input.variableName] ?? null}
-                onChange={(option) =>
-                  setDraft((previous) => ({ ...previous, [input.variableName]: option?.value ?? '' }))
-                }
+                onChange={(option) => {
+                  reportChange(inputIndex, 'datasource');
+                  setDraft((previous) => ({ ...previous, [input.variableName]: option?.value ?? '' }));
+                }}
               />
             ) : (
               <Input
@@ -168,7 +190,16 @@ function LaunchForm({
                 value={draft[input.variableName] ?? ''}
                 autoComplete="off"
                 aria-describedby={error ? `${id}-error` : undefined}
+                onInvalid={() =>
+                  reportKioskInteraction(mode, blockIndex, {
+                    component: 'input',
+                    action: 'invalid',
+                    inputIndex,
+                    inputType: 'text',
+                  })
+                }
                 onChange={(event) => {
+                  reportChange(inputIndex, 'text');
                   const value = event.currentTarget.value;
                   setDraft((previous) => ({ ...previous, [input.variableName]: value }));
                 }}
@@ -220,12 +251,13 @@ export function KioskPage({ page, rules, mode, onLaunch }: Props) {
               </div>
             );
           case 'command':
-            return <Command key={index} command={block.command} />;
+            return <Command key={index} command={block.command} mode={mode} blockIndex={index} />;
           case 'launch-form':
             return (
               <LaunchForm
                 key={index}
                 block={block}
+                blockIndex={index}
                 rule={rules.find((rule) => rule.id === block.ruleId)!}
                 mode={mode}
                 onLaunch={onLaunch}

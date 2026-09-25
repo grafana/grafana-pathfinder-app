@@ -34,3 +34,13 @@ export function normalizeHttpOrigin(value: string): string | null {
 export function isSafeResponseName(value: string): boolean {
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value) && !['__proto__', 'prototype', 'constructor'].includes(value);
 }
+
+export class KioskFormError extends Error {
+  constructor(
+    message: string,
+    readonly reason: 'validation' | 'storage' = 'validation'
+  ) {
+    super(message);
+    this.name = 'KioskFormError';
+  }
+}

@@ -1,3 +1,4 @@
+import { reportKioskInteraction } from '../../lib/kiosk-analytics';
 import { KioskPage } from './KioskPage';
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -74,11 +75,23 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
     return () => controller.abort();
   }, [rulesUrl, overrideUrl]);
 
+  const handleExit = useCallback(
+    (method: 'button' | 'escape') => {
+      reportKioskInteraction(mode, undefined, { component: 'kiosk', action: 'exit', method });
+      onClose();
+    },
+    [mode, onClose]
+  );
+
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.defaultPrevented) {
+        return;
+      }
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        e.stopPropagation();
+        handleExit('escape');
       }
       if (e.key === 'Tab') {
         const controls = overlayRef.current?.querySelectorAll<HTMLElement>(
@@ -92,27 +105,44 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
         }
       }
     },
-    [onClose]
+    [handleExit]
   );
 
   useEffect(() => {
     const previousFocus = document.activeElement;
+    let lastFocus: HTMLElement | null = exitRef.current;
+    const retainFocus = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (overlayRef.current?.contains(target)) {
+        lastFocus = target;
+        return;
+      }
+      const popupId = lastFocus?.getAttribute('aria-controls');
+      if (popupId && document.getElementById(popupId)?.contains(target)) {
+        return;
+      }
+      (lastFocus?.isConnected && !lastFocus.matches(':disabled') ? lastFocus : exitRef.current)?.focus();
+    };
+    document.addEventListener('focusin', retainFocus);
     exitRef.current?.focus();
-    document.addEventListener('keydown', handleKeyDown, true);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('focusin', retainFocus);
       document.body.style.overflow = previousOverflow;
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
         previousFocus.focus();
       }
     };
-  }, [handleKeyDown]);
+  }, []);
 
   return createPortal(
     <div
       ref={overlayRef}
+      onKeyDown={handleKeyDown}
       className={styles.backdrop}
       data-testid={testIds.kioskMode.overlay}
       role="dialog"
@@ -139,13 +169,13 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
           <Button
             ref={exitRef}
             variant="secondary"
-            icon="times"
+            icon="arrow-left"
             className={styles.closeButton}
-            onClick={onClose}
-            aria-label="Exit kiosk"
+            onClick={() => handleExit('button')}
+            aria-label="Back to Grafana"
             data-testid={testIds.kioskMode.closeButton}
           >
-            Exit kiosk
+            Back to Grafana
           </Button>
         </div>
 

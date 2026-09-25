@@ -1,3 +1,4 @@
+import { normalizeJsonGuideAliases } from '../validation/normalize-guide-aliases';
 import type { JsonGuide } from '../types/json-guide.types';
 import type { KioskInput } from '../types/kiosk-page.schema';
 import type { ParsedElement } from '../types/content.types';
@@ -75,7 +76,7 @@ export function validateKioskDestination(guide: JsonGuide, inputs: KioskInput[])
       walk(child, object, key);
     }
   }
-  walk(guide);
+  walk(normalizeJsonGuideAliases(guide));
   for (const input of inputs) {
     const matches = declarations.get(input.variableName) ?? [];
     const destination = matches[0];

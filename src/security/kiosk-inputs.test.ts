@@ -84,3 +84,33 @@ it.each([
 ])('rejects missing, ambiguous and unsupported declarations: %j', (...blocks) => {
   expect(() => validateKioskDestination(guide(blocks), [input])).toThrow();
 });
+
+it('accepts supported nested form-fill aliases while rejecting aliased executable sinks', () => {
+  expect(() =>
+    validateKioskDestination(
+      guide([
+        declaration,
+        {
+          type: 'section',
+          blocks: [{ type: 'interactive', targetAction: 'formfill', targetValue: '{{appUrl}}', refTarget: '#url' }],
+        },
+      ]),
+      [input]
+    )
+  ).not.toThrow();
+  expect(() =>
+    validateKioskDestination(
+      guide([declaration, { type: 'interactive', targetAction: 'navigate', targetValue: '{{appUrl}}' }]),
+      [input]
+    )
+  ).toThrow();
+  expect(() =>
+    validateKioskDestination(
+      guide([
+        declaration,
+        { type: 'interactive', action: 'navigate', targetAction: 'formfill', targetValue: '{{appUrl}}' },
+      ]),
+      [input]
+    )
+  ).toThrow();
+});
