@@ -1,5 +1,5 @@
 import React, { useState, ChangeEvent } from 'react';
-import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
+import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge, Box, Stack } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { t } from '@grafana/i18n';
@@ -238,13 +238,37 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           Your edits are still here. Try saving again. If the problem continues, reload the page and try again.
         </Alert>
       )}
-      <FieldSet label="Plugin configuration" className={s.marginTopXl}>
+      <Box
+        element="section"
+        aria-label={t('appConfig.pathfinderPreview', 'Pathfinder public preview')}
+        backgroundColor="secondary"
+        borderColor="info"
+        borderStyle="solid"
+        borderRadius="default"
+        padding={3}
+        marginTop={3}
+      >
+        <Stack direction="row" alignItems="center" gap={1}>
+          <Text element="h2" variant="h4">
+            {t('appConfig.pathfinderPreview', 'Pathfinder public preview')}
+          </Text>
+          <Badge color="blue" text={t('appConfig.beta', 'Beta')} />
+        </Stack>
+        <p>
+          {t(
+            'appConfig.pathfinderPreviewDescription',
+            'Pathfinder brings contextual help and interactive guides into Grafana.'
+          )}
+        </p>
+        <p>
+          {t(
+            'appConfig.pathfinderRevertDescription',
+            'Turn this off to restore Grafana’s previous Help menu for everyone in this organization. Your learning progress is kept.'
+          )}
+        </p>
         <Field
           label={t('appConfig.pathfinderEnabled', 'Enable Pathfinder')}
-          description={t(
-            'appConfig.pathfinderEnabledDescription',
-            'Show Pathfinder for everyone in this organization. Changes apply when users reload Grafana.'
-          )}
+          description={t('appConfig.pathfinderEnabledDescription', 'Changes apply when users reload Grafana.')}
         >
           <Switch
             id="pathfinder-enabled"
@@ -260,6 +284,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             )}
           </Alert>
         )}
+      </Box>
+      <FieldSet label="Plugin configuration" className={s.marginTopXl}>
         {showAdvancedConfig && (
           <>
             <Field

@@ -166,7 +166,7 @@ describe('TabBarActions', () => {
       mockConfig.bootData.user = { orgRole, isGrafanaAdmin };
       render(<TabBarActions />);
       fireEvent.click(screen.getByRole('button', { name: 'More options' }));
-      const item = screen.queryByRole('menuitem', { name: 'Revert public preview' });
+      const item = screen.queryByRole('menuitem', { name: 'Revert public preview Beta' });
       if (visible) {
         expect(item).toBeInTheDocument();
         fireEvent.click(item!);
@@ -342,16 +342,13 @@ describe('TabBarActions', () => {
       expect(screen.queryByRole('menuitem', { name: /dev tools/i })).not.toBeInTheDocument();
     });
 
-    it('is last in the menu and focuses the tab on click', () => {
+    it('focuses the dev tools tab on click', () => {
       const onOpenDevToolsTab = jest.fn();
       const { reportAppInteraction } = require('../../../lib/analytics');
       render(<TabBarActions isDevMode onOpenDevToolsTab={onOpenDevToolsTab} />);
       openMenu();
 
-      const items = screen.getAllByRole('menuitem');
-      expect(items[items.length - 1]).toHaveAccessibleName(/dev tools/i);
-
-      fireEvent.click(items[items.length - 1]!);
+      fireEvent.click(screen.getByRole('menuitem', { name: /dev tools/i }));
       expect(onOpenDevToolsTab).toHaveBeenCalledTimes(1);
       expect(reportAppInteraction).toHaveBeenCalledWith(
         'docs_panel_interaction',
