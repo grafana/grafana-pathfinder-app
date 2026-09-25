@@ -459,6 +459,12 @@ const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] =
     tracking: '#1923',
   },
   {
+    violation: 'utils/current-user-teams.ts',
+    reason:
+      'Reads current-user Grafana Team membership; the feature that consumes it (role-based tab auto-focus) is separate, later work, so no consumer exists yet.',
+    tracking: '#1991',
+  },
+  {
     violation: 'validation/cli-build-contract.ts',
     reason: 'Imported only by its sibling cli-build-contract.test.ts / .unit.test.ts.',
     tracking: '#1923',
