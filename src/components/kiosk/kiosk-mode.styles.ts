@@ -128,6 +128,22 @@ export const getKioskOverlayStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.secondary,
     margin: 0,
   }),
+  tileProgress: css({
+    display: 'flex',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.5, 1),
+    borderRadius: theme.shape.radius.default,
+    background: theme.colors.info.main,
+    color: theme.colors.info.contrastText,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    '&[data-complete="true"]': {
+      background: theme.colors.success.main,
+      color: theme.colors.success.contrastText,
+    },
+  }),
   tileArrow: css({
     display: 'flex',
     alignItems: 'center',

@@ -29,6 +29,8 @@ The exit control is always available. Forms stack on narrow screens.
 
 Text is plain text. Link descriptions appear in card layouts. Every rule in a structured catalog requires a unique `id`; rules retain `title`, `url`, `description`, and optional `type`, `page`, and `targetUrl`. Unknown fields, unsupported versions, duplicate IDs, and unresolved references reject the catalog and use the existing fallback flow.
 
+Standard guide tiles display the current user's saved completion percentage and a checkmark at 100%. This requires no catalog fields. Progress is not shown for presentation tiles targeting another Grafana instance, where local progress would be misleading.
+
 ## Inputs
 
 ```json
