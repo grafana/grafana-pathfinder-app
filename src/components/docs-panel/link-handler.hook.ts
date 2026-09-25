@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import {
@@ -21,7 +21,7 @@ import {
 } from '../../security';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { LearningJourneyTab } from '../../types/content-panel.types';
-import type { OpenDocsOptions, OpenLearningJourneyOptions } from './types';
+import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
 /**
  * The only `data-interaction-location` values a trusted cover-page producer
@@ -37,7 +37,7 @@ interface UseLinkClickHandlerProps {
   activeTab: LearningJourneyTab | null;
   theme: GrafanaTheme2;
   model: {
-    loadTab: (tabId: string, url: string) => Promise<void>;
+    loadTab: DocsPanelModelOperations['loadTab'];
     openLearningJourney: (url: string, title: string, options?: OpenLearningJourneyOptions) => void;
     openDocsPage?: (url: string, title: string, options?: OpenDocsOptions) => void;
     getActiveTab: () => LearningJourneyTab | null;
@@ -91,15 +91,18 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           return;
         }
 
-        const loadJourneyTab = (tabId: string, url: string) => {
+        const loadJourneyTab = (tabId: string, url: string, explicitGuideId?: string) => {
           journeyStartInFlightRef.current = true;
-          model.loadTab(tabId, url).finally(() => {
+          model.loadTab(tabId, url, { explicitGuideId }).finally(() => {
             journeyStartInFlightRef.current = false;
           });
         };
 
-        // Get the milestone URL from the button's data attribute
+        // Get the milestone URL (and, when the click target carried one, the
+        // manifest guide id it resolved from — GuideList's current row and
+        // the cover-page CTA both set this) from the button's data attributes.
         const milestoneUrl = startElement.getAttribute('data-milestone-url');
+        const milestoneId = startElement.getAttribute('data-milestone-id') ?? undefined;
         const activeTab = model.getActiveTab();
 
         if (milestoneUrl && activeTab) {
@@ -123,7 +126,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
           // Navigate directly to the first milestone URL. Use the unified
           // dispatcher so package-backed journeys re-run their docs loader.
-          loadJourneyTab(activeTab.id, milestoneUrl);
+          loadJourneyTab(activeTab.id, milestoneUrl, milestoneId);
         } else if (
           activeTab?.content?.metadata?.learningJourney?.milestones &&
           activeTab.content.metadata.learningJourney.milestones.length > 0
@@ -138,7 +141,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               total_milestones: activeTab.content.metadata.learningJourney.milestones.length,
             });
 
-            loadJourneyTab(activeTab.id, firstMilestone.url);
+            loadJourneyTab(activeTab.id, firstMilestone.url, firstMilestone.id);
           }
         } else {
           logger.warn('No milestone URL found to navigate to');
@@ -613,6 +616,38 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
     }
     return undefined;
   }, [contentRef, theme, activeTab?.content, activeTab?.baseUrl, activeTab?.title, model]);
+
+  // Bottom-nav buttons always render (appendBottomNavigationToContent) — real
+  // visibility is decided here, live, against the track-aware model.
+  useLayoutEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) {
+      return;
+    }
+
+    const syncBottomNavVisibility = () => {
+      const nextButton = contentElement.querySelector<HTMLElement>('.journey-nav-next');
+      const prevButton = contentElement.querySelector<HTMLElement>('.journey-nav-prev');
+      if (nextButton) {
+        nextButton.hidden = !model.canNavigateNext();
+      }
+      if (prevButton) {
+        prevButton.hidden = !model.canNavigatePrevious();
+      }
+    };
+
+    syncBottomNavVisibility();
+
+    // ContentProcessor can swap the DOM tree without activeTab.content
+    // changing (e.g. async snippet inlining) — re-sync on any such mutation.
+    // childList/subtree only, so the `hidden` writes above don't retrigger this.
+    const observer = new MutationObserver(syncBottomNavVisibility);
+    observer.observe(contentElement, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [contentRef, activeTab?.content, activeTab?.activeTrackId, activeTab?.activeTrackMilestones, model]);
 }
 
 // `_theme` is unread: the modal is still hard-coded to fixed colours.

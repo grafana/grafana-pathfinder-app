@@ -3,10 +3,20 @@
  *
  * Hard `depends` relationships determine failure propagation. Ordered
  * `milestones` keep path and journey members in one execution chain without
- * turning presentation order into implicit hard dependencies.
+ * turning presentation order into implicit hard dependencies. `tracks`
+ * (Path Tracks RFC) are additional named orderings over the same
+ * path/journey — every guide any track references is a member too, so it is
+ * planned and executed the same way a milestone is.
  */
 
-import type { GraphEdge, GraphEdgeType, RepositoryEntry, RepositoryJson } from '../../types/package.types';
+import {
+  getManifestMemberIds,
+  getManifestTracks,
+  type GraphEdge,
+  type GraphEdgeType,
+  type RepositoryEntry,
+  type RepositoryJson,
+} from '../../types/package.types';
 import { detectCycles } from '../utils/graph-cycles';
 import type { LoadedGuide } from '../utils/file-loader';
 
@@ -267,8 +277,8 @@ function planRootPackageExecution(
     explicitPackages.add(id);
     const entry = repository[id];
     if (isMetapackage(entry)) {
-      for (const milestone of entry?.milestones ?? []) {
-        markExplicit(milestone, seen);
+      for (const memberId of getManifestMemberIds(entry)) {
+        markExplicit(memberId, seen);
       }
     }
   };
@@ -299,6 +309,15 @@ function planRootPackageExecution(
     }
     for (const milestone of milestones) {
       addPackage(id, milestone, explicit);
+    }
+
+    for (const track of getManifestTracks(entry)) {
+      if (new Set(track.guides).size !== track.guides.length) {
+        errors.push(`${id}: track "${track.trackId}" contains duplicate package IDs`);
+      }
+      for (const guideId of track.guides) {
+        addPackage(id, guideId, explicit);
+      }
     }
   };
 
@@ -391,6 +410,7 @@ function planRootPackageExecution(
 
   const dependencyEdges: GraphEdge[] = [];
   const milestoneEdges: GraphEdge[] = [];
+  const trackEdges: GraphEdge[] = [];
   for (const id of packageSet) {
     for (const dependency of directDeps.get(id) ?? []) {
       dependencyEdges.push({ source: id, target: dependency, type: 'depends' });
@@ -398,6 +418,13 @@ function planRootPackageExecution(
     for (const milestone of repository[id]?.milestones ?? []) {
       if (packageSet.has(milestone)) {
         milestoneEdges.push({ source: id, target: milestone, type: 'milestones' });
+      }
+    }
+    for (const track of getManifestTracks(repository[id])) {
+      for (const guideId of track.guides) {
+        if (packageSet.has(guideId)) {
+          trackEdges.push({ source: id, target: guideId, type: 'tracks' });
+        }
       }
     }
   }
@@ -411,6 +438,10 @@ function planRootPackageExecution(
     reportedCycleKeys.add(cycleKey(cycle));
     errors.push(`Cycle in milestones chain: ${cycle.join(' → ')}`);
   }
+  for (const cycle of detectCycles(packageSet, trackEdges, new Set<GraphEdgeType>(['tracks']))) {
+    reportedCycleKeys.add(cycleKey(cycle));
+    errors.push(`Cycle in tracks chain: ${cycle.join(' → ')}`);
+  }
   for (const cycle of detectCycles(
     packageSet,
     [...dependencyEdges, ...milestoneEdges],
@@ -422,6 +453,20 @@ function planRootPackageExecution(
       errors.push(`Cycle across depends and milestones: ${cycle.join(' → ')}`);
     }
   }
+  // Catches a cycle that only closes once tracks edges join depends and/or
+  // milestones — e.g. a track referencing a package that depends back on the
+  // path — which none of the single- or dual-type checks above would see.
+  for (const cycle of detectCycles(
+    packageSet,
+    [...dependencyEdges, ...milestoneEdges, ...trackEdges],
+    new Set<GraphEdgeType>(['depends', 'milestones', 'tracks'])
+  )) {
+    const key = cycleKey(cycle);
+    if (!reportedCycleKeys.has(key)) {
+      reportedCycleKeys.add(key);
+      errors.push(`Cycle across depends, milestones, and tracks: ${cycle.join(' → ')}`);
+    }
+  }
 
   const leavesMemo = new Map<string, string[]>();
   const packageLeaves = (id: string): string[] => {
@@ -431,7 +476,7 @@ function planRootPackageExecution(
     }
     const entry = repository[id];
     const leaves = isMetapackage(entry)
-      ? (entry?.milestones ?? []).flatMap((milestone) => packageLeaves(milestone))
+      ? getManifestMemberIds(entry).flatMap((memberId) => packageLeaves(memberId))
       : [id];
     const unique = [...new Set(leaves)];
     leavesMemo.set(id, unique);
@@ -481,8 +526,8 @@ function planRootPackageExecution(
     }
     const entry = repository[id];
     if (isMetapackage(entry)) {
-      for (const milestone of entry?.milestones ?? []) {
-        rankPackage(milestone);
+      for (const memberId of getManifestMemberIds(entry)) {
+        rankPackage(memberId);
       }
       return;
     }
@@ -516,8 +561,8 @@ function planRootPackageExecution(
       for (const dependency of directDeps.get(id) ?? []) {
         visit(dependency);
       }
-      for (const milestone of repository[id]?.milestones ?? []) {
-        visit(milestone);
+      for (const memberId of getManifestMemberIds(repository[id])) {
+        visit(memberId);
       }
     };
     visit(rootId);

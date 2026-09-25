@@ -121,6 +121,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   const { config: pluginConfig } = usePathfinderPluginConfig();
   const twoTabControllerEnabled = pluginConfig.enableTwoTabController;
 
+  // The active track restore's identity — see LearningJourneyTab.activeTrackPathId's
+  // doc comment for why this is the manifest id, not a resolved URL.
+  const stableContentPathId = stableContent?.metadata.packageManifest?.id;
+  const activeCoverPathId = typeof stableContentPathId === 'string' ? stableContentPathId : undefined;
+
   const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
 
   // The loading-state milestone bar below reads journeyProgressFromMilestones
@@ -147,10 +152,19 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
                 <SelectorDebugPanel
                   onOpenDocsPage={(url: string, title: string, packageInfo?: PackageOpenInfo) => {
+                    const manifestId = packageInfo?.packageManifest?.id;
                     const opts: OpenDocsOptions = {
                       source: 'devtools',
                       skipReadyToBegin: true,
                       packageInfo,
+                      // PrTester/UrlTester only ever pass packageInfo when
+                      // deliberately opening that package's own cover (never
+                      // a click on a specific member) — the manifest's own
+                      // id positively signals "this is the cover," not a URL
+                      // comparison, so a raw PR URL differing from the
+                      // resolver's published one never gets misread as track
+                      // membership (see OpenDocsOptions.explicitGuideId).
+                      explicitGuideId: typeof manifestId === 'string' ? manifestId : undefined,
                     };
                     return model.openDocsPage(url, title, opts);
                   }}
@@ -440,6 +454,15 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       }
                       onContinueToNextMilestone={
                         model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
+                      }
+                      onActiveTrackChange={
+                        activeTab
+                          ? (trackId, milestones) =>
+                              model.setActiveTrackId(activeTab.id, trackId, milestones, activeCoverPathId)
+                          : undefined
+                      }
+                      initialActiveTrackId={
+                        activeTab?.activeTrackPathId === activeCoverPathId ? activeTab?.activeTrackId : undefined
                       }
                     />
                   </AlignmentPendingContext.Provider>

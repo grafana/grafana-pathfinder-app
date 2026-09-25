@@ -1,4 +1,10 @@
-import { getMilestoneSlug, getNextMilestoneUrl, getPreviousMilestoneUrl } from './learning-journey-helpers';
+import {
+  getMilestoneSlug,
+  getNextMilestoneUrl,
+  getPreviousMilestoneUrl,
+  getNextMilestoneId,
+  getPreviousMilestoneId,
+} from './learning-journey-helpers';
 import type { RawContent, Milestone } from '../types/content.types';
 
 const baseUrl = 'https://grafana.com/docs/learning-paths/demo/';
@@ -35,6 +41,50 @@ describe('milestone navigation boundaries', () => {
 
   it('advances to the next milestone from the cover page', () => {
     expect(getNextMilestoneUrl(contentAtMilestone(0))).toBe(`${baseUrl}one/`);
+  });
+});
+
+// The toolbar's Next/Previous arrows and Alt+arrow shortcuts call
+// docs-panel.tsx's navigateToNextMilestone/navigateToPreviousMilestone,
+// which thread these ids through loadTab's explicitGuideId so that
+// navigation also classifies by direct id lookup.
+const idMilestones: Milestone[] = [
+  { id: 'step-one', number: 1, title: 'One', url: `${baseUrl}one/`, isActive: false },
+  { id: 'step-two', number: 2, title: 'Two', url: `${baseUrl}two/`, isActive: false },
+];
+
+function contentAtMilestoneWithIds(currentMilestone: number): RawContent {
+  return {
+    content: '{}',
+    url: baseUrl,
+    type: 'learning-journey',
+    lastFetched: '2026-07-30T00:00:00.000Z',
+    metadata: {
+      title: 'Demo',
+      learningJourney: { currentMilestone, totalMilestones: idMilestones.length, milestones: idMilestones, baseUrl },
+    },
+  } as RawContent;
+}
+
+describe('milestone navigation boundaries (guide ids)', () => {
+  it('has no previous milestone id on the cover page (milestone 0)', () => {
+    expect(getPreviousMilestoneId(contentAtMilestoneWithIds(0))).toBeUndefined();
+  });
+
+  it('has no previous milestone id from milestone 1 (falls back to the cover page, which has no guide id)', () => {
+    expect(getPreviousMilestoneId(contentAtMilestoneWithIds(1))).toBeUndefined();
+  });
+
+  it('returns the previous milestone id from milestone 2', () => {
+    expect(getPreviousMilestoneId(contentAtMilestoneWithIds(2))).toBe('step-one');
+  });
+
+  it('has no next milestone id on the last milestone', () => {
+    expect(getNextMilestoneId(contentAtMilestoneWithIds(2))).toBeUndefined();
+  });
+
+  it('advances to the next milestone id from the cover page', () => {
+    expect(getNextMilestoneId(contentAtMilestoneWithIds(0))).toBe('step-one');
   });
 });
 

@@ -8,13 +8,15 @@ import {
   generateJourneyContentWithExtras,
   getJourneyProgress,
   getMilestoneSlug,
+  getNextMilestoneId,
   getNextMilestoneUrl,
+  getPreviousMilestoneId,
   journeyMilestonePercentages,
   getPreviousMilestoneUrl,
   isLastMilestone,
 } from './learning-journey-helpers';
 import { StorageKeys } from '../lib/storage-keys';
-import type { RawContent, Milestone, LearningJourneyMetadata } from '../types/content.types';
+import type { RawContent, Milestone, LearningJourneyMetadata, CoverPageTrack } from '../types/content.types';
 
 function milestone(number: number, overrides: Partial<Milestone> = {}): Milestone {
   return {
@@ -26,7 +28,12 @@ function milestone(number: number, overrides: Partial<Milestone> = {}): Mileston
   };
 }
 
-function journeyContent(currentMilestone: number, milestones: Milestone[], baseUrl = 'backend-guide:path'): RawContent {
+function journeyContent(
+  currentMilestone: number,
+  milestones: Milestone[],
+  baseUrl = 'backend-guide:path',
+  tracks?: CoverPageTrack[]
+): RawContent {
   return {
     content: '',
     type: 'learning-journey',
@@ -39,6 +46,7 @@ function journeyContent(currentMilestone: number, milestones: Milestone[], baseU
         totalMilestones: milestones.length,
         milestones,
         baseUrl,
+        ...(tracks && { tracks }),
       },
     },
   };
@@ -226,17 +234,40 @@ describe('generateJourneyContentWithExtras — locked-milestone handling', () =>
     expect(html).not.toContain('data-journey-start');
   });
 
-  it('hides the bottom "Next →" when every remaining milestone is locked', () => {
-    const html = generateJourneyContentWithExtras(
+  // Static content generation can't decide real Next/Previous visibility —
+  // it runs at fetch time, before a tab's active Path Track (if any) is
+  // known, and a track can make either button correct or incorrect
+  // regardless of the raw Foundations milestone sequence (see
+  // appendBottomNavigationToContent's own doc comment). Both buttons always
+  // render now; useLinkClickHandler's layout effect corrects real visibility
+  // against the live, track-aware canNavigateNext()/canNavigatePrevious().
+  it('always renders "Next →" and "← Previous" regardless of the raw milestone sequence — real visibility is decided live, not here', () => {
+    const lockedHtml = generateJourneyContentWithExtras(
       '',
       ljMetadata(2, [milestone(1), milestone(2), milestone(3, { isLocked: true, url: '' })])
     );
-    expect(html).not.toContain('Next →');
+    expect(lockedHtml).toContain('Next →');
+    expect(lockedHtml).toContain('← Previous');
+
+    const unlockedHtml = generateJourneyContentWithExtras(
+      '',
+      ljMetadata(1, [milestone(1), milestone(2), milestone(3)])
+    );
+    expect(unlockedHtml).toContain('Next →');
   });
 
-  it('still renders "Next →" when an unlocked successor exists', () => {
+  // The React cover-page hero already renders its own Resume/Start CTA, and
+  // the sticky toolbar's Next/Previous cover the same job once a tab is
+  // selected — this legacy block duplicated both.
+  it('omits the bottom nav entirely on the cover page, regardless of skipReadyToBegin', () => {
+    const metadata = ljMetadata(0, [milestone(1), milestone(2)]);
+    expect(generateJourneyContentWithExtras('', metadata, false)).not.toContain('journey-bottom-navigation');
+    expect(generateJourneyContentWithExtras('', metadata, true)).not.toContain('journey-bottom-navigation');
+  });
+
+  it('still renders the bottom nav on a real milestone', () => {
     const html = generateJourneyContentWithExtras('', ljMetadata(1, [milestone(1), milestone(2), milestone(3)]));
-    expect(html).toContain('Next →');
+    expect(html).toContain('journey-bottom-navigation');
   });
 });
 
@@ -307,5 +338,192 @@ describe('getPreviousMilestoneUrl', () => {
   it('returns null when already on the cover page (milestone 0)', () => {
     const content = journeyContent(0, [milestone(1), milestone(2)]);
     expect(getPreviousMilestoneUrl(content)).toBeNull();
+  });
+});
+
+// Path Tracks: a selected track tab on the cover page should redirect
+// Next/Previous into that track's own guides instead of always falling
+// through to the Foundations `milestones` sequence.
+describe('getNextMilestoneUrl / getNextMilestoneId — active track selection', () => {
+  const builderTrack = (): CoverPageTrack => ({
+    trackId: 'builder',
+    label: 'Builder',
+    milestones: [
+      { number: 1, title: 'Builder one', url: 'backend-guide:builder-one', isActive: false, id: 'builder-one' },
+      { number: 2, title: 'Builder two', url: 'backend-guide:builder-two', isActive: false, id: 'builder-two' },
+    ],
+  });
+
+  it('resolves next within the active track on the cover page, not Foundations', () => {
+    const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [builderTrack()]);
+    expect(getNextMilestoneUrl(content, 'builder')).toBe('backend-guide:builder-one');
+    expect(getNextMilestoneId(content, 'builder')).toBe('builder-one');
+  });
+
+  it('falls back to Foundations when no track is active', () => {
+    const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [builderTrack()]);
+    expect(getNextMilestoneUrl(content, null)).toBe('backend-guide:milestone-1');
+    expect(getNextMilestoneUrl(content)).toBe('backend-guide:milestone-1');
+  });
+
+  it('falls back to Foundations for an unknown track id', () => {
+    const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [builderTrack()]);
+    expect(getNextMilestoneUrl(content, 'seller')).toBe('backend-guide:milestone-1');
+  });
+
+  it("prefers this cover fetch's own live tracks over a stale persisted activeTrackMilestones snapshot", () => {
+    // The snapshot was captured on an earlier cover fetch (e.g. before a
+    // locked track milestone published) and never refreshed — the CURRENT
+    // cover fetch's own `tracks` is the fresher data and must win.
+    const liveTrack: CoverPageTrack = {
+      trackId: 'builder',
+      label: 'Builder',
+      milestones: [{ number: 1, title: 'Live one', url: 'backend-guide:live-one', isActive: false, id: 'live-one' }],
+    };
+    const staleSnapshot = [
+      { number: 1, title: 'Stale one', url: 'backend-guide:stale-one', isActive: false, id: 'stale-one' },
+    ];
+    const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [liveTrack]);
+
+    expect(getNextMilestoneUrl(content, 'builder', staleSnapshot)).toBe('backend-guide:live-one');
+    expect(getNextMilestoneId(content, 'builder', staleSnapshot)).toBe('live-one');
+  });
+
+  it("falls back to Foundations past the cover when the loaded guide is not one of the active track's own guides", () => {
+    // No `activeTrackMilestones` passed (the caller has nothing persisted for
+    // this track), and the loaded guide's own URL isn't in the track — so
+    // there is nothing to resolve the reader's position against, and this
+    // stays on the in-progress Foundations traversal.
+    const content = journeyContent(1, [milestone(1), milestone(2)], 'backend-guide:cover', [builderTrack()]);
+    expect(getNextMilestoneUrl(content, 'builder')).toBe('backend-guide:milestone-2');
+  });
+
+  it('stays track-aware past the cover when the active track is threaded through as activeTrackMilestones', () => {
+    // A track guide that shares its URL/position with a Foundations
+    // milestone must not silently fall back to Foundations for Next/Previous
+    // once the reader is inside it — `activeTrackMilestones` is what the
+    // caller persists across milestone loads (tracks is cover-page-only).
+    const foundations = [milestone(1), milestone(2, { url: 'backend-guide:shared' }), milestone(3)];
+    const track: CoverPageTrack = {
+      trackId: 'builder',
+      label: 'Builder',
+      milestones: [
+        { number: 1, title: 'Builder one', url: 'backend-guide:builder-one', isActive: false, id: 'builder-one' },
+        { number: 2, title: 'Shared', url: 'backend-guide:shared', isActive: false, id: 'shared' },
+        { number: 3, title: 'Builder three', url: 'backend-guide:builder-three', isActive: false, id: 'builder-three' },
+      ],
+    };
+    const content: RawContent = {
+      ...journeyContent(2, foundations, 'backend-guide:cover'),
+      url: 'backend-guide:shared',
+    };
+
+    expect(getNextMilestoneUrl(content, 'builder', track.milestones)).toBe('backend-guide:builder-three');
+    expect(getNextMilestoneId(content, 'builder', track.milestones)).toBe('builder-three');
+  });
+
+  it('skips a locked entry within the active track the same way Foundations does', () => {
+    const track: CoverPageTrack = {
+      trackId: 'builder',
+      label: 'Builder',
+      milestones: [
+        { number: 1, title: 'Locked', url: '', isActive: false, isLocked: true },
+        { number: 2, title: 'Builder two', url: 'backend-guide:builder-two', isActive: false, id: 'builder-two' },
+      ],
+    };
+    const content = journeyContent(0, [milestone(1)], 'backend-guide:cover', [track]);
+    expect(getNextMilestoneUrl(content, 'builder')).toBe('backend-guide:builder-two');
+  });
+});
+
+describe('getPreviousMilestoneUrl — active track selection', () => {
+  it('stays null on the cover page regardless of the active track (nothing before the cover)', () => {
+    const track: CoverPageTrack = {
+      trackId: 'builder',
+      label: 'Builder',
+      milestones: [{ number: 1, title: 'Builder one', url: 'backend-guide:builder-one', isActive: false }],
+    };
+    const content = journeyContent(0, [milestone(1), milestone(2)], 'backend-guide:cover', [track]);
+    expect(getPreviousMilestoneUrl(content, 'builder')).toBeNull();
+    expect(getPreviousMilestoneId(content, 'builder')).toBeUndefined();
+  });
+
+  it('stays track-aware past the cover when the active track is threaded through as activeTrackMilestones', () => {
+    const foundations = [milestone(1), milestone(2, { url: 'backend-guide:shared' }), milestone(3)];
+    const track: CoverPageTrack = {
+      trackId: 'builder',
+      label: 'Builder',
+      milestones: [
+        { number: 1, title: 'Builder one', url: 'backend-guide:builder-one', isActive: false, id: 'builder-one' },
+        { number: 2, title: 'Shared', url: 'backend-guide:shared', isActive: false, id: 'shared' },
+        { number: 3, title: 'Builder three', url: 'backend-guide:builder-three', isActive: false, id: 'builder-three' },
+      ],
+    };
+    const content: RawContent = {
+      ...journeyContent(2, foundations, 'backend-guide:cover'),
+      url: 'backend-guide:shared',
+    };
+
+    expect(getPreviousMilestoneUrl(content, 'builder', track.milestones)).toBe('backend-guide:builder-one');
+    expect(getPreviousMilestoneId(content, 'builder', track.milestones)).toBe('builder-one');
+  });
+});
+
+// A track-only guide (one the active track has that Foundations
+// `milestones` never did) carries no `learningJourney` at all —
+// `fetchPackageContent` only attaches journey metadata to milestone/cover
+// loads — so Next/Previous must still resolve from `activeTrackMilestones`
+// alone rather than disabling once such a guide loads.
+describe('getNextMilestoneUrl / getPreviousMilestoneUrl — track-only guide with no learningJourney', () => {
+  const trackOnlyContent = (url: string): RawContent => ({
+    content: '',
+    type: 'interactive',
+    url,
+    lastFetched: new Date().toISOString(),
+    metadata: { title: 'Track-only guide' },
+  });
+
+  const track: CoverPageTrack = {
+    trackId: 'builder',
+    label: 'Builder',
+    milestones: [
+      { number: 1, title: 'Builder one', url: 'backend-guide:builder-one', isActive: false, id: 'builder-one' },
+      {
+        number: 2,
+        title: 'Builder two (track-only)',
+        url: 'backend-guide:extra-guide',
+        isActive: false,
+        id: 'extra-guide',
+      },
+      { number: 3, title: 'Builder three', url: 'backend-guide:builder-three', isActive: false, id: 'builder-three' },
+    ],
+  };
+
+  it('resolves Next from a middle track-only guide instead of disabling', () => {
+    const content = trackOnlyContent('backend-guide:extra-guide');
+    expect(getNextMilestoneUrl(content, 'builder', track.milestones)).toBe('backend-guide:builder-three');
+    expect(getNextMilestoneId(content, 'builder', track.milestones)).toBe('builder-three');
+  });
+
+  it('resolves Previous from a middle track-only guide instead of disabling', () => {
+    const content = trackOnlyContent('backend-guide:extra-guide');
+    expect(getPreviousMilestoneUrl(content, 'builder', track.milestones)).toBe('backend-guide:builder-one');
+    expect(getPreviousMilestoneId(content, 'builder', track.milestones)).toBe('builder-one');
+  });
+
+  it('leaves Previous disabled (not crashing) on the first track-only guide, same as before track-awareness existed', () => {
+    const content = trackOnlyContent('backend-guide:builder-one');
+    expect(getPreviousMilestoneUrl(content, 'builder', track.milestones)).toBeNull();
+  });
+
+  it('leaves Next disabled at the last track-only guide', () => {
+    const content = trackOnlyContent('backend-guide:builder-three');
+    expect(getNextMilestoneUrl(content, 'builder', track.milestones)).toBeNull();
+  });
+
+  it('returns null for a track-only guide when no activeTrackMilestones are provided at all', () => {
+    const content = trackOnlyContent('backend-guide:extra-guide');
+    expect(getNextMilestoneUrl(content, 'builder')).toBeNull();
+    expect(getPreviousMilestoneUrl(content, 'builder')).toBeNull();
   });
 });

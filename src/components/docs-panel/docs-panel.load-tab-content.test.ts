@@ -53,6 +53,8 @@ jest.mock('../../docs-retrieval', () => ({
   ContentRenderer: jest.fn(),
   getNextMilestoneUrlFromContent: jest.fn(),
   getPreviousMilestoneUrlFromContent: jest.fn(),
+  getNextMilestoneIdFromContent: jest.fn(),
+  getPreviousMilestoneIdFromContent: jest.fn(),
   getJourneyProgress: jest.fn(),
   setJourneyCompletionPercentage: jest.fn(),
   getMilestoneSlug: jest.fn(),
@@ -218,6 +220,12 @@ jest.mock('../../hooks', () => ({}));
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
+import {
+  getNextMilestoneUrlFromContent,
+  getPreviousMilestoneUrlFromContent,
+  getNextMilestoneIdFromContent,
+  getPreviousMilestoneIdFromContent,
+} from '../../docs-retrieval';
 import type { PreparedRawContent } from '../../types/content.types';
 
 // ---------------------------------------------------------------------------
@@ -275,6 +283,134 @@ describe('CombinedLearningJourneyPanel.loadTab — empty tab URL', () => {
 
     const tab = (panel as any).state.tabs.find((t: any) => t.id === 'broken-tab');
     expect(tab.error).toBeTruthy();
+  });
+});
+
+// The toolbar's Next/Previous arrows and Alt+arrow shortcuts are a click
+// just like GuideList's row or the cover CTA — the target milestone's id is
+// already known at the call site, so it must reach loadTab's
+// explicitGuideId.
+describe('CombinedLearningJourneyPanel — milestone toolbar navigation threads explicitGuideId', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('navigateToNextMilestone passes the next milestone id as explicitGuideId', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const tab = { ...makeTab('journey-tab'), content: { url: 'x', metadata: {} } };
+    panel.setState({ tabs: [tab as any], activeTabId: 'journey-tab' });
+
+    (getNextMilestoneUrlFromContent as jest.Mock).mockReturnValue('https://example.com/next/');
+    (getNextMilestoneIdFromContent as jest.Mock).mockReturnValue('milestone-two');
+    const loadTabSpy = jest.spyOn(panel, 'loadTab').mockResolvedValue(undefined);
+
+    await panel.navigateToNextMilestone();
+
+    expect(loadTabSpy).toHaveBeenCalledWith('journey-tab', 'https://example.com/next/', {
+      explicitGuideId: 'milestone-two',
+    });
+  });
+
+  it('navigateToPreviousMilestone passes the previous milestone id as explicitGuideId', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const tab = { ...makeTab('journey-tab'), content: { url: 'x', metadata: {} } };
+    panel.setState({ tabs: [tab as any], activeTabId: 'journey-tab' });
+
+    (getPreviousMilestoneUrlFromContent as jest.Mock).mockReturnValue('https://example.com/prev/');
+    (getPreviousMilestoneIdFromContent as jest.Mock).mockReturnValue('milestone-one');
+    const loadTabSpy = jest.spyOn(panel, 'loadTab').mockResolvedValue(undefined);
+
+    await panel.navigateToPreviousMilestone();
+
+    expect(loadTabSpy).toHaveBeenCalledWith('journey-tab', 'https://example.com/prev/', {
+      explicitGuideId: 'milestone-one',
+    });
+  });
+
+  // Previous falling back to the cover page has no guide id of its own
+  // (getPreviousMilestoneIdFromContent returns undefined) — explicitGuideId
+  // must be forwarded as undefined, not omitted, so the load still lands on
+  // the correct no-explicit-id cover-page default.
+  it('navigateToPreviousMilestone forwards an undefined explicitGuideId when falling back to the cover page', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const tab = { ...makeTab('journey-tab'), content: { url: 'x', metadata: {} } };
+    panel.setState({ tabs: [tab as any], activeTabId: 'journey-tab' });
+
+    (getPreviousMilestoneUrlFromContent as jest.Mock).mockReturnValue('https://example.com/cover/');
+    (getPreviousMilestoneIdFromContent as jest.Mock).mockReturnValue(undefined);
+    const loadTabSpy = jest.spyOn(panel, 'loadTab').mockResolvedValue(undefined);
+
+    await panel.navigateToPreviousMilestone();
+
+    expect(loadTabSpy).toHaveBeenCalledWith('journey-tab', 'https://example.com/cover/', {
+      explicitGuideId: undefined,
+    });
+  });
+});
+
+// A track-only guide is only ever reached by clicking it FROM its own
+// path's cover, in the same tab — so the tab's OUTGOING content, right up
+// until this load overwrites it, is that cover's own learningJourney (or,
+// for a track guide clicked from another track guide, that guide's own
+// trackMemberBaseUrl). Carrying it forward as knownBaseUrl lets
+// fetchPackageContent recover a track-only guide's completion identity
+// even if THIS load's own independent re-resolve of the path's id
+// transiently fails.
+describe('CombinedLearningJourneyPanel.loadDocsTabContent — knownBaseUrl fallback', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (loadDocsTabContentResult as jest.Mock).mockResolvedValue({ content: null, error: 'x', errorType: 'other' });
+  });
+
+  it("carries the outgoing cover content's learningJourney.baseUrl forward as knownBaseUrl", async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const coverTab = {
+      ...makeTab('journey-tab'),
+      content: {
+        url: 'bundled:the-path/content.json',
+        metadata: {
+          learningJourney: {
+            baseUrl: 'bundled:the-path/content.json',
+            currentMilestone: 0,
+            totalMilestones: 1,
+            milestones: [],
+          },
+        },
+      },
+    };
+    panel.setState({ tabs: [coverTab as any], activeTabId: 'journey-tab' });
+
+    await panel.loadTab('journey-tab', 'bundled:t-only/content.json', {
+      packageInfo: { packageManifest: { id: 'the-path', type: 'path' } },
+      explicitGuideId: 't-only',
+    });
+
+    expect(loadDocsTabContentResult as jest.Mock).toHaveBeenCalledWith(
+      'bundled:t-only/content.json',
+      expect.objectContaining({ knownBaseUrl: 'bundled:the-path/content.json' })
+    );
+  });
+
+  it("carries the outgoing track-only content's trackMemberBaseUrl forward as knownBaseUrl", async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const trackOnlyTab = {
+      ...makeTab('journey-tab'),
+      content: {
+        url: 'bundled:t-only-a/content.json',
+        metadata: { trackMemberBaseUrl: 'bundled:the-path/content.json' },
+      },
+    };
+    panel.setState({ tabs: [trackOnlyTab as any], activeTabId: 'journey-tab' });
+
+    await panel.loadTab('journey-tab', 'bundled:t-only-b/content.json', {
+      packageInfo: { packageManifest: { id: 'the-path', type: 'path' } },
+      explicitGuideId: 't-only-b',
+    });
+
+    expect(loadDocsTabContentResult as jest.Mock).toHaveBeenCalledWith(
+      'bundled:t-only-b/content.json',
+      expect.objectContaining({ knownBaseUrl: 'bundled:the-path/content.json' })
+    );
   });
 });
 

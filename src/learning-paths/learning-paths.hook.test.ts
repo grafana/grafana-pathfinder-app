@@ -255,6 +255,91 @@ describe('useLearningPaths — URL-based path rollup (decision 4)', () => {
   });
 });
 
+describe('useLearningPaths — best-of-sequence path rollup for Path Tracks (decision 4)', () => {
+  const FOUNDATIONS = ['found-1', 'found-2', 'found-3', 'found-4', 'found-5'];
+  const BUILDER_GUIDES = Array.from({ length: 10 }, (_, i) => `builder-${i + 1}`);
+
+  function useTracksPath(
+    tracks: Array<{ trackId: string; label: string; guides: string[] }>,
+    manifestType: 'path' | 'journey' = 'path'
+  ): void {
+    const allGuides = [...FOUNDATIONS, ...tracks.flatMap((track) => track.guides)];
+    mockPathsData = {
+      paths: [
+        {
+          id: 'tracks-demo',
+          title: 'Tracks demo',
+          description: '',
+          guides: allGuides,
+          badgeId: '',
+          manifest: { id: 'tracks-demo', type: manifestType, milestones: FOUNDATIONS, tracks },
+        },
+      ],
+      guideMetadata: Object.fromEntries(allGuides.map((id) => [id, { title: id, estimatedMinutes: 5 }])),
+    };
+  }
+
+  it('shows the best sequence percent, not a blended average across Foundations and every track', async () => {
+    useTracksPath([{ trackId: 'builder', label: 'Builder', guides: BUILDER_GUIDES }]);
+    // Foundations: 2 of 5 complete (40%). Builder: 9 of 10 complete (90%).
+    // A flat blend over the union of 15 would read 73%.
+    mockProgressGet.mockResolvedValue({
+      ...EMPTY_PROGRESS,
+      completedGuides: ['found-1', 'found-2', ...BUILDER_GUIDES.slice(0, 9)],
+    });
+
+    const { result } = renderHook(() => useLearningPaths());
+
+    await waitFor(() => expect(result.current.getPathProgress('tracks-demo')).toBe(90));
+    expect(result.current.isPathCompleted('tracks-demo')).toBe(false);
+  });
+
+  it('marks the path complete once any one track hits 100%, even though Foundations is not done', async () => {
+    useTracksPath([{ trackId: 'builder', label: 'Builder', guides: ['builder-1', 'builder-2', 'builder-3'] }]);
+    // Foundations: 1 of 5 complete (20%). Builder: all 3 complete.
+    mockProgressGet.mockResolvedValue({
+      ...EMPTY_PROGRESS,
+      completedGuides: ['found-1', 'builder-1', 'builder-2', 'builder-3'],
+    });
+
+    const { result } = renderHook(() => useLearningPaths());
+
+    await waitFor(() => expect(result.current.isPathCompleted('tracks-demo')).toBe(true));
+    expect(result.current.getPathProgress('tracks-demo')).toBe(100);
+  });
+
+  it('leaves a Foundations-only manifest (no tracks) unaffected — best-of-one-sequence is just that sequence', async () => {
+    useTracksPath([]);
+    mockProgressGet.mockResolvedValue({ ...EMPTY_PROGRESS, completedGuides: ['found-1', 'found-2'] });
+
+    const { result } = renderHook(() => useLearningPaths());
+
+    await waitFor(() => expect(result.current.getPathProgress('tracks-demo')).toBe(40));
+    expect(result.current.isPathCompleted('tracks-demo')).toBe(false);
+  });
+
+  // RFC §6.1 / schema Rule 3 scope tracks to type: 'path', but that rule
+  // only runs in superRefine, which runtime loaders skip — a journey
+  // manifest that still carries a stray tracks array must not grow an
+  // extra scored sequence.
+  it('ignores a stray tracks array on a journey manifest — only type: "path" scores tracks as sequences', async () => {
+    useTracksPath(
+      [{ trackId: 'builder', label: 'Builder', guides: ['builder-1', 'builder-2', 'builder-3'] }],
+      'journey'
+    );
+    // Foundations: 1 of 5 complete (20%). Builder (ignored): all 3 complete.
+    mockProgressGet.mockResolvedValue({
+      ...EMPTY_PROGRESS,
+      completedGuides: ['found-1', 'builder-1', 'builder-2', 'builder-3'],
+    });
+
+    const { result } = renderHook(() => useLearningPaths());
+
+    await waitFor(() => expect(result.current.getPathProgress('tracks-demo')).toBe(20));
+    expect(result.current.isPathCompleted('tracks-demo')).toBe(false);
+  });
+});
+
 describe('useLearningPaths — App Platform path ingestion', () => {
   it('merges App Platform paths after bundled paths', async () => {
     mockFetchAppPlatformLearningPaths.mockResolvedValue({
@@ -322,6 +407,10 @@ describe('useLearningPaths — App Platform path ingestion', () => {
     const [member] = result.current.getPathGuides('fe-alerting-path');
     expect(member!.title).toBe('toString');
     expect(member!.url).toBeUndefined();
+    // guideId (the real click-target id, separate from the React-key `id` —
+    // see PathGuide's own doc comment) must always be set here, since this
+    // producer never falls back to an ordinal.
+    expect(member!.guideId).toBe('toString');
   });
 
   it('does not fetch when no namespace is available', async () => {

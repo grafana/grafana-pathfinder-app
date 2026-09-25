@@ -430,7 +430,10 @@ func TestCustomGuideHTTPClient_StripsBlocksPreservesManifest(t *testing.T) {
 						"type":       "path",
 						"repository": "app-platform",
 						"milestones": []string{"fe-alerting-01", "fe-alerting-02"},
-						"depends":    []any{[]string{"fe-intro"}},
+						"tracks": []map[string]any{
+							{"trackId": "builder", "label": "Builder", "guides": []string{"fe-alerting-01"}},
+						},
+						"depends": []any{[]string{"fe-intro"}},
 					},
 				}},
 			},
@@ -452,6 +455,10 @@ func TestCustomGuideHTTPClient_StripsBlocksPreservesManifest(t *testing.T) {
 	}
 	if e.Manifest == nil || e.Manifest.Type != "path" || len(e.Manifest.Milestones) != 2 || len(e.Manifest.Depends) != 1 {
 		t.Errorf("manifest not preserved through shaping: %+v", e.Manifest)
+	}
+	if len(e.Manifest.Tracks) != 1 || e.Manifest.Tracks[0].TrackID != "builder" ||
+		e.Manifest.Tracks[0].Label != "Builder" || len(e.Manifest.Tracks[0].Guides) != 1 {
+		t.Errorf("tracks not preserved through shaping: %+v", e.Manifest.Tracks)
 	}
 
 	// The block content must not appear anywhere in the shaped, re-serialized entry.
@@ -783,6 +790,18 @@ func TestCustomGuideHTTPClient_MalformedCompositeFieldDropsOnlyThatField(t *test
 				"author":     map[string]any{"name": "Field engineering", "team": []string{"field-eng"}},
 			},
 			leaked:        "Field engineering",
+			wantMilestone: "fe-alerting-01",
+		},
+		"malformed tracks": {
+			manifest: map[string]any{
+				"type":       "path",
+				"repository": "app-platform",
+				"milestones": []any{"fe-alerting-01"},
+				"tracks": []any{
+					map[string]any{"trackId": "builder", "label": "Builder", "guides": []any{"fe-alerting-01", 7}},
+				},
+			},
+			leaked:        "builder",
 			wantMilestone: "fe-alerting-01",
 		},
 	}

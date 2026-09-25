@@ -60,6 +60,8 @@ import {
   fetchContent,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
+  getNextMilestoneIdFromContent,
+  getPreviousMilestoneIdFromContent,
   getJourneyProgress,
   setJourneyCompletionPercentage,
   setPackageResolver,
@@ -138,7 +140,7 @@ import {
 // Import centralized types
 import { LearningJourneyTab, CombinedPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
-import type { RawContent } from '../../types/content.types';
+import type { Milestone, RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
 /**
@@ -494,6 +496,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       packageInfo?: PackageOpenInfo;
       prefetched?: RawContent;
       source?: LaunchSource;
+      /**
+       * The manifest guide id `url` resolved from, when the click target
+       * already carried one (GuideList's current row, the cover-page CTA —
+       * see link-handler.hook.ts). Threaded to fetchPackageContent so it can
+       * classify this load by a direct id lookup against the manifest
+       * instead of comparing resolved URLs.
+       */
+      explicitGuideId?: string;
     }
   ): Promise<void> {
     finishGuideLoad(this.guideLoads.get(tabId), 'cancelled');
@@ -511,6 +521,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         options?.skipReadyToBegin,
         options?.packageInfo,
         options?.prefetched,
+        options?.explicitGuideId,
         loadContext
       );
     } else {
@@ -712,11 +723,26 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   public async navigateToNextMilestone() {
     const activeTab = this.getActiveTab();
     if (activeTab && activeTab.content) {
-      const nextUrl = getNextMilestoneUrlFromContent(activeTab.content);
+      const nextUrl = getNextMilestoneUrlFromContent(
+        activeTab.content,
+        activeTab.activeTrackId,
+        activeTab.activeTrackMilestones
+      );
       if (nextUrl) {
         // Unified dispatcher: package-backed journeys need the docs
         // loader so the next milestone re-resolves the manifest.
-        this.loadTab(activeTab.id, nextUrl);
+        // explicitGuideId: the toolbar arrows are a click just like
+        // GuideList's row or the cover CTA — the target milestone's own id
+        // is already known here, so this load classifies by direct lookup
+        // too, not the URL-comparison fallback (undefined only when the
+        // target is a locked placeholder with no real id).
+        this.loadTab(activeTab.id, nextUrl, {
+          explicitGuideId: getNextMilestoneIdFromContent(
+            activeTab.content,
+            activeTab.activeTrackId,
+            activeTab.activeTrackMilestones
+          ),
+        });
       }
     }
   }
@@ -724,9 +750,23 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   public async navigateToPreviousMilestone() {
     const activeTab = this.getActiveTab();
     if (activeTab && activeTab.content) {
-      const prevUrl = getPreviousMilestoneUrlFromContent(activeTab.content);
+      const prevUrl = getPreviousMilestoneUrlFromContent(
+        activeTab.content,
+        activeTab.activeTrackId,
+        activeTab.activeTrackMilestones
+      );
       if (prevUrl) {
-        this.loadTab(activeTab.id, prevUrl);
+        // explicitGuideId is undefined when Previous falls back to the cover
+        // page (see getPreviousMilestoneIdFromContent) — correct, since the
+        // cover page has no guide id of its own and must stay on the
+        // no-explicit-id default (isCoverPageLoad true).
+        this.loadTab(activeTab.id, prevUrl, {
+          explicitGuideId: getPreviousMilestoneIdFromContent(
+            activeTab.content,
+            activeTab.activeTrackId,
+            activeTab.activeTrackMilestones
+          ),
+        });
       }
     }
   }
@@ -735,14 +775,38 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return this.state.tabs.find((t) => t.id === this.state.activeTabId) || null;
   }
 
+  public setActiveTrackId(
+    tabId: string,
+    trackId: string | null,
+    milestones?: Milestone[] | null,
+    pathId?: string
+  ): void {
+    this.setState({
+      tabs: this.state.tabs.map((tab) =>
+        tab.id === tabId
+          ? { ...tab, activeTrackId: trackId, activeTrackMilestones: milestones, activeTrackPathId: pathId }
+          : tab
+      ),
+    });
+  }
+
   public canNavigateNext(): boolean {
     const activeTab = this.getActiveTab();
-    return activeTab?.content ? getNextMilestoneUrlFromContent(activeTab.content) !== null : false;
+    return activeTab?.content
+      ? getNextMilestoneUrlFromContent(activeTab.content, activeTab.activeTrackId, activeTab.activeTrackMilestones) !==
+          null
+      : false;
   }
 
   public canNavigatePrevious(): boolean {
     const activeTab = this.getActiveTab();
-    return activeTab?.content ? getPreviousMilestoneUrlFromContent(activeTab.content) !== null : false;
+    return activeTab?.content
+      ? getPreviousMilestoneUrlFromContent(
+          activeTab.content,
+          activeTab.activeTrackId,
+          activeTab.activeTrackMilestones
+        ) !== null
+      : false;
   }
 
   /**
@@ -821,7 +885,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public async openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string> {
-    const { source, skipReadyToBegin, packageInfo, preparedContent } = options ?? {};
+    const { source, skipReadyToBegin, packageInfo, preparedContent, explicitGuideId } = options ?? {};
 
     // Make the launch source explicit at the call site if provided. This
     // narrows the surface area of the legacy `_recordAutoLaunchSource` flag —
@@ -855,7 +919,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save tabs to storage immediately after creating
     this.saveTabsToStorage();
 
-    this.loadTab(tabId, url, { skipReadyToBegin, packageInfo, prefetched: preparedContent });
+    this.loadTab(tabId, url, { skipReadyToBegin, packageInfo, prefetched: preparedContent, explicitGuideId });
 
     return tabId;
   }
@@ -866,12 +930,24 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     skipReadyToBegin?: boolean,
     packageInfoArg?: PackageOpenInfo,
     prefetched?: RawContent,
+    explicitGuideId?: string,
     loadContext?: GuideLoadContext
   ): Promise<GuideLoadOutcome> {
     // No early return for empty URLs — loadDocsTabContentResult handles all
     // edge cases (empty URL with packageInfo falls back to fetchPackageById;
     // empty URL without packageInfo returns a visible error). Surfacing errors
     // is preferable to the old silent no-op for corrupted/restored tabs.
+
+    // Captured before this tab's content is replaced below: a track-exclusive
+    // guide is only ever reached by clicking it FROM its own path's cover,
+    // in this same tab — so the outgoing content, right up until this load
+    // overwrites it, is that cover's own learningJourney. Threaded through
+    // as a fallback so a transient failure of THIS load's own independent
+    // re-resolve of the path's id doesn't silently drop the guide's
+    // completion when the caller already knows the answer.
+    const outgoingContent = this.state.tabs.find((t) => t.id === tabId)?.content;
+    const knownBaseUrl =
+      outgoingContent?.metadata?.learningJourney?.baseUrl ?? outgoingContent?.metadata?.trackMemberBaseUrl;
 
     this.setTabLoading(tabId);
 
@@ -897,7 +973,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
       const result = prefetched
         ? { content: prefetched }
-        : await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo, loadContext });
+        : await loadDocsTabContentResult(url, {
+            skipReadyToBegin,
+            packageInfo,
+            explicitGuideId,
+            knownBaseUrl,
+            loadContext,
+          });
 
       // Check if fetch succeeded or failed
       if (this.guideLoads.get(tabId) !== loadContext) {

@@ -284,6 +284,203 @@ describe('ManifestJsonSchema', () => {
   });
 });
 
+describe('ManifestJsonSchema — tracks (Path Tracks RFC)', () => {
+  const track = { trackId: 'builder', label: 'Builder', guides: ['guide-a', 'guide-b'] };
+
+  it('should not require tracks on a path — additive, milestones alone is sufficient', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'test-path', type: 'path', milestones: ['guide-1'] });
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept a path with milestones and one or more tracks', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [track, { trackId: 'seller', label: 'Seller', guides: ['guide-c'] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should accept a track whose guides are not a subset of milestones — a track's own complete ordering", () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['guide-a', 'guide-2', 'guide-1'] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject a track missing a required field', () => {
+    const missingLabel = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [{ trackId: 'builder', guides: ['guide-a'] }],
+    });
+    expect(missingLabel.success).toBe(false);
+
+    const missingGuides = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder' }],
+    });
+    expect(missingGuides.success).toBe(false);
+  });
+
+  it('should reject a track with an empty-string trackId, label, or guide entry', () => {
+    for (const badTrack of [
+      { trackId: '', label: 'Builder', guides: ['guide-a'] },
+      { trackId: 'builder', label: '', guides: ['guide-a'] },
+      { trackId: 'builder', label: 'Builder', guides: [''] },
+    ]) {
+      const result = ManifestJsonSchema.safeParse({
+        id: 'test-path',
+        type: 'path',
+        milestones: ['guide-1'],
+        tracks: [badTrack],
+      });
+      expect(result.success).toBe(false);
+    }
+  });
+
+  // RFC §6.11 requires the same non-empty-sequence rule milestones already
+  // has for its own array.
+  it('should reject a track with an empty guides array — a track must name at least one guide', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: [] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // The base ManifestJsonObjectSchema — the schema several runtime loaders
+  // parse directly, without ManifestJsonSchema's superRefine — must tolerate
+  // a malformed tracks shape rather than fail the whole parse over it, even
+  // on a type where tracks isn't valid at all. Only ManifestJsonSchema
+  // (Rule 5) is expected to reject it, with a clear message.
+  it('tolerates a malformed tracks shape at the base-schema level runtime loaders actually parse against', () => {
+    const malformed = {
+      id: 'plain-guide',
+      type: 'guide',
+      tracks: [{ trackId: '', label: '', guides: [] }],
+    };
+
+    // The base schema every runtime loader parses against: must not throw a
+    // raw structural error over a malformed tracks entry, even on a type
+    // (guide) where tracks isn't semantically valid at all — that's Rule 3's
+    // job, at the superRefine layer, not the base parse's.
+    expect(ManifestJsonObjectSchema.safeParse(malformed).success).toBe(true);
+
+    // The authoring-time schema still catches it, with a clear message —
+    // both the shape violation (Rule 5) and the type violation (Rule 3).
+    const refined = ManifestJsonSchema.safeParse(malformed);
+    expect(refined.success).toBe(false);
+    if (!refined.success) {
+      const messages = refined.error.issues.map((issue) => issue.message);
+      expect(messages).toContain('A track must declare at least one guide');
+      expect(messages.some((m) => m.includes('only valid when type is "path"'))).toBe(true);
+    }
+  });
+
+  it('Rule 5 reports a clear message for each shape violation independently', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [{ trackId: '', label: '', guides: [''] }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((issue) => issue.message);
+      expect(messages).toContain('"tracks" trackId must be a non-empty string');
+      expect(messages).toContain('"tracks" label must be a non-empty string');
+      expect(messages).toContain('"tracks" guides must not contain an empty string');
+    }
+  });
+
+  it('should reject tracks set on a guide-type manifest (Rule 3)', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'test', type: 'guide', tracks: [track] });
+    expect(result.success).toBe(false);
+  });
+
+  // RFC §6.1 scopes tracks to paths only, not journeys. Milestones are
+  // present so only the tracks-on-journey rule is exercised (Rule 1 would
+  // otherwise also fire on a bare journey with no milestones).
+  it('should reject tracks set on a journey-type manifest (Rule 3) — tracks are path-only', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-journey',
+      type: 'journey',
+      milestones: ['guide-1'],
+      tracks: [track],
+    });
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+    const typeIssue = result.error.issues.find((issue) => issue.path.length > 0 && issue.path[0] === 'type');
+    expect(typeIssue).toBeDefined();
+  });
+
+  it('should report error on type field path when guide has tracks (Rule 3)', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'test', type: 'guide', tracks: [track] });
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+    const typeIssue = result.error.issues.find((issue) => issue.path.length > 0 && issue.path[0] === 'type');
+    expect(typeIssue).toBeDefined();
+  });
+
+  it('should reject duplicate trackId within one manifest (Rule 4)', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [track, { trackId: 'builder', label: 'Builder again', guides: ['guide-c'] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should report the duplicate-trackId error on the second occurrence', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [track, { trackId: 'builder', label: 'Builder again', guides: ['guide-c'] }],
+    });
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+    const trackIdIssue = result.error.issues.find(
+      (issue) => issue.path[0] === 'tracks' && issue.path[1] === 1 && issue.path[2] === 'trackId'
+    );
+    expect(trackIdIssue).toBeDefined();
+  });
+
+  it('should reject "foundations" as a trackId — reserved for the default sequence', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['guide-1'],
+      tracks: [{ trackId: 'foundations', label: 'Foundations again', guides: ['guide-c'] }],
+    });
+    expect(result.success).toBe(false);
+    if (result.success) {
+      return;
+    }
+    const reservedIssue = result.error.issues.find(
+      (issue) => issue.path[0] === 'tracks' && issue.path[1] === 0 && issue.path[2] === 'trackId'
+    );
+    expect(reservedIssue).toBeDefined();
+  });
+});
+
 // ============ DependencyClauseSchema ============
 
 describe('ManifestJsonSchema — stats stamp', () => {
@@ -568,6 +765,18 @@ describe('RepositoryJsonSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('should accept path entries with tracks', () => {
+    const result = RepositoryJsonSchema.safeParse({
+      'getting-started': {
+        path: 'getting-started/',
+        type: 'path',
+        milestones: ['welcome', 'first-dashboard'],
+        tracks: [{ trackId: 'builder', label: 'Builder', guides: ['welcome', 'advanced-dashboard'] }],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 // ============ RepositoryEntrySchema ============
@@ -661,7 +870,7 @@ describe('GraphEdgeSchema', () => {
   });
 
   it('should accept all edge types', () => {
-    const types = ['depends', 'recommends', 'suggests', 'provides', 'conflicts', 'replaces', 'milestones'];
+    const types = ['depends', 'recommends', 'suggests', 'provides', 'conflicts', 'replaces', 'milestones', 'tracks'];
     for (const type of types) {
       const result = GraphEdgeSchema.safeParse({ source: 'a', target: 'b', type });
       expect(result.success).toBe(true);

@@ -529,6 +529,15 @@ export const getTableOfContentsStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
       gap: theme.spacing(0.5),
     }),
+    // `hero`'s own bottom margin is deliberately 0 (its `margin` is `2 0 0`)
+    // so the no-tracks case is unaffected — that layout already gets its gap
+    // from `container`'s top margin, and `hero` must stay pixel-for-pixel
+    // unchanged there. The tabs bar sits between `hero` and `container` only
+    // when tracks exist, so it needs this same top margin itself, or it
+    // renders flush against the hero card's bottom border.
+    tracksTabs: css({
+      marginTop: theme.spacing(2),
+    }),
   };
 };
 

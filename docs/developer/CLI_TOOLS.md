@@ -420,8 +420,8 @@ node dist/cli/cli/index.js build-graph \
 When lint is enabled (the default), the command checks for:
 
 - **Broken references**: dependency targets that don't exist as real packages or virtual capabilities
-- **Broken steps**: `steps` entries that don't resolve to existing packages
-- **Cycles**: detected via DFS in `depends` (error), `recommends` (warning), and `steps` (error) edge types
+- **Broken milestones/tracks**: `milestones` and `tracks` entries that don't resolve to existing packages
+- **Cycles**: detected via DFS in `depends` (error), `recommends` (warning), `milestones` (error), and `tracks` (error) edge types
 - **Orphaned packages**: packages with no incoming or outgoing edges
 - **Missing metadata**: packages without `description` or `category`
 
@@ -432,7 +432,7 @@ Lint messages are printed to stderr. The graph JSON is written to stdout or the 
 The output is a D3-compatible JSON object with `nodes`, `edges`, and `metadata`:
 
 - **Nodes** contain full manifest metadata plus `id`, `repository`, and an optional `virtual: true` flag for capability nodes
-- **Edges** have `source`, `target`, and `type` (`depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`, `steps`)
+- **Edges** have `source`, `target`, and `type` (`depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`, `milestones`, `tracks`)
 - **Metadata** includes `generatedAt` timestamp, repository names, and node/edge counts
 
 ---

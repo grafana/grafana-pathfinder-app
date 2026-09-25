@@ -38,11 +38,41 @@ jest.mock('../../../docs-retrieval', () => ({
 // branch renders without their dependency trees. ContentRenderer exposes a
 // button that fires onGuideComplete so the completion-boundary tests can drive it.
 jest.mock('../../content-renderer/content-renderer', () => ({
-  ContentRenderer: ({ onGuideComplete }: { onGuideComplete?: () => void }) => (
-    <button onClick={onGuideComplete}>Complete rendered guide</button>
+  ContentRenderer: ({
+    onGuideComplete,
+    onActiveTrackChange,
+    initialActiveTrackId,
+  }: {
+    onGuideComplete?: () => void;
+    onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
+    initialActiveTrackId?: string | null;
+  }) => (
+    <>
+      <button onClick={onGuideComplete}>Complete rendered guide</button>
+      <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
+      <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
+    </>
   ),
 }));
-jest.mock('../../SelectorDebugPanel', () => ({ SelectorDebugPanel: () => null }));
+// Renders a real button wired to the received onOpenDocsPage so the
+// devtools-cover-open explicitGuideId derivation (DocsPanelContentArea's own
+// wrapper) can be exercised, not just rendered as a no-op.
+jest.mock('../../SelectorDebugPanel', () => ({
+  SelectorDebugPanel: ({
+    onOpenDocsPage,
+  }: {
+    onOpenDocsPage: (url: string, title: string, packageInfo?: any) => void;
+  }) => (
+    <button
+      data-testid="devtools-open-docs-page"
+      onClick={() =>
+        onOpenDocsPage('bundled:the-path/content.json', 'The Path', { packageManifest: { id: 'the-path' } })
+      }
+    >
+      Open
+    </button>
+  ),
+}));
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
 
@@ -78,6 +108,7 @@ function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPane
       dismissAlignment: jest.fn(),
       canNavigateNext: jest.fn(() => false),
       navigateToNextMilestone: jest.fn(),
+      setActiveTrackId: jest.fn(),
     } as any,
     contextPanel: { Component: () => null } as any,
     isFullScreenActive: false,
@@ -208,6 +239,105 @@ describe('DocsPanelContentArea', () => {
     });
   });
 
+  describe('active track tab restore across cover-page remounts', () => {
+    // Role-style trackIds (`builder`, `seller`) are commonly reused across
+    // unrelated paths, and every navigation remounts the cover's
+    // LearningPathTableOfContents with no path identity of its own — so a
+    // stored activeTrackId must only be restored when it was recorded for
+    // THIS path's cover, never a different one that happens to declare a
+    // same-named track.
+    it("records the selecting cover page's own manifest id alongside the trackId", () => {
+      const base = makeProps();
+      const props = makeProps({
+        stableContent: {
+          url: base.activeTab!.baseUrl,
+          type: 'learning-journey',
+          content: '',
+          metadata: { packageManifest: { id: 'path-a' }, learningJourney: { totalMilestones: 2 } },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Select builder track' }));
+
+      expect(props.model.setActiveTrackId).toHaveBeenCalledWith(props.activeTab!.id, 'builder', [], 'path-a');
+    });
+
+    it('restores initialActiveTrackId when the stored selection matches the current cover manifest id', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          activeTrackId: 'builder',
+          activeTrackPathId: 'path-a',
+        } as any,
+        stableContent: {
+          url: base.activeTab!.baseUrl,
+          type: 'learning-journey',
+          content: '',
+          metadata: { packageManifest: { id: 'path-a' }, learningJourney: { totalMilestones: 2 } },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+
+      expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('builder');
+    });
+
+    it('withholds initialActiveTrackId when the stored selection was recorded for a different path', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          activeTrackId: 'builder',
+          activeTrackPathId: 'path-a',
+        } as any,
+        stableContent: {
+          url: base.activeTab!.baseUrl,
+          type: 'learning-journey',
+          content: '',
+          // Path B, which happens to declare a same-named "builder" track.
+          metadata: { packageManifest: { id: 'path-b' }, learningJourney: { totalMilestones: 2 } },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+
+      expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('');
+    });
+
+    // learningJourney.baseUrl is a resolved fetch URL, not a stable path
+    // identity — a raw/PR-tester cover URL and the resolver's canonical URL
+    // for the same manifest id are legitimately different strings, and
+    // returning via Previous fetches the canonical one. The restore must
+    // survive that.
+    it('restores initialActiveTrackId when the manifest id matches even though learningJourney.baseUrl differs (raw vs canonical cover URL)', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          activeTrackId: 'builder',
+          activeTrackPathId: 'path-a',
+        } as any,
+        stableContent: {
+          url: base.activeTab!.baseUrl,
+          type: 'learning-journey',
+          content: '',
+          metadata: {
+            packageManifest: { id: 'path-a' },
+            // Same path, but reached this time via its canonical resolved
+            // URL rather than the raw URL the original cover load used.
+            learningJourney: { baseUrl: 'https://cdn.example.com/canonical/path-a/', totalMilestones: 2 },
+          },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+
+      expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('builder');
+    });
+  });
+
   describe('loading-state milestone bar', () => {
     // Decision 4 (docs/design/COMPLETION-MODEL.md): the bar shown while a
     // journey tab is loading must use the shared calculation — earned
@@ -295,6 +425,33 @@ describe('DocsPanelContentArea', () => {
       render(<DocsPanelContentArea {...makeProps({ activeTab: devToolsTab, stableContent: null, isDevMode: true })} />);
 
       expect(screen.getByTestId('devtools-tab-content')).toBeInTheDocument();
+    });
+
+    // PrTester/UrlTester's devtools cover-open wrapper derives
+    // explicitGuideId from packageInfo.packageManifest.id so a raw PR URL
+    // differing from the resolver's published one is never misread as
+    // track membership. Pins that derivation at its actual call site, not
+    // just inside fetchPackageContent's own unit tests.
+    it("passes the package manifest's own id as explicitGuideId when opening a devtools cover", () => {
+      const openDocsPage = jest.fn();
+      render(
+        <DocsPanelContentArea
+          {...makeProps({
+            activeTab: devToolsTab,
+            stableContent: null,
+            isDevMode: true,
+            model: { openDocsPage } as any,
+          })}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('devtools-open-docs-page'));
+
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'bundled:the-path/content.json',
+        'The Path',
+        expect.objectContaining({ explicitGuideId: 'the-path' })
+      );
     });
 
     it('does not dispatch to Dev Tools from the reserved ID alone', () => {

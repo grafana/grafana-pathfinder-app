@@ -100,6 +100,25 @@ export interface ContentMetadata {
    * `(guideSource, guideId)` on the true source rather than a manifest default.
    */
   repository?: string;
+
+  /**
+   * The owning path's resolved base URL, present only for a guide referenced
+   * exclusively by a Path Tracks `tracks` entry — never by `milestones`,
+   * which the RFC explicitly allows. Such a guide has no real position in
+   * `milestones`, so `learningJourney` is deliberately absent for it (no
+   * Foundations-relative navigation chrome, and no cover-page
+   * misclassification — see `fetchPackageContent`'s isTrackOnlyMember
+   * check). This field exists solely so `recordGuideCompletionForSurface`
+   * can still route its completion through the same
+   * `milestoneCompletionStorage` write a real milestone gets — keyed on
+   * this guide's own identity, not a fake milestone index — so the cover
+   * page's per-track row lock/unlock (which reads that store) sees it as
+   * done. `resolveExpectedMilestoneIds` never sees a real `milestones` list
+   * for this path, so completing this guide can never satisfy the
+   * whole-journey completion trigger (Path Tracks are not a completion
+   * authority — COMPLETION-MODEL.md decision 10).
+   */
+  trackMemberBaseUrl?: string;
 }
 
 export interface LearningJourneyMetadata {
@@ -124,6 +143,22 @@ export interface LearningJourneyMetadata {
    * canonical docs page rather than the CDN content URL.
    */
   websiteUrl?: string;
+
+  /**
+   * Named, independently-ordered guide sequences declared on the manifest's
+   * `tracks` field (Path Tracks RFC), each resolved to cover-page-ready
+   * Milestone rows the same way the default `milestones` above are. Present
+   * only for the cover page (currentMilestone === 0) — the only surface that
+   * ever renders more than one sequence.
+   */
+  tracks?: CoverPageTrack[];
+}
+
+/** One resolved track: a manifest track's own guides, resolved to rows. */
+export interface CoverPageTrack {
+  trackId: string;
+  label: string;
+  milestones: Milestone[];
 }
 
 export interface SingleDocMetadata {
@@ -139,6 +174,19 @@ export interface SingleDocMetadata {
 
 // Re-export existing interfaces that are still relevant
 export interface Milestone {
+  /**
+   * The raw manifest guide id this row was resolved from (a `milestones` or
+   * track `guides` entry) — the same id `getManifestMemberIds`/
+   * `getAllTrackGuideIds` operate on. Threaded through click targets
+   * (GuideList's current row, the cover page's CTA) so `fetchPackageContent`
+   * can classify a load by a direct id lookup against the manifest instead
+   * of inferring it from a resolved-URL comparison. Optional rather than
+   * required so the many existing fixtures/call sites that build a
+   * `Milestone` without caring about tracks (this field's only consumer)
+   * don't need an unrelated update; every producer inside package-content.ts
+   * (`resolveGuideIdsToMilestones`, the only place a real one is built) sets it.
+   */
+  id?: string;
   number: number;
   title: string;
   /** Author-provided estimate from the member's own manifest. Absent when not authored — never a guessed default. */

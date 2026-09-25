@@ -342,6 +342,8 @@ export const testIds = {
     tableOfContents: 'learning-paths-toc',
     tableOfContentsCta: 'learning-paths-toc-cta',
     coverHero: 'learning-paths-cover-hero',
+    tracksTabs: 'learning-paths-toc-tracks-tabs',
+    tracksTab: (trackId: string) => `learning-paths-toc-track-${trackId}`,
   },
 
   // Live Session

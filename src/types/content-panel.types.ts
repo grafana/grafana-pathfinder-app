@@ -60,6 +60,36 @@ export interface LearningJourneyTab {
   pathContext?: PathContext;
   /** Set when the implied-0th-step alignment check decides a prompt is needed. */
   pendingAlignment?: PendingAlignment;
+  /**
+   * The Path Tracks tab currently selected on this tab's cover page, when any
+   * — `null`/undefined means the always-present Foundations sequence. Set by
+   * `LearningPathTableOfContents` via `onActiveTrackChange` so the milestone
+   * toolbar's and legacy bottom-nav's Next/Previous (`canNavigateNext` /
+   * `navigateToNextMilestone` in docs-panel.tsx) resolve against the
+   * selected track's own guides instead of always falling through to
+   * Foundations.
+   */
+  activeTrackId?: string | null;
+  /**
+   * The selected track's own resolved guides, captured alongside
+   * `activeTrackId` at selection time — `content.metadata.learningJourney.tracks`
+   * is only ever populated for the cover page load itself (see that field's
+   * own doc comment), so once the reader leaves the cover for a real
+   * milestone there is no other way for `resolveActiveMilestoneSequence` to
+   * stay track-aware. `undefined`/`null` alongside a set `activeTrackId`
+   * falls back to the Foundations sequence, same as no track selected.
+   */
+  activeTrackMilestones?: Milestone[] | null;
+  /**
+   * The cover page's own `packageManifest.id` at the moment `activeTrackId`
+   * was recorded — lets a consumer confirm a restored `activeTrackId` was
+   * recorded for THIS path, not a different one reusing the same role-style
+   * trackId (`builder`, `seller`). Deliberately the manifest id, not a
+   * resolved URL: a raw/PR-tester cover URL and the resolver's canonical URL
+   * for the same path are legitimately different strings, so a URL-based
+   * check would fail on a cover reached via Previous.
+   */
+  activeTrackPathId?: string | null;
 }
 
 /**

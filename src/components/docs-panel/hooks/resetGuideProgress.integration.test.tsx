@@ -8,7 +8,9 @@ import {
 } from '../../../global-state/completion-store';
 import { resetContentKeyForTests, setActiveTabUrl } from '../../../global-state/content-key';
 import { StorageKeys, buildVersionedSectionStorageKey } from '../../../lib/storage-keys';
-import { guideCompletionMarkStorage } from '../../../lib/user-storage';
+import { guideCompletionMarkStorage, milestoneCompletionStorage } from '../../../lib/user-storage';
+import { journeyMilestonePercentages } from '../../../docs-retrieval/learning-journey-helpers';
+import type { Milestone } from '../../../types/content.types';
 import { resetGuideProgress } from './resetGuideProgress';
 
 const E2E_GUIDE_URL = 'bundled:e2e-test';
@@ -124,5 +126,47 @@ describe('resetGuideProgress integration', () => {
     } finally {
       input.remove();
     }
+  });
+});
+
+// A completion recorded before the milestone-storage migration lives only
+// in the legacy `milestoneCompletionStorage`. Reading a journey's progress
+// backfills that into `interactiveCompletionStorage`
+// (`backfillLegacyMilestoneCompletion`) — real, load-bearing behavior for
+// pre-migration users. Resetting that same milestone must also clear the
+// legacy record, or the very next read backfills it right back to 100%.
+describe('resetGuideProgress integration — a milestone reset stays reset despite legacy backfill', () => {
+  const JOURNEY_BASE = 'https://grafana.com/docs/learning-journeys/demo/';
+  const MILESTONE_URL = 'https://grafana.com/docs/learning-journeys/demo/milestone-2/content.json';
+  const MILESTONE_SLUG = 'milestone-2';
+  const milestone: Milestone = {
+    id: MILESTONE_SLUG,
+    number: 1,
+    title: 'Milestone 2',
+    url: MILESTONE_URL,
+    isActive: false,
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('does not get resurrected by legacy backfill after being reset', async () => {
+    // Pre-migration production data: only the legacy store has this milestone
+    // marked complete, exactly like a real learner who finished it before
+    // this migration shipped.
+    await milestoneCompletionStorage.markCompleted(JOURNEY_BASE, MILESTONE_SLUG);
+
+    // The first read backfills the legacy completion into
+    // interactiveCompletionStorage — this is the real, intended behavior, and
+    // this assertion pins it so a future change can't silently break the
+    // backfill itself while "fixing" the resurrection bug below.
+    expect(journeyMilestonePercentages(JOURNEY_BASE, [milestone])[0]!.percent).toBe(100);
+
+    await resetGuideProgress(MILESTONE_URL, { milestoneSlug: MILESTONE_SLUG, journeyBaseUrl: JOURNEY_BASE });
+
+    // Without the fix, the still-populated legacy record would immediately
+    // backfill this milestone right back to 100% on this very next read.
+    expect(journeyMilestonePercentages(JOURNEY_BASE, [milestone])[0]!.percent).toBe(0);
   });
 });

@@ -18,7 +18,7 @@ import { isBackendApiAvailable } from '../utils/fetchBackendGuides';
 import { logger } from './logging';
 import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
 import { PackageTypeSchema } from '../types/package.schema';
-import type { Author, PackageType } from '../types/package.types';
+import type { Author, ManifestTrack, PackageType } from '../types/package.types';
 
 /**
  * `type` is optional because the Go proxy forwards the stored string verbatim
@@ -30,6 +30,7 @@ export interface CustomGuideManifest {
   repository?: string;
   description?: string;
   milestones?: string[];
+  tracks?: ManifestTrack[];
   category?: string;
   author?: Author;
 }
