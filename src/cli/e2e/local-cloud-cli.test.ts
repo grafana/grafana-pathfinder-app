@@ -163,13 +163,17 @@ describe('local cloud package CLI preflight', () => {
     errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     existingHandlers = new Map(
-      (['exit', 'SIGINT', 'SIGTERM'] as const).map((signal) => [signal, process.listeners(signal)])
+      (['exit', 'SIGINT', 'SIGTERM'] as const).map((signal) => [
+        signal,
+        signal === 'exit' ? process.listeners('exit') : process.listeners(signal),
+      ])
     );
   });
 
   afterEach(() => {
     for (const [signal, handlers] of existingHandlers) {
-      for (const handler of process.listeners(signal)) {
+      const currentHandlers = signal === 'exit' ? process.listeners('exit') : process.listeners(signal);
+      for (const handler of currentHandlers) {
         if (!handlers.includes(handler)) {
           process.removeListener(signal, handler);
         }
