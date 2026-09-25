@@ -130,3 +130,29 @@ it.each(['button', 'escape'] as const)('reports a deliberate %s exit', async (me
     method,
   });
 });
+
+it('restores focus after a child blurs without focusing another element', async () => {
+  load.mockResolvedValue(data('A guide'));
+  const onClose = jest.fn();
+  render(<KioskOverlay rulesUrl="default" onClose={onClose} />);
+  await screen.findByText('A guide');
+  const exit = screen.getByRole('button', { name: 'Back to Grafana' });
+  exit.blur();
+  expect(document.activeElement).toBe(document.body);
+  await waitFor(() => expect(exit).toHaveFocus());
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+it('cancels pending focus restoration when the kiosk closes', async () => {
+  load.mockResolvedValue(data('A guide'));
+  const previous = document.createElement('button');
+  document.body.append(previous);
+  previous.focus();
+  const { unmount } = render(<KioskOverlay rulesUrl="default" onClose={jest.fn()} />);
+  await screen.findByText('A guide');
+  screen.getByRole('button', { name: 'Back to Grafana' }).blur();
+  unmount();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(previous).toHaveFocus();
+  previous.remove();
+});

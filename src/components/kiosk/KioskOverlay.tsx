@@ -111,8 +111,8 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
   useEffect(() => {
     const previousFocus = document.activeElement;
     let lastFocus: HTMLElement | null = exitRef.current;
-    const retainFocus = (event: FocusEvent) => {
-      const target = event.target;
+    let restoreTimer: ReturnType<typeof setTimeout> | undefined;
+    const retainFocus = (target: EventTarget | null) => {
       if (!(target instanceof HTMLElement)) {
         return;
       }
@@ -126,12 +126,21 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
       }
       (lastFocus?.isConnected && !lastFocus.matches(':disabled') ? lastFocus : exitRef.current)?.focus();
     };
-    document.addEventListener('focusin', retainFocus);
+    const handleFocusIn = (event: FocusEvent) => retainFocus(event.target);
+    const handleFocusOut = () => {
+      clearTimeout(restoreTimer);
+      // Blur can leave focus on body without emitting a matching focusin event.
+      restoreTimer = setTimeout(() => retainFocus(document.activeElement), 0);
+    };
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
     exitRef.current?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('focusin', retainFocus);
+      clearTimeout(restoreTimer);
+      document.removeEventListener('focusin', handleFocusIn);
+      document.removeEventListener('focusout', handleFocusOut);
       document.body.style.overflow = previousOverflow;
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
         previousFocus.focus();
