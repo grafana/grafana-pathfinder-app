@@ -221,7 +221,6 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     }, CELEBRATION_MS);
   }, [contentKey, marked, context, percentage, contentUrl, onMarkComplete, onContinue]);
 
-  const displayPercentage = marked ? 100 : percentage;
   const label =
     context === 'milestone' && onContinue
       ? t('markComplete.milestoneButton', 'Mark complete and continue')
@@ -231,19 +230,11 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     <div
       className={styles.footer}
       data-testid={testIds.markComplete.footer}
-      // Testing contract: `pending` until the stored mark has been read, while
-      // the percentage below still reads 0 for every guide.
+      // Testing contract: `pending` until the stored mark has been read. The
+      // completion percentage itself is shown by the sticky GuideProgressBar at
+      // the top of the panel; this footer only owns the Mark complete control.
       data-test-progress-state={hydrated ? 'ready' : 'pending'}
     >
-      <div className={styles.progress}>
-        <div className={styles.track}>
-          <div className={styles.fill} style={{ width: `${displayPercentage}%` }} />
-        </div>
-        <span className={styles.percentage} data-testid={testIds.markComplete.percentage}>
-          {t('markComplete.percentComplete', '{{percent}}% complete', { percent: displayPercentage })}
-        </span>
-      </div>
-
       {marked ? (
         <div
           ref={completedRef}
@@ -290,40 +281,12 @@ function getStyles(theme: GrafanaTheme2) {
     footer: css({
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      justifyContent: 'flex-end',
       gap: theme.spacing(2),
       flexWrap: 'wrap',
       marginTop: theme.spacing(3),
       paddingTop: theme.spacing(2),
       borderTop: `1px solid ${theme.colors.border.weak}`,
-    }),
-    progress: css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(1),
-      flex: '1 1 160px',
-      minWidth: 0,
-    }),
-    track: css({
-      flex: 1,
-      minWidth: 0,
-      height: '4px',
-      borderRadius: theme.shape.radius.pill,
-      backgroundColor: theme.colors.background.secondary,
-      overflow: 'hidden',
-    }),
-    fill: css({
-      height: '100%',
-      backgroundColor: theme.colors.success.main,
-      transition: 'width 600ms ease-out',
-      '@media (prefers-reduced-motion: reduce)': {
-        transition: 'none',
-      },
-    }),
-    percentage: css({
-      color: theme.colors.text.secondary,
-      fontSize: theme.typography.bodySmall.fontSize,
-      whiteSpace: 'nowrap',
     }),
     completed: css(completedBase, {
       '&:focus-visible': {
