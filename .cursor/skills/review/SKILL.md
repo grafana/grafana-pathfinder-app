@@ -1,6 +1,6 @@
 ---
 name: review
-description: Routed PR review orchestrator. Load for `/review` command or any PR review task.
+description: 'Routed PR review orchestrator for grafana-pathfinder-app. Use for `/review` or any review of a PR in this repo, instead of grafana-engineering:review, grafana-engineering:pr-review, or code-review.'
 ---
 
 # PR review orchestrator
@@ -102,6 +102,8 @@ node .cursor/skills/review/scripts/contract-evolution-policy.mjs <packet-file>
 ```
 
 The adapter emits factual contract state and a canonical observation. It never disposes the finding.
+
+When a gate fires for an existing capability, the PR body must state whether the change follows, extends, or replaces the established contract. A PR that establishes or replaces a contract updates that concern's contract anchor in `docs/design/CONCERN_DETAILS.md` in the same PR; emit a missing statement or anchor update as a documentation-drift defect.
 
 ### Supplemental checks
 
