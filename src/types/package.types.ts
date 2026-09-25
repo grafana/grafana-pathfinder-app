@@ -148,12 +148,13 @@ export const FOUNDATIONS_TRACK_ID = 'foundations';
  * The one place every tracks consumer should read through.
  *
  * Also enforces invariants authoring-time validation checks via
- * `ManifestJsonSchema`'s superRefine (non-empty `guides`, no reserved or
- * duplicate `trackId`) — several runtime loaders parse the unrefined
- * `ManifestJsonObjectSchema` instead, so this is the only place those
- * invariants hold on every path. A violating entry is silently dropped
- * (first occurrence wins on a duplicate trackId) rather than logged: this
- * is a Tier 0 module with no logger access.
+ * `ManifestJsonSchema`'s superRefine Rule 5 in full (non-empty `trackId`,
+ * `label`, `guides`, and each individual guide entry) plus Rule 4's
+ * reserved/duplicate `trackId` check — several runtime loaders parse the
+ * unrefined `ManifestJsonObjectSchema` instead, so this is the only place
+ * those invariants hold on every path. A violating entry is silently
+ * dropped (first occurrence wins on a duplicate trackId) rather than
+ * logged: this is a Tier 0 module with no logger access.
  */
 export function getManifestTracks(source?: { tracks?: unknown } | null): ManifestTrack[] {
   if (!source || !Array.isArray(source.tracks)) {
@@ -164,9 +165,12 @@ export function getManifestTracks(source?: { tracks?: unknown } | null): Manifes
   const tracks: ManifestTrack[] = [];
   for (const candidate of source.tracks.filter(isManifestTrack)) {
     if (
+      candidate.trackId.length === 0 ||
+      candidate.label.length === 0 ||
       candidate.trackId === FOUNDATIONS_TRACK_ID ||
       seenTrackIds.has(candidate.trackId) ||
-      candidate.guides.length === 0
+      candidate.guides.length === 0 ||
+      candidate.guides.some((guideId) => guideId.length === 0)
     ) {
       continue;
     }

@@ -107,6 +107,39 @@ describe('getManifestTracks', () => {
       })
     ).toEqual([{ trackId: 'seller', label: 'Seller', guides: ['a'] }]);
   });
+
+  it('drops a track with an empty trackId', () => {
+    expect(
+      getManifestTracks({
+        tracks: [
+          { trackId: '', label: 'Builder', guides: ['a'] },
+          { trackId: 'seller', label: 'Seller', guides: ['a'] },
+        ],
+      })
+    ).toEqual([{ trackId: 'seller', label: 'Seller', guides: ['a'] }]);
+  });
+
+  it('drops a track with an empty label', () => {
+    expect(
+      getManifestTracks({
+        tracks: [
+          { trackId: 'builder', label: '', guides: ['a'] },
+          { trackId: 'seller', label: 'Seller', guides: ['a'] },
+        ],
+      })
+    ).toEqual([{ trackId: 'seller', label: 'Seller', guides: ['a'] }]);
+  });
+
+  it('drops a track with an empty-string guide entry inside an otherwise non-empty guides array', () => {
+    expect(
+      getManifestTracks({
+        tracks: [
+          { trackId: 'builder', label: 'Builder', guides: ['a', ''] },
+          { trackId: 'seller', label: 'Seller', guides: ['a'] },
+        ],
+      })
+    ).toEqual([{ trackId: 'seller', label: 'Seller', guides: ['a'] }]);
+  });
 });
 
 describe('getAllTrackGuideIds', () => {

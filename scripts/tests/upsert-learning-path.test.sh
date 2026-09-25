@@ -294,6 +294,21 @@ else
   nope "track-guide upload ordering" "order: $(write_order)"
 fi
 
+# The real PUT body shape, not just the write count/order above: tracks is a
+# typed key (build_manifest's own $typed list), so it must land at
+# spec.manifest.tracks verbatim and never also leak into additionalFields.
+COVER_BODY=$(printf '%s\n' "$RUN_LOG" | sed -n 's/^BODY\t//p' | jq -c 'select(.metadata.name == "lp")')
+if [[ "$(echo "$COVER_BODY" | jq -c '.spec.manifest.tracks')" == '[{"trackId":"builder","label":"Builder","guides":["m-a","t-only"]}]' ]]; then
+  ok "the cover's spec.manifest.tracks matches the authored array"
+else
+  nope "spec.manifest.tracks mismatch" "$(echo "$COVER_BODY" | jq '.spec.manifest.tracks')"
+fi
+if [[ "$(echo "$COVER_BODY" | jq -r '(.spec.manifest.additionalFields // {}) | has("tracks")')" == "false" ]]; then
+  ok "additionalFields carries no tracks key"
+else
+  nope "additionalFields unexpectedly carries a tracks key" "$(echo "$COVER_BODY" | jq '.spec.manifest.additionalFields')"
+fi
+
 # RFC §6.1 scopes tracks to paths only. This script calls no Zod
 # validation, so build_manifest's own $isPath gate would otherwise just
 # silently drop tracks from a journey's spec.manifest rather than rejecting

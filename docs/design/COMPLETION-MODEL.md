@@ -802,6 +802,14 @@ updated is Jay's call.
 
 ## Rolling this back
 
+**A journey partially completed under decision 6's migration needs its
+in-flight milestones re-marked after a revert.** Milestone completion moved
+from `milestoneCompletionStorage`'s click-based record to a percentage in
+`interactiveCompletionStorage`; a milestone finished only after the cutover
+has no equivalent entry in the old store, so reverting mid-journey would
+make that work invisible to the pre-migration model until the reader marks
+those milestones again.
+
 The Mark complete control writes two things: the mark itself, in the per-guide
 `guide-complete-mark-*` namespace this model introduced, and a 100 in
 `interactiveCompletionStorage`, the percentage namespace that predates it and
