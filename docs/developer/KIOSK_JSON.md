@@ -92,6 +92,22 @@ GRAFANA_URL=http://localhost:3301 npx playwright test tests/kiosk-page.spec.ts -
 
 It saves screenshots under the Playwright test output directory. This demonstrates layout, persistence, and form filling; it does not certify live Synthetic Monitoring or Frontend Observability provisioning.
 
-Command blocks use Bash syntax highlighting by default. Set `"language": "text"` for plain text, or `"language": "bash"` explicitly. Highlighting uses Grafana theme colors; copying always copies only the original command, without the decorative shell prompt.
+Command blocks use Bash syntax highlighting by default. Set `"language": "text"` for plain text, or `"language": "bash"` explicitly. Highlighting uses Grafana theme colors; copying always copies only the resolved command, without the decorative shell prompt.
 
 Set `"variant": "banner"` on a hero block for a compact Grafana-branded banner with a theme-based background and border. Omit it (or use `"standard"`) to retain the original hero. Alignment, eyebrow, title, and description remain JSON-authored.
+
+### Current stack in commands
+
+Authors can opt in to the reserved `{{grafana.stackUrl}}` placeholder in command blocks:
+
+```json
+{
+  "type": "command",
+  "command": "npx @grafana/cloud-setup frontend --stack {{grafana.stackUrl}}",
+  "language": "bash"
+}
+```
+
+The renderer substitutes the hosting Grafana instance's full HTTPS origin as a shell-quoted argument, preserving dev domains and ports. Use the placeholder as an entire, unquoted argument. Localhost and HTTP instances show `your-stack` for manual replacement. A fixed URL or `your-stack` without the placeholder stays unchanged. Both display and Copy use the resolved command.
+
+Only this reserved command placeholder is resolved. Guide answers, URL parameters, and arbitrary variables are never interpolated. The stack does not come from a guide tile's destination, and command values are excluded from analytics and logs. Deploy renderer support before publishing catalogs that use the placeholder.

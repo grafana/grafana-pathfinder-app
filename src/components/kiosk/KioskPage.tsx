@@ -1,3 +1,4 @@
+import { resolveKioskCommand } from '../../lib/kiosk-command';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-bash';
 import { KioskLaunchError } from '../../lib/kiosk-launch-error';
@@ -144,9 +145,13 @@ function Command({
 }) {
   const styles = useStyles2(getStyles);
   const [status, setStatus] = useState('');
+  const resolvedCommand = resolveKioskCommand(command, window.location.origin);
   const highlighted = useMemo(
-    () => (language === 'bash' ? renderCommandTokens(Prism.tokenize(command, Prism.languages.bash)) : command),
-    [command, language]
+    () =>
+      language === 'bash'
+        ? renderCommandTokens(Prism.tokenize(resolvedCommand, Prism.languages.bash))
+        : resolvedCommand,
+    [resolvedCommand, language]
   );
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(resetTimer.current), []);
@@ -163,7 +168,7 @@ function Command({
           onClick={async () => {
             clearTimeout(resetTimer.current);
             try {
-              await navigator.clipboard.writeText(command);
+              await navigator.clipboard.writeText(resolvedCommand);
               setStatus('Copied');
               resetTimer.current = setTimeout(() => setStatus(''), 2000);
               reportKioskInteraction(mode, blockIndex, { component: 'command', action: 'copy', outcome: 'success' });
