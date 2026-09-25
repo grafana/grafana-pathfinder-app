@@ -184,6 +184,9 @@ token itself. Completion records add the write half of that shape: a POST create
 coordinate, with identity stamped server-side and a deterministic idempotent name. The canonical
 pattern — including the identity trust boundary — is `docs/design/BACKEND_PROXY_PATTERN.md`.
 
+The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
+AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.
+
 `package_recommendations.go` is the exception and must not be assimilated into that shape: it fetches
 a public CDN index anonymously behind a host allowlist, with no namespace and one process-wide
 6-hour cache. Because that cache is shared across users, per-user data must never be routed into it.

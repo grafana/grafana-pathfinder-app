@@ -1,0 +1,1053 @@
+/**
+ * App Platform transport ratchet
+ *
+ * Reads of App Platform resources must be proxied through the plugin backend
+ * (an on-behalf-of route, per docs/design/BACKEND_PROXY_PATTERN.md), never
+ * issued directly from the browser. Pathfinder 2.18.0 broke this way for
+ * anonymous Play viewers (incident 5857): Play's anonymous Viewer role
+ * advertises permission to read tenant settings and custom guides, but the
+ * storage layer's delegated service-token check rejects a direct anonymous
+ * read (service_allowed=false) before it ever evaluates the caller's own
+ * rights, so the read 403s and the plugin fails to initialize. The fix
+ * (#1966) proxied settings and single-guide reads the same way the guide
+ * catalogue already was; administrative writes deliberately stayed direct,
+ * riding App Platform's own optimistic-concurrency checks.
+ *
+ * Scope: this guard covers the getBackendSrv() transport specifically. It
+ * walks every getBackendSrv().fetch/request/get/post(...) call site under src/
+ * and flags one whose url addresses App Platform unless the resolved HTTP
+ * method is a mutation (POST/PUT/PATCH/DELETE) or the call site is
+ * allowlisted. A url addresses App Platform when it is a literal, template, or
+ * concatenation containing "/apis/", or a reference to a url-producing
+ * function or constant that resolves to one. The receiver may be the inline
+ * getBackendSrv() call or a same-scope variable holding it. Ratchet mechanism
+ * per import-graph.ts: the allowlist can only shrink, and a call this guard
+ * cannot resolve with confidence is reported rather than passed silently.
+ *
+ * Three known bounds, all deliberate. A direct App Platform read on some other
+ * transport is out of scope: src/utils/openfeature.ts hands an "/apis/" base
+ * url to OFREPWebProvider, a Grafana-owned provider that predates and sits
+ * outside the #1966 contract for Pathfinder's own resources, and is not
+ * flagged. A url-producing call or constant this guard cannot resolve — a
+ * parameter, a dynamic dispatch, a default or namespace import, a package
+ * import, or a declaration that is not at its module's top level — is treated
+ * as a confident negative rather than a violation; recognition is strong, not
+ * absolute. And because the allowlist key omits the line number (see
+ * violationKey), a second violation structurally identical to a grandfathered
+ * one — same file, same method, same url expression — collapses onto that
+ * existing key and stays silently grandfathered; the exposure is bounded to
+ * the two files in the baseline, and shrinks to nothing as #1975 is paid down.
+ *
+ * Landed with two pre-existing violations grandfathered into
+ * ALLOWED_DIRECT_APP_PLATFORM_READS below — the same failure mode as
+ * incident 5857, still unfixed on main. Paying those down is tracked in
+ * https://github.com/grafana/grafana-pathfinder-app/issues/1975; no new
+ * violation can land on top of them.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import * as ts from 'typescript';
+
+import {
+  ARCHITECTURE_BY_DESIGN,
+  SRC_DIR,
+  assertRatchet,
+  collectSourceFiles,
+  isTestFile,
+  resolveImportToFileNode,
+  toPosixPath,
+  validateAllowedArchitectureEntries,
+  type AllowedArchitectureEntry,
+} from './import-graph';
+
+// ---------------------------------------------------------------------------
+// The allowlist — the ratchet baseline (see #1975 for the pay-down plan)
+// ---------------------------------------------------------------------------
+
+/**
+ * Baseline grandfathered when this ratchet landed. Both entries are real,
+ * pre-existing defects — the same failure mode as incident 5857 — not
+ * tolerated design choices; each silently returns an empty guide list to an
+ * anonymous viewer instead of failing visibly. Pay down separately, one PR
+ * per entry (see #1975): fixing either removes its own entry here, and the
+ * ratchet enforces that by failing on a stale entry that no longer matches
+ * a real violation.
+ */
+const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'context-engine/context.init.ts — GET collectionUrl(namespace)',
+    reason:
+      'Pre-existing defect (not a design choice): fetches the interactive-guides collection directly at ' +
+      "plugin start, but nothing reads the response — the call's original purpose needs to be established " +
+      'before it is deleted or re-pointed at a proxy. Same failure mode as incident 5857 — an anonymous ' +
+      "viewer's read fails the storage layer's delegated service-token check and 403s — except here the " +
+      '403 is swallowed as "endpoint not rolled out yet," so the failure is invisible.',
+    tracking: '#1975',
+  },
+  {
+    violation: 'utils/fetchBackendGuides.ts — GET collectionUrl(namespace)',
+    reason:
+      'Pre-existing defect (not a design choice): a direct read of the interactive-guides collection, the ' +
+      "same failure mode as incident 5857. An anonymous viewer's read fails the storage layer's delegated " +
+      'service-token check and 403s; this call swallows that 403 as "endpoint not rolled out yet" and ' +
+      'returns an empty list, so the anonymous visitor sees no custom guides and no error. A proxied ' +
+      'equivalent already exists (fetchCustomGuideRepository in src/lib/custom-guide-repository-client.ts) ' +
+      'and is the likely fix.',
+    tracking: '#1975',
+  },
+];
+
+const ADVICE =
+  'A direct browser read of App Platform ("/apis/..." — spelled inline, or produced by a url ' +
+  'builder such as collectionUrl/itemUrl in src/utils/interactive-guides-api.ts and ' +
+  'src/utils/pathfinder-settings-api.ts) must be proxied through the plugin backend instead of ' +
+  'being issued from the browser.\n\n' +
+  'Why: Pathfinder 2.18.0 broke for anonymous Play viewers this way (incident 5857, fixed by ' +
+  "github.com/grafana/grafana-pathfinder-app/pull/1966). Play's anonymous Viewer role advertises " +
+  "permission to read these resources, but the storage layer's delegated service-token check " +
+  "rejects a direct anonymous read (service_allowed=false) before it ever evaluates the caller's " +
+  'own rights — so the read 403s and the plugin fails to initialize. A plugin-backend proxy avoids ' +
+  'that check entirely by minting a caller-scoped on-behalf-of token server-side.\n\n' +
+  'Fix: add (or reuse) a GET route on the plugin backend — a proxy at `${PLUGIN_BACKEND_URL}/<route>` ' +
+  '— and read through it instead of calling getBackendSrv() directly. For a guide list specifically, ' +
+  'reuse fetchCustomGuideRepository in src/lib/custom-guide-repository-client.ts, which already ' +
+  'proxies this read correctly. See docs/design/BACKEND_PROXY_PATTERN.md for the full pattern.\n\n' +
+  'Administrative WRITES are a deliberate exception: a resolved PUT/POST/PATCH/DELETE stays on the ' +
+  'direct App Platform API with its own optimistic-concurrency checks (see ' +
+  'docs/design/BACKEND_PROXY_PATTERN.md, "Singleton settings reads") and is never flagged here.\n\n' +
+  'Only if this specific read is a deliberate, reviewed exception, add an entry to ' +
+  'ALLOWED_DIRECT_APP_PLATFORM_READS with a substantive reason and a tracking issue — a sibling ' +
+  'test requires both, so an empty rubber-stamp will not pass.';
+
+const GET_BACKEND_SRV_METHOD_NAMES = new Set(['fetch', 'request', 'get', 'post']);
+const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+// ---------------------------------------------------------------------------
+// url-producing call resolution
+//
+// A url is rarely spelled at the call site: both App Platform clients in the
+// repo factor their "/apis/..." template into a small builder, so that is the
+// shape the next one will take too. Recognition therefore follows the binding
+// rather than a list of blessed builder names and modules — a call resolves
+// to the expressions its function returns, a constant to its initializer, and
+// those run back through the same classifier. Resolution is bounded to what a
+// module and its relative imports can show, and a binding it cannot reach is
+// a confident negative (see the url classification note below).
+// ---------------------------------------------------------------------------
+
+type CallableDeclaration = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
+
+interface ResolvedCallee {
+  declaration: CallableDeclaration;
+  sourceFile: ts.SourceFile;
+  fileDir: string;
+}
+
+/** A named relative import resolved to the module that declares it, under the name that module uses. */
+interface ResolvedBinding {
+  exportedName: string;
+  sourceFile: ts.SourceFile;
+  fileDir: string;
+}
+
+const MODULE_CACHE = new Map<string, ts.SourceFile | null>();
+
+function loadModule(relPath: string): ts.SourceFile | null {
+  const cached = MODULE_CACHE.get(relPath);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const absolute = path.resolve(SRC_DIR, relPath);
+  const parsed = fs.existsSync(absolute)
+    ? ts.createSourceFile(relPath, fs.readFileSync(absolute, 'utf-8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+    : null;
+  MODULE_CACHE.set(relPath, parsed);
+  return parsed;
+}
+
+function findCallableDeclaration(name: string, sourceFile: ts.SourceFile): CallableDeclaration | null {
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name?.text === name) {
+      return stmt;
+    }
+    if (!ts.isVariableStatement(stmt)) {
+      continue;
+    }
+    for (const decl of stmt.declarationList.declarations) {
+      const initializer = decl.initializer;
+      if (
+        ts.isIdentifier(decl.name) &&
+        decl.name.text === name &&
+        initializer &&
+        (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))
+      ) {
+        return initializer;
+      }
+    }
+  }
+  return null;
+}
+
+function findImportedBinding(name: string, sourceFile: ts.SourceFile, fileDir: string): ResolvedBinding | null {
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteralLike(stmt.moduleSpecifier)) {
+      continue;
+    }
+    const specifier = stmt.moduleSpecifier.text;
+    if (!specifier.startsWith('.')) {
+      continue;
+    }
+    const bindings = stmt.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) {
+      continue;
+    }
+    const element = bindings.elements.find((candidate) => candidate.name.text === name);
+    if (!element) {
+      continue;
+    }
+    const relPath = resolveImportToFileNode(fileDir, specifier);
+    const module = relPath ? loadModule(relPath) : null;
+    if (!relPath || !module) {
+      return null;
+    }
+    return {
+      exportedName: (element.propertyName ?? element.name).text,
+      sourceFile: module,
+      fileDir: path.dirname(path.resolve(SRC_DIR, relPath)),
+    };
+  }
+  return null;
+}
+
+function findImportedCallable(name: string, sourceFile: ts.SourceFile, fileDir: string): ResolvedCallee | null {
+  const binding = findImportedBinding(name, sourceFile, fileDir);
+  if (!binding) {
+    return null;
+  }
+  const declaration = findCallableDeclaration(binding.exportedName, binding.sourceFile);
+  return declaration ? { declaration, sourceFile: binding.sourceFile, fileDir: binding.fileDir } : null;
+}
+
+function returnedExpressions(declaration: CallableDeclaration): ts.Expression[] {
+  const body = declaration.body;
+  if (!body) {
+    return [];
+  }
+  if (!ts.isBlock(body)) {
+    return [body];
+  }
+
+  const found: ts.Expression[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
+      return;
+    }
+    if (ts.isReturnStatement(node) && node.expression) {
+      found.push(node.expression);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(body);
+  return found;
+}
+
+// ---------------------------------------------------------------------------
+// Call-site discovery: getBackendSrv().fetch/request/get/post(...)
+//
+// The receiver is either the inline getBackendSrv() call or a same-scope
+// variable holding it (`const backendSrv = getBackendSrv()`), resolved through
+// the same single-file declaration lookup the url and request bag already use.
+// ---------------------------------------------------------------------------
+
+interface CandidateCall {
+  node: ts.CallExpression;
+  methodName: 'fetch' | 'request' | 'get' | 'post';
+}
+
+function isGetBackendSrvCall(expr: ts.Expression): boolean {
+  return ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) && expr.expression.text === 'getBackendSrv';
+}
+
+function isGetBackendSrvInvocation(expr: ts.Expression, blocks: readonly ts.Node[]): boolean {
+  if (isGetBackendSrvCall(expr)) {
+    return true;
+  }
+  if (!ts.isIdentifier(expr)) {
+    return false;
+  }
+  const initializer = resolveLocalDeclarationInitializer(expr.text, blocks);
+  return initializer !== null && isGetBackendSrvCall(initializer);
+}
+
+function findCandidateCalls(sourceFile: ts.SourceFile): CandidateCall[] {
+  const results: CandidateCall[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      GET_BACKEND_SRV_METHOD_NAMES.has(node.expression.name.text) &&
+      isGetBackendSrvInvocation(node.expression.expression, collectScopeBlocks(node, sourceFile))
+    ) {
+      results.push({ node, methodName: node.expression.name.text as CandidateCall['methodName'] });
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Same-scope variable resolution
+//
+// Bounded, single-file resolution only: walk from the call site up through
+// enclosing blocks (function bodies) to the module top level, looking for a
+// `const`/`let` declaration with a matching name. This resolves the two
+// documented shapes — a request object hoisted in the same function
+// (pathfinder-settings-api.ts's `request`), and a module-level URL constant
+// (completion-write-client.ts's `WRITE_URL`) — without chasing imports or
+// callers across files.
+// ---------------------------------------------------------------------------
+
+function collectScopeBlocks(node: ts.Node, sourceFile: ts.SourceFile): ts.Node[] {
+  const blocks: ts.Node[] = [];
+  let current: ts.Node | undefined = node;
+  while (current) {
+    if (ts.isBlock(current)) {
+      blocks.push(current);
+    }
+    current = current.parent;
+  }
+  blocks.push(sourceFile);
+  return blocks;
+}
+
+function statementsOf(block: ts.Node): readonly ts.Statement[] {
+  return ts.isBlock(block) || ts.isSourceFile(block) ? block.statements : [];
+}
+
+function resolveLocalDeclarationInitializer(name: string, blocks: readonly ts.Node[]): ts.Expression | null {
+  for (const block of blocks) {
+    for (const stmt of statementsOf(block)) {
+      if (!ts.isVariableStatement(stmt)) {
+        continue;
+      }
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.name.text === name && decl.initializer) {
+          return decl.initializer;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// url classification
+//
+// Terminates in a binary decision (addresses App Platform, or not) rather
+// than ever reporting "unresolved" on its own. An identifier or callee that
+// cannot be traced (a function parameter, e.g. gcx-service-account.ts's
+// `readJson(url)`) fails every positive-match criterion by construction, so
+// it is a confident negative. "Cannot resolve with confidence" is instead
+// enforced one level up, at the request-BAG resolution for .fetch() below:
+// that is the shape the precision requirements actually describe (a request
+// object hoisted into a variable), and is where this guard truly cannot see
+// the call site if resolution fails.
+// ---------------------------------------------------------------------------
+
+interface UrlClassification {
+  appPlatform: boolean;
+  text: string;
+}
+
+/** Where a url expression is being read from, and which callees and constants the current chain already followed. */
+interface UrlScope {
+  sourceFile: ts.SourceFile;
+  fileDir: string;
+  blocks: readonly ts.Node[];
+  followed: ReadonlySet<string>;
+}
+
+function calleeAddressesAppPlatform(name: string, scope: UrlScope): boolean {
+  const local = findCallableDeclaration(name, scope.sourceFile);
+  const resolved: ResolvedCallee | null = local
+    ? { declaration: local, sourceFile: scope.sourceFile, fileDir: scope.fileDir }
+    : findImportedCallable(name, scope.sourceFile, scope.fileDir);
+  if (!resolved) {
+    return false;
+  }
+
+  const key = `${resolved.sourceFile.fileName}#${name}`;
+  if (scope.followed.has(key)) {
+    return false;
+  }
+  const followed = new Set(scope.followed).add(key);
+
+  return returnedExpressions(resolved.declaration).some(
+    (expr) =>
+      classifyUrl(expr, {
+        sourceFile: resolved.sourceFile,
+        fileDir: resolved.fileDir,
+        blocks: collectScopeBlocks(expr, resolved.sourceFile),
+        followed,
+      }).appPlatform
+  );
+}
+
+function importedConstantAddressesAppPlatform(name: string, scope: UrlScope): boolean {
+  const binding = findImportedBinding(name, scope.sourceFile, scope.fileDir);
+  if (!binding) {
+    return false;
+  }
+
+  const key = `${binding.sourceFile.fileName}#${binding.exportedName}`;
+  if (scope.followed.has(key)) {
+    return false;
+  }
+
+  const initializer = resolveLocalDeclarationInitializer(binding.exportedName, [binding.sourceFile]);
+  if (!initializer) {
+    return false;
+  }
+
+  return classifyUrl(initializer, {
+    sourceFile: binding.sourceFile,
+    fileDir: binding.fileDir,
+    blocks: collectScopeBlocks(initializer, binding.sourceFile),
+    followed: new Set(scope.followed).add(key),
+  }).appPlatform;
+}
+
+function classifyUrl(expr: ts.Expression, scope: UrlScope): UrlClassification {
+  let e: ts.Expression = expr;
+  while (ts.isParenthesizedExpression(e)) {
+    e = e.expression;
+  }
+
+  if (ts.isConditionalExpression(e)) {
+    const whenTrue = classifyUrl(e.whenTrue, scope);
+    const whenFalse = classifyUrl(e.whenFalse, scope);
+    return { appPlatform: whenTrue.appPlatform || whenFalse.appPlatform, text: e.getText() };
+  }
+
+  if (ts.isStringLiteralLike(e)) {
+    return { appPlatform: e.text.includes('/apis/'), text: e.getText() };
+  }
+
+  if (ts.isTemplateExpression(e)) {
+    const literalParts = [e.head.text, ...e.templateSpans.map((span) => span.literal.text)];
+    const appPlatform =
+      literalParts.some((part) => part.includes('/apis/')) ||
+      e.templateSpans.some((span) => classifyUrl(span.expression, scope).appPlatform);
+    return { appPlatform, text: e.getText() };
+  }
+
+  if (ts.isBinaryExpression(e)) {
+    const left = classifyUrl(e.left, scope);
+    const right = classifyUrl(e.right, scope);
+    return { appPlatform: left.appPlatform || right.appPlatform, text: e.getText() };
+  }
+
+  if (ts.isCallExpression(e) && ts.isIdentifier(e.expression)) {
+    return { appPlatform: calleeAddressesAppPlatform(e.expression.text, scope), text: e.getText() };
+  }
+
+  if (ts.isIdentifier(e)) {
+    const initializer = resolveLocalDeclarationInitializer(e.text, scope.blocks);
+    if (initializer) {
+      return classifyUrl(initializer, scope);
+    }
+    return { appPlatform: importedConstantAddressesAppPlatform(e.text, scope), text: e.getText() };
+  }
+
+  return { appPlatform: false, text: e.getText() };
+}
+
+// ---------------------------------------------------------------------------
+// method classification
+//
+// Unlike url, method resolution CAN fail with a null result (unresolved):
+// once url addresses App Platform, this guard must confidently know every
+// possible method value is a mutation before it can stay silent. A
+// conditional method (pathfinder-settings-api.ts's `base ? 'PUT' : 'POST'`)
+// is a mutation only when EVERY branch resolves to one.
+// ---------------------------------------------------------------------------
+
+function resolveMethodValues(expr: ts.Expression, blocks: readonly ts.Node[]): string[] | null {
+  let e: ts.Expression = expr;
+  while (ts.isParenthesizedExpression(e)) {
+    e = e.expression;
+  }
+
+  if (ts.isStringLiteralLike(e)) {
+    return [e.text];
+  }
+
+  if (ts.isConditionalExpression(e)) {
+    const whenTrue = resolveMethodValues(e.whenTrue, blocks);
+    const whenFalse = resolveMethodValues(e.whenFalse, blocks);
+    if (!whenTrue || !whenFalse) {
+      return null;
+    }
+    return [...whenTrue, ...whenFalse];
+  }
+
+  if (ts.isIdentifier(e)) {
+    const initializer = resolveLocalDeclarationInitializer(e.text, blocks);
+    if (!initializer) {
+      return null;
+    }
+    return resolveMethodValues(initializer, blocks);
+  }
+
+  return null;
+}
+
+function isConfidentMutation(methodValues: string[]): boolean {
+  return methodValues.length > 0 && methodValues.every((value) => MUTATION_METHODS.has(value.toUpperCase()));
+}
+
+// ---------------------------------------------------------------------------
+// .fetch() request-bag resolution
+// ---------------------------------------------------------------------------
+
+function findProperty(bag: ts.ObjectLiteralExpression, name: string): ts.Expression | undefined {
+  for (const prop of bag.properties) {
+    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === name) {
+      return prop.initializer;
+    }
+    if (ts.isShorthandPropertyAssignment(prop) && prop.name.text === name) {
+      return prop.name;
+    }
+  }
+  return undefined;
+}
+
+function isNamed(prop: ts.ObjectLiteralElementLike, name: string): boolean {
+  return (
+    (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === name) ||
+    (ts.isShorthandPropertyAssignment(prop) && prop.name.text === name)
+  );
+}
+
+/** True when a spread could still supply or overwrite `name` — it is absent, or a spread follows it. */
+function spreadMayOverride(bag: ts.ObjectLiteralExpression, name: string): boolean {
+  const lastSpread = bag.properties.reduce((last, prop, index) => (ts.isSpreadAssignment(prop) ? index : last), -1);
+  if (lastSpread === -1) {
+    return false;
+  }
+  const declared = bag.properties.findIndex((prop) => isNamed(prop, name));
+  return declared === -1 || lastSpread > declared;
+}
+
+/** Resolves the .fetch() argument to an inline object literal, tracing through at most one same-scope variable. */
+function resolveRequestBag(
+  argExpr: ts.Expression | undefined,
+  blocks: readonly ts.Node[]
+): ts.ObjectLiteralExpression | null {
+  if (!argExpr) {
+    return null;
+  }
+  let e = argExpr;
+  while (ts.isParenthesizedExpression(e)) {
+    e = e.expression;
+  }
+  if (ts.isObjectLiteralExpression(e)) {
+    return e;
+  }
+  if (ts.isIdentifier(e)) {
+    const initializer = resolveLocalDeclarationInitializer(e.text, blocks);
+    if (initializer) {
+      return resolveRequestBag(initializer, blocks);
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Per-call evaluation
+// ---------------------------------------------------------------------------
+
+interface Violation {
+  file: string;
+  line: number;
+  method: string;
+  urlText: string;
+}
+
+interface CallEvaluation {
+  appPlatform: boolean;
+  violation: Violation | null;
+}
+
+function lineOf(node: ts.Node, sourceFile: ts.SourceFile): number {
+  return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+}
+
+function describeArg(argExpr: ts.Expression | undefined): string {
+  return argExpr ? argExpr.getText() : '<missing argument>';
+}
+
+function evaluateCall(
+  call: CandidateCall,
+  sourceFile: ts.SourceFile,
+  relPath: string,
+  fileDir: string
+): CallEvaluation {
+  const blocks = collectScopeBlocks(call.node, sourceFile);
+  const scope: UrlScope = { sourceFile, fileDir, blocks, followed: new Set() };
+  const line = lineOf(call.node, sourceFile);
+  const args = call.node.arguments;
+
+  if (call.methodName === 'get' || call.methodName === 'post') {
+    const urlArg = args[0];
+    const { appPlatform, text } = urlArg
+      ? classifyUrl(urlArg, scope)
+      : { appPlatform: false, text: '<missing url argument>' };
+    if (!appPlatform) {
+      return { appPlatform: false, violation: null };
+    }
+    if (call.methodName === 'post') {
+      // Confident mutation — .post() always issues POST regardless of url.
+      // Kept as a candidate so it still counts in the footprint; mutation policy belongs here, not in the method set.
+      return { appPlatform: true, violation: null };
+    }
+    return { appPlatform: true, violation: { file: relPath, line, method: 'GET', urlText: text } };
+  }
+
+  // .fetch(...) / .request(...) — both take the same request-bag shape
+  const bag = resolveRequestBag(args[0], blocks);
+  if (!bag) {
+    return {
+      appPlatform: true,
+      violation: {
+        file: relPath,
+        line,
+        method: 'unresolved',
+        urlText: `could not resolve the request object for getBackendSrv().${call.methodName}(${describeArg(args[0])})`,
+      },
+    };
+  }
+
+  const urlProp = findProperty(bag, 'url');
+  if (!urlProp) {
+    return {
+      appPlatform: true,
+      violation: { file: relPath, line, method: 'unresolved', urlText: 'no url property found on the request object' },
+    };
+  }
+  if (spreadMayOverride(bag, 'url')) {
+    return {
+      appPlatform: true,
+      violation: {
+        file: relPath,
+        line,
+        method: 'unresolved',
+        urlText: `a spread on the request object may overwrite its url (${urlProp.getText()})`,
+      },
+    };
+  }
+
+  const { appPlatform, text: urlText } = classifyUrl(urlProp, scope);
+  if (!appPlatform) {
+    return { appPlatform: false, violation: null };
+  }
+
+  const methodProp = findProperty(bag, 'method');
+  const methodValues = spreadMayOverride(bag, 'method')
+    ? null
+    : methodProp
+      ? resolveMethodValues(methodProp, blocks)
+      : ['GET'];
+  if (!methodValues) {
+    return {
+      appPlatform: true,
+      violation: { file: relPath, line, method: 'unresolved', urlText },
+    };
+  }
+  if (isConfidentMutation(methodValues)) {
+    return { appPlatform: true, violation: null };
+  }
+
+  const methodLabel = [...new Set(methodValues.map((value) => value.toUpperCase()))].join('/');
+  return { appPlatform: true, violation: { file: relPath, line, method: methodLabel, urlText } };
+}
+
+// ---------------------------------------------------------------------------
+// Full-repo scan
+// ---------------------------------------------------------------------------
+
+interface ScanResult {
+  totalCallSites: number;
+  appPlatformCallSites: number;
+  violations: Violation[];
+}
+
+function scanAppPlatformTransport(): ScanResult {
+  const files = collectSourceFiles().filter((file) => !isTestFile(file));
+  let totalCallSites = 0;
+  let appPlatformCallSites = 0;
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    const content = fs.readFileSync(file, 'utf-8');
+    const relPath = toPosixPath(path.relative(SRC_DIR, file));
+    const sourceFile = ts.createSourceFile(relPath, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const fileDir = path.dirname(file);
+
+    for (const call of findCandidateCalls(sourceFile)) {
+      totalCallSites++;
+      const result = evaluateCall(call, sourceFile, relPath, fileDir);
+      if (result.appPlatform) {
+        appPlatformCallSites++;
+      }
+      if (result.violation) {
+        violations.push(result.violation);
+      }
+    }
+  }
+
+  if (totalCallSites === 0) {
+    throw new Error(
+      'Found zero getBackendSrv().fetch/request/get/post(...) call sites under src/. This guard exists to catch a ' +
+        'direct App Platform read reaching the browser (incident 5857) — a scan that finds nothing would pass ' +
+        'while checking nothing. Something in the walk (collectSourceFiles, or the getBackendSrv() call ' +
+        'matcher in this file) is broken; fix that rather than letting this test go green on an empty scan.'
+    );
+  }
+
+  return { totalCallSites, appPlatformCallSites, violations };
+}
+
+/**
+ * Line-independent identity for the ratchet/allowlist comparison. A baseline
+ * entry must survive unrelated edits to its file — keying on line number
+ * would turn any edit above the flagged line into a double failure (a stale
+ * entry for the old line, and a "new" violation at the shifted one) even
+ * though the flagged call site never changed. Consequence accepted: two
+ * structurally identical violations in the same file (same method, same url
+ * expression, different lines) collapse to one key, and one allowlist entry
+ * grandfathers both — a file either has this violation shape or it does not,
+ * and assertRatchet already operates on Sets, so a collapsed duplicate is
+ * simply absent rather than double-counted.
+ */
+function violationKey(violation: Violation): string {
+  return `${violation.file} — ${violation.method} ${violation.urlText}`;
+}
+
+/** Human-facing form of a violation, with the line number, for reports and error advice — never used as the allowlist key. */
+function violationDisplay(violation: Violation): string {
+  return `${violation.file}:${violation.line} — ${violation.method} ${violation.urlText}`;
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('App Platform transport: proxy-first reads', () => {
+  const scan = scanAppPlatformTransport();
+
+  it('reports the current App Platform direct-transport footprint', () => {
+    console.log(
+      `[app-platform-transport-ratchet] getBackendSrv call sites=${scan.totalCallSites} ` +
+        `appPlatformAddressed=${scan.appPlatformCallSites} violations=${scan.violations.length}`
+    );
+    for (const violation of scan.violations) {
+      console.log(`  ${violationDisplay(violation)}`);
+    }
+  });
+
+  it('must proxy every direct, non-mutating App Platform read through the plugin backend', () => {
+    const violations = new Set(scan.violations.map(violationKey));
+    const allowlist = new Set(ALLOWED_DIRECT_APP_PLATFORM_READS.map((entry) => entry.violation));
+
+    assertRatchet(
+      violations,
+      allowlist,
+      'direct (non-mutating) reads of App Platform from the browser',
+      'ALLOWED_DIRECT_APP_PLATFORM_READS',
+      ADVICE
+    );
+  });
+
+  it('every allowlist entry is justified and accountable', () => {
+    const errors = validateAllowedArchitectureEntries(ALLOWED_DIRECT_APP_PLATFORM_READS, { allowByDesign: false });
+    if (errors.length > 0) {
+      throw new Error(
+        'ALLOWED_DIRECT_APP_PLATFORM_READS entries must each carry a justification and an accountability ' +
+          `reference:\n${errors.map((error) => `  - ${error}`).join('\n')}\n\n` +
+          `This exists so a violation can't be silenced by pasting its key in with an empty comment. A ` +
+          `direct App Platform read almost never belongs on the allowlist at all (see the advice in the ` +
+          `sibling test) — fix it instead of allowlisting it. '${ARCHITECTURE_BY_DESIGN}' is never valid here.`
+      );
+    }
+  });
+});
+
+describe('App Platform transport ratchet: detector', () => {
+  function evaluateModuleSource(relPath: string, source: string): CallEvaluation {
+    const sourceFile = ts.createSourceFile(relPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const [call] = findCandidateCalls(sourceFile);
+    if (!call) {
+      throw new Error('detector fixture has no getBackendSrv() call');
+    }
+    return evaluateCall(call, sourceFile, relPath, path.dirname(path.resolve(SRC_DIR, relPath)));
+  }
+
+  /** Sits beside the real utils/interactive-guides-api.ts, so `collectionUrl`/`itemUrl` resolve to the shipped builders. */
+  function evaluateSource(source: string): CallEvaluation {
+    return evaluateModuleSource(
+      'utils/detector-fixture.ts',
+      `import { collectionUrl, itemUrl } from './interactive-guides-api';\n${source}`
+    );
+  }
+
+  it('flags a direct GET read addressed via the collectionUrl builder', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ url: collectionUrl(namespace), method: 'GET', showErrorAlert: false });
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a builder url interpolated into a template with a query string', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({
+        url: \`\${collectionUrl(namespace)}?labelSelector=spec.status%3Dpublished\`,
+        method: 'GET',
+      });
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a builder url concatenated with a query string', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ url: collectionUrl(namespace) + '?limit=100', method: 'GET' });
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a read issued through a receiver hoisted into a variable', () => {
+    const result = evaluateSource(`
+      function load() {
+        const backendSrv = getBackendSrv();
+        return backendSrv.fetch({ url: collectionUrl(namespace), method: 'GET' });
+      }
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a read issued through .request(), which takes the same request bag as .fetch()', () => {
+    const result = evaluateSource(`
+      getBackendSrv().request({ url: collectionUrl(namespace), method: 'GET' });
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a GET through a url builder a brand-new client file declares for itself', () => {
+    const result = evaluateModuleSource(
+      'utils/learning-paths-api.ts',
+      `
+      function collectionUrl(namespace) {
+        return \`/apis/\${API_VERSION}/namespaces/\${namespace}/learningpaths\`;
+      }
+      export async function listLearningPaths(namespace) {
+        return getBackendSrv().fetch({ url: collectionUrl(namespace), method: 'GET' });
+      }
+    `
+    );
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('flags a GET through a builder that delegates to another builder', () => {
+    const result = evaluateModuleSource(
+      'utils/learning-paths-api.ts',
+      `
+      const collectionUrl = (namespace) => \`/apis/\${API_VERSION}/namespaces/\${namespace}/learningpaths\`;
+      function itemUrl(namespace, name) {
+        return \`\${collectionUrl(namespace)}/\${name}\`;
+      }
+      getBackendSrv().fetch({ url: itemUrl(namespace, name), method: 'GET' });
+    `
+    );
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  /** Parses `source` as the module a fixture imports from, so a cross-file binding resolves without touching disk. */
+  function withStubbedModule<T>(relPath: string, source: string, run: () => T): T {
+    MODULE_CACHE.set(relPath, ts.createSourceFile(relPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
+    try {
+      return run();
+    } finally {
+      MODULE_CACHE.delete(relPath);
+    }
+  }
+
+  it('flags a GET whose url is a constant exported by another module', () => {
+    const result = withStubbedModule(
+      'utils/interactive-guides-api.ts',
+      'export const COLLECTION_URL = `/apis/${APP_PLATFORM_API_VERSION}/namespaces/default/interactiveguides`;',
+      () =>
+        evaluateModuleSource(
+          'utils/detector-fixture.ts',
+          `
+          import { COLLECTION_URL } from './interactive-guides-api';
+          getBackendSrv().fetch({ url: COLLECTION_URL, method: 'GET' });
+        `
+        )
+    );
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('does not flag a GET whose url is a constant exported by another module for a non-App-Platform API', () => {
+    const result = withStubbedModule(
+      'utils/interactive-guides-api.ts',
+      "export const COLLECTION_URL = '/api/plugins/grafana-grafanadocsplugin-app/resources/guides';",
+      () =>
+        evaluateModuleSource(
+          'utils/detector-fixture.ts',
+          `
+          import { COLLECTION_URL } from './interactive-guides-api';
+          getBackendSrv().fetch({ url: COLLECTION_URL, method: 'GET' });
+        `
+        )
+    );
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
+  });
+
+  it('does not flag a GET through a local url builder that never reaches App Platform', () => {
+    const result = evaluateModuleSource(
+      'lib/unrelated-client.ts',
+      `
+      function collectionUrl(id) {
+        return \`/api/plugins/\${id}/resources/collection\`;
+      }
+      getBackendSrv().fetch({ url: collectionUrl(pluginId), method: 'GET' });
+    `
+    );
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
+  });
+
+  it('does not recurse forever when two url builders delegate to each other', () => {
+    const result = evaluateModuleSource(
+      'utils/cyclic-api.ts',
+      `
+      function a(namespace) {
+        return b(namespace);
+      }
+      function b(namespace) {
+        return a(namespace);
+      }
+      getBackendSrv().fetch({ url: a(namespace), method: 'GET' });
+    `
+    );
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
+  });
+
+  it('does not flag a template url whose interpolations never reach App Platform', () => {
+    const result = evaluateSource(`
+      getBackendSrv().get(\`/api/datasources/uid/\${uid}/health\`);
+    `);
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
+  });
+
+  it('does not flag a mutation whose method is a ternary where every branch is a mutation', () => {
+    const result = evaluateSource(`
+      function save() {
+        const request = {
+          url: base ? itemUrl(namespace, name) : collectionUrl(namespace),
+          method: base ? 'PUT' : 'POST',
+        };
+        getBackendSrv().fetch(request);
+      }
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation).toBeNull();
+  });
+
+  it('flags a ternary method as a violation when only one branch is a mutation', () => {
+    const result = evaluateSource(`
+      function save() {
+        const request = {
+          url: collectionUrl(namespace),
+          method: base ? 'PUT' : 'GET',
+        };
+        getBackendSrv().fetch(request);
+      }
+    `);
+    expect(result.violation).not.toBeNull();
+  });
+
+  it('does not flag a url built by an unrelated function, even when unresolved as an identifier', () => {
+    const result = evaluateSource(`
+      async function readJson(url) {
+        return getBackendSrv().fetch({ url, method: 'GET', showErrorAlert: false });
+      }
+    `);
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
+  });
+
+  it('reports unresolved rather than passing silently when the request object cannot be traced', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch(buildRequestOptions());
+    `);
+    expect(result.violation?.method).toBe('unresolved');
+  });
+
+  it('classifies a spread request bag by the url it still spells out', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ ...baseOptions, url: '/api/search', method: 'GET' });
+    `);
+    expect(result.appPlatform).toBe(false);
+    expect(result.violation).toBeNull();
+  });
+
+  it('flags a spread request bag that spells out an App Platform url', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ ...baseOptions, url: collectionUrl(namespace), method: 'GET' });
+    `);
+    expect(result.appPlatform).toBe(true);
+    expect(result.violation?.method).toBe('GET');
+  });
+
+  it('reports unresolved when a trailing spread could overwrite the url', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ url: '/api/search', method: 'GET', ...baseOptions });
+    `);
+    expect(result.violation?.method).toBe('unresolved');
+  });
+
+  it('reports unresolved when a spread could supply the method of an App Platform read', () => {
+    const result = evaluateSource(`
+      getBackendSrv().fetch({ ...baseOptions, url: collectionUrl(namespace) });
+    `);
+    expect(result.violation?.method).toBe('unresolved');
+    expect(result.violation?.urlText).toBe('collectionUrl(namespace)');
+  });
+
+  it('does not anchor on "/apis/" outside a getBackendSrv() call', () => {
+    const sourceFile = ts.createSourceFile(
+      'detector.tsx',
+      `new OFREPWebProvider({ baseUrl: \`/apis/features.grafana.app/v0alpha1/namespaces/\${namespace}\` });`,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX
+    );
+    expect(findCandidateCalls(sourceFile)).toEqual([]);
+  });
+});
