@@ -46,7 +46,7 @@ The file `docs/_maintenance-backlog.md` is the skill's persistent memory across 
 
 1. **Work items** — structural recommendations and deferred issues that cannot be resolved through incremental edits (e.g., "rule file is too long and should be split," "two docs should be merged").
 2. **Validated docs** — a record of which docs were checked against their source code and found accurate, with the date of validation. This prevents the skill from re-checking docs that haven't meaningfully changed since last validation.
-3. **Exclusions** — files that have been reviewed and confirmed as not needing an AGENTS.md entry. These are filtered out of orphan detection so the skill stops flagging them.
+3. **Exclusions** — files that have been reviewed and confirmed as not needing a routing entry. These are filtered out of orphan detection so the skill stops flagging them.
 
 **Rules for the backlog file**:
 
@@ -75,7 +75,7 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 ## Exclusions
 
-<!-- Files confirmed as not needing an AGENTS.md entry. Format: path, reason. -->
+<!-- Files confirmed as not needing a routing entry. Format: path, reason. -->
 ```
 
 ## Workflow
@@ -104,13 +104,14 @@ Goal: Build a prioritized list of documentation issues without reading every fil
 
 #### Step 1: Parse the discovery graph
 
-1. Read `AGENTS.md`
+1. Read `AGENTS.md` and `docs/developer/CONTEXT_INDEX.md` (the canonical routing table)
 2. Extract all file references from:
+   - Every entry in `CONTEXT_INDEX.md`
    - The "On-demand context" table
    - Inline links and references throughout the file
    - The "PR reviews" section
    - Any other tables or lists that reference documentation files
-3. This produces the **indexed set** — files reachable from the agent entry point
+3. This produces the **indexed set** — files reachable from `AGENTS.md` directly or through `CONTEXT_INDEX.md`
 
 #### Step 2: Discover all documentation files
 
@@ -124,8 +125,8 @@ Goal: Build a prioritized list of documentation issues without reading every fil
 For each file in the full set, assign one status:
 
 - **Indexed**: File is in the indexed set. Candidate for staleness check.
-- **Orphaned**: File exists but has no path from AGENTS.md. Candidate for indexing.
-- **Missing**: Referenced in AGENTS.md but file does not exist. Broken link, candidate for cleanup.
+- **Orphaned**: File exists but has no path from `AGENTS.md` or `CONTEXT_INDEX.md`. Candidate for indexing.
+- **Missing**: Referenced in `AGENTS.md` or `CONTEXT_INDEX.md` but file does not exist. Broken link, candidate for cleanup.
 
 For each **orphaned** file:
 
@@ -135,7 +136,7 @@ For each **orphaned** file:
 For each **indexed** file:
 
 - Check whether a corresponding file exists in the other tier (`.cursor/rules/` ↔ `docs/developer/`). If a pair exists, flag it as a drift check candidate.
-- **Staleness check**: Infer which source directories the doc describes from its content path or AGENTS.md glob triggers (e.g., `docs/developer/engines/context-engine.md` describes `src/context-engine/`). Then apply a two-stage filter:
+- **Staleness check**: Infer which source directories the doc describes from its content path or the rule's `globs:` frontmatter (e.g., `docs/developer/engines/context-engine.md` describes `src/context-engine/`). Then apply a two-stage filter:
   1. **Validated recently?** Check the backlog's "Validated docs" section. If this doc was validated within the last 30 days, skip the staleness check entirely — it was recently confirmed accurate.
   2. **Structural changes?** For docs not recently validated, check the source directory for _structural_ changes since the doc's last modification: new or deleted files (`git diff --name-status --diff-filter=ADR` between the doc's last commit and HEAD), or renamed exports. Cosmetic changes (formatting, typo fixes, test-only changes) are not meaningful staleness signals. Use `git log --stat` or `git diff --stat` to gauge change magnitude. Only flag the doc as a staleness candidate if structural changes are detected.
 
@@ -175,7 +176,7 @@ Select findings from the top of the scored list, using a **complexity budget** r
 
 | Fix type  | Cost     | Examples                                                                                                      |
 | --------- | -------- | ------------------------------------------------------------------------------------------------------------- |
-| **Light** | 1 point  | Add an index entry to AGENTS.md, add a cross-reference link, fix a stale file path, add an exclusion entry    |
+| **Light** | 1 point  | Add a CONTEXT_INDEX.md entry, add a cross-reference link, fix a stale file path, add an exclusion entry       |
 | **Heavy** | 3 points | Drift correction between rule/doc pair, new rule file creation, staleness validation with factual corrections |
 
 **Budget per run: 7 points** (reduced to 4 if Phase 0 detects review burden). This allows up to 7 light fixes, or 2 heavy fixes + 1 light fix, or similar combinations. When related docs share a domain (e.g., all files under `docs/developer/engines/`), group them as a single finding.
@@ -189,14 +190,14 @@ For each selected finding, delegate to a sub-agent with a tightly scoped task de
 Sub-agent task:
 
 1. Read the orphaned doc in full
-2. **Decide whether indexing is appropriate.** Not every doc belongs in AGENTS.md. Component READMEs, local utility docs, and end-user-facing docs in `docs/sources/` may serve their purpose without agent indexing. If the doc does not constrain agent behavior or provide context agents need for implementation tasks, add it to the backlog's **Exclusions** section with a brief reason and move on. This is a **light fix** (1 point).
+2. **Decide whether indexing is appropriate.** Not every doc needs a routing entry. Component READMEs, local utility docs, and end-user-facing docs in `docs/sources/` may serve their purpose without agent indexing. If the doc does not constrain agent behavior or provide context agents need for implementation tasks, add it to the backlog's **Exclusions** section with a brief reason and move on. This is a **light fix** (1 point).
 3. If indexing is appropriate, read any related `.cursor/rules/` file if one exists for the same domain
 4. Validate key claims against the codebase:
    - Do referenced file paths still exist?
    - Do mentioned npm scripts exist in `package.json`?
    - Do described APIs, functions, or components exist in the source?
 5. Fix factual errors found in the doc (stale file paths, renamed scripts, changed API names)
-6. Propose the AGENTS.md table entry: file path, "when to load" description, and glob trigger if appropriate
+6. Add the `docs/developer/CONTEXT_INDEX.md` entry: file path and a "when to load" description. Never add it to `AGENTS.md`, which has a byte budget (`src/validation/always-on-context-budget.test.ts`)
 7. If a `.cursor/rules/` counterpart exists for the same domain, add cross-reference links in both directions
 
 #### Fix type: Rule/doc drift
@@ -217,7 +218,7 @@ For an indexed doc flagged as stale (structural source changes detected):
 Sub-agent task:
 
 1. Read the flagged doc in full
-2. Identify the source directories it describes (from path conventions or AGENTS.md glob triggers)
+2. Identify the source directories it describes (from path conventions or the rule's `globs:` frontmatter)
 3. Focus on the structural changes detected in Phase 1 (new/deleted/renamed files) and compare against claims in the doc:
    - File paths and directory structures mentioned
    - Function, class, and component names referenced
@@ -239,7 +240,7 @@ For a complex domain that has a `docs/developer/` reference but no `.cursor/rule
 2. Draft a compact `.cursor/rules/` file with prescriptive constraints only — not a copy of the reference doc
 3. Include a "For full reference, see `docs/developer/...`" pointer
 4. Add appropriate frontmatter (`alwaysApply: false`, `description`, and glob triggers if applicable)
-5. Propose an AGENTS.md table entry for the new rule
+5. Add a `docs/developer/CONTEXT_INDEX.md` entry for the new rule
 
 #### Fix type: Structural recommendation only
 
@@ -288,7 +289,7 @@ You should already be on the `docs/maintain-docs-*` branch created before Phase 
 
 #### PR conventions
 
-- **Title prefix**: Always start the PR title with `skill:maintain-docs` so humans can identify skill-generated PRs. Example: `skill:maintain-docs index orphaned operational docs in AGENTS.md`
+- **Title prefix**: Always start the PR title with `skill:maintain-docs` so humans can identify skill-generated PRs. Example: `skill:maintain-docs index orphaned operational docs in CONTEXT_INDEX.md`
 - **Label**: Always add the `documentation` label to the PR (e.g., `gh pr create --label documentation ...`)
 
 #### PR template
@@ -330,7 +331,7 @@ Documentation maintenance run — [DATE].
 This skill is designed to stay within context limits:
 
 - **Phase 0** reads the backlog file and runs one `gh` command — minimal context
-- **Phase 1** reads only AGENTS.md, file listings, and first ~30 lines of orphaned docs (after exclusion filtering)
+- **Phase 1** reads only AGENTS.md, CONTEXT_INDEX.md, file listings, and first ~30 lines of orphaned docs (after exclusion filtering)
 - **Phase 2** delegates deep reads to sub-agents, each scoped to one doc plus its related code
 - **Phase 2.5** reads the combined `git diff` for verification — proportional to the number of fixes attempted
 - **Phase 3** is mechanical (backlog update, git operations, prettier, PR creation)
