@@ -166,7 +166,7 @@ describe('TabBarActions', () => {
       mockConfig.bootData.user = { orgRole, isGrafanaAdmin };
       render(<TabBarActions />);
       fireEvent.click(screen.getByRole('button', { name: 'More options' }));
-      const item = screen.queryByRole('menuitem', { name: 'Revert public preview Beta' });
+      const item = screen.queryByRole('menuitem', { name: 'Revert to old Help menu Beta' });
       if (visible) {
         expect(item).toBeInTheDocument();
         fireEvent.click(item!);
