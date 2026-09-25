@@ -96,4 +96,3 @@ export function rollUpGuideStats(parts: readonly GuideStatsSummary[]): GuideStat
 
   return { version: GUIDE_STATS_VERSION, blockCount, sectionCount, completableBlockCount, finalCompletablePosition };
 }
-
