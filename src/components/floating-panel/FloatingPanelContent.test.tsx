@@ -11,8 +11,20 @@ import type { DocsPanelModelOperations } from '../docs-panel/types';
 import { FloatingPanelContent } from './FloatingPanelContent';
 
 jest.mock('../content-renderer/content-renderer', () => ({
-  ContentRenderer: ({ onGuideComplete }: { onGuideComplete?: () => void }) => (
-    <button onClick={onGuideComplete}>Complete rendered guide</button>
+  ContentRenderer: ({
+    onGuideComplete,
+    onActiveTrackChange,
+    initialActiveTrackId,
+  }: {
+    onGuideComplete?: () => void;
+    onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
+    initialActiveTrackId?: string | null;
+  }) => (
+    <>
+      <button onClick={onGuideComplete}>Complete rendered guide</button>
+      <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
+      <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
+    </>
   ),
 }));
 
@@ -106,6 +118,62 @@ describe('FloatingPanelContent completion emission', () => {
       metadata: content().metadata,
       guideTitle: 'My guide',
     });
+  });
+});
+
+// Bugbot: "Floating panel drops track restore" — this ContentRenderer also
+// remounts on every content URL change (its own `key={content.url}`), so it
+// needs the same initialActiveTrackId restore path the sidebar surface has,
+// gated on the same activeTrackBaseUrl match (see the sibling test group in
+// DocsPanelContentArea.test.tsx for the leftover-across-paths rationale).
+describe('FloatingPanelContent active track tab restore', () => {
+  it("records the selecting cover page's own baseUrl alongside the trackId", () => {
+    const model = panelModel();
+    render(
+      <FloatingPanelContent
+        content={content({
+          type: 'learning-journey',
+          metadata: { learningJourney: { baseUrl: 'https://example.com/path-a/' } },
+        })}
+        activeTab={activeTab()}
+        model={model}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select builder track' }));
+
+    expect(model.setActiveTrackId).toHaveBeenCalledWith('tab-1', 'builder', [], 'https://example.com/path-a/');
+  });
+
+  it('restores initialActiveTrackId when the stored selection matches the current cover baseUrl', () => {
+    render(
+      <FloatingPanelContent
+        content={content({
+          type: 'learning-journey',
+          metadata: { learningJourney: { baseUrl: 'https://example.com/path-a/' } },
+        })}
+        activeTab={activeTab({ activeTrackId: 'builder', activeTrackBaseUrl: 'https://example.com/path-a/' })}
+        model={panelModel()}
+      />
+    );
+
+    expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('builder');
+  });
+
+  it('withholds initialActiveTrackId when the stored selection was recorded for a different path', () => {
+    render(
+      <FloatingPanelContent
+        // Path B, which happens to declare a same-named "builder" track.
+        content={content({
+          type: 'learning-journey',
+          metadata: { learningJourney: { baseUrl: 'https://example.com/path-b/' } },
+        })}
+        activeTab={activeTab({ activeTrackId: 'builder', activeTrackBaseUrl: 'https://example.com/path-a/' })}
+        model={panelModel()}
+      />
+    );
+
+    expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('');
   });
 });
 

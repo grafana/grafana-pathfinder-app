@@ -129,8 +129,12 @@ export interface DocsPanelModelOperations {
    * persisted alongside the id so navigation stays track-aware past the
    * cover page too — see `LearningJourneyTab.activeTrackMilestones`. Called
    * by `LearningPathTableOfContents` via `onActiveTrackChange`.
+   *
+   * `baseUrl` is the cover's own `learningJourney.baseUrl` at selection
+   * time, persisted as `activeTrackBaseUrl` — see that field's own doc
+   * comment for why a restore needs it.
    */
-  setActiveTrackId(tabId: string, trackId: string | null, milestones?: Milestone[] | null): void;
+  setActiveTrackId(tabId: string, trackId: string | null, milestones?: Milestone[] | null, baseUrl?: string): void;
 
   /** Open the dev tools tab (or switch to it if already open) */
   openDevToolsTab(): void;

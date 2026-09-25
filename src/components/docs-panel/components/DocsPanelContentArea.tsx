@@ -452,10 +452,20 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       }
                       onActiveTrackChange={
                         activeTab
-                          ? (trackId, milestones) => model.setActiveTrackId(activeTab.id, trackId, milestones)
+                          ? (trackId, milestones) =>
+                              model.setActiveTrackId(
+                                activeTab.id,
+                                trackId,
+                                milestones,
+                                stableContent.metadata.learningJourney?.baseUrl
+                              )
                           : undefined
                       }
-                      initialActiveTrackId={activeTab?.activeTrackId}
+                      initialActiveTrackId={
+                        activeTab?.activeTrackBaseUrl === stableContent.metadata.learningJourney?.baseUrl
+                          ? activeTab?.activeTrackId
+                          : undefined
+                      }
                     />
                   </AlignmentPendingContext.Provider>
                 )}

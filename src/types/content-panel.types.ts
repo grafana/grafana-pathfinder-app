@@ -80,6 +80,16 @@ export interface LearningJourneyTab {
    * falls back to the Foundations sequence, same as no track selected.
    */
   activeTrackMilestones?: Milestone[] | null;
+  /**
+   * The cover page's own `learningJourney.baseUrl` at the moment
+   * `activeTrackId` was recorded — a role-style trackId (`builder`,
+   * `seller`) is commonly reused across unrelated paths, and every
+   * navigation remounts `LearningPathTableOfContents` with no path identity
+   * of its own, so a consumer restoring `activeTrackId` on a fresh mount
+   * must confirm it was recorded for THIS path's cover, not a different
+   * one that happens to declare a same-named track.
+   */
+  activeTrackBaseUrl?: string | null;
 }
 
 /**

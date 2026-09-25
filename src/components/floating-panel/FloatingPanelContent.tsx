@@ -171,7 +171,15 @@ export function FloatingPanelContent({
           }}
           onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}
           onActiveTrackChange={
-            activeTab ? (trackId, milestones) => model.setActiveTrackId(activeTab.id, trackId, milestones) : undefined
+            activeTab
+              ? (trackId, milestones) =>
+                  model.setActiveTrackId(activeTab.id, trackId, milestones, content.metadata.learningJourney?.baseUrl)
+              : undefined
+          }
+          initialActiveTrackId={
+            activeTab?.activeTrackBaseUrl === content.metadata.learningJourney?.baseUrl
+              ? activeTab?.activeTrackId
+              : undefined
           }
         />
       </div>

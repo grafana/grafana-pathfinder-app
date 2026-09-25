@@ -38,8 +38,20 @@ jest.mock('../../../docs-retrieval', () => ({
 // branch renders without their dependency trees. ContentRenderer exposes a
 // button that fires onGuideComplete so the completion-boundary tests can drive it.
 jest.mock('../../content-renderer/content-renderer', () => ({
-  ContentRenderer: ({ onGuideComplete }: { onGuideComplete?: () => void }) => (
-    <button onClick={onGuideComplete}>Complete rendered guide</button>
+  ContentRenderer: ({
+    onGuideComplete,
+    onActiveTrackChange,
+    initialActiveTrackId,
+  }: {
+    onGuideComplete?: () => void;
+    onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
+    initialActiveTrackId?: string | null;
+  }) => (
+    <>
+      <button onClick={onGuideComplete}>Complete rendered guide</button>
+      <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
+      <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
+    </>
   ),
 }));
 // Renders a real button wired to the received onOpenDocsPage so the
@@ -96,6 +108,7 @@ function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPane
       dismissAlignment: jest.fn(),
       canNavigateNext: jest.fn(() => false),
       navigateToNextMilestone: jest.fn(),
+      setActiveTrackId: jest.fn(),
     } as any,
     contextPanel: { Component: () => null } as any,
     isFullScreenActive: false,
@@ -223,6 +236,79 @@ describe('DocsPanelContentArea', () => {
         },
         guideTitle: 'My guide',
       });
+    });
+  });
+
+  describe('active track tab restore across cover-page remounts', () => {
+    // Role-style trackIds (`builder`, `seller`) are commonly reused across
+    // unrelated paths, and every navigation remounts the cover's
+    // LearningPathTableOfContents with no path identity of its own — so a
+    // stored activeTrackId must only be restored when it was recorded for
+    // THIS path's cover, never a different one that happens to declare a
+    // same-named track (Bugbot: "leftover track restored across paths").
+    it("records the selecting cover page's own baseUrl alongside the trackId", () => {
+      const base = makeProps();
+      const props = makeProps({
+        stableContent: {
+          url: base.activeTab!.baseUrl,
+          type: 'learning-journey',
+          content: '',
+          metadata: { learningJourney: { baseUrl: 'https://example.com/path-a/', totalMilestones: 2 } },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Select builder track' }));
+
+      expect(props.model.setActiveTrackId).toHaveBeenCalledWith(
+        props.activeTab!.id,
+        'builder',
+        [],
+        'https://example.com/path-a/'
+      );
+    });
+
+    it('restores initialActiveTrackId when the stored selection matches the current cover baseUrl', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          activeTrackId: 'builder',
+          activeTrackBaseUrl: 'https://example.com/path-a/',
+        } as any,
+        stableContent: {
+          url: base.activeTab!.baseUrl,
+          type: 'learning-journey',
+          content: '',
+          metadata: { learningJourney: { baseUrl: 'https://example.com/path-a/', totalMilestones: 2 } },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+
+      expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('builder');
+    });
+
+    it('withholds initialActiveTrackId when the stored selection was recorded for a different path', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          activeTrackId: 'builder',
+          activeTrackBaseUrl: 'https://example.com/path-a/',
+        } as any,
+        stableContent: {
+          url: base.activeTab!.baseUrl,
+          type: 'learning-journey',
+          content: '',
+          // Path B, which happens to declare a same-named "builder" track.
+          metadata: { learningJourney: { baseUrl: 'https://example.com/path-b/', totalMilestones: 2 } },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+
+      expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('');
     });
   });
 
