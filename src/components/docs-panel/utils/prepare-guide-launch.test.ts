@@ -1,3 +1,4 @@
+import { beginGuideLoad, finishGuideLoad } from '../../../lib/telemetry/guide-load';
 import { prepareGuideLaunch } from './prepare-guide-launch';
 import { loadDocsTabContentResult } from './docs-tab-loader';
 import { fetchPackageInfoFromUrl, isPackageContentUrl } from '../../../docs-retrieval';
@@ -66,6 +67,16 @@ describe('prepareGuideLaunch', () => {
     mockInline.mockImplementation((guide: JsonGuide) => realInlineSnippetRefs(guide, neverResolvingResolver));
   });
 
+  it('preserves the caller-owned attempt through fetching and the prepared handoff', async () => {
+    const url = 'https://grafana.com/docs/x';
+    const loadContext = beginGuideLoad(url);
+    fetchResolves({ id: 'g', title: 'g', blocks: [{ type: 'markdown', content: 'hi' }] });
+    const result = await prepareGuideLaunch(url, { title: 'X', source: 'home_page', loadContext });
+    expect(mockLoad).toHaveBeenCalledWith(url, expect.objectContaining({ loadContext }));
+    expect(result.ok && result.launch.preparedContent.loadContext).toBe(loadContext);
+    finishGuideLoad(loadContext, 'cancelled');
+  });
+
   it('fetches the content exactly once', async () => {
     fetchResolves({ id: 'g', title: 'g', blocks: [{ type: 'markdown', content: 'hi' }] });
     await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });
@@ -83,6 +94,44 @@ describe('prepareGuideLaunch', () => {
       expect(result.launch.requiresGrafanaUi).toBe(false);
       expect(result.launch.source).toBe('home_page');
       expect(JSON.parse(result.launch.preparedContent.content)).toEqual(guide);
+    }
+  });
+
+  // The expanded tree renders; the pre-inlining tree counts. A prepared
+  // payload that dropped the second one gave a snippet-bearing guide a bigger
+  // denominator than the counting rule allows (#1665).
+  it('preserves the pre-inlining guide as the counting source alongside the expanded body', async () => {
+    const snippetBlocks = [
+      { type: 'markdown' as const, content: 'one' },
+      { type: 'markdown' as const, content: 'two' },
+    ];
+    const guide: JsonGuide = {
+      id: 'g',
+      title: 'g',
+      blocks: [
+        { type: 'snippet-ref', snippetId: 'two-block-snippet' },
+        { type: 'markdown', content: 'sibling' },
+      ],
+    };
+    fetchResolves(guide);
+    mockInline.mockImplementation((input: JsonGuide) =>
+      realInlineSnippetRefs(input, {
+        resolve: async (id: string) => ({
+          ok: true as const,
+          id,
+          source: 'online-cdn' as const,
+          snippet: { id, title: id, description: 'd', blocks: snippetBlocks },
+        }),
+      })
+    );
+
+    const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const { preparedContent } = result.launch;
+      expect(JSON.parse(preparedContent.content).blocks).toHaveLength(3);
+      expect(JSON.parse(preparedContent.countingSource.guideJson)).toEqual(guide);
     }
   });
 
@@ -113,6 +162,18 @@ describe('prepareGuideLaunch', () => {
     if (result.ok) {
       expect(result.launch.requiresGrafanaUi).toBe(true);
     }
+  });
+
+  it('rejects unresolved snippets when preparing an input handoff', async () => {
+    const guide: JsonGuide = { id: 'g', title: 'g', blocks: [{ type: 'markdown', content: 'Text' }] };
+    fetchResolves(guide);
+    mockInline.mockResolvedValue({ guide, unresolvedSnippetIds: ['missing-snippet'] });
+    const result = await prepareGuideLaunch('https://grafana.com/docs/x', {
+      title: 'X',
+      source: 'url_param',
+      requireResolvedSnippets: true,
+    });
+    expect(result).toMatchObject({ ok: false, errorCode: 'schema-invalid' });
   });
 
   it('returns a failure result (no surface committed) when the fetch fails', async () => {
@@ -208,6 +269,29 @@ describe('prepareGuideLaunch', () => {
         title: 'Create your first dashboard',
         blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nBuild your first dashboard.' }],
       };
+      fetchResolves(guide);
+
+      const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(JSON.parse(result.launch.preparedContent.content)).toEqual(guide);
+      }
+    });
+
+    it('launches a published guide whose guided step carries a non-guided verb, so the rest still renders', async () => {
+      const guide: JsonGuide = {
+        id: 'explore-logs',
+        title: 'Explore logs',
+        blocks: [
+          { type: 'markdown', content: 'Follow along.' },
+          {
+            type: 'guided',
+            content: 'Open Explore',
+            steps: [{ action: 'navigate', reftarget: '/explore' }],
+          },
+        ],
+      } as unknown as JsonGuide;
       fetchResolves(guide);
 
       const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });

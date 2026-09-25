@@ -68,3 +68,20 @@ export type { CodeBlockProps } from './components/docs';
 
 // Guide response context (consumed by components/interactive-tutorial/)
 export { useGuideResponsesOptional } from './GuideResponseContext';
+
+// Self-register this engine's implementation of the Tier 1 learning-journey
+// content bridge so context-engine can reach it without a lateral Tier 2 import.
+import { registerLearningJourneyContentBridge } from '../lib/learning-journey-content-bridge';
+import { fetchContent } from './content-fetcher';
+import { getJourneyCompletionPercentageAsync } from './learning-journey-helpers';
+import { resolvePackageMilestones, resolvePackageNavLinks, derivePathSlug } from './content-fetcher/package-content';
+
+registerLearningJourneyContentBridge({
+  fetchContent,
+  getJourneyCompletionPercentageAsync,
+  resolvePackageMilestones,
+  resolvePackageNavLinks,
+  derivePathSlug,
+});
+
+export { validateKioskDestination } from './kiosk-inputs';

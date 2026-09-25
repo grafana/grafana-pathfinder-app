@@ -10,7 +10,6 @@
 
 import type { Page } from '@playwright/test';
 
-import { testIds } from '../../../../src/constants/testIds';
 import {
   GUIDE_INITIAL_TIMEOUT_MS,
   STEP_OVERHEAD_TIMEOUT_MS,
@@ -18,7 +17,6 @@ import {
   SCROLL_INTO_VIEW_TIMEOUT_MS,
   LATE_COMPLETION_CHECK_TIMEOUT_MS,
   DEFAULT_SESSION_CHECK_INTERVAL,
-  MAX_FIX_ATTEMPTS,
   STEP_DEADLINE_CLEANUP_GRACE_MS,
 } from './constants';
 import { classifyError } from './classification';
@@ -28,7 +26,7 @@ import {
   capturePreStepArtifacts,
   captureFinalScreenshot,
 } from './artifacts';
-import { validateSession, handleRequirementsWithFix } from './requirements';
+import { validateSession } from './requirements';
 import { getStepDriver, selectStepAction as selectDriverAction, stepTimeout } from './drivers';
 import type {
   TestableStep,
@@ -48,29 +46,14 @@ export { STEP_DEADLINE_CLEANUP_GRACE_MS } from './constants';
 // Utility Functions
 // ============================================
 
-/**
- * Scroll a step into view within the docs panel.
- *
- * Before interacting with a step, ensure it's visible in the viewport.
- * Uses scrollIntoViewIfNeeded for smooth scrolling.
- *
- * @param page - Playwright Page object
- * @param stepId - The step identifier
- * @param scrollDelay - Optional delay after scrolling (ms) for animations to settle
- */
 export async function scrollStepIntoView(
   page: Page,
-  stepId: string,
+  step: Pick<TestableStep, 'stepKind' | 'stepId'>,
   scrollDelay = SCROLL_SETTLE_DELAY_MS,
   scrollTimeout = SCROLL_INTO_VIEW_TIMEOUT_MS
 ): Promise<void> {
-  const stepElement = page.getByTestId(testIds.interactive.step(stepId));
-
-  // Scroll within the docs panel container. Bounded: a step that is completing
-  // or detaching around this point should not block on an unbounded wait.
+  const stepElement = getStepDriver(step.stepKind).root(page, step.stepId);
   await stepElement.scrollIntoViewIfNeeded({ timeout: scrollTimeout });
-
-  // Wait for scroll animation to complete
   if (scrollDelay > 0) {
     await page.waitForTimeout(scrollDelay);
   }
@@ -113,50 +96,26 @@ export function determineUnmetRequirementOutcome(skippable: boolean): 'skip' | '
   return skippable ? 'skip' : 'fail';
 }
 
-/**
- * Outcome of the late completion/detachment precheck:
- * - `completed`: the step's element is attached and already `completed`.
- * - `detached`: the step's element is confirmed gone (a successful query
- *   returned zero matches), which this file treats as a completion signal
- *   the same way `waitForCompletionWithObjectivePolling` and the guided
- *   substep loop do.
- * - `not-complete`: proceed with normal execution.
- */
 type LateCompletionOutcome = 'completed' | 'detached' | 'not-complete';
 
-/**
- * Recheck completion/detachment immediately before the scroll call in
- * executeStep. Bounded so a step that's mid-detach can't hang the run on an
- * otherwise-unbounded attribute read (Playwright auto-waits on a missing
- * element up to its own timeout by default).
- *
- * A `count()` error, or an attached element whose read failed for an
- * unrelated reason, is a genuine fault and propagates instead of being
- * reported as "already done".
- *
- * @param page - Playwright Page object
- * @param stepId - The step identifier
- * @param timeout - Bound for the attribute read (ms)
- */
 async function checkLateCompletionOrDetachment(
   page: Page,
-  stepId: string,
+  step: TestableStep,
   timeout = LATE_COMPLETION_CHECK_TIMEOUT_MS
 ): Promise<LateCompletionOutcome> {
-  const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
+  const driver = getStepDriver(step.stepKind);
+  const stepLocator = driver.root(page, step.stepId);
+  const detachedOutcome = driver.detachmentCompletes ? 'detached' : 'not-complete';
   if ((await stepLocator.count()) === 0) {
-    return 'detached';
+    return detachedOutcome;
   }
 
   let state: string | null;
   try {
     state = await stepLocator.getAttribute('data-test-step-state', { timeout });
   } catch (err) {
-    // The bounded read didn't complete (e.g. the element detached mid-read).
-    // Re-count: a successful zero confirms late detachment; an attached
-    // element (or a failing re-count) is a genuine fault and must propagate.
     if ((await stepLocator.count()) === 0) {
-      return 'detached';
+      return detachedOutcome;
     }
     throw err;
   }
@@ -360,8 +319,6 @@ async function executeStepWork(
   const driver = getStepDriver(step.stepKind);
   const consoleErrors: string[] = [];
 
-  // Set up console error capture for this step execution
-  // REACT: cleanup subscription (R1) - removed in finally block
   const consoleHandler = (msg: { type: () => string; text: () => string }) => {
     if (msg.type() === 'error') {
       consoleErrors.push(msg.text());
@@ -369,11 +326,9 @@ async function executeStepWork(
   };
   page.on('console', consoleHandler);
 
-  // PRE screenshot path (captured before step execution when alwaysScreenshot is enabled)
   let preScreenshotPath: string | undefined;
 
   try {
-    // Handle pre-completed steps (U2: objectives/noop auto-completion)
     if (step.isPreCompleted) {
       if (verbose) {
         console.log(`   ⊘ Step ${step.stepId} already completed (discovered as pre-completed)`);
@@ -381,16 +336,7 @@ async function executeStepWork(
       return createSkippedResult(step, page, startTime, consoleErrors, 'pre_completed');
     }
 
-    // Some no-op/objective-based steps complete (or their element detaches)
-    // between discovery and execution; recheck immediately before scrolling so
-    // a step that's already done doesn't block on the scroll below. Bounded
-    // and error-propagating: a query/navigation fault fails the step instead
-    // of being mistaken for "already done". Reported as 'passed', matching
-    // the pre-click objective check below so the same DOM state (attached +
-    // completed) is never classified differently depending on which check
-    // happened to observe it first; detachment is treated the same way
-    // detachment is treated as completion elsewhere in this file.
-    const lateOutcome = await checkLateCompletionOrDetachment(page, step.stepId);
+    const lateOutcome = await checkLateCompletionOrDetachment(page, step);
     if (lateOutcome !== 'not-complete') {
       const lateArtifacts = await buildSuccessArtifacts(
         page,
@@ -418,11 +364,8 @@ async function executeStepWork(
       };
     }
 
-    // Scroll step into view before interaction. Bounded so a step that's
-    // completing/detaching right around this point doesn't hang the run.
-    await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY_MS);
+    await scrollStepIntoView(page, step, SCROLL_SETTLE_DELAY_MS);
 
-    // Capture PRE screenshot if alwaysScreenshot is enabled
     if (artifactsDir && alwaysScreenshot) {
       preScreenshotPath = await capturePreStepArtifacts(page, step.stepId, artifactsDir);
       if (verbose && preScreenshotPath) {
@@ -430,24 +373,13 @@ async function executeStepWork(
       }
     }
 
-    // L3-4A/4B: Detect requirements and attempt to fix if needed BEFORE waiting for button
-    // Requirements must be met before the "Do it" button can appear/be enabled
     if (verbose) {
       console.log(`   🔍 Checking requirements for step ${step.stepId}...`);
     }
-    const { requirements, fixResult } = await handleRequirementsWithFix(page, step, {
-      verbose,
-      attemptFix: true, // Attempt fix for all steps, skip later if it fails
-      maxFixAttempts: MAX_FIX_ATTEMPTS,
-    });
+    const { requirements, fixResult } = await driver.checkRequirements({ page, step, timeout, verbose, artifactsDir });
 
-    // If requirements are not met after fix attempts
     if (!requirements.requirementsMet && requirements.status === 'unmet') {
       if (determineUnmetRequirementOutcome(step.skippable) === 'skip') {
-        // Click the Skip control and wait for the plugin to leave requirements-unmet
-        // so the next sequential step isn't gated on "Complete previous step". Only
-        // record the skip once that's confirmed; a sync failure is a clear runner
-        // failure rather than a false skip that reproduces the original bug.
         try {
           await driver.skip(page, step.stepId);
         } catch (syncError) {
@@ -491,8 +423,6 @@ async function executeStepWork(
       };
     }
 
-    // L3-3C: Check for objective-based auto-completion BEFORE clicking
-    // Objectives may be satisfied by prior actions (e.g., navigation completed the step)
     const preClickCompleted = await driver.completionState(page, step.stepId);
     if (preClickCompleted) {
       if (verbose) {
@@ -544,7 +474,6 @@ async function executeStepWork(
       console.log(`   📸 Success screenshot captured`);
     }
 
-    // Return success result with diagnostics
     return {
       stepId: step.stepId,
       status: 'passed',
@@ -555,10 +484,8 @@ async function executeStepWork(
       artifacts: successArtifacts,
     };
   } catch (error) {
-    // Return failure result with error details
     const errorMsg = error instanceof Error ? error.message : String(error);
 
-    // L3-5D: Capture artifacts on failure
     const artifacts = await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath);
     if (verbose && artifacts) {
       console.log(`   📸 Artifacts captured to ${artifactsDir}`);
@@ -572,13 +499,10 @@ async function executeStepWork(
       consoleErrors,
       error: errorMsg,
       skippable: step.skippable,
-      // L3-5C: Classify the error for triage hints
       classification: classifyError(errorMsg),
-      // L3-5D: Include artifact paths
       artifacts,
     };
   } finally {
-    // REACT: cleanup subscription (R1) - Clean up console handler to prevent memory leaks
     page.off('console', consoleHandler);
   }
 }

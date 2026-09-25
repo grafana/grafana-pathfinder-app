@@ -1,24 +1,7 @@
 import { getEchoSrv, EchoEventType } from '@grafana/runtime';
 import { logger } from './logging';
 
-/**
- * Context event bus.
- *
- * Owns the EchoSrv subscription that watches Grafana's user-interaction stream
- * for "what's the user currently working with?" signals (datasource selection,
- * panel/visualization picker, query execution) and exposes them to the rest of
- * the context engine. Also owns the change-listener set that hooks subscribe
- * to so they re-render when the inferred datasource or visualization changes.
- *
- * The bus is a module-singleton: state is intentionally module-scoped so the
- * EchoSrv backend can be registered exactly once per page load and so any
- * caller — UI hook, requirements checker, assistant tool — observes the same
- * inferred values without coordinating through React state.
- *
- * Previously lived as private static fields/methods on `ContextService`; split
- * out so the god class no longer co-owns I/O state with recommendation
- * orchestration. See PR description for the broader split plan.
- */
+// Module-scoped state keeps one EchoSrv subscription and shared inferred values across all consumers.
 
 interface BufferedEvent {
   datasourceType?: string;

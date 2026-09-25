@@ -1,3 +1,4 @@
+import { SandboxLifetime } from './SandboxLifetime';
 /**
  * Coda Terminal Panel
  *
@@ -9,7 +10,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { useStyles2, Spinner, Icon, IconButton, Button, Input, Modal } from '@grafana/ui';
+import { useStyles2, Spinner, Icon, IconButton, Button, Input, Modal, Dropdown, Menu } from '@grafana/ui';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -37,8 +38,11 @@ import {
   clearScrollback,
   getLastVmOpts,
 } from './terminal-storage';
+import { WorkspaceLink } from './WorkspaceLink';
 import { logger } from '../../lib/logging';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { SandboxRecovery } from './SandboxRecovery';
+import { VmExpiryIndicator } from './VmExpiryIndicator';
 
 interface TerminalPanelProps {
   /** Callback when panel is closed via X button */
@@ -66,7 +70,20 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, sendCommand, error, sessionId } = useTerminalLive({
+  const {
+    status,
+    connect,
+    disconnect,
+    resize,
+    sendCommand,
+    error,
+    unreachableVmId,
+    sessionId,
+    vmId,
+    vmExpiresAt,
+    lifetimeVM,
+    onExpiryChange,
+  } = useTerminalLive({
     terminalRef: terminalInstanceRef,
   });
 
@@ -198,11 +215,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       // WebGL not available, falls back to canvas renderer
     }
 
-    // Initial fit
-    setTimeout(() => {
-      fitAddon.fit();
-    }, 0);
-
     terminalInstanceRef.current = terminal;
     fitAddonRef.current = fitAddon;
     serializeAddonRef.current = serializeAddon;
@@ -215,13 +227,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       terminal.writeln('\r\n\x1b[90m--- Session restored ---\x1b[0m\r\n');
       clearScrollback();
     } else {
-      // Welcome message (only shown on fresh start)
-      terminal.writeln('\x1b[36m╔════════════════════════════════════════╗\x1b[0m');
-      terminal.writeln('\x1b[36m║\x1b[0m        \x1b[1;33mCoda Terminal\x1b[0m                 \x1b[36m║\x1b[0m');
-      terminal.writeln('\x1b[36m╚════════════════════════════════════════╝\x1b[0m');
-      terminal.writeln('');
-      terminal.writeln('\x1b[90mClick "Connect" to start your session...\x1b[0m');
-      terminal.writeln('');
+      terminal.writeln('Click "Connect" to start your session.');
     }
 
     // REACT: cleanup terminal on unmount only (R1)
@@ -247,38 +253,60 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     };
   }, []);
 
-  // Handle resize when expanded/height changes
-  const handleFit = useCallback(() => {
-    if (fitAddonRef.current && isExpanded) {
-      fitAddonRef.current.fit();
-      // Send resize to backend
-      if (terminalInstanceRef.current && status === 'connected') {
-        const dims = fitAddonRef.current.proposeDimensions();
-        if (dims) {
-          resize(dims.rows, dims.cols);
-        }
+  useEffect(() => {
+    const container = terminalRef.current;
+    if (!container || !isExpanded) {
+      return;
+    }
+
+    let frame: number | undefined;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastSent: { rows: number; cols: number } | undefined;
+    const fit = () => {
+      frame = undefined;
+      const terminal = terminalInstanceRef.current;
+      const addon = fitAddonRef.current;
+      if (!terminal || !addon || container.clientWidth <= 0 || container.clientHeight <= 0) {
+        return;
       }
-    }
+      const dimensions = addon.proposeDimensions();
+      if (
+        !dimensions ||
+        !Number.isFinite(dimensions.rows) ||
+        !Number.isFinite(dimensions.cols) ||
+        dimensions.rows < 1 ||
+        dimensions.cols < 2
+      ) {
+        return;
+      }
+      if (terminal.rows !== dimensions.rows || terminal.cols !== dimensions.cols) {
+        addon.fit();
+      }
+      if (status === 'connected' && (lastSent?.rows !== terminal.rows || lastSent?.cols !== terminal.cols)) {
+        resize(terminal.rows, terminal.cols);
+        lastSent = { rows: terminal.rows, cols: terminal.cols };
+      }
+    };
+    const scheduleFit = () => {
+      if (frame === undefined) {
+        frame = requestAnimationFrame(fit);
+      }
+    };
+    const observer = new ResizeObserver(() => {
+      // Fitting clears xterm's canvas; wait for the drag to settle before repainting.
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(scheduleFit, 80);
+    });
+    observer.observe(container);
+    scheduleFit();
+    return () => {
+      observer.disconnect();
+      clearTimeout(settleTimer);
+      if (frame !== undefined) {
+        cancelAnimationFrame(frame);
+      }
+    };
   }, [isExpanded, resize, status]);
-
-  // Fit terminal when expanded or height changes (but not on status changes,
-  // since the connected handler already sends an initial resize)
-  useEffect(() => {
-    if (isExpanded) {
-      // Small delay to ensure DOM has updated
-      const timer = setTimeout(handleFit, 50);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately excluding handleFit to avoid re-triggering on status changes
-  }, [isExpanded, height]);
-
-  // Handle window resize
-  useEffect(() => {
-    // REACT: cleanup event listener (R1)
-    window.addEventListener('resize', handleFit);
-    return () => window.removeEventListener('resize', handleFit);
-  }, [handleFit]);
 
   // Resize drag handling
   const handleResizeStart = useCallback(
@@ -416,7 +444,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       case 'connecting':
         return 'Connecting...';
       case 'error':
-        return error || 'Error';
+        return 'Disconnected';
       case 'disconnected':
         return 'Disconnected';
       default:
@@ -429,6 +457,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const canConnect = !isConnecting && status !== 'connected';
   const canDisconnect = status === 'connected';
   const canCancel = isConnecting;
+  const renderVmExpiry = () =>
+    status === 'connected' && vmExpiresAt ? (
+      <VmExpiryIndicator key={vmExpiresAt} expiresAt={vmExpiresAt} className={styles.expiryIndicator} />
+    ) : null;
 
   // Always render terminal div to keep it alive across collapse/expand
   // Use display:none to hide when collapsed instead of unmounting
@@ -454,16 +486,27 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             <div className={styles.headerLeft}>
               <Icon name="code-branch" size="sm" />
               <span className={styles.title}>Terminal</span>
-            </div>
-            <div className={styles.headerRight}>
-              <div className={styles.statusIndicator}>
+              {vmId && (
+                <span className={styles.vmIdentity} title={`Sandbox: ${vmId}`} aria-label={`Sandbox ${vmId}`}>
+                  #{vmId.slice(-6)}
+                </span>
+              )}
+              <div
+                className={styles.statusIndicator}
+                role="status"
+                aria-label={getStatusText(status)}
+                title={getStatusText(status)}
+              >
                 {isConnecting ? (
                   <Spinner size="xs" />
                 ) : (
                   <div className={`${styles.statusDot} ${getStatusDotClass(status)}`} />
                 )}
-                <span>{getStatusText(status)}</span>
+                {status !== 'connected' && <span>{getStatusText(status)}</span>}
               </div>
+              {renderVmExpiry()}
+            </div>
+            <div className={styles.headerRight}>
               <span data-testid={testIds.codaTerminal.pathfinderExpand}>
                 <IconButton
                   name="angle-up"
@@ -489,6 +532,19 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
         }}
         data-testid={testIds.codaTerminal.panel}
       >
+        {unreachableVmId && (
+          <SandboxRecovery
+            key={unreachableVmId}
+            vmId={unreachableVmId}
+            onReplace={(options) => {
+              if (terminalCtx) {
+                terminalCtx.connect(options);
+              } else {
+                void connect(options);
+              }
+            }}
+          />
+        )}
         {/* Resize handle */}
         <div
           className={styles.resizeHandle}
@@ -505,17 +561,27 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
           <div className={styles.headerLeft}>
             <Icon name="code-branch" size="sm" />
             <span className={styles.title}>Terminal</span>
-          </div>
-          <div className={styles.headerRight}>
-            <div className={styles.statusIndicator}>
+            {vmId && (
+              <span className={styles.vmIdentity} title={`Sandbox: ${vmId}`} aria-label={`Sandbox ${vmId}`}>
+                #{vmId.slice(-6)}
+              </span>
+            )}
+            <div
+              className={styles.statusIndicator}
+              role="status"
+              aria-label={getStatusText(status)}
+              title={getStatusText(status)}
+            >
               {isConnecting ? (
                 <Spinner size="xs" />
               ) : (
                 <div className={`${styles.statusDot} ${getStatusDotClass(status)}`} />
               )}
-              <span>{getStatusText(status)}</span>
+              {status !== 'connected' && <span>{getStatusText(status)}</span>}
             </div>
-
+            {isExpanded && renderVmExpiry()}
+          </div>
+          <div className={styles.headerRight}>
             {canConnect && (
               <Button
                 size="sm"
@@ -524,7 +590,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
                 className={styles.headerButton}
                 data-testid={testIds.codaTerminal.connectButton}
               >
-                Connect
+                {status === 'error' ? 'Retry' : 'Connect'}
               </Button>
             )}
 
@@ -540,16 +606,14 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               </Button>
             )}
 
-            {canDisconnect && (
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={handleDisconnect}
+            {status === 'connected' && vmId && (
+              <SandboxLifetime
+                key={vmId}
+                vm={lifetimeVM}
+                vmId={vmId}
+                onExtended={onExpiryChange}
                 className={styles.headerButton}
-                data-testid={testIds.codaTerminal.disconnectButton}
-              >
-                Disconnect
-              </Button>
+              />
             )}
 
             {/* Needs a live session: the backend writes over the SSH channel
@@ -558,12 +622,16 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               size="sm"
               variant="secondary"
               className={styles.headerButton}
+              fill="text"
+              tooltip="Set up GCX in this VM"
               disabled={status !== 'connected' || !sessionId}
               onClick={() => setShowGcx(true)}
               data-testid={testIds.codaTerminal.gcxButton}
             >
-              gcx
+              GCX
             </Button>
+
+            <WorkspaceLink connected={status === 'connected'} vmId={vmId} className={styles.headerButton} />
 
             <IconButton
               name="search"
@@ -574,6 +642,41 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               data-testid={testIds.codaTerminal.searchToggle}
             />
 
+            {(canDisconnect || onClose) && (
+              <Dropdown
+                placement="top-end"
+                overlay={
+                  <Menu>
+                    {canDisconnect && (
+                      <Menu.Item
+                        label="Disconnect"
+                        icon="plug"
+                        onClick={handleDisconnect}
+                        testId={testIds.codaTerminal.disconnectButton}
+                      />
+                    )}
+                    {onClose && (
+                      <Menu.Item
+                        label="Close terminal"
+                        icon="times"
+                        onClick={onClose}
+                        testId={testIds.codaTerminal.closeButton}
+                      />
+                    )}
+                  </Menu>
+                }
+              >
+                <Button
+                  variant="secondary"
+                  fill="text"
+                  size="sm"
+                  icon="ellipsis-v"
+                  aria-label="Terminal actions"
+                  tooltip="Terminal actions"
+                />
+              </Dropdown>
+            )}
+
             <IconButton
               name="angle-down"
               size="sm"
@@ -582,19 +685,15 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               onClick={handleToggleExpand}
               data-testid={testIds.codaTerminal.collapseButton}
             />
-
-            {onClose && (
-              <IconButton
-                name="times"
-                size="sm"
-                aria-label="Close terminal"
-                tooltip="Close terminal"
-                onClick={onClose}
-                data-testid={testIds.codaTerminal.closeButton}
-              />
-            )}
           </div>
         </div>
+
+        {error && (
+          <div className={styles.connectionNotice} role="alert">
+            <Icon name="info-circle" size="sm" />
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* Search bar */}
         {showSearch && (

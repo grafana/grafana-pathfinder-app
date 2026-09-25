@@ -1,6 +1,6 @@
 import { getFeatureFlagValue } from './openfeature';
 import { CODA_TERMINAL_FLAG, isCodaTerminalEnabled, resetCodaTerminalFlagCache } from './coda-enablement';
-import type { DocsPluginConfig } from '../constants';
+import type { PathfinderPluginConfig } from '../constants';
 
 jest.mock('./openfeature', () => ({
   getFeatureFlagValue: jest.fn(),
@@ -12,13 +12,11 @@ jest.mock('@grafana/runtime', () => ({
 
 const mockedGetFeatureFlagValue = getFeatureFlagValue as jest.MockedFunction<typeof getFeatureFlagValue>;
 
-const USER_ID = 7;
-
-function pluginConfig(overrides: DocsPluginConfig = {}): DocsPluginConfig {
-  return { devMode: false, devModeUserIds: [], enableCodaTerminal: false, ...overrides };
+function pluginConfig(overrides: PathfinderPluginConfig = {}): PathfinderPluginConfig {
+  return { devMode: false, devModeOptIn: false, enableCodaTerminal: false, ...overrides };
 }
 
-const devModeOn = { devMode: true, devModeUserIds: [USER_ID] };
+const devModeOn = { devMode: true, devModeOptIn: true };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -28,47 +26,49 @@ beforeEach(() => {
 
 describe('isCodaTerminalEnabled', () => {
   it('is off when nothing enables it', () => {
-    expect(isCodaTerminalEnabled(pluginConfig(), USER_ID)).toBe(false);
+    expect(isCodaTerminalEnabled(pluginConfig())).toBe(false);
   });
 
-  it('is on from the flag alone, with no dev mode and no jsonData toggle', () => {
+  it('is on from the flag alone, with no dev mode and no tenant toggle', () => {
     mockedGetFeatureFlagValue.mockReturnValue(true);
 
-    expect(isCodaTerminalEnabled(pluginConfig(), USER_ID)).toBe(true);
+    expect(isCodaTerminalEnabled(pluginConfig())).toBe(true);
     expect(mockedGetFeatureFlagValue).toHaveBeenCalledWith(CODA_TERMINAL_FLAG, false);
   });
 
-  it('is on from dev mode plus the jsonData toggle', () => {
-    expect(isCodaTerminalEnabled(pluginConfig({ ...devModeOn, enableCodaTerminal: true }), USER_ID)).toBe(true);
+  it('is on from dev mode plus the tenant toggle', () => {
+    expect(isCodaTerminalEnabled(pluginConfig({ ...devModeOn, enableCodaTerminal: true }))).toBe(true);
   });
 
   // The gate that used to disagree: blocks read `configured` while TerminalPanel
   // never mounted, dead-ending the learner on "not available here".
-  it('is off for the jsonData toggle without dev mode', () => {
-    expect(isCodaTerminalEnabled(pluginConfig({ enableCodaTerminal: true }), USER_ID)).toBe(false);
+  it('is off for the tenant toggle without dev mode', () => {
+    expect(isCodaTerminalEnabled(pluginConfig({ enableCodaTerminal: true }))).toBe(false);
   });
 
-  it('is off for dev mode without the jsonData toggle', () => {
-    expect(isCodaTerminalEnabled(pluginConfig(devModeOn), USER_ID)).toBe(false);
+  it('is off for dev mode without the tenant toggle', () => {
+    expect(isCodaTerminalEnabled(pluginConfig(devModeOn))).toBe(false);
   });
 
-  it('is off for a user outside the dev-mode allowlist', () => {
-    const config = pluginConfig({ devMode: true, devModeUserIds: [99], enableCodaTerminal: true });
+  it('is off when the tenant gate is closed, however this browser opted in', () => {
+    const config = pluginConfig({ devMode: false, devModeOptIn: true, enableCodaTerminal: true });
 
-    expect(isCodaTerminalEnabled(config, USER_ID)).toBe(false);
+    expect(isCodaTerminalEnabled(config)).toBe(false);
+  });
+
+  it('is off when this browser has not opted in, however the tenant gate stands', () => {
+    const config = pluginConfig({ devMode: true, devModeOptIn: false, enableCodaTerminal: true });
+
+    expect(isCodaTerminalEnabled(config)).toBe(false);
   });
 
   it('reads the flag once per page load, however many callers ask', () => {
     mockedGetFeatureFlagValue.mockReturnValue(true);
 
-    isCodaTerminalEnabled(pluginConfig(), USER_ID);
-    isCodaTerminalEnabled(pluginConfig(), USER_ID);
-    isCodaTerminalEnabled(pluginConfig(), USER_ID);
+    isCodaTerminalEnabled(pluginConfig());
+    isCodaTerminalEnabled(pluginConfig());
+    isCodaTerminalEnabled(pluginConfig());
 
     expect(mockedGetFeatureFlagValue).toHaveBeenCalledTimes(1);
-  });
-
-  it('falls back to the current user when no id is passed', () => {
-    expect(isCodaTerminalEnabled(pluginConfig({ ...devModeOn, enableCodaTerminal: true }))).toBe(true);
   });
 });

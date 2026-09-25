@@ -53,6 +53,8 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: theme.spacing(0.5, 1),
     padding: theme.spacing(0.5, 1),
     backgroundColor: theme.colors.background.secondary,
     borderBottom: `1px solid ${theme.colors.border.weak}`,
@@ -75,11 +77,45 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     margin: 0,
   }),
 
+  connectionNotice: css({
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    backgroundColor: theme.colors.background.secondary,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+  }),
+
+  vmIdentity: css({
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontFamily: theme.typography.fontFamilyMonospace,
+    whiteSpace: 'nowrap',
+  }),
+
   headerRight: css({
     label: 'coda-terminal-header-right',
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
+    marginLeft: 'auto',
+    flexWrap: 'wrap',
+    '& > button': {
+      position: 'relative',
+    },
+    '& > button + button::after': {
+      content: '""',
+      position: 'absolute',
+      left: `calc(-${theme.spacing(0.25)} - 1px)`,
+      top: '50%',
+      transform: 'translateY(-50%)',
+      height: theme.spacing(2),
+      width: 1,
+      backgroundColor: theme.colors.border.strong,
+      pointerEvents: 'none',
+    },
   }),
 
   // Status indicator
@@ -90,6 +126,14 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.5),
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
+  }),
+
+  expiryIndicator: css({
+    label: 'coda-terminal-expiry-indicator',
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.warning.text,
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
   }),
 
   statusDot: css({
@@ -120,6 +164,8 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
   terminalWrapper: css({
     label: 'coda-terminal-wrapper',
     flex: 1,
+    minWidth: 0,
+    minHeight: 0,
     padding: theme.spacing(0.5),
     overflow: 'hidden',
     backgroundColor: '#1e1e1e',
@@ -137,6 +183,8 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: theme.spacing(0.5, 1),
     padding: theme.spacing(0.5, 1),
     backgroundColor: theme.colors.background.secondary,
     cursor: 'pointer',
@@ -149,7 +197,7 @@ export const getTerminalPanelStyles = (theme: GrafanaTheme2) => ({
   // Button styles
   headerButton: css({
     label: 'coda-terminal-header-button',
-    marginLeft: theme.spacing(0.5),
+    flexShrink: 0,
   }),
 
   // Search bar

@@ -124,7 +124,7 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
   }
 
   // Zod validation replaces manual checks
-  const validationResult = validateGuide(guide, { allowDuplicateHeading: true });
+  const validationResult = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
   if (!validationResult.isValid) {
     return {
       isValid: false,
@@ -987,6 +987,7 @@ function convertInputBlock(block: JsonInputBlock, path: string, stepContext?: St
         defaultValue: block.defaultValue,
         required: block.required ?? false,
         pattern: block.pattern,
+        format: block.format,
         validationMessage: block.validationMessage,
         requirements,
         skippable: block.skippable ?? false,
@@ -1054,6 +1055,8 @@ function convertTerminalConnectBlock(
 
 function convertChallengeBlock(block: JsonChallengeBlock, _path: string, stepContext?: StepContext): ConversionResult {
   const briefElements = parseMarkdownToElements(block.brief);
+  const requirements = block.requirements?.length ? block.requirements : undefined;
+  const objectives = executableObjectives(block.objectives);
   const stepId = resolveStepId(block.id, stepContext, 'challenge', block.title);
 
   return {
@@ -1072,6 +1075,9 @@ function convertChallengeBlock(block: JsonChallengeBlock, _path: string, stepCon
         successCriteria: block.successCriteria,
         hintLevels: block.hintLevels,
         failureMessage: block.failureMessage,
+        requirements,
+        objectives,
+        skippable: block.skippable ?? false,
       },
       children: briefElements,
     },

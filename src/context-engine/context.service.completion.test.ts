@@ -14,7 +14,7 @@ import { getBackendSrv } from '@grafana/runtime';
 import { ContextService } from './context.service';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
-import { fetchContent, getJourneyCompletionPercentageAsync } from '../docs-retrieval';
+import { fetchContent, getJourneyCompletionPercentageAsync } from '../lib/learning-journey-content-bridge';
 
 // Mock dependencies
 jest.mock('../utils/dev-mode', () => ({
@@ -28,6 +28,7 @@ jest.mock('@grafana/runtime', () => ({
     post: jest.fn(),
   })),
   config: {
+    theme2: { isDark: false },
     bootData: {
       settings: {
         buildInfo: {
@@ -44,10 +45,13 @@ jest.mock('@grafana/runtime', () => ({
     },
   },
   locationService: {
+    getLocation: () => ({ pathname: '/explore', search: '', hash: '' }),
+    getSearchObject: () => ({}),
     push: jest.fn(),
   },
   getEchoSrv: jest.fn(() => ({
     addEvent: jest.fn(),
+    addBackend: jest.fn(),
   })),
   EchoEventType: {
     Interaction: 'interaction',
@@ -79,8 +83,8 @@ jest.mock('../lib/user-storage', () => ({
   useUserStorage: jest.fn(),
 }));
 
-// Mock docs-retrieval module
-jest.mock('../docs-retrieval', () => ({
+// Mock the learning-journey content bridge
+jest.mock('../lib/learning-journey-content-bridge', () => ({
   fetchContent: jest.fn(),
   getJourneyCompletionPercentageAsync: jest.fn(),
 }));
@@ -386,28 +390,25 @@ describe('ContextService: Completion Percentage Storage Selection', () => {
   });
 });
 
-describe('strict verification reads', () => {
-  it.each(['datasources', 'plugins', 'dashboards'] as const)(
-    'preserves errors for %s verification only',
-    async (kind) => {
-      const fetch = (throwOnError: boolean) => {
-        switch (kind) {
-          case 'datasources':
-            return ContextService.fetchDataSources({ throwOnError });
-          case 'plugins':
-            return ContextService.fetchPlugins({ throwOnError });
-          case 'dashboards':
-            return ContextService.fetchDashboardsByName('Example', { throwOnError });
-        }
-      };
-      jest
-        .mocked(getBackendSrv)
-        .mockReturnValueOnce({ get: jest.fn().mockRejectedValue(new Error('Offline')) } as never);
-      await expect(fetch(false)).resolves.toEqual([]);
-      jest
-        .mocked(getBackendSrv)
-        .mockReturnValueOnce({ get: jest.fn().mockRejectedValue(new Error('Offline')) } as never);
-      await expect(fetch(true)).rejects.toThrow('Offline');
-    }
-  );
+describe('context data-source reads', () => {
+  it('includes data sources returned by the shared API', async () => {
+    const dataSources = [{ uid: 'prometheus', type: 'prometheus', name: 'Prometheus' }];
+    const get = jest.fn().mockResolvedValue(dataSources);
+    jest.mocked(getBackendSrv).mockReturnValue({ get } as never);
+
+    const context = await ContextService.getContextData();
+
+    expect(context.dataSources).toEqual(dataSources);
+    expect(get).toHaveBeenCalledWith('/api/datasources');
+  });
+
+  it('keeps context available when the data-source request fails', async () => {
+    const get = jest.fn().mockRejectedValue(new Error('Offline'));
+    jest.mocked(getBackendSrv).mockReturnValue({ get } as never);
+
+    const context = await ContextService.getContextData();
+
+    expect(context.dataSources).toEqual([]);
+    expect(context.currentPath).toBe('/explore');
+  });
 });

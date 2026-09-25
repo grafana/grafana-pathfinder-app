@@ -313,7 +313,7 @@ function prefixRoute(route: string): string {
 - `highlighted-guide-orchestrator.ts` - Initializes reset state, page matching, once-per-browser auto-open, and guide launch
 - `highlighted-guide-utils.ts` - Manages auto-open markers, matches target pages, and builds featured recommendations
 - `interactive-learning-banner.ts` - Interactive-learning banner arm, enrolled lazily on first panel open rather than at boot. `enrollment-boundary.test.ts` pins the three panel-mount call sites, because evaluating the flag is what emits the exposure; the banner component reads the arm through `subscribeToEnrollment` instead of enrolling
-- `experiment-debug.ts` - Exposes flag overrides and exposure inspection through `window.__pathfinderExperiment`
+- `experiment-debug.ts` - Exposes feature-flag names and exposure inspection through `window.__pathfinderExperiment`
 - `index.ts` - Public exports consumed by `src/module.tsx` and `src/context-engine/context.service.ts`
 
 ---

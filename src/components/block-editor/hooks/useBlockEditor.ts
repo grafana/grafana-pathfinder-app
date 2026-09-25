@@ -12,6 +12,7 @@ import { DEFAULT_GUIDE_METADATA } from '../constants';
 import { copyNestedInstanceId } from '../nestedBlockInstanceId';
 import { useGuideHistory } from './useGuideHistory';
 import { generateBlockId, isConditionalBlock, isSectionBlock } from './useBlockEditor.helpers';
+import { deleteSelectedBlocks as deleteSelectedBlocksFromState } from './useBlockEditor.bulk-delete';
 import { mergeBlocks } from './useBlockEditor.merge';
 
 /**
@@ -47,6 +48,8 @@ export interface UseBlockEditorReturn {
   updateBlock: (id: string, block: JsonBlock) => void;
   /** Remove a block by ID */
   removeBlock: (id: string) => void;
+  /** Remove all selected blocks in one undoable state transition. */
+  deleteSelectedBlocks: (blockIds: string[]) => void;
   /** Move a block from one index to another */
   moveBlock: (fromIndex: number, toIndex: number) => void;
   /** Duplicate a block */
@@ -281,6 +284,32 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         notifyChange(newState);
         return newState;
       });
+    },
+    [notifyChange, setState]
+  );
+
+  const deleteSelectedBlocks = useCallback(
+    (blockIds: string[]) => {
+      if (blockIds.length === 0) {
+        return;
+      }
+      setState(
+        (prev) => {
+          const newBlocks = deleteSelectedBlocksFromState(prev.blocks, new Set(blockIds));
+          if (newBlocks === prev.blocks) {
+            return prev;
+          }
+
+          const newState = {
+            ...prev,
+            blocks: newBlocks,
+            isDirty: true,
+          };
+          notifyChange(newState);
+          return newState;
+        },
+        { label: `Delete ${blockIds.length} block${blockIds.length === 1 ? '' : 's'}` }
+      );
     },
     [notifyChange, setState]
   );
@@ -1244,6 +1273,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       addBlock,
       updateBlock,
       removeBlock,
+      deleteSelectedBlocks,
       moveBlock,
       duplicateBlock,
       nestBlockInSection,
@@ -1283,6 +1313,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       addBlock,
       updateBlock,
       removeBlock,
+      deleteSelectedBlocks,
       moveBlock,
       duplicateBlock,
       nestBlockInSection,

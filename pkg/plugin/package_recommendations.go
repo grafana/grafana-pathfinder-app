@@ -82,8 +82,9 @@ type PackageEntry struct {
 
 // PackageRecommendationsResponse is the JSON returned to the frontend.
 type PackageRecommendationsResponse struct {
-	BaseURL  string         `json:"baseUrl"`
-	Packages []PackageEntry `json:"packages"`
+	Diagnostics *guideProxyDiagnostic `json:"diagnostics,omitempty"`
+	BaseURL     string                `json:"baseUrl"`
+	Packages    []PackageEntry        `json:"packages"`
 }
 
 // rawRepositoryEntry mirrors the upstream repository.json schema. We only
@@ -176,7 +177,7 @@ func (a *App) handlePackageRecommendations(w http.ResponseWriter, r *http.Reques
 		a.ctxLogger(r.Context()).Debug("package recommendations unavailable", "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "package-index-unavailable"})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "package-index-unavailable", "diagnostics": classifyGuideProxyError(err)})
 		return
 	}
 
@@ -203,7 +204,7 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 			ttl = packageRepositoryPartialCacheTTL
 		}
 		if timeNow().Sub(packageCache.fetchedAt) < ttl {
-			resp, err := packageCache.resp, packageCache.err
+			resp, err := packageResponseDiagnostics(packageCache.resp, packageCache.err, "hit", timeNow().Sub(packageCache.fetchedAt).Milliseconds())
 			packageCacheMu.Unlock()
 			return resp, err
 		}
@@ -216,7 +217,7 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 		// instead of blocking on a slow CDN.
 		select {
 		case <-existing.done:
-			return existing.resp, existing.err
+			return packageResponseDiagnostics(existing.resp, existing.err, "shared", 0)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -246,7 +247,7 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 	packageCacheMu.Unlock()
 	close(flight.done)
 
-	return resp, err
+	return packageResponseDiagnostics(resp, err, "refresh", 0)
 }
 
 // fetchAndParsePackageRepository performs the network fetch and trims the
@@ -272,6 +273,10 @@ func fetchAndParsePackageRepository(ctx context.Context, rawURL string) (*Packag
 		return nil, false, fmt.Errorf("parse repository.json: %w", err)
 	}
 
+	if index == nil {
+		return nil, false, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json"}, err: fmt.Errorf("repository.json must be an object")}
+	}
+
 	baseURL := baseURLFromRepositoryURL(rawURL)
 	packages := make([]PackageEntry, 0, len(index))
 	for id, entry := range index {
@@ -294,11 +299,17 @@ func fetchAndParsePackageRepository(ctx context.Context, rawURL string) (*Packag
 		})
 	}
 
-	partial := enrichPackagesWithManifests(ctx, baseURL, packages, fetch)
+	diagnostics := &guideProxyDiagnostic{Outcome: "ok", ManifestFailures: make(map[string]int)}
+	partial := enrichPackagesWithManifests(ctx, baseURL, packages, fetch, diagnostics)
+	diagnostics.BudgetExhausted = partial
+	if partial || len(diagnostics.ManifestFailures) > 0 {
+		diagnostics.Outcome = "degraded"
+	}
 
 	return &PackageRecommendationsResponse{
-		BaseURL:  baseURL,
-		Packages: packages,
+		Diagnostics: diagnostics,
+		BaseURL:     baseURL,
+		Packages:    packages,
 	}, partial, nil
 }
 
@@ -315,6 +326,7 @@ func enrichPackagesWithManifests(
 	baseURL string,
 	packages []PackageEntry,
 	fetch packageRepositoryFetcher,
+	diagnostics *guideProxyDiagnostic,
 ) bool {
 	if baseURL == "" || len(packages) == 0 {
 		return false
@@ -325,6 +337,12 @@ func enrichPackagesWithManifests(
 
 	sem := make(chan struct{}, packageManifestConcurrency)
 	var wg sync.WaitGroup
+	var diagnosticMu sync.Mutex
+	recordFailure := func(reason string) {
+		diagnosticMu.Lock()
+		diagnostics.ManifestFailures[reason]++
+		diagnosticMu.Unlock()
+	}
 
 	for i := range packages {
 		entry := &packages[i]
@@ -333,10 +351,12 @@ func enrichPackagesWithManifests(
 		}
 		manifestURL := buildPackageFileURL(baseURL, entry.Path, "manifest.json")
 		if manifestURL == "" {
+			recordFailure("invalid-url")
 			continue
 		}
 		// Defensive: only fetch from the same allowlisted host as the index.
 		if !isAllowedInteractiveLearningHost(manifestURL) {
+			recordFailure("blocked-url")
 			continue
 		}
 
@@ -361,10 +381,12 @@ func enrichPackagesWithManifests(
 			// transiently allocating ~64 MB across 16 in-flight goroutines.
 			body, err := fetch(budgetCtx, url, packageManifestMaxBytes)
 			if err != nil {
+				recordFailure(classifyGuideProxyError(err).Reason)
 				return
 			}
 			var parsed map[string]interface{}
-			if err := json.Unmarshal(body, &parsed); err != nil {
+			if err := json.Unmarshal(body, &parsed); err != nil || parsed == nil {
+				recordFailure("invalid-json")
 				return
 			}
 			target.Manifest = parsed
@@ -410,7 +432,7 @@ func defaultPackageRepositoryFetcher(ctx context.Context, rawURL string, maxByte
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "http-error", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("unexpected status %d", resp.StatusCode)}
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
@@ -418,7 +440,7 @@ func defaultPackageRepositoryFetcher(ctx context.Context, rawURL string, maxByte
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if int64(len(body)) > maxBytes {
-		return nil, fmt.Errorf("response exceeded %d bytes", maxBytes)
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large"}, err: fmt.Errorf("response exceeded %d bytes", maxBytes)}
 	}
 	return body, nil
 }

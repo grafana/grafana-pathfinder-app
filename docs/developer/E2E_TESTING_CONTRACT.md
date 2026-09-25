@@ -59,7 +59,7 @@ The legacy selector excludes `interactive-step-completed-*` badges. These badges
 
 One `StepDriver` registry owns metadata inspection, product controls, execution, skip behavior, and completion rules. The registry uses `data-test-step-kind` keys.
 
-The runner supports `plain`, `multistep`, and `guided`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
+The runner supports `plain`, `multistep`, `guided`, and `codeblock`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
 
 Unsupported roots do not change the outcome when a guide also renders a supported root. The runner reports each unsupported kind and step ID.
 
@@ -75,11 +75,33 @@ These runner changes do not change root ownership, existing test IDs, state valu
 
 ---
 
+## Codeblock runner contract
+
+A codeblock uses `code-block-step-${stepId}` as its root test ID, not `interactive-step-${stepId}`.
+
+The codeblock driver clicks `code-block-insert-${stepId}`. It never substitutes Show me or Copy for Insert, and it never reads code from guide JSON.
+
+The product owns editor resolution, insertion, and completion. The runner requires `data-test-step-state="completed"` after Insert or Skip. Root detachment alone does not establish completion.
+
+The root exposes `data-test-skippable="true"` or `"false"`, including before a blocked step shows its Skip control. This attribute keeps discovery independent of transient control visibility.
+
+Codeblock state values include `idle`, `checking`, `executing`, `completed`, `error`, and `requirements-unmet`. An insertion error uses `error` after execution settles. A successful retry clears the error. Completed state suppresses stale insertion errors.
+
+The requirement explanation uses `interactive-requirement-${stepId}` (`testIds.interactive.requirementCheck`). The insertion error uses `interactive-error-${stepId}` (`testIds.interactive.errorMessage`). The blocked, skippable step uses the existing `interactive-skip-${stepId}` control.
+
+Codeblocks do not expose an automatic Fix control. The driver waits for requirements checking, then reports an unmet mandatory requirement or operates the available Skip control.
+
+Older plugin builds without the new skippability attribute fall back to the rendered Skip control. Without the error test ID or error state, an insertion failure can report a completion timeout instead of the product error. Builds without tracked codeblock roots remain outside codeblock discovery.
+
+Contract tests live in `src/components/interactive-tutorial/code-block-step.contract.test.tsx`. Browser regression tests live in `tests/e2e-runner/codeblock-driver.spec.ts`.
+
+---
+
 ## Docs panel bootstrap contract
 
 The guide runner must establish a ready Pathfinder panel before it can load guide content or discover steps. These signals form the stable contract between the plugin surface and `tests/e2e-runner/`:
 
-- **Plugin readiness**: `window.__pathfinderPluginConfig` is assigned when Pathfinder initialization completes. The runner waits for this before treating Grafana's Help control as a Pathfinder open action.
+- **Plugin readiness**: `window.__pathfinderPluginConfig` is assigned only after the authoritative settings read succeeds, including the OSS fallback. Plugin metadata and failed reads do not establish readiness. The runner waits for this before treating Grafana's Help control as a Pathfinder open action.
 - **Sidebar mount**: the outer Pathfinder sidebar dispatches `pathfinder-sidebar-mounted` on `window` after Grafana accepts the extension-sidebar open request. The runner uses this event to avoid a duplicate Help click; because it is an edge signal rather than current mounted state, post-click readiness still requires the panel DOM.
 - **Panel readiness**: the inner panel renders `data-testid="docs-panel-container"` when it is ready for guide content. Once this container is visible, the panel must be able to receive the content-open event below.
 - **Content open**: the panel listens for `pathfinder-auto-open-docs` on `document` with detail `{ url: string; title: string; source?: string }`.
@@ -219,9 +241,43 @@ A My learning layout or selector refactor must preserve these values or update t
 The course/learning-path cover page exposes stable testids for its hero and table-of-contents so E2E tests can assert cover-page rendering and launch the path without depending on text or DOM structure:
 
 - **`learning-paths-cover-hero`** (`testIds.learningPaths.coverHero`): the cover page's hero section boundary (title, description, module count, duration, badge preview).
+- **`learning-paths-toc`** (`testIds.learningPaths.tableOfContents`): the table of contents boundary, and the element that carries the path progress attribute below.
 - **`learning-paths-toc-cta`** (`testIds.learningPaths.tableOfContentsCta`): the table of contents' get-started/resume action.
 
 A cover-page layout or selector refactor must preserve these values or update the E2E selectors and this document in the same change.
+
+---
+
+## Path progress contract
+
+The path's rolled-up percentage is exposed declaratively on the table-of-contents root, alongside `testIds.learningPaths.tableOfContents`:
+
+- **`data-test-path-percent`**: the path's progress as an integer 0-100 — the mean of its resolvable milestones' own percentages (`docs/design/COMPLETION-MODEL.md`, decision 4). **Absent until the path's stored progress has been read.**
+
+The attribute exists because the progress ring beside it is hidden at 0%, and 0% is the value a test most often needs to assert: it is what a reader who only paged through the path has earned. Reading the ring's rendered text would make "no progress" indistinguishable from "no ring".
+
+Its absence before the cover page has finished loading is deliberate: a test waits for the attribute to exist rather than reading a provisional value, so there is no "not loaded yet" value to confuse with a real 0.
+
+The gate is the cover page's own `progressLoaded`, which tracks its async read of stored milestone progress. Strictly that read is a **sufficient** signal rather than the necessary one: the percentage itself comes from `journeyProgressFromMilestones`, whose two reads are synchronous, so the rendered value is already correct at first paint. What `progressLoaded` buys is a defined point after mount at which the surface is settled — enough to keep a test off the first frame, where a percentage read alongside a still-initialising panel has repeatedly turned out to be a constant. If that async read is ever removed, give the attribute another gate rather than emitting it unconditionally.
+
+The guide-level equivalent is on the Mark complete footer, and there the gate **is** the necessary one:
+
+- **`data-test-progress-state`** on `mark-complete-footer` (`testIds.markComplete.footer`): `pending` until the footer has read the guide's stored completion mark, `ready` afterwards.
+
+Until that read resolves the footer has no content key, so `mark-complete-percentage` reads a hard-coded `0% complete` for every guide, and a click on `mark-complete-button` is silently dropped by the handler. Both the percentage and the click are only meaningful at `ready`, and an assertion made before it cannot fail.
+
+Read the footer's readiness from this attribute rather than inferring it from the control beside it. The control is not always there to read: once the guide is marked, the button is replaced by the completed indicator, so "has the footer hydrated" has no single element to ask. A declarative state attribute holds in both shapes.
+
+That is about **selecting** elements, which this contract does by `data-test-*` and testid and not by ARIA attributes. Asserting a control's own disabled state with the framework's matcher is a different thing and is fine — `expect(locator).toBeDisabled()` resolves the standard disabled semantics including `aria-disabled`, which is how Grafana's `Button` expresses it. The suite uses exactly that to assert there is no next milestone at the end of a path.
+
+Milestone navigation is addressed by testid rather than by the buttons' translated `aria-label`:
+
+- **`docs-panel-next-milestone-button`** (`testIds.docsPanel.nextMilestoneButton`): advance to the next milestone.
+- **`docs-panel-previous-milestone-button`** (`testIds.docsPanel.previousMilestoneButton`): return to the previous milestone, and from milestone 1 to the cover page.
+
+Both are disabled at the ends of the path, which is how a test knows it has walked the whole of it. The loading-state toolbar renders the same two controls without testids: they are permanently disabled placeholders, so a test never has a reason to address them.
+
+The source-level tripwire for the two testids lives in `src/components/docs-panel/docs-panel.contract.test.tsx`.
 
 ---
 
@@ -786,6 +842,11 @@ Lifecycle notes a runner has to honour:
   without `gcx` never renders any of the step-scoped ids above, even while another surface is installing
   a credential into the same session. It completes on its **Continue** button
   (`interactive-terminal-skip-${stepId}`) as it always did.
+- **A sequentially blocked step renders none of the form either.** Inside a section the whole action
+  area — connect button, **Continue**, and every step-scoped id above — sits behind the step's own
+  eligibility gate, so a `terminal-connect` step whose predecessor is incomplete shows only
+  "Complete previous step" at `data-test-step-state="requirements-unmet"`. The block takes no
+  `skippable`, so there is no skip control to fall back on: drive the earlier steps first.
 - **A credential belongs to one session.** After a reconnect the ready line detaches and the form
   returns, because the new VM holds no credential.
 - **A held-back mint brings its own button back.** A mint whose preflight could not reach an answer is

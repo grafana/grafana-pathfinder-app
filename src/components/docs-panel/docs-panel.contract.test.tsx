@@ -39,11 +39,10 @@ describe('E2E Contract: Docs panel bootstrap signals', () => {
     expect(configHookSource).toContain('__pathfinderPluginConfig');
   });
 
-  // The runner waits for the readiness global before clicking Grafana's Help
-  // control, so `init` must publish it without awaiting anything.
-  it('publishes readiness synchronously from plugin.init', () => {
+  it('waits for authoritative readiness while registering navigation synchronously', () => {
     expect(moduleSource).toContain('plugin.init = function');
-    expect(moduleSource).toContain('publishPathfinderPluginConfig(meta?.jsonData || {})');
+    expect(moduleSource).toContain('waitForPathfinderPluginConfig()');
+    expect(moduleSource).not.toContain('publishPathfinderPluginConfig');
   });
 
   it('publishes the sidebar-mounted event', () => {
@@ -188,7 +187,11 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
   },
   {
     file: 'components/LearningJourneyMilestoneToolbar.tsx',
-    references: ['testIds.docsPanel.milestoneMoreActionsButton'],
+    references: [
+      'testIds.docsPanel.milestoneMoreActionsButton',
+      'testIds.docsPanel.nextMilestoneButton',
+      'testIds.docsPanel.previousMilestoneButton',
+    ],
   },
 ];
 

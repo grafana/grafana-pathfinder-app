@@ -18,15 +18,13 @@ export type { NavigationOptions, CommentBoxOptions, CommentBoxStepInfo } from '.
 export { InteractiveStateManager } from './interactive-state-manager';
 export type { InteractiveState, StateManagerOptions } from './interactive-state-manager';
 
-export { SequenceManager } from './sequence-manager';
-
 export { default as GlobalInteractionBlocker } from './global-interaction-blocker';
 
 // Sequential step state hook
 export { useSequentialStepState } from './use-sequential-step-state.hook';
 
 // UserActionOutcome classification
-export { outcomeFromCompletionResult, outcomeFromSequenceRun, outcomeFromLoopExit } from './outcome-classifier';
+export { outcomeFromCompletionResult, outcomeFromLoopExit } from './outcome-classifier';
 export type { CompletionResult, LoopExitReason } from './outcome-classifier';
 
 // Action handlers (re-export only handlers used externally)

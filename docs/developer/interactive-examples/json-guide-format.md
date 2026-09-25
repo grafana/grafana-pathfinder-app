@@ -643,15 +643,15 @@ Highlights elements and **waits for user** to perform actions.
 }
 ```
 
-| Field           | Type       | Required | Description                                     |
-| --------------- | ---------- | -------- | ----------------------------------------------- |
-| `content`       | string     | ✅       | Description shown to user                       |
-| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform           |
-| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)         |
-| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal |
-| `requirements`  | string[]   | ❌       | Requirements for the block                      |
-| `objectives`    | string[]   | ❌       | Conditions that auto-complete it                |
-| `skippable`     | boolean    | ❌       | Allow skipping                                  |
+| Field           | Type       | Required | Description                                                                     |
+| --------------- | ---------- | -------- | ------------------------------------------------------------------------------- |
+| `content`       | string     | ✅       | Description shown to user                                                       |
+| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform; excludes `navigate` and `popout` actions |
+| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)                                         |
+| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal                                 |
+| `requirements`  | string[]   | ❌       | Requirements for the block                                                      |
+| `objectives`    | string[]   | ❌       | Conditions that auto-complete it                                                |
+| `skippable`     | boolean    | ❌       | Allow skipping                                                                  |
 
 Steps accept `targetstate` here too, with the meaning adjusted for a step the
 user performs: a control already in the requested state completes immediately
@@ -787,20 +787,21 @@ Collects user responses that can be stored as variables and used elsewhere in th
 }
 ```
 
-| Field               | Type                                      | Required | Default | Description                                                                          |
-| ------------------- | ----------------------------------------- | -------- | ------- | ------------------------------------------------------------------------------------ |
-| `prompt`            | string                                    | ✅       | —       | Question/instruction shown to user (supports markdown)                               |
-| `inputType`         | `"text"` \| `"boolean"` \| `"datasource"` | ✅       | —       | Input type: text field, checkbox, or datasource picker                               |
-| `variableName`      | string                                    | ✅       | —       | Identifier for storing/referencing the response                                      |
-| `placeholder`       | string                                    | ❌       | —       | Placeholder text for text input                                                      |
-| `checkboxLabel`     | string                                    | ❌       | —       | Label for boolean checkbox                                                           |
-| `defaultValue`      | string \| boolean                         | ❌       | —       | Default value for the input                                                          |
-| `required`          | boolean                                   | ❌       | `false` | Whether a response is required to proceed                                            |
-| `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                                    |
-| `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                           |
-| `datasourceFilter`  | string                                    | ❌       | —       | Filter datasources by type (e.g., `"prometheus"`). Only for `"datasource"` inputType |
-| `requirements`      | string[]                                  | ❌       | —       | Honoured only on a blocking data check; inert on every other input (see below)       |
-| `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                                    |
+| Field               | Type                                      | Required | Default | Description                                                                                                                                          |
+| ------------------- | ----------------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`            | string                                    | ✅       | —       | Question/instruction shown to user (supports markdown)                                                                                               |
+| `inputType`         | `"text"` \| `"boolean"` \| `"datasource"` | ✅       | —       | Input type: text field, checkbox, or datasource picker                                                                                               |
+| `variableName`      | string                                    | ✅       | —       | Identifier for storing/referencing the response                                                                                                      |
+| `format`            | `"http-origin"`                           | ❌       | —       | For text inputs: validate and normalize an HTTP(S) origin; rejects paths, credentials, queries, fragments, and whitespace. Maximum 2,048 characters. |
+| `placeholder`       | string                                    | ❌       | —       | Placeholder text for text input                                                                                                                      |
+| `checkboxLabel`     | string                                    | ❌       | —       | Label for boolean checkbox                                                                                                                           |
+| `defaultValue`      | string \| boolean                         | ❌       | —       | Default value for the input                                                                                                                          |
+| `required`          | boolean                                   | ❌       | `false` | Whether a response is required to proceed                                                                                                            |
+| `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                                                                                                    |
+| `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                                                                                           |
+| `datasourceFilter`  | string                                    | ❌       | —       | Filter datasources by type (e.g., `"prometheus"`). Only for `"datasource"` inputType                                                                 |
+| `requirements`      | string[]                                  | ❌       | —       | Honoured only on a blocking data check; inert on every other input (see below)                                                                       |
+| `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                                                                                                    |
 
 Data check fields, all for `"datasource"` inputType only. `dataCheckQuery` is what enables the check; the rest are rejected without it.
 
@@ -1009,6 +1010,7 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
 | `requirements` | string[] | ❌       | Conditions that must be met for this step                              |
 | `objectives`   | string[] | ❌       | Conditions that auto-complete this step when already satisfied         |
 | `skippable`    | boolean  | ❌       | Allow skipping                                                         |
+| `hint`         | string   | ❌       | Hint shown when step cannot be completed                               |
 
 #### Terminal Block
 
@@ -1028,6 +1030,7 @@ A shell command shown with copy-to-clipboard and an "Execute" button that runs t
 | `command`      | string   | ✅       | The shell command                                           |
 | `requirements` | string[] | ❌       | Conditions that must be met (commonly `is-terminal-active`) |
 | `skippable`    | boolean  | ❌       | Allow skipping                                              |
+| `hint`         | string   | ❌       | Hint shown when step cannot be completed                    |
 
 Terminal blocks only render in the docs panel when the administrator has enabled the Coda terminal integration.
 
@@ -1053,6 +1056,8 @@ A button that provisions a sandbox VM (via Coda) and opens a terminal panel insi
 | `vmApp`      | string | `""`                | App name for `vm-aws-sample-app`                          |
 | `vmScenario` | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
 | `gcx`        | bool   | `false`             | Also install a Grafana credential for the `gcx` CLI       |
+
+Inside a section the block gates on sequential position (`isEligibleForChecking`), which is a behavior change: a published guide with a `terminal-connect` step after any other step now shows "Complete previous step" where it previously offered the connect button unconditionally. The gate hides the whole action area, including the `gcx` controls below. The block takes no `requirements` or `skippable`, so position is its only gate and a blocked step offers no skip: the learner has to complete the step before it.
 
 With `gcx: true` the step also gives the VM a credential, so the `gcx` CLI that ships in every sandbox
 image can talk to this Grafana as the learner:
@@ -1191,10 +1196,10 @@ Coda mode:
 | `hintLevels`      | `{ text: string }[]`     | ❌       | `[]`      | Progressive hints revealed on demand                                               |
 | `failureMessage`  | string                   | ❌       | —         | Message shown when the success check fails, replacing the checker's own error text |
 | `requirements`    | string[]                 | ❌       | —         | Prerequisite conditions for the challenge                                          |
-| `objectives`      | string[]                 | ❌       | —         | Conditions that auto-complete this block when already satisfied                    |
+| `objectives`      | string[]                 | ❌       | —         | Conditions evaluated and surfaced as an informational note                         |
 | `skippable`       | boolean                  | ❌       | `false`   | Allow skipping                                                                     |
 
-`requirements`, `objectives`, and `skippable` are accepted by the schema, but the challenge runtime does not receive them yet — the block always renders, never contributes to objective tracking, and shows no skip control. Do not rely on them to gate a challenge or to credit an objective.
+`requirements` and `skippable` gate challenge execution and offer a skip control using the unified step checker runtime. The block also gates on sequential position (`isEligibleForChecking`), which is a behavior change: a published guide with a challenge after any other step now shows "Complete previous step" where it previously showed "Start challenge" unconditionally. `objectives` are evaluated and surfaced as an informational note, but only `successCriteria` (via Check my work) can complete a challenge.
 
 `hintLevels` is an array of objects, not an array of strings. Each entry is `{ "text": "..." }` with non-empty text, and hints are revealed one at a time in array order. Hints appear only once the challenge is ready to attempt or has failed a check, so a learner stuck waiting on VM provisioning cannot reach them.
 
@@ -1260,7 +1265,9 @@ If a ref cannot be resolved — unknown ID, catalog fetch failure — it is repl
 
 ### Step Structure
 
-Steps used in `multistep` and `guided` blocks share this structure:
+Steps used in `multistep` and `guided` blocks share this structure. One field
+differs by parent: `guided` accepts a narrower set of actions than `multistep`
+does — see [Actions a guided step accepts](#actions-a-guided-step-accepts).
 
 ```json
 {
@@ -1276,21 +1283,42 @@ Steps used in `multistep` and `guided` blocks share this structure:
 }
 ```
 
-| Field             | Type     | Required | Default             | Description                                                                 |
-| ----------------- | -------- | -------- | ------------------- | --------------------------------------------------------------------------- |
-| `action`          | string   | ✅       | —                   | Action type: `highlight`, `button`, `formfill`, `navigate`, `hover`, `noop` |
-| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop`)                         |
-| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex patterns)                      |
-| `requirements`    | string[] | ❌       | —                   | Requirements for this specific step                                         |
-| `tooltip`         | string   | ❌       | —                   | Tooltip shown during multistep execution                                    |
-| `description`     | string   | ❌       | —                   | Description shown in guided steps panel                                     |
-| `skippable`       | boolean  | ❌       | `false`             | Whether this step can be skipped (guided only)                              |
-| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails                                       |
-| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                                |
-| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers              |
-| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled          |
+| Field             | Type     | Required | Default             | Description                                                                                                                            |
+| ----------------- | -------- | -------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `action`          | string   | ✅       | —                   | Action type: `highlight`, `button`, `formfill`, `navigate`, `hover`, `noop`, `popout`. `guided` blocks exclude `navigate` and `popout` |
+| `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop`)                                                                                    |
+| `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex patterns)                                                                                 |
+| `requirements`    | string[] | ❌       | —                   | Requirements for this specific step                                                                                                    |
+| `tooltip`         | string   | ❌       | —                   | Tooltip shown during multistep execution                                                                                               |
+| `description`     | string   | ❌       | —                   | Description shown in guided steps panel                                                                                                |
+| `skippable`       | boolean  | ❌       | `false`             | Whether this step can be skipped (guided only)                                                                                         |
+| `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails                                                                                                  |
+| `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                                                                                           |
+| `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers                                                                         |
+| `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled                                                                     |
 
 **Note:** The `tooltip` property is primarily used in `multistep` blocks (shown during automated execution), while `description` is used in `guided` blocks (shown in the steps panel as instructions for the user).
+
+#### Actions a guided step accepts
+
+A `guided` step waits for the reader to act and then detects that they did, so
+it only accepts actions that produce a detectable interaction:
+
+| Action      | `multistep` | `guided` |
+| ----------- | ----------- | -------- |
+| `highlight` | ✅          | ✅       |
+| `button`    | ✅          | ✅       |
+| `formfill`  | ✅          | ✅       |
+| `hover`     | ✅          | ✅       |
+| `noop`      | ✅          | ✅       |
+| `navigate`  | ✅          | ❌       |
+| `popout`    | ✅          | ❌       |
+
+`navigate` and `popout` happen without the reader doing anything, so there is no
+interaction for a guided step to wait on. `pathfinder-cli validate` and the block
+editor reject them inside a `guided` block. Use a separate `interactive` block
+for the action, or move the step into a `multistep` block, which performs its
+steps automatically.
 
 ---
 

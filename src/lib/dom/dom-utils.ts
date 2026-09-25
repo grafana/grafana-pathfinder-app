@@ -358,9 +358,23 @@ export async function scrollUntilElementFound(
     return existingResult.elements[0];
   }
 
+  const getScrollBoundaries = () => ({
+    atEndY:
+      scrollContainer.scrollHeight <= scrollContainer.clientHeight ||
+      scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10,
+    atEndX:
+      scrollContainer.scrollWidth <= scrollContainer.clientWidth ||
+      scrollContainer.scrollLeft + scrollContainer.clientWidth >= scrollContainer.scrollWidth - 10,
+  });
+
   for (let attempt = 0; attempt < maxScrollAttempts; attempt++) {
-    // Scroll down with smooth animation for better UX
-    scrollContainer.scrollBy({ top: scrollIncrement, behavior: 'smooth' });
+    const { atEndY, atEndX } = getScrollBoundaries();
+    // Scroll each axis that still has undiscovered content.
+    scrollContainer.scrollBy({
+      top: atEndY ? 0 : scrollIncrement,
+      left: atEndX ? 0 : scrollIncrement,
+      behavior: 'smooth',
+    });
 
     // Wait for smooth scroll animation + lazy render to kick in
     await new Promise((resolve) => setTimeout(resolve, waitTime));
@@ -372,11 +386,9 @@ export async function scrollUntilElementFound(
       return result.elements[0];
     }
 
-    // Check if we've reached the bottom
-    const atBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10;
-
-    if (atBottom) {
-      console.log(`[LazyScroll] Reached bottom without finding element: ${selector}`);
+    const afterScroll = getScrollBoundaries();
+    if (afterScroll.atEndY && afterScroll.atEndX) {
+      console.log(`[LazyScroll] Reached scroll boundary without finding element: ${selector}`);
       break;
     }
   }

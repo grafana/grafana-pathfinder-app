@@ -1,5 +1,6 @@
 import {
   invalidateEmittedCompletion,
+  normalizeGuideId,
   resolveMilestoneCompletionIdentity,
   resolveBundledGuideCompletionIdentity,
   resolveStandaloneGuideCompletionIdentity,
@@ -35,7 +36,9 @@ function fallbackGuideIdFromContentKey(contentKey: string): string {
   if (/^https?:\/\//.test(contentKey)) {
     return getMilestoneSlug(contentKey) || contentKey;
   }
-  return contentKey.replace(/^(bundled|backend-guide):/, '').replace(/\/content\.json$/, '');
+  // Suffix stripping goes through the single shared derivation so the reset path
+  // and the journey writer can never disagree about a bundled guide's identity.
+  return normalizeGuideId(contentKey.replace(/^(bundled|backend-guide):/, ''));
 }
 
 export async function resetGuideProgress(contentKey: string, identity?: ResetGuideProgressIdentity): Promise<void> {

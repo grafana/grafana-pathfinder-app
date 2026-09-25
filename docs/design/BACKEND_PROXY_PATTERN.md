@@ -673,3 +673,43 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 - First-request credential diagnostics log (§9)
 - Runtime smoke procedure in the PR body, gating dependent work and the final outbound header set
   (§3, §10)
+
+## Singleton settings reads
+
+`GET /pathfinder-settings` extends the caller-scoped OBO proxy pattern to the
+`pathfindersettings/default` singleton. It verifies the forwarded identity and
+uses the trusted plugin-context namespace, preserving the full spec and
+`metadata.resourceVersion` for optimistic concurrency. Reads have a 15-second
+deadline, a 1 MiB response bound, disabled redirects, and no shared cache.
+
+Unlike the optional catalogue, settings failures remain HTTP errors: callers
+must not interpret failed authoritative reads as permission to write legacy
+settings. Only upstream 404/405/501 responses carry
+`error: "settings-upstream-unavailable"`, permitting existing absent-store
+behavior. A missing plugin route, missing OBO configuration, or rejected identity
+must not trigger that behavior. Settings writes continue to use the direct
+App Platform API and its existing authorization and concurrency checks.
+
+`GET /custom-guide?name=<resource name>` uses the same bounded, caller-scoped
+item reader for full InteractiveGuide resources. The backend fixes the resource
+kind and derives the namespace from plugin context; names cannot contain path
+separators, percent escapes, or control characters. Content loading and the
+package resolver's published-status probe both use this route. The proxy
+preserves draft content for existing share links; the resolver retains its
+published-status gate. Catalogue listing continues to use `/custom-guide-repository`.
+
+## Operational diagnostics
+
+App Platform failures carry optional `diagnostics` alongside existing error/capability
+responses. `stage` separates identity, configuration, token exchange and App Platform;
+`reason`, `resource`, and `operation` are bounded classifications. Upstream status is
+included only when known. Existing statuses, retry hints, caller isolation and completion
+queue behavior remain unchanged. A 503 is still retryable; its diagnostics identify the
+failed hop. Token-exchange failure does not prove an invalid provisioned credential.
+
+The shared upstream client emits `event=pathfinder_proxy_failure` once per failed operation
+(including a completion refresh that serves stale data), not once per cached response.
+Expected settings absence, unsupported collection routes, idempotent write conflicts,
+and cancellations are excluded. Internal logs retain trusted
+stack and trace context; diagnostic responses never include tokens or upstream bodies.
+An empty successful LIST is not classified as an authorization failure.

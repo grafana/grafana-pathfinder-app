@@ -79,6 +79,10 @@ fields:     [ { name: "event", type: string } ]   // JSON-encoded SessionEvent
 
 `seq` is reserved on `SessionEvent` for future ordering; it is not emitted in v1.
 
+The terminal header shows the active VM's server-reported remaining lifetime when `GET /v1/vms`
+returns a valid `expiresAt`. When the upstream omits it, the backend returns the zero time and the
+indicator stays hidden rather than presenting an unverified expiry.
+
 An `error` frame's `code` is what turns "Failed to create VM, please try again" into "you already have
 the maximum number of sandbox VMs" (`vm_quota_exceeded`). It was added after v1.0 and is optional, so
 an unrecognised code and an absent one both fall back to displaying `error` — never fatal, since new
@@ -433,23 +437,26 @@ Grafana restart.
 
 ## Key files
 
-| File                                                            | Purpose                                                                                  |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `src/integrations/coda/coda-api.ts`                             | The only module that knows the Coda plugin id                                            |
-| `src/integrations/coda/useTerminalLive.hook.ts`                 | Live subscription, publish, provision progress bar, 35 s handshake timeout               |
-| `src/integrations/coda/TerminalContext.tsx`                     | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` |
-| `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                         |
-| `src/integrations/coda/useGcxCredential.hook.ts`                | The gcx mint/paste flow, shared by the toolbar button and the guide step                 |
-| `src/integrations/coda/gcx-credential-store.ts`                 | One gcx credential per session; session-keyed invalidation, and the ladder's telemetry   |
-| `src/integrations/coda/gcx-service-account.ts`                  | Which service account a mint may use: the collision-free name, and the role reconcile    |
-| `src/integrations/coda/GcxSetupPanel.tsx`                       | The gcx form and its result line; test ids come in as a prop                             |
-| `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                    |
-| `src/integrations/coda/terminal-storage.ts`                     | Panel state, scrollback, last VM opts                                                    |
-| `src/requirements-manager/checks/coda.ts`                       | `coda-exit-zero:` check (always gated)                                                   |
-| `src/requirements-manager/checks/terminal.ts`                   | `is-terminal-active` check                                                               |
-| `src/components/AppConfig/CodaBackendStatus.tsx`                | Backend availability reporting                                                           |
-| `src/components/interactive-tutorial/challenge-block.tsx`       | CTF-style block                                                                          |
-| `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button, and the gcx mint/paste flow behind `gcx: true`                 |
+| File                                                            | Purpose                                                                                      |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `src/integrations/coda/coda-api.ts`                             | The only module that knows the Coda plugin id                                                |
+| `src/integrations/coda/useTerminalLive.hook.ts`                 | Live subscription and shared VM/lifetime lookup on connect, every 15 seconds, and focus      |
+| `src/integrations/coda/TerminalContext.tsx`                     | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()`     |
+| `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                             |
+| `src/integrations/coda/SandboxLifetime.tsx`                     | Compact extension action using the hook's shared VM snapshot; retains idempotent retry state |
+| `src/integrations/coda/SandboxRecovery.tsx`                     | Recovery actions for an unreachable sandbox                                                  |
+| `src/integrations/coda/WorkspaceLink.tsx`                       | Capability-gated IDE navigation for the connected VM                                         |
+| `src/integrations/coda/useGcxCredential.hook.ts`                | The gcx mint/paste flow, shared by the toolbar button and the guide step                     |
+| `src/integrations/coda/gcx-credential-store.ts`                 | One gcx credential per session; session-keyed invalidation, and the ladder's telemetry       |
+| `src/integrations/coda/gcx-service-account.ts`                  | Which service account a mint may use: the collision-free name, and the role reconcile        |
+| `src/integrations/coda/GcxSetupPanel.tsx`                       | The gcx form and its result line; test ids come in as a prop                                 |
+| `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                        |
+| `src/integrations/coda/terminal-storage.ts`                     | Panel state, scrollback, last VM opts                                                        |
+| `src/requirements-manager/checks/coda.ts`                       | `coda-exit-zero:` check (always gated)                                                       |
+| `src/requirements-manager/checks/terminal.ts`                   | `is-terminal-active` check                                                                   |
+| `src/components/AppConfig/CodaBackendStatus.tsx`                | Backend availability reporting                                                               |
+| `src/components/interactive-tutorial/challenge-block.tsx`       | CTF-style block                                                                              |
+| `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button, and the gcx mint/paste flow behind `gcx: true`                     |
 
 ### Terminal persistence
 
@@ -501,6 +508,26 @@ capabilities response also carries each item's `status`, so an experimental entr
 | `vm-aws-alloy-scenario` | t3.small | On-demand | Pre-configured Grafana Alloy learning scenario   |
 
 The authoritative list is `GET /v1/capabilities`; prefer feature-detecting over hardcoding.
+
+## Open the connected VM in Coda IDE
+
+The terminal toolbar shows **IDE** beside **GCX** only when Coda advertises both `workspace-files`
+and `explicit-vm-attachment`, and the shared capability cache reports a usable backend. It is enabled
+only while connected with a known `vmId`, and navigates within the current Grafana tab without a full
+page reload from sidebar or floating mode. From fullscreen it opens a new tab to keep the guide and
+its terminal mounted. The VM ID
+comes directly from the live terminal hook, not a template lookup. The editor owns a separate
+connection; closing it leaves the guide intact.
+
+The navigation contract, defined by [Coda IDE](https://github.com/grafana/grafana-coda-app/pull/167), is
+`/a/grafana-coda-app/ide?vmId=…&path=…&line=…` with optional file/line hints, prefixed with Grafana's
+`appSubUrl` for browser URLs. For same-tab navigation, the button strips that prefix before calling `locationService.push`,
+because Grafana's router supplies the sub-path itself. The adapter uses the SDK's URL builder for
+encoded navigation hints and applies the IDE route and Grafana sub-path. No guide schema or block type is added.
+
+Pathfinder requires Coda client 1.11.0 or newer. Older clients can treat a `lifetime_updated` status
+frame as provisioning and silently stop publishing terminal input. The client contract test verifies
+that keyboard input continues on the same connected session after an extension.
 
 ## Troubleshooting
 

@@ -25,8 +25,10 @@ import {
   TIER_MAP,
   ARCHITECTURE_BY_DESIGN,
   assertRatchet,
+  buildModuleGraph,
   collectSourceFiles,
   findCycles,
+  findOrphanedModules,
   validateAllowedArchitectureEntries,
   getAllFileImports,
   getRootLevelSourceFiles,
@@ -130,6 +132,18 @@ const ALLOWED_VERTICAL_VIOLATIONS = new Set(ALLOWED_VERTICAL_VIOLATION_ENTRIES.m
  */
 const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
+    violation: 'context-engine/context.hook.ts -> hooks',
+    reason:
+      'Recommendation requests consume the shared resolved settings hook so App Platform overrides and OSS fallback use the same configuration as the settings form.',
+    tracking: '#1691',
+  },
+  {
+    violation: 'interactive-engine/auto-completion/useAutoDetection.ts -> hooks',
+    reason:
+      'Auto-detection consumes the shared resolved settings hook so tenant completion policy does not fall back to stale plugin metadata after App Platform saves.',
+    tracking: '#1691',
+  },
+  {
     violation: 'interactive-engine/interactive.hook.ts -> requirements-manager',
     reason:
       'Interactive execution delegates requirement checks to the requirements engine, forming the tracked cross-engine cycle.',
@@ -146,18 +160,6 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     reason:
       'The step checker coordinates interactive completion state and is one edge of the tracked requirements/interactive engine cycle.',
     tracking: '#1359',
-  },
-  {
-    violation: 'context-engine/context.service.ts -> docs-retrieval',
-    reason:
-      'Context assembly resolves documentation content through the docs retrieval engine while the engine boundary is paid down.',
-    tracking: '#1763',
-  },
-  {
-    violation: 'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
-    reason:
-      'Learning-journey document helpers delegate progress mutation to the learning-path coordinator rather than duplicating persistence logic.',
-    tracking: '#1763',
   },
 ];
 const ALLOWED_LATERAL_VIOLATIONS = new Set(ALLOWED_LATERAL_VIOLATION_ENTRIES.map((entry) => entry.violation));
@@ -315,12 +317,191 @@ const ALLOWED_PERCENTAGE_CALCULATION_ENTRIES: readonly AllowedArchitectureEntry[
 ];
 const ALLOWED_PERCENTAGE_CALCULATIONS = new Set(ALLOWED_PERCENTAGE_CALCULATION_ENTRIES.map((entry) => entry.violation));
 
+/**
+ * Known orphaned modules: production files buildModuleGraph() cannot reach
+ * forward from APP_ENTRY_ROOTS (module.tsx), and that no test file and no
+ * tooling file under OFF_GRAPH_IMPORTER_ROOTS imports either. This list
+ * should only shrink.
+ * Baseline populated when the ratchet was added — see #1923 for the paydown
+ * plan covering every entry below.
+ */
+const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'completion-records/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/UserProfileBar/index.ts',
+    reason: 'Barrel with no importer — the sole consumer deep-imports UserProfileBar/UserProfileBar directly.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/block-editor/forms/condition-helpers/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/block-editor/forms/index.ts',
+    reason: 'Barrel with no importer — BlockFormModal.tsx deep-imports every form file directly.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/block-editor/hooks/index.ts',
+    reason: 'Barrel with no importer — BlockEditor.tsx deep-imports every hook file directly.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/block-editor/lint/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/block-editor/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'components/docs-panel/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'lib/index.ts',
+    reason: 'Barrel with no importer — both re-exports (analytics, hash.util) are imported directly by consumers.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'requirements-manager/fix-handlers/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'snippet-engine/types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/collaboration.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/component-props.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/hooks.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/index.ts',
+    reason: 'Barrel re-exporting the types/ directory — every importer uses `import type` against it.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/json-snippet.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/learning-paths.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/link-interception.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/storage.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/window-globals.ts',
+    reason: 'Pure type module — its sole importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'utils/devtools/dev-tools.types.ts',
+    reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
+    tracking: '#1923',
+  },
+];
+const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((entry) => entry.violation));
+
+/**
+ * Known off-graph-reachable modules: production files buildModuleGraph()
+ * cannot reach forward from APP_ENTRY_ROOTS, but at least one test file or
+ * tooling file under OFF_GRAPH_IMPORTER_ROOTS imports them directly (a real
+ * edge buildModuleGraph structurally can't see, since it excludes test files
+ * as both nodes and edge targets and covers nothing under those roots).
+ * Distinct from an orphan — nothing here is dead, it just never ships
+ * in the bundle. This list should only shrink; every entry points at #1923,
+ * where the paydown plan decides which of them are debt and which are
+ * permanent.
+ */
+const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'types/backend-api.schema.ts',
+    reason: 'Imported only by validation/backend-api-contract.test.ts, the Go-to-TypeScript contract check.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'types/v1-recommender.types.ts',
+    reason:
+      'Every production importer uses `import type`, but v1-recommender.types.test.ts value-imports ' +
+      'isPackageRecommendation directly, so it has a real edge only from a test file.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/cli-build-contract.ts',
+    reason: 'Imported only by its sibling cli-build-contract.test.ts / .unit.test.ts.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/import-graph.ts',
+    reason:
+      'The ratchet machinery itself — imported by several validation/*.test.ts files and by one production node, validation/cli-build-contract.ts, which is itself off-graph-reachable.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/package-io.ts',
+    reason:
+      'Imported by six src/cli/** tooling files and by validation/validate-package.ts, itself off-graph-reachable — no test file and no app code path reaches it.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/test-helpers.ts',
+    reason: 'Imported only by its sibling validate-guide.security.test.ts.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/unicode-format-characters.ts',
+    reason: 'Imported only by its sibling unicode-format-characters.test.ts.',
+    tracking: '#1923',
+  },
+  {
+    violation: 'validation/validate-package.ts',
+    reason:
+      'Imported by its sibling validate-package.test.ts / bundled-repository.test.ts and by src/cli/** tooling — never reached from the app.',
+    tracking: '#1923',
+  },
+];
+const ALLOWED_OFF_GRAPH_REACHABLE = new Set(ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES.map((entry) => entry.violation));
+
 const ARCHITECTURE_ALLOWLISTS = {
   ALLOWED_VERTICAL_VIOLATIONS: { entries: ALLOWED_VERTICAL_VIOLATION_ENTRIES, allowByDesign: true },
   ALLOWED_LATERAL_VIOLATIONS: { entries: ALLOWED_LATERAL_VIOLATION_ENTRIES, allowByDesign: false },
   ALLOWED_BARREL_VIOLATIONS: { entries: ALLOWED_BARREL_VIOLATION_ENTRIES, allowByDesign: true },
   ALLOWED_CYCLES: { entries: ALLOWED_CYCLES, allowByDesign: false },
   ALLOWED_PERCENTAGE_CALCULATIONS: { entries: ALLOWED_PERCENTAGE_CALCULATION_ENTRIES, allowByDesign: true },
+  ALLOWED_ORPHANED_MODULES: { entries: ALLOWED_ORPHANED_MODULES_ENTRIES, allowByDesign: false },
+  ALLOWED_OFF_GRAPH_REACHABLE: { entries: ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES, allowByDesign: false },
 } as const;
 
 /**
@@ -577,6 +758,8 @@ describe('Import graph: circular dependencies', () => {
       'ALLOWED_BARREL_VIOLATIONS',
       'ALLOWED_CYCLES',
       'ALLOWED_PERCENTAGE_CALCULATIONS',
+      'ALLOWED_ORPHANED_MODULES',
+      'ALLOWED_OFF_GRAPH_REACHABLE',
     ]);
     const errors = Object.entries(ARCHITECTURE_ALLOWLISTS).flatMap(([name, { entries, allowByDesign }]) =>
       validateAllowedArchitectureEntries(entries, { allowByDesign }).map((error) => `${name}: ${error}`)
@@ -603,6 +786,49 @@ describe('Import graph: circular dependencies', () => {
         },
       ])
     ).toEqual([`first.ts: 'tracking' must point to an issue; '${ARCHITECTURE_BY_DESIGN}' is not allowed here.`]);
+  });
+});
+
+describe('Import graph: orphaned modules', () => {
+  const scan = findOrphanedModules(buildModuleGraph({ excludeTypeOnly: true }));
+
+  it('reports the current orphan / off-graph-reachable footprint', () => {
+    console.log(
+      `[architecture-ratchet] orphans: orphaned=${scan.orphaned.length} offGraphReachable=${scan.offGraphReachable.length}`
+    );
+  });
+
+  it('should not introduce new orphaned modules beyond the ratchet allowlist', () => {
+    assertRatchet(
+      new Set(scan.orphaned),
+      ALLOWED_ORPHANED_MODULES,
+      'orphaned modules',
+      'ALLOWED_ORPHANED_MODULES_ENTRIES',
+      `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx), and no test file and ` +
+        `nothing under OFF_GRAPH_IMPORTER_ROOTS (src/cli/, src/test-utils/, the repo-root tests/ tree) ` +
+        `imports it either. This is usually one of: a genuinely dead file (delete it, and drag any doc ` +
+        `reference with it), or a barrel (index.ts) whose only consumers deep-import the internal files ` +
+        `instead (either repoint a consumer through the barrel, or delete the unused barrel). ` +
+        `If neither applies and the file is architecturally justified anyway, add a structured entry to ` +
+        `ALLOWED_ORPHANED_MODULES_ENTRIES with a substantive reason and accountability reference.`
+    );
+  });
+
+  it('should not introduce new off-graph-reachable modules beyond the ratchet allowlist', () => {
+    assertRatchet(
+      new Set(scan.offGraphReachable),
+      ALLOWED_OFF_GRAPH_REACHABLE,
+      'off-graph-reachable modules',
+      'ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES',
+      `A production file under src/ is not reached by APP_ENTRY_ROOTS (module.tsx), but a test file or a ` +
+        `tooling file under OFF_GRAPH_IMPORTER_ROOTS (src/cli/, src/test-utils/, the repo-root tests/ tree) ` +
+        `imports it directly — buildModuleGraph() excludes test files as both nodes and edge targets and ` +
+        `covers nothing under those roots, so that edge is ` +
+        `structurally invisible to the orphan check above. This file is not dead, it simply never ships in the ` +
+        `bundle. If that is deliberate (e.g. governance/validation tooling that only ever runs under test or ` +
+        `the CLI), add a structured entry to ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES with a substantive reason and ` +
+        `a tracking issue (#1923). Otherwise, wire it into a real entry point or delete it.`
+    );
   });
 });
 
@@ -673,7 +899,9 @@ describe('Architecture ratchet progress', () => {
         ` lateral=${ALLOWED_LATERAL_VIOLATIONS.size}` +
         ` barrel=${ALLOWED_BARREL_VIOLATIONS.size}` +
         ` cycles=${ALLOWED_CYCLES.length}` +
-        ` percentageCalculations=${ALLOWED_PERCENTAGE_CALCULATIONS.size}`
+        ` percentageCalculations=${ALLOWED_PERCENTAGE_CALCULATIONS.size}` +
+        ` orphanedModules=${ALLOWED_ORPHANED_MODULES.size}` +
+        ` offGraphReachable=${ALLOWED_OFF_GRAPH_REACHABLE.size}`
     );
   });
 });

@@ -58,11 +58,18 @@ jest.mock('../lib/user-storage', () => ({
   interactiveStepStorage: { clearAllForContent: jest.fn().mockResolvedValue(undefined) },
 }));
 
-jest.mock('../learning-paths', () => ({
-  __esModule: true,
-  markGuideCompleted: (...a: unknown[]) => markGuideCompletedMock(...a),
-  getPathsData: () => getPathsDataMock(),
-}));
+jest.mock('../lib/guide-completion-bridge', () => {
+  // Delegates to the shipped matching rule so these badge-award assertions
+  // exercise it rather than a second copy; only the data source is faked.
+  const { matchesPathUrl }: typeof import('../learning-paths/paths-data') =
+    jest.requireActual('../learning-paths/paths-data');
+  return {
+    __esModule: true,
+    markGuideCompleted: (...a: unknown[]) => markGuideCompletedMock(...a),
+    findPathByUrl: (url: string) =>
+      (getPathsDataMock().paths as Array<{ url?: string }>).find((path) => matchesPathUrl(path, url)),
+  };
+});
 
 jest.mock('../global-state/completion-store', () => ({
   __esModule: true,
@@ -471,6 +478,21 @@ describe('whole-journey completion (trigger class D — the new journey_complete
     const journeyEmit = emitted.find((f) => f.kind === 'journey');
     expect(guideEmit).toMatchObject({ guideSource: 'app-platform', guideId: 'm3' });
     expect(journeyEmit).toMatchObject({ guideSource: 'app-platform', guideId: 'linux-journey' });
+  });
+
+  // Journey manifest with id but no repository: resolveJourneyCompletionIdentity
+  // omits fallbackSource, so the schema default 'interactive-tutorials' wins
+  // (matching standalone guides).
+  it('keys a journey manifest with an id and no repository on the schema default', async () => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
+    getPathsDataMock.mockReturnValue({ paths: [] });
+
+    await markMilestoneDone('base', 'm3', ['m1', 'm2', 'm3'], {
+      packageManifest: { id: 'linux-journey', type: 'journey' },
+    });
+
+    const journeyEmit = emitted.find((f) => f.kind === 'journey');
+    expect(journeyEmit).toMatchObject({ guideSource: 'interactive-tutorials', guideId: 'linux-journey' });
   });
 
   it('fails closed when neither a manifest id nor a curated path id resolves (never keys on the loader URL)', async () => {

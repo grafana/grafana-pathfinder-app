@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { AssistantBlockWrapper } from '../../integrations/assistant-integration/AssistantBlockWrapper';
 import { ChallengeBlock } from './challenge-block';
 import { CodeBlockStep } from './code-block-step';
 import { DatasourceCheckStep } from './datasource-check-step';
@@ -10,6 +11,32 @@ import { InteractiveStep } from './interactive-step';
 import { TerminalConnectStep } from './terminal-connect-step';
 import { TerminalStep } from './terminal-step';
 import type { ChildKind } from './step-section-utils';
+
+function assistantChild(child: React.ReactNode): React.ReactNode | undefined {
+  if (!React.isValidElement<{ children?: React.ReactNode }>(child) || child.type !== AssistantBlockWrapper) {
+    return undefined;
+  }
+  const children = React.Children.toArray(child.props.children);
+  return children.length === 1 ? children[0] : undefined;
+}
+
+export function unwrapSectionChild(child: React.ReactNode): React.ReactNode {
+  const inner = assistantChild(child);
+  return inner === undefined ? child : unwrapSectionChild(inner);
+}
+
+export function mapSectionChild(
+  child: React.ReactNode,
+  transform: (step: React.ReactNode) => React.ReactNode
+): React.ReactNode {
+  const inner = assistantChild(child);
+  if (inner === undefined) {
+    return transform(child);
+  }
+  return React.cloneElement(child as React.ReactElement<{ children?: React.ReactNode }>, {
+    children: mapSectionChild(inner, transform),
+  });
+}
 
 /**
  * React component types whose presence as a direct child of an interactive
@@ -64,6 +91,7 @@ export const INTERACTIVE_STEP_COMPONENT_TYPES: ReadonlySet<unknown> = new Set<un
  *   for acknowledgement either way.
  */
 export function classifySectionChild(child: React.ReactNode): ChildKind {
+  child = unwrapSectionChild(child);
   if (child === null || child === undefined || typeof child === 'boolean') {
     return 'ignore';
   }

@@ -1,9 +1,13 @@
+import { getGuideResponseId } from '../../lib/guide-response-id';
+import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBoundary';
+import { finishGuideLoad, pauseGuideLoad, resumeGuideLoad } from '../../lib/telemetry/guide-load';
+import { useIsAlignmentPaused } from '../../global-state/alignment-pending-context';
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
 
-import { RawContent, ContentParseResult } from '../../types/content.types';
+import { RawContent, ContentParseResult, GuideCountingSource } from '../../types/content.types';
 import { logger } from '../../lib/logging';
 import {
   parseHTMLToComponents,
@@ -25,7 +29,7 @@ import {
   isJourneyCoverPage,
   getCurrentMilestone,
 } from '../../docs-retrieval';
-import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
+import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
 import {
   InteractiveSection,
@@ -74,6 +78,7 @@ import {
 } from '../../global-state/active-guide-index';
 import { resolveCountedBlockStepId } from '../../global-state/guide-step-id-resolver';
 import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { selectCountingTree } from '../../lib/guide-counting-source';
 import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 import { MarkCompleteFooter } from '../mark-complete';
@@ -112,10 +117,10 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
         targetElement!.classList.remove('fragment-highlight');
       }, 3000);
     } else {
-      logger.warn(`Fragment element not found: #${fragment}`);
+      logger.warn('Fragment element not found');
     }
-  } catch (error) {
-    logger.warn(`Error scrolling to fragment #${fragment}`, { error });
+  } catch {
+    logger.warn('Error scrolling to fragment');
   }
 }
 
@@ -144,7 +149,27 @@ const selectionStyle = css`
 
 // Memoize ContentRenderer to prevent re-renders when parent re-renders
 // but content prop hasn't changed
-export const ContentRenderer = React.memo(function ContentRenderer({
+export const ContentRenderer = React.memo(function ContentRenderer(props: ContentRendererProps) {
+  const context = props.content.loadContext;
+  const paused = useIsAlignmentPaused();
+  useEffect(() => {
+    if (paused) {
+      pauseGuideLoad(context, true);
+    } else {
+      resumeGuideLoad(context);
+    }
+    return () => pauseGuideLoad(context);
+  }, [context, paused]);
+  return (
+    <GuideRenderBoundary key={context?.loadId ?? props.content.url} context={context}>
+      <GuideLoadTelemetryContext.Provider value={context}>
+        <ContentRendererInner {...props} />
+      </GuideLoadTelemetryContext.Provider>
+    </GuideRenderBoundary>
+  );
+});
+
+const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
   onGuideComplete,
@@ -440,25 +465,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processedContent, content.hashFragment]);
 
-  useEffect(() => {
-    if (onContentReady) {
-      const timer = setTimeout(onContentReady, 50);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [processedContent, onContentReady]);
-
-  // Derive guide ID from content URL for response storage
-  const guideId = useMemo(() => {
-    // Use the URL path as the guide identifier, or fallback to 'default'
-    try {
-      const url = new URL(content.url, window.location.origin);
-      // Remove leading slash and use path as ID
-      return url.pathname.replace(/^\//, '').replace(/\//g, '-') || 'default';
-    } catch {
-      return content.url || 'default';
-    }
-  }, [content.url]);
+  const guideId = useMemo(() => getGuideResponseId(content.url, window.location.origin), [content.url]);
 
   // Mirror this guide for compatibility callers outside the scoped provider.
   useLayoutEffect(() => registerCompatibilityGuideId(guideId), [guideId]);
@@ -508,6 +515,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       <GuideRequirementsProvider guideId={guideId}>
         <ContentWithVariables
           processedContent={processedContent}
+          countingSource={content.countingSource}
           contentType={content.type}
           baseUrl={content.url}
           title={content.metadata.title}
@@ -529,6 +537,8 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 /** Inner component that has access to GuideResponseContext for variable substitution */
 interface ContentWithVariablesProps {
   processedContent: string;
+  /** @see RawContent.countingSource */
+  countingSource?: GuideCountingSource;
   contentType: 'learning-journey' | 'single-doc' | 'interactive';
   baseUrl: string;
   title: string;
@@ -546,6 +556,7 @@ interface ContentWithVariablesProps {
 
 function ContentWithVariables({
   processedContent,
+  countingSource,
   contentType,
   baseUrl,
   title,
@@ -636,6 +647,7 @@ function ContentWithVariables({
       {beforeContent}
       <ContentProcessor
         html={processedContent}
+        countingSource={countingSource}
         contentType={contentType}
         baseUrl={baseUrl}
         onReady={onContentReady}
@@ -657,6 +669,8 @@ function ContentWithVariables({
 
 interface ContentProcessorProps {
   html: string;
+  /** @see RawContent.countingSource — absent when `html` is itself the pre-inlining tree. */
+  countingSource?: GuideCountingSource;
   contentType: 'learning-journey' | 'single-doc' | 'interactive';
   theme?: GrafanaTheme2;
   baseUrl: string;
@@ -667,8 +681,17 @@ interface ContentProcessorProps {
   fullScreenFallbackLocation?: string;
 }
 
-function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation }: ContentProcessorProps) {
+function ContentProcessor({
+  html,
+  countingSource,
+  baseUrl,
+  responses,
+  fullScreenFallbackLocation,
+  onReady,
+}: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const loadContext = React.useContext(GuideLoadTelemetryContext);
+  const alignmentPaused = useIsAlignmentPaused();
 
   // Reset interactive counters only when content changes (not on every render)
   // This must run BEFORE parsing to ensure clean state for section registration
@@ -710,13 +733,37 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
     return rawGuide && guideHasSnippetRefs(rawGuide) ? rawGuide : null;
   }, [rawGuide]);
 
+  // The tree the canonical index is counted from. `rawGuide` is the tree that
+  // RENDERS, which on the prepared-launch path arrives already snippet-expanded
+  // and therefore holds more blocks than the counting rule gives it — a
+  // `snippet-ref` is one position however many blocks it resolves to. `null`
+  // means a known-expanded payload arrived without the pre-inlining tree it was
+  // expanded from, which is the one case with nothing honest to count.
+  const countingGuide = useMemo<JsonGuide | null>(() => {
+    if (!rawGuide) {
+      return null;
+    }
+    const selection = selectCountingTree(html, countingSource);
+    if (!selection.available) {
+      return null;
+    }
+    if (selection.guideJson === html) {
+      return rawGuide;
+    }
+    try {
+      return JSON.parse(selection.guideJson) as JsonGuide;
+    } catch {
+      return null;
+    }
+  }, [rawGuide, html, countingSource]);
+
   // The frozen block index (docs/design/COMPLETION-MODEL.md, decision 1):
-  // one traversal over the tree available synchronously at first paint,
-  // published once per content key and never recomputed for the life of
-  // that key — `publishGuideIndex` is itself idempotent, so a re-render or
-  // an unrelated prop change is a no-op here. It owns both the denominator
-  // and the numerator's positions so they can never come from two
-  // traversals and disagree.
+  // one traversal over the PRE-inlining tree — `countingGuide`, not whichever
+  // render tree arrived — published once per content key and never
+  // recomputed for the life of that key. `publishGuideIndex` is itself
+  // idempotent, so a re-render or an unrelated prop change is a no-op here.
+  // It owns both the denominator and the numerator's positions so they can
+  // never come from two traversals and disagree.
   //
   // The eviction revision is a dependency because this is the only
   // producer: a reset that evicts the index while this guide stays mounted
@@ -750,6 +797,18 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
       return;
     }
     const contentKey = resolveGuideContentKey(baseUrl);
+    if (!countingGuide) {
+      // Rendering survives; a canonical index does not get invented from the
+      // expanded tree, because that denominator is not the canonical one and
+      // the freeze would keep it for the life of this content key.
+      logger.warn(
+        '[ContentRenderer] Expanded guide carries no usable pre-inlining tree; no canonical index published',
+        {
+          reason: 'counting-source-unavailable',
+        }
+      );
+      return;
+    }
     if (isBlockEditorPreviewUrl(baseUrl)) {
       const last = lastPublishedPreviewGuideRef.current;
       if (last && last.contentKey === contentKey && last.guide !== rawGuide) {
@@ -763,7 +822,7 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
     }
     publishGuideIndex({
       contentKey,
-      index: computeGuideBlockIndex(rawGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
+      index: computeGuideBlockIndex(countingGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
       denominatorSource: 'live-pre-inlining',
     });
     // A percentage persisted under the deleted step-count rule is read back
@@ -774,12 +833,16 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
     // evidence at all, so this never fills the capped percentage namespace
     // with zeros just from being opened.
     refreshGuidePercentageOnLoad(contentKey);
-  }, [rawGuide, baseUrl, guideIndexEvictionRevision]);
+  }, [rawGuide, countingGuide, baseUrl, guideIndexEvictionRevision]);
 
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.
   const overlayKey = `${html}\x00${baseUrl}`;
-  const [snippetOverlay, setSnippetOverlay] = useState<{ key: string; result: ContentParseResult } | null>(null);
+  const [snippetOverlay, setSnippetOverlay] = useState<{
+    key: string;
+    result: ContentParseResult;
+    degraded: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!guideWithSnippetRefs) {
@@ -787,20 +850,52 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
     }
     let cancelled = false;
     (async () => {
-      const resolved = await inlineSnippetRefsInGuide(guideWithSnippetRefs);
+      const resolved = await inlineSnippetRefsInGuideWithStatus(guideWithSnippetRefs);
       if (cancelled) {
         return;
       }
-      setSnippetOverlay({ key: overlayKey, result: parseJsonGuide(resolved, baseUrl) });
-    })();
+      setSnippetOverlay({
+        key: overlayKey,
+        result: parseJsonGuide(resolved.guide, baseUrl),
+        degraded: resolved.unresolvedSnippetIds.length > 0,
+      });
+    })().catch(() => {
+      if (!cancelled) {
+        setSnippetOverlay({ key: overlayKey, result: baseParseResult, degraded: true });
+      }
+    });
     return () => {
       cancelled = true;
     };
-  }, [guideWithSnippetRefs, baseUrl, overlayKey]);
+  }, [guideWithSnippetRefs, baseUrl, overlayKey, baseParseResult]);
 
   const overlayMatchesCurrent = snippetOverlay?.key === overlayKey;
-  const parseResult = overlayMatchesCurrent && snippetOverlay ? snippetOverlay.result : baseParseResult;
+  const currentSnippetOverlay = overlayMatchesCurrent ? snippetOverlay : null;
+  const parseResult = currentSnippetOverlay?.result ?? baseParseResult;
   const isResolvingSnippets = guideWithSnippetRefs !== null && !overlayMatchesCurrent;
+
+  const readyReported = useRef<string | null>(null);
+  useEffect(() => {
+    if (isResolvingSnippets || alignmentPaused || readyReported.current === overlayKey) {
+      return;
+    }
+    readyReported.current = overlayKey;
+    const source = loadContext?.source ?? 'other';
+    if (!parseResult.isValid || !parseResult.data) {
+      finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'parse-error' });
+    } else if (parseResult.data.elements.length === 0) {
+      finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'empty-content' });
+    } else {
+      if (parseResult.warnings.length > 0 && !currentSnippetOverlay?.degraded) {
+        finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'parse-error' });
+      }
+      if (currentSnippetOverlay?.degraded) {
+        finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'snippet-unavailable' });
+      }
+      finishGuideLoad(loadContext, 'rendered');
+      onReady?.();
+    }
+  }, [parseResult, isResolvingSnippets, alignmentPaused, overlayKey, loadContext, onReady, currentSnippetOverlay]);
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {
@@ -884,7 +979,7 @@ function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation
 
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
-    logger.error('Content parsing failed', { errors: parseResult.errors });
+    // Parser details can contain private guide content; only the typed outcome is reported.
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -1439,6 +1534,9 @@ function renderParsedElement(
           successCriteria={element.props.successCriteria}
           hintLevels={element.props.hintLevels}
           failureMessage={element.props.failureMessage}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          skippable={element.props.skippable}
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
         />
@@ -1483,6 +1581,7 @@ function renderParsedElement(
           defaultValue={element.props.defaultValue}
           required={element.props.required}
           pattern={element.props.pattern}
+          format={element.props.format}
           validationMessage={sub(element.props.validationMessage)}
           requirements={element.props.requirements}
           skippable={element.props.skippable}
@@ -1701,7 +1800,7 @@ function renderParsedElement(
 
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
-        logger.error('Invalid element type for parsed element', { element });
+        logger.error('Invalid element type for parsed element');
         throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
 

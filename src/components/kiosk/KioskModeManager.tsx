@@ -1,43 +1,67 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useSyncExternalStore, useState } from 'react';
+import { ThemeContext } from '@grafana/data';
+import { config } from '@grafana/runtime';
 import { KioskOverlay } from './KioskOverlay';
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../../lib/telemetry/surface';
 import { sidebarState } from '../../global-state/sidebar';
+import { kioskState } from '../../global-state/kiosk';
+import { clearKioskLaunchParams } from '../../utils/kiosk-navigation';
 
 interface KioskModeManagerProps {
   rulesUrl: string;
 }
 
-/**
- * Listens for 'pathfinder-open-kiosk' custom events (dispatched from the sidebar)
- * and renders the full-screen kiosk overlay when triggered.
- */
 export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const handleOpen = useCallback(() => {
-    setIsOpen(true);
-    reportPathfinderSurface('kiosk');
+  const [theme, setTheme] = useState(() => config.theme2);
+  useEffect(() => {
+    // This standalone React root sits outside Grafana's theme provider.
+    const observer = new MutationObserver(() => setTheme(config.theme2));
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
   }, []);
+  const launch = useSyncExternalStore(kioskState.subscribe, kioskState.getSnapshot);
+  const isOpen = launch !== null;
 
   const handleClose = useCallback(() => {
-    setIsOpen(false);
-    if (sidebarState.getIsSidebarMounted()) {
-      reportPathfinderSurface('sidebar');
-    } else {
-      reportPathfinderSurfaceClosed('kiosk');
-    }
+    clearKioskLaunchParams();
+    kioskState.set(null);
   }, []);
 
   useEffect(() => {
-    document.addEventListener('pathfinder-open-kiosk', handleOpen);
-    return () => {
-      document.removeEventListener('pathfinder-open-kiosk', handleOpen);
+    const handleOpen = () => {
+      clearKioskLaunchParams();
+      kioskState.set({ source: 'sidebar' });
     };
-  }, [handleOpen]);
+    document.addEventListener('pathfinder-open-kiosk', handleOpen);
+    return () => document.removeEventListener('pathfinder-open-kiosk', handleOpen);
+  }, []);
 
-  if (!isOpen) {
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    reportPathfinderSurface('kiosk');
+    return () => {
+      if (sidebarState.getIsSidebarMounted()) {
+        reportPathfinderSurface('sidebar');
+      } else {
+        reportPathfinderSurfaceClosed('kiosk');
+      }
+    };
+  }, [isOpen]);
+
+  if (!launch) {
     return null;
   }
 
-  return <KioskOverlay rulesUrl={rulesUrl} onClose={handleClose} />;
+  return (
+    <ThemeContext.Provider value={theme}>
+      <KioskOverlay
+        rulesUrl={rulesUrl}
+        overrideUrl={launch.rulesUrl}
+        mode={launch.source === 'url' ? 'instance' : 'presentation'}
+        onClose={handleClose}
+      />
+    </ThemeContext.Provider>
+  );
 };

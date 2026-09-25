@@ -1,5 +1,189 @@
 # Changelog
 
+## 2.18.3
+
+### Added
+
+- **Shareable learning kiosks**: Open a learning catalog through a URL without changing instance-wide settings. Guides open on the current Grafana instance, with theme-aware cards and a visible exit control. (#1971)
+
+- **Codeblock insertion in guide tests**: The E2E runner executes Insert steps, waits for completion, and reports insertion failures. Optional codeblocks retain usable Skip controls when requirements are unmet. (#1979)
+
+### Fixed
+
+- **Preserve kiosk panel preferences**: Launching a kiosk guide no longer overwrites the saved panel mode. Unconfigured kiosks use bundled cards immediately, and catalog fallback warnings identify the catalog actually shown. (#1986)
+
+- **Clean up abandoned terminal provisioning**: Leaving a challenge while its terminal is connecting no longer leaves a stale session holder that prevents later challenges from disconnecting. (#1955)
+
+- **Keep the first-dashboard guide compatible**: Updated visualization, data-source, unit, and save selectors support newer Grafana versions while preserving the guide flow on Grafana 12.3–13.1. (#1382)
+
+- **Diagnose guide and App Platform failures**: Correlated diagnostics distinguish guide loading, validation, rendering, and upstream proxy failures while preserving existing retries and fallback behavior. Diagnostic events omit credentials and raw upstream error content. (#1936)
+
+## 2.18.2
+
+### Fixed
+
+- **Keep the learning sidebar available when settings fail**: Continue browsing with default settings when settings requests fail, logging a warning without displaying an error banner. Settings saves still require a successful authoritative read. (#1977)
+
+- **Interactive steps inside conditional blocks earn progress credit**: Steps inside `whenTrue`/`whenFalse` branches now count toward guide completion. Previously the completion index treated conditionals as opaque, so branch-child steps contributed no progress even though they completed and persisted correctly. (#1953)
+
+- **Session replay pauses through Faro's public API**: Telemetry session replay now pauses and resumes via Faro's public `pauseRecording()`/`resumeRecording()` methods instead of a private-method cast workaround, following the `@grafana/faro-web-sdk` 2.12.0 upgrade. (#1827)
+
+## 2.18.1
+
+### Fixed
+
+- **Settings and custom guides load through the backend proxy**: Settings, guide content, and publication checks use caller-scoped on-behalf-of tokens, matching the custom-guide catalogue. Upstream authentication failures no longer trigger Grafana's session-expiry handling, and failed settings reads cannot silently switch administrative writes to the legacy store. (#1966)
+
+- **Path resets preserve sibling progress**: Resetting a learning path no longer clears another path whose URL shares its prefix. (#1950)
+
+- **Consistent journey completion identity**: Journey completion records use the shared identity resolver and the correct default repository instead of always identifying themselves as bundled content. (#1939)
+
+- **Existing guides can leave JSON mode**: Guides with a pre-existing duplicate heading can return to the visual editor, undo, and restore their editing session. New duplicate headings remain validation errors. (#1960)
+
+- **Korean translations cover learning surfaces**: Fill missing and empty translations for path covers, My Learning, completion controls, and sidebar actions, and align inconsistent wording. (#1938)
+
+- **E2E journeys advance behind open modals**: The guide runner can close its current guide tab while a Grafana modal remains open for the next milestone. (#1947)
+
+### Added
+
+- **Open the connected sandbox in IDE**: The terminal toolbar offers IDE beside GCX when the Coda capability is enabled, opening the same VM without provisioning a replacement. Secondary terminal actions move into an overflow menu. (#1943)
+
+### Chore
+
+- **Stronger validation and steadier tests**: Add orphan-module and guided-action documentation checks, remove unused modules, batch validation subprocesses, and give hint assertions more retry headroom. (#1940, #1944, #1945, #1952, #1956)
+
+- **Clarified release procedures**: Document shared Cloud deployment, artifact version suffixes, and the distinction between publication and deployed health. (#1962)
+
+## 2.18.0
+
+> Upgrade note: unfinished guides restart at the beginning once when upgrading to collision-safe progress storage. Completed guides, badges, streaks, and finished milestones are retained. Progress previously awarded for navigation can decrease under the new evidence-based calculation.
+
+### Added
+
+- **Mark complete on every guide**: A footer control lets readers finish any guide, including prose-only content. Milestones offer **Mark complete and continue**; completion survives reloads and stays synchronized across tabs. (#1848)
+
+- **Progress earned through completed work**: Guides now share one evidence-based percentage across surfaces, and paths and journeys average their milestones' percentages. Navigating forward alone no longer completes content; readers can complete steps or use **Mark complete**. (#1842, #1843, #1866)
+
+- **Organization settings in App Platform**: Organization-owned settings move to the `PathfinderSettings` resource where available, with conflict-aware saves and visible retryable failures. Developer opt-in is local to the signed-in user; provisioned credentials and system defaults remain separate, and stacks without the settings kind retain the legacy store. Requires the companion backend settings kind. (#1691)
+
+- **A guide can give its sandbox a `gcx` credential**: A `terminal-connect` block with `gcx: true` offers token setup after connecting, allowing sandbox commands to authenticate to Grafana through Coda's credential API. Readers can paste a token, mint one when permitted, or continue without it; the editor warns that the current backend CRD does not preserve the `gcx` field on save. (#1668)
+
+- **Remaining sandbox lifetime**: The terminal shows the active VM's remaining lifetime in both collapsed and expanded views when expiry information is available. (#1901)
+
+- **Bulk block deletion**: Authors can select root and nested blocks, confirm their deletion, and undo the whole operation in one action. (#1890)
+
+- **Challenge hints through the CLI and MCP**: Authors can create challenge blocks and append ordered progressive hints with `pathfinder-cli add-hint`, including through MCP and session-mode authoring. (#1889)
+
+- **Divider guide blocks**: Authors can separate guide sections with the new `divider` block in the editor and JSON content. (#1702)
+
+- **E2E journeys preserve browser state**: Explicitly selected paths and journeys run their milestones in one browser context, preserving unsaved application state between milestones. Milestone replacement uses a plugin-owned atomic reset when available, with the legacy UI reset retained as a rollout fallback and explicit transition-failure reporting. (#1728, #1775, #1821)
+
+- **E2E step coverage reporting**: A tracked-step DOM contract and driver registry report all nine rendered step kinds. Plain, multistep, and guided steps execute; unsupported kinds remain visible in coverage, and unsupported-only guides produce skipped reports. (#1640, #1834)
+
+- **Faro request compression**: Telemetry requests use gzip where the browser supports `CompressionStream`, with an uncompressed fallback. (#1801)
+
+### Changed
+
+- **Collision-safe progress storage**: Guide identifiers that share a prefix can no longer read or reset each other's section progress. Ambiguous legacy in-progress records are discarded once on upgrade, so unfinished guides restart; completed guides, badges, streaks, and finished milestones remain intact. (#1863, #1864)
+
+### Security
+
+- **gRPC Go security updates**: Update `google.golang.org/grpc` through 1.83.2, incorporating the high-severity fixes delivered by both dependency updates. (#1765, #1837)
+
+- **React Router security update**: Update `react-router-dom` to 6.30.6 through the security dependency update. (#1836)
+
+- **Five high-severity npm advisories resolved**: Update transitive `react-router`, `nanoid`, `fast-uri`, `js-yaml`, and `brace-expansion` dependencies within existing version ranges. (#1807)
+
+- **Invisible Unicode guard**: Tracked source rejects invisible formatting and bidirectional control characters that can disguise how code executes, alongside the existing raw-control-byte guard. (#1766)
+
+### Fixed
+
+- **Completion can be recorded again after reset**: Reset paths clear the completion guard, while reloads retain deduplication. Dropped or expired queued records release their guard so a later completion can be recorded; editor previews also reflect current earned progress. (#1866)
+
+- **Bundled completion identity is consistent**: Bare and `/content.json` bundled launch URLs now resolve to the same completion identity. Reset also clears the legacy suffixed deduplication key. (#1920)
+
+- **Backend journey completion reaches 100%**: Finished App Platform journeys no longer persist the last visited milestone's ordinal percentage or lose completion when an earlier milestone is revisited. The shared evidence-based calculation now supplies guide and journey progress. (#1802, #1866)
+
+- **Snippet expansion does not inflate progress totals**: Direct and prepared guide launches count the same pre-expansion block tree, so opening a guide through a different surface does not change its completion denominator. (#1905)
+
+- **Active progress survives storage trimming**: Bounded completion storage evicts zero-progress entries first, then the least recently written entries. The interactive completion limit increases from 100 to 250. (#1852)
+
+- **Guided tours credit performed steps**: The tour progress bar advances when steps are completed or skipped, instead of filling merely because a step is displayed. Read-only bubble tours retain their position-based progress. (#1841)
+
+- **Invalid objectives cannot complete a step**: Only an explicitly satisfied condition counts as completion evidence. Array-shaped conditions preserve tokens containing commas through checking and cross-tab transport; unknown legacy prose objectives warn instead of blocking guide loading. (#1791)
+
+- **Objectives, hints, and challenge requirements reach their checkers**: Interactive steps now receive their objectives, code and terminal steps receive hints, and challenges honor requirements and skippability while retaining success criteria as their completion check. (#1768, #1867)
+
+- **Section resets reach code and terminal steps**: Code, terminal, and terminal-connect steps clear local state on section reset without erasing preceding steps. Terminal-connect controls honor sequential gating, and step interactions include section analytics metadata. (#1911)
+
+- **A `gcx` credential completes only its requesting step**: Credential readiness remains shared by sandbox session, but an install no longer auto-completes sibling terminal-connect steps. Toolbar installs complete no guide step. (#1888)
+
+- **Terminal protocol errors are visible**: Malformed Coda frames now produce a terminal diagnostic and error state instead of only a warning log, while preserving the SDK's non-fatal session behavior. (#1876)
+
+- **Conditional blocks keep stable section numbering**: Populated conditionals occupy one authored position, initially empty branches create no gap, and later branch changes do not renumber steps already shown. (#1809)
+
+- **Transient full-screen navigation exits quietly**: Ordinary Grafana navigation leaves transient prose sessions without forcing the sidebar open. Interactive and requirement-fix navigation still hand off to the sidebar. (#1858)
+
+- **Cross-tab disconnects preserve request fallbacks**: Pending requests resolve with their own fallback when the controller disconnects, preventing requirement-fix callers from receiving an unexpected null result. (#1833)
+
+- **Lazy targets can be found horizontally**: Target discovery scrolls both axes of virtualized containers and stops when their available content is exhausted. (#1891)
+
+- **The Cloud dashboard guide selects TestData correctly**: The bundled first-dashboard guide uses the current searchable data-source picker instead of the retired card layout. The configured data-source name must contain `TestData`. (#1904)
+
+- **Challenge edits preserve unrendered fields**: Saving a challenge retains its ID, requirements, objectives, skippability, and author note while keeping form-owned fields clearable. (#1729)
+
+- **Nested block pickers require a valid builder**: Branch and collapsible pickers are compile-checked against supported default builders, preventing an unsupported selection from silently creating empty markdown. (#1845)
+
+- **Unsupported guided actions fail authoring validation**: CLI and editor validation reject `navigate` and `popout` inside guided blocks before publication. Existing published guides continue to load with advisory diagnostics. (#1907)
+
+- **Authoring help describes real requirements**: MCP help reports required parameters and accepted condition tokens accurately, and schema descriptions identify `verify` and `objectives` as conditions. (#1849, #1851)
+
+- **Guide upload scripts send authentication correctly**: Quoting the curl configuration header preserves the complete bearer token for both guide and learning-path uploads. (#1871)
+
+- **Missing snippets are cached as missing**: A snippet 404 is cached for the existing TTL instead of being retried on every render; transient failures remain uncached. (#1804)
+
+- **Manifest statistics survive the catalogue proxy**: Complete block-count stamps reach the browser, while partial stamps are treated as absent instead of becoming misleading zero-filled totals. (#1719)
+
+- **Catalogue diagnostics cover every drain outcome**: Decode-warning summaries are emitted after early termination as well as successful pagination, and truncation warnings retain request context. (#1738, #1758)
+
+- **Session replay stops when Pathfinder closes**: Recording starts after an explicit surface open, pauses five seconds after closure, and resumes on reopen. Regression coverage checks the lifecycle against the real Faro replay controller. (#1770, #1799)
+
+- **Snippet references and duplicate titles are validated**: CLI validation can check snippet references against a supplied catalog, and a leading heading that repeats the guide title now fails validation. (#1750, #1812)
+
+- **E2E side-effect classification covers every block type**: Callouts are classified and collapsibles recurse into their children, avoiding false unsafe-guide skips. (#1731)
+
+- **Turkish translations cover new learning surfaces**: Fill missing cover-page, My Learning, banner, completion-control, and panel translations, and correct the learning-path label. (#1875)
+
+- **Unreachable metadata modal removed**: Remove the block editor's inaccessible metadata modal and its unused wiring. (#1741)
+
+### Chore
+
+- **Shared UI and API helpers**: Extract reusable `BubbleTour` behavior and pure docs-panel helpers, move shared event and Grafana API access to the support layer, and remove duplicate context API implementations. (#1634, #1716, #1832, #1900)
+
+- **Retired authoring and execution paths removed**: Delete the obsolete interactive-HTML exporter and editor configuration, plus the unused DOM-scraping `sequence` executor. Supported JSON guides retain their existing execution paths. (#1771, #1914)
+
+- **Typed browser and action boundaries**: Type Pathfinder-owned window globals, guard nested and computed untyped access, and decode interactive actions against one canonical vocabulary at DOM ingress. (#1774, #1813, #1757)
+
+- **Lint and architecture checks**: Enforce exhaustive switches, unreachable-code rules, justified lint suppressions, and accountable architecture exceptions. Restore unused-binding checks, clear their temporary exemptions through the step-prop fixes, and apply ESLint to E2E tests. (#1734, #1742, #1755, #1756, #1816, #1911, #1892)
+
+- **Type and build-contract guards**: Guard experiment-arm vocabulary, presentational block types, malformed composite handling, the CLI Docker compile closure, and Go-version-independent contract golden tests. (#1754, #1759, #1732, #1730, #1737)
+
+- **Broader regression coverage**: Add guards for renderer-to-executor attributes, nested targeting fields, capability-aware Coda authoring, and editor package exports. Cover legacy E2E driver edge cases and completion tracking in the browser, and give terminal-hint assertions time to outlast their retry floor. (#1882, #1883, #1884, #1886, #1887, #1903, #1913)
+
+- **Faster per-file pre-commit checks**: Run ESLint and formatting through `lint-staged`, keep whole-project checks in the full gate, and correct the documented Husky execution rationale. (#1823, #1868)
+
+- **Review workflow and concern routing**: Calibrate dispositions and review termination, make contract-gate selection deterministic, load concern routing from the PR head, correct the duplicate-gate lookup and concern registry, and reduce serial review work. Document docs-retrieval ownership and all loader dispatch inputs. (#1721, #1760, #1733, #1769, #1762, #1820, #1825, #1880)
+
+- **Completion and authoring documentation**: Record the completion model, unconditional completion controls, E2E driver ownership, cross-tab requirement compatibility, typed globals, and supported multistep targeting. (#1727, #1840, #1847, #1824, #1835, #1857)
+
+- **App Platform provisioning and handoff documentation**: Add a Terraform guide for private content, require annotation preservation in MCP update guidance, and align routing, manifest-extension, package-resolution, identity-boundary, and active handoff documentation with current contracts. (#1870, #1879, #1810, #1803, #1814, #1885, #1894)
+
+- **Release, experiment, and contribution guidance**: Correct release instructions for protected `main`, document banner exposure and survey readouts, refresh editor action labels, and replace the recording-specific issue template with a general structured form. (#1893, #1718, #1767, #1897)
+
+- **Secret-scanner fixture noise reduced**: Mark intentional userinfo test fixtures on the detected line so they do not trigger unrelated TruffleHog failures. (#1785)
+
+- **Dependencies and automation**: Update Grafana packages to 13.2.1, Faro replay to ~2.11.0, `go-jose/v4` to 4.1.5, the Grafana Go plugin SDK to 0.296.4, Node.js to 24.21, Playwright to ~1.63.0, and plugin CI workflows to 11.2.0, alongside action digests and lockfile maintenance. Group non-major Renovate updates. (#1773, #1740, #1789, #1683, #1862, #1819, #1878, #1921)
+
 ## 2.17.0
 
 ### Added

@@ -6,44 +6,11 @@ Centralized configuration and constant values used throughout the plugin. This d
 
 The constants directory is organized into specialized files that separate concerns:
 
-- **UI/DOM constants** for selectors and display configuration
 - **Interactive guide constants** for timing, behaviors, and action types
 - **Z-index constants** for overlay stacking management
 - **Test ID constants** for Playwright e2e testing selectors
 
 ## Files in `/src/constants/`
-
-### `selectors.ts` - DOM Selectors & UI Configuration
-
-**Purpose**: Type-safe CSS selectors and UI element configuration for DOM manipulation and content processing.
-
-**Key Responsibilities**:
-
-- Provide consistent selector strings for identifying interactive elements, code blocks, and UI components
-- Define CSS class names for lightbox modals and tab configuration
-- Configure copy button behavior and timing
-- Maintain URL pattern constants
-
-**Key Exports**:
-
-- `CODE_BLOCK_SELECTORS` - Selectors for code blocks requiring copy buttons
-- `INTERACTIVE_SELECTORS` - Selectors for journey links, collapsible sections, and expandable tables
-- `COPY_BUTTON_SELECTORS` - Selectors for identifying and styling copy buttons
-- `IMAGE_LIGHTBOX` - CSS class names for image lightbox modals
-- `TAB_CONFIG` - Tab dimensions and ID configuration for docs panel
-- `CODE_COPY_CONFIG` - Button sizing and reset timing for copy operations
-- `INTERACTIVE_EVENT_TYPES` - Custom event types for interactive elements
-- `URL_PATTERNS` - Base URL patterns for Grafana documentation
-
-**Used By**:
-
-- `src/utils/link-handler.hook.ts` - Interactive link handling and lightbox creation
-- `src/components/docs-panel/` - Tab management and UI rendering
-- `src/styles/*.styles.ts` - Styling functions and theme application
-
-**Why It Exists**: Prevents selector string typos, centralizes UI configuration, and ensures consistent behavior across all components that manipulate the DOM or style UI elements.
-
----
 
 ### `interactive-config.ts` ⭐ - Interactive Guide Timing & Behavior
 
@@ -97,7 +64,7 @@ The constants directory is organized into specialized files that separate concer
 **Critical Dependencies**:
 
 - **CSS Animations**: The `highlighting` timing constants must stay synchronized with CSS animation durations in `src/styles/interactive.styles.ts`. Changes to one require changes to the other.
-- **Plugin Configuration**: Values can be overridden via `DocsPluginConfig` interface in `src/constants.ts`
+- **Plugin Configuration**: Values can be overridden via `PathfinderPluginConfig` interface in `src/constants.ts`
 - **Action Handlers**: All action handlers depend on delay configurations from this file
 - **Requirements Manager**: Timeout and retry logic directly uses these constants
 
@@ -221,7 +188,7 @@ namespace is added (this one was missing `testIds.markComplete`).
 - Network timeouts: `DEFAULT_CONTENT_FETCH_TIMEOUT`, `DEFAULT_RECOMMENDER_TIMEOUT`
 - Dev mode defaults: `DEFAULT_DEV_MODE`, `DEFAULT_DEV_MODE_USER_IDS`
 - PeerJS defaults for live sessions: `DEFAULT_PEERJS_HOST`, `DEFAULT_PEERJS_PORT`, `DEFAULT_PEERJS_KEY`
-- `DocsPluginConfig` - Configuration interface for plugin settings
+- `PathfinderPluginConfig` - Configuration interface for plugin settings
 - Helper functions: `getConfigWithDefaults()`, `isRecommenderEnabled()`, `getRecommenderServiceUrl()`, etc.
 - `ROUTES` enum for routing
 - `TERMS_VERSION` - Terms and conditions version
@@ -254,8 +221,7 @@ The constants are organized in a multi-level hierarchy:
 
 1. **Plugin-Wide Configuration** (`/src/constants.ts`) - API endpoints, security, feature defaults, global settings
 2. **Interactive Engine Configuration** (`/src/constants/interactive-config.ts`) - Timing, behavior, action types, requirements
-3. **UI/DOM Configuration** (`/src/constants/selectors.ts`) - Selectors, class names, UI constants
-4. **Styling Configuration** (`/src/constants/interactive-z-index.ts`) - Z-index stacking order
+3. **Styling Configuration** (`/src/constants/interactive-z-index.ts`) - Z-index stacking order
 
 This separation ensures:
 

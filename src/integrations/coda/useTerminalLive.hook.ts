@@ -22,7 +22,14 @@ import { useCallback, useEffect, useRef, useState, RefObject } from 'react';
 import type { Terminal } from '@xterm/xterm';
 import type { CodaSession } from '@grafana/coda-client';
 import { logger } from '../../lib/logging';
-import { codaErrorCodeMessage, createSession, toCodaError, type TerminalVMOptions } from './coda-api';
+import {
+  codaErrorCodeMessage,
+  createSession,
+  listVMs,
+  toCodaError,
+  type TerminalVMOptions,
+  type LifetimeVM,
+} from './coda-api';
 
 interface ConnectionLog {
   error: (message: string, error?: unknown, data?: Record<string, unknown>) => void;
@@ -50,6 +57,12 @@ export type { TerminalVMOptions };
 
 function codaSessionErrorMessage(err: unknown): string {
   const codaErr = toCodaError(err);
+  if (codaErr.code === 'instance_disposing') {
+    return 'The sandbox connection was interrupted when the Coda plugin reloaded. Select Retry to reconnect.';
+  }
+  if (codaErr.code === 'recovery_exhausted') {
+    return 'Automatic reconnection stopped. Select Retry to try again.';
+  }
   return codaErrorCodeMessage(codaErr.code, codaErr.message);
 }
 
@@ -74,8 +87,14 @@ interface UseTerminalLiveReturn {
   sendCommand: (command: string) => Promise<void>;
   /** Error message if status is 'error' */
   error: string | null;
+  unreachableVmId: string | null;
   /** Active Coda session id, or null when disconnected. Needed to run exec calls. */
   sessionId: string | null;
+  /** Server-reported expiry of the active VM, or null when it is unknown. */
+  vmExpiresAt: string | null;
+  lifetimeVM: LifetimeVM | undefined;
+  onExpiryChange?: (expiry: string) => void;
+  vmId: string | null;
 }
 
 // ─── Provision progress bar ──────────────────────────────────────────────────
@@ -101,7 +120,11 @@ function renderProvisionProgress(label: string, elapsedMs: number, complete = fa
 export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTerminalLiveReturn {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [unreachableVmId, setUnreachableVmId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [vmId, setVmId] = useState<string | null>(null);
+  const [lifetimeVM, setLifetimeVM] = useState<LifetimeVM>();
+  const [vmExpiresAt, setVmExpiresAt] = useState<string | null>(null);
 
   const connectionLogRef = useRef<ConnectionLog>(createConnectionLog());
 
@@ -109,7 +132,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   // idle timer. Replaces the subscription/address/liveSrv refs the hand-rolled
   // version needed.
   const sessionRef = useRef<CodaSession | null>(null);
-  // currentVmIdRef tracks the VM ID for the current session (used in logging)
+  // Tracks the current session's VM for logging and identity changes.
   const currentVmIdRef = useRef<string | null>(null);
   const inputDisposerRef = useRef<{ dispose: () => void } | null>(null);
 
@@ -132,12 +155,27 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   // session it lost the race to instead of installing it anyway.
   const connectGenerationRef = useRef(0);
 
+  const rememberVmId = useCallback((nextVmId?: string) => {
+    const normalized = nextVmId || null;
+    if (normalized === currentVmIdRef.current) {
+      return;
+    }
+    currentVmIdRef.current = normalized;
+    setVmId(normalized);
+    setVmExpiresAt(null);
+    setLifetimeVM(undefined);
+  }, []);
+
   // Tearing the session down invalidates its id: exec is session-scoped, so a
   // retained id would be spent on a session the backend has forgotten. Every
   // terminating path must either call this or clear the id itself.
   const cleanup = useCallback(() => {
     connectGenerationRef.current += 1;
     setSessionId(null);
+    currentVmIdRef.current = null;
+    setVmId(null);
+    setVmExpiresAt(null);
+    setLifetimeVM(undefined);
     const session = sessionRef.current;
     sessionRef.current = null;
     if (session) {
@@ -162,22 +200,67 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     return cleanup;
   }, [cleanup]);
 
+  useEffect(() => {
+    if (status !== 'connected' || !vmId) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadExpiry = async () => {
+      try {
+        const vms = await listVMs();
+        if (cancelled) {
+          return;
+        }
+        const vm = vms.find((entry) => entry.id === vmId);
+        setVmExpiresAt(vm?.expiresAt ?? null);
+        setLifetimeVM(vm);
+      } catch {
+        // Expiry is advisory; leave the indicator hidden when the lookup fails.
+      }
+    };
+
+    void loadExpiry();
+    const poll = window.setInterval(() => void loadExpiry(), 15000);
+    const focus = () => void loadExpiry();
+    window.addEventListener('focus', focus);
+
+    return () => {
+      window.clearInterval(poll);
+      window.removeEventListener('focus', focus);
+      cancelled = true;
+    };
+  }, [status, vmId]);
+
   /**
    * Subscribe a fresh session to its Live channel, wiring Pathfinder's
    * terminal UI onto CodaSession's handlers.
    */
   const connectLiveStream = useCallback(
     (session: CodaSession, terminal: Terminal) => {
-      currentVmIdRef.current = session.vmID ?? null;
+      rememberVmId(session.vmID);
 
       session.subscribe({
         onOutput: (data) => {
           terminal.write(data);
         },
 
-        onStatus: ({ state, message, vmId }) => {
-          if (vmId && vmId !== currentVmIdRef.current) {
-            currentVmIdRef.current = vmId;
+        onStatus: ({
+          state,
+          message,
+          vmId,
+          expiresAt,
+        }: {
+          state?: string;
+          message?: string;
+          vmId?: string;
+          expiresAt?: string;
+        }) => {
+          if (vmId) {
+            rememberVmId(vmId);
+          }
+          if (expiresAt) {
+            setVmExpiresAt(expiresAt);
           }
 
           if (state === 'pending' || state === 'provisioning') {
@@ -222,7 +305,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             }
           } else if (state === 'retrying') {
             terminal.writeln(`\x1b[33m   │  ⚠ ${message || 'Retrying...'}\x1b[0m`);
-          } else {
+          } else if (state !== 'ssh_connecting') {
             const line = `\x1b[90m   │  ${message || `Status: ${state}`}\x1b[0m`;
             if (line !== lastStatusLineRef.current) {
               lastStatusLineRef.current = line;
@@ -233,29 +316,10 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
         onConnected: (vmId) => {
           if (vmId) {
-            currentVmIdRef.current = vmId;
+            rememberVmId(vmId);
           }
 
           setStatus('connected');
-          terminal.writeln('');
-          terminal.writeln('\x1b[32m✓ SSH connection established\x1b[0m');
-          terminal.writeln('');
-          terminal.writeln('\x1b[36m┌──────────────────────────────────────────────────────────────┐\x1b[0m');
-          terminal.writeln(
-            '\x1b[36m│\x1b[0m  \x1b[1;33mGrafana Pathfinder Sandbox\x1b[0m                                 \x1b[36m│\x1b[0m'
-          );
-          terminal.writeln(
-            '\x1b[36m│\x1b[0m                                                              \x1b[36m│\x1b[0m'
-          );
-          terminal.writeln(
-            '\x1b[36m│\x1b[0m  \x1b[90mThis is a temporary sandbox VM for learning Grafana.\x1b[0m       \x1b[36m│\x1b[0m'
-          );
-          terminal.writeln(
-            '\x1b[36m│\x1b[0m  \x1b[90mVM will auto-terminate after inactivity.\x1b[0m                   \x1b[36m│\x1b[0m'
-          );
-          terminal.writeln('\x1b[36m└──────────────────────────────────────────────────────────────┘\x1b[0m');
-          terminal.writeln('');
-
           if (inputDisposerRef.current) {
             inputDisposerRef.current.dispose();
           }
@@ -281,11 +345,11 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             category: 'backend_error',
           });
 
+          const failedVmId = currentVmIdRef.current;
           cleanup();
+          setUnreachableVmId(codaErr.code === 'vm_unreachable' ? failedVmId : null);
 
           const message = codaSessionErrorMessage(err);
-          terminal.writeln('\r\n');
-          terminal.writeln(`\x1b[31m✖ Error: ${message}\x1b[0m`);
 
           setError(message);
           setStatus('error');
@@ -326,7 +390,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         },
       });
     },
-    [cleanup]
+    [cleanup, rememberVmId]
   );
 
   const connect = useCallback(
@@ -344,26 +408,12 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
       setStatus('connecting');
       setError(null);
+      setUnreachableVmId(null);
       cleanup();
       const generation = connectGenerationRef.current;
 
-      currentVmIdRef.current = null;
-
       terminal.clear();
-      terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
-      terminal.writeln('\x1b[1;36m  Grafana Pathfinder - Sandbox Terminal\x1b[0m');
-      terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
-      terminal.writeln('');
-
-      if (vmOpts?.scenario) {
-        terminal.writeln(`\x1b[33m⏳ Connecting to ${vmOpts.scenario} scenario sandbox...\x1b[0m`);
-      } else if (vmOpts?.app) {
-        terminal.writeln(`\x1b[33m⏳ Connecting to ${vmOpts.app} sandbox...\x1b[0m`);
-      } else {
-        terminal.writeln('\x1b[33m⏳ Connecting to sandbox...\x1b[0m');
-      }
-      terminal.writeln('\x1b[90m   ├─ Backend will assign your VM...\x1b[0m');
-      terminal.writeln('\x1b[90m   └─ Establishing connection...\x1b[0m');
+      terminal.writeln('Connecting to sandbox...');
 
       let session: CodaSession;
       try {
@@ -376,7 +426,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         connectionLogRef.current.error('Could not create Coda session', err, { category: 'session_create' });
         setError(message);
         setStatus('error');
-        terminal.writeln(`\r\n\x1b[31m✖ ${message}\x1b[0m`);
         return;
       }
 
@@ -398,9 +447,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     // into the next session and swallow its first genuine close.
     suppressClosedBannerRef.current = sessionRef.current !== null;
     cleanup();
-    currentVmIdRef.current = null;
     setStatus('disconnected');
     setError(null);
+    setUnreachableVmId(null);
 
     const terminal = terminalRef.current;
     if (terminal) {
@@ -430,6 +479,11 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     resize,
     sendCommand,
     error,
+    unreachableVmId,
     sessionId,
+    vmExpiresAt,
+    lifetimeVM,
+    onExpiryChange: setVmExpiresAt,
+    vmId: status === 'connected' ? vmId : null,
   };
 }

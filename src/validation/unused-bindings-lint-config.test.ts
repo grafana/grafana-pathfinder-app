@@ -89,6 +89,8 @@ const PROBE_PATH = 'src/unused-bindings-lint-probe.ts';
  * is linted in memory under a default TS project: the repo config lints with
  * type information, which rejects a path no tsconfig includes, and writing the
  * probe into src/ would leak a stray module into the other file-walking suites.
+ * Both probes share one ESLint instance in one process, since each instance
+ * pays to build a fresh `projectService`.
  */
 const RUNNER = `
 import { ESLint } from 'eslint';
@@ -105,19 +107,24 @@ const eslint = new ESLint({
   },
 });
 
-const [result] = await eslint.lintText(process.env.PROBE_SOURCE, { filePath: process.env.PROBE_PATH });
-process.stdout.write(JSON.stringify(result.messages));
+const sources = JSON.parse(process.env.PROBE_SOURCES);
+const results = {};
+for (const [name, source] of Object.entries(sources)) {
+  const [result] = await eslint.lintText(source, { filePath: process.env.PROBE_PATH });
+  results[name] = result.messages;
+}
+process.stdout.write(JSON.stringify(results));
 `;
 
 type LintMessage = { ruleId: string | null; severity: number; message: string; fatal?: boolean };
 
-function lintProbe(source: string): LintMessage[] {
+function lintProbes<K extends string>(sources: Record<K, string>): Record<K, LintMessage[]> {
   const stdout = execFileSync(process.execPath, ['--input-type=module', '-e', RUNNER], {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
     env: {
       ...process.env,
-      PROBE_SOURCE: source,
+      PROBE_SOURCES: JSON.stringify(sources),
       PROBE_PATH: PROBE_PATH,
     },
     maxBuffer: 8 * 1024 * 1024,
@@ -125,43 +132,8 @@ function lintProbe(source: string): LintMessage[] {
   return JSON.parse(stdout);
 }
 
-/**
- * Every binding the grandfather block in `eslint.config.mjs` exempts (#1815).
- *
- * Whoever clears #1815 updates this list in the same pull request: the
- * assertion below is strict equality in both directions, so a new unused
- * binding fails as growth and a fixed one fails as drift until it is removed
- * here. The nineteenth grandfathered binding — `objectives` in
- * `interactive-step.tsx` — is deliberately absent: it uses an inline
- * `eslint-disable-next-line`, which ESLint's own unused-disable-directive
- * reporting self-clears once the binding becomes used.
- */
-const GRANDFATHERED: Record<string, string[]> = {
-  'src/components/interactive-tutorial/code-block-step.tsx': [
-    'hints',
-    'onStepReset',
-    'resetTrigger',
-    'sectionTitle',
-    'stepIndex',
-    'totalSteps',
-  ],
-  'src/components/interactive-tutorial/terminal-connect-step.tsx': [
-    'isEligibleForChecking',
-    'onStepReset',
-    'resetTrigger',
-    'sectionTitle',
-    'stepIndex',
-    'totalSteps',
-  ],
-  'src/components/interactive-tutorial/terminal-step.tsx': [
-    'hints',
-    'onStepReset',
-    'resetTrigger',
-    'sectionTitle',
-    'stepIndex',
-    'totalSteps',
-  ],
-};
+/** #1815 cleared — no grandfathered exemptions remain. */
+const GRANDFATHERED: Record<string, string[]> = {};
 
 /**
  * Resolves the rule's effective severity for every file under `src/` through
@@ -241,8 +213,9 @@ describe('unused-bindings lint ratchet', () => {
   let clean: LintMessage[];
 
   beforeAll(() => {
-    violations = lintProbe(VIOLATING_SOURCE);
-    clean = lintProbe(CLEAN_SOURCE);
+    const results = lintProbes({ violations: VIOLATING_SOURCE, clean: CLEAN_SOURCE });
+    violations = results.violations;
+    clean = results.clean;
   }, 180_000);
 
   it('parses both probes instead of reporting a fatal error', () => {
@@ -282,14 +255,11 @@ describe('grandfathered exemptions (#1815)', () => {
     probe = probeGrandfathered();
   }, 180_000);
 
-  it('exempts exactly the enumerated files, so a fourth cannot be added silently', () => {
-    expect(probe.exempted).toEqual(Object.keys(GRANDFATHERED).sort());
+  it('exempts no files — #1815 cleared the entire baseline', () => {
+    expect(probe.exempted).toEqual([]);
   });
 
-  // Strict equality both ways: a new unused binding in one of these files is
-  // growth and must fail; clearing one is progress and must also fail, so the
-  // baseline shrinks with #1815 instead of drifting out of date.
-  it('exempts exactly the enumerated bindings, so the baseline can neither grow nor drift', () => {
+  it('has no grandfathered bindings', () => {
     expect(probe.bindings).toEqual(GRANDFATHERED);
   });
 });

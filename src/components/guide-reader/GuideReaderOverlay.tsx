@@ -19,6 +19,8 @@ import type { RawContent } from '../../types/content.types';
 import type { ControllerPairingLaunch } from '../../lib/pairing-manager';
 import { getGuideReaderStyles } from './guide-reader.styles';
 import { OutlineRail } from './OutlineRail';
+import { beginGuideLoad, finishGuideLoad, markGuideLoadStage } from '../../lib/telemetry/guide-load';
+import { diagnoseGuideError } from '../../lib/guide-diagnostics';
 
 interface GuideReaderOverlayProps {
   doc: string;
@@ -139,24 +141,33 @@ function GuideReaderInner({
 
   useEffect(() => {
     let cancelled = false;
-    fetchUnifiedContent(doc)
+    const loadContext = beginGuideLoad(doc);
+    fetchUnifiedContent(doc, { loadContext })
       .then((result) => {
         if (cancelled) {
           return;
         }
         if (result.content) {
-          setContent(result.content);
+          markGuideLoadStage(loadContext, 'render');
+          setContent({ ...result.content, loadContext });
         } else {
+          finishGuideLoad(
+            loadContext,
+            'error',
+            result.diagnostic ?? { source: loadContext.source, stage: 'fetch', reason: 'unexpected-error' }
+          );
           setError(result.error ?? 'Could not load this guide.');
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
+          finishGuideLoad(loadContext, 'error', diagnoseGuideError(error, loadContext.source));
           setError('Could not load this guide.');
         }
       });
     return () => {
       cancelled = true;
+      finishGuideLoad(loadContext, 'cancelled');
     };
   }, [doc]);
 

@@ -130,16 +130,6 @@ interface Recommendation {
 
 ---
 
-### `MinimizedSidebarIcon.tsx`
-
-**Purpose**: Icon component for minimized sidebar state
-**Location**: `/src/components/docs-panel/MinimizedSidebarIcon.tsx`
-**Role**:
-
-- Displays icon when sidebar is minimized
-- Provides visual indicator for reopening
-- Consistent with Grafana's sidebar behavior
-
 ### `/components/` Directory
 
 **Purpose**: Extracted sub-components for cleaner organization
@@ -409,7 +399,7 @@ list of supported `model.*` operations.
 
 ### Configuration
 
-- **Plugin Config**: `DocsPluginConfig` interface
+- **Plugin Config**: `PathfinderPluginConfig` interface
 - **API Endpoints**: Recommendation service, docs base URL
 - **Feature Flags**: OpenFeature integration
 - **Dev Mode**: Developer tools access control

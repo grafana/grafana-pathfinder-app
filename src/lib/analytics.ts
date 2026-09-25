@@ -111,6 +111,7 @@ export enum UserInteraction {
 
   // Kiosk Mode
   KioskDemoStarted = 'kiosk_demo_started',
+  KioskInteraction = 'kiosk_interaction',
 
   // Initial-state alignment ("implied 0th step") — Phase 1 auto-recovery
   AlignmentPromptShown = 'alignment_prompt_shown',
@@ -300,6 +301,21 @@ export function reportAppInteraction(
       // instead of on every mirrored action; RudderStack keeps it.
       const faroProperties = { ...enrichedProperties };
       delete faroProperties.experiments;
+      const privateGuide = Object.values(faroProperties).some(
+        (value) =>
+          typeof value === 'string' &&
+          (value.startsWith('backend-guide:') || value === 'app-platform' || value.includes('/interactiveguides/'))
+      );
+      if (privateGuide) {
+        for (const key of Object.keys(faroProperties)) {
+          if (
+            !['plugin_version', 'action', 'launch_source', 'content_type', 'variant'].includes(key) &&
+            !/url$/i.test(key)
+          ) {
+            delete faroProperties[key];
+          }
+        }
+      }
       // RudderStack properties are never redacted (first-party, same policy
       // as identity), but the Faro mirror is the final URL boundary for this
       // path — normalize by the `*_url` naming convention every call site

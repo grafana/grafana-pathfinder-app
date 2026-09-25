@@ -18,6 +18,7 @@ jest.mock('../../../completion-records', () => ({
   resolveStandaloneGuideCompletionIdentity:
     jest.requireActual('../../../completion-records').resolveStandaloneGuideCompletionIdentity,
   invalidateEmittedCompletion: jest.fn(),
+  normalizeGuideId: jest.requireActual('../../../completion-records').normalizeGuideId,
 }));
 
 const mockInvalidateEmittedCompletion = invalidateEmittedCompletion as jest.MockedFunction<

@@ -5,7 +5,6 @@ export const INTERACTIVE_ACTION_TYPES = [
   'formfill',
   'navigate',
   'hover',
-  'sequence',
   'multistep',
   'guided',
   'popout',

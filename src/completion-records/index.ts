@@ -16,8 +16,10 @@ export {
   resolveMilestoneCompletionIdentity,
   resolveBundledGuideCompletionIdentity,
   resolveStandaloneGuideCompletionIdentity,
+  resolveJourneyCompletionIdentity,
   manifestGuideId,
   manifestGuideSource,
+  normalizeGuideId,
 } from './completion-identity';
 export type {
   ResolveCompletionIdentityInput,
