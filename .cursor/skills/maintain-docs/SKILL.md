@@ -107,7 +107,7 @@ Goal: Build a prioritized list of documentation issues without reading every fil
 1. Read `AGENTS.md` and `docs/developer/CONTEXT_INDEX.md` (the canonical routing table)
 2. Extract all file references from:
    - Every entry in `CONTEXT_INDEX.md`
-   - The "On-demand context" table
+   - The "On-demand context" hot-paths list in `AGENTS.md`
    - Inline links and references throughout the file
    - The "PR reviews" section
    - Any other tables or lists that reference documentation files
