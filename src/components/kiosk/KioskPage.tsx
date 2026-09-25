@@ -1,6 +1,8 @@
+import Prism from 'prismjs';
+import 'prismjs/components/prism-bash';
 import { KioskLaunchError } from '../../lib/kiosk-launch-error';
 import { logger } from '../../lib/logging';
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState, useMemo } from 'react';
 import { Button, Field, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
@@ -15,8 +17,17 @@ import { prepareKioskInputs } from './prepare-kiosk-inputs';
 import { KioskTile } from './KioskTile';
 
 const getStyles = (theme: GrafanaTheme2) => ({
-  page: css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(4), padding: theme.spacing(2, 0) }),
-  spacious: css({ gap: theme.spacing(7), padding: theme.spacing(4, 0) }),
+  page: css({
+    '--kiosk-block-gap': theme.spacing(4),
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 'var(--kiosk-block-gap)',
+    padding: theme.spacing(2, 0),
+  }),
+  spacious: css({ '--kiosk-block-gap': theme.spacing(7), padding: theme.spacing(4, 0) }),
+  text: css({ maxWidth: 850, width: '100%', margin: '0 auto' }),
+  commandLabel: css({ marginBottom: `calc(${theme.spacing(2)} - var(--kiosk-block-gap))` }),
+  commandDescription: css({ marginTop: `calc(${theme.spacing(2)} - var(--kiosk-block-gap))` }),
   center: css({ textAlign: 'center' }),
   hero: css({
     '& h1': { fontSize: 'clamp(2rem, 4vw, 3.5rem)', lineHeight: 1.15, margin: theme.spacing(2, 0, 3) },
@@ -38,15 +49,42 @@ const getStyles = (theme: GrafanaTheme2) => ({
     '& > div': { flex: '1 1 260px' },
     '& button': { marginBottom: theme.spacing(2) },
   }),
+  commandCode: css({
+    flex: 1,
+    minWidth: 0,
+    '&& .token': { background: 'transparent' },
+    '&& .token.function, && .token.builtin, && .token.keyword': { color: theme.colors.info.text },
+    '&& .token.string': { color: theme.colors.success.text },
+    '&& .token.operator, && .token.variable, && .token.parameter': { color: theme.colors.warning.text },
+  }),
+  commandContainer: css({ maxWidth: 850, width: '100%', margin: '0 auto' }),
+  copyButton: css({ width: 104, minHeight: 44, flexShrink: 0 }),
+  copyStatus: css({ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }),
+  copyError: css({ marginTop: theme.spacing(1), color: theme.colors.error.text }),
   command: css({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing(2),
-    padding: theme.spacing(3),
+    padding: theme.spacing(2, 3),
     borderRadius: theme.shape.radius.default,
     background: theme.colors.background.secondary,
-    '& code': { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
+    '&& code, && code[class*="language-"]': {
+      flex: 1,
+      minWidth: 0,
+      whiteSpace: 'pre-wrap',
+      overflowWrap: 'anywhere',
+      padding: 0,
+      border: 0,
+      borderRadius: 0,
+      textShadow: 'none',
+      lineHeight: 1.5,
+      background: 'transparent',
+      color: theme.colors.text.primary,
+      fontFamily: theme.typography.fontFamilyMonospace,
+      fontSize: theme.typography.h4.fontSize,
+    },
+    [theme.breakpoints.down('sm')]: { padding: theme.spacing(2), flexWrap: 'wrap', '& code': { flexBasis: '100%' } },
   }),
   divider: css({
     display: 'flex',
@@ -70,19 +108,53 @@ interface Props {
   onLaunch: () => void;
 }
 
-function Command({ command, mode, blockIndex }: { command: string; mode: KioskMode; blockIndex: number }) {
+function renderCommandTokens(tokens: ReturnType<typeof Prism.tokenize>): React.ReactNode {
+  return tokens.map((token, index) =>
+    typeof token === 'string' ? (
+      token
+    ) : (
+      <span key={index} className={`token ${token.type}`}>
+        {typeof token.content === 'string' ? token.content : renderCommandTokens(token.content)}
+      </span>
+    )
+  );
+}
+
+function Command({
+  command,
+  language = 'bash',
+  mode,
+  blockIndex,
+}: {
+  command: string;
+  language?: 'bash' | 'text';
+  mode: KioskMode;
+  blockIndex: number;
+}) {
   const styles = useStyles2(getStyles);
   const [status, setStatus] = useState('');
+  const highlighted = useMemo(
+    () => (language === 'bash' ? renderCommandTokens(Prism.tokenize(command, Prism.languages.bash)) : command),
+    [command, language]
+  );
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(resetTimer.current), []);
   return (
-    <div>
+    <div className={styles.commandContainer}>
       <div className={styles.command}>
-        <code>{command}</code>
+        <span aria-hidden="true">$</span>
+        <code className={styles.commandCode}>{highlighted}</code>
         <Button
-          variant="secondary"
+          variant="primary"
+          className={styles.copyButton}
+          aria-label="Copy"
+          icon={status === 'Copied' ? 'check' : 'copy'}
           onClick={async () => {
+            clearTimeout(resetTimer.current);
             try {
               await navigator.clipboard.writeText(command);
               setStatus('Copied');
+              resetTimer.current = setTimeout(() => setStatus(''), 2000);
               reportKioskInteraction(mode, blockIndex, { component: 'command', action: 'copy', outcome: 'success' });
             } catch {
               setStatus('Could not copy. Select and copy the command manually');
@@ -90,10 +162,12 @@ function Command({ command, mode, blockIndex }: { command: string; mode: KioskMo
             }
           }}
         >
-          Copy
+          {status === 'Copied' ? 'Copied' : 'Copy'}
         </Button>
       </div>
-      <span role="status">{status}</span>
+      <span role="status" className={status.startsWith('Could not') ? styles.copyError : styles.copyStatus}>
+        {status}
+      </span>
     </div>
   );
 }
@@ -265,7 +339,7 @@ export function KioskPage({ page, rules, mode, onLaunch }: Props) {
             return (
               <p
                 key={index}
-                className={`${block.alignment === 'center' ? styles.center : ''} ${block.secondary ? styles.secondary : ''}`}
+                className={`${styles.text} ${block.alignment === 'center' ? styles.center : ''} ${block.secondary ? styles.secondary : ''} ${page.blocks[index + 1]?.type === 'command' ? styles.commandLabel : ''} ${page.blocks[index - 1]?.type === 'command' ? styles.commandDescription : ''}`}
               >
                 {block.content}
               </p>
@@ -277,7 +351,9 @@ export function KioskPage({ page, rules, mode, onLaunch }: Props) {
               </div>
             );
           case 'command':
-            return <Command key={index} command={block.command} mode={mode} blockIndex={index} />;
+            return (
+              <Command key={index} command={block.command} language={block.language} mode={mode} blockIndex={index} />
+            );
           case 'launch-form':
             return (
               <LaunchForm

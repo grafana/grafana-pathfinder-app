@@ -47,7 +47,7 @@ export const KioskPageSchema = z
             label: text,
             inputs: z.array(KioskInputSchema).min(1).max(10),
           }),
-          z.strictObject({ type: z.literal('command'), command: text }),
+          z.strictObject({ type: z.literal('command'), command: text, language: z.enum(['bash', 'text']).optional() }),
           z.strictObject({ type: z.literal('divider'), label: text.optional() }),
           z.strictObject({
             type: z.literal('guide-links'),
