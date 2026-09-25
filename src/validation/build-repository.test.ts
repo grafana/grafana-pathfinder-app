@@ -43,10 +43,11 @@ describe('buildRepository', () => {
   });
 
   it('should return empty repository for empty directory', () => {
-    const { repository, warnings, errors } = buildRepository(tmpDir);
+    const { repository, warnings, errors, duplicateIds } = buildRepository(tmpDir);
     expect(Object.keys(repository)).toHaveLength(0);
     expect(warnings.length).toBeGreaterThan(0);
     expect(errors).toHaveLength(0);
+    expect(duplicateIds).toEqual([]);
   });
 
   it('should skip content-only directories without manifest.json', () => {
@@ -86,9 +87,10 @@ describe('buildRepository', () => {
       provides: ['datasource-configured'],
     });
 
-    const { repository, errors } = buildRepository(tmpDir);
+    const { repository, errors, duplicateIds } = buildRepository(tmpDir);
 
     expect(errors).toHaveLength(0);
+    expect(duplicateIds).toEqual([]);
     expect(Object.keys(repository)).toHaveLength(1);
 
     const entry = repository['prometheus-101'];
@@ -231,8 +233,22 @@ describe('buildRepository', () => {
       type: 'guide',
     });
 
-    const { errors } = buildRepository(tmpDir);
-    expect(errors.some((e) => e.includes('Duplicate package ID'))).toBe(true);
+    writeJson(path.join(tmpDir, 'pkg-c', 'content.json'), {
+      id: 'duplicate-id',
+      title: 'Package C',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'pkg-c', 'manifest.json'), {
+      id: 'duplicate-id',
+      type: 'guide',
+    });
+
+    const { errors, duplicateIds } = buildRepository(tmpDir);
+    expect(errors).toEqual([
+      'Duplicate package ID "duplicate-id" in pkg-b',
+      'Duplicate package ID "duplicate-id" in pkg-c',
+    ]);
+    expect(duplicateIds).toEqual(['duplicate-id']);
   });
 
   it('should warn on invalid manifest but still include content-only entry', () => {
@@ -854,7 +870,7 @@ describe('buildRepositoryCommand streams', () => {
       errorSpy.mockRestore();
     }
 
-    expect(JSON.parse(stdoutChunks.join(''))).toHaveProperty('noisy');
+    expect(JSON.parse(stdoutChunks.join(''))).toEqual(buildRepository(tmpDir).repository);
     expect(stdoutLines).toEqual([]);
     expect(stderrLines.join('\n')).toContain('noisy: forwarding 1 extension field(s): owningTeam');
   });

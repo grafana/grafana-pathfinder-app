@@ -17,7 +17,10 @@ import {
   sweepCloudTargets,
 } from './cloud-provisioning';
 import type { CloudAuthPolicy } from './cloud-auth';
-import type { CloudChainCleanupRegistry } from './cloud-chain-cleanup-registry';
+import {
+  CloudChainCleanupRegistry as RealCloudChainCleanupRegistry,
+  type CloudChainCleanupRegistry,
+} from './cloud-chain-cleanup-registry';
 import type { CloudStackPoolManager } from './cloud-stack-pool-manager';
 import type { PackageMeta } from './e2e-results';
 
@@ -109,6 +112,27 @@ describe('ProvisionedCloudTargets', () => {
     await expect(provisioned.teardownAll({ outcome: 'cancelled' })).resolves.toEqual([]);
     expect(learnEnv.teardownChain).toHaveBeenCalledWith({ outcome: 'cancelled' });
     expect(playEnv.teardownChain).toHaveBeenCalledWith({ outcome: 'cancelled' });
+  });
+
+  it('registers shared targets for interrupted-run cleanup', async () => {
+    const registry = new RealCloudChainCleanupRegistry();
+    await provisionCloudTargetsForChain({
+      targetUrls: ['https://learn.grafana.net/'],
+      cloudAuth,
+      chain: [{ id: 'readonly' }],
+      packageMetaById: new Map([
+        ['readonly', { packageId: 'readonly', tier: 'cloud', targetUrl: 'https://learn.grafana.net/' }],
+      ]),
+      cloudChainCleanup: registry,
+      verbose: false,
+    });
+
+    const environment = (SharedCloudStackEnvironment as jest.Mock).mock.results.at(-1)?.value;
+    expect(environment).toBeDefined();
+    expect(await registry.teardownAll({ outcome: 'cancelled', used: true })).toEqual([]);
+    expect(environment.teardownChain).toHaveBeenCalledWith({ outcome: 'cancelled', used: true });
+    expect(await registry.teardownAll({ outcome: 'cancelled', used: true })).toEqual([]);
+    expect(environment.teardownChain).toHaveBeenCalledTimes(1);
   });
 
   it('looks up isolated target URLs and tokens by guide id', async () => {
@@ -263,7 +287,7 @@ describe('provisionCloudTargetsForChain', () => {
     expect(first).toBeDefined();
     expect(second).toBeDefined();
     expect(first!.teardownChain).toHaveBeenCalledTimes(1);
-    expect(second!.teardownChain).not.toHaveBeenCalled();
+    expect(second!.teardownChain).toHaveBeenCalledTimes(1);
   });
 
   it('leases one manager stack for an unsafe cloud chain', async () => {

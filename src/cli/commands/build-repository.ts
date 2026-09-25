@@ -237,10 +237,12 @@ export function buildRepository(
   warnings: string[];
   errors: string[];
   info: string[];
+  duplicateIds: readonly string[];
 } {
   const warnings: string[] = [];
   const errors: string[] = [];
   const info: string[] = [];
+  const duplicateIds = new Set<string>();
   const repository: RepositoryJson = {};
 
   const absoluteExcludes =
@@ -249,7 +251,7 @@ export function buildRepository(
 
   if (packageDirs.length === 0) {
     warnings.push(`No package directories with manifest.json found under ${root}`);
-    return { repository, warnings, errors, info };
+    return { repository, warnings, errors, info, duplicateIds: [] };
   }
 
   for (const packageDir of packageDirs) {
@@ -268,6 +270,7 @@ export function buildRepository(
     if (result.errors.length === 0) {
       if (repository[result.id] !== undefined) {
         errors.push(`Duplicate package ID "${result.id}" in ${result.dirName}`);
+        duplicateIds.add(result.id);
       } else {
         repository[result.id] = result.entry;
       }
@@ -280,7 +283,7 @@ export function buildRepository(
     errors.push(`Generated repository.json is invalid: ${messages}`);
   }
 
-  return { repository, warnings, errors, info };
+  return { repository, warnings, errors, info, duplicateIds: [...duplicateIds].sort() };
 }
 
 export const BuildRepositoryCommand = z.object({

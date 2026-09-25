@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { resolveLocalMetapackage } from './e2e-local-package';
+import { loadLocalRepositorySource, resolveLocalMetapackage } from './e2e-local-package';
 
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
@@ -43,6 +43,11 @@ describe('local metapackage input resolution', () => {
       blocks: [],
     });
     consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  });
+
+  it('keeps the existing repository.json requirement for local-target paths', () => {
+    expect(() => loadLocalRepositorySource(root)).toThrow();
+    expect(() => resolveLocalMetapackage(options(root, root))).toThrow();
   });
 
   it('preserves an explicit milestone starting location', () => {

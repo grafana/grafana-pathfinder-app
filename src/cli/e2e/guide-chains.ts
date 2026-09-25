@@ -30,6 +30,7 @@ export interface PackageExecutionPlan {
   chains: GuideChainRef[];
   autoIncludedIds: string[];
   errors: string[];
+  selectedPackageIds?: string[];
 }
 
 export interface ExecutionPlan {
@@ -41,6 +42,7 @@ export interface ExecutionPlan {
 export interface PlanPackageExecutionOptions {
   rootIds: string[];
   repository: RepositoryJson;
+  includeSelectedPackageIds?: boolean;
 }
 
 export interface PlanGuideExecutionOptions {
@@ -138,10 +140,14 @@ export function planPackageExecution(options: PlanPackageExecutionOptions): Pack
   }
   const providesIndex = buildProvidesIndex(options.repository);
 
-  const rootPlans = rootIds.map((rootId) =>
-    planRootPackageExecution({ rootIds: [rootId], repository: options.repository }, providesIndex)
-  );
-  return mergeRootPackagePlans(rootPlans);
+  const rootPlans = rootIds.map((rootId) => planRootPackageExecution({ ...options, rootIds: [rootId] }, providesIndex));
+  const merged = mergeRootPackagePlans(rootPlans);
+  return options.includeSelectedPackageIds && merged.errors.length === 0
+    ? {
+        ...merged,
+        selectedPackageIds: [...new Set(rootPlans.flatMap((plan) => plan.selectedPackageIds ?? []))].sort(),
+      }
+    : merged;
 }
 
 function mergeRootPackagePlans(rootPlans: PackageExecutionPlan[]): PackageExecutionPlan {
@@ -568,7 +574,12 @@ function planRootPackageExecution(
   chains.sort((left, right) => left[0]!.id.localeCompare(right[0]!.id));
 
   const autoIncludedIds = [...allLeaves].filter((id) => !explicitLeafIds.has(id)).sort();
-  return { chains, autoIncludedIds, errors };
+  return {
+    chains,
+    autoIncludedIds,
+    errors,
+    ...(options.includeSelectedPackageIds ? { selectedPackageIds: [...packageSet].sort() } : {}),
+  };
 }
 
 function compareLeafOrder(rank: Map<string, number>): (left: string, right: string) => number {
