@@ -42,6 +42,7 @@ import {
   type PathMember,
 } from '../global-state/path-member-join';
 import { meanOfMemberPercentages, type MemberRollupProgress } from '../lib/guide-stats';
+import { getManifestMilestoneIds, getManifestTracks } from '../types/package.types';
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
@@ -97,7 +98,29 @@ function formatLegacyBadgeTitle(badgeId: string): string {
 }
 
 /**
- * A path's rollup: the mean of its members' percentages
+ * A path's own Foundations milestones, plus each Path Tracks entry, as
+ * separate ordered id lists — a track is a presentation ordering over a
+ * subset/superset of guides, never a second completion authority
+ * (COMPLETION-MODEL.md decision 10), so each sequence rolls up on its own
+ * rather than being flattened into one list first.
+ *
+ * Filtered against `path.guides` (already the published-only member set —
+ * see `app-platform-paths.ts`), so an unpublished milestone/track guide
+ * drops out the same way it already does for the pre-tracks flat rollup.
+ * `path.manifest` is unset for a URL-based path (no tracks concept there —
+ * `path.guides` alone is that path's one and only sequence).
+ */
+function pathSequences(path: LearningPath): string[][] {
+  const guideIds = new Set(path.guides);
+  const foundations = path.manifest
+    ? getManifestMilestoneIds(path.manifest).filter((id) => guideIds.has(id))
+    : path.guides;
+  const tracks = getManifestTracks(path.manifest).map((track) => track.guides.filter((id) => guideIds.has(id)));
+  return [foundations, ...tracks].filter((sequence) => sequence.length > 0);
+}
+
+/**
+ * One sequence's rollup: the mean of its members' percentages
  * (docs/design/COMPLETION-MODEL.md, decision 4), joined to each member's
  * persisted percentage by content key (decision 9). Equal weight per
  * member, regardless of length.
@@ -112,12 +135,13 @@ function formatLegacyBadgeTitle(badgeId: string): string {
  * and correct, since that is the scheme it was published under. Only a
  * bundled member arrives without one and falls back to the id schemes.
  */
-function calculatePathRollup(
+function calculateSequenceRollup(
+  guideIds: readonly string[],
   path: LearningPath,
   completedGuides: readonly string[],
   resolveMemberUrl: (guideId: string, pathId: string) => string | undefined
 ): MemberRollupProgress {
-  const members: PathMember[] = path.guides.map((id) => {
+  const members: PathMember[] = guideIds.map((id) => {
     const url = resolveMemberUrl(id, path.id);
     return url ? { id, url } : { id };
   });
@@ -130,6 +154,27 @@ function calculatePathRollup(
     persistedPercentages: interactiveCompletionStorage.peekAll(),
   });
   return meanOfMemberPercentages(resolvedPercentages);
+}
+
+/**
+ * A path's rollup for My Learning: the BEST of its sequences' own rollups
+ * (Foundations, plus each track), not a blended average across every guide
+ * in every track — a track hitting 100% moves the path to Completed even
+ * if Foundations or another track isn't done. `meanOfMemberPercentages`
+ * reserves `percent: 100` for `complete`, so the sequence with the highest
+ * percent is always also the one driving `complete` correctly (a complete
+ * sequence's 100 beats any incomplete sequence's capped-at-99).
+ */
+function calculatePathRollup(
+  path: LearningPath,
+  completedGuides: readonly string[],
+  resolveMemberUrl: (guideId: string, pathId: string) => string | undefined
+): MemberRollupProgress {
+  const sequences = pathSequences(path);
+  return sequences.reduce<MemberRollupProgress>((best, guideIds) => {
+    const rollup = calculateSequenceRollup(guideIds, path, completedGuides, resolveMemberUrl);
+    return rollup.percent > best.percent ? rollup : best;
+  }, meanOfMemberPercentages([]));
 }
 
 /**

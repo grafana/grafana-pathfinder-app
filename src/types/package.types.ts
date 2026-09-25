@@ -195,6 +195,17 @@ export function getAllTrackGuideIds(tracks: ManifestTrack[]): string[] {
 }
 
 /**
+ * Safely reads a manifest-shaped value's `milestones` array, tolerating an
+ * untyped/untrusted source the same way `getManifestTracks` does.
+ */
+export function getManifestMilestoneIds(source?: { milestones?: unknown } | null): string[] {
+  if (!source || !Array.isArray(source.milestones)) {
+    return [];
+  }
+  return source.milestones.filter((id): id is string => typeof id === 'string');
+}
+
+/**
  * The full member set of a path/journey — `milestones` plus every guide
  * referenced by any `tracks` entry, deduplicated. For traversal concerns
  * (graph reachability, E2E chain expansion, orphan detection) where a guide
@@ -203,8 +214,8 @@ export function getAllTrackGuideIds(tracks: ManifestTrack[]): string[] {
  * `guides` as separate ordered lists, since order and sequence membership
  * (not flattened reachability) is exactly what a track's own tab must show.
  */
-export function getManifestMemberIds(source?: { milestones?: string[]; tracks?: unknown } | null): string[] {
-  const milestones = source?.milestones ?? [];
+export function getManifestMemberIds(source?: { milestones?: unknown; tracks?: unknown } | null): string[] {
+  const milestones = getManifestMilestoneIds(source);
   const trackGuides = getAllTrackGuideIds(getManifestTracks(source));
   return [...new Set([...milestones, ...trackGuides])];
 }

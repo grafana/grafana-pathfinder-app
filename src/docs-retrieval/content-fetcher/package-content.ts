@@ -11,6 +11,7 @@ import { ContentFetchResult, CoverPageTrack, LearningJourneyMetadata, Milestone 
 import type { ResolvedNavLink } from '../../types/context.types';
 import {
   getAllTrackGuideIds,
+  getManifestMilestoneIds,
   getManifestTracks,
   getPackageRenderType,
   type ManifestTrack,
@@ -203,13 +204,6 @@ function isPathManifest(manifest?: Record<string, unknown>): boolean {
     return false;
   }
   return manifest.type === 'path' || manifest.type === 'journey';
-}
-
-function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
-  if (!manifest || !Array.isArray(manifest.milestones)) {
-    return [];
-  }
-  return manifest.milestones.filter((s): s is string => typeof s === 'string');
 }
 
 /**
