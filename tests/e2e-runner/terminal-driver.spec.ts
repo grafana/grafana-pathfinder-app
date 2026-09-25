@@ -13,6 +13,7 @@ async function loadFixture(
   options: {
     outcome?: 'complete' | 'error' | 'detach' | 'disconnect' | 'hang';
     connected?: boolean;
+    continueRequired?: boolean;
     gcx?: boolean;
     unavailable?: boolean;
     customVm?: boolean;
@@ -48,6 +49,7 @@ async function loadFixture(
       const command = byId(ids.commandRoot);
       document.body.dataset.execCount = '0';
       document.body.dataset.connectCount = '0';
+      document.body.dataset.continueCount = '0';
       document.body.dataset.copyCount = '0';
       const makeConnected = () => {
         for (const root of [connect, command]) {
@@ -105,7 +107,10 @@ async function loadFixture(
               root.setAttribute('data-test-step-state', 'error');
             } else {
               makeConnected();
-              root.setAttribute('data-test-step-state', root === connect ? 'completed' : 'idle');
+              root.setAttribute(
+                'data-test-step-state',
+                root === connect && !options.continueRequired ? 'completed' : 'idle'
+              );
             }
           },
           options.retry || options.startup ? 350 : 50
@@ -126,7 +131,10 @@ async function loadFixture(
         byId(ids.connect).onclick = () => requestConnection(connect);
         byId(ids.commandConnect).onclick = () => requestConnection(command);
       }
-      byId(ids.continue).onclick = () => connect.setAttribute('data-test-step-state', 'completed');
+      byId(ids.continue).onclick = () => {
+        document.body.dataset.continueCount = String(Number(document.body.dataset.continueCount) + 1);
+        connect.setAttribute('data-test-step-state', 'completed');
+      };
       byId(ids.copy).onclick = () => {
         document.body.dataset.copyCount = String(Number(document.body.dataset.copyCount) + 1);
         command.setAttribute('data-test-step-state', 'completed');
@@ -202,6 +210,13 @@ for (const stepIndex of [0, 1]) {
   }
 }
 
+test('clicks Continue after a fresh connection that does not complete automatically', async ({ page }) => {
+  const { steps } = await loadFixture(page, { startup: 'complete', continueRequired: true });
+  expect(await executeStep(page, steps[0]!, { timeout: 3000 })).toMatchObject({ status: 'passed' });
+  await expect(page.locator('body')).toHaveAttribute('data-connect-count', '1');
+  await expect(page.locator('body')).toHaveAttribute('data-continue-count', '1');
+});
+
 test('connects through a standalone terminal step before executing', async ({ page }) => {
   const { steps } = await loadFixture(page);
   expect(await executeStep(page, steps[1]!)).toMatchObject({ status: 'passed' });
@@ -215,9 +230,6 @@ test('waits for an existing pending connection and clicks Continue once', async 
   await root.evaluate((element) => {
     element.setAttribute('data-test-terminal-status', 'connecting');
     const button = element.querySelector<HTMLButtonElement>('button[hidden]')!;
-    button.addEventListener('click', () => {
-      document.body.dataset.continueCount = String(Number(document.body.dataset.continueCount ?? '0') + 1);
-    });
     setTimeout(() => {
       element.setAttribute('data-test-terminal-status', 'connected');
       button.hidden = false;

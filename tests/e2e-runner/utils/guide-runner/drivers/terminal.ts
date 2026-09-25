@@ -58,7 +58,7 @@ async function waitForTerminal(
   root: Locator,
   stepId: string,
   deadline: number,
-  goal: 'connected' | 'completed' | 'skipped',
+  goal: 'connected' | 'completed' | 'skipped' | 'connection-step',
   startingFrom: string | null = null,
   sectionId?: string
 ): Promise<void> {
@@ -66,6 +66,7 @@ async function waitForTerminal(
   let awaitingStart = startingFrom === 'error' || startingFrom === 'disconnected';
   let sawConnecting = false;
   let expanded = false;
+  let continued = false;
   while (Date.now() < deadline) {
     const status = await root.evaluateAll((elements) => {
       const element = elements[0];
@@ -103,7 +104,11 @@ async function waitForTerminal(
       goal !== 'skipped' &&
       connection === 'disconnected' &&
       !awaitingStart &&
-      (goal === 'completed' || sawConnecting || expanded || startingFrom === 'disconnected')
+      (goal === 'completed' ||
+        goal === 'connection-step' ||
+        sawConnecting ||
+        expanded ||
+        startingFrom === 'disconnected')
     ) {
       throw new Error(`Terminal step ${stepId} disconnected before completion.`);
     }
@@ -113,6 +118,23 @@ async function waitForTerminal(
       ((goal === 'connected' && !expanded) || state === 'completed')
     ) {
       return;
+    }
+    if (goal === 'connection-step' && connection === 'connected' && !continued && !expanded) {
+      const button = root.getByTestId(testIds.interactive.terminalSkipButton(stepId));
+      if (await button.isVisible()) {
+        await dismissBadgeCelebrations(page);
+        continued = true;
+        try {
+          await button.click({ timeout: Math.min(1000, Math.max(1, deadline - Date.now())) });
+        } catch (error) {
+          const completedOrDetached = await root.evaluateAll(
+            (elements) => elements.length === 0 || elements[0]?.getAttribute('data-test-step-state') === 'completed'
+          );
+          if (!completedOrDetached) {
+            throw error;
+          }
+        }
+      }
     }
     await page.waitForTimeout(Math.min(COMPLETION_POLL_INTERVAL_MS, Math.max(1, deadline - Date.now())));
   }
@@ -227,31 +249,19 @@ function terminalDriver(kind: TerminalKind): StepDriver {
       ) {
         throw new Error('Disconnect the existing terminal before connecting to the requested sandbox.');
       }
+      if (connection !== 'connected' && connection !== 'connecting') {
+        await dismissBadgeCelebrations(page);
+        await root.getByTestId(testIds.interactive.terminalConnectButton(step.stepId)).click({ timeout: remaining() });
+      }
+      if (kind === 'terminal-connect') {
+        await waitForTerminal(page, root, step.stepId, deadline, 'connection-step', connection, step.sectionId);
+        return { outcome: 'completed' };
+      }
       if (connection !== 'connected') {
-        if (connection !== 'connecting') {
-          await dismissBadgeCelebrations(page);
-          await root
-            .getByTestId(testIds.interactive.terminalConnectButton(step.stepId))
-            .click({ timeout: remaining() });
-        }
-        await waitForTerminal(
-          page,
-          root,
-          step.stepId,
-          deadline,
-          kind === 'terminal-connect' && connection !== 'connecting' ? 'completed' : 'connected',
-          connection,
-          step.sectionId
-        );
-        if (kind === 'terminal-connect' && connection !== 'connecting') {
-          return { outcome: 'completed' };
-        }
+        await waitForTerminal(page, root, step.stepId, deadline, 'connected', connection, step.sectionId);
       }
       if ((await root.getAttribute('data-test-step-state', { timeout: remaining() })) !== 'completed') {
-        const actionId =
-          kind === 'terminal'
-            ? testIds.interactive.terminalExecButton(step.stepId)
-            : testIds.interactive.terminalSkipButton(step.stepId);
+        const actionId = testIds.interactive.terminalExecButton(step.stepId);
         await dismissBadgeCelebrations(page);
         await root.getByTestId(actionId).click({ timeout: remaining() });
       }

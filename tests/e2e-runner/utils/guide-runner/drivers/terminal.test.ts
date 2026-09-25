@@ -46,6 +46,7 @@ function setup(kind: 'terminal' | 'terminal-connect' = 'terminal') {
   };
   const skip = {
     count: jest.fn(async () => 1),
+    isVisible: jest.fn(async () => true),
     click: jest.fn(async () => {
       attributes['data-test-step-state'] = 'completed';
     }),
@@ -158,6 +159,23 @@ it.each(['terminal', 'terminal-connect'] as const)(
     expect(f.exec.click).not.toHaveBeenCalled();
   }
 );
+
+it.each([true, false])('clicks Continue once after its own connection; completes=%s', async (completes) => {
+  const f = setup('terminal-connect');
+  f.attributes['data-test-terminal-status'] = 'disconnected';
+  f.connect.click.mockImplementation(async () => {
+    f.attributes['data-test-terminal-status'] = 'connected';
+  });
+  if (!completes) {
+    f.skip.click.mockImplementation(async () => undefined);
+  }
+  expect(await executeStep(f.page, await f.step(), { timeout: 1000 })).toMatchObject({
+    status: completes ? 'passed' : 'failed',
+  });
+  expect(f.connect.click).toHaveBeenCalledTimes(1);
+  expect(f.skip.click).toHaveBeenCalledTimes(1);
+  expect(f.exec.click).not.toHaveBeenCalled();
+});
 
 it('continues an existing pending connection without starting another', async () => {
   const f = setup('terminal-connect');
