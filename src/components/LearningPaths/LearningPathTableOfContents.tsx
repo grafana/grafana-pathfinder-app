@@ -52,14 +52,12 @@ export interface LearningPathTableOfContentsProps {
   /**
    * The track selected the last time this path's cover page was shown, if
    * any — restores the tab selection on mount instead of defaulting to
-   * Foundations. Every navigation away from and back to the cover page
-   * remounts this component (ContentRenderer keys on the loaded URL), so
-   * without this a reader who picks a track, works through it, then hits
-   * Previous back to the cover loses that selection: the fresh mount starts
-   * at Foundations and its own mount-time `onActiveTrackChange` call
-   * immediately overwrites the caller's own record with it. Ignored when it
-   * doesn't name a real track in `tracks` (a different path's leftover
-   * selection) — same fallback `activeTrack` below already applies.
+   * Foundations. Every navigation remounts this component (ContentRenderer
+   * keys on the loaded URL), so without this a reader who picks a track and
+   * later hits Previous back to the cover loses that selection: the fresh
+   * mount's own mount-time `onActiveTrackChange` call would overwrite the
+   * caller's record with Foundations. Ignored when it doesn't name a real
+   * track in `tracks` (a different path's leftover selection).
    */
   initialActiveTrackId?: string | null;
 }

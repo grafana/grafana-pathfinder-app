@@ -425,13 +425,10 @@ describe('LearningPathTableOfContents', () => {
       expect(onActiveTrackChange).toHaveBeenLastCalledWith(null, null);
     });
 
-    // Regression: every navigation remounts this component (ContentRenderer
-    // keys on the loaded URL), including leaving a milestone via Previous
-    // back to this same cover page. Without initialActiveTrackId, the fresh
-    // mount always starts at Foundations and its own mount-time
-    // onActiveTrackChange call immediately overwrites the caller's stored
-    // selection with it — silently dropping a reader back to Foundations
-    // after working through a track.
+    // Every navigation remounts this component (ContentRenderer keys on the
+    // loaded URL). Without initialActiveTrackId, a fresh mount always starts
+    // at Foundations and its mount-time onActiveTrackChange call would
+    // overwrite the caller's stored selection with it.
     it('restores the selected tab from initialActiveTrackId instead of defaulting to Foundations on mount', () => {
       setCompletedSlugs(new Set());
       const onActiveTrackChange = jest.fn();

@@ -865,11 +865,9 @@ export const milestoneCompletionStorage = {
    * the journey's legacy record intact.
    *
    * `milestoneUrls` mirrors `getCompleted`/`getCompletedSync`'s own alias
-   * matching (`getStoredMilestoneSlugs`'s `exactKeys`): a pre-migration
-   * record can be stored under a milestone's own URL rather than under any
-   * key that canonicalizes to the journey base, so canonical-only matching
-   * would leave such a record in place while the read path still reports it
-   * as complete.
+   * matching (`getStoredMilestoneSlugs`'s `exactKeys`): a legacy record can
+   * be stored under a milestone's own URL, not only under a key that
+   * canonicalizes to the journey base.
    */
   async removeCompleted(journeyBaseUrl: string, milestoneSlug: string, milestoneUrls: string[] = []): Promise<void> {
     try {

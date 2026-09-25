@@ -306,14 +306,11 @@ describe('DocsPanelContentArea', () => {
       expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('');
     });
 
-    // The cover's own learningJourney.baseUrl is a resolved fetch URL, not
-    // a stable path identity — fetchPackageContent's own classification
-    // logic already treats a raw/PR-tester cover URL as different from the
-    // resolver's
-    // canonical URL for the SAME manifest id (returning via Previous
-    // fetches the canonical URL, not whatever URL the cover was originally
-    // opened with). The restore must survive that, since the manifest id
-    // is identical either way.
+    // learningJourney.baseUrl is a resolved fetch URL, not a stable path
+    // identity — a raw/PR-tester cover URL and the resolver's canonical URL
+    // for the same manifest id are legitimately different strings, and
+    // returning via Previous fetches the canonical one. The restore must
+    // survive that.
     it('restores initialActiveTrackId when the manifest id matches even though learningJourney.baseUrl differs (raw vs canonical cover URL)', () => {
       const base = makeProps();
       const props = makeProps({

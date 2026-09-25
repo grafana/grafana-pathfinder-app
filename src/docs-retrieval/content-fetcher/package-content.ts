@@ -330,11 +330,9 @@ export async function fetchPackageContent(
   // explicitly allows) would otherwise be misclassified as index 0 and
   // render as the path's cover instead of as itself.
   //
-  // Gated to type === 'path' specifically, not needsMilestones (true for
-  // journey too): RFC §6.1 / schema Rule 3 restrict tracks to paths, but
-  // that rule only runs in superRefine, which many runtime loaders skip by
-  // parsing the unrefined object schema directly — a journey manifest that
-  // still carries a stray tracks array must not grow cover-page tabs.
+  // Gated to type === 'path' specifically, not needsMilestones (also true
+  // for journey): RFC §6.1 / schema Rule 3 restrict tracks to paths, but
+  // that rule only runs in superRefine, which many runtime loaders skip.
   const tracksEligible = needsMilestones && packageManifest?.type === 'path';
   const manifestTracks = tracksEligible ? getManifestTracks(packageManifest) : [];
   const shouldResolveTracks = tracksEligible && manifestTracks.length > 0;

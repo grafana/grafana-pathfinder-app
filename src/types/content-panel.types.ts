@@ -82,21 +82,12 @@ export interface LearningJourneyTab {
   activeTrackMilestones?: Milestone[] | null;
   /**
    * The cover page's own `packageManifest.id` at the moment `activeTrackId`
-   * was recorded — a role-style trackId (`builder`, `seller`) is commonly
-   * reused across unrelated paths, and every navigation remounts
-   * `LearningPathTableOfContents` with no path identity of its own, so a
-   * consumer restoring `activeTrackId` on a fresh mount must confirm it was
-   * recorded for THIS path's cover, not a different one that happens to
-   * declare a same-named track.
-   *
-   * Deliberately the manifest id, not `learningJourney.baseUrl`: this PR's
-   * own classification logic (`fetchPackageContent`) never treats a
-   * resolved URL as a stable identity, because a raw/PR-tester cover URL
-   * and the resolver's canonical URL for the SAME path are legitimately
-   * different strings — `baseUrl` on a cover reached via Previous (which
-   * navigates to the canonical URL) would silently fail to match one
-   * recorded from the original raw-URL cover load. The manifest id is the
-   * same regardless of which URL fetched it.
+   * was recorded — lets a consumer confirm a restored `activeTrackId` was
+   * recorded for THIS path, not a different one reusing the same role-style
+   * trackId (`builder`, `seller`). Deliberately the manifest id, not a
+   * resolved URL: a raw/PR-tester cover URL and the resolver's canonical URL
+   * for the same path are legitimately different strings, so a URL-based
+   * check would fail on a cover reached via Previous.
    */
   activeTrackPathId?: string | null;
 }
