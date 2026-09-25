@@ -16,7 +16,7 @@ jest.mock('../artifacts', () => ({ captureFailureArtifacts: jest.fn().mockResolv
 
 import type { Locator, Page } from '@playwright/test';
 import { testIds } from '../../../../../src/constants/testIds';
-import { executeStep } from '../execution';
+import { executeStep, summarizeResults } from '../execution';
 import type { TestableStep } from '../types';
 import { terminalCommandDriver, terminalConnectDriver, TERMINAL_CONNECTION_TIMEOUT_MS } from './terminal';
 
@@ -235,10 +235,17 @@ it('reports unmet requirements without attempting an unavailable Skip on an opti
   f.skip.count.mockResolvedValue(0);
   const step = await f.step();
   expect(step.skippable).toBe(true);
-  expect(await executeStep(f.page, step)).toMatchObject({
+  const result = await executeStep(f.page, step);
+  expect(result).toMatchObject({
     status: 'failed',
+    skippable: true,
     error: expect.stringContaining('Requirements not met'),
   });
+  expect(summarizeResults([result])).toMatchObject({ mandatoryFailed: 0, skippableFailed: 1, success: false });
+  const successful = setup();
+  const passed = await executeStep(successful.page, await successful.step());
+  expect(passed.status).toBe('passed');
+  expect(summarizeResults([passed, result])).toMatchObject({ mandatoryFailed: 0, skippableFailed: 1, success: true });
   expect(f.skip.click).not.toHaveBeenCalled();
   expect(f.exec.click).not.toHaveBeenCalled();
 });

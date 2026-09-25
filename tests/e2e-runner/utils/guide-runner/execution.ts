@@ -417,7 +417,7 @@ async function executeStepWork(
         currentUrl: page.url(),
         consoleErrors,
         error: errorMsg,
-        skippable: false,
+        skippable: step.skippable,
         classification: classifyError(errorMsg),
         artifacts: await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath),
       };

@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { testIds } from '../../src/constants/testIds';
 import { discoverStepsFromDOM } from './utils/guide-runner/discovery';
 import { terminalCommandDriver } from './utils/guide-runner/drivers/terminal';
-import { calculateStepTimeout, executeAllSteps, executeStep } from './utils/guide-runner/execution';
+import { calculateStepTimeout, executeAllSteps, executeStep, summarizeResults } from './utils/guide-runner/execution';
 
 // These fixtures exercise real Playwright controls, not a real Coda session.
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -332,33 +332,51 @@ for (const kind of ['terminal', 'terminal-connect', 'skip'] as const) {
   }
 }
 
-test('reports requirements instead of Skip sync after an earlier optional command fails', async ({ page }) => {
-  await loadFixture(page, { connected: true, skippable: true, outcome: 'error' });
-  await page.getByTestId(testIds.interactive.terminalStep('command')).evaluate(
-    (element, ids) => {
-      const blocked = element.cloneNode(true) as HTMLElement;
-      blocked.dataset.testid = ids.root;
-      blocked.setAttribute('data-test-step-id', 'blocked');
-      blocked.setAttribute('data-test-step-state', 'requirements-unmet');
-      blocked.querySelectorAll('button').forEach((button) => button.remove());
-      const requirement = document.createElement('div');
-      requirement.dataset.testid = ids.requirement;
-      requirement.textContent = 'Complete previous step';
-      blocked.append(requirement);
-      element.after(blocked);
-    },
-    { root: testIds.interactive.terminalStep('blocked'), requirement: testIds.interactive.requirementCheck('blocked') }
-  );
-  const { steps } = await discoverStepsFromDOM(page);
-  const result = await executeAllSteps(
-    page,
-    steps.filter((step) => step.stepKind === 'terminal'),
-    { sessionValidator: async () => ({ valid: true }) }
-  );
-  expect(result.results[0]).toMatchObject({ status: 'failed', skippable: true });
-  expect(result.results[1]).toMatchObject({ status: 'failed', error: 'Requirements not met: Complete previous step' });
-  await expect(page.locator('body')).toHaveAttribute('data-exec-count', '1');
-});
+for (const includePassingConnection of [true, false]) {
+  test(`keeps blocked optional failures optional; prior pass=${includePassingConnection}`, async ({ page }) => {
+    await loadFixture(page, { connected: true, skippable: true, outcome: 'error' });
+    await page.getByTestId(testIds.interactive.terminalStep('command')).evaluate(
+      (element, ids) => {
+        const blocked = element.cloneNode(true) as HTMLElement;
+        blocked.dataset.testid = ids.root;
+        blocked.setAttribute('data-test-step-id', 'blocked');
+        blocked.setAttribute('data-test-step-state', 'requirements-unmet');
+        blocked.querySelectorAll('button').forEach((button) => button.remove());
+        const requirement = document.createElement('div');
+        requirement.dataset.testid = ids.requirement;
+        requirement.textContent = 'Complete previous step';
+        blocked.append(requirement);
+        element.after(blocked);
+      },
+      {
+        root: testIds.interactive.terminalStep('blocked'),
+        requirement: testIds.interactive.requirementCheck('blocked'),
+      }
+    );
+    const { steps } = await discoverStepsFromDOM(page);
+    const result = await executeAllSteps(
+      page,
+      includePassingConnection ? steps : steps.filter((step) => step.stepKind === 'terminal'),
+      { sessionValidator: async () => ({ valid: true }) }
+    );
+    const offset = includePassingConnection ? 1 : 0;
+    if (includePassingConnection) {
+      expect(result.results[0]).toMatchObject({ status: 'passed' });
+    }
+    expect(result.results[offset]).toMatchObject({ status: 'failed', skippable: true });
+    expect(result.results[offset + 1]).toMatchObject({
+      status: 'failed',
+      skippable: true,
+      error: 'Requirements not met: Complete previous step',
+    });
+    expect(summarizeResults(result.results)).toMatchObject({
+      mandatoryFailed: 0,
+      skippableFailed: 2,
+      success: includePassingConnection,
+    });
+    await expect(page.locator('body')).toHaveAttribute('data-exec-count', '1');
+  });
+}
 
 test('refuses missing Coda and stops before the command', async ({ page }) => {
   const { steps } = await loadFixture(page, { unavailable: true });
