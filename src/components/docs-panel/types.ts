@@ -130,11 +130,11 @@ export interface DocsPanelModelOperations {
    * cover page too — see `LearningJourneyTab.activeTrackMilestones`. Called
    * by `LearningPathTableOfContents` via `onActiveTrackChange`.
    *
-   * `baseUrl` is the cover's own `learningJourney.baseUrl` at selection
-   * time, persisted as `activeTrackBaseUrl` — see that field's own doc
-   * comment for why a restore needs it.
+   * `pathId` is the cover's own `packageManifest.id` at selection time,
+   * persisted as `activeTrackPathId` — see that field's own doc comment for
+   * why a restore needs the manifest id rather than a resolved URL.
    */
-  setActiveTrackId(tabId: string, trackId: string | null, milestones?: Milestone[] | null, baseUrl?: string): void;
+  setActiveTrackId(tabId: string, trackId: string | null, milestones?: Milestone[] | null, pathId?: string): void;
 
   /** Open the dev tools tab (or switch to it if already open) */
   openDevToolsTab(): void;

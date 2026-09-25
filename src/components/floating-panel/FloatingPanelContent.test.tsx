@@ -121,20 +121,17 @@ describe('FloatingPanelContent completion emission', () => {
   });
 });
 
-// Bugbot: "Floating panel drops track restore" — this ContentRenderer also
-// remounts on every content URL change (its own `key={content.url}`), so it
-// needs the same initialActiveTrackId restore path the sidebar surface has,
-// gated on the same activeTrackBaseUrl match (see the sibling test group in
-// DocsPanelContentArea.test.tsx for the leftover-across-paths rationale).
+// This ContentRenderer also remounts on every content URL change (its own
+// `key={content.url}`), so it needs the same initialActiveTrackId restore
+// path the sidebar surface has, gated on the same activeTrackPathId match
+// (see the sibling test group in DocsPanelContentArea.test.tsx for the
+// leftover-across-paths rationale).
 describe('FloatingPanelContent active track tab restore', () => {
-  it("records the selecting cover page's own baseUrl alongside the trackId", () => {
+  it("records the selecting cover page's own manifest id alongside the trackId", () => {
     const model = panelModel();
     render(
       <FloatingPanelContent
-        content={content({
-          type: 'learning-journey',
-          metadata: { learningJourney: { baseUrl: 'https://example.com/path-a/' } },
-        })}
+        content={content({ type: 'learning-journey', metadata: { packageManifest: { id: 'path-a' } } })}
         activeTab={activeTab()}
         model={model}
       />
@@ -142,17 +139,14 @@ describe('FloatingPanelContent active track tab restore', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Select builder track' }));
 
-    expect(model.setActiveTrackId).toHaveBeenCalledWith('tab-1', 'builder', [], 'https://example.com/path-a/');
+    expect(model.setActiveTrackId).toHaveBeenCalledWith('tab-1', 'builder', [], 'path-a');
   });
 
-  it('restores initialActiveTrackId when the stored selection matches the current cover baseUrl', () => {
+  it('restores initialActiveTrackId when the stored selection matches the current cover manifest id', () => {
     render(
       <FloatingPanelContent
-        content={content({
-          type: 'learning-journey',
-          metadata: { learningJourney: { baseUrl: 'https://example.com/path-a/' } },
-        })}
-        activeTab={activeTab({ activeTrackId: 'builder', activeTrackBaseUrl: 'https://example.com/path-a/' })}
+        content={content({ type: 'learning-journey', metadata: { packageManifest: { id: 'path-a' } } })}
+        activeTab={activeTab({ activeTrackId: 'builder', activeTrackPathId: 'path-a' })}
         model={panelModel()}
       />
     );
@@ -164,16 +158,36 @@ describe('FloatingPanelContent active track tab restore', () => {
     render(
       <FloatingPanelContent
         // Path B, which happens to declare a same-named "builder" track.
-        content={content({
-          type: 'learning-journey',
-          metadata: { learningJourney: { baseUrl: 'https://example.com/path-b/' } },
-        })}
-        activeTab={activeTab({ activeTrackId: 'builder', activeTrackBaseUrl: 'https://example.com/path-a/' })}
+        content={content({ type: 'learning-journey', metadata: { packageManifest: { id: 'path-b' } } })}
+        activeTab={activeTab({ activeTrackId: 'builder', activeTrackPathId: 'path-a' })}
         model={panelModel()}
       />
     );
 
     expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('');
+  });
+
+  // learningJourney.baseUrl is a resolved fetch URL, not a stable path
+  // identity — a raw/PR-tester cover URL and the resolver's canonical URL
+  // for the SAME manifest id are legitimately different strings, and
+  // returning via Previous fetches the canonical one. The restore must
+  // survive that.
+  it('restores initialActiveTrackId when the manifest id matches even though learningJourney.baseUrl differs (raw vs canonical cover URL)', () => {
+    render(
+      <FloatingPanelContent
+        content={content({
+          type: 'learning-journey',
+          metadata: {
+            packageManifest: { id: 'path-a' },
+            learningJourney: { baseUrl: 'https://cdn.example.com/canonical/path-a/' },
+          },
+        })}
+        activeTab={activeTab({ activeTrackId: 'builder', activeTrackPathId: 'path-a' })}
+        model={panelModel()}
+      />
+    );
+
+    expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('builder');
   });
 });
 

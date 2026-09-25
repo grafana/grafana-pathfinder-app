@@ -121,6 +121,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   const { config: pluginConfig } = usePathfinderPluginConfig();
   const twoTabControllerEnabled = pluginConfig.enableTwoTabController;
 
+  // The active track restore's identity — see LearningJourneyTab.activeTrackPathId's
+  // doc comment for why this is the manifest id, not a resolved URL.
+  const stableContentPathId = stableContent?.metadata.packageManifest?.id;
+  const activeCoverPathId = typeof stableContentPathId === 'string' ? stableContentPathId : undefined;
+
   const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
 
   // The loading-state milestone bar below reads journeyProgressFromMilestones
@@ -453,18 +458,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onActiveTrackChange={
                         activeTab
                           ? (trackId, milestones) =>
-                              model.setActiveTrackId(
-                                activeTab.id,
-                                trackId,
-                                milestones,
-                                stableContent.metadata.learningJourney?.baseUrl
-                              )
+                              model.setActiveTrackId(activeTab.id, trackId, milestones, activeCoverPathId)
                           : undefined
                       }
                       initialActiveTrackId={
-                        activeTab?.activeTrackBaseUrl === stableContent.metadata.learningJourney?.baseUrl
-                          ? activeTab?.activeTrackId
-                          : undefined
+                        activeTab?.activeTrackPathId === activeCoverPathId ? activeTab?.activeTrackId : undefined
                       }
                     />
                   </AlignmentPendingContext.Provider>

@@ -245,42 +245,37 @@ describe('DocsPanelContentArea', () => {
     // LearningPathTableOfContents with no path identity of its own — so a
     // stored activeTrackId must only be restored when it was recorded for
     // THIS path's cover, never a different one that happens to declare a
-    // same-named track (Bugbot: "leftover track restored across paths").
-    it("records the selecting cover page's own baseUrl alongside the trackId", () => {
+    // same-named track.
+    it("records the selecting cover page's own manifest id alongside the trackId", () => {
       const base = makeProps();
       const props = makeProps({
         stableContent: {
           url: base.activeTab!.baseUrl,
           type: 'learning-journey',
           content: '',
-          metadata: { learningJourney: { baseUrl: 'https://example.com/path-a/', totalMilestones: 2 } },
+          metadata: { packageManifest: { id: 'path-a' }, learningJourney: { totalMilestones: 2 } },
         } as any,
       });
 
       render(<DocsPanelContentArea {...props} />);
       fireEvent.click(screen.getByRole('button', { name: 'Select builder track' }));
 
-      expect(props.model.setActiveTrackId).toHaveBeenCalledWith(
-        props.activeTab!.id,
-        'builder',
-        [],
-        'https://example.com/path-a/'
-      );
+      expect(props.model.setActiveTrackId).toHaveBeenCalledWith(props.activeTab!.id, 'builder', [], 'path-a');
     });
 
-    it('restores initialActiveTrackId when the stored selection matches the current cover baseUrl', () => {
+    it('restores initialActiveTrackId when the stored selection matches the current cover manifest id', () => {
       const base = makeProps();
       const props = makeProps({
         activeTab: {
           ...base.activeTab,
           activeTrackId: 'builder',
-          activeTrackBaseUrl: 'https://example.com/path-a/',
+          activeTrackPathId: 'path-a',
         } as any,
         stableContent: {
           url: base.activeTab!.baseUrl,
           type: 'learning-journey',
           content: '',
-          metadata: { learningJourney: { baseUrl: 'https://example.com/path-a/', totalMilestones: 2 } },
+          metadata: { packageManifest: { id: 'path-a' }, learningJourney: { totalMilestones: 2 } },
         } as any,
       });
 
@@ -295,20 +290,54 @@ describe('DocsPanelContentArea', () => {
         activeTab: {
           ...base.activeTab,
           activeTrackId: 'builder',
-          activeTrackBaseUrl: 'https://example.com/path-a/',
+          activeTrackPathId: 'path-a',
         } as any,
         stableContent: {
           url: base.activeTab!.baseUrl,
           type: 'learning-journey',
           content: '',
           // Path B, which happens to declare a same-named "builder" track.
-          metadata: { learningJourney: { baseUrl: 'https://example.com/path-b/', totalMilestones: 2 } },
+          metadata: { packageManifest: { id: 'path-b' }, learningJourney: { totalMilestones: 2 } },
         } as any,
       });
 
       render(<DocsPanelContentArea {...props} />);
 
       expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('');
+    });
+
+    // The cover's own learningJourney.baseUrl is a resolved fetch URL, not
+    // a stable path identity — fetchPackageContent's own classification
+    // logic already treats a raw/PR-tester cover URL as different from the
+    // resolver's
+    // canonical URL for the SAME manifest id (returning via Previous
+    // fetches the canonical URL, not whatever URL the cover was originally
+    // opened with). The restore must survive that, since the manifest id
+    // is identical either way.
+    it('restores initialActiveTrackId when the manifest id matches even though learningJourney.baseUrl differs (raw vs canonical cover URL)', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          activeTrackId: 'builder',
+          activeTrackPathId: 'path-a',
+        } as any,
+        stableContent: {
+          url: base.activeTab!.baseUrl,
+          type: 'learning-journey',
+          content: '',
+          metadata: {
+            packageManifest: { id: 'path-a' },
+            // Same path, but reached this time via its canonical resolved
+            // URL rather than the raw URL the original cover load used.
+            learningJourney: { baseUrl: 'https://cdn.example.com/canonical/path-a/', totalMilestones: 2 },
+          },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+
+      expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('builder');
     });
   });
 

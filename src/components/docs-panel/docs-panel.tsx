@@ -779,12 +779,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     tabId: string,
     trackId: string | null,
     milestones?: Milestone[] | null,
-    baseUrl?: string
+    pathId?: string
   ): void {
     this.setState({
       tabs: this.state.tabs.map((tab) =>
         tab.id === tabId
-          ? { ...tab, activeTrackId: trackId, activeTrackMilestones: milestones, activeTrackBaseUrl: baseUrl }
+          ? { ...tab, activeTrackId: trackId, activeTrackMilestones: milestones, activeTrackPathId: pathId }
           : tab
       ),
     });
