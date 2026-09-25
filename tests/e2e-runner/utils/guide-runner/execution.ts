@@ -379,7 +379,7 @@ async function executeStepWork(
     const { requirements, fixResult } = await driver.checkRequirements({ page, step, timeout, verbose, artifactsDir });
 
     if (!requirements.requirementsMet && requirements.status === 'unmet') {
-      if (determineUnmetRequirementOutcome(step.skippable) === 'skip') {
+      if (determineUnmetRequirementOutcome(step.skippable && requirements.skippable) === 'skip') {
         try {
           await driver.skip(page, step.stepId);
         } catch (syncError) {

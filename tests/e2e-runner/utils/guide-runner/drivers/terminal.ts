@@ -64,7 +64,7 @@ async function waitForTerminal(
 ): Promise<void> {
   const startDeadline = Math.min(deadline, Date.now() + TERMINAL_CONNECTION_START_TIMEOUT_MS);
   let awaitingStart = startingFrom === 'error' || startingFrom === 'disconnected';
-  let sawConnecting = false;
+  let sawConnecting = startingFrom === 'connecting';
   let expanded = false;
   let continued = false;
   while (Date.now() < deadline) {
@@ -199,16 +199,17 @@ function terminalDriver(kind: TerminalKind): StepDriver {
         ['connected', 'connecting'].includes((await readAttribute('data-test-terminal-status')) ?? '') &&
         (await readAttribute('data-test-terminal-vm-requested')) === 'true';
       const unmet = gcx || unavailable || existingSandbox || state === 'requirements-unmet';
+      const hasSkipButton =
+        kind === 'terminal' &&
+        (await root.getByTestId(testIds.interactive.terminalSkipButton(step.stepId)).count()) > 0;
       return {
         requirements: {
           requirementsMet: !unmet,
           status: unmet ? 'unmet' : 'met',
           hasFixButton: false,
           hasRetryButton: false,
-          hasSkipButton:
-            kind === 'terminal' &&
-            (await root.getByTestId(testIds.interactive.terminalSkipButton(step.stepId)).count()) > 0,
-          skippable: step.skippable,
+          hasSkipButton,
+          skippable: step.skippable && hasSkipButton,
           isChecking: false,
           explanationText: gcx
             ? 'Automatic gcx credential provisioning is not supported by the terminal runner.'

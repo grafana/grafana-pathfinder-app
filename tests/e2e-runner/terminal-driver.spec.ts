@@ -332,6 +332,34 @@ for (const kind of ['terminal', 'terminal-connect', 'skip'] as const) {
   }
 }
 
+test('reports requirements instead of Skip sync after an earlier optional command fails', async ({ page }) => {
+  await loadFixture(page, { connected: true, skippable: true, outcome: 'error' });
+  await page.getByTestId(testIds.interactive.terminalStep('command')).evaluate(
+    (element, ids) => {
+      const blocked = element.cloneNode(true) as HTMLElement;
+      blocked.dataset.testid = ids.root;
+      blocked.setAttribute('data-test-step-id', 'blocked');
+      blocked.setAttribute('data-test-step-state', 'requirements-unmet');
+      blocked.querySelectorAll('button').forEach((button) => button.remove());
+      const requirement = document.createElement('div');
+      requirement.dataset.testid = ids.requirement;
+      requirement.textContent = 'Complete previous step';
+      blocked.append(requirement);
+      element.after(blocked);
+    },
+    { root: testIds.interactive.terminalStep('blocked'), requirement: testIds.interactive.requirementCheck('blocked') }
+  );
+  const { steps } = await discoverStepsFromDOM(page);
+  const result = await executeAllSteps(
+    page,
+    steps.filter((step) => step.stepKind === 'terminal'),
+    { sessionValidator: async () => ({ valid: true }) }
+  );
+  expect(result.results[0]).toMatchObject({ status: 'failed', skippable: true });
+  expect(result.results[1]).toMatchObject({ status: 'failed', error: 'Requirements not met: Complete previous step' });
+  await expect(page.locator('body')).toHaveAttribute('data-exec-count', '1');
+});
+
 test('refuses missing Coda and stops before the command', async ({ page }) => {
   const { steps } = await loadFixture(page, { unavailable: true });
   const result = await executeAllSteps(page, steps, { sessionValidator: async () => ({ valid: true }) });

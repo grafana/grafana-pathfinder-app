@@ -228,6 +228,35 @@ it('synchronizes Skip after section collapse without requiring a connection', as
   expect(f.exec.click).not.toHaveBeenCalled();
 });
 
+it('reports unmet requirements without attempting an unavailable Skip on an optional step', async () => {
+  const f = setup();
+  f.attributes['data-test-skippable'] = 'true';
+  f.attributes['data-test-step-state'] = 'requirements-unmet';
+  f.skip.count.mockResolvedValue(0);
+  const step = await f.step();
+  expect(step.skippable).toBe(true);
+  expect(await executeStep(f.page, step)).toMatchObject({
+    status: 'failed',
+    error: expect.stringContaining('Requirements not met'),
+  });
+  expect(f.skip.click).not.toHaveBeenCalled();
+  expect(f.exec.click).not.toHaveBeenCalled();
+});
+
+it.each(['terminal', 'terminal-connect'] as const)(
+  'fails a pending %s connection lost before the first poll',
+  async (kind) => {
+    const f = setup(kind);
+    f.attributes['data-test-terminal-status'] = 'connecting';
+    f.root.evaluateAll.mockResolvedValueOnce({ state: 'idle', connection: 'disconnected' });
+    await expect(
+      f.driver.execute({ page: f.page, step: await f.step(), timeout: 5000, verbose: false })
+    ).rejects.toThrow('disconnected before completion');
+    expect(f.page.waitForTimeout).not.toHaveBeenCalled();
+    expect(f.connect.click).not.toHaveBeenCalled();
+  }
+);
+
 it('reserves a provisioning budget for both terminal kinds', async () => {
   const f = setup();
   expect(terminalConnectDriver.timeout(await f.step())).toBe(TERMINAL_CONNECTION_TIMEOUT_MS);
