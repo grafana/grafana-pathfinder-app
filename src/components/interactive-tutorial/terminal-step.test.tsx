@@ -5,6 +5,8 @@
 import React from 'react';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TerminalStep } from './terminal-step';
+import { testIds } from '../../constants/testIds';
+import { markStepCompleted } from '../../global-state/completion-store';
 
 // Mock Grafana UI components
 jest.mock('@grafana/ui', () => ({
@@ -38,14 +40,16 @@ jest.mock('../../lib/analytics', () => ({
   buildInteractiveStepProperties: jest.fn((props: unknown) => props),
 }));
 
-// Mock useStepChecker
 const mockCheckerResetStep = jest.fn();
+let mockCheckerOverrides: { isEnabled?: boolean; isChecking?: boolean; explanation?: string; canSkip?: boolean } = {};
 jest.mock('../../requirements-manager', () => ({
-  useStepChecker: () => ({
-    isEnabled: true,
+  useStepChecker: ({ isEligibleForChecking }: { isEligibleForChecking: boolean }) => ({
+    isEnabled: isEligibleForChecking,
     isChecking: false,
-    explanation: null,
+    explanation: isEligibleForChecking ? null : 'Complete previous step',
+    canSkip: false,
     resetStep: (...args: unknown[]) => mockCheckerResetStep(...args),
+    ...mockCheckerOverrides,
   }),
   validateInteractiveRequirements: jest.fn(),
 }));
@@ -99,6 +103,7 @@ describe('TerminalStep', () => {
     mockTerminalStatus = 'connected';
     mockIsTerminalRegistered = true;
     mockSandboxUnavailable = null;
+    mockCheckerOverrides = {};
   });
 
   // The provider mounts even when the panel that owns `connect` is gated away,
@@ -122,6 +127,129 @@ describe('TerminalStep', () => {
     render(<TerminalStep command="ls -la" />);
 
     expect(screen.getByText('Connect terminal')).toBeInTheDocument();
+  });
+
+  it('exposes connection and execution controls without treating Copy as Exec', async () => {
+    render(<TerminalStep stepId="contract-command" command="echo hello" />);
+    const root = screen.getByTestId(testIds.interactive.terminalStep('contract-command'));
+    expect(root).toHaveAttribute('data-test-terminal-status', 'connected');
+    expect(root).toHaveAttribute('data-test-terminal-unavailable', 'false');
+    fireEvent.click(screen.getByTestId(testIds.interactive.terminalExecButton('contract-command')));
+    await waitFor(() => expect(markStepCompleted).toHaveBeenCalledWith('contract-command', undefined, 'manual'));
+    expect(mockSendCommand).toHaveBeenCalledWith('echo hello');
+    expect(mockWriteText).not.toHaveBeenCalled();
+  });
+
+  it('exposes dispatch errors without completing and clears the error on retry', async () => {
+    mockSendCommand.mockRejectedValueOnce(new Error('Disconnected'));
+    render(<TerminalStep stepId="dispatch-error" command="echo hello" />);
+    const exec = screen.getByTestId(testIds.interactive.terminalExecButton('dispatch-error'));
+    fireEvent.click(exec);
+    const error = await screen.findByTestId(testIds.interactive.errorMessage('dispatch-error'));
+    expect(error).toHaveTextContent('The command could not be sent');
+    expect(screen.getByTestId(testIds.interactive.terminalStep('dispatch-error'))).toHaveAttribute(
+      'data-test-step-state',
+      'error'
+    );
+    expect(markStepCompleted).not.toHaveBeenCalled();
+    fireEvent.click(exec);
+    await waitFor(() => expect(markStepCompleted).toHaveBeenCalled());
+    expect(screen.queryByTestId(testIds.interactive.errorMessage('dispatch-error'))).not.toBeInTheDocument();
+  });
+
+  it('exposes the unavailable prerequisite while retaining Copy for human use', () => {
+    mockTerminalStatus = 'disconnected';
+    mockSandboxUnavailable = 'The Coda plugin is missing.';
+    render(<TerminalStep stepId="missing-coda" command="echo hello" />);
+    expect(screen.getByTestId(testIds.interactive.terminalStep('missing-coda'))).toHaveAttribute(
+      'data-test-terminal-unavailable',
+      'true'
+    );
+    expect(screen.getByTestId(testIds.interactive.requirementCheck('missing-coda'))).toHaveTextContent(
+      mockSandboxUnavailable
+    );
+    expect(screen.getByTestId(testIds.interactive.terminalCopyButton('missing-coda'))).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.interactive.terminalConnectButton('missing-coda'))).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])('offers unavailable-Coda Skip only when authored skippable=%s', (skippable) => {
+    mockTerminalStatus = 'disconnected';
+    mockSandboxUnavailable = 'The Coda plugin is missing.';
+    render(<TerminalStep stepId="optional-unavailable" command="echo hello" skippable={skippable} />);
+
+    expect(screen.getByTestId(testIds.interactive.terminalStep('optional-unavailable'))).toHaveAttribute(
+      'data-test-skippable',
+      String(skippable)
+    );
+    const skip = screen.queryByTestId(testIds.interactive.terminalSkipButton('optional-unavailable'));
+    if (skippable) {
+      expect(skip).toBeVisible();
+      fireEvent.click(skip!);
+      expect(markStepCompleted).toHaveBeenCalledWith('optional-unavailable', undefined, 'manual');
+    } else {
+      expect(skip).not.toBeInTheDocument();
+      expect(markStepCompleted).not.toHaveBeenCalled();
+    }
+    expect(mockSendCommand).not.toHaveBeenCalled();
+    expect(mockOpenTerminal).not.toHaveBeenCalled();
+    expect(mockWriteText).not.toHaveBeenCalled();
+  });
+
+  it('does not offer Skip while a preceding step is incomplete', () => {
+    render(<TerminalStep stepId="blocked" command="echo hello" skippable isEligibleForChecking={false} />);
+    expect(screen.getByText('Complete previous step')).toBeVisible();
+    expect(screen.queryByTestId(testIds.interactive.terminalSkipButton('blocked'))).not.toBeInTheDocument();
+    expect(markStepCompleted).not.toHaveBeenCalled();
+  });
+
+  it('offers prerequisite Skip only when the checker permits it', () => {
+    mockCheckerOverrides = { isEnabled: false, explanation: 'Missing prerequisite', canSkip: true };
+    render(<TerminalStep stepId="unmet" command="echo hello" skippable />);
+    fireEvent.click(screen.getByTestId(testIds.interactive.terminalSkipButton('unmet')));
+    expect(markStepCompleted).toHaveBeenCalledWith('unmet', undefined, 'manual');
+  });
+
+  it('limits shared connection errors to eligible steps without duplicating the panel alert', () => {
+    mockTerminalStatus = 'error';
+    render(
+      <>
+        <TerminalStep stepId="current" command="echo current" />
+        <TerminalStep stepId="blocked" command="echo blocked" isEligibleForChecking={false} />
+      </>
+    );
+    expect(screen.getByTestId(testIds.interactive.terminalStep('current'))).toHaveAttribute(
+      'data-test-step-state',
+      'error'
+    );
+    expect(screen.getByTestId(testIds.interactive.terminalStep('blocked'))).toHaveAttribute(
+      'data-test-step-state',
+      'requirements-unmet'
+    );
+    expect(screen.queryByTestId(testIds.interactive.errorMessage('blocked'))).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.errorMessage('current'))).toBeVisible();
+    expect(screen.queryAllByRole('alert')).toHaveLength(0);
+  });
+
+  it('leaves the alert to the terminal panel when a dispatch error coincides with a connection error', async () => {
+    mockSendCommand.mockRejectedValueOnce(new Error('Connection lost'));
+    const { rerender } = render(<TerminalStep stepId="dispatch" command="echo hello" />);
+    fireEvent.click(screen.getByTestId(testIds.interactive.terminalExecButton('dispatch')));
+    await screen.findByRole('alert');
+    mockTerminalStatus = 'error';
+    rerender(<TerminalStep stepId="dispatch" command="echo hello" />);
+    expect(screen.queryAllByRole('alert')).toHaveLength(0);
+    expect(screen.getByTestId(testIds.interactive.errorMessage('dispatch'))).toBeVisible();
+  });
+
+  it('preserves checking state during a shared connection error', () => {
+    mockTerminalStatus = 'error';
+    mockCheckerOverrides = { isChecking: true };
+    render(<TerminalStep stepId="checking" command="echo hello" />);
+    expect(screen.getByTestId(testIds.interactive.terminalStep('checking'))).toHaveAttribute(
+      'data-test-step-state',
+      'checking'
+    );
+    expect(screen.queryByTestId(testIds.interactive.errorMessage('checking'))).not.toBeInTheDocument();
   });
 
   it('renders command and description', () => {
