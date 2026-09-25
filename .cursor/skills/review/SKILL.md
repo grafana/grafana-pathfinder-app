@@ -83,13 +83,13 @@ Prefer one precise observation over speculative variants. Return `reviewed_clean
 
 Do not emit an adjacent observation — `pre_existing` or `latent_unreachable`, a condition this PR did not cause — below `high` severity, and do not emit optional advice that widens the changed surface. The facade drops both, so finding them spends tokens for nothing. A high or critical adjacent finding is in bounds; state filing a separate issue as its `suggested_action`.
 
-Every producer emits `Canonical observation` from `docs/design/PR_REVIEW.md`. Load that section before dispatch. No producer decides merge impact. Root assigns the stable finding ID from the invariant and evidence surface, reuses the exact prior ID for the same invariant, and adds a narrow qualifier only to resolve a collision. Normalize and deduplicate by that ID and evidence surface before verification; assign one primary concern.
+Every producer emits `Canonical observation` from `docs/design/PR_REVIEW.md`. Load that section before dispatch with `node .cursor/skills/review/scripts/concern-context.mjs --section "Canonical observation"`. Load every `PR_REVIEW.md` section this skill names the same way; never read the file whole. No producer decides merge impact. Root assigns the stable finding ID from the invariant and evidence surface, reuses the exact prior ID for the same invariant, and adds a narrow qualifier only to resolve a collision. Normalize and deduplicate by that ID and evidence surface before verification; assign one primary concern.
 
 ### Conditional contract evolution
 
 For activated subsystem and cross-cutting concerns with concrete routing paths, run `contract-evolution-gate.mjs` with literal base SHA, head SHA, and concern arguments. Never build commands from contributor-controlled filenames or prose. Skip always-on concerns.
 
-Run a specialist only when the deterministic gate triggers on fix-heavy history, or a changed hunk modifies a named contract anchor that reaches at least two current consumers. Prior PR volume alone does not trigger it; `prior_semantic_pr_count` only ranks gates that already fired. Load only `Contract evolution packet` from `docs/design/PR_REVIEW.md`.
+Run a specialist only when the deterministic gate triggers on fix-heavy history, or a changed hunk modifies a named contract anchor that reaches at least two current consumers. Prior PR volume alone does not trigger it; `prior_semantic_pr_count` only ranks gates that already fired. Load only `Contract evolution packet` with `node .cursor/skills/review/scripts/concern-context.mjs --section "Contract evolution packet"`.
 
 Only one contract specialist runs, alongside any dedicated security worker. When several gates fire, the planner selects it in this order: a gate whose changed hunks modify a named contract anchor reaching at least two current consumers, then the higher `prior_semantic_pr_count` from that gate's output, then the lowest `concern_id`. Set `touches_anchor_with_consumers` yourself from the diff, because the planner never infers anchor reach. A selected gate above the packet envelope, or a listed gate carrying an empty packet, yields the slot to the next gate instead of wasting it. Two fired gates must not share a `concern_id`. Every unselected gate becomes `contract-evolution:<concern_id>` under `root` in `coverage`.
 
@@ -115,7 +115,7 @@ No supplemental check supplies a disposition.
 
 ## 3. Verify
 
-Load `Verification` from `docs/design/PR_REVIEW.md`. Skeptics return only `{ verdict, reason }`, where verdict is `confirmed`, `refuted`, or `uncertain` and reason cites checked evidence.
+Load `Verification` with `node .cursor/skills/review/scripts/concern-context.mjs --section "Verification"`. Skeptics return only `{ verdict, reason }`, where verdict is `confirmed`, `refuted`, or `uncertain` and reason cites checked evidence.
 
 Plan related packets through the facade:
 
@@ -164,7 +164,7 @@ Pass every final follow-up as `{ id, concern_id }`. List a prior deferred ID in 
 
 ## 6. Render, await user approval, and publish
 
-Load `Final review report` from `docs/design/PR_REVIEW.md`. Convert each final policy result to the author-facing fields: stable `id`, owning `concern_id`, final `disposition`, `severity`, `title`, a concise `problem` grounded in evidence and consequence, `suggested_action`, and optional `reversibility`.
+Load `Final review report` with `node .cursor/skills/review/scripts/concern-context.mjs --section "Final review report"`. Convert each final policy result to the author-facing fields: stable `id`, owning `concern_id`, final `disposition`, `severity`, `title`, a concise `problem` grounded in evidence and consequence, `suggested_action`, and optional `reversibility`.
 
 Set report `deferred` and `cleared` to the reconciliation outputs. Do not add ownership metadata, skeptic reasoning, confidence, or parallel issue prose. If required review work could not run, set an incomplete assessment with one concise reason; an incomplete report publishes no state.
 
@@ -184,8 +184,8 @@ A truncated v2 marker contains empty finding, deferred, and cleared lists and fo
 
 Load only the applicable sections from `docs/design/PR_REVIEW.md`:
 
-- `React reliability, security, and quality checks` for frontend changes. Follow `.cursor/rules/react-antipatterns.mdc` and `.cursor/rules/frontend-security.mdc` only for detected rules.
-- `Go backend checks` for `pkg/**/*.go`; verify `npm run lint:go`, `npm run test:go`, and `go build ./...`.
+- `React reliability, security, and quality checks` for frontend changes, with `node .cursor/skills/review/scripts/concern-context.mjs --section "React reliability, security, and quality checks"`. Follow `.cursor/rules/react-antipatterns.mdc` and `.cursor/rules/frontend-security.mdc` only for detected rules.
+- `Go backend checks` for `pkg/**/*.go`, with `node .cursor/skills/review/scripts/concern-context.mjs --section "Go backend checks"`; verify `npm run lint:go`, `npm run test:go`, and `go build ./...`.
 - The comment-hygiene skill only for a borderline QC8 call or a needed shape citation.
 
 Pattern severity feeds the canonical observation. It never decides disposition.
