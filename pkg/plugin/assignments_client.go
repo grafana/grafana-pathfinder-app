@@ -23,8 +23,10 @@ const (
 	assignmentListPageSize = 500
 
 	// assignmentListMaxBytes bounds an individual page body so a pathological
-	// namespace cannot exhaust plugin memory. The aggregate budget across pages
-	// is assignmentListMaxTotalRecords (assignments.go).
+	// namespace cannot exhaust plugin memory. The whole drain is additionally
+	// bounded by assignmentAggregateDeadline (assignments.go); there is
+	// deliberately no record cap, because a cap would silently drop the
+	// caller's own record when it fell past the cut.
 	assignmentListMaxBytes = 8 * 1024 * 1024
 )
 

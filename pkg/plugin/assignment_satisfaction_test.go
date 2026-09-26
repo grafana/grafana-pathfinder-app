@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
@@ -12,9 +13,6 @@ import (
 func activeCatalogue(t *testing.T) []bundledPath {
 	t.Helper()
 	paths, err := loadLocalCatalogue()
-	if ossPathShim != nil {
-		paths, err = ossPathShim()
-	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,6 +101,10 @@ func TestObligationMet_AcceptCompletionsFrom(t *testing.T) {
 	if !ev.met(asg, []completionRecordSpec{early, late}) {
 		t.Error("a later completion counts, including one after dueAt and under 100 percent")
 	}
+	exact := rec("user:1", "bundled", guideID, guideID, "interactive", "", "objectives", asg.AcceptCompletionsFrom, 100)
+	if !ev.met(asg, []completionRecordSpec{exact}) {
+		t.Error("a completion exactly at acceptCompletionsFrom counts as met")
+	}
 	asg.AcceptCompletionsFrom = "not-a-time"
 	if ev.met(asg, []completionRecordSpec{late}) {
 		t.Error("an unparseable acceptCompletionsFrom does not evaluate as met")
@@ -117,7 +119,7 @@ func TestPathGuides_URLAndPrivateCatalogue(t *testing.T) {
 	t.Cleanup(func() { pathIndexFetch = prev })
 
 	urlEv := &obligationEvaluator{ctx: context.Background(), logger: log.DefaultLogger, guidesOK: true}
-	res := urlEv.assignmentGuides(assignmentSpec{TargetType: "path", TargetID: "github-visualize"})
+	res := urlEv.assignmentGuides(assignmentSpec{TargetType: "path", TargetID: "linux-server-integration"})
 	if !res.resolved || len(res.guides) != 1 || res.guides[0] != "select-platform" {
 		t.Fatalf("url path = %+v", res)
 	}
@@ -207,5 +209,76 @@ func TestMyAssignments_EvaluatesBundledPathFromCompletions(t *testing.T) {
 	}
 	if got["not-a-bundled-path"] {
 		t.Error("an unknown path stays unmet")
+	}
+}
+
+// writeSatisfiedAssignments now runs in the background (it used to run
+// synchronously on the completion write's response path). These two tests
+// prove the two things that matters about that: the PATCH still happens
+// (proven by waiting on it, not by sleeping and hoping), and a panic
+// anywhere in that background work can never escape and take the whole
+// plugin process down with it.
+
+func TestWriteSatisfiedAssignments_RunsInBackgroundAndPatchesNewlySatisfied(t *testing.T) {
+	path := pathWithGuides(t)
+	target := asg("user:1", path.ID, "", "onboarding", "2026-09-01T00:00:00Z")
+	target.Name = "assignment-1"
+
+	type patchCall struct {
+		name      string
+		satisfied bool
+	}
+	patched := make(chan patchCall, 1)
+	lister := singlePageAssignmentLister(target)
+	lister.updateStatus = func(_ context.Context, _, name string, satisfied bool) error {
+		patched <- patchCall{name: name, satisfied: satisfied}
+		return nil
+	}
+	withAssignmentLister(t, lister)
+
+	// Every guide but the last is already on record; the "just completed"
+	// fact this call carries covers the last one, which is what should tip
+	// this assignment over into satisfied.
+	done := completionsFor(path, "2026-09-14T15:00:00Z")
+	withLister(t, singlePageLister(done[:len(done)-1]...))
+
+	app := newTestApp(t)
+	r := completionRequest(t, "/completion-records", "user:1")
+
+	app.writeSatisfiedAssignments(r, "user:1", done[len(done)-1])
+
+	select {
+	case call := <-patched:
+		if call.name != "assignment-1" || !call.satisfied {
+			t.Fatalf("UpdateStatus call = %+v, want name=assignment-1 satisfied=true", call)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("writeSatisfiedAssignments did not PATCH the newly satisfied assignment in time")
+	}
+}
+
+func TestWriteSatisfiedAssignments_RecoversFromPanic(t *testing.T) {
+	reached := make(chan struct{})
+	lister := singlePageAssignmentLister(asg("user:1", "grafana-fundamentals", "", "onboarding", "2026-09-01T00:00:00Z"))
+	lister.respond = func(string) (*assignmentPage, error) {
+		defer close(reached)
+		panic("synthetic panic for TestWriteSatisfiedAssignments_RecoversFromPanic")
+	}
+	withAssignmentLister(t, lister)
+
+	app := newTestApp(t)
+	r := completionRequest(t, "/completion-records", "user:1")
+	just := rec("user:1", "bundled", "g1", "G1", "interactive", "", "objectives", "2026-09-14T15:00:00Z", 100)
+
+	app.writeSatisfiedAssignments(r, "user:1", just)
+
+	select {
+	case <-reached:
+		// The background goroutine reached the panic. If writeSatisfiedAssignments's
+		// own recover() had not caught it, an unrecovered panic in a goroutine
+		// takes the whole process down with it -- this test (and every other
+		// test in this binary) would never get to report a result at all.
+	case <-time.After(2 * time.Second):
+		t.Fatal("panicking lister was never reached")
 	}
 }

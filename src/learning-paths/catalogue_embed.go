@@ -2,12 +2,10 @@ package learningpaths
 
 import _ "embed"
 
-// The frontend picks one of these at runtime (paths-data.ts). Embedding them
-// here is how the plugin backend resolves the same scaffold on a deployed
-// stack, where the JSON is otherwise only inside the browser bundle.
-
-//go:embed paths.json
-var PathsJSON []byte
+// The plugin backend evaluates assignments against the Cloud catalogue only:
+// assignments live on App Platform, which only Grafana Cloud serves. The
+// frontend picks between paths.json and paths-cloud.json at runtime
+// (paths-data.ts).
 
 //go:embed paths-cloud.json
 var PathsCloudJSON []byte

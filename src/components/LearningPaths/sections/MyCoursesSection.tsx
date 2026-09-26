@@ -1,9 +1,10 @@
 /**
  * My Courses Section
  *
- * Incomplete catalogue paths. Assigned items with a due date lead, soonest
- * first; everything else keeps the incoming order. Completed paths move to
- * the Completed section.
+ * Incomplete catalogue paths. Assigned paths always lead, ranked by due
+ * date (soonest first, undated-but-assigned after those, unassigned last);
+ * unassigned paths otherwise keep the incoming order. Completed paths move
+ * to the Completed section.
  */
 
 import React, { useMemo } from 'react';
@@ -13,7 +14,7 @@ import { t } from '@grafana/i18n';
 
 import { testIds } from '../../../constants/testIds';
 import type { LearningPath, PathGuide } from '../../../types/learning-paths.types';
-import type { ResolvedAssignment } from '../../../learning-paths';
+import { compareDueAt, type ResolvedAssignment } from '../../../learning-paths';
 import { useVerticalOverflow } from '../../../hooks';
 import { LearningPathCard } from '../LearningPathCard';
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
@@ -30,12 +31,23 @@ interface MyCoursesSectionProps {
   styles: ReturnType<typeof getMyLearningStyles>;
 }
 
+// Assigned paths always lead, ranked by due date; unassigned paths keep
+// their incoming order (Array.prototype.sort is stable, so ties never
+// reorder them relative to each other).
 function orderCourses(courses: LearningPath[], byTargetId: Map<string, ResolvedAssignment>): LearningPath[] {
   return [...courses].sort((a, b) => {
-    const aDue = byTargetId.get(a.id)?.dueAt;
-    const bDue = byTargetId.get(b.id)?.dueAt;
+    const aAssignment = byTargetId.get(a.id);
+    const bAssignment = byTargetId.get(b.id);
+    if (Boolean(aAssignment) !== Boolean(bAssignment)) {
+      return aAssignment ? -1 : 1;
+    }
+    if (!aAssignment || !bAssignment) {
+      return 0;
+    }
+    const aDue = aAssignment.dueAt;
+    const bDue = bAssignment.dueAt;
     if (aDue && bDue) {
-      return aDue.localeCompare(bDue);
+      return compareDueAt(aDue, bDue);
     }
     if (aDue) {
       return -1;
@@ -59,7 +71,21 @@ export function MyCoursesSection({
   styles,
 }: MyCoursesSectionProps) {
   const [listRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
-  const byTargetId = useMemo(() => new Map(assignments.map((a) => [a.targetId, a])), [assignments]);
+  // `assignments` arrives sorted most-urgent-first (resolveAssignments):
+  // overdue, then soonest due, then no-due-date. Two active rules can target
+  // the same path — shapeAssignments keeps both rows rather than collapsing
+  // them — so build this map first-wins, keeping the most urgent one visible
+  // instead of `new Map(entries)`'s last-wins, which would silently surface
+  // whichever duplicate happens to sort last.
+  const byTargetId = useMemo(() => {
+    const map = new Map<string, ResolvedAssignment>();
+    for (const assignment of assignments) {
+      if (!map.has(assignment.targetId)) {
+        map.set(assignment.targetId, assignment);
+      }
+    }
+    return map;
+  }, [assignments]);
   const ordered = useMemo(() => orderCourses(courses, byTargetId), [courses, byTargetId]);
 
   return (

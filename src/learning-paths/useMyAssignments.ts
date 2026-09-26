@@ -8,12 +8,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { config } from '@grafana/runtime';
 
 import { onCompletionPublished } from '../completion-records/completion-write-hook';
-import { fetchMyAssignments, type AssignmentEntry } from '../lib/assignments-client';
+import { fetchMyAssignments, reportUnresolvedAssignmentTargets, type AssignmentEntry } from '../lib/assignments-client';
 import { logger } from '../lib/logging';
 import type { LearningPath } from '../types/learning-paths.types';
 import { resolveAssignments, type ResolvedAssignment } from './assignments-core';
 
-export { daysUntilDue, type ResolvedAssignment } from './assignments-core';
+export { daysUntilDue, compareDueAt, type ResolvedAssignment } from './assignments-core';
 
 interface UseMyAssignmentsOptions {
   /** The caller's learning-paths catalogue — resolution drops targets not found here. */
@@ -93,11 +93,10 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     if (!unresolvedKey) {
       return;
     }
-    logger.warn('[assignments] unresolvable target', {
-      reason: 'unresolvable-target',
-      count: unresolvedKey.split('\n').length,
-    });
+    const count = unresolvedKey.split('\n').length;
+    logger.warn('[assignments] unresolvable target', { reason: 'unresolvable-target', count });
     logger.debug('[assignments] unresolvable target', { targetIds: unresolvedKey });
+    reportUnresolvedAssignmentTargets(count);
   }, [unresolvedKey]);
 
   // resolveAssignments already sorts; filtering preserves that order.

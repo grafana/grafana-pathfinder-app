@@ -68,16 +68,6 @@
       "badgeId": "alert-guardian",
       "estimatedMinutes": 25,
       "icon": "bell"
-    },
-    {
-      "id": "github-visualize",
-      "title": "Visualize GitHub data source in Grafana Cloud",
-      "description": "A learning journey that shows you how to visualize GitHub repository data in Grafana Cloud.",
-      "url": "https://grafana.com/docs/learning-paths/github-visualize/",
-      "guides": [],
-      "badgeId": "github-visualizer",
-      "estimatedMinutes": 20,
-      "icon": "github"
     }
   ],
   "guideMetadata": {

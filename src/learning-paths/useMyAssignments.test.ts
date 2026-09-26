@@ -20,7 +20,12 @@ jest.mock('@grafana/runtime', () => ({
 const mockFetchMyAssignments = jest.fn();
 jest.mock('../lib/assignments-client', () => ({
   fetchMyAssignments: (namespace: string) => mockFetchMyAssignments(namespace),
+  reportUnresolvedAssignmentTargets: jest.fn(),
 }));
+
+const { reportUnresolvedAssignmentTargets: mockReportUnresolvedAssignmentTargets } = jest.requireMock(
+  '../lib/assignments-client'
+) as { reportUnresolvedAssignmentTargets: jest.Mock };
 
 jest.mock('../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
@@ -73,6 +78,7 @@ describe('useMyAssignments', () => {
     expect(mockFetchMyAssignments).toHaveBeenCalledWith('stacks-123');
     expect(result.current.notDone.map((item) => item.title)).toEqual(['Grafana Fundamentals']);
     expect(logger.warn).not.toHaveBeenCalled();
+    expect(mockReportUnresolvedAssignmentTargets).not.toHaveBeenCalled();
   });
 
   it('logs an unresolvable target without putting the path id on the warn', async () => {
@@ -95,5 +101,6 @@ describe('useMyAssignments', () => {
     });
     expect(logger.debug).toHaveBeenCalledWith('[assignments] unresolvable target', { targetIds: 'ghost-path' });
     expect(JSON.stringify((logger.warn as jest.Mock).mock.calls)).not.toContain('ghost-path');
+    expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledWith(1);
   });
 });

@@ -49,6 +49,30 @@ const getEffectiveDisplayType = (recommendation: Recommendation): Recommendation
   return recommendation.type;
 };
 
+/**
+ * The recommendation's own catalogue id, when it has one. Only a
+ * package-backed recommendation carries a manifest, and only a manifest
+ * carries an id — a bundled-catalogue path is never registered as a
+ * package, so a recommendation for one never reaches this.
+ */
+function recommendationTargetId(recommendation: Recommendation): string | undefined {
+  const id = recommendation.manifest?.id;
+  return typeof id === 'string' && id.trim() !== '' ? id : undefined;
+}
+
+/**
+ * Matches a suggestion card to the assignment it represents, preferring a
+ * real id over its display title. An id match is exact and can't collide:
+ * for a package-backed recommendation (an App Platform-authored path), the
+ * manifest's own id is that same path's targetId.
+ *
+ * A bundled catalogue path is never registered as a package, so its
+ * recommendation never carries an id — title is the only signal available
+ * for those, and title is not a unique key: two catalogue entries can share
+ * a display title with nothing here to break the tie. Rather than guess,
+ * an ambiguous title drops the badge instead of picking one — a missing
+ * badge is a smaller mistake than a wrong one.
+ */
 function assignmentForPath(
   recommendation: Recommendation,
   assignments: ResolvedAssignment[]
@@ -56,8 +80,18 @@ function assignmentForPath(
   if (getEffectiveDisplayType(recommendation) !== 'learning-journey') {
     return undefined;
   }
+
+  const targetId = recommendationTargetId(recommendation);
+  if (targetId !== undefined) {
+    const byId = assignments.find((assignment) => assignment.targetId === targetId);
+    if (byId) {
+      return byId;
+    }
+  }
+
   const title = recommendation.title.trim().toLowerCase();
-  return assignments.find((assignment) => assignment.title.trim().toLowerCase() === title);
+  const byTitle = assignments.filter((assignment) => assignment.title.trim().toLowerCase() === title);
+  return byTitle.length === 1 ? byTitle[0] : undefined;
 }
 
 function assignmentDueString(assignment: ResolvedAssignment): string | undefined {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,14 +17,26 @@ import (
 
 // fakeAssignmentLister is an injectable assignmentLister. respond maps an
 // incoming continue token to a page or error; calls counts invocations.
+// updateStatus is optional: nil means the lister does not implement
+// assignmentStatusWriter at all (assignmentSatisfaction_test.go's satisfaction
+// tests never need a status write), matching the resolveAssignmentBackend
+// path most tests exercise.
 type fakeAssignmentLister struct {
-	respond func(token string) (*assignmentPage, error)
-	calls   int32
+	respond      func(token string) (*assignmentPage, error)
+	updateStatus func(ctx context.Context, namespace, name string, satisfied bool) error
+	calls        int32
 }
 
 func (f *fakeAssignmentLister) ListPage(_ context.Context, _ string, token string) (*assignmentPage, error) {
 	atomic.AddInt32(&f.calls, 1)
 	return f.respond(token)
+}
+
+func (f *fakeAssignmentLister) UpdateStatus(ctx context.Context, namespace, name string, satisfied bool) error {
+	if f.updateStatus == nil {
+		return fmt.Errorf("fakeAssignmentLister: UpdateStatus called with no updateStatus func set")
+	}
+	return f.updateStatus(ctx, namespace, name, satisfied)
 }
 
 func (f *fakeAssignmentLister) callCount() int { return int(atomic.LoadInt32(&f.calls)) }
@@ -321,26 +334,41 @@ func TestMyAssignments_DrainsEveryPage(t *testing.T) {
 	}
 }
 
-func TestMyAssignments_TruncatesAtAggregateBudget(t *testing.T) {
-	prev := assignmentListMaxTotalRecords
-	assignmentListMaxTotalRecords = 1
-	t.Cleanup(func() { assignmentListMaxTotalRecords = prev })
-
-	lister := &fakeAssignmentLister{respond: func(string) (*assignmentPage, error) {
-		return &assignmentPage{
-			Records:  []assignmentSpec{asg("user:1", "path-a", "", "rule-a", "2026-09-14T09:00:00Z")},
-			Continue: "more",
-		}, nil
+// There is deliberately no aggregate record cap: a cap would silently drop
+// the caller's own record when it fell past the cut. This pins that a record
+// on the LAST page of a long drain is still served — the drain must not stop
+// early just because earlier pages held only other users' records.
+func TestMyAssignments_ServesCallerRecordOnLastPage(t *testing.T) {
+	pages := map[string]*assignmentPage{
+		"": {
+			Records:  []assignmentSpec{asg("user:2", "path-other-1", "", "rule-a", "2026-09-14T09:00:00Z")},
+			Continue: "p2",
+		},
+		"p2": {
+			Records:  []assignmentSpec{asg("user:3", "path-other-2", "", "rule-b", "2026-09-13T09:00:00Z")},
+			Continue: "p3",
+		},
+		"p3": {
+			Records:  []assignmentSpec{asg("user:1", "path-mine", "", "rule-c", "2026-09-12T09:00:00Z")},
+			Continue: "",
+		},
+	}
+	lister := &fakeAssignmentLister{respond: func(token string) (*assignmentPage, error) {
+		page, ok := pages[token]
+		if !ok {
+			t.Fatalf("unexpected continue token %q", token)
+		}
+		return page, nil
 	}}
 	withAssignmentLister(t, lister)
 
 	_, resp := doMyAssignments(t, "user:1")
 
-	if lister.callCount() != 1 {
-		t.Errorf("LIST calls = %d, want 1 (the budget must stop the drain)", lister.callCount())
+	if lister.callCount() != 3 {
+		t.Errorf("LIST calls = %d, want 3 (the whole namespace must be drained)", lister.callCount())
 	}
-	if len(resp.Assignments) != 1 {
-		t.Errorf("assignments = %+v, want the capped result", resp.Assignments)
+	if len(resp.Assignments) != 1 || resp.Assignments[0].TargetID != "path-mine" {
+		t.Fatalf("assignments = %+v, want only the caller's record from the last page", resp.Assignments)
 	}
 }
 
