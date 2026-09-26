@@ -172,10 +172,6 @@ var (
 	completionStats        map[string]*completionCacheStats
 	completionGenerations  map[string]uint64
 
-	// shimCompletionRecords is nil in every shipped build. completion_records_shim.go,
-	// behind the pathfinderdev build tag, is the only thing that sets it.
-	shimCompletionRecords func(*App, *http.Request) (records []completionRecordSpec, subject string, handled bool)
-
 	// completionListerOverride injects a fake lister in tests. nil selects the
 	// real per-request HTTP client. Config resolution (feature toggle, app
 	// URL, namespace) is checked BEFORE this override so the structural-
@@ -549,23 +545,6 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
-	}
-
-	// Nil in every shipped build (see shimCompletionRecords).
-	if shimCompletionRecords != nil {
-		if records, subject, handled := shimCompletionRecords(a, r); handled {
-			completions := collateByUser(records)[subject]
-			if completions == nil {
-				completions = []collatedCompletion{}
-			}
-			a.writeMyCompletions(w, myCompletionsResponse{
-				Capability:  completionCapability{Available: true},
-				UserID:      subject,
-				Completions: completions,
-				AsOf:        timeNow().UTC().Format(time.RFC3339),
-			})
-			return
-		}
 	}
 
 	// Identity gate first — cache hit or miss, warm bytes are never served to

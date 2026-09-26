@@ -10,16 +10,22 @@ jest.mock('./logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
 }));
 
+jest.mock('../utils/interactive-guides-api', () => ({
+  isBackendApiAvailable: jest.fn(),
+}));
+
 import { getBackendSrv } from '@grafana/runtime';
 import { fetchMyAssignments } from './assignments-client';
 import { logger } from './logging';
 import { recordAssignmentsUnavailable } from './telemetry/facade';
+import { isBackendApiAvailable } from '../utils/interactive-guides-api';
 
 const mockGet = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
   (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
+  (isBackendApiAvailable as jest.Mock).mockReturnValue(true);
 });
 
 describe('fetchMyAssignments', () => {
@@ -52,15 +58,18 @@ describe('fetchMyAssignments', () => {
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('obo-unavailable');
   });
 
-  // Regression: this client must NOT pre-check isBackendApiAvailable() (the
-  // frontend's own read of the aggregation boot toggle) before requesting,
-  // unlike its custom-guide-repository sibling. That toggle is off on any
-  // stack with no local App Platform aggregator — including the pathfinderdev
-  // dev-fixture stack — and a client-side short-circuit on it would make the
-  // fixture's `capability.available: true` unreachable from the browser even
-  // though the route itself answers correctly. The request must always go
-  // out and the response's own `capability` must be the only source of truth.
-  it('always issues the request and trusts the response, even when reason is feature-toggle-disabled', async () => {
+  it('does not request when the aggregation toggle is off', async () => {
+    (isBackendApiAvailable as jest.Mock).mockReturnValue(false);
+
+    const result = await fetchMyAssignments('stacks-123');
+
+    expect(result).toEqual([]);
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(recordAssignmentsUnavailable).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('trusts a server-reported feature-toggle-disabled capability', async () => {
     mockGet.mockResolvedValue({
       capability: { available: false, reason: 'feature-toggle-disabled' },
       assignments: [],
@@ -68,7 +77,6 @@ describe('fetchMyAssignments', () => {
 
     const result = await fetchMyAssignments('stacks-123');
 
-    expect(mockGet).toHaveBeenCalledTimes(1);
     expect(result).toEqual([]);
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('feature-toggle-disabled');
   });

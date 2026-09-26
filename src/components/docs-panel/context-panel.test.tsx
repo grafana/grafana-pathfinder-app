@@ -699,4 +699,47 @@ describe('suggested path assignment badges', () => {
     expect(card).not.toHaveTextContent('Today');
     expect(card).not.toHaveTextContent('Overdue');
   });
+
+  it('matches a package-backed recommendation by manifest id, not by title, even when a title match would disagree', () => {
+    // The title-based match would pick the second assignment (title equal to
+    // the recommendation's); the real targetId in the manifest points at the
+    // first, overdue one instead. Only the id-based match can tell them apart.
+    const card = renderSuggested({
+      recommendations: [
+        {
+          title: 'Some Suggested Path',
+          url: 'https://example.com/packages/admin-path-1/',
+          type: 'package',
+          manifest: { id: 'admin-path-1', type: 'path' },
+        },
+      ],
+      assignments: [
+        assignment({
+          targetId: 'admin-path-1',
+          title: 'A Completely Different Title',
+          overdue: true,
+          dueAt: '2020-01-01T00:00:00Z',
+        }),
+        assignment({ targetId: 'unrelated-path', title: 'Some Suggested Path' }),
+      ],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+
+    expect(card).toHaveTextContent('Overdue');
+  });
+
+  it('shows no badge when two assignments share a title and the recommendation has no id to break the tie', () => {
+    // A bundled-catalogue recommendation never carries a manifest, so title
+    // is the only signal here -- and it's ambiguous. Showing neither
+    // assignment's badge is safer than guessing one.
+    const card = renderSuggested({
+      assignments: [
+        assignment({ targetId: 'getting-started', overdue: true, dueAt: '2020-01-01T00:00:00Z' }),
+        assignment({ targetId: 'getting-started-private', dueAt: undefined }),
+      ],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+
+    expect(card).not.toHaveTextContent('Assigned');
+    expect(card).not.toHaveTextContent('Overdue');
+    expect(card).not.toHaveTextContent('Today');
+  });
 });

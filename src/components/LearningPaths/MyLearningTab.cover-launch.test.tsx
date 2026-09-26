@@ -53,6 +53,7 @@ jest.mock('../../learning-paths', () => ({
   }),
   useMyAssignments: () => ({ notDone: [], completed: [], isLoading: false, hasLoaded: true, refresh: jest.fn() }),
   daysUntilDue: jest.requireActual('../../learning-paths/useMyAssignments').daysUntilDue,
+  compareDueAt: jest.requireActual('../../learning-paths/assignments-core').compareDueAt,
 }));
 
 jest.mock('../SkeletonLoader', () => ({ SkeletonLoader: () => null }));

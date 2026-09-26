@@ -1,4 +1,5 @@
 import {
+  recordAssignmentTargetsUnresolved,
   recordContentFetch,
   recordContentFetchFallback,
   recordCustomGuideCatalogueUnavailable,
@@ -142,6 +143,14 @@ describe('measurement and event domain operations', () => {
     recordSettingsStoreResolved('kind-not-served');
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_settings_store_resolved', {
       outcome: 'kind-not-served',
+    });
+  });
+
+  it('recordAssignmentTargetsUnresolved emits the count of unresolvable targets', () => {
+    recordAssignmentTargetsUnresolved(2);
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_assignment_target_unresolved', {
+      reason: 'unresolvable-target',
+      count: 2,
     });
   });
 });

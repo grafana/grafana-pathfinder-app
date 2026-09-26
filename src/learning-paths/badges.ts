@@ -37,27 +37,6 @@ export const BADGES: Badge[] = [
     trigger: { type: 'path-completed', pathId: 'observability-basics' },
   },
   {
-    id: 'alert-starter',
-    title: 'Alert starter',
-    description: 'Complete the "Set up alerting" learning path',
-    icon: 'bell',
-    trigger: { type: 'path-completed', pathId: 'alerting-basics' },
-  },
-  {
-    id: 'linux-observer',
-    title: 'Linux observer',
-    description: 'Complete the "Monitor a Linux server" learning path',
-    icon: 'server',
-    trigger: { type: 'path-completed', pathId: 'linux-monitoring' },
-  },
-  {
-    id: 'log-builder',
-    title: 'Log builder',
-    description: 'Complete the "Build a logs dashboard" learning path',
-    icon: 'dashboard',
-    trigger: { type: 'path-completed', pathId: 'logs-dashboards' },
-  },
-  {
     id: 'cloud-explorer',
     title: 'Cloud Explorer',
     description: 'Complete the "Getting started with Grafana Cloud" learning path',
@@ -128,14 +107,6 @@ export const BADGES: Badge[] = [
     icon: 'bell',
     emoji: '🛡️',
     trigger: { type: 'path-completed', pathId: 'infrastructure-alerting' },
-  },
-  {
-    id: 'github-visualizer',
-    title: 'GitHub Visualizer',
-    description: 'Connected GitHub and put repository data on a Grafana Cloud dashboard',
-    icon: 'github',
-    emoji: '🐙',
-    trigger: { type: 'path-completed', pathId: 'github-visualize' },
   },
 ];
 

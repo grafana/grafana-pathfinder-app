@@ -49,10 +49,6 @@ var (
 
 	// pathIndexFetch is overridden in tests
 	pathIndexFetch = resolveGuidesFromPathIndex
-
-	// ossPathShim is nil in every shipped build. The pathfinderdev build is
-	// the only thing that sets it, to paths.json. Removed with that dev path.
-	ossPathShim func() ([]bundledPath, error)
 )
 
 // loadLocalCatalogue is source 1: the embedded paths-cloud.json, decoded once
@@ -202,9 +198,6 @@ func (e *obligationEvaluator) paths() []bundledPath {
 	}
 	e.pathsLoaded = true
 	paths, err := loadLocalCatalogue()
-	if ossPathShim != nil {
-		paths, err = ossPathShim()
-	}
 	if err != nil {
 		e.logger.Info("bundled path catalogue unavailable", "error", err)
 		paths = nil
@@ -278,11 +271,11 @@ func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) (res guideLis
 	}
 	defer func() { e.guideLists[key] = res }()
 
-	if asg.TargetType == "guide" {
+	if asg.TargetType == assignmentTargetGuide {
 		e.logger.Error("assignment guide target is not evaluated", "targetType", asg.TargetType, "targetId", asg.TargetID)
 		return guideList{}
 	}
-	if asg.TargetType != "path" || asg.TrackID != "" || asg.TargetID == "" {
+	if asg.TargetType != assignmentTargetPath || asg.TrackID != "" || asg.TargetID == "" {
 		return guideList{}
 	}
 
@@ -337,16 +330,6 @@ func (a *App) newObligationEvaluator(r *http.Request) *obligationEvaluator {
 // false when the list could not be read; the caller then reports every
 // obligation unmet rather than failing the assignment response.
 func (a *App) callerCompletionRecords(r *http.Request, userID string) ([]completionRecordSpec, bool) {
-	if shimCompletionRecords != nil {
-		if records, _, handled := shimCompletionRecords(a, r); handled {
-			out := make([]completionRecordSpec, len(records))
-			for i, rec := range records {
-				rec.UserID = userID
-				out[i] = rec
-			}
-			return out, true
-		}
-	}
 	lister, namespace, available, _ := a.resolveCompletionBackend(r)
 	if !available {
 		return nil, false
@@ -359,6 +342,9 @@ func (a *App) callerCompletionRecords(r *http.Request, userID string) ([]complet
 		logger.Info("completion records unavailable for assignment evaluation", "error", err)
 		return nil, false
 	}
+	// `records` is every user's completion rows in the namespace. Filter to the
+	// caller before anything else touches it; nothing unfiltered leaves this
+	// function.
 	out := make([]completionRecordSpec, 0, len(records))
 	for _, rec := range records {
 		if rec.UserID == userID {
@@ -380,7 +366,7 @@ func (a *App) satisfactionFunc(r *http.Request, userID string) func(assignmentSp
 		ev = a.newObligationEvaluator(r)
 	}
 	return func(rec assignmentSpec) bool {
-		if rec.TargetType == "guide" {
+		if rec.TargetType == assignmentTargetGuide {
 			logger.Error("assignment guide target is not evaluated", "targetType", rec.TargetType, "targetId", rec.TargetID)
 			return false
 		}
@@ -391,42 +377,59 @@ func (a *App) satisfactionFunc(r *http.Request, userID string) func(assignmentSp
 	}
 }
 
-// specFromEntry converts a wire-shaped assignmentEntry back into an
-// assignmentSpec so satisfactionFunc's closure can evaluate it. Only the
-// pathfinderdev fixture path needs this: its loader returns entries already
-// wire-shaped, unlike the production path, which evaluates raw records
-// directly (shapeAssignments in assignments.go).
-func specFromEntry(entry assignmentEntry, userID string) assignmentSpec {
-	return assignmentSpec{
-		UserID:                userID,
-		TargetType:            entry.TargetType,
-		TargetID:              entry.TargetID,
-		TrackID:               entry.TrackID,
-		TargetSource:          entry.TargetSource,
-		RuleID:                entry.RuleID,
-		AssignedBy:            entry.AssignedBy,
-		AssignedAt:            entry.AssignedAt,
-		DueAt:                 entry.DueAt,
-		AcceptCompletionsFrom: entry.AcceptCompletionsFrom,
-		Lifecycle:             entry.Lifecycle,
-	}
-}
+// assignmentStatusDispatchOverride replaces how writeSatisfiedAssignments runs
+// its background work in tests: nil selects the real fire-and-forget
+// goroutine; a test sets it to run inline instead. Mirrors this file's other
+// test seams (assignmentListerOverride, completionListerOverride, ...) --
+// substitution, the same as those, not a new kind of hook. Without it, a
+// test's leaked goroutine could still be reading a package-level test seam
+// when a later test reassigns it, since those seams have no synchronization
+// of their own; running inline in tests means there is no goroutine to leak.
+// Only completion_records_write_test.go's doWrite needs to set this: it's the
+// one place a test can reach writeSatisfiedAssignments at all, since
+// handleCreateCompletionRecord is its only caller.
+var assignmentStatusDispatchOverride func(run func())
 
 // writeSatisfiedAssignments is the other consumer of assignmentGuides/met:
-// called from the completion write path, it re-evaluates every active,
-// not-yet-satisfied assignment for this user and PATCHes status.satisfied on
-// the ones the new completion newly meets (PATH_ASSIGNMENTS.md §6.12's status
-// cache, for consumers that LIST the kind and can't join). A failure here
-// does not fail the completion write: the next GET /assignments/my evaluates
-// live regardless.
+// re-evaluates every active, not-yet-satisfied assignment for this user and
+// PATCHes status.satisfied on the ones the new completion newly meets
+// (PATH_ASSIGNMENTS.md §6.12's status cache, for consumers that LIST the kind
+// and can't join live the way GET /assignments/my does). That route is the
+// only thing this app's own UI reads for satisfaction, and it never reads
+// status.satisfied — it always re-evaluates live — so this sync is a
+// convenience for an outside consumer, not something the completion write's
+// own correctness depends on. It runs in the background: nothing here sits
+// on the completion write's response path, and a failure or panic here must
+// never surface as a failed completion write.
 func (a *App) writeSatisfiedAssignments(r *http.Request, userID string, just completionRecordSpec) {
+	logger := a.ctxLogger(r.Context())
+	// Detach for the life of this background run, not just one call: every
+	// downstream r.Context() read below (including the raw one UpdateStatus
+	// used to take directly) would otherwise be canceled the instant this
+	// handler returns and the response is already on the wire.
+	bgReq := r.WithContext(context.WithoutCancel(r.Context()))
+	run := func() {
+		defer func() {
+			if panicVal := recover(); panicVal != nil {
+				logger.Error("assignment status write panicked", "panic", panicVal)
+			}
+		}()
+		a.syncSatisfiedAssignments(bgReq, userID, just, logger)
+	}
+	if dispatch := assignmentStatusDispatchOverride; dispatch != nil {
+		dispatch(run)
+		return
+	}
+	go run()
+}
+
+func (a *App) syncSatisfiedAssignments(r *http.Request, userID string, just completionRecordSpec, logger log.Logger) {
 	lister, namespace, available, _ := a.resolveAssignmentBackend(r)
 	if !available {
 		return
 	}
-	logger := a.ctxLogger(r.Context())
-	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), assignmentAggregateDeadline)
-	records, _, err := drainAssignments(fetchCtx, namespace, lister, logger)
+	fetchCtx, cancel := context.WithTimeout(r.Context(), assignmentAggregateDeadline)
+	records, _, _, err := drainAssignments(fetchCtx, namespace, userID, lister, logger)
 	cancel()
 	if err != nil {
 		logger.Info("assignment status write skipped", "error", err)
@@ -452,7 +455,7 @@ func (a *App) writeSatisfiedAssignments(r *http.Request, userID string, just com
 	}
 	ev := a.newObligationEvaluator(r)
 	for _, rec := range records {
-		if rec.UserID != userID || rec.Lifecycle != assignmentLifecycleActive || rec.Name == "" {
+		if rec.Lifecycle != assignmentLifecycleActive || rec.Name == "" {
 			continue
 		}
 		if rec.StatusSatisfied != nil && *rec.StatusSatisfied {

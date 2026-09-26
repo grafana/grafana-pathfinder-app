@@ -54,25 +54,22 @@ const (
 	assignmentAggregateDeadline = 60 * time.Second
 )
 
-// assignmentListMaxTotalRecords is the aggregate budget across all LIST pages
-// of one drain (the per-page byte cap alone does not bound total memory).
-// When the budget trips, the drain caps the result and logs the truncation —
-// never silently. A var so tests can exercise the budget path.
-var assignmentListMaxTotalRecords = 50_000
-
 // assignmentLifecycleActive is the only lifecycle this route serves.
 // Anything else is filtered out rather than rendered.
 const assignmentLifecycleActive = "active"
+
+// assignmentTargetPath and assignmentTargetGuide are the targetType values
+// kinds/assignment.cue defines; MVP evaluates path only.
+const (
+	assignmentTargetPath  = "path"
+	assignmentTargetGuide = "guide"
+)
 
 // assignmentListerOverride injects a fake lister in tests. nil selects the real
 // per-request HTTP client. Config resolution (feature toggle, app URL,
 // namespace) is checked BEFORE this override so the structural-unavailability
 // path stays testable.
 var assignmentListerOverride assignmentLister
-
-// shimHandleMyAssignments is nil in every shipped build. assignments_shim.go,
-// behind the pathfinderdev build tag, is the only thing that sets it.
-var shimHandleMyAssignments func(*App, *http.Request) (entries []assignmentEntry, subject string, handled bool)
 
 // assignmentCapability is the availability signal "My Paths" gates on.
 // `available` is read-derived: identity presence plus read-path reachability
@@ -129,28 +126,10 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Nil in every shipped build (see shimHandleMyAssignments).
-	if shimHandleMyAssignments != nil {
-		if entries, subject, handled := shimHandleMyAssignments(a, r); handled {
-			satisfied := a.satisfactionFunc(r, subject)
-			for i := range entries {
-				entries[i].Satisfied = satisfied(specFromEntry(entries[i], subject))
-			}
-			a.writeMyAssignments(w, myAssignmentsResponse{
-				Capability:  assignmentCapability{Available: true},
-				UserID:      subject,
-				Assignments: entries,
-				AsOf:        timeNow().UTC().Format(time.RFC3339),
-			})
-			return
-		}
-	}
-
-	// Identity gate first: warm or canned, no data is served to an
-	// unauthenticated caller. Every identity failure on a GET read is a
-	// soft-200 capability envelope (not 401, not 503), because none of them is
-	// retryable and the reason token says which one it was
-	// (BACKEND_PROXY_PATTERN.md §3, §7).
+	// Identity gate first: no data is served to an unauthenticated caller.
+	// Every identity failure on a GET read is a soft-200 capability envelope
+	// (not 401, not 503), because none of them is retryable and the reason
+	// token says which one it was (BACKEND_PROXY_PATTERN.md §3, §7).
 	userID, status := a.deriveAssignmentUserID(r)
 	if status != identityVerified {
 		a.writeMyAssignments(w, myAssignmentsResponse{
@@ -174,7 +153,7 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 	// identity and is handed to no other caller.
 	logger := a.ctxLogger(r.Context())
 	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), assignmentAggregateDeadline)
-	records, pages, err := drainAssignments(fetchCtx, namespace, lister, logger)
+	records, namespaceRecords, pages, err := drainAssignments(fetchCtx, namespace, userID, lister, logger)
 	cancel()
 
 	if err != nil {
@@ -205,9 +184,9 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries := shapeAssignments(records, userID, a.satisfactionFunc(r, userID))
+	entries := shapeAssignments(records, a.satisfactionFunc(r, userID))
 	logger.Debug("assignments served",
-		"namespace", namespace, "pages", pages, "namespaceRecords", len(records), "callerAssignments", len(entries))
+		"namespace", namespace, "pages", pages, "namespaceRecords", namespaceRecords, "callerAssignments", len(entries))
 	a.writeMyAssignments(w, myAssignmentsResponse{
 		Capability:  assignmentCapability{Available: true},
 		UserID:      userID,
@@ -216,15 +195,13 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// shapeAssignments keeps one caller's active obligations, newest first.
-// Target type is not a filter. Two rules for the same target stay two
+// shapeAssignments keeps the caller's active obligations, newest first. The
+// drain has already filtered records to the caller (drainAssignments); target
+// type is not a filter here either. Two rules for the same target stay two
 // records — collapsing them would discard a deadline.
-func shapeAssignments(records []assignmentSpec, userID string, satisfied func(assignmentSpec) bool) []assignmentEntry {
+func shapeAssignments(records []assignmentSpec, satisfied func(assignmentSpec) bool) []assignmentEntry {
 	entries := []assignmentEntry{}
 	for _, rec := range records {
-		if rec.UserID != userID {
-			continue
-		}
 		if rec.Lifecycle != assignmentLifecycleActive {
 			continue
 		}
@@ -275,30 +252,43 @@ func sortAssignments(entries []assignmentEntry) {
 	})
 }
 
-// drainAssignments drains the namespace LIST across pages — up to the aggregate
-// record budget — and returns the raw specs.
-func drainAssignments(ctx context.Context, namespace string, lister assignmentLister, logger log.Logger) ([]assignmentSpec, int, error) {
-	records := []assignmentSpec{}
+// drainAssignments drains the namespace LIST across pages and returns the
+// caller's own records: per-page size is bounded by assignmentListMaxBytes
+// (assignments_client.go) and the whole drain by assignmentAggregateDeadline;
+// there is deliberately no record cap, because a cap would silently drop the
+// caller's own record when it fell past the cut. App Platform could filter
+// upstream instead if kinds/assignment.cue declared spec.userId as a
+// selectable field; it does not today.
+func drainAssignments(ctx context.Context, namespace, userID string, lister assignmentLister, logger log.Logger) (records []assignmentSpec, namespaceRecords int, pages int, err error) {
 	continueToken := ""
-	pages := 0
 	for {
 		page, err := lister.ListPage(ctx, namespace, continueToken)
 		if err != nil {
-			return nil, pages, err
+			return nil, namespaceRecords, pages, err
 		}
 		pages++
-		records = append(records, page.Records...)
-		if len(records) >= assignmentListMaxTotalRecords && page.Continue != "" {
-			logger.Warn("assignments LIST truncated at aggregate budget",
-				"namespace", namespace, "maxTotalRecords", assignmentListMaxTotalRecords, "pages", pages)
-			break
+		namespaceRecords += len(page.Records)
+
+		// TRUST BOUNDARY. page.Records is every user's assignments in the
+		// namespace: Kubernetes RBAC is namespace-scoped, so the LIST cannot be
+		// narrowed to the caller upstream. Filter each page to the caller here,
+		// before anything else touches it. No log, metric, or return value may
+		// carry an unfiltered page; only counts leave this loop.
+		for _, rec := range page.Records {
+			if rec.UserID == userID {
+				records = append(records, rec)
+			}
 		}
+
 		if page.Continue == "" {
 			break
 		}
 		continueToken = page.Continue
 	}
-	return records, pages, nil
+	if records == nil {
+		records = []assignmentSpec{}
+	}
+	return records, namespaceRecords, pages, nil
 }
 
 // resolveAssignmentBackend determines whether the aggregated CRUD API is

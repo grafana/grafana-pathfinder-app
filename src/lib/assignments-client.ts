@@ -2,32 +2,23 @@
  * Client for the /assignments/my backend proxy — the caller's assignments,
  * computed live by pkg/plugin/assignments.go.
  *
- * Mirrors lib/custom-guide-repository-client.ts's capability-gated soft-200
- * shape and in-flight de-duplication. It does not pre-check
- * isBackendApiAvailable() — the dev fixture answers available when that
- * toggle is off — and it skips that sibling's response cache.
+ * Mirrors lib/custom-guide-repository-client.ts's toggle pre-check,
+ * capability-gated soft-200 shape, and in-flight de-duplication. It skips
+ * that sibling's response cache because §7.4 requires satisfaction to be
+ * evaluated live.
  *
  * @coupling API: GET /assignments/my served by pkg/plugin/assignments.go
  */
 import { getBackendSrv } from '@grafana/runtime';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
+import type { AssignmentEntryWire } from '../types/backend-api.schema';
+import { isBackendApiAvailable } from '../utils/interactive-guides-api';
 import { logger } from './logging';
-import { recordAssignmentsUnavailable } from './telemetry/facade';
+import { recordAssignmentsUnavailable, recordAssignmentTargetsUnresolved } from './telemetry/facade';
 
 /** Wire shape of one assignment. The target is (targetType, targetId); this client does not filter on targetType. */
-export interface AssignmentEntry {
-  targetType: string;
-  targetId: string;
-  trackId?: string;
-  ruleId?: string;
-  assignedBy?: string;
-  assignedAt?: string;
-  dueAt?: string;
-  acceptCompletionsFrom?: string;
-  satisfied: boolean;
-  lifecycle: string;
-}
+export type AssignmentEntry = AssignmentEntryWire;
 
 /**
  * Availability signal the assignments surfaces gate on, mirroring
@@ -75,6 +66,15 @@ function reportFetchFailure(err: unknown): void {
   }
 }
 
+/** Count of assigned targets that didn't match anything in the caller's catalogue. */
+export function reportUnresolvedAssignmentTargets(count: number): void {
+  try {
+    recordAssignmentTargetsUnresolved(count);
+  } catch {
+    // Observability must not turn a swallowed listing failure into a rejection.
+  }
+}
+
 const MALFORMED_REASON = 'malformed-response';
 
 // `null` is absent, not malformed: json.Marshal of a nil []assignmentEntry
@@ -106,15 +106,14 @@ async function requestAssignments(): Promise<AssignmentEntry[]> {
  * Fetch the caller's assignments. The proxy derives identity/namespace
  * server-side, so none is sent here; `namespace` is only a client-side gate
  * for "am I on a provisioned stack" and the cache key. Returns an empty array
- * when there's no namespace, the proxy reports itself unavailable, or the
- * request fails — best-effort, not a hard dependency (mirrors
- * fetchCustomGuideRepository, minus its isBackendApiAvailable() pre-check
- * and its response cache; see the module doc for why). Concurrent calls for
- * the same namespace share one in-flight request; nothing is stored after it
- * settles.
+ * when the aggregation toggle is off, there's no namespace, the proxy
+ * reports itself unavailable, or the request fails — best-effort, not a hard
+ * dependency (mirrors fetchCustomGuideRepository, minus its response cache;
+ * see the module doc for why). Concurrent calls for the same namespace share
+ * one in-flight request; nothing is stored after it settles.
  */
 export async function fetchMyAssignments(namespace: string): Promise<AssignmentEntry[]> {
-  if (!namespace) {
+  if (!isBackendApiAvailable() || !namespace) {
     return [];
   }
 

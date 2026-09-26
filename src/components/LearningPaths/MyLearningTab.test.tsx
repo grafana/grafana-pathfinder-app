@@ -130,6 +130,7 @@ jest.mock('../../learning-paths', () => ({
     refresh: jest.fn(),
   }),
   daysUntilDue: jest.requireActual('../../learning-paths/useMyAssignments').daysUntilDue,
+  compareDueAt: jest.requireActual('../../learning-paths/assignments-core').compareDueAt,
 }));
 
 jest.mock('../SkeletonLoader', () => ({ SkeletonLoader: () => null }));
@@ -521,6 +522,68 @@ describe('MyLearningTab launch flow', () => {
     ].map((el) => el.getAttribute('data-testid'));
 
     expect(cards.slice(0, 2)).toEqual(['learning-path-card-path-1', 'learning-path-card-path-new']);
+  });
+
+  it('shows the more urgent assignment when two active rules target the same path', () => {
+    // shapeAssignments (backend) keeps two rows for one path rather than
+    // collapsing them, so the frontend must pick the most urgent duplicate to
+    // display rather than an arbitrary one. resolveAssignments sorts
+    // due-dated ahead of undated, so the due-dated row here must win.
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-1',
+        title: 'Started path',
+        assignedBy: 'Onboarding',
+        dueAt: '2099-01-15T00:00:00Z',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+      },
+      {
+        targetType: 'path',
+        targetId: 'path-1',
+        title: 'Started path',
+        assignedBy: 'Seller Track',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const card = screen.getByTestId('learning-path-card-path-1');
+    expect(card).toHaveTextContent('Onboarding');
+    expect(card).not.toHaveTextContent('Seller Track');
+  });
+
+  it('lifts an assigned course with no due date above an unassigned course', () => {
+    // Assigned always leads, ranked by due date; an assignment with no due
+    // date still leads over a course with no assignment at all.
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-new',
+        title: 'New path',
+        assignedBy: 'Org Admin',
+        overdue: false,
+        satisfied: false,
+        progress: 0,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const cards = [
+      ...screen
+        .getByTestId(testIds.learningPaths.myCoursesSection)
+        .querySelectorAll('[data-testid^="learning-path-card-"]'),
+    ].map((el) => el.getAttribute('data-testid'));
+
+    expect(cards[0]).toEqual('learning-path-card-path-new');
+    expect(cards).toContain('learning-path-card-edge-low');
+    expect(cards.indexOf('learning-path-card-path-new')).toBeLessThan(cards.indexOf('learning-path-card-edge-low'));
   });
 
   it('labels Discover more path metadata as milestones', () => {
