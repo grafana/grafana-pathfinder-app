@@ -1,7 +1,8 @@
 import React, { useState, ChangeEvent } from 'react';
-import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
+import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge, Box, Stack } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
+import { t } from '@grafana/i18n';
 import { testIds } from '../../constants/testIds';
 import {
   PathfinderPluginConfig,
@@ -25,10 +26,12 @@ import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { isCodaTerminalForcedByFlag } from '../../utils/coda-enablement';
 import { logger } from '../../lib/logging';
 import { CodaBackendStatus } from './CodaBackendStatus';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 
 type JsonData = PathfinderPluginConfig;
 
 type State = {
+  pathfinderEnabled: boolean;
   recommenderServiceUrl: string;
   tutorialUrl: string;
   interceptGlobalDocsLinks: boolean;
@@ -43,6 +46,7 @@ type State = {
 
 function buildStateFromConfig(config: ResolvedPathfinderConfig): State {
   return {
+    pathfinderEnabled: config.pathfinderEnabled,
     recommenderServiceUrl:
       config.recommenderServiceUrl && !isKnownRecommenderUrl(config.recommenderServiceUrl)
         ? config.recommenderServiceUrl
@@ -234,6 +238,53 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           Your edits are still here. Try saving again. If the problem continues, reload the page and try again.
         </Alert>
       )}
+      <Box
+        element="section"
+        aria-label={t('appConfig.pathfinderPreview', 'Pathfinder public preview')}
+        backgroundColor="secondary"
+        borderColor="info"
+        borderStyle="solid"
+        borderRadius="default"
+        padding={3}
+        marginTop={3}
+      >
+        <Stack direction="row" alignItems="center" gap={1}>
+          <Text element="h2" variant="h4">
+            {t('appConfig.pathfinderPreview', 'Pathfinder public preview')}
+          </Text>
+          <Badge color="blue" text={t('appConfig.beta', 'Beta')} />
+        </Stack>
+        <p>
+          {t(
+            'appConfig.pathfinderPreviewDescription',
+            'Pathfinder brings contextual help and interactive guides into Grafana.'
+          )}
+        </p>
+        <p>
+          {t(
+            'appConfig.pathfinderRevertDescription',
+            'Turn this off to restore Grafana’s previous Help menu for everyone in this organization. Your learning progress is kept.'
+          )}
+        </p>
+        <Field
+          label={t('appConfig.pathfinderEnabled', 'Enable Pathfinder')}
+          description={t('appConfig.pathfinderEnabledDescription', 'Changes apply when users reload Grafana.')}
+        >
+          <Switch
+            id="pathfinder-enabled"
+            value={state.pathfinderEnabled}
+            onChange={(event) => editDraft({ pathfinderEnabled: event.currentTarget.checked })}
+          />
+        </Field>
+        {!getFeatureFlagValue('pathfinder.enabled', true) && (
+          <Alert title={t('appConfig.pathfinderRemotelyDisabled', 'Pathfinder is disabled remotely')} severity="info">
+            {t(
+              'appConfig.pathfinderRemotelyDisabledDescription',
+              'The remote switch currently prevents Pathfinder from running. Your saved preference will apply when Pathfinder is enabled remotely again.'
+            )}
+          </Alert>
+        )}
+      </Box>
       <FieldSet label="Plugin configuration" className={s.marginTopXl}>
         {showAdvancedConfig && (
           <>

@@ -63,6 +63,16 @@ beforeEach(() => {
 });
 
 describe('saveTenantSettings — App Platform path', () => {
+  it.each([true, false])(
+    'saves Pathfinder preference %s while preserving other org settings',
+    async (pathfinderEnabled) => {
+      const base = tenantSnapshot({ tutorialUrl: 'stored', pathfinderEnabled: !pathfinderEnabled });
+      mockFetchTenant.mockResolvedValue(base);
+      await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { pathfinderEnabled } });
+      expect(mockSaveTenant).toHaveBeenCalledWith({ tutorialUrl: 'stored', pathfinderEnabled }, base);
+      expect(mockUpdatePlugin).not.toHaveBeenCalled();
+    }
+  );
   beforeEach(() => {
     mockSaveTenant.mockResolvedValue(true);
   });
@@ -118,6 +128,19 @@ describe('saveTenantSettings — App Platform path', () => {
 });
 
 describe('saveTenantSettings — legacy jsonData fallback', () => {
+  it('saves the opt-out without disabling or unpinning the plugin', async () => {
+    mockFetchPlugin.mockResolvedValue({
+      jsonData: provisionedJsonData({ tutorialUrl: 'stored' }),
+      enabled: true,
+      pinned: true,
+    });
+    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { pathfinderEnabled: false } });
+    expect(mockUpdatePlugin).toHaveBeenCalledWith(PLUGIN_ID, {
+      enabled: true,
+      pinned: true,
+      jsonData: { stackId: '123456', tutorialUrl: 'stored', pathfinderEnabled: false },
+    });
+  });
   it('preserves provisioned fields such as stackId', async () => {
     // The #1514 regression. Without the leading spread, this save wipes stackId,
     // which silently breaks the OBO token exchanger and private guides.

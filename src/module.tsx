@@ -8,7 +8,8 @@ import pluginJson from './plugin.json';
 import { initializeConfiguredSurfaces } from './utils/configured-bootstrap';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
 // (and zod, via user-storage) into module.js.
-import { waitForPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
+import { refreshPathfinderPluginConfig, waitForPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
+import { resolvePathfinderAvailability } from './utils/pathfinder-enablement';
 // Direct file import, not the ./docs-retrieval barrel: the barrel statically
 // imports the whole content-fetcher orchestrator (zod, dompurify, the bundled
 // guide index), which would land in module.js. createCompositeResolver is
@@ -67,8 +68,11 @@ const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAuto
   await import('./utils/sidebar-auto-open');
 const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
 
-// The pathfinder.enabled kill-switch is the only gate on whether Pathfinder mounts.
-const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
+const pathfinderAvailability = await resolvePathfinderAvailability(
+  getFeatureFlagValue('pathfinder.enabled', true),
+  refreshPathfinderPluginConfig
+);
+const pathfinderEnabled = pathfinderAvailability === 'enabled';
 const hostname = window.location.hostname;
 
 // Faro frontend telemetry, behind its own remote kill-switch — default-on, so
@@ -109,13 +113,9 @@ const highlightedGuideConfig = initializeHighlightedGuideExperiment(hostname);
 
 createExperimentDebugger(highlightedGuideConfig);
 
-// Check if Pathfinder was already docked (browser restore scenario).
-// If floating mode is active, clear the docked state so Grafana doesn't
-// auto-open the sidebar on page load — the floating panel handles display.
 if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) {
   const persistedMode = panelModeManager.getMode();
-  if (persistedMode === 'floating' || persistedMode === 'fullscreen') {
-    // Don't restore sidebar — another presentation surface owns the panel
+  if (!pathfinderEnabled || persistedMode === 'floating' || persistedMode === 'fullscreen') {
     clearExtensionSidebarDocked();
   } else {
     sidebarState.setPendingOpenSource('browser_restore', 'restore');
@@ -126,6 +126,11 @@ if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) 
 await initPluginTranslations(pluginJson.id);
 
 const LazyApp = lazy(() => import('./components/App/App'));
+const LazyPathfinderUnavailable = lazy(() =>
+  import('./components/App/PathfinderUnavailable').then(({ PathfinderUnavailable }) => ({
+    default: PathfinderUnavailable,
+  }))
+);
 const LazyContextPanel = lazy(() => import('./components/App/ContextPanel'));
 const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
 const LazyTermsAndConditions = lazy(() => import('./components/AppConfig/TermsAndConditions'));
@@ -133,7 +138,11 @@ const LazyInteractiveFeatures = lazy(() => import('./components/AppConfig/Intera
 
 const App = (props: AppRootProps) => (
   <Suspense fallback={<LoadingPlaceholder text="" />}>
-    <LazyApp {...props} />
+    {pathfinderEnabled ? (
+      <LazyApp {...props} />
+    ) : (
+      <LazyPathfinderUnavailable unavailable={pathfinderAvailability === 'unavailable'} />
+    )}
   </Suspense>
 );
 
@@ -155,21 +164,11 @@ const plugin = new AppPlugin<{}>()
     id: 'interactive-features',
   });
 
-// Override init() to handle auto-open when plugin loads
 plugin.init = function () {
-  // Grafana does not await init; navigation listeners must register synchronously.
+  if (!pathfinderEnabled) {
+    return;
+  }
 
-  // Arm the durable completion-write hook from the universal plugin bootstrap
-  // rather than only the root App page: plugin.init fires once per session for
-  // every entry surface (sidebar, floating, full-screen, controller), so a guide
-  // completed in any of them records. Idempotent and a no-op without a resolvable
-  // user/org identity — see armCompletionWriteHook.
-  //
-  // Deferred (like the telemetry barrel above): a static import would put the
-  // whole write stack — queue, storage, client, normalise/timing/telemetry — in
-  // module.js, paid on every page load of every Grafana with this plugin
-  // installed, including by users who never open Pathfinder. Arming is
-  // background work with no first-paint deadline, so the chunk can land late.
   void import('./completion-records/completion-write-hook')
     .then(({ armCompletionWriteHook }) => armCompletionWriteHook())
     .catch((err) => logger.error('[Pathfinder] Failed to arm completion-write hook', { error: err }));
@@ -179,7 +178,6 @@ plugin.init = function () {
     return (await import('./package-engine/composite-resolver')).createCompositeResolver(config);
   });
 
-  // Snapshotted before handlePathfinderDeepLink strips it from the URL.
   const { doc: docsParam, controller: controllerParam } = parsePathfinderDeepLink(window.location.search);
   const controllerPairing = parseControllerPairingHash(window.location.hash);
   if (controllerPairing && window.location.hash) {
@@ -204,7 +202,6 @@ plugin.init = function () {
           return;
         }
         if (!document.getElementById('pathfinder-controller-root')) {
-          // Claim the mount before importing so repeated init cannot race it.
           const container = document.createElement('div');
           container.id = 'pathfinder-controller-root';
           document.body.appendChild(container);
@@ -274,32 +271,19 @@ plugin.init = function () {
     }
   ).catch((error) => logger.error('[Pathfinder] Failed to initialize configured surfaces', { error }));
 
-  // A controller request must never become a live executor or ordinary docs tab.
   if (controllerRequested) {
     return;
   }
 
-  const sidebarMountable = pathfinderEnabled;
   const deepLinkDeps = {
-    shouldMountSidebar: sidebarMountable,
+    shouldMountSidebar: true,
     attemptAutoOpen,
     loadControlGroupDocPopup: () => import('./components/ControlGroupDocPopup'),
   };
 
   handlePathfinderDeepLink(deepLinkDeps);
-  // Re-runs on SPA navigations; plugin.init fires only once per session.
   installDeepLinkNavListener(deepLinkDeps);
 
-  // Control group + ?doc=: ControlGroupDocPopup already handled it.
-  // Don't widen to panelMode/kiosk — those must reach the mount blocks below.
-  if (docsParam && !sidebarMountable) {
-    return;
-  }
-
-  // Mount floating panel manager — only eagerly when floating mode is already
-  // active (page refresh or ?panelMode=floating). For sidebar→floating transitions
-  // at runtime, a mode-change listener lazily loads and mounts the manager.
-  // This avoids unconditional chunk loads that prevent networkidle on older Grafana.
   if (pathfinderEnabled) {
     const mountFloatingPanel = () => {
       if (document.getElementById('pathfinder-floating-root')) {
@@ -333,9 +317,6 @@ plugin.init = function () {
     }) as EventListener);
   }
 
-  // Skip auto-open when a ?doc= param is present — the doc-param handler (async
-  // import above) owns sidebar opening and may redirect first. Running auto-open
-  // here would evaluate against the pre-redirect path.
   if (!docsParam && pathfinderEnabled) {
     const currentPath = getCurrentPath();
     setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
@@ -344,7 +325,6 @@ plugin.init = function () {
 
 export { plugin };
 
-// Register the sidebar unless the pathfinder.enabled kill-switch is off.
 if (pathfinderEnabled) {
   plugin.addComponent({
     targets: `grafana/extension-sidebar/v0-alpha`,

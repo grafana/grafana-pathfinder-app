@@ -89,6 +89,29 @@ describe('configured bootstrap', () => {
     expect(Object.values(calls).every((call) => call.mock.calls.length === 0)).toBe(true);
   });
 
+  it.each([false, true])(
+    'admin opt-out prevents all effects with controller request %s',
+    async (controllerRequested) => {
+      window.history.replaceState({}, '', '/?pathfinderKiosk=1');
+      const calls = effects();
+      await initializeConfiguredSurfaces(
+        Promise.resolve(
+          getConfigWithDefaults({
+            pathfinderEnabled: false,
+            interceptGlobalDocsLinks: true,
+            enableTwoTabController: true,
+            enableKioskMode: true,
+            openPanelOnLaunch: true,
+          })
+        ),
+        { ...live, controllerRequested },
+        calls
+      );
+      expect(Object.values(calls).every((call) => call.mock.calls.length === 0)).toBe(true);
+      expect(kioskState.getSnapshot()).toBeNull();
+    }
+  );
+
   it('preserves the system kill switch over all enabled tenant settings', async () => {
     const calls = effects();
     await initializeConfiguredSurfaces(
@@ -96,7 +119,7 @@ describe('configured bootstrap', () => {
       { ...live, pathfinderEnabled: false },
       calls
     );
-    expect(calls.applySettings).toHaveBeenCalledTimes(1);
+    expect(calls.applySettings).not.toHaveBeenCalled();
     expect(calls.mountController).not.toHaveBeenCalled();
     expect(calls.mountExecutor).not.toHaveBeenCalled();
     expect(calls.mountKiosk).not.toHaveBeenCalled();

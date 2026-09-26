@@ -157,6 +157,24 @@ describe('TabBarActions', () => {
   });
 
   describe('Settings menu item permissions', () => {
+    it.each([
+      ['Admin', false, true],
+      ['Viewer', true, true],
+      ['Editor', false, false],
+      ['Viewer', false, false],
+    ])('shows public preview opt-out for %s, Grafana admin %s: %s', (orgRole, isGrafanaAdmin, visible) => {
+      mockConfig.bootData.user = { orgRole, isGrafanaAdmin };
+      render(<TabBarActions />);
+      fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+      const item = screen.queryByRole('menuitem', { name: 'Switch to classic Help menu Beta' });
+      if (visible) {
+        expect(item).toBeInTheDocument();
+        fireEvent.click(item!);
+        expect(mockPush).toHaveBeenCalledWith('/plugins/grafana-pathfinder-app?page=configuration');
+      } else {
+        expect(item).not.toBeInTheDocument();
+      }
+    });
     beforeEach(() => {
       // Reset mock config to Admin for each test
       mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
@@ -324,16 +342,13 @@ describe('TabBarActions', () => {
       expect(screen.queryByRole('menuitem', { name: /dev tools/i })).not.toBeInTheDocument();
     });
 
-    it('is last in the menu and focuses the tab on click', () => {
+    it('focuses the dev tools tab on click', () => {
       const onOpenDevToolsTab = jest.fn();
       const { reportAppInteraction } = require('../../../lib/analytics');
       render(<TabBarActions isDevMode onOpenDevToolsTab={onOpenDevToolsTab} />);
       openMenu();
 
-      const items = screen.getAllByRole('menuitem');
-      expect(items[items.length - 1]).toHaveAccessibleName(/dev tools/i);
-
-      fireEvent.click(items[items.length - 1]!);
+      fireEvent.click(screen.getByRole('menuitem', { name: /dev tools/i }));
       expect(onOpenDevToolsTab).toHaveBeenCalledTimes(1);
       expect(reportAppInteraction).toHaveBeenCalledWith(
         'docs_panel_interaction',
