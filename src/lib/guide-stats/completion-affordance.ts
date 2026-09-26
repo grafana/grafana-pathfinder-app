@@ -40,11 +40,21 @@ export const COMPLETION_AFFORDANCE_BLOCK_TYPES = [
 ] as const satisfies ReadonlyArray<JsonBlock['type']>;
 
 /**
+ * Block types that emit completion evidence only for a particular authored
+ * shape. The predicate map below is keyed by this tuple, so a new conditional
+ * type must declare its predicate before it can compile.
+ */
+export const CONDITIONAL_COMPLETION_AFFORDANCE_BLOCK_TYPES = ['input'] as const satisfies ReadonlyArray<
+  JsonBlock['type']
+>;
+
+/**
  * Block types that render interactively but emit no completion evidence, so
  * they must never count as completable.
  *
- * `grot-guide` has no parse key at all. `input` is absent from both lists
- * because it is the one conditional case.
+ * `grot-guide` has no parse key at all. `input` is in the conditional
+ * completion-affordance registry above because only one authored shape emits
+ * evidence.
  */
 export const NON_COMPLETABLE_INTERACTIVE_BLOCK_TYPES = ['grot-guide'] as const satisfies ReadonlyArray<
   JsonBlock['type']
@@ -60,25 +70,34 @@ export interface CompletionAffordanceBlock {
   dataCheckBlocking?: boolean;
 }
 
+type ConditionalCompletionAffordanceBlockType = (typeof CONDITIONAL_COMPLETION_AFFORDANCE_BLOCK_TYPES)[number];
+type CompletionAffordancePredicate = (block: CompletionAffordanceBlock) => boolean;
+
+const CONDITIONAL_COMPLETION_AFFORDANCE_PREDICATES = {
+  input: (block: CompletionAffordanceBlock) =>
+    block.inputType === 'datasource' &&
+    typeof block.dataCheckQuery === 'string' &&
+    block.dataCheckQuery.trim().length > 0 &&
+    block.dataCheckBlocking === true,
+} satisfies Record<ConditionalCompletionAffordanceBlockType, CompletionAffordancePredicate>;
+
 /**
  * Whether this block can emit evidence that the reader completed it.
  *
  * `input` is tracked in exactly one authored shape: a blocking datasource
  * check, which the parser splits out as `datasource-check-step`. Every other
  * input renders passive, so counting it as completable would inflate the
- * denominator with a block the reader can never satisfy. The condition below
- * mirrors `convertInputBlock` in `src/docs-retrieval/json-parser.ts`.
+ * denominator with a block the reader can never satisfy. Its predicate mirrors
+ * `convertInputBlock` in `src/docs-retrieval/json-parser.ts`.
  */
 export function emitsCompletionEvidence(block: CompletionAffordanceBlock): boolean {
   if (AFFORDANCE_SET.has(block.type)) {
     return true;
   }
 
-  return (
-    block.type === 'input' &&
-    block.inputType === 'datasource' &&
-    typeof block.dataCheckQuery === 'string' &&
-    block.dataCheckQuery.trim().length > 0 &&
-    block.dataCheckBlocking === true
-  );
+  if (!Object.prototype.hasOwnProperty.call(CONDITIONAL_COMPLETION_AFFORDANCE_PREDICATES, block.type)) {
+    return false;
+  }
+
+  return CONDITIONAL_COMPLETION_AFFORDANCE_PREDICATES[block.type as ConditionalCompletionAffordanceBlockType](block);
 }
