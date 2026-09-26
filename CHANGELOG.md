@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.19.0
+
+### Added
+
+- **JSON-authored kiosk pages**: Build themed landing pages with hero text, launch forms, copyable commands, dividers, and guide tiles. Validated website and data source inputs can carry into a guide, while incompatible cached guides still open without transferring values. Standard tiles show saved completion percentages and a checkmark at 100%. (#1999)
+
+- **Shared Grafana feature controls**: Use Grafana's OpenFeature providers and feature-control UI on Grafana 13.2 and later, while retaining the existing provider on older versions. (#1990)
+
+### Fixed
+
+- **Reliable kiosk navigation and keyboard focus**: Keep focus inside the kiosk after dismissing a data source dropdown, preserve drafts, and open alternative guides at the correct application route. (#1999)
+
+- **Advanced Prometheus guide**: Select the saved data source, target query A in Explore, and run each lesson's expression without changing other query rows. Corrected examples and section coordination keep later lessons from completing prematurely. (#1985)
+
+### Chore
+
+- **Remove unused sidebar test identifiers**: Remove test IDs left behind by the retired minimized sidebar component. (#1995)
+
 ## 2.18.3
 
 ### Added
