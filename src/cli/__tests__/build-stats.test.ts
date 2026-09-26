@@ -85,7 +85,7 @@ describe('buildStats', () => {
     expect(result.errors).toEqual([]);
     expect(result.written).toEqual(['guide-a']);
     expect(readManifest(tmpDir, 'guide-a').stats).toEqual({
-      version: 1,
+      version: 2,
       blockCount: 3,
       sectionCount: 1,
       completableBlockCount: 1,
@@ -165,7 +165,7 @@ describe('buildStats', () => {
     expect(readManifest(tmpDir, 'milestone-one').stats).toMatchObject({ blockCount: 2 });
     expect(readManifest(tmpDir, 'milestone-two').stats).toMatchObject({ blockCount: 3 });
     expect(readManifest(tmpDir, 'the-path').stats).toEqual({
-      version: 1,
+      version: 2,
       blockCount: 5,
       sectionCount: 1,
       completableBlockCount: 2,

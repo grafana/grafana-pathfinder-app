@@ -11,6 +11,7 @@ import * as path from 'path';
 
 import { buildRepository } from '../cli/commands/build-repository';
 import { discoverBundledGuideFiles } from '../cli/utils/file-loader';
+import { GUIDE_STATS_VERSION } from '../lib/guide-stats/summary';
 import { RepositoryJsonSchema, ManifestJsonSchema, ContentJsonSchema } from '../types/package.schema';
 import type { DependencyList, RepositoryJson } from '../types/package.types';
 import { validatePackageTree } from './validate-package';
@@ -66,6 +67,14 @@ describe('Bundled repository', () => {
     it('should have a type for every entry', () => {
       for (const [, entry] of Object.entries(repositoryJson)) {
         expect(['guide', 'path', 'journey']).toContain(entry.type);
+      }
+    });
+
+    it('should stamp every bundled guide with the current stats version', () => {
+      for (const [id, entry] of Object.entries(repositoryJson)) {
+        if (entry.stats) {
+          expect(entry.stats.version).toBe(GUIDE_STATS_VERSION);
+        }
       }
     });
   });
