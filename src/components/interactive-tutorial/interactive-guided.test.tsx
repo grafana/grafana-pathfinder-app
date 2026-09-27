@@ -139,7 +139,6 @@ jest.mock('../../interactive-engine', () => ({
     executeGuidedStep: mockExecuteGuidedStep,
     execute: jest.fn(),
     cancel: mockCancel,
-    resetProgress: jest.fn(),
   })),
   InteractiveStateManager: jest.fn().mockImplementation(() => ({
     setState: jest.fn(),
@@ -512,6 +511,39 @@ describe('InteractiveGuided — objectives completion', () => {
     expect(screen.queryByTestId(testIds.interactive.errorMessage('objectives-step'))).not.toBeInTheDocument();
   });
 });
+describe('InteractiveGuided — sequence restart', () => {
+  it.each(['timeout', 'cancelled', 'error'] as const)('restarts at step zero after %s', async (result) => {
+    const internalActions = [
+      { targetAction: 'highlight' as const, refTarget: '#first' },
+      { targetAction: 'button' as const, refTarget: '#second' },
+    ];
+    mockExecuteGuidedStep
+      .mockResolvedValueOnce('completed')
+      .mockResolvedValueOnce(result)
+      .mockResolvedValueOnce('completed')
+      .mockResolvedValueOnce('cancelled');
+
+    render(<InteractiveGuided stepId="sequence-restart" internalActions={internalActions} stepTimeout={1000} />);
+    const step = screen.getByTestId(testIds.interactive.step('sequence-restart'));
+    const settledState = result === 'cancelled' ? 'cancelled' : 'error';
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', settledState);
+    });
+    expect(mockExecuteGuidedStep).toHaveBeenNthCalledWith(1, internalActions[0], 0, 2, 1000, undefined);
+    expect(mockExecuteGuidedStep).toHaveBeenNthCalledWith(2, internalActions[1], 1, 2, 1000, undefined);
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('sequence-restart')));
+    await waitFor(() => {
+      expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(4);
+      expect(step).toHaveAttribute('data-test-step-state', 'cancelled');
+    });
+    expect(mockExecuteGuidedStep).toHaveBeenNthCalledWith(3, internalActions[0], 0, 2, 1000, undefined);
+    expect(mockExecuteGuidedStep).toHaveBeenNthCalledWith(4, internalActions[1], 1, 2, 1000, undefined);
+  });
+});
+
 describe('InteractiveGuided — completeEarly retry', () => {
   it('reruns failed actions without persisting the failed run', async () => {
     mockExecuteGuidedStep.mockResolvedValueOnce('error').mockResolvedValueOnce('completed');
