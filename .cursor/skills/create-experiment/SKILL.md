@@ -1,6 +1,6 @@
 ---
 name: create-experiment
-description: 'Set up a new A/B experiment in Grafana Pathfinder end to end — MTFF flag, variant validation, enrollment seam, exposure and behaviour analytics, QA overrides, tests, docs, and a retirement plan. Use when the user runs `/create-experiment`, asks to add or run an experiment or A/B test, add a treatment/control variant, gate a feature behind an experiment flag, or wire exposure tracking. Also use when reviewing or retiring an existing experiment.'
+description: 'Set up, review, or retire an A/B experiment in Grafana Pathfinder end to end: MTFF flag, variant validation, enrollment seam, exposure analytics, QA overrides, tests, docs, and a retirement plan. Use for `/create-experiment` or any request to add an experiment, a variant, or an experiment-gated feature.'
 ---
 
 # create-experiment — Set up a Pathfinder A/B experiment
@@ -135,15 +135,15 @@ Add `UserInteraction` members in `src/lib/analytics.ts` for the arm's own intera
 
 ### 7. Make it QA-able
 
-`window.__pathfinderExperiment.setOverride` works for any registered flag automatically. Beyond that:
+Use Grafana's feature-control UI with `?featureControl=true` to set registered flags during QA. Beyond that:
 
-- Fire `reportFeatureFlagExposure` explicitly on the override branch of your reader — overrides bypass the client, so `TrackingHook` never sees them and QA runs would otherwise produce no analytics.
+- Keep flag evaluation on the OpenFeature client so `TrackingHook` records the exposure normally.
 - For a lazy experiment, add a **getter** to `src/utils/experiments/experiment-debug.ts`, following whichever lazy experiment is current. A captured snapshot would always read as not-enrolled, and a getter that evaluates would enroll the tester by opening DevTools.
 
 ### 8. Test
 
 - Arm resolution: each variant, plus rejection cases (unknown variant, missing field, non-object, null, thrown evaluation) all landing on `excluded`.
-- Override honoured, and a rejected override falling through to remote.
+- Feature-control values honoured, and rejected values falling back to `excluded`.
 - Enrichment: arm absent from `getActiveExperiments` when excluded.
 - For a lazy experiment: **no evaluation before enrollment**, exactly one evaluation across repeated calls, and `getActiveExperiments` not evaluating. Plus the call-site tripwire from step 3.
 - Treatment UI: renders for `treatment`, renders nothing for `control` and `excluded`, and each analytics event fires with the expected payload.

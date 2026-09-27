@@ -166,7 +166,42 @@ Kiosk mode displays a full-screen catalog of interactive guides over Grafana, us
 2. Toggle **Enable kiosk mode** (`enableKioskMode`).
 3. Click **Save configuration**.
 
-You can configure a custom CDN URL for the kiosk rules JSON and supply an HTML banner block at the top of the overlay (sanitized via DOMPurify before render). Each catalog tile opens its target guide in a new tab via the `?doc=` deep link.
+You can configure a custom CDN URL for the kiosk rules JSON and supply an HTML banner block at the top of the overlay (sanitized via DOMPurify before render). When opened from the sidebar, each catalog tile opens its target guide in a new tab via the `?doc=` deep link.
+
+#### Open a kiosk from a link
+
+Add `pathfinderKiosk=1` to a Grafana URL to open the default kiosk, even when **Enable kiosk mode** is off. Pathfinder must still be available on the instance. This does not change saved settings or enable the sidebar kiosk button.
+
+To select a different catalog, also supply `kioskRulesUrl` with the URL-encoded address of its JSON file:
+
+```text
+https://your-stack.grafana.net/?pathfinderKiosk=1
+https://your-stack.grafana.net/?pathfinderKiosk=1&kioskRulesUrl=https%3A%2F%2Finteractive-learning.grafana.net%2Fmy-kiosk.json
+```
+
+Replace the example JSON address with your published catalog. The rules URL alone does not open kiosk mode. Use `&` to append these parameters when the Grafana URL already contains a query string.
+
+Custom selections must use HTTPS and come from `https://interactive-learning.grafana.net`, the current Grafana origin, or the origin of the configured default kiosk URL. Same-origin HTTP is allowed on localhost for development. Catalog endpoints must serve JSON directly without redirects, permit browser access through CORS when cross-origin, and work without cookies or embedded credentials.
+
+If the selection is missing or cannot load, Pathfinder uses the configured default kiosk. If no default is configured, it shows the bundled catalog immediately without fetching a catalog. If a configured default fails, it loads the [generic learning kiosk](https://interactive-learning.grafana.net/guides/kiosk/default/rules.json). If that catalog also fails, it uses a bundled copy of the generic catalog. The collection covers core concepts, sample-data visualizations and transformations, and playlists on the current instance, plus Grafana Cloud guides for IRM and Frontend Observability. Cards describe any permissions or data source prerequisites; no guide requires Grafana Play or a customer-specific instance. The bundled catalog still needs a network connection to load guide content. Catalogs can use the existing rules array or an object containing `rules` and an optional `banner`. Guide URLs must pass Pathfinder's content URL validation; target Grafana instances must use HTTPS (or same-origin localhost HTTP).
+
+URL-launched kiosks open guides in the **same browser tab and Grafana instance**, ignoring presentation-only `targetUrl` values. To choose the starting page, add an optional `page` path to a catalog entry:
+
+```json
+{
+  "title": "Explore your metrics",
+  "url": "bundled:prometheus-advanced-queries",
+  "description": "Practice queries with your own metrics.",
+  "type": "interactive",
+  "page": "/explore"
+}
+```
+
+`page` must be a safe internal Grafana path. Query parameters and fragments are preserved in the same-tab destination. If omitted, the guide's known starting page is used when available; otherwise, the user stays on the current page. Selecting a guide exits the kiosk and opens the guide sidebar. Sidebar-launched presentation kiosks retain their new-tab behavior and `targetUrl` support.
+
+The **Exit kiosk** button stays visible while scrolling and returns users to the page underneath. **Escape** also exits. Kiosk colors follow the active light or dark Grafana theme. Catalogs without a banner (including empty or whitespace-only banners) display a branded **Grafana learning** banner. Custom HTML banners retain their author-supplied styling.
+
+Refreshing while the kiosk is open reopens the selected catalog. Closing removes only the kiosk launch parameters. Opening from the sidebar uses the configured default again. Document and controller links take precedence when combined with kiosk parameters. Grafana's own `kiosk` parameter remains independent.
 
 ### Coda sandbox terminal
 

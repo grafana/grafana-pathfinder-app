@@ -56,6 +56,25 @@ export interface BoundedRecordStorageConfig {
 export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): BoundedRecordStorage {
   const { storageKey, limit, label, createStorage, onQuotaExceeded } = config;
 
+  // Serializes every mutation this store instance makes: set/clear/clearMany/
+  // cleanup/clearAll all read the whole record at `storageKey`, mutate it, and
+  // write the whole record back. Two such calls fired without an await
+  // between them both read the same pre-write record, and whichever resolves
+  // last silently discards the other's change (a lost update) — reproduced
+  // directly in this file's own test suite. Chaining every mutation through
+  // this queue guarantees each one sees the previous one's result, regardless
+  // of which caller (across the whole codebase — every consumer shares this
+  // one queue per store instance) issued it.
+  let mutationQueue: Promise<unknown> = Promise.resolve();
+  const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = mutationQueue.then(operation);
+    // Swallow so one failed mutation doesn't poison the queue for mutations
+    // queued after it; every operation below already catches and logs its
+    // own errors internally.
+    mutationQueue = result.catch(() => undefined);
+    return result;
+  };
+
   const trimToLimit = (data: Record<string, number>): Record<string, number> => {
     const entries = Object.entries(data);
     const surplus = entries.length - limit;
@@ -83,6 +102,25 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
     await storage.setItem(storageKey, trimToLimit(data));
   };
 
+  // Raw (unserialized) cleanup, shared by the public `cleanup()` (wrapped in
+  // `serialize` below) and `setInternal`'s quota-retry path. The retry path
+  // runs from inside an already-serialized `set()` call, so it must call this
+  // directly rather than the public `api.cleanup()` — going through
+  // `serialize` there would queue the retry's cleanup behind itself and
+  // deadlock, since the still-running `set()` call is what the queue is
+  // currently waiting on.
+  const cleanupInternal = async (): Promise<void> => {
+    try {
+      const storage = createStorage();
+      const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
+      if (Object.keys(data).length > limit) {
+        await writeWithCap(data);
+      }
+    } catch (error) {
+      logger.warn(`Failed to cleanup ${label} entries`, { error });
+    }
+  };
+
   const setInternal = async (key: string, percentage: number, hasRetried: boolean): Promise<void> => {
     try {
       const storage = createStorage();
@@ -102,7 +140,7 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
         }
         logger.warn(`Storage quota exceeded, clearing old ${label} data`);
         onQuotaExceeded();
-        await api.cleanup();
+        await cleanupInternal();
         await setInternal(key, percentage, true);
       } else {
         logger.warn(`Failed to save ${label} percentage`, { error });
@@ -135,31 +173,35 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
     },
 
     async set(key: string, percentage: number): Promise<void> {
-      await setInternal(key, percentage, false);
+      await serialize(() => setInternal(key, percentage, false));
     },
 
     async clear(key: string): Promise<void> {
-      try {
-        const storage = createStorage();
-        const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
-        delete data[key];
-        await storage.setItem(storageKey, data);
-      } catch (error) {
-        logger.warn(`Failed to clear ${label}`, { error });
-      }
+      await serialize(async () => {
+        try {
+          const storage = createStorage();
+          const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
+          delete data[key];
+          await storage.setItem(storageKey, data);
+        } catch (error) {
+          logger.warn(`Failed to clear ${label}`, { error });
+        }
+      });
     },
 
     async clearMany(keys: string[]): Promise<void> {
-      try {
-        const storage = createStorage();
-        const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
-        for (const key of keys) {
-          delete data[key];
+      await serialize(async () => {
+        try {
+          const storage = createStorage();
+          const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
+          for (const key of keys) {
+            delete data[key];
+          }
+          await storage.setItem(storageKey, data);
+        } catch (error) {
+          logger.warn(`Failed to clear ${label}`, { error });
         }
-        await storage.setItem(storageKey, data);
-      } catch (error) {
-        logger.warn(`Failed to clear ${label}`, { error });
-      }
+      });
     },
 
     async getAll(): Promise<Record<string, number>> {
@@ -172,24 +214,18 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
     },
 
     async cleanup(): Promise<void> {
-      try {
-        const storage = createStorage();
-        const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
-        if (Object.keys(data).length > limit) {
-          await writeWithCap(data);
-        }
-      } catch (error) {
-        logger.warn(`Failed to cleanup ${label} entries`, { error });
-      }
+      await serialize(cleanupInternal);
     },
 
     async clearAll(): Promise<void> {
-      try {
-        const storage = createStorage();
-        await storage.removeItem(storageKey);
-      } catch (error) {
-        logger.warn(`Failed to clear all ${label} entries`, { error });
-      }
+      await serialize(async () => {
+        try {
+          const storage = createStorage();
+          await storage.removeItem(storageKey);
+        } catch (error) {
+          logger.warn(`Failed to clear all ${label} entries`, { error });
+        }
+      });
     },
   };
 

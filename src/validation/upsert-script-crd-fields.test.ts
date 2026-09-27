@@ -35,6 +35,8 @@ const SCRIPT_PATH = path.resolve(__dirname, '..', '..', 'scripts', 'upsert-learn
 // the script, so it applies to every write through the resource — a block-editor
 // save or publish included. Remove this entry when the CUE declares it.
 const PRUNED_BY_CRD = new Set([
+  'format', // The InteractiveGuide CRD has no input format field yet.
+
   'defaultValue',
   'dataCheckQuery',
   'dataCheckBlocking',

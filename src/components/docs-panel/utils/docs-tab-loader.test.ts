@@ -35,6 +35,8 @@ describe('loadDocsTabContentResult', () => {
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
       packageManifest,
       undefined,
+      undefined,
+      undefined,
       undefined
     );
     expect(mockFetchPackageById).not.toHaveBeenCalled();
@@ -53,7 +55,9 @@ describe('loadDocsTabContentResult', () => {
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
       packageManifest,
       undefined,
-      'app-platform'
+      'app-platform',
+      undefined,
+      undefined
     );
   });
 
@@ -72,7 +76,7 @@ describe('loadDocsTabContentResult', () => {
       },
     });
 
-    expect(mockFetchPackageById).toHaveBeenCalledWith('alerting-101', packageManifest, undefined);
+    expect(mockFetchPackageById).toHaveBeenCalledWith('alerting-101', packageManifest, undefined, undefined);
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
     expect(mockFetchContent).not.toHaveBeenCalled();
   });
@@ -88,6 +92,7 @@ describe('loadDocsTabContentResult', () => {
       content: null,
       error: UNRESOLVED_PACKAGE_ERROR,
       errorType: 'not-found',
+      diagnostic: { source: 'other', stage: 'resolve', reason: 'not-found' },
     });
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
@@ -111,4 +116,9 @@ describe('loadDocsTabContentResult', () => {
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
   });
+});
+
+it('classifies an empty docs URL before attempting a fetch', async () => {
+  const result = await loadDocsTabContentResult('  ');
+  expect(result.diagnostic).toEqual({ source: 'other', stage: 'resolve', reason: 'invalid-url' });
 });

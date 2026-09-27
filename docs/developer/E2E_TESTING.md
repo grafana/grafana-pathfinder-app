@@ -154,8 +154,8 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - For each step:
      - Check if pre-completed (objectives already met)
      - Handle requirements (Fix buttons with retry)
-     - Click "Do it" button
-     - Wait for completion indicator
+     - Operate the driver's action control: Do it, Show me, codeblock Insert, terminal Connect, or terminal Exec
+     - Wait for the driver's completion signal
    - Session validated before each shared milestone and every 5 steps
 
 5. **Reporting**
@@ -169,12 +169,50 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
 
 To support a registered kind that is currently reported as unsupported:
 
-1. Implement the `StepDriver` contract from `drivers/types.ts`. Its methods own DOM inspection, timeout calculation, completion checks, skip synchronization, and execution for that kind.
+1. Implement the `StepDriver` contract from `drivers/types.ts`. Its methods own root lookup, DOM inspection, requirements handling, timeout calculation, completion checks, skip synchronization, and execution. Set `detachmentCompletes` explicitly. Codeblocks require an attached completed root, while existing drivers retain their legacy detachment behavior.
 2. Put behavior shared with existing drivers in `drivers/shared.ts`. Keep specialized behavior in a focused driver module, as `drivers/guided.ts` does.
 3. Replace the kind's `unsupportedDriver(...)` entry in `drivers/registry.ts` with a supported driver. Do not add kind-specific branches to `discovery.ts` or `execution.ts`.
 4. Update `drivers/registry.test.ts` and add focused discovery and execution tests. If the change affects unsupported-only handling or externally reported fields, also update `run-guide.test.ts`, reporter/result tests, and the report schema as required.
 
 When introducing a product step kind rather than enabling an existing one, first add it to `STEP_TYPE_KIND_KEYS`, emit the tracked root attributes, and update the contract tests and [E2E testing contract](./E2E_TESTING_CONTRACT.md). The registry test requires every tracked kind to have exactly one registry entry, supported or unsupported.
+
+### Codeblock steps
+
+The runner supports the tracked `codeblock` kind through `drivers/codeblock.ts`. It clicks the product's Insert control and waits for explicit completion. Show me and Copy are not insertion fallbacks.
+
+The driver includes codeblocks in document order, so a successful insertion can unlock the next sequential step. Pre-completed blocks do not insert again. Requirements, insertion errors, disabled controls, and missing completion produce bounded results. A blocked optional block can use the product's Skip control.
+
+Codeblock errors and skippability use the [codeblock testing contract](./E2E_TESTING_CONTRACT.md#codeblock-runner-contract). Older installed plugins can lack the newer error and skippability attributes. Successful insertion still works on tracked roots, but errors can fall back to timeouts and optionality can depend on visible Skip controls.
+
+Run the browser regressions without Grafana authentication:
+
+```bash
+npm run e2e -- --config tests/e2e-runner/playwright.config.ts codeblock-driver.spec.ts --project chromium --no-deps
+```
+
+These tests use a DOM fixture, not a real Monaco editor. They cover discovery, insertion ordering, the next-step gate, insertion errors, disabled Insert controls, and root detachment. Component contract tests cover the product's Insert and Skip controls and their state transitions.
+
+### Terminal steps
+
+The runner supports `terminal-connect` and `terminal` through `drivers/terminal.ts`. Both require the [terminal DOM contract](./E2E_TESTING_CONTRACT.md#terminal-runner-contract) from the installed Pathfinder build.
+
+A connection step clicks its own Connect control and waits for a connected, completed root. An existing default connection uses Continue. An explicit VM request with an existing connection fails before Continue, because the product does not prove that the current VM matches. This also applies when an earlier step in the same run opened the connection. Disconnecting before the run does not enable later steps to switch VMs.
+
+A command step connects through its own control if necessary, then clicks Exec once. It never substitutes Copy. Completion means the product sent the command, not that the shell finished or returned exit code zero. The driver does not parse terminal output, append shell markers, or resend commands after errors.
+
+Connection steps allow 240 seconds for provisioning. Command steps allow 270 seconds, including connection. Root detachment, connection errors, dispatch errors, and missing completion do not count as success.
+
+Missing Coda or insufficient permissions produce unmet prerequisites. Mandatory steps fail and stop the guide under the existing result contract. Optional command steps can skip only through an available product Skip control, with explicit completion afterward.
+
+Connection steps with `gcx: true` fail as unmet prerequisites in this first implementation. The runner does not mint credentials, paste tokens, or click Continue without gcx. Challenge blocks remain unsupported.
+
+Run the browser fixtures without Coda or Grafana authentication:
+
+```bash
+npm run e2e -- --config tests/e2e-runner/playwright.config.ts terminal-driver.spec.ts --project chromium --no-deps
+```
+
+These fixtures do not provision VMs or send real commands. A live smoke test needs an enabled, registered Coda plugin and a disposable sandbox. Verify the authored command output separately from the runner verdict.
 
 ### Shared path and journey sessions
 

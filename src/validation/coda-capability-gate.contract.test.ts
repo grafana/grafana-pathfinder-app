@@ -12,6 +12,9 @@ import { getAllFileImports, isTestFile, resolveImportToFileNode } from './import
 const CODA_GATE_MODULE = 'integrations/coda/useCodaAvailability.hook.ts';
 const AUTHORING_ROOT = 'components/block-editor/';
 const RUNTIME_ROOT = 'components/interactive-tutorial/';
+// Navigation is optional UI, not an authored step: it hides on unavailable Coda
+// rather than surfacing a guide failure. WorkspaceLink.test.tsx covers the gate.
+const NAVIGATION_SURFACE = 'integrations/coda/WorkspaceLink.tsx';
 // Availability probes used only by settings/bootstrap are intentionally not
 // surfaces; these are the gate decisions that can make an authored block run.
 const CAPABILITY_CALL =
@@ -198,7 +201,13 @@ describe('Coda capability-gated authoring contract', () => {
     expect(consumers.length).toBeGreaterThan(0);
     expect(selections.length).toBeGreaterThan(0);
     expect(runtime.length).toBeGreaterThan(0);
-    expect(consumers.filter((consumer) => !isAuthoringConsumer(consumer) && !isRuntimeConsumer(consumer))).toEqual([]);
+    expect(
+      consumers.filter(
+        (consumer) =>
+          !isAuthoringConsumer(consumer) && !isRuntimeConsumer(consumer) && consumer.relPath !== NAVIGATION_SURFACE
+      )
+    ).toEqual([]);
+    expect(consumers.some(({ relPath }) => relPath === NAVIGATION_SURFACE)).toBe(true);
   });
 
   it('keeps every authoring selection blocked or explicitly accounted for', () => {

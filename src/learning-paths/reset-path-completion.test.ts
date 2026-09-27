@@ -134,12 +134,14 @@ describe('resetPath — App Platform path (no url)', () => {
       return true;
     });
 
-    await markMilestoneDone(PATH_KEY, GUIDES[0]!, GUIDES, {
+    const memberUrls = GUIDES.map((id) => `backend-guide:${id}`);
+    await markMilestoneDone(PATH_KEY, GUIDES[0]!, memberUrls[0]!, memberUrls, {
       packageManifest: { id: PATH_ID, repository: 'app-platform' },
     });
     unsubscribe();
 
-    await expect(milestoneCompletionStorage.getCompleted(PATH_KEY)).resolves.toEqual(new Set([GUIDES[0]]));
+    const interactives = await interactiveCompletionStorage.getAll();
+    expect(memberUrls.filter((url) => interactives[url] === 100)).toEqual([memberUrls[0]]);
     expect(facts.filter((fact) => fact.kind === 'journey')).toEqual([]);
   });
 
@@ -276,6 +278,51 @@ describe('resetPath — URL-based journey path', () => {
         url: PATH_URL,
       },
     ];
+  });
+
+  it('does NOT clear sibling paths that share a URL prefix (regression test for #1928)', async () => {
+    // Bug: resetting `/alerting` cleared `/alerting-advanced` because
+    // key.startsWith(normalizedUrl) matched both.
+    const SIBLING_PATH_URL = 'https://grafana.com/docs/learning-journeys/alerting-advanced/';
+    const SIBLING_MILESTONE = `${SIBLING_PATH_URL}milestone-1/`;
+
+    // Seed progress for both the target path and the sibling
+    await interactiveCompletionStorage.set(PATH_URL, 100);
+    await journeyCompletionStorage.set(PATH_URL, 100);
+    await guideCompletionMarkStorage.set(PATH_URL, true);
+    for (const url of MILESTONE_URLS) {
+      await interactiveCompletionStorage.set(url, 100);
+      await journeyCompletionStorage.set(url, 100);
+      await guideCompletionMarkStorage.set(url, true);
+    }
+
+    await interactiveCompletionStorage.set(SIBLING_PATH_URL, 50);
+    await journeyCompletionStorage.set(SIBLING_PATH_URL, 50);
+    await guideCompletionMarkStorage.set(SIBLING_PATH_URL, true);
+    await interactiveCompletionStorage.set(SIBLING_MILESTONE, 75);
+    await journeyCompletionStorage.set(SIBLING_MILESTONE, 75);
+    await guideCompletionMarkStorage.set(SIBLING_MILESTONE, true);
+
+    // Reset the target path
+    await renderAndResetPath(URL_PATH_ID);
+
+    // Target path and its milestones must be cleared
+    await expect(interactiveCompletionStorage.get(PATH_URL)).resolves.toBe(0);
+    await expect(journeyCompletionStorage.get(PATH_URL)).resolves.toBe(0);
+    await expect(guideCompletionMarkStorage.get(PATH_URL)).resolves.toBeNull();
+    for (const url of MILESTONE_URLS) {
+      await expect(interactiveCompletionStorage.get(url)).resolves.toBe(0);
+      await expect(journeyCompletionStorage.get(url)).resolves.toBe(0);
+      await expect(guideCompletionMarkStorage.get(url)).resolves.toBeNull();
+    }
+
+    // Sibling path and its milestone must NOT be cleared
+    await expect(interactiveCompletionStorage.get(SIBLING_PATH_URL)).resolves.toBe(50);
+    await expect(journeyCompletionStorage.get(SIBLING_PATH_URL)).resolves.toBe(50);
+    await expect(guideCompletionMarkStorage.get(SIBLING_PATH_URL)).resolves.toBe(true);
+    await expect(interactiveCompletionStorage.get(SIBLING_MILESTONE)).resolves.toBe(75);
+    await expect(journeyCompletionStorage.get(SIBLING_MILESTONE)).resolves.toBe(75);
+    await expect(guideCompletionMarkStorage.get(SIBLING_MILESTONE)).resolves.toBe(true);
   });
 
   it('clears every milestone key in one pass, without restoring siblings, and spares other journeys', async () => {

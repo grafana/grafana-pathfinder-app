@@ -1,3 +1,4 @@
+import { isSafeResponseName, MAX_INPUT_LENGTH } from './input-value';
 /**
  * User storage abstraction for the Grafana Docs Plugin
  *
@@ -46,7 +47,7 @@ import { StorageEvents } from './event-names';
 import { getLearningJourneyBaseUrl } from './learning-journey-url';
 import { logger } from './logging';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
-import { collectKeysByPrefix } from './storage/key-utils';
+import { collectKeysByPrefix, isKeyUnderPrefix } from './storage/key-utils';
 import { listProgressEntries, progressSectionKey, sweepDiscardedProgressRecords } from './storage/progress-keys';
 import {
   HYBRID_TIMESTAMP_SUFFIX,
@@ -1487,17 +1488,26 @@ export const guideCompletionMarkStorage = {
   },
 
   /**
-   * Clear every mark whose content key starts with `contentKeyPrefix`, or all
-   * of them when it is omitted. Marks are keyed by content key alone and
-   * milestone keys are recorded nowhere, so the bulk reset paths recover them
-   * by prefix exactly as the path reset recovers step keys.
+   * Clear every mark whose content key is under `contentKeyPrefix` — the key
+   * itself or a child below a `/`, `?`, or `#` boundary (see
+   * `isKeyUnderPrefix`) — never a sibling that merely shares the text prefix,
+   * which is what stops a reset of one path wiping another (#1928). When
+   * `contentKeyPrefix` is omitted, all marks are cleared. Marks are keyed by
+   * content key alone and milestone keys are recorded nowhere, so the bulk
+   * reset paths recover them by prefix exactly as the path reset recovers step
+   * keys.
+   *
+   * Precondition: the prefix must have no trailing slash, so the boundary test
+   * applies rather than a plain `startsWith`. The sole caller
+   * (`learning-paths.hook.ts`) satisfies this by stripping trailing slashes
+   * from the path URL before calling.
    */
   async clearAllWithPrefix(contentKeyPrefix = ''): Promise<void> {
     try {
       const contentKeys: string[] = [];
       for (const key of collectKeysByPrefix(localStorage, StorageKeys.GUIDE_COMPLETION_MARK_PREFIX)) {
         const parsed = parseVersionedStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, key);
-        if (parsed && parsed.sectionId === '' && parsed.contentKey.startsWith(contentKeyPrefix)) {
+        if (parsed && parsed.sectionId === '' && isKeyUnderPrefix(parsed.contentKey, contentKeyPrefix)) {
           contentKeys.push(parsed.contentKey);
         }
       }
@@ -1917,6 +1927,24 @@ export const learningProgressStorage = {
  * }
  */
 export const guideResponseStorage = {
+  async mergeResponses(guideId: string, responses: Record<string, string>): Promise<void> {
+    if (
+      ['__proto__', 'prototype', 'constructor'].includes(guideId) ||
+      Object.entries(responses).some(([key, value]) => !isSafeResponseName(key) || value.length > MAX_INPUT_LENGTH)
+    ) {
+      throw new Error('Invalid guide inputs');
+    }
+    const storage = createUserStorage();
+    const all = await guideResponseStorage.getAll();
+    const previous = Object.hasOwn(all, guideId) ? all[guideId] : {};
+    await storage.setItem(StorageKeys.GUIDE_RESPONSES, { ...all, [guideId]: { ...previous, ...responses } });
+    window.dispatchEvent(
+      new CustomEvent(StorageEvents.GuideResponseChanged, {
+        detail: { guideId, variableName: '*', value: undefined },
+      })
+    );
+  },
+
   /**
    * Gets all responses with Zod validation for defense-in-depth
    */

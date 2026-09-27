@@ -169,7 +169,7 @@ describe('scrollStepIntoView', () => {
       waitForTimeout: jest.fn().mockResolvedValue(undefined),
     } as unknown as Page;
 
-    await scrollStepIntoView(page, 'step-1', 0);
+    await scrollStepIntoView(page, { stepKind: 'plain', stepId: 'step-1' }, 0);
 
     expect(stepElement.scrollIntoViewIfNeeded).toHaveBeenCalledWith({ timeout: SCROLL_INTO_VIEW_TIMEOUT_MS });
   });
@@ -181,7 +181,7 @@ describe('scrollStepIntoView', () => {
       waitForTimeout: jest.fn().mockResolvedValue(undefined),
     } as unknown as Page;
 
-    await scrollStepIntoView(page, 'step-1', 0, 1234);
+    await scrollStepIntoView(page, { stepKind: 'plain', stepId: 'step-1' }, 0, 1234);
 
     expect(stepElement.scrollIntoViewIfNeeded).toHaveBeenCalledWith({ timeout: 1234 });
   });

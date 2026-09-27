@@ -6,6 +6,8 @@
 import { getAppEvents, locationService } from '@grafana/runtime';
 
 import pluginJson from '../plugin.json';
+import { kioskState } from '../global-state/kiosk';
+import { parsePathfinderDeepLink } from './pathfinder-search-params';
 import { sidebarState } from '../global-state/sidebar';
 import { isExtensionSidebarInUse } from '../lib/storage/extension-sidebar';
 import { logger } from '../lib/logging';
@@ -19,6 +21,10 @@ export interface ConfigAutoOpenContext {
 
 export function attemptAutoOpen(delay = 200): void {
   setTimeout(() => {
+    const params = parsePathfinderDeepLink(window.location.search);
+    if (kioskState.getSnapshot() || (params.pathfinderKiosk && !params.doc && !params.controller)) {
+      return;
+    }
     try {
       getAppEvents().publish({
         type: 'open-extension-sidebar',

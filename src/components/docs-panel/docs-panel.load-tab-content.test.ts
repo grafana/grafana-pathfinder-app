@@ -1,10 +1,4 @@
-/**
- * Tests for CombinedLearningJourneyPanel.loadTabContent's empty-URL handling.
- *
- * An empty/corrupted tab URL previously returned 'completed' without loading
- * or failing the tab, which withGuideOpenAction then mapped to a successful
- * `pathfinder_guide_open` outcome. Fixed to fail the tab and report 'error'.
- */
+// Empty or corrupted tab URLs must fail the tab and report an error.
 
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before any import that triggers docs-panel.tsx
@@ -304,7 +298,10 @@ describe('CombinedLearningJourneyPanel.openDocsPage — prepared (one-fetch) lau
     expect(loadDocsTabContentResult as jest.Mock).not.toHaveBeenCalled();
 
     const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
-    expect(tab.content).toBe(preparedContent);
+    expect(tab.content).toEqual({
+      ...preparedContent,
+      loadContext: expect.objectContaining({ loadId: expect.any(String), source: 'bundled' }),
+    });
     expect(tab.isLoading).toBe(false);
     expect(tab.error).toBeNull();
   });
@@ -324,7 +321,10 @@ describe('CombinedLearningJourneyPanel.openDocsPage — prepared (one-fetch) lau
     expect(loadDocsTabContentResult as jest.Mock).not.toHaveBeenCalled();
 
     const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
-    expect(tab.content).toBe(preparedContent);
+    expect(tab.content).toEqual({
+      ...preparedContent,
+      loadContext: expect.objectContaining({ loadId: expect.any(String), source: 'bundled' }),
+    });
     expect(tab.isLoading).toBe(false);
     expect(tab.error).toBeNull();
   });

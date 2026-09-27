@@ -19,7 +19,7 @@
     {
       "id": "prometheus-advanced-queries",
       "title": "Advanced Prometheus queries",
-      "summary": "Master advanced PromQL patterns including aggregations, histograms, predictions, and SLO calculations. Queries can be customized with Assistant for your datasources.",
+      "summary": "Practice advanced PromQL in Explore: aggregation, joins, time comparisons, histograms, and rule expressions. Customize queries for your data with Grafana Assistant.",
       "filename": "prometheus-advanced-queries/content.json",
       "url": ["/explore"]
     },

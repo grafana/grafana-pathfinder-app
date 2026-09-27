@@ -37,13 +37,16 @@ jest.mock('./openfeature', () => ({
   getFeatureFlagValue: jest.fn().mockReturnValue(false),
 }));
 
-import { setupConfigAutoOpen } from './sidebar-auto-open';
+import { kioskState } from '../global-state/kiosk';
+import { setupConfigAutoOpen, attemptAutoOpen } from './sidebar-auto-open';
 
 const ONBOARDING_PATH = '/a/grafana-setupguide-app/onboarding-flow';
 
 describe('setupConfigAutoOpen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    kioskState.set(null);
+    window.history.replaceState({}, '', '/');
     jest.useFakeTimers();
     mockIsExtensionSidebarInUse.mockReturnValue(false);
     mockGetLocation.mockReturnValue({ pathname: '/dashboards' });
@@ -112,5 +115,25 @@ describe('setupConfigAutoOpen', () => {
     expect(mockSetPendingOpenSource).toHaveBeenCalledWith('auto_open', 'auto-open');
     jest.runAllTimers();
     expect(mockPublish).toHaveBeenCalled();
+  });
+  it('suppresses a pending auto-open when a kiosk URL arrives before the timer', () => {
+    attemptAutoOpen();
+    window.history.replaceState({}, '', '/?pathfinderKiosk=1');
+    jest.runAllTimers();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('suppresses auto-open for an already-open kiosk', () => {
+    kioskState.set({ source: 'sidebar' });
+    attemptAutoOpen();
+    jest.runAllTimers();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('lets a document link take precedence over a kiosk URL', () => {
+    window.history.replaceState({}, '', '/?pathfinderKiosk=1&doc=bundled:welcome');
+    attemptAutoOpen();
+    jest.runAllTimers();
+    expect(mockPublish).toHaveBeenCalledTimes(1);
   });
 });
