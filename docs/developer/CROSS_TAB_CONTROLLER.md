@@ -59,7 +59,7 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 (`source: 'pathfinder'`, a per-tab `senderId` used to drop self-echoes, and a
 `timestamp`):
 
-- `step-command` — `{ phase: 'show' | 'do', stepId, runId, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, internalActions? } }`.
+- `step-command` — `{ phase: 'show' | 'do', stepId, runId, startIndex?, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, internalActions? } }`.
   `targetState` carries an authored `targetstate` through to the live tab so
   toggle actions converge on the requested state instead of clicking blindly.
   Composite steps carry their ordered sub-actions in `internalActions`; the
@@ -68,8 +68,12 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
   `multistep` replays with staged pacing (see [Replay pacing](#replay-pacing));
   a `guided` step runs through the live tab's `GuidedHandler` instead — it
   highlights each target and waits for the user.
-- `step-complete` — `{ stepId, runId, ok }`, live → controller, signals a
-  composite actually finished so the controller marks completion only then.
+- `step-cancel` — `{ stepId, runId }`, a signed controller → live command that
+  aborts the matching run without waiting behind the execution queue.
+- `step-complete` — `{ stepId, runId, ok }`, live → controller, acknowledges
+  simple and composite actions. The controller registers its waiter before
+  sending and normally completes only after success and any post-verification.
+  Explicit `completeEarly` actions retain their early completion behavior.
 - `step-progress` — `{ stepId, runId, index, total }`, live → controller, reports which
   internal action a composite is replaying so the controller can animate per-step
   progress while it runs on the live tab. `runId` prevents a late reply from a

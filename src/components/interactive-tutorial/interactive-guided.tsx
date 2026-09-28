@@ -1,3 +1,4 @@
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { acquireGuidedRun, type GuidedRun } from '../../global-state/guided-run';
 import { usePathfinderPluginConfig } from '../../hooks';
 import type { ConditionInput } from '../../types/requirements.types';
@@ -333,6 +334,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       skippable,
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
+      lazyRender: internalActions[0]?.lazyRender,
+      scrollContainer: internalActions[0]?.scrollContainer,
       disabled, // Pass through for auto-completion suppression
       sectionId, // Lets the checker write skip / objectives transitions to the store
       onStepComplete, // Pass through for objectives auto-completion
@@ -440,9 +443,19 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   targetAction: action!.targetAction,
                   refTarget: action!.refTarget ?? '',
                   targetValue: action!.targetValue,
+                  lazyRender: action!.lazyRender,
+                  scrollContainer: action!.scrollContainer,
                 });
                 return checked.pass;
               };
+              if (action!.lazyRender && action!.requirements) {
+                await resolveWithRetry(action!.refTarget ?? '', action!.targetAction, {
+                  delays: [],
+                  lazyRender: true,
+                  scrollContainer: action!.scrollContainer,
+                  signal: run.signal,
+                });
+              }
               if (!(await validateAction())) {
                 setFailedStepIndex(i);
                 setExecutionError(`Step ${i + 1} requirements are not met. Restore the required state and retry.`);

@@ -610,6 +610,17 @@ describe('NavigationManager', () => {
     });
 
     describe('position tracking', () => {
+      it('keeps a sized target visible at the viewport origin', async () => {
+        mockElement.getBoundingClientRect = jest
+          .fn()
+          .mockReturnValue({ top: 0, left: 0, bottom: 100, right: 100, width: 100, height: 100 });
+        await navigationManager.highlightWithComment(mockElement, undefined, false);
+        window.dispatchEvent(new Event('resize'));
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const highlight = document.querySelector<HTMLElement>('.interactive-highlight-outline')!;
+        expect(highlight.style.display).not.toBe('none');
+      });
+
       it('should update highlight position when element moves', async () => {
         // Initial position
         mockElement.getBoundingClientRect = jest.fn().mockReturnValue({

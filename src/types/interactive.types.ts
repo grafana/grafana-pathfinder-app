@@ -19,6 +19,7 @@ export type ActionExecutionResult =
   | { outcome: 'cancelled' | 'timeout' };
 
 export interface InteractiveElementData {
+  signal?: AbortSignal;
   // Core interactive attributes
   refTarget: string;
   targetAction: InteractiveActionType;
@@ -72,7 +73,14 @@ export type InteractiveActionRequest = Pick<InteractiveElementData, 'targetActio
   Partial<
     Pick<
       InteractiveElementData,
-      'refTarget' | 'targetValue' | 'targetState' | 'targetComment' | 'fullScreenFallbackLocation'
+      | 'refTarget'
+      | 'targetValue'
+      | 'targetState'
+      | 'targetComment'
+      | 'fullScreenFallbackLocation'
+      | 'signal'
+      | 'lazyRender'
+      | 'scrollContainer'
     >
   > & {
     buttonType?: 'show' | 'do';

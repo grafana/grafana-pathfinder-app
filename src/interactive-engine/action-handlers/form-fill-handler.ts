@@ -1,3 +1,4 @@
+import { sleep } from '../../lib/async-utils';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
@@ -11,36 +12,57 @@ export class FormFillHandler {
   constructor(
     private stateManager: InteractiveStateManager,
     private navigationManager: NavigationManager,
-    private waitForReactUpdates: () => Promise<void>
+    private waitForReactUpdates: () => Promise<void>,
+    private context?: InteractiveElementData
   ) {}
 
   async execute(data: InteractiveElementData, fillForm: boolean): Promise<ActionExecutionResult> {
+    if (data !== this.context && (data.signal || data.lazyRender)) {
+      return new FormFillHandler(this.stateManager, this.navigationManager, this.waitForReactUpdates, data).execute(
+        data,
+        fillForm
+      );
+    }
     this.stateManager.setState(data, 'running');
 
     try {
+      this.context?.signal?.throwIfAborted();
       const targetElement = await this.findTargetElement(data.refTarget);
+      this.context?.signal?.throwIfAborted();
       if (!targetElement) {
         return { outcome: 'error', reason: 'target_missing' };
       }
       await this.prepareElement(targetElement);
+      this.context?.signal?.throwIfAborted();
 
       if (!fillForm) {
         await this.handleShowMode(targetElement, data.targetComment);
+        this.context?.signal?.throwIfAborted();
         // Mark show actions as completed too for proper state cleanup
         await this.markAsCompleted(data);
+        this.context?.signal?.throwIfAborted();
         return { outcome: 'ok' };
       }
 
       await this.handleDoMode(targetElement, data);
+      this.context?.signal?.throwIfAborted();
       return { outcome: 'ok' };
     } catch (error) {
+      if (this.context?.signal?.aborted) {
+        return { outcome: 'cancelled' };
+      }
       this.stateManager.handleError(error as Error, 'FormFillHandler', data, false);
       return { outcome: 'error', reason: 'action_failed' };
     }
   }
 
   private async findTargetElement(selector: string): Promise<HTMLElement | null> {
-    const resolved = await resolveWithRetry(selector, 'formfill');
+    const resolved = await resolveWithRetry(
+      selector,
+      'formfill',
+      ...(this.context ? ([this.context] as const) : ([] as const))
+    );
+    this.context?.signal?.throwIfAborted();
 
     if (!resolved) {
       return null;
@@ -61,11 +83,26 @@ export class FormFillHandler {
     }
 
     await this.navigationManager.ensureNavigationOpen(targetElement);
+    this.context?.signal?.throwIfAborted();
     await this.navigationManager.ensureElementVisible(targetElement);
+    this.context?.signal?.throwIfAborted();
   }
 
   private async handleShowMode(targetElement: HTMLElement, comment?: string): Promise<void> {
-    await this.navigationManager.highlightWithComment(targetElement, comment);
+    await (this.context?.signal
+      ? this.navigationManager.highlightWithComment(
+          targetElement,
+          comment,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          { signal: this.context.signal }
+        )
+      : this.navigationManager.highlightWithComment(targetElement, comment));
+    this.context?.signal?.throwIfAborted();
   }
 
   private async handleDoMode(targetElement: HTMLElement, data: InteractiveElementData): Promise<void> {
@@ -89,24 +126,31 @@ export class FormFillHandler {
     if (shouldClear) {
       if (isCombobox) {
         await this.clearComboboxPills(refinedElement);
+        this.context?.signal?.throwIfAborted();
       }
       await this.clearElement(refinedElement, tagName, isMonacoEditor);
+      this.context?.signal?.throwIfAborted();
     }
     if (isCombobox) {
       await this.fillComboboxStaged(refinedElement, remainingValue);
+      this.context?.signal?.throwIfAborted();
       await this.markAsCompleted(data);
+      this.context?.signal?.throwIfAborted();
       return;
     }
 
     // For non-combobox elements, set value and dispatch events
     // Always dispatch events even if remainingValue is empty to maintain backward compatibility
     await this.setElementValue(refinedElement, remainingValue, tagName, inputType, isMonacoEditor);
+    this.context?.signal?.throwIfAborted();
     // Checkboxes and radios are driven by a real click, which already fired
     // onChange; re-dispatching would toggle twice on toggle-style handlers.
     if (inputType !== 'checkbox' && inputType !== 'radio') {
       await this.dispatchEvents(refinedElement, tagName, isMonacoEditor);
+      this.context?.signal?.throwIfAborted();
     }
     await this.markAsCompleted(data);
+    this.context?.signal?.throwIfAborted();
   }
 
   /**
@@ -204,6 +248,7 @@ export class FormFillHandler {
   private async clearElement(element: HTMLElement, tagName: string, isMonacoEditor: boolean): Promise<void> {
     if (isMonacoEditor) {
       await this.clearMonacoEditor(element);
+      this.context?.signal?.throwIfAborted();
       return;
     }
 
@@ -238,7 +283,6 @@ export class FormFillHandler {
     while (container && depth < maxDepth) {
       const removeButtons = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Remove filter"]');
       if (removeButtons.length > 0) {
-        const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
         const delay = INTERACTIVE_CONFIG.delays.debouncing.stateSettling;
 
         let safetyLimit = 50;
@@ -248,7 +292,8 @@ export class FormFillHandler {
             break;
           }
           currentButtons[0]!.click();
-          await sleep(delay);
+          await sleep(delay, this.context?.signal);
+          this.context?.signal?.throwIfAborted();
           safetyLimit--;
         }
         return;
@@ -267,12 +312,16 @@ export class FormFillHandler {
   ): Promise<void> {
     if (tagName === 'input') {
       await this.setInputValue(element, value, inputType);
+      this.context?.signal?.throwIfAborted();
     } else if (tagName === 'textarea') {
       await this.setTextareaValue(element, value, isMonacoEditor);
+      this.context?.signal?.throwIfAborted();
     } else if (tagName === 'select') {
       await this.setSelectValue(element, value);
+      this.context?.signal?.throwIfAborted();
     } else {
       await this.setTextContent(element, value);
+      this.context?.signal?.throwIfAborted();
     }
   }
 
@@ -353,7 +402,6 @@ export class FormFillHandler {
       element.dispatchEvent(new Event('change', { bubbles: true }));
     };
 
-    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     const stageDelay = INTERACTIVE_CONFIG.delays.perceptual.base;
 
     const isOperatorToken = (t: string) => ['!=', '=~', '!~', '='].includes(t);
@@ -365,7 +413,8 @@ export class FormFillHandler {
         element.dispatchEvent(
           new KeyboardEvent('keyup', { key: ch, code: ch === '=' ? 'Equal' : undefined, bubbles: true })
         );
-        await sleep(INTERACTIVE_CONFIG.delays.formFill.keystrokeDelay);
+        await sleep(INTERACTIVE_CONFIG.delays.formFill.keystrokeDelay, this.context?.signal);
+        this.context?.signal?.throwIfAborted();
       }
       element.dispatchEvent(new Event('change', { bubbles: true }));
     };
@@ -378,12 +427,15 @@ export class FormFillHandler {
       const tokenToType = stripQuotes(token);
       if (isOperatorToken(tokenToType)) {
         await typeOperator(tokenToType);
+        this.context?.signal?.throwIfAborted();
       } else {
         setAndInput(tokenToType);
       }
-      await sleep(stageDelay);
+      await sleep(stageDelay, this.context?.signal);
+      this.context?.signal?.throwIfAborted();
       pressEnter();
-      await sleep(stageDelay);
+      await sleep(stageDelay, this.context?.signal);
+      this.context?.signal?.throwIfAborted();
     }
 
     // Defocus: close dropdown menu and blur
@@ -397,7 +449,8 @@ export class FormFillHandler {
     element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: false }));
     element.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', bubbles: false }));
 
-    await sleep(stageDelay);
+    await sleep(stageDelay, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
 
     // Blur triggers dropdown close on most components and properly defocuses the field
     element.blur();
@@ -431,6 +484,7 @@ export class FormFillHandler {
   private async setTextareaValue(element: HTMLElement, value: string, isMonacoEditor: boolean): Promise<void> {
     if (isMonacoEditor) {
       await this.setMonacoEditorValue(element, value);
+      this.context?.signal?.throwIfAborted();
     } else {
       this.setNativeTextareaValue(element, value);
     }
@@ -442,8 +496,10 @@ export class FormFillHandler {
     }
     element.focus();
     await this.clearMonacoEditor(element);
+    this.context?.signal?.throwIfAborted();
     this.setNativeTextareaValue(element, value);
     await this.triggerMonacoEvents(element, value);
+    this.context?.signal?.throwIfAborted();
   }
 
   private async clearMonacoEditor(element: HTMLElement): Promise<void> {
@@ -463,7 +519,8 @@ export class FormFillHandler {
       })
     );
 
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.monacoClear));
+    await sleep(INTERACTIVE_CONFIG.delays.technical.monacoClear, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
   }
 
   private async triggerMonacoEvents(element: HTMLElement, value: string): Promise<void> {
@@ -471,12 +528,14 @@ export class FormFillHandler {
     element.dispatchEvent(new Event('input', { bubbles: true }));
 
     // Wait before firing change to avoid recursive decorations
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.formFill.monacoEventDelay));
+    await sleep(INTERACTIVE_CONFIG.delays.formFill.monacoEventDelay, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
 
     element.dispatchEvent(new Event('change', { bubbles: true }));
 
     // Wait again before firing keyboard events
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.formFill.monacoEventDelay));
+    await sleep(INTERACTIVE_CONFIG.delays.formFill.monacoEventDelay, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
 
     // Only fire keyboard events if there's a last character
     const lastChar = value.slice(-1);
@@ -484,7 +543,8 @@ export class FormFillHandler {
       element.dispatchEvent(new KeyboardEvent('keydown', { key: lastChar, bubbles: true }));
 
       // Small delay between keydown and keyup
-      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.formFill.monacoKeyEventDelay));
+      await sleep(INTERACTIVE_CONFIG.delays.formFill.monacoKeyEventDelay, this.context?.signal);
+      this.context?.signal?.throwIfAborted();
 
       element.dispatchEvent(new KeyboardEvent('keyup', { key: lastChar, bubbles: true }));
     }
@@ -534,18 +594,21 @@ export class FormFillHandler {
   private async markAsCompleted(data: InteractiveElementData): Promise<void> {
     // Wait for React to process all form events and state updates
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
 
     // Additional settling time for complex form operations and reactive checks
     // This ensures the sequential requirements system has time to:
     // 1. Process form state changes
     // 2. Re-evaluate next step requirements
     // 3. Trigger component re-renders and unlock the next step
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck));
+    await sleep(INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
 
     // Mark as completed after state has settled
     this.stateManager.setState(data, 'completed');
 
     // Final wait to ensure completion state propagates
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
   }
 }

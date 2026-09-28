@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../styles/interactive.styles';
-import { waitForReactUpdates } from '../lib/async-utils';
+import { sleep, waitForReactUpdates } from '../lib/async-utils';
 import { logger } from '../lib/logging';
 import { withFaroUserAction } from '../lib/faro';
 import { createInteractionName, UserInteraction } from '../lib/analytics';
@@ -48,6 +48,18 @@ export interface CheckResult {
 }
 
 export function useInteractiveElements(_options: UseInteractiveElementsOptions = {}) {
+  const activeRuns = useRef(new Set<{ controller: AbortController; handoff: boolean }>());
+  useEffect(
+    () => () => {
+      activeRuns.current.forEach((run) => {
+        if (!run.handoff) {
+          run.controller.abort();
+        }
+      });
+    },
+    []
+  );
+
   const { checkRequirements, checkPostconditions } = useGuideRequirements();
 
   // Get current theme for CSS custom property updates
@@ -170,6 +182,8 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
         targetAction: data.targetAction,
         refTarget: data.refTarget,
         targetValue: data.targetValue,
+        lazyRender: data.lazyRender,
+        scrollContainer: data.scrollContainer,
         stepId: data.textContent || 'unknown',
       };
 
@@ -264,109 +278,134 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
    */
   const executeInteractiveAction = useCallback(
     async (request: InteractiveActionRequest): Promise<StepOutcome> => {
-      const {
-        targetAction,
-        refTarget = '',
-        targetValue,
-        targetState,
-        targetComment,
-        buttonType = 'do',
-        fullScreenFallbackLocation,
-      } = request;
-      // Create InteractiveElementData directly from parameters
-      const elementData: InteractiveElementData = {
-        refTarget: refTarget,
-        targetAction: targetAction,
-        targetValue: targetValue,
-        targetState: targetState,
-        targetComment: targetComment,
-        requirements: undefined,
-        tagName: 'button', // Simulated for React components
-        textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,
-        timestamp: Date.now(),
-        fullScreenFallbackLocation,
-      };
-
-      // No DOM element needed - React components manage their own state
-      const isShowMode = buttonType === 'show';
-
-      // Full screen has no live Grafana UI behind it. A Grafana-driving
-      // action — "Show me" or "Do it" alike — hands off to the sidebar
-      // first, navigating to the resolved fallback location
-      // (step/milestone/course — see content-renderer.tsx) so the click has
-      // something to preview or act on once docked. Waits for the sidebar to
-      // actually mount before proceeding, rather than expanding the action
-      // handler's own resolveWithRetry budget. The target may still not be
-      // there yet; handlers report failed resolution without completing it.
-      if (isGrafanaDrivingHandoffNeeded(targetAction)) {
-        await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
+      if (activeRuns.current.size > 0) {
+        return 'error';
       }
+      const run = { controller: new AbortController(), handoff: false };
+      activeRuns.current.add(run);
+      const abort = () => run.controller.abort();
+      request.signal?.addEventListener('abort', abort, { once: true });
+      if (request.signal?.aborted) {
+        abort();
+      }
+      try {
+        const {
+          targetAction,
+          refTarget = '',
+          targetValue,
+          targetState,
+          targetComment,
+          buttonType = 'do',
+          fullScreenFallbackLocation,
+        } = request;
+        // Create InteractiveElementData directly from parameters
+        const elementData: InteractiveElementData = {
+          refTarget: refTarget,
+          signal: run.controller.signal,
+          lazyRender: request.lazyRender,
+          scrollContainer: request.scrollContainer,
+          targetAction: targetAction,
+          targetValue: targetValue,
+          targetState: targetState,
+          targetComment: targetComment,
+          requirements: undefined,
+          tagName: 'button', // Simulated for React components
+          textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,
+          timestamp: Date.now(),
+          fullScreenFallbackLocation,
+        };
 
-      let executionResult: ActionExecutionResult = { outcome: 'ok' };
-      await withFaroUserAction(
-        isShowMode
-          ? createInteractionName(UserInteraction.ShowMeButtonClick)
-          : createInteractionName(UserInteraction.DoItButtonClick),
-        { target_action: targetAction, ref_target: refTarget },
-        async () => {
-          try {
-            switch (targetAction) {
-              case 'highlight':
-                executionResult = await interactiveFocus(elementData, !isShowMode);
-                break;
+        // No DOM element needed - React components manage their own state
+        const isShowMode = buttonType === 'show';
 
-              case 'button':
-                executionResult = await interactiveButton(elementData, !isShowMode);
-                break;
-
-              case 'formfill':
-                executionResult = await interactiveFormFill(elementData, !isShowMode);
-                break;
-
-              case 'navigate':
-                executionResult = await interactiveNavigate(elementData, !isShowMode);
-                break;
-
-              case 'hover':
-                executionResult = await interactiveHover(elementData, !isShowMode);
-                break;
-
-              case 'guided':
-                executionResult = { outcome: 'error', reason: 'unsupported_action' };
-                break;
-
-              case 'popout':
-                executionResult = await interactivePopout(elementData, !isShowMode);
-                break;
-
-              case 'multistep':
-                executionResult = { outcome: 'error', reason: 'unsupported_action' };
-                break;
-
-              case 'noop':
-                if (isShowMode && targetComment) {
-                  navigationManager.showNoopComment(targetComment);
-                  await new Promise((resolve) => setTimeout(resolve, 2000));
-                  navigationManager.clearAllHighlights();
-                }
-                break;
-
-              default:
-                logger.warn(`Unknown interactive action: ${targetAction}`);
-                assertExhaustive(targetAction);
-            }
-          } catch (error) {
-            stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, false);
-            executionResult = { outcome: 'error', reason: 'action_failed' };
-          }
-        },
-        undefined,
-        {
-          critical: !isShowMode,
-          outcomeFrom: () => executionResult.outcome,
+        // Full screen has no live Grafana UI behind it. A Grafana-driving
+        // action — "Show me" or "Do it" alike — hands off to the sidebar
+        // first, navigating to the resolved fallback location
+        // (step/milestone/course — see content-renderer.tsx) so the click has
+        // something to preview or act on once docked. Waits for the sidebar to
+        // actually mount before proceeding, rather than expanding the action
+        // handler's own resolveWithRetry budget. The target may still not be
+        // there yet; handlers report failed resolution without completing it.
+        if (isGrafanaDrivingHandoffNeeded(targetAction)) {
+          run.handoff = true;
+          await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
         }
-      );
-      return executionResult.outcome === 'ok' ? 'ok' : 'error';
+
+        let executionResult: ActionExecutionResult = { outcome: 'ok' };
+        await withFaroUserAction(
+          isShowMode
+            ? createInteractionName(UserInteraction.ShowMeButtonClick)
+            : createInteractionName(UserInteraction.DoItButtonClick),
+          { target_action: targetAction, ref_target: refTarget },
+          async () => {
+            try {
+              run.controller.signal.throwIfAborted();
+              switch (targetAction) {
+                case 'highlight':
+                  executionResult = await interactiveFocus(elementData, !isShowMode);
+                  break;
+
+                case 'button':
+                  executionResult = await interactiveButton(elementData, !isShowMode);
+                  break;
+
+                case 'formfill':
+                  executionResult = await interactiveFormFill(elementData, !isShowMode);
+                  break;
+
+                case 'navigate':
+                  executionResult = await interactiveNavigate(elementData, !isShowMode);
+                  break;
+
+                case 'hover':
+                  executionResult = await interactiveHover(elementData, !isShowMode);
+                  break;
+
+                case 'guided':
+                  executionResult = { outcome: 'error', reason: 'unsupported_action' };
+                  break;
+
+                case 'popout':
+                  executionResult = await interactivePopout(elementData, !isShowMode);
+                  break;
+
+                case 'multistep':
+                  executionResult = { outcome: 'error', reason: 'unsupported_action' };
+                  break;
+
+                case 'noop':
+                  if (isShowMode && targetComment) {
+                    navigationManager.showNoopComment(targetComment);
+                    await sleep(2000, run.controller.signal);
+                    navigationManager.clearOwnedHighlights();
+                  }
+                  break;
+
+                default:
+                  logger.warn(`Unknown interactive action: ${targetAction}`);
+                  assertExhaustive(targetAction);
+              }
+            } catch (error) {
+              stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, false);
+              executionResult = run.controller.signal.aborted
+                ? { outcome: 'cancelled' }
+                : { outcome: 'error', reason: 'action_failed' };
+            }
+          },
+          undefined,
+          {
+            critical: !isShowMode,
+            outcomeFrom: () => executionResult.outcome,
+          }
+        );
+        return executionResult.outcome === 'ok' && !run.controller.signal.aborted ? 'ok' : 'error';
+      } finally {
+        request.signal?.removeEventListener('abort', abort);
+        if (run.controller.signal.aborted) {
+          navigationManager.clearOwnedHighlights();
+        }
+        activeRuns.current.delete(run);
+      }
     },
     [
       interactiveFocus,

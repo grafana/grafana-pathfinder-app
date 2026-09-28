@@ -1,3 +1,4 @@
+import { sleep } from '../../lib/async-utils';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
@@ -12,14 +13,27 @@ export class FocusHandler {
   constructor(
     private stateManager: InteractiveStateManager,
     private navigationManager: NavigationManager,
-    private waitForReactUpdates: () => Promise<void>
+    private waitForReactUpdates: () => Promise<void>,
+    private context?: InteractiveElementData
   ) {}
 
   async execute(data: InteractiveElementData, click: boolean): Promise<ActionExecutionResult> {
+    if (data !== this.context && (data.signal || data.lazyRender)) {
+      return new FocusHandler(this.stateManager, this.navigationManager, this.waitForReactUpdates, data).execute(
+        data,
+        click
+      );
+    }
     this.stateManager.setState(data, 'running');
 
     try {
-      const resolved = await resolveWithRetry(data.refTarget, 'focus');
+      this.context?.signal?.throwIfAborted();
+      const resolved = await resolveWithRetry(
+        data.refTarget,
+        'focus',
+        ...(this.context ? ([this.context] as const) : ([] as const))
+      );
+      this.context?.signal?.throwIfAborted();
 
       let targetElements: HTMLElement[];
       if (!resolved) {
@@ -32,13 +46,19 @@ export class FocusHandler {
 
       if (!click) {
         await this.handleShowMode(targetElements, data.targetComment, data.targetState);
+        this.context?.signal?.throwIfAborted();
         return { outcome: 'ok' };
       }
 
       await this.handleDoMode(targetElements, data.targetState);
+      this.context?.signal?.throwIfAborted();
       await this.markAsCompleted(data);
+      this.context?.signal?.throwIfAborted();
       return { outcome: 'ok' };
     } catch (error) {
+      if (this.context?.signal?.aborted) {
+        return { outcome: 'cancelled' };
+      }
       this.stateManager.handleError(error as Error, 'FocusHandler', data, false);
       return { outcome: 'error', reason: 'action_failed' };
     }
@@ -58,11 +78,26 @@ export class FocusHandler {
       }
 
       await this.navigationManager.ensureNavigationOpen(element);
+      this.context?.signal?.throwIfAborted();
       await this.navigationManager.ensureElementVisible(element);
-      await this.navigationManager.highlightWithComment(
-        element,
-        commentForTargetState(comment, element, rawTargetState)
-      );
+      this.context?.signal?.throwIfAborted();
+      await (this.context?.signal
+        ? this.navigationManager.highlightWithComment(
+            element,
+            commentForTargetState(comment, element, rawTargetState),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            { signal: this.context.signal }
+          )
+        : this.navigationManager.highlightWithComment(
+            element,
+            commentForTargetState(comment, element, rawTargetState)
+          ));
+      this.context?.signal?.throwIfAborted();
     }
   }
 
@@ -81,10 +116,13 @@ export class FocusHandler {
       }
 
       await this.navigationManager.ensureNavigationOpen(element);
+      this.context?.signal?.throwIfAborted();
       await this.navigationManager.ensureElementVisible(element);
+      this.context?.signal?.throwIfAborted();
 
       if (target) {
         await clickToTargetState(element, target, this.waitForReactUpdates);
+        this.context?.signal?.throwIfAborted();
       } else {
         element.click();
       }
@@ -94,16 +132,19 @@ export class FocusHandler {
   private async markAsCompleted(data: InteractiveElementData): Promise<void> {
     // Wait for React to process all focus/click events and state updates
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
 
     // Additional settling time for React state propagation and reactive checks
     // This ensures the sequential requirements system has time to unlock the next step
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck));
+    await sleep(INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
 
     // Mark as completed after state has settled
     this.stateManager.setState(data, 'completed');
 
     // Final wait to ensure completion state propagates
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
   }
 
   private shouldSelectSingleElement(selector: string): boolean {

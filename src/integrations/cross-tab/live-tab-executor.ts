@@ -170,13 +170,21 @@ export function installLiveTabExecutor(
     }
   };
 
-  const runAction = async (action: CrossTabInternalAction, isShow: boolean): Promise<ActionExecutionResult> => {
+  const runAction = async (
+    action: CrossTabInternalAction,
+    isShow: boolean,
+    signal: AbortSignal
+  ): Promise<ActionExecutionResult> => {
+    signal.throwIfAborted();
     if (!isInteractiveActionType(action.targetAction)) {
       logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
       return { outcome: 'error', reason: 'unsupported_action' };
     }
 
     const data: InteractiveElementData = {
+      signal,
+      lazyRender: action.lazyRender,
+      scrollContainer: action.scrollContainer,
       refTarget: action.refTarget ?? '',
       targetAction: action.targetAction,
       targetValue: action.targetValue,
@@ -234,11 +242,11 @@ export function installLiveTabExecutor(
       signal.throwIfAborted();
       onProgress(i);
       const action = actions[i]!;
-      if ((await runAction(action, true)).outcome !== 'ok') {
+      if ((await runAction(action, true, signal)).outcome !== 'ok') {
         throw new Error('Remote preview failed');
       }
       await sleep(pacing.showToDoMs, signal);
-      if ((await runAction(action, false)).outcome !== 'ok') {
+      if ((await runAction(action, false, signal)).outcome !== 'ok') {
         throw new Error('Remote action failed');
       }
       await settleDom();
@@ -320,7 +328,7 @@ export function installLiveTabExecutor(
               ok = true;
             }
           } else {
-            ok = (await runAction(command.action, command.phase === 'show')).outcome === 'ok';
+            ok = (await runAction(command.action, command.phase === 'show', signal)).outcome === 'ok';
           }
         } catch (error) {
           logger.error('[Pathfinder] cross-tab executor: failed to run remote step', { error });

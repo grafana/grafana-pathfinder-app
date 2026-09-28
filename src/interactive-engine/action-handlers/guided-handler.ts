@@ -1,3 +1,4 @@
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { sleep } from '../../lib/async-utils';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager, type CommentBoxStepInfo } from '../navigation-manager';
@@ -180,6 +181,14 @@ export class GuidedHandler {
         return this.finishGuidedStep('error', stepIndex);
       }
       await this.expandNavigationParentIfNeeded(action.refTarget);
+      if (action.lazyRender) {
+        await resolveWithRetry(action.refTarget, action.targetAction, {
+          delays: [],
+          lazyRender: true,
+          scrollContainer: action.scrollContainer,
+          signal,
+        });
+      }
       while (!signal.aborted) {
         arbiter = this.createGuidedStepArbiter();
         const remaining = Math.min(deadline, recoveryDeadline ?? deadline) - Date.now();

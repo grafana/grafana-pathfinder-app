@@ -38,3 +38,25 @@ it('propagates a caught resolution exception to the caller', async () => {
     reason: 'action_failed',
   });
 });
+
+it('does not click a target that resolves after cancellation', async () => {
+  const controller = new AbortController();
+  const button = document.createElement('button');
+  const click = jest.spyOn(button, 'click');
+  let finish!: (value: any) => void;
+  jest.mocked(resolveWithRetry).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  const handler = new FocusHandler(state, navigation, settle);
+  const pending = handler.execute(
+    { targetAction: 'highlight', refTarget: '#late', tagName: 'button', signal: controller.signal },
+    true
+  );
+  controller.abort();
+  finish({ element: button, elements: [button] });
+  expect(await pending).toEqual({ outcome: 'cancelled' });
+  expect(click).not.toHaveBeenCalled();
+});

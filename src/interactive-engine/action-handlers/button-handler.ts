@@ -1,3 +1,4 @@
+import { sleep } from '../../lib/async-utils';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
@@ -13,28 +14,43 @@ export class ButtonHandler {
   constructor(
     private stateManager: InteractiveStateManager,
     private navigationManager: NavigationManager,
-    private waitForReactUpdates: () => Promise<void>
+    private waitForReactUpdates: () => Promise<void>,
+    private context?: InteractiveElementData
   ) {}
 
   async execute(data: InteractiveElementData, click: boolean): Promise<ActionExecutionResult> {
+    if (data !== this.context && (data.signal || data.lazyRender)) {
+      return new ButtonHandler(this.stateManager, this.navigationManager, this.waitForReactUpdates, data).execute(
+        data,
+        click
+      );
+    }
     this.stateManager.setState(data, 'running');
 
     try {
+      this.context?.signal?.throwIfAborted();
       const target = parseTargetState(data.targetState);
       const buttons = await this.findButtons(data.refTarget, target);
+      this.context?.signal?.throwIfAborted();
 
       if (buttons.length === 0) {
         return { outcome: 'error', reason: 'target_missing' };
       }
       if (!click) {
         await this.handleShowMode(buttons, data.targetComment, data.targetState);
+        this.context?.signal?.throwIfAborted();
         return { outcome: 'ok' };
       }
 
       await this.handleDoMode(buttons, target);
+      this.context?.signal?.throwIfAborted();
       await this.markAsCompleted(data);
+      this.context?.signal?.throwIfAborted();
       return { outcome: 'ok' };
     } catch (error) {
+      if (this.context?.signal?.aborted) {
+        return { outcome: 'cancelled' };
+      }
       this.stateManager.handleError(error as Error, 'ButtonHandler', data, false);
       return { outcome: 'error', reason: 'action_failed' };
     }
@@ -47,7 +63,12 @@ export class ButtonHandler {
   private async findButtons(refTarget: string, target: TargetState | null): Promise<HTMLElement[]> {
     // For CSS selectors, use resolveWithRetry then filter to buttons
     if (isCssSelector(refTarget)) {
-      const resolved = await resolveWithRetry(refTarget, 'button');
+      const resolved = await resolveWithRetry(
+        refTarget,
+        'button',
+        ...(this.context ? ([this.context] as const) : ([] as const))
+      );
+      this.context?.signal?.throwIfAborted();
       if (resolved) {
         // A targetState step may point at a Switch wrapper, which is neither a
         // button nor role=button but does contain the control we need to drive.
@@ -67,7 +88,12 @@ export class ButtonHandler {
     }
 
     // For plain text, use resolveWithRetry which internally uses findButtonByText
-    const resolved = await resolveWithRetry(refTarget, 'button');
+    const resolved = await resolveWithRetry(
+      refTarget,
+      'button',
+      ...(this.context ? ([this.context] as const) : ([] as const))
+    );
+    this.context?.signal?.throwIfAborted();
     return resolved ? resolved.elements : [];
   }
 
@@ -85,8 +111,23 @@ export class ButtonHandler {
       }
 
       await this.navigationManager.ensureNavigationOpen(button);
+      this.context?.signal?.throwIfAborted();
       await this.navigationManager.ensureElementVisible(button);
-      await this.navigationManager.highlightWithComment(button, commentForTargetState(comment, button, rawTargetState));
+      this.context?.signal?.throwIfAborted();
+      await (this.context?.signal
+        ? this.navigationManager.highlightWithComment(
+            button,
+            commentForTargetState(comment, button, rawTargetState),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            { signal: this.context.signal }
+          )
+        : this.navigationManager.highlightWithComment(button, commentForTargetState(comment, button, rawTargetState)));
+      this.context?.signal?.throwIfAborted();
     }
   }
 
@@ -103,10 +144,13 @@ export class ButtonHandler {
       }
 
       await this.navigationManager.ensureNavigationOpen(button);
+      this.context?.signal?.throwIfAborted();
       await this.navigationManager.ensureElementVisible(button);
+      this.context?.signal?.throwIfAborted();
 
       if (target) {
         await clickToTargetState(button, target, this.waitForReactUpdates);
+        this.context?.signal?.throwIfAborted();
       } else {
         button.click();
       }
@@ -116,15 +160,18 @@ export class ButtonHandler {
   private async markAsCompleted(data: InteractiveElementData): Promise<void> {
     // Wait for React to process all button click events and state updates
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
 
     // Additional settling time for React state propagation and reactive checks
     // This ensures the sequential requirements system has time to unlock the next step
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck));
+    await sleep(INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
 
     // Mark as completed after state has settled
     this.stateManager.setState(data, 'completed');
 
     // Final wait to ensure completion state propagates
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
   }
 }

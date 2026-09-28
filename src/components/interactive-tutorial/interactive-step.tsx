@@ -24,7 +24,6 @@ import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../int
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { CodeBlock } from '../../docs-retrieval';
-import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { isGrafanaDrivingHandoffNeeded } from '../../global-state/panel-mode';
 import { STEP_STATES, type StepStateValue } from './step-states';
@@ -106,7 +105,7 @@ export async function executeWithLazyScroll(
   // DOM-targeting actions: quick synchronous check if element exists (provides user feedback if missing)
   // Use resolveWithRetry with NO delays — the action handlers do their own retry with backoff,
   // so retrying here would cause redundant 2.6s delays on every action.
-  const resolved = await resolveWithRetry(refTarget, targetAction, { delays: [] });
+  const resolved = await resolveWithRetry(refTarget, targetAction, { delays: [], lazyRender, scrollContainer });
   const elementExists = resolved !== null;
 
   if (elementExists) {
@@ -114,24 +113,8 @@ export async function executeWithLazyScroll(
     return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
-  // Element not found - try lazy scroll discovery only if enabled
   if (lazyRender) {
-    console.log(`[LazyScroll] Element not found, attempting scroll discovery: ${refTarget}`);
-    const foundElement = await scrollUntilElementFound(refTarget, {
-      scrollContainerSelector: scrollContainer,
-    });
-
-    if (foundElement) {
-      // Element discovered after scroll - execute action
-      return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
-    }
-
-    // Scroll completed but element still not found
-    return {
-      outcome: 'error',
-      elementFound: false,
-      error: 'Element not found after scrolling dashboard',
-    };
+    return { outcome: 'error', elementFound: false, error: 'Element not found after scrolling dashboard' };
   }
 
   // lazyRender not enabled and element not found - return clear error
@@ -503,6 +486,8 @@ export const InteractiveStep = forwardRef<
           targetComment,
           buttonType: 'do',
           fullScreenFallbackLocation,
+          lazyRender,
+          scrollContainer,
         });
         if (actionOutcome === 'error') {
           setPostVerifyError('Action did not complete successfully.');
@@ -573,6 +558,8 @@ export const InteractiveStep = forwardRef<
       targetComment,
       postVerify,
       verifyStepResult,
+      lazyRender,
+      scrollContainer,
       executeInteractiveAction,
       onStepComplete,
       onComplete,
@@ -714,7 +701,15 @@ export const InteractiveStep = forwardRef<
           phase,
           stepId,
           runId,
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
+          action: {
+            targetAction,
+            refTarget,
+            targetValue: currentTargetValue,
+            targetState,
+            targetComment,
+            lazyRender,
+            scrollContainer,
+          },
         });
         if (!(await completion)) {
           setPostVerifyError('The action did not complete in the live tab.');
@@ -735,6 +730,8 @@ export const InteractiveStep = forwardRef<
       },
       [
         controllerChannel,
+        lazyRender,
+        scrollContainer,
         stepId,
         targetAction,
         refTarget,

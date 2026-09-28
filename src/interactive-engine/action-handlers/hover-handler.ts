@@ -1,3 +1,4 @@
+import { sleep } from '../../lib/async-utils';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
@@ -14,36 +15,58 @@ export class HoverHandler {
   constructor(
     private stateManager: InteractiveStateManager,
     private navigationManager: NavigationManager,
-    private waitForReactUpdates: () => Promise<void>
+    private waitForReactUpdates: () => Promise<void>,
+    private context?: InteractiveElementData
   ) {}
 
   async execute(data: InteractiveElementData, performHover: boolean): Promise<ActionExecutionResult> {
+    if (data !== this.context && (data.signal || data.lazyRender)) {
+      return new HoverHandler(this.stateManager, this.navigationManager, this.waitForReactUpdates, data).execute(
+        data,
+        performHover
+      );
+    }
     this.stateManager.setState(data, 'running');
 
     try {
+      this.context?.signal?.throwIfAborted();
       const targetElement = await this.findTargetElement(data.refTarget);
+      this.context?.signal?.throwIfAborted();
       if (!targetElement) {
         return { outcome: 'error', reason: 'target_missing' };
       }
       await this.prepareElement(targetElement);
+      this.context?.signal?.throwIfAborted();
 
       if (!performHover) {
         await this.handleShowMode(targetElement, data.targetComment);
+        this.context?.signal?.throwIfAborted();
         await this.markAsCompleted(data);
+        this.context?.signal?.throwIfAborted();
         return { outcome: 'ok' };
       }
 
       await this.handleDoMode(targetElement);
+      this.context?.signal?.throwIfAborted();
       await this.markAsCompleted(data);
+      this.context?.signal?.throwIfAborted();
       return { outcome: 'ok' };
     } catch (error) {
+      if (this.context?.signal?.aborted) {
+        return { outcome: 'cancelled' };
+      }
       this.stateManager.handleError(error as Error, 'HoverHandler', data, false);
       return { outcome: 'error', reason: 'action_failed' };
     }
   }
 
   private async findTargetElement(selector: string): Promise<HTMLElement | null> {
-    const resolved = await resolveWithRetry(selector, 'hover');
+    const resolved = await resolveWithRetry(
+      selector,
+      'hover',
+      ...(this.context ? ([this.context] as const) : ([] as const))
+    );
+    this.context?.signal?.throwIfAborted();
 
     if (!resolved) {
       return null;
@@ -64,12 +87,27 @@ export class HoverHandler {
     }
 
     await this.navigationManager.ensureNavigationOpen(targetElement);
+    this.context?.signal?.throwIfAborted();
     await this.navigationManager.ensureElementVisible(targetElement);
+    this.context?.signal?.throwIfAborted();
   }
 
   private async handleShowMode(targetElement: HTMLElement, comment?: string): Promise<void> {
     // Show mode: highlight the element that will be hovered
-    await this.navigationManager.highlightWithComment(targetElement, comment);
+    await (this.context?.signal
+      ? this.navigationManager.highlightWithComment(
+          targetElement,
+          comment,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          { signal: this.context.signal }
+        )
+      : this.navigationManager.highlightWithComment(targetElement, comment));
+    this.context?.signal?.throwIfAborted();
   }
 
   private async handleDoMode(targetElement: HTMLElement): Promise<void> {
@@ -99,7 +137,8 @@ export class HoverHandler {
     }
 
     // Maintain hover state for configured duration
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.hover));
+    await sleep(INTERACTIVE_CONFIG.delays.perceptual.hover, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
 
     // Note: We intentionally don't remove hover state to keep elements visible
     // This allows subsequent actions to interact with hover-revealed elements
@@ -236,15 +275,18 @@ export class HoverHandler {
   private async markAsCompleted(data: InteractiveElementData): Promise<void> {
     // Wait for React to process all hover events and state updates
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
 
     // Additional settling time for React state propagation and reactive checks
     // This ensures the sequential requirements system has time to unlock the next step
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck));
+    await sleep(INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
 
     // Mark as completed after state has settled
     this.stateManager.setState(data, 'completed');
 
     // Final wait to ensure completion state propagates
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
   }
 }

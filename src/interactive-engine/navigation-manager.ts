@@ -406,13 +406,10 @@ export class NavigationManager {
         // 1. Element has collapsed to 0,0 (disappeared)
         // 2. Element is at top-left corner (0,0) with no scroll offset
         // 3. Element has zero or near-zero dimensions (skip for dot mode - dots work with any dimensions)
-        const scrollTop = window.scrollY || document.documentElement.scrollTop;
-        const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
-        const isAtOrigin = rect.top === 0 && rect.left === 0 && scrollTop === 0 && scrollLeft === 0;
         const hasNoDimensions = rect.width < 1 || rect.height < 1;
 
         // Skip dimension check for dot mode - dots work even for very small elements
-        if (isAtOrigin || (!isDotMode && hasNoDimensions)) {
+        if (!isDotMode && hasNoDimensions) {
           // Element is in invalid state - hide highlight
           highlightElement.style.display = 'none';
           if (commentBox) {

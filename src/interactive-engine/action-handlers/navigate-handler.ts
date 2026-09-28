@@ -1,3 +1,4 @@
+import { sleep } from '../../lib/async-utils';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
@@ -10,27 +11,39 @@ import { autoLaunchChannel } from '../../global-state/auto-launch';
 export class NavigateHandler {
   constructor(
     private stateManager: InteractiveStateManager,
-    private waitForReactUpdates: () => Promise<void>
+    private waitForReactUpdates: () => Promise<void>,
+    private context?: InteractiveElementData
   ) {}
 
   async execute(data: InteractiveElementData, navigate: boolean): Promise<ActionExecutionResult> {
+    if (data !== this.context && (data.signal || data.lazyRender)) {
+      return new NavigateHandler(this.stateManager, this.waitForReactUpdates, data).execute(data, navigate);
+    }
     this.stateManager.setState(data, 'running');
 
     try {
+      this.context?.signal?.throwIfAborted();
       if (!navigate) {
         await this.handleShowMode(data);
+        this.context?.signal?.throwIfAborted();
         // Mark show actions as completed too for proper state cleanup
         await this.markAsCompleted(data);
+        this.context?.signal?.throwIfAborted();
         return { outcome: 'ok' };
       }
 
       const result = await this.handleDoMode(data);
+      this.context?.signal?.throwIfAborted();
       if (result.outcome !== 'ok') {
         return result;
       }
       await this.markAsCompleted(data);
+      this.context?.signal?.throwIfAborted();
       return { outcome: 'ok' };
     } catch (error) {
+      if (this.context?.signal?.aborted) {
+        return { outcome: 'cancelled' };
+      }
       this.stateManager.handleError(error as Error, 'NavigateHandler', data, false);
       return { outcome: 'error', reason: 'action_failed' };
     }
@@ -41,6 +54,7 @@ export class NavigateHandler {
     // For navigation, we can highlight the current URL or show a visual indicator
     // Since there's no specific element to highlight, we provide visual feedback
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
     this.stateManager.setState(data, 'completed');
   }
 
@@ -84,6 +98,7 @@ export class NavigateHandler {
       // After SPA navigation, open a guide if specified
       if (guideParam) {
         await this.openGuideAfterNavigation(guideParam);
+        this.context?.signal?.throwIfAborted();
       }
     }
     return { outcome: 'ok' };
@@ -115,6 +130,7 @@ export class NavigateHandler {
   private async openGuideAfterNavigation(guideParam: string): Promise<void> {
     // Dynamic import to keep find-doc-page in a lazy chunk
     const { findDocPage } = await import('../../utils/find-doc-page');
+    this.context?.signal?.throwIfAborted();
     const docPage = findDocPage(guideParam);
 
     if (!docPage) {
@@ -123,7 +139,8 @@ export class NavigateHandler {
     }
 
     // Wait for navigation to settle before emitting
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await sleep(500, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
 
     autoLaunchChannel.emit({
       url: docPage.url,
@@ -136,15 +153,18 @@ export class NavigateHandler {
   private async markAsCompleted(data: InteractiveElementData): Promise<void> {
     // Wait for React to process all navigation events and state updates
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
 
     // Mark as completed after state has settled
     this.stateManager.setState(data, 'completed');
 
     // Additional settling time for React state propagation, navigation completion, and reactive checks
     // This ensures the sequential requirements system has time to unlock the next step
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck));
+    await sleep(INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
 
     // Final wait to ensure completion state propagates
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
   }
 }
