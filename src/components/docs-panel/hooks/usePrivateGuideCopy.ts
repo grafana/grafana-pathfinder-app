@@ -7,8 +7,9 @@ import { notify } from '../../block-editor/notify';
 import { canCopyPublicGuide } from '../utils/private-guide-eligibility';
 
 export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, openEditor?: () => void) {
+  const tabId = tab?.id;
   const [operation, setOperation] = useState<{
-    tab: LearningJourneyTab;
+    tabId: string;
     isPreparing: boolean;
     pending: JsonGuide | null;
   } | null>(null);
@@ -20,9 +21,9 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
     return () => {
       current.active = false;
     };
-  }, [tab]);
+  }, [tabId]);
 
-  const pending = operation?.tab === tab ? operation?.pending : null;
+  const pending = operation?.tabId === tabId ? operation?.pending : null;
   const reportError = (error: unknown) => {
     notify('error', 'Could not copy guide', error instanceof Error ? error.message : 'Please try again.');
   };
@@ -43,7 +44,7 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
     }
     const current = lifecycle.current;
     current.busy = true;
-    setOperation({ tab, isPreparing: true, pending: null });
+    setOperation({ tabId: tab.id, isPreparing: true, pending: null });
     try {
       const { preparePrivateGuideCopy } = await import('../utils/private-guide-copy');
       const guide = await preparePrivateGuideCopy(tab);
@@ -51,7 +52,7 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
         return;
       }
       if (hasEditorDraft()) {
-        setOperation({ tab, isPreparing: false, pending: guide });
+        setOperation({ tabId: tab.id, isPreparing: false, pending: guide });
       } else {
         openCopy(guide);
       }
@@ -69,7 +70,7 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
 
   return {
     available: Boolean(openEditor) && canCopyPublicGuide(tab, currentUserIsAdmin()),
-    isPreparing: operation?.tab === tab && operation?.isPreparing === true,
+    isPreparing: operation?.tabId === tabId && operation?.isPreparing === true,
     needsConfirmation: Boolean(pending),
     prepare,
     cancel: () => setOperation(null),

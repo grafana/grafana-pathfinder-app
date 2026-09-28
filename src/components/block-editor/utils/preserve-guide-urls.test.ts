@@ -52,6 +52,23 @@ it('uses the existing bundled asset fallback and rejects unsafe schemes', () => 
   expect(() => copy([{ type: 'image', src: 'javascript:alert(1)' }])).toThrow('unsupported');
 });
 
+it('preserves relative images and document links in challenge briefs', () => {
+  const result = copy([
+    {
+      type: 'challenge',
+      title: 'Create a dashboard',
+      brief: '![Example](./assets/dashboard.png)\n\n[Instructions](../reference/)',
+      successCriteria: 'has-dashboard-named:Example',
+    },
+  ]);
+  expect(result[0]).toMatchObject({
+    brief: expect.stringContaining('src="https://cdn.example.com/guides/demo/assets/dashboard.png"'),
+  });
+  expect(result[0]).toMatchObject({
+    brief: expect.stringContaining('href="https://cdn.example.com/guides/reference/"'),
+  });
+});
+
 it('resolves protocol-relative media without changing absolute media URLs', () => {
   expect(
     copy([
