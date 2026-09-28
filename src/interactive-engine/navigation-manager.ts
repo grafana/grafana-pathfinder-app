@@ -299,15 +299,8 @@ export class NavigationManager {
           highlightStyle.setProperty('--highlight-height', `${elementRect.height + 8}px`);
         }
 
-        // Update comment box position (body-attached, position:fixed)
         if (this.driftDetectionComment) {
-          const highlightRect = this.calculateHighlightRect(elementRect, this.driftDetectionIsDotMode);
-
-          const commentHeight = this.driftDetectionComment.offsetHeight;
-          const { offsetX, offsetY } = this.calculateCommentPosition(elementRect, commentHeight);
-
-          this.driftDetectionComment.style.top = `${highlightRect.top + offsetY}px`;
-          this.driftDetectionComment.style.left = `${highlightRect.left + offsetX}px`;
+          this.positionCommentBox(this.driftDetectionComment, elementRect);
         }
       }
 
@@ -439,15 +432,8 @@ export class NavigationManager {
           highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
         }
 
-        // Update comment box position (body-attached, position:fixed)
         if (commentBox) {
-          const highlightRect = this.calculateHighlightRect(rect, isDotMode);
-
-          const commentHeight = commentBox.offsetHeight;
-          const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
-
-          commentBox.style.top = `${highlightRect.top + offsetY}px`;
-          commentBox.style.left = `${highlightRect.left + offsetX}px`;
+          this.positionCommentBox(commentBox, rect);
         }
       }, INTERACTIVE_CONFIG.positionTracking.debounceMs);
     };
@@ -1149,35 +1135,25 @@ export class NavigationManager {
       return commentBox;
     }
 
-    // MEASURE ACTUAL HEIGHT: Append off-screen temporarily to measure real dimensions
     commentBox.style.visibility = 'hidden';
     commentBox.style.position = 'absolute';
     commentBox.style.left = '-9999px';
     document.body.appendChild(commentBox);
-
-    // Get the actual rendered height
     const actualHeight = commentBox.offsetHeight;
-
-    // Remove it temporarily (we'll append it properly later)
     commentBox.remove();
     commentBox.style.visibility = '';
-    commentBox.style.position = '';
-    commentBox.style.left = '';
-
-    // NOW calculate position with the REAL height
-    // Calculate position offsets relative to highlight
-    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
-
-    // Convert to viewport coordinates (position:fixed overlay)
-    const fixedTop = highlightRect.top + offsetY;
-    const fixedLeft = highlightRect.left + offsetX;
-
     commentBox.style.position = 'fixed';
-    commentBox.style.top = `${fixedTop}px`;
-    commentBox.style.left = `${fixedLeft}px`;
-    commentBox.setAttribute('data-position', position);
+    this.positionCommentBox(commentBox, targetRect, actualHeight);
 
     return commentBox;
+  }
+
+  private positionCommentBox(commentBox: HTMLElement, targetRect: DOMRect, height = commentBox.offsetHeight): void {
+    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, height);
+    // Offsets use the padded target bounds, even when the highlight is a centered dot.
+    commentBox.style.top = `${targetRect.top - 4 + offsetY}px`;
+    commentBox.style.left = `${targetRect.left - 4 + offsetX}px`;
+    commentBox.setAttribute('data-position', position);
   }
 
   /**
