@@ -619,7 +619,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
-  '.interactive-step-content > p': {
+  '.interactive-step-content > p:last-child': {
     marginBottom: 0,
   },
 
@@ -743,7 +743,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-requirement-retry-btn': {
-    padding: '0px 12px',
+    padding: '4px 12px',
     fontSize: '0.8rem',
     fontWeight: 500,
     border: `1px solid ${theme.colors.border.medium}`,
@@ -812,7 +812,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-lazy-retry-btn': {
-    padding: '0px 12px',
+    padding: '4px 12px',
     fontSize: '0.8rem',
     fontWeight: 500,
     border: `1px solid ${theme.colors.border.medium}`,
@@ -941,7 +941,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-guided-fix-btn': {
-    padding: '0px 12px',
+    padding: '6px 12px',
     fontSize: '0.8rem',
     fontWeight: 500,
     border: `1px solid ${theme.colors.border.medium}`,
@@ -958,7 +958,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-requirement-ai-fix-btn, .interactive-guided-ai-fix-btn': {
-    padding: '0px 12px',
+    padding: '4px 12px',
     fontSize: '0.8rem',
     fontWeight: 500,
     border: `1px solid ${theme.colors.border.medium}`,
