@@ -1,3 +1,4 @@
+import { isGrafanaCloud } from '../../../lib/telemetry/filtering';
 import React, { useState, useEffect } from 'react';
 import { css } from '@emotion/css';
 import { IconButton, Dropdown, Menu, Tooltip, Badge } from '@grafana/ui';
@@ -183,7 +184,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
             {isDevMode && onOpenDevToolsTab && (
               <Menu.Item label={t('docsPanel.devTools', 'Dev tools')} icon="bug" onClick={handleDevToolsClick} />
             )}
-            {canAccessPluginSettings && (
+            {canAccessPluginSettings && isGrafanaCloud() && (
               <>
                 <Menu.Divider />
                 <Menu.Item

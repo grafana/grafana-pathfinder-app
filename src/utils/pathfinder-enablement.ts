@@ -1,6 +1,6 @@
 import type { PathfinderPluginConfig } from '../constants';
 
-export type PathfinderAvailability = 'enabled' | 'disabled' | 'unavailable';
+export type PathfinderAvailability = 'enabled' | 'disabled';
 
 export async function resolvePathfinderAvailability(
   remoteEnabled: boolean,
@@ -15,15 +15,12 @@ export async function resolvePathfinderAvailability(
     const settings = await Promise.race([
       readSettings(),
       new Promise<undefined>((resolve) => {
-        timeout = setTimeout(() => resolve(undefined), 10_000);
+        timeout = setTimeout(() => resolve(undefined), 3_000);
       }),
     ]);
-    if (!settings) {
-      return 'unavailable';
-    }
-    return settings.pathfinderEnabled === false ? 'disabled' : 'enabled';
+    return settings?.pathfinderEnabled === false ? 'disabled' : 'enabled';
   } catch {
-    return 'unavailable';
+    return 'enabled';
   } finally {
     clearTimeout(timeout);
   }

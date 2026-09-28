@@ -86,10 +86,8 @@ async function boot(remote: boolean, tenant?: boolean, readFailed = false) {
     './components/floating-panel/FloatingPanelManager': { FloatingPanelManager: () => null },
     './lib/create-root-compat': { createCompatRoot: async () => ({ render: jest.fn() }) },
     './components/App/App': { default: () => <div>Learning app</div>, __esModule: true },
-    './components/App/PathfinderUnavailable': {
-      PathfinderUnavailable: ({ unavailable }: { unavailable: boolean }) => (
-        <div>{unavailable ? 'Unavailable' : 'Disabled'}</div>
-      ),
+    './components/App/PathfinderDisabled': {
+      PathfinderDisabled: () => <div>Disabled</div>,
     },
   };
   const requireModule = jest.fn((name: string) => {
@@ -108,7 +106,6 @@ it.each([
   [true, false, false],
   [false, true, false],
   [false, false, false],
-  [true, undefined, true],
 ])('suppresses every entry point with remote=%s, tenant=%s, read failure=%s', async (remote, tenant, readFailed) => {
   const { plugin, effects, root, requireModule } = await boot(remote, tenant, readFailed);
   plugin.init();
@@ -123,7 +120,7 @@ it.each([
   expect(effects.setupHighlightedGuideAutoOpen).not.toHaveBeenCalled();
   const Root = root.component!;
   render(<Root />);
-  expect(await screen.findByText(readFailed ? 'Unavailable' : 'Disabled')).toBeInTheDocument();
+  expect(await screen.findByText('Disabled')).toBeInTheDocument();
   expect(requireModule.mock.calls.flat()).not.toContain('./components/App/App');
   expect(requireModule.mock.calls.flat()).not.toContain('./components/floating-panel/FloatingPanelManager');
   expect(requireModule.mock.calls.flat()).not.toContain('./components/ControlGroupDocPopup');
@@ -135,5 +132,14 @@ it.each([true, undefined])('registers learning surfaces when remote enabled and 
   expect(plugin.addLink).toHaveBeenCalledTimes(4);
   plugin.init();
   expect(effects.initializeConfiguredSurfaces).toHaveBeenCalledTimes(1);
-  expect(effects.handlePathfinderDeepLink).toHaveBeenCalledWith(expect.objectContaining({ shouldMountSidebar: true }));
+  expect(effects.handlePathfinderDeepLink).toHaveBeenCalledWith(
+    expect.objectContaining({ attemptAutoOpen: expect.any(Function) })
+  );
+});
+
+it('registers baseline learning surfaces after an unsuccessful settings read', async () => {
+  const { plugin } = await boot(true, undefined, true);
+  expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+  expect(plugin.addLink).toHaveBeenCalledTimes(4);
+  expect(plugin.addConfigPage).toHaveBeenCalledTimes(3);
 });

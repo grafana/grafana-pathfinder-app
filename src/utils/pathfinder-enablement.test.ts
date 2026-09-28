@@ -17,16 +17,16 @@ it.each([
   expect(await resolvePathfinderAvailability(true, async () => ({ pathfinderEnabled }))).toBe(expected);
 });
 
-it('fails closed on rejected and unsuccessful reads', async () => {
-  expect(await resolvePathfinderAvailability(true, async () => undefined)).toBe('unavailable');
+it('defaults to enabled on unsuccessful reads', async () => {
+  expect(await resolvePathfinderAvailability(true, async () => undefined)).toBe('enabled');
   expect(
     await resolvePathfinderAvailability(true, async () => {
       throw new Error('offline');
     })
-  ).toBe('unavailable');
+  ).toBe('enabled');
 });
 
-it('bounds a hung read to ten seconds and never changes its decision after late resolution', async () => {
+it('bounds a hung read to three seconds and never changes its decision after late resolution', async () => {
   jest.useFakeTimers();
   try {
     let finish!: (settings: { pathfinderEnabled: boolean }) => void;
@@ -35,16 +35,24 @@ it('bounds a hung read to ten seconds and never changes its decision after late 
     });
     const resolved = jest.fn();
     const availability = resolvePathfinderAvailability(true, () => read).then(resolved);
-    await jest.advanceTimersByTimeAsync(9_999);
+    await jest.advanceTimersByTimeAsync(2_999);
     expect(resolved).not.toHaveBeenCalled();
     await jest.advanceTimersByTimeAsync(1);
     await availability;
-    expect(resolved).toHaveBeenCalledWith('unavailable');
-    finish({ pathfinderEnabled: true });
+    expect(resolved).toHaveBeenCalledWith('enabled');
+    finish({ pathfinderEnabled: false });
     await Promise.resolve();
     expect(resolved).toHaveBeenCalledTimes(1);
     expect(jest.getTimerCount()).toBe(0);
   } finally {
     jest.useRealTimers();
   }
+});
+
+it.each([403, 503])('keeps Pathfinder enabled when settings return HTTP %s', async (status) => {
+  expect(
+    await resolvePathfinderAvailability(true, async () => {
+      throw { status };
+    })
+  ).toBe('enabled');
 });

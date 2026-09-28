@@ -1,3 +1,5 @@
+import { isGrafanaCloud } from '../../lib/telemetry/filtering';
+jest.mock('../../lib/telemetry/filtering', () => ({ isGrafanaCloud: jest.fn(() => true) }));
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -31,6 +33,7 @@ function renderForm(pathfinderEnabled?: boolean) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(isGrafanaCloud).mockReturnValue(true);
   jest.useFakeTimers();
   jest.mocked(getFeatureFlagValue).mockImplementation((_name, fallback) => fallback);
   jest.mocked(saveTenantSettings).mockResolvedValue(undefined);
@@ -85,4 +88,13 @@ it('keeps a rejected opt-out editable without scheduling a reload', async () => 
   expect(screen.getByRole('switch', { name: /^Enable Pathfinder/ })).not.toBeChecked();
   expect(schedule.mock.calls.some(([, delay]) => delay === 100)).toBe(false);
   schedule.mockRestore();
+});
+
+it.each([true, false])('shows preview copy only on Cloud (cloud=%s)', (cloud) => {
+  jest.mocked(isGrafanaCloud).mockReturnValue(cloud);
+  renderForm();
+  expect(screen.getByRole('switch', { name: /^Enable Pathfinder/ })).toBeChecked();
+  expect(screen.queryByText('Pathfinder public preview') !== null).toBe(cloud);
+  expect(screen.queryByText(/restore Grafana’s previous Help menu/) !== null).toBe(cloud);
+  expect(screen.queryByText('Beta') !== null).toBe(cloud);
 });

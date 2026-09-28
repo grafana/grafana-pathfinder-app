@@ -1,4 +1,5 @@
 import React, { useState, ChangeEvent } from 'react';
+import { isGrafanaCloud } from '../../lib/telemetry/filtering';
 import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge, Box, Stack } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -66,6 +67,7 @@ function buildStateFromConfig(config: ResolvedPathfinderConfig): State {
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
 
 const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
+  const isCloud = isGrafanaCloud();
   const urlParams = new URLSearchParams(window.location.search);
   const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
@@ -240,32 +242,40 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       )}
       <Box
         element="section"
-        aria-label={t('appConfig.pathfinderPreview', 'Pathfinder public preview')}
-        backgroundColor="secondary"
-        borderColor="info"
-        borderStyle="solid"
+        aria-label={
+          isCloud
+            ? t('appConfig.pathfinderPreview', 'Pathfinder public preview')
+            : t('appConfig.pathfinderEnabled', 'Enable Pathfinder')
+        }
+        backgroundColor={isCloud ? 'secondary' : undefined}
+        borderColor={isCloud ? 'info' : undefined}
+        borderStyle={isCloud ? 'solid' : undefined}
         borderRadius="default"
         padding={3}
         marginTop={3}
       >
-        <Stack direction="row" alignItems="center" gap={1}>
-          <Text element="h2" variant="h4">
-            {t('appConfig.pathfinderPreview', 'Pathfinder public preview')}
-          </Text>
-          <Badge color="blue" text={t('appConfig.beta', 'Beta')} />
-        </Stack>
-        <p>
-          {t(
-            'appConfig.pathfinderPreviewDescription',
-            'Pathfinder brings contextual help and interactive guides into Grafana.'
-          )}
-        </p>
-        <p>
-          {t(
-            'appConfig.pathfinderRevertDescription',
-            'Turn this off to restore Grafana’s previous Help menu for everyone in this organization. Your learning progress is kept.'
-          )}
-        </p>
+        {isCloud && (
+          <>
+            <Stack direction="row" alignItems="center" gap={1}>
+              <Text element="h2" variant="h4">
+                {t('appConfig.pathfinderPreview', 'Pathfinder public preview')}
+              </Text>
+              <Badge color="blue" text={t('appConfig.beta', 'Beta')} />
+            </Stack>
+            <p>
+              {t(
+                'appConfig.pathfinderPreviewDescription',
+                'Pathfinder brings contextual help and interactive guides into Grafana.'
+              )}
+            </p>
+            <p>
+              {t(
+                'appConfig.pathfinderRevertDescription',
+                'Turn this off to restore Grafana’s previous Help menu for everyone in this organization. Your learning progress is kept.'
+              )}
+            </p>
+          </>
+        )}
         <Field
           label={t('appConfig.pathfinderEnabled', 'Enable Pathfinder')}
           description={t('appConfig.pathfinderEnabledDescription', 'Changes apply when users reload Grafana.')}

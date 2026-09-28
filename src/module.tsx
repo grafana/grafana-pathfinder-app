@@ -126,9 +126,9 @@ if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) 
 await initPluginTranslations(pluginJson.id);
 
 const LazyApp = lazy(() => import('./components/App/App'));
-const LazyPathfinderUnavailable = lazy(() =>
-  import('./components/App/PathfinderUnavailable').then(({ PathfinderUnavailable }) => ({
-    default: PathfinderUnavailable,
+const LazyPathfinderDisabled = lazy(() =>
+  import('./components/App/PathfinderDisabled').then(({ PathfinderDisabled }) => ({
+    default: PathfinderDisabled,
   }))
 );
 const LazyContextPanel = lazy(() => import('./components/App/ContextPanel'));
@@ -138,11 +138,7 @@ const LazyInteractiveFeatures = lazy(() => import('./components/AppConfig/Intera
 
 const App = (props: AppRootProps) => (
   <Suspense fallback={<LoadingPlaceholder text="" />}>
-    {pathfinderEnabled ? (
-      <LazyApp {...props} />
-    ) : (
-      <LazyPathfinderUnavailable unavailable={pathfinderAvailability === 'unavailable'} />
-    )}
+    {pathfinderEnabled ? <LazyApp {...props} /> : <LazyPathfinderDisabled />}
   </Suspense>
 );
 
@@ -276,9 +272,7 @@ plugin.init = function () {
   }
 
   const deepLinkDeps = {
-    shouldMountSidebar: true,
     attemptAutoOpen,
-    loadControlGroupDocPopup: () => import('./components/ControlGroupDocPopup'),
   };
 
   handlePathfinderDeepLink(deepLinkDeps);

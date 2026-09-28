@@ -1,3 +1,5 @@
+import { isGrafanaCloud } from '../../../lib/telemetry/filtering';
+jest.mock('../../../lib/telemetry/filtering', () => ({ isGrafanaCloud: jest.fn(() => true) }));
 /**
  * Tests for TabBarActions component.
  * Tests menu rendering and sidebar close functionality.
@@ -76,6 +78,7 @@ function makeTab(overrides: Record<string, unknown> = {}): any {
 describe('TabBarActions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(isGrafanaCloud).mockReturnValue(true);
   });
 
   describe('rendering', () => {
@@ -390,4 +393,13 @@ describe('TabBarActions', () => {
       });
     });
   });
+});
+
+it('keeps Settings but hides the classic Help menu action for OSS admins', () => {
+  jest.mocked(isGrafanaCloud).mockReturnValue(false);
+  mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
+  render(<TabBarActions />);
+  fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+  expect(screen.getByRole('menuitem', { name: 'Settings' })).toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: 'Switch to classic Help menu Beta' })).not.toBeInTheDocument();
 });
