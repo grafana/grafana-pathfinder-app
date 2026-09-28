@@ -365,19 +365,32 @@ export function ControllerChannelProvider({
   const awaitStepComplete = useCallback<ControllerChannel['awaitStepComplete']>(
     (stepId, runId) =>
       new Promise<boolean>((resolve) => {
-        stepCompletionRef.current.set(`${stepId}:${runId}`, resolve);
+        const key = `${stepId}:${runId}`;
+        const timer = setTimeout(() => {
+          stepCompletionRef.current.delete(key);
+          post({ kind: 'step-cancel', stepId, runId });
+          resolve(false);
+        }, 15 * 60_000);
+        stepCompletionRef.current.set(key, (ok) => {
+          clearTimeout(timer);
+          resolve(ok);
+        });
       }),
-    []
+    [post]
   );
 
-  const cancelStepComplete = useCallback<ControllerChannel['cancelStepComplete']>((stepId, runId) => {
-    const key = `${stepId}:${runId}`;
-    const resolve = stepCompletionRef.current.get(key);
-    if (resolve) {
-      stepCompletionRef.current.delete(key);
-      resolve(false);
-    }
-  }, []);
+  const cancelStepComplete = useCallback<ControllerChannel['cancelStepComplete']>(
+    (stepId, runId) => {
+      post({ kind: 'step-cancel', stepId, runId });
+      const key = `${stepId}:${runId}`;
+      const resolve = stepCompletionRef.current.get(key);
+      if (resolve) {
+        stepCompletionRef.current.delete(key);
+        resolve(false);
+      }
+    },
+    [post]
+  );
 
   const onStepProgress = useCallback<ControllerChannel['onStepProgress']>((stepId, runId, cb) => {
     const key = `${stepId}:${runId}`;

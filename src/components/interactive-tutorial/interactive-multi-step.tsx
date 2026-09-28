@@ -681,6 +681,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index) =>
           setCurrentActionIndex(index)
         );
+        const completion = controllerChannel.awaitStepComplete(renderedStepId, runId);
         controllerChannel.post({
           kind: 'step-command',
           phase: 'do',
@@ -693,7 +694,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           },
         });
         try {
-          const finished = await controllerChannel.awaitStepComplete(renderedStepId, runId);
+          const finished = await completion;
           if (finished) {
             persistCompletion();
             if (onStepComplete && stepId) {

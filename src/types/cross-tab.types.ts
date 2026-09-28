@@ -84,10 +84,17 @@ export interface ControllerAuthFields {
 
 export interface StepCommandMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'step-command';
+  startIndex?: number;
   phase: 'show' | 'do';
   stepId: string;
   runId: string;
   action: CrossTabAction;
+}
+
+export interface StepCancelMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  kind: 'step-cancel';
+  stepId: string;
+  runId: string;
 }
 
 // Controller announces its session public key so the live tab can show a
@@ -176,6 +183,7 @@ export interface StepProgressMessage extends CrossTabEnvelope {
 
 export type CrossTabMessage =
   | StepCommandMessage
+  | StepCancelMessage
   | HeartbeatMessage
   | SidebarHandoffMessage
   | CheckRequirementsMessage
@@ -202,6 +210,7 @@ export type CrossTabPayload = CrossTabMessage extends infer M
 // sides MUST agree — this is the single source of truth they share.
 export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Set([
   'step-command',
+  'step-cancel',
   'check-requirements',
   'fix-requirement',
   'sidebar-handoff',
@@ -258,6 +267,15 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
     return false;
   }
   const action = message.action;
+  if (
+    message.startIndex !== undefined &&
+    (!Number.isInteger(message.startIndex) ||
+      (message.startIndex as number) < 0 ||
+      !Array.isArray(action.internalActions) ||
+      (message.startIndex as number) >= action.internalActions.length)
+  ) {
+    return false;
+  }
   if (
     typeof action.refTarget !== 'string' ||
     typeof action.targetAction !== 'string' ||
@@ -443,6 +461,7 @@ function isValidPairingAccept(message: Record<string, unknown>): boolean {
 // Record over CrossTabMessage['kind'] makes a missing case a compile error.
 const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, unknown>) => boolean> = {
   'step-command': isValidStepCommand,
+  'step-cancel': (message) => typeof message.stepId === 'string' && typeof message.runId === 'string',
   heartbeat: isValidHeartbeat,
   'sidebar-handoff': isValidSidebarHandoff,
   'check-requirements': isValidCheckRequirements,

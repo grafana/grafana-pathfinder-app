@@ -696,6 +696,59 @@ export const InteractiveStep = forwardRef<
       onMatch: handleAutoDetectedMatch,
     });
 
+    const runRemoteAction = useCallback(
+      async (phase: 'show' | 'do'): Promise<boolean> => {
+        if (!controllerChannel || !stepId) {
+          setPostVerifyError('Connect a live Grafana tab to run this step.');
+          return false;
+        }
+        if (phase === 'do' && completeEarly) {
+          persistCompletion();
+          onStepComplete?.(stepId);
+          onComplete?.();
+        }
+        const runId = crypto.randomUUID();
+        const completion = controllerChannel.awaitStepComplete(stepId, runId);
+        controllerChannel.post({
+          kind: 'step-command',
+          phase,
+          stepId,
+          runId,
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
+        });
+        if (!(await completion)) {
+          setPostVerifyError('The action did not complete in the live tab.');
+          return false;
+        }
+        if (postVerify?.trim()) {
+          const result = await controllerChannel.requestRequirementCheck(stepId, postVerify, {
+            targetAction,
+            refTarget,
+            targetValue: currentTargetValue,
+          });
+          if (!result?.pass) {
+            setPostVerifyError('Verification failed in the live tab.');
+            return false;
+          }
+        }
+        return true;
+      },
+      [
+        controllerChannel,
+        stepId,
+        targetAction,
+        refTarget,
+        currentTargetValue,
+        targetState,
+        targetComment,
+        postVerify,
+        completeEarly,
+        persistCompletion,
+        onStepComplete,
+        onComplete,
+      ]
+    );
+
     const handleShowAction = useCallback(async () => {
       if (disabled || isShowRunning || isCompletedWithObjectives || !finalIsEnabled) {
         return;
@@ -726,15 +779,17 @@ export const InteractiveStep = forwardRef<
         if (!(await revalidate())) {
           return;
         }
-        controllerChannel?.post({
-          kind: 'step-command',
-          phase: 'show',
-          stepId,
-          runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
-        });
+        setIsShowRunning(true);
+        let succeeded = false;
+        try {
+          succeeded = await runRemoteAction('show');
+        } finally {
+          setIsShowRunning(false);
+        }
+        if (!succeeded) {
+          return;
+        }
         if (!doIt) {
-          // Simple controller steps complete optimistically because no live acknowledgement is available.
           persistCompletion();
           if (onStepComplete) {
             onStepComplete(stepId);
@@ -809,6 +864,7 @@ export const InteractiveStep = forwardRef<
       persistCompletion,
       mode,
       controllerChannel,
+      runRemoteAction,
       revalidate,
     ]);
 
@@ -841,14 +897,19 @@ export const InteractiveStep = forwardRef<
         if (!(await revalidate())) {
           return;
         }
-        controllerChannel?.post({
-          kind: 'step-command',
-          phase: 'do',
-          stepId,
-          runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
-        });
-        // Simple controller steps complete optimistically because no live acknowledgement is available.
+        setIsDoRunning(true);
+        let succeeded = false;
+        try {
+          succeeded = await runRemoteAction('do');
+        } finally {
+          setIsDoRunning(false);
+        }
+        if (!succeeded) {
+          return;
+        }
+        if (completeEarly) {
+          return;
+        }
         persistCompletion();
         if (onStepComplete) {
           onStepComplete(stepId);
@@ -891,6 +952,7 @@ export const InteractiveStep = forwardRef<
       analyticsStepMeta,
       mode,
       controllerChannel,
+      runRemoteAction,
       persistCompletion,
       onStepComplete,
       onComplete,

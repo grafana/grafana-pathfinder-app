@@ -82,8 +82,8 @@ export class GuidedHandler {
     }
   }
 
-  resetProgress(): void {
-    this.completedSteps = [];
+  resetProgress(completedCount = 0): void {
+    this.completedSteps = Array.from({ length: completedCount }, (_, index) => index);
   }
   async executeGuidedStep(
     action: AuthoredGuidedAction,

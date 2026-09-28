@@ -689,109 +689,123 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     ]);
 
     // Handle "Do it" button click
-    const handleDoAction = useCallback(async () => {
-      if (disabled || isExecuting || isCompletedWithObjectives || !checker.isEnabled) {
-        return;
-      }
-
-      // Track analytics
-      reportAppInteraction(
-        UserInteraction.DoItButtonClick,
-        buildInteractiveStepProperties(
-          {
-            target_action: 'guided',
-            ref_target: renderedStepId,
-            interaction_location: 'interactive_guided',
-            internal_actions_count: internalActions.length,
-          },
-          analyticsStepMeta
-        )
-      );
-
-      if (mode === 'controller') {
-        if (isExecutingRef.current) {
+    const handleDoAction = useCallback(
+      async (startIndex = 0) => {
+        if (
+          disabled ||
+          isExecuting ||
+          (isCompletedWithObjectives && !allowCompletedRetryRef.current) ||
+          (startIndex === 0 && !checker.isEnabled)
+        ) {
           return;
         }
-        if (!controllerChannel) {
-          // No live tab connected (NEW-1073-1): tell the user instead of toggling
-          // a spinner that resolves to nothing.
-          getAppEvents().publish({
-            type: 'alert-info',
-            payload: ['No live tab connected', 'Open a live Grafana tab to run this step there.'],
-          });
-          return;
-        }
-        // §6.4 (entry-only): composites are NOT re-gated at click time the way a
-        // simple step is (which calls checker.revalidate() before posting). A
-        // requirement round-trip can cost up to ~4s, and a composite would pay
-        // that per click on top of its staged replay, so we keep the entry gate
-        // only and let each sub-action fail on the live tab if a prereq regressed.
-        isExecutingRef.current = true;
-        controllerCancelledRef.current = false;
-        const runId = crypto.randomUUID();
-        activeRunIdRef.current = runId;
-        setIsExecuting(true);
-        // Subscribe before posting so the first progress tick the live tab emits
-        // can't arrive before we're listening.
-        const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index) => {
-          setCurrentStepIndex(index);
-          setCurrentStepStatus('waiting');
-        });
-        controllerChannel.post({
-          kind: 'step-command',
-          phase: 'do',
-          stepId: renderedStepId,
-          runId,
-          action: {
-            targetAction: 'guided',
-            refTarget: '',
-            internalActions: internalActions.map(toCrossTabInternalAction),
-          },
-        });
-        try {
-          const finished = await controllerChannel.awaitStepComplete(renderedStepId, runId);
-          if (finished) {
-            persistCompletion();
-            if (onStepComplete && stepId) {
-              onStepComplete(stepId);
-            }
-            if (onComplete) {
-              onComplete();
-            }
-          } else if (!controllerCancelledRef.current) {
-            // NEW-1073-3: the live tab didn't finish (it disconnected or the step
-            // failed there) and the user didn't cancel — surface a retry hint
-            // rather than silently leaving the step incomplete.
-            getAppEvents().publish({
-              type: 'alert-warning',
-              payload: ['Step not completed', 'The live tab did not finish this step — please retry.'],
-            });
+
+        // Track analytics
+        reportAppInteraction(
+          UserInteraction.DoItButtonClick,
+          buildInteractiveStepProperties(
+            {
+              target_action: 'guided',
+              ref_target: renderedStepId,
+              interaction_location: 'interactive_guided',
+              internal_actions_count: internalActions.length,
+            },
+            analyticsStepMeta
+          )
+        );
+
+        if (mode === 'controller') {
+          if (isExecutingRef.current) {
+            return;
           }
-        } finally {
-          isExecutingRef.current = false;
-          stopProgress?.();
-          setIsExecuting(false);
+          if (!controllerChannel) {
+            // No live tab connected (NEW-1073-1): tell the user instead of toggling
+            // a spinner that resolves to nothing.
+            getAppEvents().publish({
+              type: 'alert-info',
+              payload: ['No live tab connected', 'Open a live Grafana tab to run this step there.'],
+            });
+            return;
+          }
+          // §6.4 (entry-only): composites are NOT re-gated at click time the way a
+          // simple step is (which calls checker.revalidate() before posting). A
+          // requirement round-trip can cost up to ~4s, and a composite would pay
+          // that per click on top of its staged replay, so we keep the entry gate
+          // only and let each sub-action fail on the live tab if a prereq regressed.
+          isExecutingRef.current = true;
+          controllerCancelledRef.current = false;
+          const runId = crypto.randomUUID();
+          activeRunIdRef.current = runId;
+          setIsExecuting(true);
+          // Subscribe before posting so the first progress tick the live tab emits
+          // can't arrive before we're listening.
+          let lastIndex = startIndex;
+          const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index) => {
+            lastIndex = index;
+            setCurrentStepIndex(index);
+            setCurrentStepStatus('waiting');
+          });
+          const completion = controllerChannel.awaitStepComplete(renderedStepId, runId);
+          controllerChannel.post({
+            kind: 'step-command',
+            startIndex,
+            phase: 'do',
+            stepId: renderedStepId,
+            runId,
+            action: {
+              targetAction: 'guided',
+              refTarget: '',
+              internalActions: internalActions.map(toCrossTabInternalAction),
+            },
+          });
+          try {
+            const finished = await completion;
+            if (finished) {
+              persistCompletion();
+              if (onStepComplete && stepId) {
+                onStepComplete(stepId);
+              }
+              if (onComplete) {
+                onComplete();
+              }
+            } else if (!controllerCancelledRef.current) {
+              setFailedStepIndex(lastIndex);
+              setExecutionError('The live tab did not finish this step. Retry the current step.');
+              // NEW-1073-3: the live tab didn't finish (it disconnected or the step
+              // failed there) and the user didn't cancel — surface a retry hint
+              // rather than silently leaving the step incomplete.
+              getAppEvents().publish({
+                type: 'alert-warning',
+                payload: ['Step not completed', 'The live tab did not finish this step — please retry.'],
+              });
+            }
+          } finally {
+            isExecutingRef.current = false;
+            stopProgress?.();
+            setIsExecuting(false);
+          }
+          return;
         }
-        return;
-      }
 
-      await executeStep();
-    }, [
-      disabled,
-      isExecuting,
-      isCompletedWithObjectives,
-      checker.isEnabled,
-      executeStep,
-      internalActions,
-      renderedStepId,
-      analyticsStepMeta,
-      mode,
-      controllerChannel,
-      persistCompletion,
-      onStepComplete,
-      onComplete,
-      stepId,
-    ]);
+        await executeStep();
+      },
+      [
+        disabled,
+        isExecuting,
+        isCompletedWithObjectives,
+        checker.isEnabled,
+        executeStep,
+        internalActions,
+        renderedStepId,
+        analyticsStepMeta,
+        mode,
+        controllerChannel,
+        persistCompletion,
+        onStepComplete,
+        onComplete,
+        stepId,
+      ]
+    );
 
     // Handle step reset (redo functionality)
     const handleStepRedo = useCallback(() => {
@@ -834,11 +848,16 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setWasCancelled(false);
       allowCompletedRetryRef.current = true;
       try {
-        await executeStep(!wasCancelled && failedStepIndex >= 0 ? failedStepIndex : 0);
+        const startIndex = !wasCancelled && failedStepIndex >= 0 ? failedStepIndex : 0;
+        if (mode === 'controller') {
+          await handleDoAction(startIndex);
+        } else {
+          await executeStep(startIndex);
+        }
       } finally {
         allowCompletedRetryRef.current = false;
       }
-    }, [executeStep, wasCancelled, failedStepIndex]);
+    }, [executeStep, wasCancelled, failedStepIndex, mode, handleDoAction]);
 
     // Handle cancel during guided execution
     const handleCancel = useCallback(async () => {
@@ -900,7 +919,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           <div className="interactive-guided-idle">
             <div className="interactive-guided-actions">
               <Button
-                onClick={handleDoAction}
+                onClick={() => void handleDoAction()}
                 disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="primary"
