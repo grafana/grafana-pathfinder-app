@@ -22,13 +22,18 @@ import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
 import { handlePathfinderDeepLink, installDeepLinkNavListener } from './utils/pathfinder-deep-link-handler';
 import { parseControllerPairingHash, parsePathfinderDeepLink } from './utils/pathfinder-search-params';
-import { clearExtensionSidebarDocked, parseExtensionSidebarDocked } from './lib/storage/extension-sidebar';
+import {
+  clearExtensionSidebarDocked,
+  parseExtensionSidebarDocked,
+  isExtensionSidebarOwnedByPathfinder,
+} from './lib/storage/extension-sidebar';
 // Surgical import (not the ./lib/telemetry barrel): module.tsx is the entry
 // point, and the barrel would pull the whole telemetry package into module.js.
 import {
   reportPathfinderSurface,
   reportPathfinderSurfaceClosed,
   isPathfinderOpen,
+  hasReportedPathfinderSurface,
   onPathfinderSurfaceChange,
 } from './lib/telemetry/surface';
 
@@ -109,7 +114,7 @@ try {
           recordStartupSettings(durationMs, outcome);
         };
         // Keep bootstrap telemetry inside the existing first-open activity boundary.
-        if (isPathfinderOpen()) {
+        if (hasReportedPathfinderSurface() && isPathfinderOpen()) {
           record();
         } else {
           const unsubscribe = onPathfinderSurfaceChange((surface) => {
@@ -133,7 +138,7 @@ const highlightedGuideConfig = initializeHighlightedGuideExperiment(hostname);
 
 createExperimentDebugger(highlightedGuideConfig);
 
-if (parseExtensionSidebarDocked()?.pluginId === pluginJson.id) {
+if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) {
   const persistedMode = panelModeManager.getMode();
   if (!pathfinderEnabled || persistedMode === 'floating' || persistedMode === 'fullscreen') {
     clearExtensionSidebarDocked();

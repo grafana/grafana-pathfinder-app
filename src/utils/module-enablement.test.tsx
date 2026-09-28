@@ -22,7 +22,9 @@ async function boot(
   tenant?: boolean,
   readFailed = false,
   read?: Promise<ReturnType<typeof getConfigWithDefaults>>,
-  dockedPlugin = 'grafana-pathfinder-app'
+  dockedPlugin = 'grafana-pathfinder-app',
+  surfaceReported?: boolean,
+  panelMode = 'floating'
 ) {
   const settings = readFailed ? undefined : getConfigWithDefaults({ pathfinderEnabled: tenant });
   const root = { component: undefined as React.ComponentType | undefined };
@@ -44,6 +46,9 @@ async function boot(
     setupHighlightedGuideAutoOpen: jest.fn(),
     armCompletionWriteHook: jest.fn(),
     clearExtensionSidebarDocked: jest.fn(),
+    setPendingOpenSource: jest.fn(),
+    recordStartupSettings: jest.fn(),
+    onPathfinderSurfaceChange: jest.fn().mockReturnValue(jest.fn()),
   };
   const modules: Record<string, unknown> = {
     react: React,
@@ -63,28 +68,47 @@ async function boot(
       readPathfinderStartupPreference: async () => (read ? await read : settings),
       waitForPathfinderPluginConfig: async () => (read ? await read : settings),
     },
-    './utils/pathfinder-enablement': { resolvePathfinderAvailability },
+    './utils/pathfinder-enablement': {
+      resolvePathfinderAvailability,
+      getPathfinderStartupDecision: () => ({ durationMs: 10, outcome: 'resolved' }),
+    },
     './docs-retrieval/content-fetcher/package-resolver-registry': effects,
     './lib/event-names': { PANEL_MODE_CHANGE_EVENT: 'test-panel-mode-change' },
     './global-state/link-interception': { linkInterceptionState: { setInterceptionEnabled: jest.fn() } },
-    'global-state/sidebar': { sidebarState: { setPendingOpenSource: jest.fn() } },
-    './global-state/panel-mode': { panelModeManager: { getMode: () => 'floating' } },
+    'global-state/sidebar': { sidebarState: effects },
+    './global-state/panel-mode': { panelModeManager: { getMode: () => panelMode } },
     './global-state/suggestion': { suggestionState: {} },
     './utils/pathfinder-deep-link-handler': effects,
     './utils/pathfinder-search-params': {
       parsePathfinderDeepLink: () => ({ doc: 'bundled:test' }),
       parseControllerPairingHash: () => null,
     },
-    './lib/storage/extension-sidebar': { ...effects, parseExtensionSidebarDocked: () => ({ pluginId: dockedPlugin }) },
-    './lib/telemetry/surface': {},
+    './lib/storage/extension-sidebar': {
+      ...effects,
+      parseExtensionSidebarDocked: () => ({ pluginId: dockedPlugin }),
+      isExtensionSidebarOwnedByPathfinder: () => !dockedPlugin || dockedPlugin === 'grafana-pathfinder-app',
+    },
+    './lib/telemetry/surface': {
+      ...effects,
+      hasReportedPathfinderSurface: () => surfaceReported,
+      isPathfinderOpen: () => true,
+    },
+    './lib/faro': { initFaro: async () => {}, resolveSessionReplayOptions: jest.fn() },
+    './lib/telemetry/facade': effects,
+    './lib/telemetry/session': { stampSessionExperiments: jest.fn() },
     './utils/openfeature': {
       initializeOpenFeature: async () => {},
-      getFeatureFlagValue: (key: string) => key === 'pathfinder.enabled' && remote,
+      getFeatureFlagValue: (key: string) =>
+        key === 'pathfinder.enabled'
+          ? remote
+          : key === 'pathfinder.frontend-telemetry' && surfaceReported !== undefined,
+      getNumberFlagValue: () => 1,
     },
     './utils/experiments/active-experiments': { getActiveExperiments: jest.fn() },
     './utils/experiments': {
       ...effects,
       createExperimentDebugger: jest.fn(),
+      subscribeToEnrollment: jest.fn(),
       initializeHighlightedGuideExperiment: () => ({}),
     },
     './utils/sidebar-auto-open': { getCurrentPath: () => '/', attemptAutoOpen: jest.fn() },
@@ -190,4 +214,34 @@ it('rejects buffered and subsequent suggestions while disabled', async () => {
   const later = { suggestions: [] };
   document.dispatchEvent(new CustomEvent('pathfinder-suggest', { detail: later }));
   expect(later).toMatchObject({ status: 'rejected', reason: 'pathfinder_disabled' });
+});
+
+it('clears a legacy title-only dock when disabled', async () => {
+  const { effects } = await boot(false, false, false, undefined, '');
+  expect(effects.clearExtensionSidebarDocked).toHaveBeenCalledTimes(1);
+});
+
+it('waits for a reported mount before recording startup telemetry for a restored surface', async () => {
+  const { effects } = await boot(true, true, false, undefined, 'grafana-pathfinder-app', false);
+  await Promise.resolve();
+  expect(effects.recordStartupSettings).not.toHaveBeenCalled();
+  const onSurface = effects.onPathfinderSurfaceChange.mock.calls[0][0];
+  onSurface('closed');
+  expect(effects.recordStartupSettings).not.toHaveBeenCalled();
+  onSurface('floating');
+  expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved');
+  expect(effects.onPathfinderSurfaceChange.mock.results[0]!.value).toHaveBeenCalledTimes(1);
+});
+
+it('records immediately when the surface has already reported its mount', async () => {
+  const { effects } = await boot(true, true, false, undefined, 'grafana-pathfinder-app', true);
+  await Promise.resolve();
+  expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved');
+  expect(effects.onPathfinderSurfaceChange).not.toHaveBeenCalled();
+});
+
+it('restores a legacy title-only dock when enabled in sidebar mode', async () => {
+  const { effects } = await boot(true, true, false, undefined, '', undefined, 'sidebar');
+  expect(effects.setPendingOpenSource).toHaveBeenCalledWith('browser_restore', 'restore');
+  expect(effects.clearExtensionSidebarDocked).not.toHaveBeenCalled();
 });
