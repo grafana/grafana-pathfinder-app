@@ -1,3 +1,4 @@
+import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 
@@ -702,20 +703,23 @@ export const InteractiveStep = forwardRef<
           stepId,
           runId,
           action: {
-            targetAction,
+            ...toCrossTabInternalAction({
+              targetAction,
+              refTarget,
+              targetValue: currentTargetValue,
+              targetState,
+              targetComment,
+              lazyRender,
+              scrollContainer,
+            }),
             refTarget,
-            targetValue: currentTargetValue,
-            targetState,
-            targetComment,
-            lazyRender,
-            scrollContainer,
           },
         });
         if (!(await completion)) {
           setPostVerifyError('The action did not complete in the live tab.');
           return false;
         }
-        if (postVerify?.trim()) {
+        if (phase === 'do' && postVerify?.trim()) {
           const result = await controllerChannel.requestRequirementCheck(stepId, postVerify, {
             targetAction,
             refTarget,

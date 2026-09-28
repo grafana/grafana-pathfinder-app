@@ -840,6 +840,9 @@ export function InteractiveSection({
 
                 try {
                   const requirementsResult = await checkRequirementsFromData(stepRequirementsData);
+                  if (controller.signal.aborted) {
+                    break;
+                  }
                   if (!requirementsResult.pass) {
                     // Requirements not met - apply priority logic
 
@@ -874,6 +877,9 @@ export function InteractiveSection({
                         await new Promise((resolve) => setTimeout(resolve, 200)); // Wait for UI to settle
                         const recheckResult = await checkRequirementsFromData(stepRequirementsData);
 
+                        if (controller.signal.aborted) {
+                          break;
+                        }
                         if (!recheckResult.pass) {
                           // Fix didn't work - check if step is skippable
                           // Priority 3: Skip if possible
@@ -892,6 +898,9 @@ export function InteractiveSection({
                         }
                         // If recheck passed, continue with normal execution below
                       } catch (fixError) {
+                        if (controller.signal.aborted) {
+                          break;
+                        }
                         logger.warn(`Failed to fix requirements for step ${i + 1}`, { error: fixError });
 
                         // Fix failed - check if step is skippable

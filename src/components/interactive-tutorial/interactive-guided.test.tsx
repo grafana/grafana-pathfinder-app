@@ -9,7 +9,8 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { acquireGuidedRun } from '../../global-state/guided-run';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
@@ -439,6 +440,69 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
 });
 
 describe('InteractiveGuided — cancellation', () => {
+  it('returns to idle after reset while an aborted handler settles', async () => {
+    let finish!: (result: string) => void;
+    mockExecuteGuidedStep.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const props = { stepId: 'reset-active', internalActions: [{ targetAction: 'noop' as const }] };
+    const { rerender } = render(<InteractiveGuided {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalled());
+    rerender(<InteractiveGuided {...props} resetTrigger={1} />);
+    await act(async () => {
+      finish('cancelled');
+    });
+    expect(screen.getByTestId(testIds.interactive.step('reset-active'))).toHaveAttribute(
+      'data-test-step-state',
+      'idle'
+    );
+    expect(mockStoredCompleted).toBe(false);
+  });
+
+  it('persists the final successful action without a cosmetic delay', async () => {
+    let finish!: (result: string) => void;
+    mockExecuteGuidedStep.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const onComplete = jest.fn();
+    const { unmount } = render(
+      <InteractiveGuided stepId="final-action" onComplete={onComplete} internalActions={[{ targetAction: 'noop' }]} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalled());
+    await act(async () => {
+      finish('completed');
+    });
+    unmount();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(mockStoredCompleted).toBe(true);
+  });
+
+  it('retains retry state when another guided interaction holds the lease', async () => {
+    mockExecuteGuidedStep.mockResolvedValue('error');
+    render(<InteractiveGuided stepId="lease-retry" internalActions={[{ targetAction: 'noop' }]} />);
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    const step = screen.getByTestId(testIds.interactive.step('lease-retry'));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'error'));
+    const otherRun = acquireGuidedRun();
+    expect(otherRun).not.toBeNull();
+    try {
+      fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('lease-retry')));
+      await act(async () => {});
+      expect(step).toHaveAttribute('data-test-step-state', 'error');
+      expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1);
+    } finally {
+      otherRun?.release();
+    }
+  });
+
   it('does not persist completeEarly completion after cancellation', async () => {
     mockExecuteGuidedStep.mockResolvedValue('cancelled');
     const onStepComplete = jest.fn();

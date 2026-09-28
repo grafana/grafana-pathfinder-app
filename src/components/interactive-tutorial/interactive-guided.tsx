@@ -290,14 +290,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       };
     }, [guidedHandler]);
 
-    // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
         runRef.current?.cancel();
+        runRef.current = null;
         persistReset();
         // eslint-disable-next-line react-hooks/set-state-in-effect -- reset local UI state when the parent bumps resetTrigger, alongside the persistReset store write
         setExecutionError(null);
         setCurrentStepIndex(0);
+        setFailedStepIndex(-1);
         setCurrentStepStatus('waiting');
         setWasCancelled(false);
       }
@@ -477,9 +478,13 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 }
               );
 
+              if (runRef.current !== run) {
+                return false;
+              }
               if (result === 'completed' || result === 'skipped') {
-                if (completeEarly && i === internalActions.length - 1) {
+                if (i === internalActions.length - 1) {
                   completeStep();
+                  return !run.signal.aborted;
                 }
                 setCurrentStepStatus('completed');
                 // Brief visual feedback before moving to next step
@@ -503,7 +508,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             return true;
           } catch (error) {
             if (run.signal.aborted) {
-              setWasCancelled(true);
+              if (runRef.current === run) {
+                setWasCancelled(true);
+              }
               return false;
             }
             logger.error(`Guided execution failed: ${stepId}`, { error });
@@ -746,6 +753,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           // that per click on top of its staged replay, so we keep the entry gate
           // only and let each sub-action fail on the live tab if a prereq regressed.
           isExecutingRef.current = true;
+          setExecutionError(null);
+          setWasCancelled(false);
+          setCurrentStepStatus('waiting');
           controllerCancelledRef.current = false;
           const runId = crypto.randomUUID();
           activeRunIdRef.current = runId;
@@ -856,9 +866,6 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // Handle retry after timeout or cancellation
     const handleRetry = useCallback(async () => {
-      setExecutionError(null);
-      setCurrentStepStatus('waiting');
-      setWasCancelled(false);
       allowCompletedRetryRef.current = true;
       try {
         const startIndex = !wasCancelled && failedStepIndex >= 0 ? failedStepIndex : 0;

@@ -445,6 +445,7 @@ export const InteractiveMultiStep = forwardRef<
                   });
                 }
                 const requirementsResult = await checkActionRequirements(action, i, checkRequirementsFromData);
+                controller.signal.throwIfAborted();
                 if (!requirementsResult.pass) {
                   logger.error(`Multi-step ${stepId}: Internal action ${i + 1} requirements failed`, {
                     explanation: requirementsResult.explanation,
@@ -492,6 +493,9 @@ export const InteractiveMultiStep = forwardRef<
                   buttonType: 'do',
                   fullScreenFallbackLocation,
                 });
+                if (controller.signal.aborted) {
+                  return false;
+                }
                 if (doOutcome === 'error') {
                   setFailedStepIndex(i);
                   setExecutionError(`Step ${i + 1} did not complete successfully.`);
@@ -549,6 +553,9 @@ export const InteractiveMultiStep = forwardRef<
 
             return true;
           } catch (error) {
+            if (controller.signal.aborted) {
+              return false;
+            }
             logger.error(`Multi-step execution failed: ${stepId}`, { error });
             const errorMessage = error instanceof Error ? error.message : 'Multi-step execution failed';
             setExecutionError(errorMessage);

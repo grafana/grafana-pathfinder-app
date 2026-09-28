@@ -445,6 +445,50 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     );
   });
 
+  it('does not post-verify a successful remote Show me preview', async () => {
+    const transport = makeTransport();
+    await renderPairedController(
+      transport,
+      <InteractiveStep
+        targetAction="highlight"
+        refTarget="#panel"
+        stepId="preview"
+        showMe
+        doIt={false}
+        postVerify="exists-selector(#created)"
+      >
+        Step
+      </InteractiveStep>
+    );
+    const button = await screen.findByRole('button', { name: /show me/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-command' })));
+    const command = transport.post.mock.calls
+      .map(([message]) => message)
+      .find((message) => message.kind === 'step-command');
+    const checksBefore = countRequirementChecks(transport);
+    await act(async () => {
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live',
+        timestamp: 0,
+        kind: 'step-complete',
+        stepId: command.stepId,
+        runId: command.runId,
+        ok: true,
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.step('preview'))).toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      )
+    );
+    expect(countRequirementChecks(transport)).toBe(checksBefore);
+    expect(screen.queryByText('Verification failed in the live tab.')).not.toBeInTheDocument();
+  });
+
   it('emits a "do" step-command when Do it is clicked', async () => {
     const transport = makeTransport();
     await renderPairedController(
