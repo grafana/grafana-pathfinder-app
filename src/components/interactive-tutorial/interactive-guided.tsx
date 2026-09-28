@@ -15,7 +15,7 @@ import {
 } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
-import { useStepChecker, validateInteractiveRequirements, checkRequirements } from '../../requirements-manager';
+import { useStepChecker, validateInteractiveRequirements, useGuideRequirements } from '../../requirements-manager';
 import { getInteractiveConfig } from '../../constants/interactive-config';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 import { type AuthoredGuidedAction, isGuidedDomActionType } from '../../types/interactive-actions.types';
@@ -339,6 +339,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       onComplete, // Pass through for objectives auto-completion
     });
 
+    const { checkRequirements } = useGuideRequirements();
     const aiFixEnabled = useAiFixEnabled();
 
     // Combined completion state: objectives always win
@@ -497,7 +498,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             setExecutionError(errorMessage);
             return false;
           }
-        } catch (error) {
+        } catch (_error) {
           if (!run.signal.aborted) {
             setExecutionError('Could not start the guided interaction.');
           }
@@ -516,6 +517,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       },
       [
         checker.isEnabled,
+        checkRequirements,
         isCompletedWithObjectives,
         isExecuting,
         completeEarly,

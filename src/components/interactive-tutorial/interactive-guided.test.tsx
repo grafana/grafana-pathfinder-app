@@ -116,6 +116,7 @@ jest.mock('../../requirements-manager', () => ({
     maxRetries: 3,
   })),
   validateInteractiveRequirements: jest.fn(),
+  useGuideRequirements: () => ({ checkRequirements: jest.fn().mockResolvedValue({ pass: true }) }),
 }));
 
 // ─── Track call order for waitForReactUpdates vs executeGuidedStep ───────────

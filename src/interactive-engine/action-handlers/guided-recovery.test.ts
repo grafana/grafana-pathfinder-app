@@ -38,12 +38,15 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-it('rebinds a replaced target without cancelling the guided action', async () => {
+it.each([false, true])('rebinds a replaced target even if highlight setup fails: %s', async (failHighlight) => {
   document.body.innerHTML = '<button id="target">Continue</button>';
   const { handler, navigation } = setup();
   navigation.highlightWithComment.mockImplementation(async () => {
     if (navigation.highlightWithComment.mock.calls.length === 1) {
       document.body.innerHTML = '<button id="target">Continue</button>';
+      if (failHighlight) {
+        throw new Error('Detached target has no dimensions');
+      }
     } else {
       document.querySelector<HTMLElement>('#target')!.click();
     }

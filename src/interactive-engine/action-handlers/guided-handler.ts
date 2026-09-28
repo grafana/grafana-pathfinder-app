@@ -197,7 +197,7 @@ export class GuidedHandler {
             signal,
             recoveryDeadline !== undefined
           );
-        } catch (error) {
+        } catch (_error) {
           if (signal.aborted) {
             return this.finishGuidedStep('cancelled', stepIndex);
           }
@@ -233,17 +233,25 @@ export class GuidedHandler {
           this.createSkipListener(stepIndex, arbiter);
         }
         this.createCancelListener(stepIndex, arbiter);
-        await this.highlightTarget(
-          target,
-          action.targetAction,
-          stepIndex,
-          totalSteps,
-          commentForTargetState(action.targetComment, target, action.targetState),
-          action.isSkippable,
-          action.formHint,
-          action.targetValue,
-          action.refTarget
-        );
+        try {
+          await this.highlightTarget(
+            target,
+            action.targetAction,
+            stepIndex,
+            totalSteps,
+            commentForTargetState(action.targetComment, target, action.targetState),
+            action.isSkippable,
+            action.formHint,
+            action.targetValue,
+            action.refTarget
+          );
+        } catch (error) {
+          if (target.isConnected || signal.aborted || arbiter.getResult() === 'completed') {
+            throw error;
+          }
+          lostTarget = true;
+          arbiter.settle('error');
+        }
         signal.throwIfAborted();
         const result = await arbiter.promise;
         this.finishGuidedStep(result, stepIndex);
