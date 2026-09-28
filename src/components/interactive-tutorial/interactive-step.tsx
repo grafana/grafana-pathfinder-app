@@ -720,7 +720,7 @@ export const InteractiveStep = forwardRef<
         const result = await completion;
         if (result !== 'completed') {
           setPostVerifyError(
-            result === 'timeout'
+            result === 'timeout' || result === 'disconnected'
               ? 'The live tab did not confirm completion. Refresh both tabs and try again.'
               : 'The action did not complete in the live tab. Restore the required state and try again.'
           );

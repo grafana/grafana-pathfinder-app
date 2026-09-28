@@ -636,6 +636,51 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     );
   });
 
+  it('shows refresh guidance when the live tab disconnects during an action', async () => {
+    const intervalSpy = jest.spyOn(global, 'setInterval');
+    const transport = makeTransport();
+    try {
+      await renderPairedController(
+        transport,
+        <InteractiveStep targetAction="button" refTarget="#ok" stepId="remote-disconnected">
+          Step
+        </InteractiveStep>
+      );
+      act(() => {
+        transport.emit({
+          source: 'pathfinder',
+          senderId: 'live',
+          timestamp: Date.now(),
+          kind: 'heartbeat',
+          role: 'live',
+        });
+      });
+      const heartbeatTick = intervalSpy.mock.calls.find(([, delay]) => delay === 2000)![0] as () => void;
+      const button = await screen.findByRole('button', { name: /do it/i });
+      await waitFor(() => expect(button).not.toBeDisabled());
+      fireEvent.click(button);
+      await waitFor(() =>
+        expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-command' }))
+      );
+      jest.useFakeTimers();
+      await act(async () => {
+        jest.setSystemTime(Date.now() + 6000);
+        heartbeatTick();
+      });
+      expect(
+        screen.getByText('The live tab did not confirm completion. Refresh both tabs and try again.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Restore the required state/)).not.toBeInTheDocument();
+      expect(screen.getByTestId(testIds.interactive.step('remote-disconnected'))).not.toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      );
+    } finally {
+      jest.useRealTimers();
+      intervalSpy.mockRestore();
+    }
+  });
+
   it('does not cancel or fail a credited completeEarly remote action when no acknowledgement arrives', async () => {
     const transport = makeTransport();
     const onComplete = jest.fn();
