@@ -863,7 +863,6 @@ export const InteractiveStep = forwardRef<
       analyticsStepMeta,
       persistCompletion,
       mode,
-      controllerChannel,
       runRemoteAction,
       revalidate,
     ]);
@@ -940,6 +939,7 @@ export const InteractiveStep = forwardRef<
     }, [
       disabled,
       isDoRunning,
+      completeEarly,
       isCompletedWithObjectives,
       finalIsEnabled,
       lazyRender,
@@ -948,16 +948,13 @@ export const InteractiveStep = forwardRef<
       executeStep,
       targetAction,
       currentTargetValue,
-      targetState,
       analyticsStepMeta,
       mode,
-      controllerChannel,
       runRemoteAction,
       persistCompletion,
       onStepComplete,
       onComplete,
       stepId,
-      targetComment,
       revalidate,
     ]);
 

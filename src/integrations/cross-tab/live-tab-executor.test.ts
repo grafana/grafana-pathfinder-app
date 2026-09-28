@@ -127,7 +127,7 @@ describe('installLiveTabExecutor', () => {
   it('cancels an active guided run without waiting behind the execution queue', async () => {
     const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
-    const guided = (GuidedHandler as unknown as jest.Mock).mock.results[0].value;
+    const guided = (GuidedHandler as unknown as jest.Mock).mock.results[0]!.value;
     guided.executeGuidedStep.mockImplementation(
       (_a: unknown, _i: number, _n: number, _t: unknown, _cb: unknown, options: { signal: AbortSignal }) =>
         new Promise((resolve) => options.signal.addEventListener('abort', () => resolve('cancelled'), { once: true }))
