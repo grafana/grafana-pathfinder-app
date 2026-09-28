@@ -991,87 +991,146 @@ describe('local cloud package CLI preflight', () => {
     }
   );
 
-  it.each(['guide', 'path'] as const)(
-    'reports zero-step %s leaf and every other unexecuted leaf before leasing',
-    async (type) => {
-      const packageDir = join(root, 'cloud-guide');
-      const zeroDir = join(root, 'zero-leaf');
-      const healthyDir = join(root, 'healthy-leaf');
-      mkdirSync(zeroDir);
-      mkdirSync(healthyDir);
-      writeFileSync(
-        join(zeroDir, 'manifest.json'),
-        JSON.stringify({ id: 'zero-leaf', type: 'guide', testEnvironment: { tier: 'cloud' } })
-      );
-      writeFileSync(
-        join(zeroDir, 'content.json'),
-        JSON.stringify({ id: 'zero-leaf', title: 'No steps', blocks: [{ type: 'markdown', content: 'Read this' }] })
-      );
-      writeFileSync(
-        join(healthyDir, 'manifest.json'),
-        JSON.stringify({ id: 'healthy-leaf', type: 'guide', testEnvironment: { tier: 'cloud' } })
-      );
-      writeFileSync(
-        join(healthyDir, 'content.json'),
-        JSON.stringify({
-          id: 'healthy-leaf',
-          title: 'Interactive',
-          blocks: [{ type: 'interactive', action: 'highlight', reftarget: '[data-testid="step"]', content: 'Inspect' }],
-        })
-      );
-      const selectedId = type === 'path' ? 'cloud-path' : 'cloud-guide';
-      writeFileSync(
-        join(packageDir, 'manifest.json'),
-        JSON.stringify({
-          id: selectedId,
-          type,
-          ...(type === 'path'
-            ? { milestones: ['healthy-leaf', 'zero-leaf'] }
-            : { depends: ['zero-leaf', 'healthy-leaf'] }),
-          testEnvironment: { tier: 'cloud' },
-        })
-      );
-      if (type === 'path') {
-        writeFileSync(
-          join(packageDir, 'content.json'),
-          JSON.stringify({ id: selectedId, title: 'Cloud path', blocks: [] })
-        );
-      }
-      const reportPath = join(root, 'zero-leaf-report.json');
-      const options = E2eCommand.parse({
-        package: packageDir,
-        repository: root,
-        tier: 'cloud',
-        cloudStackPoolManagerUrl: `${managerOrigin}/`,
-        cloudStackPoolManagerToken: tokenVariable,
-        cloudStackPoolId: 'ci',
-        output: reportPath,
-        artifacts: join(root, 'artifacts'),
-      });
+  it('reports a selected prose-only cloud guide as unexecuted before leasing', async () => {
+    const packageDir = join(root, 'cloud-guide');
+    const selectedId = 'cloud-guide';
+    writeFileSync(
+      join(packageDir, 'manifest.json'),
+      JSON.stringify({ id: selectedId, type: 'guide', testEnvironment: { tier: 'cloud' } })
+    );
+    writeFileSync(
+      join(packageDir, 'content.json'),
+      JSON.stringify({ id: selectedId, title: 'No steps', blocks: [{ type: 'markdown', content: 'Read this' }] })
+    );
+    const reportPath = join(root, 'zero-leaf-report.json');
+    const options = E2eCommand.parse({
+      package: packageDir,
+      repository: root,
+      tier: 'cloud',
+      cloudStackPoolManagerUrl: `${managerOrigin}/`,
+      cloudStackPoolManagerToken: tokenVariable,
+      cloudStackPoolId: 'ci',
+      output: reportPath,
+      artifacts: join(root, 'artifacts'),
+    });
 
-      await expect(runE2e(options)).resolves.toMatchObject({ status: 'ok', summary: 'Nothing to run' });
-      expect(fetchSpy).not.toHaveBeenCalled();
-      expect(runPlaywrightTests).not.toHaveBeenCalled();
-      expect(runPlaywrightChain).not.toHaveBeenCalled();
-      const report = JSON.parse(readFileSync(reportPath, 'utf8')) as SkipReport;
-      expect(report.outcome).toBe('skipped');
-      expect(report.summary).toMatchObject({ totalGuides: 3, passedGuides: 0, failedGuides: 0, skippedGuides: 3 });
-      expect(report.selection).toEqual(type === 'path' ? { id: selectedId, type: 'path' } : undefined);
-      expect(report.preRunSkipped).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ id: 'zero-leaf', reason: 'resolution_failed', failed: false }),
-          expect.objectContaining({ id: 'healthy-leaf', reason: 'resolution_failed', failed: false }),
-          expect.objectContaining({ id: selectedId, failed: false }),
-        ])
+    await expect(runE2e(options)).resolves.toMatchObject({ status: 'ok', summary: 'Nothing to run' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(runPlaywrightTests).not.toHaveBeenCalled();
+    expect(runPlaywrightChain).not.toHaveBeenCalled();
+    const report = JSON.parse(readFileSync(reportPath, 'utf8')) as SkipReport;
+    expect(report.outcome).toBe('skipped');
+    expect(report.summary).toMatchObject({ totalGuides: 1, passedGuides: 0, failedGuides: 0, skippedGuides: 1 });
+    expect(report.preRunSkipped).toEqual([
+      expect.objectContaining({ id: selectedId, reason: 'resolution_failed', failed: false }),
+    ]);
+    expect(report.preRunSkipped[0]?.message).toContain('no interactive blocks to test');
+  });
+
+  it('skips an entirely prose-only path before leasing', async () => {
+    const packageDir = join(root, 'cloud-guide');
+    const proseDir = join(root, 'prose-guide');
+    mkdirSync(proseDir);
+    writeFileSync(
+      join(proseDir, 'manifest.json'),
+      JSON.stringify({ id: 'prose-guide', type: 'guide', testEnvironment: { tier: 'cloud' } })
+    );
+    writeFileSync(
+      join(proseDir, 'content.json'),
+      JSON.stringify({ id: 'prose-guide', title: 'Read', blocks: [{ type: 'markdown', content: 'Read this' }] })
+    );
+    writeFileSync(
+      join(packageDir, 'manifest.json'),
+      JSON.stringify({
+        id: 'cloud-path',
+        type: 'path',
+        milestones: ['prose-guide'],
+        testEnvironment: { tier: 'cloud' },
+      })
+    );
+    writeFileSync(
+      join(packageDir, 'content.json'),
+      JSON.stringify({ id: 'cloud-path', title: 'Cloud path', blocks: [] })
+    );
+    const reportPath = join(root, 'all-prose-report.json');
+
+    await expect(runE2e(cloudOptions(packageDir, reportPath))).resolves.toMatchObject({ status: 'ok' });
+
+    const report = JSON.parse(readFileSync(reportPath, 'utf8')) as SkipReport;
+    expect(report.outcome).toBe('skipped');
+    expect(report.selection).toEqual({ id: 'cloud-path', type: 'path' });
+    expect(report.preRunSkipped.map((guide) => guide.id)).toEqual(['prose-guide', 'cloud-path']);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(runPlaywrightChain).not.toHaveBeenCalled();
+  });
+
+  it('runs a prose-only path milestone between interactive milestones on one lease', async () => {
+    allowRequiredPlugin();
+    const packageDir = join(root, 'cloud-guide');
+    const milestones = ['first-guide', 'prose-guide', 'last-guide'];
+    for (const id of milestones) {
+      const dir = join(root, id);
+      mkdirSync(dir);
+      writeFileSync(
+        join(dir, 'manifest.json'),
+        JSON.stringify({
+          id,
+          type: 'guide',
+          testEnvironment: { tier: 'cloud' },
+          ...(id === 'last-guide' ? { depends: ['prose-guide'] } : {}),
+        })
       );
-      expect(report.preRunSkipped.find((entry) => entry.id === 'zero-leaf')?.message).toContain(
-        'no interactive blocks to test'
-      );
-      expect(report.preRunSkipped.find((entry) => entry.id === 'healthy-leaf')?.message).toContain(
-        'did not execute because guide "zero-leaf"'
+      writeFileSync(
+        join(dir, 'content.json'),
+        JSON.stringify({
+          id,
+          title: id,
+          blocks:
+            id === 'prose-guide'
+              ? [{ type: 'markdown', content: 'Review the results' }]
+              : [{ type: 'interactive', action: 'highlight', reftarget: '[data-testid="step"]', content: 'Inspect' }],
+        })
       );
     }
-  );
+    writeFileSync(
+      join(packageDir, 'manifest.json'),
+      JSON.stringify({ id: 'cloud-path', type: 'path', milestones, testEnvironment: { tier: 'cloud' } })
+    );
+    writeFileSync(
+      join(packageDir, 'content.json'),
+      JSON.stringify({ id: 'cloud-path', title: 'Cloud path', blocks: [] })
+    );
+    jest.mocked(runPlaywrightChain).mockImplementation(async (guides) => ({
+      success: true,
+      exitCode: ExitCode.SUCCESS,
+      resultsData: guides.map((guide) => fakeGuideData(guide.id, guide.id !== 'prose-guide')),
+    }));
+    const reportPath = join(root, 'prose-path-report.json');
+
+    await expect(runE2e(cloudOptions(packageDir, reportPath))).resolves.toMatchObject({ status: 'ok' });
+
+    const report = JSON.parse(readFileSync(reportPath, 'utf8')) as {
+      outcome: string;
+      selection: { id: string; type: string };
+      summary: { passedGuides: number; skippedGuides: number };
+      reports: Array<{ outcome: string; guide: { id: string }; steps: unknown[] }>;
+    };
+    expect(report.selection).toEqual({ id: 'cloud-path', type: 'path' });
+    expect(report.outcome).toBe('passed');
+    expect(report.summary).toMatchObject({ passedGuides: 3, skippedGuides: 0 });
+    expect(report.reports.map((guide) => guide.guide.id)).toEqual(milestones);
+    expect(report.reports.find((guide) => guide.guide.id === 'prose-guide')).toMatchObject({
+      outcome: 'passed',
+      steps: [],
+    });
+    expect(runPlaywrightChain).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls.filter(([input]) => new URL(input.toString()).pathname === '/v1/leases')).toHaveLength(
+      1
+    );
+    expect(
+      fetchSpy.mock.calls.filter(([input]) => new URL(input.toString()).pathname.endsWith('/retire'))
+    ).toHaveLength(1);
+  });
 
   it('accepts a checkout directory with no repository.json and skips before leasing when a source is unsupported', async () => {
     const packageDir = join(root, 'cloud-guide');

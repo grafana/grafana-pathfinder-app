@@ -61,7 +61,7 @@ export class LocalCloudNonExecutionError extends Error {
   }
 }
 
-function hasInteractiveBlocks(value: unknown): boolean {
+export function hasInteractiveBlocks(value: unknown): boolean {
   if (Array.isArray(value)) {
     return value.some(hasInteractiveBlocks);
   }
@@ -397,14 +397,16 @@ function assertSupportedLocalCloudSources(plan: ExecutionPlan): void {
 
 export function assertExecutableLocalCloudSources(plan: ExecutionPlan): void {
   const plannedGuides = plan.chains.flat();
-  for (const planned of plannedGuides) {
-    if (!hasInteractiveBlocks(JSON.parse(planned.guide.content).blocks)) {
-      throw new LocalCloudNonExecutionError(
-        planned.guide,
-        `Local cloud guide "${planned.id}" has no interactive blocks to test.`,
-        plannedGuides
-      );
-    }
+  if (plannedGuides.some((planned) => hasInteractiveBlocks(JSON.parse(planned.guide.content).blocks))) {
+    return;
+  }
+  const guide = plannedGuides[0];
+  if (guide) {
+    throw new LocalCloudNonExecutionError(
+      guide.guide,
+      `Local cloud guide "${guide.id}" has no interactive blocks to test.`,
+      plannedGuides
+    );
   }
 }
 

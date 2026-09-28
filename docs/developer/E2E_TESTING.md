@@ -765,10 +765,10 @@ After provisioning, the runner checks health and manifest requirements against t
 The following cases produce skipped reports rather than an unqualified pass:
 
 - A local-tier package selected with `--tier cloud`. This skip needs neither `--repository` nor cloud credentials.
-- A selected guide, prerequisite, or milestone with no interactive blocks. The report lists the selected root and all planned leaves as unexecuted.
+- A selected graph with no interactive blocks. The report lists the selected root and all planned leaves as unexecuted. The runner executes a prose-only milestone in an otherwise interactive path. It reports zero browser steps for that milestone and continues to later milestones.
 - A `snippet-ref` block, including nested references.
 - A navigate action with `openGuide`, or a `reftarget`/`refTarget` URL with a nonempty `doc` query value.
-- A browser result that claims a pass without a verified passed step, including all-skipped and not-reached results.
+- An interactive guide with no passed browser step, including guides whose steps are all skipped or not reached. A prose-only milestone has no steps to verify.
 
 The first four checks happen before provisioning. A path report retains passed sibling results but does not claim an overall pass when another milestone skips. Exit code 0 alone does not prove execution. Consumers must inspect the report outcome and per-guide results.
 

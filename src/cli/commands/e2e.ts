@@ -32,6 +32,7 @@ import {
   LocalMetapackageResolutionError,
   LocalCloudNonExecutionError,
   assertExecutableLocalCloudSources,
+  hasInteractiveBlocks,
   resolveLocalCloudGuide,
   resolveLocalMetapackage,
   type LocalRepositorySource,
@@ -755,9 +756,10 @@ async function runPreflightChecks(
  * failed within a chain are skipped. Returns per-guide results plus whether
  * everything passed and whether a session expired.
  */
-function withoutUnexecutedLocalCloudPass(data: TestResultsData): TestResultsData {
+function withoutUnexecutedLocalCloudPass(data: TestResultsData, content: string): TestResultsData {
   if (
     guideStatusFromResultsData(data) !== 'passed' ||
+    !hasInteractiveBlocks(JSON.parse(content).blocks) ||
     (data.coverage?.executed !== 0 && data.results.some((step) => step.status === 'passed'))
   ) {
     return data;
@@ -947,7 +949,7 @@ async function runChains(
           const meta = packageMetaById.get(planned.id);
           applyPackageMeta(data, meta);
           const failedPrerequisite = planned.dependencies.find((dependency) => blocked.has(dependency));
-          const normalizedData = localCloudSource ? withoutUnexecutedLocalCloudPass(data) : data;
+          const normalizedData = localCloudSource ? withoutUnexecutedLocalCloudPass(data, planned.guide.content) : data;
           const status = guideStatusFromResultsData(normalizedData);
           const exitCode =
             status === 'passed' || status === 'skipped_prereq' || status === 'skipped_unsupported_steps'
@@ -1076,7 +1078,7 @@ async function runChains(
         applyPackageMeta(result.resultsData, meta);
         const resultsData =
           localCloudSource && result.resultsData
-            ? withoutUnexecutedLocalCloudPass(result.resultsData)
+            ? withoutUnexecutedLocalCloudPass(result.resultsData, planned.guide.content)
             : result.resultsData;
         const status: GuideStatus =
           result.success && resultsData
