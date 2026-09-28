@@ -1,6 +1,6 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
-import { InteractiveElementData } from '../../types/interactive.types';
+import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG, CLEAR_COMMAND } from '../../constants/interactive-config';
 import { describeElement, resetValueTracker, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
@@ -14,17 +14,13 @@ export class FormFillHandler {
     private waitForReactUpdates: () => Promise<void>
   ) {}
 
-  async execute(data: InteractiveElementData, fillForm: boolean): Promise<void> {
+  async execute(data: InteractiveElementData, fillForm: boolean): Promise<ActionExecutionResult> {
     this.stateManager.setState(data, 'running');
 
     try {
       const targetElement = await this.findTargetElement(data.refTarget);
       if (!targetElement) {
-        if (data.skipCompletionOnEmptyTarget) {
-          data.completionSuppressed = true;
-          return;
-        }
-        throw new Error(`No elements found matching selector: ${data.refTarget}`);
+        return { outcome: 'error', reason: 'target_missing' };
       }
       await this.prepareElement(targetElement);
 
@@ -32,12 +28,14 @@ export class FormFillHandler {
         await this.handleShowMode(targetElement, data.targetComment);
         // Mark show actions as completed too for proper state cleanup
         await this.markAsCompleted(data);
-        return;
+        return { outcome: 'ok' };
       }
 
       await this.handleDoMode(targetElement, data);
+      return { outcome: 'ok' };
     } catch (error) {
       this.stateManager.handleError(error as Error, 'FormFillHandler', data, false);
+      return { outcome: 'error', reason: 'action_failed' };
     }
   }
 

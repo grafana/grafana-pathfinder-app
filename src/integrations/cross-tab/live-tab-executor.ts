@@ -3,7 +3,7 @@ import { config, getAppEvents } from '@grafana/runtime';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import type { InteractiveElementData } from '../../types/interactive.types';
+import type { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import {
@@ -158,10 +158,10 @@ export function installLiveTabExecutor(
   // and race on shared highlight state (F-1069-1).
   let queue: Promise<void> = Promise.resolve();
 
-  const runAction = async (action: CrossTabInternalAction, isShow: boolean): Promise<void> => {
+  const runAction = async (action: CrossTabInternalAction, isShow: boolean): Promise<ActionExecutionResult> => {
     if (!isInteractiveActionType(action.targetAction)) {
       logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
-      return;
+      return { outcome: 'error', reason: 'unsupported_action' };
     }
 
     const data: InteractiveElementData = {
@@ -177,22 +177,17 @@ export function installLiveTabExecutor(
 
     switch (action.targetAction) {
       case 'highlight':
-        await focusHandler.execute(data, !isShow);
-        break;
+        return focusHandler.execute(data, !isShow);
       case 'button':
-        await buttonHandler.execute(data, !isShow);
-        break;
+        return buttonHandler.execute(data, !isShow);
       case 'formfill':
-        await formFillHandler.execute(data, !isShow);
-        break;
+        return formFillHandler.execute(data, !isShow);
       case 'navigate':
-        await navigateHandler.execute(data, !isShow);
-        break;
+        return navigateHandler.execute(data, !isShow);
       case 'hover':
-        await hoverHandler.execute(data, !isShow);
-        break;
+        return hoverHandler.execute(data, !isShow);
       case 'noop':
-        break;
+        return { outcome: 'ok' };
       case 'guided':
       case 'multistep':
         // A composite verb reaching runAction means its internalActions were
@@ -201,13 +196,14 @@ export function installLiveTabExecutor(
         logger.warn(
           `[Pathfinder] cross-tab executor: composite action "${action.targetAction}" carried no internalActions to replay`
         );
-        break;
+        return { outcome: 'error', reason: 'unsupported_action' };
       case 'popout':
         logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
-        break;
+        return { outcome: 'error', reason: 'unsupported_action' };
       default:
         logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
         assertExhaustive(action.targetAction);
+        return { outcome: 'error', reason: 'unsupported_action' };
     }
   };
 
@@ -228,9 +224,13 @@ export function installLiveTabExecutor(
       }
       onProgress(i);
       const action = actions[i]!;
-      await runAction(action, true);
+      if ((await runAction(action, true)).outcome !== 'ok') {
+        throw new Error('Remote preview failed');
+      }
       await sleep(pacing.showToDoMs);
-      await runAction(action, false);
+      if ((await runAction(action, false)).outcome !== 'ok') {
+        throw new Error('Remote action failed');
+      }
       await settleDom();
       await sleep(pacing.settleMs);
       if (i < actions.length - 1) {
@@ -294,8 +294,7 @@ export function installLiveTabExecutor(
               ok = true;
             }
           } else {
-            await runAction(command.action, command.phase === 'show');
-            ok = true;
+            ok = (await runAction(command.action, command.phase === 'show')).outcome === 'ok';
           }
         } catch (error) {
           logger.error('[Pathfinder] cross-tab executor: failed to run remote step', { error });

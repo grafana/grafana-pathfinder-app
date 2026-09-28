@@ -11,6 +11,7 @@ import { assertExhaustive } from '../lib/assert-exhaustive';
 import { useGuideRequirements, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
 import {
+  ActionExecutionResult,
   InteractiveActionRequest,
   InteractiveElementData,
   InteractiveRequirementsData,
@@ -25,7 +26,6 @@ import {
   NavigateHandler,
   FormFillHandler,
   HoverHandler,
-  GuidedHandler,
   PopoutHandler,
 } from './action-handlers';
 import type { UseInteractiveElementsOptions } from '../types/hooks.types';
@@ -82,11 +82,6 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
     [stateManager, navigationManager]
   );
 
-  const guidedHandler = useMemo(
-    () => new GuidedHandler(stateManager, navigationManager, waitForReactUpdates),
-    [stateManager, navigationManager]
-  );
-
   const popoutHandler = useMemo(() => new PopoutHandler(stateManager, waitForReactUpdates), [stateManager]);
 
   // Inject the global style tag once on mount — idempotent, no cleanup needed.
@@ -104,49 +99,42 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
 
   const interactiveFocus = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
-      await focusHandler.execute(data, click);
+      return focusHandler.execute(data, click);
     },
     [focusHandler]
   );
 
   const interactiveButton = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
-      await buttonHandler.execute(data, click);
+      return buttonHandler.execute(data, click);
     },
     [buttonHandler]
   );
 
   const interactiveFormFill = useCallback(
     async (data: InteractiveElementData, fillForm: boolean) => {
-      await formFillHandler.execute(data, fillForm);
+      return formFillHandler.execute(data, fillForm);
     },
     [formFillHandler]
   );
 
   const interactiveNavigate = useCallback(
     async (data: InteractiveElementData, navigate: boolean) => {
-      await navigateHandler.execute(data, navigate);
+      return navigateHandler.execute(data, navigate);
     },
     [navigateHandler]
   );
 
   const interactiveHover = useCallback(
     async (data: InteractiveElementData, performHover: boolean) => {
-      await hoverHandler.execute(data, performHover);
+      return hoverHandler.execute(data, performHover);
     },
     [hoverHandler]
   );
 
-  const interactiveGuided = useCallback(
-    async (data: InteractiveElementData, performGuided: boolean) => {
-      await guidedHandler.execute(data, performGuided);
-    },
-    [guidedHandler]
-  );
-
   const interactivePopout = useCallback(
     async (data: InteractiveElementData, perform: boolean) => {
-      await popoutHandler.execute(data, perform);
+      return popoutHandler.execute(data, perform);
     },
     [popoutHandler]
   );
@@ -309,13 +297,12 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
       // something to preview or act on once docked. Waits for the sidebar to
       // actually mount before proceeding, rather than expanding the action
       // handler's own resolveWithRetry budget. The target may still not be
-      // there yet (navigation itself can be slow) — skipCompletionOnEmptyTarget
-      // stops that from being silently reported as done.
+      // there yet; handlers report failed resolution without completing it.
       if (isGrafanaDrivingHandoffNeeded(targetAction)) {
         await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
-        elementData.skipCompletionOnEmptyTarget = true;
       }
 
+      let executionResult: ActionExecutionResult = { outcome: 'ok' };
       await withFaroUserAction(
         isShowMode
           ? createInteractionName(UserInteraction.ShowMeButtonClick)
@@ -325,35 +312,35 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
           try {
             switch (targetAction) {
               case 'highlight':
-                await interactiveFocus(elementData, !isShowMode);
+                executionResult = await interactiveFocus(elementData, !isShowMode);
                 break;
 
               case 'button':
-                await interactiveButton(elementData, !isShowMode);
+                executionResult = await interactiveButton(elementData, !isShowMode);
                 break;
 
               case 'formfill':
-                await interactiveFormFill(elementData, !isShowMode);
+                executionResult = await interactiveFormFill(elementData, !isShowMode);
                 break;
 
               case 'navigate':
-                interactiveNavigate(elementData, !isShowMode);
+                executionResult = await interactiveNavigate(elementData, !isShowMode);
                 break;
 
               case 'hover':
-                await interactiveHover(elementData, !isShowMode);
+                executionResult = await interactiveHover(elementData, !isShowMode);
                 break;
 
               case 'guided':
-                await interactiveGuided(elementData, !isShowMode);
+                executionResult = { outcome: 'error', reason: 'unsupported_action' };
                 break;
 
               case 'popout':
-                await interactivePopout(elementData, !isShowMode);
+                executionResult = await interactivePopout(elementData, !isShowMode);
                 break;
 
               case 'multistep':
-                logger.warn('multistep is executed by InteractiveMultiStep, not the element action path');
+                executionResult = { outcome: 'error', reason: 'unsupported_action' };
                 break;
 
               case 'noop':
@@ -369,20 +356,17 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
                 assertExhaustive(targetAction);
             }
           } catch (error) {
-            stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
+            stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, false);
+            executionResult = { outcome: 'error', reason: 'action_failed' };
           }
         },
         undefined,
         {
           critical: !isShowMode,
-          // Suppressed completion must fail both the span and the caller’s persistence gate.
-          outcomeFrom: () => (elementData.completionSuppressed ? 'error' : 'ok'),
+          outcomeFrom: () => executionResult.outcome,
         }
       );
-      if (elementData.completionSuppressed) {
-        return 'error';
-      }
-      return 'ok';
+      return executionResult.outcome === 'ok' ? 'ok' : 'error';
     },
     [
       interactiveFocus,
@@ -390,7 +374,6 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
       interactiveFormFill,
       interactiveNavigate,
       interactiveHover,
-      interactiveGuided,
       interactivePopout,
       stateManager,
       navigationManager,

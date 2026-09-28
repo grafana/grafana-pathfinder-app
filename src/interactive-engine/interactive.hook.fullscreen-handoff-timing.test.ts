@@ -42,29 +42,30 @@ jest.mock('../requirements-manager', () => {
 const handlerCallOrder: string[] = [];
 jest.mock('./action-handlers', () => ({
   FocusHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   ButtonHandler: jest.fn().mockImplementation(() => ({
     execute: jest.fn().mockImplementation(async () => {
       handlerCallOrder.push('handler-executed');
+      return { outcome: 'ok' };
     }),
   })),
   NavigateHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   FormFillHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   HoverHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   GuidedHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
     cancel: jest.fn(),
   })),
   PopoutHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
 }));
 

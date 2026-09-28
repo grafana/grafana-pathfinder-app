@@ -42,27 +42,27 @@ jest.mock('../requirements-manager', () => {
 // Mock action handlers
 jest.mock('./action-handlers', () => ({
   FocusHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   ButtonHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   NavigateHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   FormFillHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   HoverHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   GuidedHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
     cancel: jest.fn(),
   })),
   PopoutHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
 }));
 
@@ -787,7 +787,7 @@ describe('useInteractiveElements', () => {
       expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
       const buttonHandlerInstance = ButtonHandler.mock.results[0]!.value;
       const elementData = buttonHandlerInstance.execute.mock.calls[0]![0];
-      expect(elementData.skipCompletionOnEmptyTarget).toBe(true);
+      expect(elementData.targetAction).toBe('button');
     });
 
     it('does not hand off for a Grafana-driving action outside full screen', async () => {
@@ -822,15 +822,15 @@ describe('useInteractiveElements', () => {
       expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
       const buttonHandlerInstance = ButtonHandler.mock.results[0]!.value;
       const elementData = buttonHandlerInstance.execute.mock.calls[0]![0];
-      expect(elementData.skipCompletionOnEmptyTarget).toBe(true);
+      expect(elementData.targetAction).toBe('button');
     });
 
-    it('reports "error" (not "ok") when the handler suppresses completion because its target was never found', async () => {
+    it('reports "error" (not "ok") when the handler reports a missing target', async () => {
       mockGetMode.mockReturnValue('fullscreen');
       const { ButtonHandler } = require('./action-handlers');
       ButtonHandler.mockImplementationOnce(() => ({
-        execute: jest.fn().mockImplementation(async (data: { completionSuppressed?: boolean }) => {
-          data.completionSuppressed = true;
+        execute: jest.fn().mockImplementation(async () => {
+          return { outcome: 'error', reason: 'target_missing' };
         }),
       }));
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));

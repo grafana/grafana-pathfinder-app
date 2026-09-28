@@ -1,6 +1,6 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
-import { InteractiveElementData } from '../../types/interactive.types';
+import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { describeElement, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
@@ -16,26 +16,27 @@ export class ButtonHandler {
     private waitForReactUpdates: () => Promise<void>
   ) {}
 
-  async execute(data: InteractiveElementData, click: boolean): Promise<void> {
+  async execute(data: InteractiveElementData, click: boolean): Promise<ActionExecutionResult> {
     this.stateManager.setState(data, 'running');
 
     try {
       const target = parseTargetState(data.targetState);
       const buttons = await this.findButtons(data.refTarget, target);
 
+      if (buttons.length === 0) {
+        return { outcome: 'error', reason: 'target_missing' };
+      }
       if (!click) {
         await this.handleShowMode(buttons, data.targetComment, data.targetState);
-        return;
+        return { outcome: 'ok' };
       }
 
       await this.handleDoMode(buttons, target);
-      if (buttons.length > 0 || !data.skipCompletionOnEmptyTarget) {
-        await this.markAsCompleted(data);
-      } else {
-        data.completionSuppressed = true;
-      }
+      await this.markAsCompleted(data);
+      return { outcome: 'ok' };
     } catch (error) {
       this.stateManager.handleError(error as Error, 'ButtonHandler', data, false);
+      return { outcome: 'error', reason: 'action_failed' };
     }
   }
 

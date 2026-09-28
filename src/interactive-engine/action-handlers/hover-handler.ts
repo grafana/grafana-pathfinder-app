@@ -1,6 +1,6 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
-import { InteractiveElementData } from '../../types/interactive.types';
+import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { describeElement, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
@@ -17,30 +17,28 @@ export class HoverHandler {
     private waitForReactUpdates: () => Promise<void>
   ) {}
 
-  async execute(data: InteractiveElementData, performHover: boolean): Promise<void> {
+  async execute(data: InteractiveElementData, performHover: boolean): Promise<ActionExecutionResult> {
     this.stateManager.setState(data, 'running');
 
     try {
       const targetElement = await this.findTargetElement(data.refTarget);
       if (!targetElement) {
-        if (data.skipCompletionOnEmptyTarget) {
-          data.completionSuppressed = true;
-          return;
-        }
-        throw new Error(`No elements found matching selector: ${data.refTarget}`);
+        return { outcome: 'error', reason: 'target_missing' };
       }
       await this.prepareElement(targetElement);
 
       if (!performHover) {
         await this.handleShowMode(targetElement, data.targetComment);
         await this.markAsCompleted(data);
-        return;
+        return { outcome: 'ok' };
       }
 
       await this.handleDoMode(targetElement);
       await this.markAsCompleted(data);
+      return { outcome: 'ok' };
     } catch (error) {
       this.stateManager.handleError(error as Error, 'HoverHandler', data, false);
+      return { outcome: 'error', reason: 'action_failed' };
     }
   }
 

@@ -1,5 +1,5 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
-import { InteractiveElementData } from '../../types/interactive.types';
+import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { locationService } from '@grafana/runtime';
 import { parseUrlSafely, validateInternalNavigationPath } from '../../security/url-validator';
@@ -13,7 +13,7 @@ export class NavigateHandler {
     private waitForReactUpdates: () => Promise<void>
   ) {}
 
-  async execute(data: InteractiveElementData, navigate: boolean): Promise<void> {
+  async execute(data: InteractiveElementData, navigate: boolean): Promise<ActionExecutionResult> {
     this.stateManager.setState(data, 'running');
 
     try {
@@ -21,13 +21,18 @@ export class NavigateHandler {
         await this.handleShowMode(data);
         // Mark show actions as completed too for proper state cleanup
         await this.markAsCompleted(data);
-        return;
+        return { outcome: 'ok' };
       }
 
-      await this.handleDoMode(data);
+      const result = await this.handleDoMode(data);
+      if (result.outcome !== 'ok') {
+        return result;
+      }
       await this.markAsCompleted(data);
+      return { outcome: 'ok' };
     } catch (error) {
-      this.stateManager.handleError(error as Error, 'NavigateHandler', data);
+      this.stateManager.handleError(error as Error, 'NavigateHandler', data, false);
+      return { outcome: 'error', reason: 'action_failed' };
     }
   }
 
@@ -39,7 +44,7 @@ export class NavigateHandler {
     this.stateManager.setState(data, 'completed');
   }
 
-  private async handleDoMode(data: InteractiveElementData): Promise<void> {
+  private async handleDoMode(data: InteractiveElementData): Promise<ActionExecutionResult> {
     // Note: No need to clear highlights for navigate - user is leaving the page
     // The page navigation will naturally clean up all DOM elements
 
@@ -51,7 +56,7 @@ export class NavigateHandler {
       const parsed = parseUrlSafely(data.refTarget);
       if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
         logger.warn(`[NavigateHandler] Blocked navigation to invalid URL: ${data.refTarget.slice(0, 100)}`);
-        return;
+        return { outcome: 'error', reason: 'navigation_rejected' };
       }
       // External URL - open in new tab to preserve current Grafana session
       window.open(data.refTarget, '_blank', 'noopener,noreferrer');
@@ -61,7 +66,7 @@ export class NavigateHandler {
       const safeTarget = validateInternalNavigationPath(data.refTarget, currentUserIsAdmin());
       if (!safeTarget) {
         logger.warn(`[NavigateHandler] Blocked navigation to invalid path: ${data.refTarget.slice(0, 100)}`);
-        return;
+        return { outcome: 'error', reason: 'navigation_rejected' };
       }
 
       // Re-parsed from the VALIDATED path, never from data.refTarget, so
@@ -81,6 +86,7 @@ export class NavigateHandler {
         await this.openGuideAfterNavigation(guideParam);
       }
     }
+    return { outcome: 'ok' };
   }
 
   /**

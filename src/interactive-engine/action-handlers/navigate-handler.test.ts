@@ -138,7 +138,7 @@ describe('NavigateHandler', () => {
 
       await navigateHandler.execute(mockData, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', mockData);
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', mockData, false);
     });
 
     it('should handle errors in show mode', async () => {
@@ -147,7 +147,7 @@ describe('NavigateHandler', () => {
 
       await navigateHandler.execute(mockData, false);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', mockData);
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', mockData, false);
     });
 
     it('should handle locationService.push errors', async () => {
@@ -158,7 +158,7 @@ describe('NavigateHandler', () => {
 
       await navigateHandler.execute(mockData, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', mockData);
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', mockData, false);
     });
 
     it('should handle window.open errors', async () => {
@@ -170,7 +170,7 @@ describe('NavigateHandler', () => {
 
       await navigateHandler.execute(externalData, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', externalData);
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', externalData, false);
     });
 
     it('should block javascript: URLs and not call window.open', async () => {
@@ -219,13 +219,12 @@ describe('NavigateHandler', () => {
       expect(mockWindowOpen).not.toHaveBeenCalled();
     });
 
-    it('should still complete the step even when URL is blocked', async () => {
+    it('does not complete when navigation is rejected', async () => {
       const maliciousData = { ...mockData, refTarget: 'https://' };
 
       await navigateHandler.execute(maliciousData, true);
 
-      // Step should still complete to avoid blocking guide progression
-      expect(mockStateManager.setState).toHaveBeenCalledWith(maliciousData, 'completed');
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(maliciousData, 'completed');
     });
 
     it('should block navigation to /logout (F-1 / ASE26016)', async () => {

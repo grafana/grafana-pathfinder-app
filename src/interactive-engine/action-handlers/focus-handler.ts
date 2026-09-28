@@ -1,6 +1,6 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
-import { InteractiveElementData } from '../../types/interactive.types';
+import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { describeElement, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
@@ -15,7 +15,7 @@ export class FocusHandler {
     private waitForReactUpdates: () => Promise<void>
   ) {}
 
-  async execute(data: InteractiveElementData, click: boolean): Promise<void> {
+  async execute(data: InteractiveElementData, click: boolean): Promise<ActionExecutionResult> {
     this.stateManager.setState(data, 'running');
 
     try {
@@ -23,7 +23,7 @@ export class FocusHandler {
 
       let targetElements: HTMLElement[];
       if (!resolved) {
-        targetElements = [];
+        return { outcome: 'error', reason: 'target_missing' };
       } else {
         // Check if selector should return only one element (contains pseudo-selectors like :first-child, :last-child, etc.)
         const shouldSelectSingle = this.shouldSelectSingleElement(resolved.resolvedSelector);
@@ -32,17 +32,15 @@ export class FocusHandler {
 
       if (!click) {
         await this.handleShowMode(targetElements, data.targetComment, data.targetState);
-        return;
+        return { outcome: 'ok' };
       }
 
       await this.handleDoMode(targetElements, data.targetState);
-      if (targetElements.length > 0 || !data.skipCompletionOnEmptyTarget) {
-        await this.markAsCompleted(data);
-      } else {
-        data.completionSuppressed = true;
-      }
+      await this.markAsCompleted(data);
+      return { outcome: 'ok' };
     } catch (error) {
       this.stateManager.handleError(error as Error, 'FocusHandler', data, false);
+      return { outcome: 'error', reason: 'action_failed' };
     }
   }
 

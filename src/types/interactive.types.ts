@@ -13,6 +13,11 @@ export const INTERACTIVE_ACTION_TYPES = [
 
 export type InteractiveActionType = (typeof INTERACTIVE_ACTION_TYPES)[number];
 
+export type ActionExecutionResult =
+  | { outcome: 'ok' }
+  | { outcome: 'error'; reason: 'target_missing' | 'action_failed' | 'unsupported_action' | 'navigation_rejected' }
+  | { outcome: 'cancelled' | 'timeout' };
+
 export interface InteractiveElementData {
   // Core interactive attributes
   refTarget: string;
@@ -35,21 +40,6 @@ export interface InteractiveElementData {
   // Full-screen → sidebar handoff (see interactive-engine/interactive.hook.ts)
   /** Resolved step/milestone/course location to navigate to as part of the handoff. Absent when none could be resolved. */
   fullScreenFallbackLocation?: string;
-  /**
-   * Skip `markAsCompleted` when the target wasn't found, instead of completing
-   * anyway. Set only on the full-screen handoff path above — navigation there
-   * has latency, so a target that isn't found yet shouldn't be reported done.
-   */
-  skipCompletionOnEmptyTarget?: boolean;
-  /**
-   * Set by a handler (never by a caller) when it took the `skipCompletionOnEmptyTarget`
-   * branch above. `executeInteractiveAction` reads this after the handler
-   * returns to report `'error'` instead of `'ok'` — otherwise the caller's own
-   * completion persistence (gated on the outcome, not on this internal signal)
-   * would mark the step done anyway.
-   */
-  completionSuppressed?: boolean;
-
   // Element context
   tagName: string;
   className?: string;

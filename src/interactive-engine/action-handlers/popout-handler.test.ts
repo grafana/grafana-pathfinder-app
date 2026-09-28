@@ -80,7 +80,7 @@ describe('PopoutHandler', () => {
     await handler.execute(data, true);
 
     expect(dispatchSpy).not.toHaveBeenCalled();
-    expect(mockStateManager.handleError).toHaveBeenCalledWith(expect.any(Error), 'PopoutHandler', data, true);
+    expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
   });
 
   it('reports an error when targetValue is undefined', async () => {
@@ -88,6 +88,6 @@ describe('PopoutHandler', () => {
     await handler.execute(data, true);
 
     expect(dispatchSpy).not.toHaveBeenCalled();
-    expect(mockStateManager.handleError).toHaveBeenCalled();
+    expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
   });
 });

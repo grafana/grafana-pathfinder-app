@@ -28,7 +28,7 @@ jest.mock('../../lib/faro', () => ({
 }));
 
 jest.mock('../../interactive-engine/action-handlers', () => {
-  const makeHandler = () => ({ execute: jest.fn().mockResolvedValue(undefined) });
+  const makeHandler = () => ({ execute: jest.fn().mockResolvedValue({ outcome: 'ok' }) });
   const makeGuided = () => ({
     resetProgress: jest.fn(),
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),

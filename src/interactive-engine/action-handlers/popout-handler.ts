@@ -1,5 +1,5 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
-import { InteractiveElementData } from '../../types/interactive.types';
+import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 
 /**
@@ -31,26 +31,22 @@ export class PopoutHandler {
     private waitForReactUpdates: () => Promise<void>
   ) {}
 
-  async execute(data: InteractiveElementData, _perform: boolean): Promise<void> {
+  async execute(data: InteractiveElementData, _perform: boolean): Promise<ActionExecutionResult> {
     this.stateManager.setState(data, 'running');
 
     try {
       const mode = this.resolveTargetMode(data.targetValue);
       if (!mode) {
-        this.stateManager.handleError(
-          new Error(`PopoutHandler requires targetValue of 'sidebar' or 'floating', got: ${String(data.targetValue)}`),
-          'PopoutHandler',
-          data,
-          true
-        );
-        return;
+        return { outcome: 'error', reason: 'unsupported_action' };
       }
 
       document.dispatchEvent(new CustomEvent(POPOUT_EVENT_BY_MODE[mode]));
 
       await this.markAsCompleted(data);
+      return { outcome: 'ok' };
     } catch (error) {
-      this.stateManager.handleError(error as Error, 'PopoutHandler', data);
+      this.stateManager.handleError(error as Error, 'PopoutHandler', data, false);
+      return { outcome: 'error', reason: 'action_failed' };
     }
   }
 
