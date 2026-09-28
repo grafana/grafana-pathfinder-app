@@ -1,4 +1,3 @@
-import { isGrafanaCloud } from '../../../lib/telemetry/filtering';
 import React, { useState, useEffect } from 'react';
 import { css } from '@emotion/css';
 import { IconButton, Dropdown, Menu, Tooltip, Badge } from '@grafana/ui';
@@ -11,6 +10,7 @@ import {
   tabTypeToContentType,
 } from '../../../lib/analytics';
 import { PLUGIN_BASE_URL } from '../../../constants';
+import { currentPlatform } from '../../../lib/platform';
 import { testIds } from '../../../constants/testIds';
 import { clearExtensionSidebarDocked } from '../../../lib/storage/extension-sidebar';
 import { isNonContentTab } from '../utils';
@@ -184,7 +184,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
             {isDevMode && onOpenDevToolsTab && (
               <Menu.Item label={t('docsPanel.devTools', 'Dev tools')} icon="bug" onClick={handleDevToolsClick} />
             )}
-            {canAccessPluginSettings && isGrafanaCloud() && (
+            {canAccessPluginSettings && currentPlatform() === 'cloud' && (
               <>
                 <Menu.Divider />
                 <Menu.Item

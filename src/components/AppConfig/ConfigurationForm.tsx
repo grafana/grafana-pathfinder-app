@@ -1,9 +1,9 @@
 import React, { useState, ChangeEvent } from 'react';
-import { isGrafanaCloud } from '../../lib/telemetry/filtering';
 import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge, Box, Stack } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { t } from '@grafana/i18n';
+import { currentPlatform } from '../../lib/platform';
 import { testIds } from '../../constants/testIds';
 import {
   PathfinderPluginConfig,
@@ -67,7 +67,7 @@ function buildStateFromConfig(config: ResolvedPathfinderConfig): State {
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
 
 const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
-  const isCloud = isGrafanaCloud();
+  const isCloud = currentPlatform() === 'cloud';
   const urlParams = new URLSearchParams(window.location.search);
   const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);

@@ -1,15 +1,15 @@
-import { isGrafanaCloud } from '../../lib/telemetry/filtering';
-jest.mock('../../lib/telemetry/filtering', () => ({ isGrafanaCloud: jest.fn(() => true) }));
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { AppPluginMeta, PluginConfigPageProps } from '@grafana/data';
+import { currentPlatform } from '../../lib/platform';
 import { getConfigWithDefaults, type PathfinderPluginConfig } from '../../constants';
 import { usePathfinderPluginConfig } from '../../hooks';
 import { getFeatureFlagValue } from '../../utils/openfeature';
 import { saveTenantSettings } from './save-settings';
 import ConfigurationForm from './ConfigurationForm';
 
+jest.mock('../../lib/platform', () => ({ currentPlatform: jest.fn(() => 'cloud') }));
 jest.mock('../../hooks', () => ({ usePathfinderPluginConfig: jest.fn() }));
 jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn() }));
 jest.mock('./save-settings', () => ({ saveTenantSettings: jest.fn() }));
@@ -33,7 +33,7 @@ function renderForm(pathfinderEnabled?: boolean) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.mocked(isGrafanaCloud).mockReturnValue(true);
+  jest.mocked(currentPlatform).mockReturnValue('cloud');
   jest.useFakeTimers();
   jest.mocked(getFeatureFlagValue).mockImplementation((_name, fallback) => fallback);
   jest.mocked(saveTenantSettings).mockResolvedValue(undefined);
@@ -91,7 +91,7 @@ it('keeps a rejected opt-out editable without scheduling a reload', async () => 
 });
 
 it.each([true, false])('shows preview copy only on Cloud (cloud=%s)', (cloud) => {
-  jest.mocked(isGrafanaCloud).mockReturnValue(cloud);
+  jest.mocked(currentPlatform).mockReturnValue(cloud ? 'cloud' : 'oss');
   renderForm();
   expect(screen.getByRole('switch', { name: /^Enable Pathfinder/ })).toBeChecked();
   expect(screen.queryByText('Pathfinder public preview') !== null).toBe(cloud);

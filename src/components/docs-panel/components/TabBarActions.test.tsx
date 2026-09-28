@@ -1,5 +1,3 @@
-import { isGrafanaCloud } from '../../../lib/telemetry/filtering';
-jest.mock('../../../lib/telemetry/filtering', () => ({ isGrafanaCloud: jest.fn(() => true) }));
 /**
  * Tests for TabBarActions component.
  * Tests menu rendering and sidebar close functionality.
@@ -8,10 +6,12 @@ jest.mock('../../../lib/telemetry/filtering', () => ({ isGrafanaCloud: jest.fn((
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TabBarActions } from './TabBarActions';
+import { currentPlatform } from '../../../lib/platform';
 import { testIds } from '../../../constants/testIds';
 import { PLUGIN_BASE_URL } from '../../../constants';
 
 // Mock @grafana/runtime - all mock values defined inline for hoisting compatibility
+jest.mock('../../../lib/platform', () => ({ currentPlatform: jest.fn(() => 'cloud') }));
 jest.mock('@grafana/runtime', () => {
   const mockPublish = jest.fn();
   const mockPush = jest.fn();
@@ -78,7 +78,7 @@ function makeTab(overrides: Record<string, unknown> = {}): any {
 describe('TabBarActions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.mocked(isGrafanaCloud).mockReturnValue(true);
+    jest.mocked(currentPlatform).mockReturnValue('cloud');
   });
 
   describe('rendering', () => {
@@ -396,7 +396,7 @@ describe('TabBarActions', () => {
 });
 
 it('keeps Settings but hides the classic Help menu action for OSS admins', () => {
-  jest.mocked(isGrafanaCloud).mockReturnValue(false);
+  jest.mocked(currentPlatform).mockReturnValue('oss');
   mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
   render(<TabBarActions />);
   fireEvent.click(screen.getByRole('button', { name: 'More options' }));
