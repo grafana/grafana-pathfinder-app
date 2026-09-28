@@ -242,7 +242,6 @@ export function installLiveTabExecutor(
   // Guided is human-driven: highlight each target and wait for the user to perform
   // it on the live tab, rather than the auto replay a multi-step uses.
   const runGuided = async (actions: ActionList, onProgress: OnProgress): Promise<boolean> => {
-    guidedHandler.resetProgress();
     for (let i = 0; i < actions.length; i++) {
       onProgress(i);
       const action = actions[i]!;
