@@ -67,6 +67,7 @@ const NAV_ITEM_SELECTOR = 'a[data-testid="data-testid Nav menu item"]';
 const MEGA_MENU_SELECTOR = '[data-testid="data-testid navigation mega-menu"]';
 
 export class NavigationManager {
+  private ownedHighlights = new Set<HTMLElement>();
   private activeCleanupHandlers: Array<() => void> = [];
 
   // Drift detection state for guided mode
@@ -87,6 +88,7 @@ export class NavigationManager {
 
     // Cleanup any active auto-cleanup handlers (ResizeObserver, event listeners, etc.)
     this.cleanupAutoHandlers();
+    this.ownedHighlights.clear();
 
     // Remove all existing highlight outlines and dot indicators
     document
@@ -100,6 +102,13 @@ export class NavigationManager {
     document.querySelectorAll('.interactive-guided-active').forEach((el) => {
       el.classList.remove('interactive-guided-active');
     });
+  }
+
+  clearOwnedHighlights(): void {
+    this.stopDriftDetection();
+    this.cleanupAutoHandlers();
+    this.ownedHighlights.forEach((element) => element.remove());
+    this.ownedHighlights.clear();
   }
 
   /**
@@ -781,10 +790,14 @@ export class NavigationManager {
       highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
     }
 
+    if (!enableAutoCleanup) {
+      highlightElement.classList.add('interactive-highlight-persistent');
+    }
     // Clear old highlights RIGHT BEFORE adding new one for seamless transition
     this.clearAllHighlights();
 
     document.body.appendChild(highlightElement);
+    this.ownedHighlights.add(highlightElement);
 
     // Create comment box if comment is provided OR if any callback is provided
     // Comment box is always attached to body with absolute positioning
@@ -817,6 +830,7 @@ export class NavigationManager {
 
       // Always append to body (unified positioning)
       document.body.appendChild(commentBox);
+      this.ownedHighlights.add(commentBox);
     }
 
     // GUARDRAIL: Auto-remove highlight after fixed duration
