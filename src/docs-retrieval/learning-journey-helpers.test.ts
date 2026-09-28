@@ -198,7 +198,10 @@ describe('journeyMilestonePercentages', () => {
   it('falls back to the milestone url when the url yields no slug', () => {
     const m1 = milestone(1, { url: 'backend-guide:' });
 
-    localStorage.setItem(StorageKeys.MILESTONE_COMPLETION, JSON.stringify({ 'backend-guide:path': ['backend-guide:'] }));
+    localStorage.setItem(
+      StorageKeys.MILESTONE_COMPLETION,
+      JSON.stringify({ 'backend-guide:path': ['backend-guide:'] })
+    );
 
     expect(journeyMilestonePercentages('backend-guide:path', [m1])).toEqual([{ milestone: m1, percent: 100 }]);
   });
