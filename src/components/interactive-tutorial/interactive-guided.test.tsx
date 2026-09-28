@@ -9,6 +9,8 @@
  */
 
 import React from 'react';
+import { GuidedHandler as RealGuidedHandler } from '../../interactive-engine/action-handlers/guided-handler';
+import { querySelectorAllEnhanced } from '../../lib/dom';
 import { acquireGuidedRun } from '../../global-state/guided-run';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
@@ -40,8 +42,12 @@ jest.mock('@grafana/data', () => ({
 // The component publishes app-event toasts via getAppEvents(); importing the
 // real module pulls in config/LocationService, which needs @grafana/data's
 // getThemeById (not provided by the mock above).
+const mockPublish = jest.fn();
+jest.mock('../../lib/faro', () => ({
+  withFaroUserAction: (_name: string, _attrs: unknown, work: () => unknown) => work(),
+}));
 jest.mock('@grafana/runtime', () => ({
-  getAppEvents: () => ({ publish: jest.fn() }),
+  getAppEvents: () => ({ publish: mockPublish }),
 }));
 
 // ─── Mock useAiFixEnabled (off) — avoids pulling @grafana/assistant, which this
@@ -53,6 +59,7 @@ jest.mock('../../integrations/assistant-integration/use-ai-fix-enabled', () => (
 // ─── Mock analytics (no-op) ──────────────────────────────────────────────────
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
+  createInteractionName: (name: string) => name,
   UserInteraction: { DoItButtonClick: 'do_it', StepAutoCompleted: 'auto' },
   buildInteractiveStepProperties: jest.fn(() => ({})),
 }));
@@ -76,6 +83,9 @@ jest.mock('../../constants/interactive-config', () => ({
 
 // ─── Mock DOM utils ──────────────────────────────────────────────────────────
 jest.mock('../../lib/dom', () => ({
+  resolveSelector: (selector: string) => selector,
+  isElementVisible: () => true,
+  describeElement: () => 'button',
   findButtonByText: jest.fn().mockReturnValue([]),
   querySelectorAllEnhanced: jest.fn().mockReturnValue({ elements: [], usedFallback: false }),
 }));
@@ -85,6 +95,8 @@ jest.mock('../../security', () => ({
   sanitizeDocumentationHTML: jest.fn((html: string) => html),
 }));
 
+const mockActionRequirements = jest.fn().mockResolvedValue({ pass: true });
+const mockDispatchFix = jest.fn().mockResolvedValue({ ok: true });
 let mockStoredCompleted = false;
 let mockCompletionReason = 'none';
 const mockMarkSkipped = jest.fn(() => {
@@ -117,7 +129,8 @@ jest.mock('../../requirements-manager', () => ({
     maxRetries: 3,
   })),
   validateInteractiveRequirements: jest.fn(),
-  useGuideRequirements: () => ({ checkRequirements: jest.fn().mockResolvedValue({ pass: true }) }),
+  useGuideRequirements: () => ({ checkRequirements: mockActionRequirements }),
+  dispatchFix: (...args: unknown[]) => mockDispatchFix(...args),
 }));
 
 // ─── Track call order for waitForReactUpdates vs executeGuidedStep ───────────
@@ -171,6 +184,9 @@ jest.mock('../../global-state/panel-mode', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 beforeEach(() => {
+  mockActionRequirements.mockReset().mockResolvedValue({ pass: true });
+  mockDispatchFix.mockClear();
+  mockPublish.mockClear();
   mockStoredCompleted = false;
   mockCompletionReason = 'none';
   mockExecuteGuidedStep.mockReset();
@@ -440,6 +456,83 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
 });
 
 describe('InteractiveGuided — cancellation', () => {
+  it('honours a requirement fix after the handler has prepared its target', async () => {
+    mockActionRequirements
+      .mockResolvedValueOnce({ pass: false, error: [{ canFix: true, fixType: 'navigation' }] })
+      .mockResolvedValueOnce({ pass: true });
+    mockExecuteGuidedStep.mockImplementation(async (_action, _index, _count, _timeout, _complete, options) => {
+      expect(mockActionRequirements).not.toHaveBeenCalled();
+      return (await options.revalidate()) ? 'completed' : 'error';
+    });
+    render(
+      <InteractiveGuided
+        stepId="fix-after-target"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#target', requirements: 'navmenu-open' }]}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockStoredCompleted).toBe(true));
+    expect(mockDispatchFix).toHaveBeenCalledWith(
+      expect.objectContaining({ fixType: 'navigation', requirements: 'navmenu-open' })
+    );
+    expect(mockActionRequirements).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([true, false])(
+    'persists a padding-click completion after host unmount (standalone: %s)',
+    async (standalone) => {
+      const target = document.createElement('button');
+      target.id = 'padding-target';
+      document.body.append(target);
+      jest
+        .mocked(querySelectorAllEnhanced)
+        .mockReturnValue({ elements: [target], usedFallback: false, originalSelector: '#padding-target' });
+      jest
+        .spyOn(target, 'getBoundingClientRect')
+        .mockReturnValue({ left: 100, right: 200, top: 100, bottom: 140, width: 100, height: 40 } as DOMRect);
+      const navigation = {
+        ensureNavigationOpen: jest.fn(),
+        ensureElementVisible: jest.fn(),
+        expandParentNavigationSection: jest.fn(),
+        clearOwnedHighlights: jest.fn(),
+        highlightWithComment: jest.fn(),
+        showNoopComment: jest.fn(),
+      };
+      const realHandler = new RealGuidedHandler({} as any, navigation as any, async () => {});
+      mockExecuteGuidedStep.mockImplementation(realHandler.executeGuidedStep.bind(realHandler));
+      const onComplete = jest.fn();
+      const onStepComplete = jest.fn();
+      const view = render(
+        <InteractiveGuided
+          stepId="padding-complete"
+          onComplete={onComplete}
+          onStepComplete={standalone ? undefined : onStepComplete}
+          internalActions={[{ targetAction: 'highlight', refTarget: '#padding-target' }]}
+        />
+      );
+      target.onclick = () => view.unmount();
+      try {
+        fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+        await waitFor(() => expect(navigation.highlightWithComment).toHaveBeenCalled());
+        await act(async () => {
+          document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 95, clientY: 110 }));
+        });
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+        if (standalone) {
+          expect(mockStoredCompleted).toBe(true);
+        } else {
+          expect(onStepComplete).toHaveBeenCalledTimes(1);
+        }
+      } finally {
+        realHandler.cancel();
+        target.remove();
+        jest
+          .mocked(querySelectorAllEnhanced)
+          .mockReturnValue({ elements: [], usedFallback: false, originalSelector: '' });
+      }
+    }
+  );
+
   it('returns to idle after reset while an aborted handler settles', async () => {
     let finish!: (result: string) => void;
     mockExecuteGuidedStep.mockImplementation(
@@ -498,6 +591,12 @@ describe('InteractiveGuided — cancellation', () => {
       await act(async () => {});
       expect(step).toHaveAttribute('data-test-step-state', 'error');
       expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1);
+      expect(mockPublish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'alert-info',
+          payload: expect.arrayContaining(['Another guided interaction is in progress']),
+        })
+      );
     } finally {
       otherRun?.release();
     }

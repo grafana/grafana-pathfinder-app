@@ -600,6 +600,41 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     expect(screen.queryByRole('button', { name: /do it/i })).not.toBeInTheDocument();
   });
 
+  it('stops a simple remote step after 30 seconds when an older live tab never acknowledges it', async () => {
+    const transport = makeTransport();
+    await renderPairedController(
+      transport,
+      <InteractiveStep targetAction="button" refTarget="#ok" stepId="old-peer">
+        Step
+      </InteractiveStep>
+    );
+    const button = await screen.findByRole('button', { name: /do it/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    jest.useFakeTimers();
+    try {
+      fireEvent.click(button);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(100);
+      });
+      expect(screen.getByTestId(testIds.interactive.step('old-peer'))).toHaveAttribute(
+        'data-test-step-state',
+        'executing'
+      );
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(30000);
+      });
+      expect(screen.getByTestId(testIds.interactive.step('old-peer'))).not.toHaveAttribute(
+        'data-test-step-state',
+        'executing'
+      );
+      expect(
+        screen.getByText('The live tab did not confirm completion. Refresh both tabs and try again.')
+      ).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('fails open to a stripped local check when the live tab never answers (§6.5)', async () => {
     const transport = makeTransport();
     // Pair under real timers first: it round-trips through actual WebCrypto

@@ -298,7 +298,6 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
           buttonType = 'do',
           fullScreenFallbackLocation,
         } = request;
-        // Create InteractiveElementData directly from parameters
         const elementData: InteractiveElementData = {
           refTarget: refTarget,
           signal: run.controller.signal,
@@ -315,17 +314,9 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
           fullScreenFallbackLocation,
         };
 
-        // No DOM element needed - React components manage their own state
         const isShowMode = buttonType === 'show';
 
-        // Full screen has no live Grafana UI behind it. A Grafana-driving
-        // action — "Show me" or "Do it" alike — hands off to the sidebar
-        // first, navigating to the resolved fallback location
-        // (step/milestone/course — see content-renderer.tsx) so the click has
-        // something to preview or act on once docked. Waits for the sidebar to
-        // actually mount before proceeding, rather than expanding the action
-        // handler's own resolveWithRetry budget. The target may still not be
-        // there yet; handlers report failed resolution without completing it.
+        // Full-screen actions need the live sidebar mounted before discovering their target.
         if (isGrafanaDrivingHandoffNeeded(targetAction)) {
           run.handoff = true;
           await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
@@ -354,6 +345,8 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
                   break;
 
                 case 'navigate':
+                  // Navigation can remove its own host while the action is settling.
+                  run.handoff ||= !isShowMode;
                   executionResult = await interactiveNavigate(elementData, !isShowMode);
                   break;
 

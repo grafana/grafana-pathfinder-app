@@ -16,7 +16,12 @@ import {
 } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
-import { useStepChecker, validateInteractiveRequirements, useGuideRequirements } from '../../requirements-manager';
+import {
+  useStepChecker,
+  validateInteractiveRequirements,
+  useGuideRequirements,
+  dispatchFix,
+} from '../../requirements-manager';
 import { getInteractiveConfig } from '../../constants/interactive-config';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 import { type AuthoredGuidedAction, isGuidedDomActionType } from '../../types/interactive-actions.types';
@@ -361,6 +366,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         }
         const run = acquireGuidedRun();
         if (!run) {
+          getAppEvents().publish({
+            type: 'alert-info',
+            payload: ['Another guided interaction is in progress', 'Finish or cancel it before starting this step.'],
+          });
           return false;
         }
         runRef.current = run;
@@ -378,12 +387,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             return true;
           }
 
-          // Guided steps never route through executeInteractiveAction's own gate
-          // (see interactive.hook.ts), so a guided step needs the same full-screen
-          // -> sidebar handoff applied here directly, keyed off its inner actions'
-          // targetAction rather than the 'guided' container tag itself. Uses the
-          // shared predicate (not a local reimplementation) so this can't drift
-          // from the hook's own gate condition.
+          // Guided actions bypass the hook that normally owns sidebar handoff.
           if (internalActions.some((action) => isGrafanaDrivingHandoffNeeded(action.targetAction))) {
             handoffRef.current = true;
             try {
@@ -393,14 +397,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             }
           }
 
-          // Deliberately no isMountedRef bail-out here: the handoff's own
-          // navigation unmounts this full-screen instance on every successful
-          // run, not just a stale/raced one — bailing out here would mean the
-          // guided step never actually executes after docking, breaking the
-          // same continue-after-the-wait contract simple steps and code-block
-          // Insert already honor. isExecutingRef (untouched by the unmount
-          // cleanup effect) already fully serializes re-entrant calls on its
-          // own, so there's no race left for a mounted-check to guard against.
+          // Docking unmounts the full-screen host, so its run must continue after handoff.
           run.signal.throwIfAborted();
           setIsExecuting(true);
           setExecutionError(null);
@@ -416,7 +413,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
           let completionPersisted = false;
           const completeStep = () => {
-            if (completionPersisted || run.signal.aborted) {
+            if (completionPersisted || runRef.current !== run) {
               return;
             }
             persistCompletion();
@@ -439,30 +436,50 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 if (!action!.requirements) {
                   return true;
                 }
-                const checked = await checkRequirements({
+                const options = {
                   requirements: action!.requirements,
                   targetAction: action!.targetAction,
                   refTarget: action!.refTarget ?? '',
                   targetValue: action!.targetValue,
                   lazyRender: action!.lazyRender,
                   scrollContainer: action!.scrollContainer,
-                });
-                return checked.pass;
+                };
+                const checked = await checkRequirements(options);
+                run.signal.throwIfAborted();
+                if (checked.pass) {
+                  return true;
+                }
+                const fixable = checked.error?.find((error) => error.canFix);
+                if (!fixable) {
+                  return false;
+                }
+                if (fixable.fixType === 'lazy-scroll' && action!.lazyRender) {
+                  await resolveWithRetry(options.refTarget, action!.targetAction, {
+                    delays: [],
+                    lazyRender: true,
+                    scrollContainer: action!.scrollContainer,
+                    signal: run.signal,
+                  });
+                } else {
+                  const navigationManager = new NavigationManager();
+                  const fixed = await dispatchFix({
+                    fixType: fixable.fixType,
+                    targetHref: fixable.targetHref,
+                    scrollContainer: action!.scrollContainer,
+                    requirements: action!.requirements,
+                    stepId: renderedStepId,
+                    navigationManager,
+                    fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(),
+                  });
+                  if (!fixed.ok) {
+                    return false;
+                  }
+                }
+                run.signal.throwIfAborted();
+                const rechecked = await checkRequirements(options);
+                run.signal.throwIfAborted();
+                return rechecked.pass;
               };
-              if (action!.lazyRender && action!.requirements) {
-                await resolveWithRetry(action!.refTarget ?? '', action!.targetAction, {
-                  delays: [],
-                  lazyRender: true,
-                  scrollContainer: action!.scrollContainer,
-                  signal: run.signal,
-                });
-              }
-              if (!(await validateAction())) {
-                setFailedStepIndex(i);
-                setExecutionError(`Step ${i + 1} requirements are not met. Restore the required state and retry.`);
-                return false;
-              }
-              run.signal.throwIfAborted();
 
               const completeBeforeActionEffect =
                 completeEarly && i === internalActions.length - 1 ? completeStep : undefined;
@@ -484,10 +501,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               if (result === 'completed' || result === 'skipped') {
                 if (i === internalActions.length - 1) {
                   completeStep();
-                  return !run.signal.aborted;
+                  return true;
                 }
                 setCurrentStepStatus('completed');
-                // Brief visual feedback before moving to next step
                 await new Promise((resolve) => setTimeout(resolve, 500));
               } else if (result === 'timeout') {
                 setCurrentStepStatus('timeout');
@@ -538,6 +554,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       [
         checker.isEnabled,
         checkRequirements,
+        renderedStepId,
         isCompletedWithObjectives,
         isExecuting,
         completeEarly,

@@ -171,6 +171,10 @@ export class GuidedHandler {
       this.cleanupListeners();
       signal.throwIfAborted();
       if (action.targetAction === 'noop') {
+        if (revalidate && !(await revalidate())) {
+          return this.finishGuidedStep('error', stepIndex);
+        }
+        signal.throwIfAborted();
         return await this.executeNoopStep(action, stepIndex, totalSteps, timeout);
       }
       if (!isGuidedDomActionType(action.targetAction)) {
@@ -213,12 +217,13 @@ export class GuidedHandler {
           return this.finishGuidedStep(!recoveryDeadline && action.isSkippable ? 'skipped' : 'error', stepIndex);
         }
         signal.throwIfAborted();
-        if (recoveryDeadline && revalidate && !(await revalidate())) {
+        await this.prepareElement(target);
+        signal.throwIfAborted();
+        if (revalidate && !(await revalidate())) {
           return this.finishGuidedStep('error', stepIndex);
         }
         signal.throwIfAborted();
-        await this.prepareElement(target);
-        signal.throwIfAborted();
+        recoveryDeadline = undefined;
         let lostTarget = false;
         this.createCompletionListener(
           action,
@@ -267,7 +272,7 @@ export class GuidedHandler {
         if (!lostTarget || signal.aborted) {
           return signal.aborted && result !== 'completed' ? 'cancelled' : result;
         }
-        recoveryDeadline ??= Math.min(deadline, Date.now() + 5000);
+        recoveryDeadline = Math.min(deadline, Date.now() + 5000);
         this.navigationManager.showNoopComment('The page changed. Looking for this step again…', () => this.cancel());
       }
       return this.finishGuidedStep('cancelled', stepIndex);

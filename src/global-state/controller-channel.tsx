@@ -50,7 +50,7 @@ interface ControllerChannel {
     stepId: string,
     opts: { requirements: ConditionInput; fixType?: string; targetHref?: string; scrollContainer?: string }
   ) => Promise<FixOutcome>;
-  awaitStepComplete: (stepId: string, runId: string) => Promise<boolean>;
+  awaitStepComplete: (stepId: string, runId: string, timeoutMs?: number) => Promise<boolean>;
   cancelStepComplete: (stepId: string, runId: string) => void;
   onStepProgress: (stepId: string, runId: string, cb: (index: number, total: number) => void) => () => void;
 }
@@ -363,14 +363,14 @@ export function ControllerChannelProvider({
   );
 
   const awaitStepComplete = useCallback<ControllerChannel['awaitStepComplete']>(
-    (stepId, runId) =>
+    (stepId, runId, timeoutMs = 15 * 60_000) =>
       new Promise<boolean>((resolve) => {
         const key = `${stepId}:${runId}`;
         const timer = setTimeout(() => {
           stepCompletionRef.current.delete(key);
           post({ kind: 'step-cancel', stepId, runId });
           resolve(false);
-        }, 15 * 60_000);
+        }, timeoutMs);
         stepCompletionRef.current.set(key, (ok) => {
           clearTimeout(timer);
           resolve(ok);

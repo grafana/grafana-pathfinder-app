@@ -83,3 +83,68 @@ it('does not let a second start clobber the first run', async () => {
   document.querySelector<HTMLElement>('#target')!.click();
   expect(await first).toBe('completed');
 });
+
+it('waits for a late target before checking its requirements', async () => {
+  jest.useFakeTimers();
+  const { handler, navigation } = setup();
+  const revalidate = jest.fn(async () => document.querySelector('#target') !== null);
+  const pending = handler.executeGuidedStep(action, 0, 1, 10000, undefined, { revalidate });
+  await jest.advanceTimersByTimeAsync(2000);
+  expect(revalidate).not.toHaveBeenCalled();
+  document.body.innerHTML = '<button id="target">Continue</button>';
+  navigation.highlightWithComment.mockImplementation(async () => {
+    document.querySelector<HTMLElement>('#target')!.click();
+  });
+  await jest.advanceTimersByTimeAsync(2000);
+  expect(await pending).toBe('completed');
+  expect(revalidate).toHaveBeenCalledTimes(1);
+});
+
+it('expands a collapsed navigation parent before checking the substep', async () => {
+  const { handler, navigation } = setup();
+  navigation.expandParentNavigationSection.mockImplementation(async () => {
+    document.body.innerHTML = '<a data-testid="data-testid Nav menu item" href="/explore">Explore</a>';
+  });
+  const revalidate = jest.fn(async () => {
+    expect(navigation.expandParentNavigationSection).toHaveBeenCalledWith('/explore');
+    expect(navigation.ensureNavigationOpen).toHaveBeenCalled();
+    return document.querySelector('a') !== null;
+  });
+  navigation.highlightWithComment.mockImplementation(async () => document.querySelector<HTMLElement>('a')!.click());
+  expect(
+    await handler.executeGuidedStep(
+      {
+        targetAction: 'highlight',
+        refTarget: 'a[data-testid="data-testid Nav menu item"][href="/explore"]',
+        requirements: 'exists-reftarget',
+      },
+      0,
+      1,
+      2000,
+      undefined,
+      { revalidate }
+    )
+  ).toBe('completed');
+  expect(revalidate).toHaveBeenCalledTimes(1);
+});
+
+it('gives each target loss a fresh recovery window within the step deadline', async () => {
+  jest.useFakeTimers();
+  document.body.innerHTML = '<button id="target">First</button>';
+  const { handler, navigation } = setup();
+  const pending = handler.executeGuidedStep(action, 0, 1, 30000);
+  await jest.advanceTimersByTimeAsync(100);
+  document.querySelector('#target')!.remove();
+  await jest.advanceTimersByTimeAsync(500);
+  document.body.innerHTML = '<button id="target">Second</button>';
+  await jest.advanceTimersByTimeAsync(500);
+  expect(navigation.highlightWithComment).toHaveBeenCalledTimes(2);
+  await jest.advanceTimersByTimeAsync(6000);
+  document.querySelector('#target')!.remove();
+  await jest.advanceTimersByTimeAsync(500);
+  document.body.innerHTML = '<button id="target">Third</button>';
+  await jest.advanceTimersByTimeAsync(500);
+  expect(navigation.highlightWithComment).toHaveBeenCalledTimes(3);
+  document.querySelector<HTMLElement>('#target')!.click();
+  expect(await pending).toBe('completed');
+});

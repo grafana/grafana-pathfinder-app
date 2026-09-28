@@ -696,7 +696,7 @@ export const InteractiveStep = forwardRef<
           onComplete?.();
         }
         const runId = crypto.randomUUID();
-        const completion = controllerChannel.awaitStepComplete(stepId, runId);
+        const completion = controllerChannel.awaitStepComplete(stepId, runId, 30_000);
         controllerChannel.post({
           kind: 'step-command',
           phase,
@@ -716,7 +716,7 @@ export const InteractiveStep = forwardRef<
           },
         });
         if (!(await completion)) {
-          setPostVerifyError('The action did not complete in the live tab.');
+          setPostVerifyError('The live tab did not confirm completion. Refresh both tabs and try again.');
           return false;
         }
         if (phase === 'do' && postVerify?.trim()) {
