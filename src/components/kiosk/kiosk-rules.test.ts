@@ -154,6 +154,18 @@ it('reports HTTP failures and the actual generic fallback without an override', 
   expect(result.warning).toBe('The configured kiosk could not be loaded. Showing the generic learning kiosk.');
 });
 
+it('fetches a trusted selection and uses bundled guides without a generic fallback when no default is configured', async () => {
+  const trustedSelection = 'https://interactive-learning.grafana.net/custom.json';
+  mockFetch.mockRejectedValue(new TypeError('Failed to fetch'));
+
+  const result = await loadKioskData('', trustedSelection);
+
+  expect(result.rules).toBe(BUNDLED_KIOSK_RULES);
+  expect(result.warning).toBe('The requested kiosk could not be loaded. Showing bundled guides.');
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([trustedSelection]);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('bundled', true);
+});
+
 it('falls directly back to bundled guides after a rejected override with no configured catalog', async () => {
   const result = await loadKioskData('', 'https://untrusted.example/rules.json');
   expect(result.rules).toBe(BUNDLED_KIOSK_RULES);
