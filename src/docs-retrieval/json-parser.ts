@@ -987,6 +987,7 @@ function convertInputBlock(block: JsonInputBlock, path: string, stepContext?: St
         defaultValue: block.defaultValue,
         required: block.required ?? false,
         pattern: block.pattern,
+        format: block.format,
         validationMessage: block.validationMessage,
         requirements,
         skippable: block.skippable ?? false,

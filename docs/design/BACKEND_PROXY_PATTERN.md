@@ -697,3 +697,19 @@ separators, percent escapes, or control characters. Content loading and the
 package resolver's published-status probe both use this route. The proxy
 preserves draft content for existing share links; the resolver retains its
 published-status gate. Catalogue listing continues to use `/custom-guide-repository`.
+
+## Operational diagnostics
+
+App Platform failures carry optional `diagnostics` alongside existing error/capability
+responses. `stage` separates identity, configuration, token exchange and App Platform;
+`reason`, `resource`, and `operation` are bounded classifications. Upstream status is
+included only when known. Existing statuses, retry hints, caller isolation and completion
+queue behavior remain unchanged. A 503 is still retryable; its diagnostics identify the
+failed hop. Token-exchange failure does not prove an invalid provisioned credential.
+
+The shared upstream client emits `event=pathfinder_proxy_failure` once per failed operation
+(including a completion refresh that serves stale data), not once per cached response.
+Expected settings absence, unsupported collection routes, idempotent write conflicts,
+and cancellations are excluded. Internal logs retain trusted
+stack and trace context; diagnostic responses never include tokens or upstream bodies.
+An empty successful LIST is not classified as an authorization failure.

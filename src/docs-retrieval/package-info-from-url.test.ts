@@ -1,5 +1,12 @@
+import { beginGuideLoad, finishGuideLoad } from '../lib/telemetry/guide-load';
+import { recordGuideRender } from '../lib/telemetry/facade';
 import { getPackageResolver } from './content-fetcher/package-resolver-registry';
 import type { PackageResolver, PackageResolution } from '../types';
+
+jest.mock('../lib/telemetry/facade', () => ({
+  ...jest.requireActual('../lib/telemetry/facade'),
+  recordGuideRender: jest.fn(),
+}));
 
 jest.mock('./content-fetcher/package-resolver-registry', () => ({
   getPackageResolver: jest.fn(),
@@ -90,4 +97,27 @@ describe('fetchPackageInfoFromUrl — backend-guide: scheme', () => {
     expect(info).toBeUndefined();
     expect(resolver.resolve).not.toHaveBeenCalled();
   });
+});
+
+it('keeps an optional manifest failure non-terminal so content can still render', async () => {
+  const url = 'https://interactive-learning.grafana.net/packages/example/content.json';
+  const context = beginGuideLoad(url);
+  const originalFetch = global.fetch;
+  global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404 });
+  jest.mocked(recordGuideRender).mockClear();
+  try {
+    expect(await fetchPackageInfoFromUrl(url, context)).toBeUndefined();
+    expect(recordGuideRender).toHaveBeenCalledWith(context, 'degraded', expect.any(Number), {
+      source: 'cdn',
+      stage: 'fetch',
+      reason: 'http-error',
+      statusCode: 404,
+    });
+    finishGuideLoad(context, 'rendered');
+    expect(recordGuideRender).toHaveBeenLastCalledWith(context, 'rendered', expect.any(Number), undefined);
+    expect(recordGuideRender).toHaveBeenCalledTimes(2);
+  } finally {
+    finishGuideLoad(context, 'cancelled');
+    global.fetch = originalFetch;
+  }
 });

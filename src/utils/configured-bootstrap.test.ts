@@ -1,3 +1,4 @@
+import { kioskState } from '../global-state/kiosk';
 import { getConfigWithDefaults } from '../constants';
 import { initializeConfiguredSurfaces } from './configured-bootstrap';
 
@@ -14,6 +15,10 @@ function effects() {
 const live = { pathfinderEnabled: true, controllerRequested: false, hasDoc: false };
 
 describe('configured bootstrap', () => {
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/');
+    kioskState.set(null);
+  });
   it('waits for authoritative settings before mounting anything', async () => {
     const calls = effects();
     let resolve!: (value: ReturnType<typeof getConfigWithDefaults>) => void;
@@ -96,5 +101,46 @@ describe('configured bootstrap', () => {
     expect(calls.mountExecutor).not.toHaveBeenCalled();
     expect(calls.mountKiosk).not.toHaveBeenCalled();
     expect(calls.setupAutoOpen).not.toHaveBeenCalled();
+  });
+  it('opens URL kiosks with the setting off after settings resolve and suppresses auto-open', async () => {
+    window.history.replaceState({}, '', '/?pathfinderKiosk=1&kioskRulesUrl=https://catalog.example.com/selected.json');
+    const calls = effects();
+    let resolve!: (config: ReturnType<typeof getConfigWithDefaults>) => void;
+    const settings = new Promise<ReturnType<typeof getConfigWithDefaults>>((done) => {
+      resolve = done;
+    });
+    const initialized = initializeConfiguredSurfaces(settings, live, calls);
+    expect(calls.mountKiosk).not.toHaveBeenCalled();
+    const config = getConfigWithDefaults({
+      enableKioskMode: false,
+      kioskRulesUrl: 'https://catalog.example.com/default.json',
+    });
+    resolve(config);
+    await initialized;
+    expect(calls.mountKiosk).toHaveBeenCalledTimes(1);
+    expect(calls.mountKiosk).toHaveBeenCalledWith(config);
+    expect(kioskState.getSnapshot()?.rulesUrl).toBe('https://catalog.example.com/selected.json');
+    expect(calls.setupAutoOpen).not.toHaveBeenCalled();
+  });
+
+  it('uses the current URL when navigation changes while settings are pending', async () => {
+    window.history.replaceState({}, '', '/?pathfinderKiosk=1&kioskRulesUrl=old');
+    const calls = effects();
+    const initialized = initializeConfiguredSurfaces(Promise.resolve(getConfigWithDefaults({})), live, calls);
+    window.history.replaceState({}, '', '/?pathfinderKiosk=1&kioskRulesUrl=new');
+    await initialized;
+    expect(kioskState.getSnapshot()?.rulesUrl).toBe('new');
+  });
+
+  it('preserves the Pathfinder gate for explicit kiosk links', async () => {
+    window.history.replaceState({}, '', '/?pathfinderKiosk=1');
+    const calls = effects();
+    await initializeConfiguredSurfaces(
+      Promise.resolve(getConfigWithDefaults({})),
+      { ...live, pathfinderEnabled: false },
+      calls
+    );
+    expect(calls.mountKiosk).not.toHaveBeenCalled();
+    expect(kioskState.getSnapshot()).toBeNull();
   });
 });

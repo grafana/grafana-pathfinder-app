@@ -1,1 +1,1 @@
-{"available":false,"reason":"identity-unavailable"}
+{"diagnostics":{"stage":"identity","resource":"completionrecords","operation":"list","outcome":"error","reason":"identity-unavailable","cacheAgeMs":0},"available":false,"reason":"identity-unavailable"}

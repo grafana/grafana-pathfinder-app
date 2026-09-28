@@ -1,3 +1,4 @@
+import { KioskCatalogSchema } from '../../types/kiosk-page.schema';
 /**
  * Schema Command
  *
@@ -42,6 +43,7 @@ interface SchemaRegistryEntry {
  * Keys are the public names used on the CLI.
  */
 export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
+  kiosk: { schema: KioskCatalogSchema, description: 'Structured kiosk catalog', schemaVersion: '1' },
   guide: {
     schema: JsonGuideSchemaStrict,
     description: 'Root JSON guide schema (strict, no extra fields)',

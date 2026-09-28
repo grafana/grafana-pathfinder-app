@@ -154,7 +154,9 @@ describe('fetchRawHtml — trust re-validation and error classification', () => 
   });
 
   it('classifies an aborted/timeout fetch as timeout', async () => {
-    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('The operation was aborted due to timeout'));
+    (global.fetch as jest.Mock).mockRejectedValueOnce(
+      new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    );
 
     const result = await fetchRawHtml(DOC_URL, {});
     expect(result.error?.errorType).toBe('timeout');
@@ -290,4 +292,61 @@ describe('generateUserFriendlyError', () => {
       'something specific'
     );
   });
+});
+
+describe('CDN fallback failure attribution', () => {
+  it.each(['server-error', 'timeout'])('preserves %s when the HTML fallback is absent', async (kind) => {
+    const fetchMock = global.fetch as jest.Mock;
+    if (kind === 'timeout') {
+      fetchMock.mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'));
+    } else {
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 503, statusText: 'Unavailable' });
+    }
+    fetchMock.mockResolvedValue({ ok: false, status: 404, statusText: 'Not found' });
+    const result = await fetchRawHtml('https://interactive-learning.grafana.net/packages/test', {});
+    expect(result.error?.errorType).toBe(kind);
+    if (kind === 'server-error') {
+      expect(result.error?.statusCode).toBe(503);
+    } else {
+      expect(result.error?.diagnostic?.reason).toBe('timeout');
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Grafana docs fallback failure attribution', () => {
+  const url = 'https://grafana.com/docs/learning-journeys/test/';
+
+  it.each(['server-error', 'timeout', 'not-found'] as const)('preserves %s across an HTML 404', async (kind) => {
+    const fetchMock = global.fetch as jest.Mock;
+    fetchMock.mockResolvedValueOnce(htmlResponse('<html>landing page</html>', url));
+    if (kind === 'timeout') {
+      fetchMock.mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'));
+    } else {
+      fetchMock.mockResolvedValueOnce({ ok: false, status: kind === 'server-error' ? 503 : 404 });
+    }
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 404 });
+    const result = await fetchRawHtml(url, {});
+    expect(result.error?.errorType).toBe(kind);
+    expect(result.error?.diagnostic).toEqual(
+      expect.objectContaining(
+        kind === 'timeout'
+          ? { reason: 'timeout' }
+          : { reason: 'http-error', statusCode: kind === 'server-error' ? 503 : 404 }
+      )
+    );
+    expect(generateUserFriendlyError(result.error, url)).toBe(
+      generateUserFriendlyError({ message: '', errorType: kind }, url)
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+it('keeps an explicitly requested JSON guide instead of fetching an HTML fallback', async () => {
+  const url = 'https://grafana.com/docs/demo/content.json';
+  const body = JSON.stringify({ id: 'demo', title: 'Demo', blocks: [] });
+  (global.fetch as jest.Mock).mockResolvedValue(htmlResponse(body, url));
+  const result = await fetchRawHtml(url, {});
+  expect(result).toMatchObject({ html: body, finalUrl: url, isNativeJson: true });
+  expect(global.fetch).toHaveBeenCalledTimes(1);
 });

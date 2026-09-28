@@ -1,3 +1,6 @@
+import { readProxyDiagnostics, type ProxyDiagnostics } from './proxy-diagnostics';
+import { diagnoseGuideError, httpStatus } from './guide-diagnostics';
+import { recordPackageIndex } from './telemetry/facade';
 import { getBackendSrv } from '@grafana/runtime';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
@@ -39,6 +42,8 @@ export interface OnlinePackageEntry {
 }
 
 export interface PackageRecommendationsResponse {
+  available?: boolean;
+  diagnostics?: ProxyDiagnostics;
   baseUrl: string;
   packages: OnlinePackageEntry[];
 }
@@ -70,6 +75,8 @@ export function buildPackageFileUrl(baseUrl: string, entryPath: string, fileName
 // Session-lifetime state. Reset only via `online` event or
 // `__resetPackageRecommendationsClientForTests`.
 let unavailable = false;
+let failureDiagnostics: ProxyDiagnostics | undefined;
+let suppressionReported = false;
 let cache: PackageRecommendationsResponse | null = null;
 let inFlight: Promise<PackageRecommendationsResponse | null> | null = null;
 let onlineListenerAttached = false;
@@ -83,6 +90,7 @@ function attachOnlineListenerOnce(): void {
   // never proactively retry.
   window.addEventListener('online', () => {
     unavailable = false;
+    suppressionReported = false;
   });
   onlineListenerAttached = true;
 }
@@ -102,17 +110,54 @@ async function performFetch(): Promise<PackageRecommendationsResponse | null> {
         showSuccessAlert: false,
       }
     );
-    if (!response || !Array.isArray(response.packages)) {
+    if (
+      !response ||
+      typeof response.baseUrl !== 'string' ||
+      !Array.isArray(response.packages) ||
+      response.packages.some((entry) => !entry || typeof entry.id !== 'string' || typeof entry.path !== 'string')
+    ) {
       unavailable = true;
+      failureDiagnostics = { outcome: 'error', reason: 'malformed-response' };
+      recordPackageIndex({ outcome: 'error', reason: 'malformed-response' });
       return null;
     }
-    cache = response;
-    return response;
-  } catch {
+    const diagnostics = readProxyDiagnostics(response.diagnostics);
+    const failures = diagnostics?.manifestFailures ?? {};
+    recordPackageIndex({
+      outcome: diagnostics?.outcome ?? 'ok',
+      reason: diagnostics?.reason,
+      http_status: diagnostics?.upstreamStatus,
+      cache: diagnostics?.cache,
+      cache_age_ms: diagnostics?.cacheAgeMs,
+      manifest_failures: Object.values(diagnostics?.manifestFailures ?? {}).reduce((sum, count) => sum + count, 0),
+      manifest_http_error_count: failures['http-error'] ?? 0,
+      manifest_timeout_count: failures.timeout ?? 0,
+      manifest_invalid_json_count: failures['invalid-json'] ?? 0,
+      manifest_other_error_count: Object.entries(failures).reduce(
+        (sum, [reason, count]) => sum + (['http-error', 'timeout', 'invalid-json'].includes(reason) ? 0 : count),
+        0
+      ),
+      budget_exhausted: diagnostics?.budgetExhausted,
+    });
+    cache = { ...response, diagnostics };
+    return cache;
+  } catch (error) {
     // Any failure (network, 4xx, 5xx, abort) marks the feature unavailable
     // for the session. The frontend won't retry until a window 'online'
     // event resets the flag.
     unavailable = true;
+    failureDiagnostics = readProxyDiagnostics((error as { data?: { diagnostics?: unknown } })?.data?.diagnostics) ?? {
+      outcome: 'error',
+      reason: diagnoseGuideError(error, 'cdn').reason,
+      upstreamStatus: httpStatus(error),
+    };
+    recordPackageIndex({
+      outcome: 'error',
+      reason: failureDiagnostics.reason,
+      http_status: failureDiagnostics.upstreamStatus,
+      cache: failureDiagnostics.cache,
+      cache_age_ms: failureDiagnostics.cacheAgeMs,
+    });
     return null;
   }
 }
@@ -129,17 +174,23 @@ async function performFetch(): Promise<PackageRecommendationsResponse | null> {
  * (e.g. a boot-budget timeout race); the in-flight fetch keeps running and
  * still populates the cache for later calls.
  */
-export async function fetchOnlinePackageRecommendations(): Promise<{
-  baseUrl: string;
-  packages: OnlinePackageEntry[];
-}> {
+export async function fetchOnlinePackageRecommendations(): Promise<PackageRecommendationsResponse> {
   attachOnlineListenerOnce();
 
   if (cache) {
     return cache;
   }
   if (unavailable || isOffline()) {
-    return { baseUrl: '', packages: [] };
+    if (!suppressionReported) {
+      recordPackageIndex({ outcome: 'suppressed', reason: isOffline() ? 'offline' : failureDiagnostics?.reason });
+      suppressionReported = true;
+    }
+    return {
+      baseUrl: '',
+      packages: [],
+      available: false,
+      diagnostics: failureDiagnostics ?? { outcome: 'error', reason: 'offline' },
+    };
   }
 
   if (!inFlight) {
@@ -148,7 +199,7 @@ export async function fetchOnlinePackageRecommendations(): Promise<{
     });
   }
   const result = await inFlight;
-  return result ?? { baseUrl: '', packages: [] };
+  return result ?? { baseUrl: '', packages: [], available: false, diagnostics: failureDiagnostics };
 }
 
 /**
@@ -159,4 +210,6 @@ export function __resetPackageRecommendationsClientForTests(): void {
   cache = null;
   inFlight = null;
   onlineListenerAttached = false;
+  failureDiagnostics = undefined;
+  suppressionReported = false;
 }

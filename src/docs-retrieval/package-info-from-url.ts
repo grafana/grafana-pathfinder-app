@@ -1,3 +1,6 @@
+import type { GuideLoadContext } from '../types/guide-diagnostics.types';
+import { fetchGuideResource, finishGuideLoad } from '../lib/telemetry/guide-load';
+import { diagnoseGuideError, guideSource } from '../lib/guide-diagnostics';
 /**
  * Derive PackageOpenInfo from a remote package content URL.
  *
@@ -52,13 +55,19 @@ export function isPackageContentUrl(url: string): boolean {
  * resolution → field mapping `resolvePackageMilestones`/`resolvePackageNavLinks`
  * already use in package-content.ts, just shaped as PackageOpenInfo.
  */
-async function fetchAppPlatformPackageInfo(packageId: string): Promise<PackageOpenInfo | undefined> {
+async function fetchAppPlatformPackageInfo(
+  packageId: string,
+  context?: GuideLoadContext
+): Promise<PackageOpenInfo | undefined> {
   const resolver = await getPackageResolver();
   if (!resolver) {
     return undefined;
   }
   try {
-    const resolution = await resolver.resolve(packageId, { loadContent: 'metadata-only' });
+    const resolution = await resolver.resolve(packageId, {
+      loadContent: 'metadata-only',
+      ...(context && { loadContext: context }),
+    });
     if (!resolution.ok) {
       return undefined;
     }
@@ -84,10 +93,13 @@ function deriveManifestUrl(contentUrl: string): string | undefined {
  * Returns `undefined` for non-package URLs, network errors, or schema failures
  * — callers fall back to the legacy plain-fetch path in those cases.
  */
-export async function fetchPackageInfoFromUrl(url: string): Promise<PackageOpenInfo | undefined> {
+export async function fetchPackageInfoFromUrl(
+  url: string,
+  context?: GuideLoadContext
+): Promise<PackageOpenInfo | undefined> {
   const backendGuideId = extractBackendGuideId(url);
   if (backendGuideId) {
-    return fetchAppPlatformPackageInfo(backendGuideId);
+    return fetchAppPlatformPackageInfo(backendGuideId, context);
   }
 
   if (!isInteractiveLearningPackageUrl(url)) {
@@ -99,17 +111,34 @@ export async function fetchPackageInfoFromUrl(url: string): Promise<PackageOpenI
   }
 
   try {
-    const response = await fetch(manifestUrl, {
-      method: 'GET',
-      signal: AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT),
-      redirect: 'follow',
-    });
+    const response = await fetchGuideResource(
+      manifestUrl,
+      {
+        method: 'GET',
+        signal: AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT),
+        redirect: 'follow',
+      },
+      context,
+      'manifest'
+    );
     if (!response.ok) {
+      finishGuideLoad(context, 'degraded', {
+        source: guideSource(url),
+        stage: 'fetch',
+        reason: 'http-error',
+        statusCode: response.status,
+      });
       return undefined;
     }
     const json: unknown = await response.json();
     const parsed = ManifestJsonObjectSchema.safeParse(json);
     if (!parsed.success) {
+      finishGuideLoad(context, 'degraded', {
+        source: guideSource(url),
+        stage: 'validate',
+        reason: 'schema-invalid',
+        validationCount: parsed.error.issues.length,
+      });
       return undefined;
     }
     const manifest = parsed.data;
@@ -121,7 +150,12 @@ export async function fetchPackageInfoFromUrl(url: string): Promise<PackageOpenI
       // is the true source when the author set one and the default otherwise.
       repository: typeof manifest.repository === 'string' ? manifest.repository : undefined,
     };
-  } catch {
+  } catch (error) {
+    finishGuideLoad(
+      context,
+      'degraded',
+      diagnoseGuideError(error, guideSource(url), error instanceof SyntaxError ? 'decode' : 'fetch')
+    );
     return undefined;
   }
 }
