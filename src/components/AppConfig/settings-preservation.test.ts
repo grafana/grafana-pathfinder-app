@@ -67,7 +67,7 @@ describe('saveTenantSettings — App Platform path', () => {
     'saves Pathfinder preference %s while preserving other org settings',
     async (pathfinderEnabled) => {
       const base = tenantSnapshot({ tutorialUrl: 'stored', pathfinderEnabled: !pathfinderEnabled });
-      mockFetchTenant.mockResolvedValue(base);
+      mockFetchTenant.mockResolvedValueOnce(base).mockResolvedValueOnce(tenantSnapshot({ pathfinderEnabled }));
       await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { pathfinderEnabled } });
       expect(mockSaveTenant).toHaveBeenCalledWith({ tutorialUrl: 'stored', pathfinderEnabled }, base);
       expect(mockUpdatePlugin).not.toHaveBeenCalled();
@@ -316,4 +316,24 @@ describe('getConfigWithDefaults behavior', () => {
     expect(defaults.tutorialUrl).toBe('https://custom-tutorial.example.com');
     expect(defaults.enableAutoDetection).toBe(false);
   });
+});
+
+it.each([{}, { pathfinderEnabled: true }])(
+  'rejects a successful write that did not retain the opt-out: %j',
+  async (saved) => {
+    mockSaveTenant.mockResolvedValue(true);
+    mockFetchTenant.mockResolvedValueOnce(tenantSnapshot({})).mockResolvedValueOnce(tenantSnapshot(saved));
+    await expect(saveTenantSettings({ pluginId: PLUGIN_ID, changes: { pathfinderEnabled: false } })).rejects.toThrow(
+      'Pathfinder preference was not retained'
+    );
+    expect(mockUpdatePlugin).not.toHaveBeenCalled();
+  }
+);
+
+it('reports a failed verification read rather than declaring the save successful', async () => {
+  mockSaveTenant.mockResolvedValue(true);
+  mockFetchTenant.mockResolvedValueOnce(tenantSnapshot({})).mockRejectedValueOnce(new Error('read failed'));
+  await expect(saveTenantSettings({ pluginId: PLUGIN_ID, changes: { pathfinderEnabled: false } })).rejects.toThrow(
+    'read failed'
+  );
 });

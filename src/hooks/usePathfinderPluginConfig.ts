@@ -3,7 +3,7 @@ import { PathfinderPluginConfig, ResolvedPathfinderConfig, getConfigWithDefaults
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import pluginJson from '../plugin.json';
-import { resolveTenantSettings } from '../utils/resolve-tenant-settings';
+import { resolveTenantSettings, TenantSettingsReadError } from '../utils/resolve-tenant-settings';
 import { adoptLegacyDevModeOptIn, hasLegacyDevModeOptIn, resolveDevModeOptIn } from '../utils/dev-mode';
 
 // Re-exported so existing importers keep a stable path; `constants` owns the shape.
@@ -96,15 +96,23 @@ export function publishPathfinderPluginConfig(jsonData: PathfinderPluginConfig):
 
 let refreshInFlight: Promise<ResolvedPathfinderConfig | undefined> | null = null;
 let refreshFailed = false;
+let readablePathfinderPreference: boolean | undefined;
+
+export async function readPathfinderStartupPreference(): Promise<PathfinderPluginConfig | undefined> {
+  const resolved = await refreshPathfinderPluginConfig();
+  return resolved ?? (readablePathfinderPreference === false ? { pathfinderEnabled: false } : undefined);
+}
 
 export function refreshPathfinderPluginConfig(): Promise<ResolvedPathfinderConfig | undefined> {
   if (!refreshInFlight) {
     refreshInFlight = resolvePathfinderSettings()
       .then((resolved) => {
+        readablePathfinderPreference = resolved.pathfinderEnabled;
         refreshFailed = false;
         return publishPathfinderPluginConfig(resolved);
       })
       .catch((error) => {
+        readablePathfinderPreference = error instanceof TenantSettingsReadError ? error.pathfinderEnabled : undefined;
         refreshInFlight = null;
         refreshFailed = true;
         logger.warn('Failed to read plugin settings; a later refresh can retry', { error });
@@ -182,6 +190,7 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
 export function __resetPathfinderPluginConfigForTests(): void {
   refreshInFlight = null;
   refreshFailed = false;
+  readablePathfinderPreference = undefined;
   unresolvedState = undefined;
   delete window.__pathfinderPluginConfig;
 }

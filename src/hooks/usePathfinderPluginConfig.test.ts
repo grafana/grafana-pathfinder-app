@@ -10,6 +10,7 @@ import {
   __resetPathfinderPluginConfigForTests,
   publishPathfinderPluginConfig,
   refreshPathfinderPluginConfig,
+  readPathfinderStartupPreference,
   usePathfinderPluginConfig,
   waitForPathfinderPluginConfig,
 } from './usePathfinderPluginConfig';
@@ -487,3 +488,18 @@ describe('recovery after a failed settings read', () => {
     expect(await waitForPathfinderPluginConfig()).toBe(readGlobal());
   });
 });
+
+it.each(['plugin', 'tenant'])(
+  'uses partial opt-out from the readable store without publishing readiness when %s fails',
+  async (failed) => {
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ pathfinderEnabled: false }));
+    mockFetchTenant.mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
+    if (failed === 'plugin') {
+      mockFetchPluginSettings.mockRejectedValue({ status: 403 });
+    } else {
+      mockFetchTenant.mockRejectedValue({ status: 403 });
+    }
+    await expect(readPathfinderStartupPreference()).resolves.toEqual({ pathfinderEnabled: false });
+    expect(readGlobal()).toBeUndefined();
+  }
+);

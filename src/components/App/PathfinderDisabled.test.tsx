@@ -22,3 +22,11 @@ it.each([OrgRole.Viewer, OrgRole.Editor])('does not offer configuration to %s', 
   render(<PathfinderDisabled />);
   expect(screen.queryByRole('button', { name: 'Open Pathfinder settings' })).not.toBeInTheDocument();
 });
+
+it('offers configuration to a Grafana admin with Viewer org role', () => {
+  config.bootData.user.orgRole = OrgRole.Viewer;
+  config.bootData.user.isGrafanaAdmin = true;
+  render(<PathfinderDisabled />);
+  expect(screen.getByRole('button', { name: 'Open Pathfinder settings' })).toBeInTheDocument();
+  config.bootData.user.isGrafanaAdmin = false;
+});

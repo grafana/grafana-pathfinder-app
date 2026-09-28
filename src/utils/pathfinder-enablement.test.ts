@@ -1,4 +1,4 @@
-import { resolvePathfinderAvailability } from './pathfinder-enablement';
+import { resolvePathfinderAvailability, getPathfinderStartupDecision } from './pathfinder-enablement';
 
 it.each([true, false])(
   'remote disable wins over tenant preference %s without reading settings',
@@ -40,6 +40,7 @@ it('bounds a hung read to three seconds and never changes its decision after lat
     await jest.advanceTimersByTimeAsync(1);
     await availability;
     expect(resolved).toHaveBeenCalledWith('enabled');
+    expect(getPathfinderStartupDecision()).toEqual({ durationMs: 3000, outcome: 'timeout' });
     finish({ pathfinderEnabled: false });
     await Promise.resolve();
     expect(resolved).toHaveBeenCalledTimes(1);

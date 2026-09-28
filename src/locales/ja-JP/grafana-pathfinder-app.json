@@ -55,7 +55,9 @@
     "settings": "設定",
     "showMoreTabs_one": "さらに {{count}} 個のタブを表示",
     "showMoreTabs_other": "さらに {{count}} 個のタブを表示",
-    "switchToTab": "{{title}} に切り替え"
+    "switchToTab": "{{title}} に切り替え",
+    "beta": "Beta",
+    "classicHelpMenuSettings": "Classic Help menu settings"
   },
   "feedbackButton": {
     "ariaLabel": "このプラグインについてフィードバックを送る",
@@ -113,5 +115,20 @@
     "streakTooltip": "{{- days}} 日連続学習中 — その調子です！",
     "streakTooltip_one": "{{- days}} 日連続学習中 — その調子です！",
     "streakTooltip_other": "{{- days}} 日連続学習中 — その調子です！"
+  },
+  "appConfig": {
+    "beta": "Beta",
+    "pathfinderEnabled": "Enable Pathfinder",
+    "pathfinderEnabledDescription": "Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, Pathfinder stays available.",
+    "pathfinderPreview": "Pathfinder public preview",
+    "pathfinderPreviewDescription": "Pathfinder brings contextual help and interactive guides into Grafana.",
+    "pathfinderRemotelyDisabled": "Pathfinder is disabled remotely",
+    "pathfinderRemotelyDisabledDescription": "The remote switch currently prevents Pathfinder from running. Your saved preference will apply when Pathfinder is enabled remotely again.",
+    "pathfinderRevertDescription": "Turn this off to use Grafana’s classic Help menu after users reload. Your learning progress is kept."
+  },
+  "pathfinder": {
+    "disabled": "Pathfinder is disabled",
+    "disabledDescription": "Pathfinder is turned off for this organization.",
+    "openSettings": "Open Pathfinder settings"
   }
 }

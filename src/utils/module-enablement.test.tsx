@@ -17,7 +17,13 @@ const compiled = ts.transpileModule(readFileSync(join(__dirname, '../module.tsx'
   },
 }).outputText;
 
-async function boot(remote: boolean, tenant?: boolean, readFailed = false) {
+async function boot(
+  remote: boolean,
+  tenant?: boolean,
+  readFailed = false,
+  read?: Promise<ReturnType<typeof getConfigWithDefaults>>,
+  dockedPlugin = 'grafana-pathfinder-app'
+) {
   const settings = readFailed ? undefined : getConfigWithDefaults({ pathfinderEnabled: tenant });
   const root = { component: undefined as React.ComponentType | undefined };
   const plugin = {
@@ -54,8 +60,8 @@ async function boot(remote: boolean, tenant?: boolean, readFailed = false) {
     './plugin.json': { id: 'grafana-pathfinder-app' },
     './utils/configured-bootstrap': effects,
     './hooks/usePathfinderPluginConfig': {
-      refreshPathfinderPluginConfig: async () => settings,
-      waitForPathfinderPluginConfig: async () => settings,
+      readPathfinderStartupPreference: async () => (read ? await read : settings),
+      waitForPathfinderPluginConfig: async () => (read ? await read : settings),
     },
     './utils/pathfinder-enablement': { resolvePathfinderAvailability },
     './docs-retrieval/content-fetcher/package-resolver-registry': effects,
@@ -69,7 +75,7 @@ async function boot(remote: boolean, tenant?: boolean, readFailed = false) {
       parsePathfinderDeepLink: () => ({ doc: 'bundled:test' }),
       parseControllerPairingHash: () => null,
     },
-    './lib/storage/extension-sidebar': { ...effects, isExtensionSidebarOwnedByPathfinder: () => true },
+    './lib/storage/extension-sidebar': { ...effects, parseExtensionSidebarDocked: () => ({ pluginId: dockedPlugin }) },
     './lib/telemetry/surface': {},
     './utils/openfeature': {
       initializeOpenFeature: async () => {},
@@ -142,4 +148,46 @@ it('registers baseline learning surfaces after an unsuccessful settings read', a
   expect(plugin.addComponent).toHaveBeenCalledTimes(1);
   expect(plugin.addLink).toHaveBeenCalledTimes(4);
   expect(plugin.addConfigPage).toHaveBeenCalledTimes(3);
+});
+
+it('keeps the page-load decision after timeout, while late opt-out reaches configured bootstrap', async () => {
+  jest.useFakeTimers();
+  try {
+    let finish!: (config: ReturnType<typeof getConfigWithDefaults>) => void;
+    const read = new Promise<ReturnType<typeof getConfigWithDefaults>>((resolve) => {
+      finish = resolve;
+    });
+    const startup = boot(true, undefined, false, read);
+    await jest.advanceTimersByTimeAsync(3000);
+    const { plugin, effects, root } = await startup;
+    expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+    plugin.init();
+    finish(getConfigWithDefaults({ pathfinderEnabled: false }));
+    await expect(effects.initializeConfiguredSurfaces.mock.calls[0][0]).resolves.toMatchObject({
+      pathfinderEnabled: false,
+    });
+    const Root = root.component!;
+    render(<Root />);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(await screen.findByText('Learning app')).toBeInTheDocument();
+    expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('does not clear another plugin’s docked entry', async () => {
+  const { effects } = await boot(false, false, false, undefined, 'another-plugin');
+  expect(effects.clearExtensionSidebarDocked).not.toHaveBeenCalled();
+});
+
+it('rejects buffered and subsequent suggestions while disabled', async () => {
+  const detail = { suggestions: [] as unknown[], status: '', reason: '' };
+  const startup = boot(false);
+  document.dispatchEvent(new CustomEvent('pathfinder-suggest', { detail }));
+  await startup;
+  expect(detail).toMatchObject({ status: 'rejected', reason: 'pathfinder_disabled' });
+  const later = { suggestions: [] };
+  document.dispatchEvent(new CustomEvent('pathfinder-suggest', { detail: later }));
+  expect(later).toMatchObject({ status: 'rejected', reason: 'pathfinder_disabled' });
 });

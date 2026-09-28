@@ -169,7 +169,7 @@ describe('TabBarActions', () => {
       mockConfig.bootData.user = { orgRole, isGrafanaAdmin };
       render(<TabBarActions />);
       fireEvent.click(screen.getByRole('button', { name: 'More options' }));
-      const item = screen.queryByRole('menuitem', { name: 'Switch to classic Help menu Beta' });
+      const item = screen.queryByRole('menuitem', { name: 'Classic Help menu settings Beta' });
       if (visible) {
         expect(item).toBeInTheDocument();
         fireEvent.click(item!);
@@ -401,5 +401,5 @@ it('keeps Settings but hides the classic Help menu action for OSS admins', () =>
   render(<TabBarActions />);
   fireEvent.click(screen.getByRole('button', { name: 'More options' }));
   expect(screen.getByRole('menuitem', { name: 'Settings' })).toBeInTheDocument();
-  expect(screen.queryByRole('menuitem', { name: 'Switch to classic Help menu Beta' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: 'Classic Help menu settings Beta' })).not.toBeInTheDocument();
 });

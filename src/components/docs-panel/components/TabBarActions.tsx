@@ -1,3 +1,9 @@
+/**
+ * Tab bar actions component for docs-panel.
+ * Contains My learning, the overflow menu (kiosk when enabled, feedback,
+ * settings, optional Refresh (dev), Create guide, Dev tools), plus close.
+ */
+
 import React, { useState, useEffect } from 'react';
 import { css } from '@emotion/css';
 import { IconButton, Dropdown, Menu, Tooltip, Badge } from '@grafana/ui';
@@ -43,6 +49,7 @@ export interface TabBarActionsProps {
   onOpenDevToolsTab?: () => void;
 }
 
+/** Renders My learning, the overflow menu, and close actions. */
 export const TabBarActions: React.FC<TabBarActionsProps> = ({
   className,
   activeTab,
@@ -188,7 +195,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
               <>
                 <Menu.Divider />
                 <Menu.Item
-                  label={t('docsPanel.switchToClassicHelpMenu', 'Switch to classic Help menu')}
+                  label={t('docsPanel.classicHelpMenuSettings', 'Classic Help menu settings')}
                   icon="history"
                   className={previewMenuItemClass}
                   component={PreviewBadge}

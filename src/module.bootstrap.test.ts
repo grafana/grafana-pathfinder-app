@@ -2,7 +2,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
 
-// Pin completion-hook wiring without loading the top-level-await entrypoint.
+// module.tsx uses top-level `await`, which @swc/jest transpiles to CommonJS and
+// cannot execute, so the bootstrap cannot be imported and run here. It is still
+// the only place the durable completion-write hook is armed: if that call is
+// dropped, moved off plugin.init, or sunk below a surface-specific early return,
+// completion recording can silently stop for that surface. Pin the import and
+// arming position structurally alongside the behavioural module tests.
+//
+// Arming is deferred behind a dynamic import so the write stack stays out of
+// module.js, so the pinned shape is "one statement of plugin.init that imports
+// the hook module and calls the arm function", not a bare top-level call. A
+// static import would defeat the split, so it is pinned closed as well.
 const ARM_FN = 'armCompletionWriteHook';
 const ARM_MODULE = './completion-records/completion-write-hook';
 const STATIC_IMPORT_RE = /^import\s[^;]*from\s+['"]\.\/completion-records(\/[^'"]*)?['"]/m;

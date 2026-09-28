@@ -414,12 +414,6 @@ export const testIds = {
     container: 'home-page-container',
   },
 
-  // Control Group Popup
-  controlGroupPopup: {
-    container: 'control-group-popup-container',
-    dismissButton: 'control-group-popup-dismiss',
-  },
-
   // Feedback Button
   feedbackButton: {
     trigger: 'feedback-button',

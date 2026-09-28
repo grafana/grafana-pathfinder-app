@@ -172,3 +172,11 @@ All carry `launch_mode`; page controls also carry zero-based `block_index`. `fal
 These events deliberately omit values, selected data source names, variable names, prompts, command text, catalog URLs, and raw exceptions. They use the existing consent gates and analytics-to-Faro bridge; they do not introduce another telemetry client.
 
 Kiosk input launch failures log a bounded stage and reason through the shared logger (console and Faro), for example `destination/input-format-mismatch`. Diagnostics exclude submitted values, guide URLs, authored text, and raw exceptions. Ordinary input validation errors are not operational error logs.
+
+Startup settings decisions record a `pathfinder_startup_settings` measurement with
+`startup_settings_ms` and a closed `outcome` value (`resolved`, `read-error`,
+`timeout`, or `remote-disabled`). Reporting waits for Faro initialization and the
+first Pathfinder surface open, preserving the activity boundary. This measures
+opened sessions, not all Grafana page loads; it cannot establish fleet-wide
+opt-out coverage. The local startup diagnostic also reports duration and outcome
+without settings, user IDs, or stack IDs.

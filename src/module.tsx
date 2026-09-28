@@ -8,8 +8,8 @@ import pluginJson from './plugin.json';
 import { initializeConfiguredSurfaces } from './utils/configured-bootstrap';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
 // (and zod, via user-storage) into module.js.
-import { refreshPathfinderPluginConfig, waitForPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
-import { resolvePathfinderAvailability } from './utils/pathfinder-enablement';
+import { readPathfinderStartupPreference, waitForPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
+import { resolvePathfinderAvailability, getPathfinderStartupDecision } from './utils/pathfinder-enablement';
 // Direct file import, not the ./docs-retrieval barrel: the barrel statically
 // imports the whole content-fetcher orchestrator (zod, dompurify, the bundled
 // guide index), which would land in module.js. createCompositeResolver is
@@ -22,14 +22,15 @@ import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
 import { handlePathfinderDeepLink, installDeepLinkNavListener } from './utils/pathfinder-deep-link-handler';
 import { parseControllerPairingHash, parsePathfinderDeepLink } from './utils/pathfinder-search-params';
-import {
-  clearExtensionSidebarDocked,
-  isExtensionSidebarOwnedByPathfinder,
-  parseExtensionSidebarDocked,
-} from './lib/storage/extension-sidebar';
+import { clearExtensionSidebarDocked, parseExtensionSidebarDocked } from './lib/storage/extension-sidebar';
 // Surgical import (not the ./lib/telemetry barrel): module.tsx is the entry
 // point, and the barrel would pull the whole telemetry package into module.js.
-import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from './lib/telemetry/surface';
+import {
+  reportPathfinderSurface,
+  reportPathfinderSurfaceClosed,
+  isPathfinderOpen,
+  onPathfinderSurfaceChange,
+} from './lib/telemetry/surface';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -70,7 +71,7 @@ const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfe
 
 const pathfinderAvailability = await resolvePathfinderAvailability(
   getFeatureFlagValue('pathfinder.enabled', true),
-  refreshPathfinderPluginConfig
+  readPathfinderStartupPreference
 );
 const pathfinderEnabled = pathfinderAvailability === 'enabled';
 const hostname = window.location.hostname;
@@ -100,7 +101,26 @@ try {
         getFeatureFlagValue('pathfinder.session-replay', true),
         getNumberFlagValue('pathfinder.session-replay-sampling-rate', 1)
       )
-    ).catch((e) => logger.exception(e, { source: 'Faro init' }));
+    )
+      .then(async () => {
+        const { recordStartupSettings } = await import('./lib/telemetry/facade');
+        const record = () => {
+          const { durationMs, outcome } = getPathfinderStartupDecision();
+          recordStartupSettings(durationMs, outcome);
+        };
+        // Keep bootstrap telemetry inside the existing first-open activity boundary.
+        if (isPathfinderOpen()) {
+          record();
+        } else {
+          const unsubscribe = onPathfinderSurfaceChange((surface) => {
+            if (surface !== 'closed') {
+              unsubscribe();
+              record();
+            }
+          });
+        }
+      })
+      .catch((e) => logger.exception(e, { source: 'Faro init' }));
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });
@@ -113,7 +133,7 @@ const highlightedGuideConfig = initializeHighlightedGuideExperiment(hostname);
 
 createExperimentDebugger(highlightedGuideConfig);
 
-if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) {
+if (parseExtensionSidebarDocked()?.pluginId === pluginJson.id) {
   const persistedMode = panelModeManager.getMode();
   if (!pathfinderEnabled || persistedMode === 'floating' || persistedMode === 'fullscreen') {
     clearExtensionSidebarDocked();
@@ -165,6 +185,8 @@ plugin.init = function () {
     return;
   }
 
+  // Grafana does not await init; navigation listeners must register synchronously.
+  // Defer the completion-write stack so every page load does not pay for its chunk.
   void import('./completion-records/completion-write-hook')
     .then(({ armCompletionWriteHook }) => armCompletionWriteHook())
     .catch((err) => logger.error('[Pathfinder] Failed to arm completion-write hook', { error: err }));
@@ -174,6 +196,7 @@ plugin.init = function () {
     return (await import('./package-engine/composite-resolver')).createCompositeResolver(config);
   });
 
+  // Capture deep-link parameters before the handler strips them from the URL.
   const { doc: docsParam, controller: controllerParam } = parsePathfinderDeepLink(window.location.search);
   const controllerPairing = parseControllerPairingHash(window.location.hash);
   if (controllerPairing && window.location.hash) {
@@ -198,6 +221,7 @@ plugin.init = function () {
           return;
         }
         if (!document.getElementById('pathfinder-controller-root')) {
+          // Claim the mount before importing so repeated init cannot race it.
           const container = document.createElement('div');
           container.id = 'pathfinder-controller-root';
           document.body.appendChild(container);
@@ -267,6 +291,7 @@ plugin.init = function () {
     }
   ).catch((error) => logger.error('[Pathfinder] Failed to initialize configured surfaces', { error }));
 
+  // A controller request must never become a live executor or ordinary docs tab.
   if (controllerRequested) {
     return;
   }
@@ -278,40 +303,39 @@ plugin.init = function () {
   handlePathfinderDeepLink(deepLinkDeps);
   installDeepLinkNavListener(deepLinkDeps);
 
-  if (pathfinderEnabled) {
-    const mountFloatingPanel = () => {
-      if (document.getElementById('pathfinder-floating-root')) {
-        return;
-      }
-      import('./components/floating-panel/FloatingPanelManager')
-        .then(async ({ FloatingPanelManager }) => {
-          if (document.getElementById('pathfinder-floating-root')) {
-            return;
-          }
-          const { createCompatRoot } = await import('./lib/create-root-compat');
-          const container = document.createElement('div');
-          container.id = 'pathfinder-floating-root';
-          document.body.appendChild(container);
-          const root = await createCompatRoot(container);
-          root.render(React.createElement(FloatingPanelManager));
-        })
-        .catch((err) => {
-          logger.error('[Pathfinder] Failed to load floating panel', { error: err });
-        });
-    };
-
-    if (panelModeManager.getMode() === 'floating') {
-      mountFloatingPanel();
+  // Lazy mounting avoids loading floating-panel chunks until the mode needs them.
+  const mountFloatingPanel = () => {
+    if (document.getElementById('pathfinder-floating-root')) {
+      return;
     }
+    import('./components/floating-panel/FloatingPanelManager')
+      .then(async ({ FloatingPanelManager }) => {
+        if (document.getElementById('pathfinder-floating-root')) {
+          return;
+        }
+        const { createCompatRoot } = await import('./lib/create-root-compat');
+        const container = document.createElement('div');
+        container.id = 'pathfinder-floating-root';
+        document.body.appendChild(container);
+        const root = await createCompatRoot(container);
+        root.render(React.createElement(FloatingPanelManager));
+      })
+      .catch((err) => {
+        logger.error('[Pathfinder] Failed to load floating panel', { error: err });
+      });
+  };
 
-    document.addEventListener(PANEL_MODE_CHANGE_EVENT, ((e: CustomEvent<{ mode: string }>) => {
-      if (e.detail.mode === 'floating') {
-        mountFloatingPanel();
-      }
-    }) as EventListener);
+  if (panelModeManager.getMode() === 'floating') {
+    mountFloatingPanel();
   }
 
-  if (!docsParam && pathfinderEnabled) {
+  document.addEventListener(PANEL_MODE_CHANGE_EVENT, ((e: CustomEvent<{ mode: string }>) => {
+    if (e.detail.mode === 'floating') {
+      mountFloatingPanel();
+    }
+  }) as EventListener);
+
+  if (!docsParam) {
     const currentPath = getCurrentPath();
     setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
   }
@@ -450,8 +474,15 @@ if (pathfinderEnabled) {
   }
   pendingSuggestEvents.length = 0;
 } else {
-  // Control group: discard buffered events and remove early listener
+  const rejectSuggestion = ((event: CustomEvent) => {
+    if (event.detail) {
+      event.detail.status = 'rejected';
+      event.detail.reason = 'pathfinder_disabled';
+    }
+  }) as EventListener;
   document.removeEventListener('pathfinder-suggest', earlySuggestListener);
+  document.addEventListener('pathfinder-suggest', rejectSuggestion);
+  pendingSuggestEvents.forEach(rejectSuggestion);
   pendingSuggestEvents.length = 0;
 }
 

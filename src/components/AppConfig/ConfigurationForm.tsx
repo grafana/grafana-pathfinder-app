@@ -271,14 +271,17 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             <p>
               {t(
                 'appConfig.pathfinderRevertDescription',
-                'Turn this off to restore Grafana’s previous Help menu for everyone in this organization. Your learning progress is kept.'
+                'Turn this off to use Grafana’s classic Help menu after users reload. Your learning progress is kept.'
               )}
             </p>
           </>
         )}
         <Field
           label={t('appConfig.pathfinderEnabled', 'Enable Pathfinder')}
-          description={t('appConfig.pathfinderEnabledDescription', 'Changes apply when users reload Grafana.')}
+          description={t(
+            'appConfig.pathfinderEnabledDescription',
+            'Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, Pathfinder stays available.'
+          )}
         >
           <Switch
             id="pathfinder-enabled"

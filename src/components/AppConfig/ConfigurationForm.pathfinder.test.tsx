@@ -95,6 +95,6 @@ it.each([true, false])('shows preview copy only on Cloud (cloud=%s)', (cloud) =>
   renderForm();
   expect(screen.getByRole('switch', { name: /^Enable Pathfinder/ })).toBeChecked();
   expect(screen.queryByText('Pathfinder public preview') !== null).toBe(cloud);
-  expect(screen.queryByText(/restore Grafana’s previous Help menu/) !== null).toBe(cloud);
+  expect(screen.queryByText(/use Grafana’s classic Help menu/) !== null).toBe(cloud);
   expect(screen.queryByText('Beta') !== null).toBe(cloud);
 });
