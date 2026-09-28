@@ -42,7 +42,7 @@ describe('GuidedHandler', () => {
     mockNavigationManager.ensureNavigationOpen = jest.fn().mockResolvedValue(undefined);
     mockNavigationManager.ensureElementVisible = jest.fn().mockResolvedValue(undefined);
     mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
-    mockNavigationManager.clearAllHighlights = jest.fn();
+    mockNavigationManager.clearOwnedHighlights = jest.fn();
 
     mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 
@@ -96,7 +96,7 @@ describe('GuidedHandler', () => {
           },
           stepIndex,
           2,
-          5
+          1000
         );
       }
     };
@@ -174,7 +174,7 @@ describe('GuidedHandler', () => {
         },
         0,
         1,
-        5
+        1000
       );
 
       expect(result).toBe('completed');
@@ -201,7 +201,7 @@ describe('GuidedHandler', () => {
         'pathfinder_do_it_button_click',
         { target_action: 'highlight', ref_target: refTarget, step_index: 0, total_steps: 1 },
         expect.any(Function),
-        10_005,
+        11_000,
         { critical: true, outcomeFrom: expect.any(Function) }
       );
 
@@ -228,7 +228,7 @@ describe('GuidedHandler', () => {
         { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: '<p>Click Add</p>' },
         0,
         1,
-        5
+        1000
       );
 
       expect(result).toBe('completed');
@@ -290,7 +290,7 @@ describe('GuidedHandler', () => {
         { targetAction: 'highlight', refTarget: '#drawer', targetState: true },
         0,
         1,
-        5
+        1000
       );
 
       expect(result).toBe('completed');
@@ -321,7 +321,7 @@ describe('GuidedHandler', () => {
       expect(result).toBe('completed');
       expect(eventOrder).toEqual(['completion persisted', 'route changed']);
       expect(button.isConnected).toBe(false);
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
 
     it('keeps completed when highlighting throws after an early click', async () => {
@@ -353,7 +353,7 @@ describe('GuidedHandler', () => {
       mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
         button.click();
       });
-      mockNavigationManager.clearAllHighlights = jest.fn(() => {
+      mockNavigationManager.clearOwnedHighlights = jest.fn(() => {
         throw new Error('cleanup failed');
       });
 
@@ -436,7 +436,7 @@ describe('GuidedHandler', () => {
 
       expect(result).toBe('error');
       expect(onActionCompleted).toHaveBeenCalledTimes(1);
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
       expect((guidedHandler as any).activeListeners).toHaveLength(0);
       expect((guidedHandler as any).pendingTimeouts).toHaveLength(0);
       expect((guidedHandler as any).pendingIntervals).toHaveLength(0);

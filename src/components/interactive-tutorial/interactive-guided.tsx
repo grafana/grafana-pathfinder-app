@@ -1,3 +1,4 @@
+import { acquireGuidedRun, type GuidedRun } from '../../global-state/guided-run';
 import { usePathfinderPluginConfig } from '../../hooks';
 import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
@@ -14,7 +15,7 @@ import {
 } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
-import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
+import { useStepChecker, validateInteractiveRequirements, checkRequirements } from '../../requirements-manager';
 import { getInteractiveConfig } from '../../constants/interactive-config';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 import { type AuthoredGuidedAction, isGuidedDomActionType } from '../../types/interactive-actions.types';
@@ -233,6 +234,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // also clobber the first run's listeners via guidedHandler's shared
     // `cleanupListeners()`. A ref closes that window.
     const isExecutingRef = useRef(false);
+    const runRef = useRef<GuidedRun | null>(null);
+    const handoffRef = useRef(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [failedStepIndex, setFailedStepIndex] = useState(-1);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
@@ -279,13 +282,17 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // via the handler's own navigationManager instance - no need to create a new one
     useEffect(() => {
       return () => {
-        guidedHandler.cancel();
+        if (!handoffRef.current) {
+          runRef.current?.cancel();
+          guidedHandler.cancel();
+        }
       };
     }, [guidedHandler]);
 
     // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
+        runRef.current?.cancel();
         persistReset();
         // eslint-disable-next-line react-hooks/set-state-in-effect -- reset local UI state when the parent bumps resetTrigger, alongside the persistReset store write
         setExecutionError(null);
@@ -337,139 +344,192 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Combined completion state: objectives always win
     const isCompletedWithObjectives = storedCompleted || checker.completionReason === 'objectives';
 
-    const executeStep = useCallback(async (): Promise<boolean> => {
-      if (
-        !checker.isEnabled ||
-        (isCompletedWithObjectives && !allowCompletedRetryRef.current) ||
-        isExecuting ||
-        isExecutingRef.current
-      ) {
-        return false;
-      }
-      isExecutingRef.current = true;
-
-      try {
-        if (checker.completionReason === 'objectives') {
-          persistCompletion();
-          if (onStepComplete && stepId) {
-            onStepComplete(stepId);
-          }
-          if (onComplete) {
-            onComplete();
-          }
-          return true;
-        }
-
-        // Guided steps never route through executeInteractiveAction's own gate
-        // (see interactive.hook.ts), so a guided step needs the same full-screen
-        // -> sidebar handoff applied here directly, keyed off its inner actions'
-        // targetAction rather than the 'guided' container tag itself. Uses the
-        // shared predicate (not a local reimplementation) so this can't drift
-        // from the hook's own gate condition.
-        if (internalActions.some((action) => isGrafanaDrivingHandoffNeeded(action.targetAction))) {
-          await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
-        }
-
-        // Deliberately no isMountedRef bail-out here: the handoff's own
-        // navigation unmounts this full-screen instance on every successful
-        // run, not just a stale/raced one — bailing out here would mean the
-        // guided step never actually executes after docking, breaking the
-        // same continue-after-the-wait contract simple steps and code-block
-        // Insert already honor. isExecutingRef (untouched by the unmount
-        // cleanup effect) already fully serializes re-entrant calls on its
-        // own, so there's no race left for a mounted-check to guard against.
-        setIsExecuting(true);
-        setExecutionError(null);
-        guidedHandler.resetProgress();
-        setCurrentStepIndex(0);
-        setFailedStepIndex(-1);
-        setCurrentStepStatus('waiting');
-        setWasCancelled(false);
-        // Commit execution before overlay creation so idle controls and the overlay never overlap.
-        await waitForReactUpdates();
-
-        let completionPersisted = false;
-        const completeStep = () => {
-          if (completionPersisted) {
-            return;
-          }
-          persistCompletion();
-          if (onStepComplete && stepId) {
-            onStepComplete(stepId);
-          }
-          if (onComplete) {
-            onComplete();
-          }
-          completionPersisted = true;
-        };
-
-        try {
-          for (let i = 0; i < internalActions.length; i++) {
-            const action = internalActions[i];
-            setCurrentStepIndex(i);
-            setCurrentStepStatus('waiting');
-
-            const completeBeforeActionEffect =
-              completeEarly && i === internalActions.length - 1 ? completeStep : undefined;
-            const result = await guidedHandler.executeGuidedStep(
-              action!,
-              i,
-              internalActions.length,
-              stepTimeout,
-              completeBeforeActionEffect
-            );
-
-            if (result === 'completed' || result === 'skipped') {
-              if (completeEarly && i === internalActions.length - 1) {
-                completeStep();
-              }
-              setCurrentStepStatus('completed');
-              // Brief visual feedback before moving to next step
-              await new Promise((resolve) => setTimeout(resolve, 500));
-            } else if (result === 'timeout') {
-              setCurrentStepStatus('timeout');
-              setFailedStepIndex(i);
-              setExecutionError(`Step ${i + 1} timed out. Click "Skip" to continue or "Retry" to try again.`);
-              return false;
-            } else if (result === 'cancelled') {
-              setWasCancelled(true);
-              return false;
-            } else if (result === 'error') {
-              setFailedStepIndex(i);
-              setExecutionError(`Step ${i + 1} failed. Click "Retry" to try again.`);
-              return false;
-            }
-          }
-          completeStep();
-          return true;
-        } catch (error) {
-          logger.error(`Guided execution failed: ${stepId}`, { error });
-          const errorMessage = error instanceof Error ? error.message : 'Guided execution failed';
-          setExecutionError(errorMessage);
+    const executeStep = useCallback(
+      async (startIndex = 0): Promise<boolean> => {
+        if (
+          (startIndex === 0 && !checker.isEnabled) ||
+          (isCompletedWithObjectives && !allowCompletedRetryRef.current) ||
+          isExecuting ||
+          isExecutingRef.current
+        ) {
           return false;
         }
-      } finally {
-        isExecutingRef.current = false;
-        if (isMountedRef.current) {
-          setIsExecuting(false);
-          setCurrentStepIndex(0);
+        const run = acquireGuidedRun();
+        if (!run) {
+          return false;
         }
-      }
-    }, [
-      checker.isEnabled,
-      isCompletedWithObjectives,
-      isExecuting,
-      completeEarly,
-      stepId,
-      internalActions,
-      guidedHandler,
-      stepTimeout,
-      onStepComplete,
-      onComplete,
-      persistCompletion,
-      checker.completionReason,
-      fullScreenFallbackLocation,
-    ]);
+        runRef.current = run;
+        isExecutingRef.current = true;
+
+        try {
+          if (checker.completionReason === 'objectives') {
+            persistCompletion();
+            if (onStepComplete && stepId) {
+              onStepComplete(stepId);
+            }
+            if (onComplete) {
+              onComplete();
+            }
+            return true;
+          }
+
+          // Guided steps never route through executeInteractiveAction's own gate
+          // (see interactive.hook.ts), so a guided step needs the same full-screen
+          // -> sidebar handoff applied here directly, keyed off its inner actions'
+          // targetAction rather than the 'guided' container tag itself. Uses the
+          // shared predicate (not a local reimplementation) so this can't drift
+          // from the hook's own gate condition.
+          if (internalActions.some((action) => isGrafanaDrivingHandoffNeeded(action.targetAction))) {
+            handoffRef.current = true;
+            try {
+              await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
+            } finally {
+              handoffRef.current = false;
+            }
+          }
+
+          // Deliberately no isMountedRef bail-out here: the handoff's own
+          // navigation unmounts this full-screen instance on every successful
+          // run, not just a stale/raced one — bailing out here would mean the
+          // guided step never actually executes after docking, breaking the
+          // same continue-after-the-wait contract simple steps and code-block
+          // Insert already honor. isExecutingRef (untouched by the unmount
+          // cleanup effect) already fully serializes re-entrant calls on its
+          // own, so there's no race left for a mounted-check to guard against.
+          run.signal.throwIfAborted();
+          setIsExecuting(true);
+          setExecutionError(null);
+          if (startIndex === 0) {
+            guidedHandler.resetProgress();
+          }
+          setCurrentStepIndex(0);
+          setFailedStepIndex(-1);
+          setCurrentStepStatus('waiting');
+          setWasCancelled(false);
+          // Commit execution before overlay creation so idle controls and the overlay never overlap.
+          await waitForReactUpdates();
+
+          let completionPersisted = false;
+          const completeStep = () => {
+            if (completionPersisted || run.signal.aborted) {
+              return;
+            }
+            persistCompletion();
+            if (onStepComplete && stepId) {
+              onStepComplete(stepId);
+            }
+            if (onComplete) {
+              onComplete();
+            }
+            completionPersisted = true;
+          };
+
+          try {
+            for (let i = startIndex; i < internalActions.length; i++) {
+              run.signal.throwIfAborted();
+              const action = internalActions[i];
+              setCurrentStepIndex(i);
+              setCurrentStepStatus('waiting');
+              const validateAction = async () => {
+                if (!action!.requirements) {
+                  return true;
+                }
+                const checked = await checkRequirements({
+                  requirements: action!.requirements,
+                  targetAction: action!.targetAction,
+                  refTarget: action!.refTarget ?? '',
+                  targetValue: action!.targetValue,
+                });
+                return checked.pass;
+              };
+              if (!(await validateAction())) {
+                setFailedStepIndex(i);
+                setExecutionError(`Step ${i + 1} requirements are not met. Restore the required state and retry.`);
+                return false;
+              }
+              run.signal.throwIfAborted();
+
+              const completeBeforeActionEffect =
+                completeEarly && i === internalActions.length - 1 ? completeStep : undefined;
+              const result = await guidedHandler.executeGuidedStep(
+                action!,
+                i,
+                internalActions.length,
+                stepTimeout,
+                completeBeforeActionEffect,
+                {
+                  signal: run.signal,
+                  revalidate: validateAction,
+                }
+              );
+
+              if (result === 'completed' || result === 'skipped') {
+                if (completeEarly && i === internalActions.length - 1) {
+                  completeStep();
+                }
+                setCurrentStepStatus('completed');
+                // Brief visual feedback before moving to next step
+                await new Promise((resolve) => setTimeout(resolve, 500));
+              } else if (result === 'timeout') {
+                setCurrentStepStatus('timeout');
+                setFailedStepIndex(i);
+                setExecutionError(`Step ${i + 1} timed out. Click "Skip" to continue or "Retry" to try again.`);
+                return false;
+              } else if (result === 'cancelled') {
+                setWasCancelled(true);
+                return false;
+              } else if (result === 'error') {
+                setFailedStepIndex(i);
+                setExecutionError(`Step ${i + 1} failed. Click "Retry" to try again.`);
+                return false;
+              }
+            }
+            run.signal.throwIfAborted();
+            completeStep();
+            return true;
+          } catch (error) {
+            if (run.signal.aborted) {
+              setWasCancelled(true);
+              return false;
+            }
+            logger.error(`Guided execution failed: ${stepId}`, { error });
+            const errorMessage = error instanceof Error ? error.message : 'Guided execution failed';
+            setExecutionError(errorMessage);
+            return false;
+          }
+        } catch (error) {
+          if (!run.signal.aborted) {
+            setExecutionError('Could not start the guided interaction.');
+          }
+          return false;
+        } finally {
+          run.release();
+          if (runRef.current === run) {
+            runRef.current = null;
+          }
+          isExecutingRef.current = false;
+          if (isMountedRef.current) {
+            setIsExecuting(false);
+            setCurrentStepIndex(0);
+          }
+        }
+      },
+      [
+        checker.isEnabled,
+        isCompletedWithObjectives,
+        isExecuting,
+        completeEarly,
+        stepId,
+        internalActions,
+        guidedHandler,
+        stepTimeout,
+        onStepComplete,
+        onComplete,
+        persistCompletion,
+        checker.completionReason,
+        fullScreenFallbackLocation,
+      ]
+    );
 
     // Expose execute method for parent (section execution)
     useImperativeHandle(ref, () => {
@@ -647,6 +707,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       );
 
       if (mode === 'controller') {
+        if (isExecutingRef.current) {
+          return;
+        }
         if (!controllerChannel) {
           // No live tab connected (NEW-1073-1): tell the user instead of toggling
           // a spinner that resolves to nothing.
@@ -661,6 +724,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         // requirement round-trip can cost up to ~4s, and a composite would pay
         // that per click on top of its staged replay, so we keep the entry gate
         // only and let each sub-action fail on the live tab if a prereq regressed.
+        isExecutingRef.current = true;
         controllerCancelledRef.current = false;
         const runId = crypto.randomUUID();
         activeRunIdRef.current = runId;
@@ -702,6 +766,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             });
           }
         } finally {
+          isExecutingRef.current = false;
           stopProgress?.();
           setIsExecuting(false);
         }
@@ -767,11 +832,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setWasCancelled(false);
       allowCompletedRetryRef.current = true;
       try {
-        await executeStep();
+        await executeStep(!wasCancelled && failedStepIndex >= 0 ? failedStepIndex : 0);
       } finally {
         allowCompletedRetryRef.current = false;
       }
-    }, [executeStep]);
+    }, [executeStep, wasCancelled, failedStepIndex]);
 
     // Handle cancel during guided execution
     const handleCancel = useCallback(async () => {
@@ -780,6 +845,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       // awaiting branch skips its "not completed" toast.
       controllerCancelledRef.current = true;
       controllerChannel?.cancelStepComplete(renderedStepId, activeRunIdRef.current);
+      runRef.current?.cancel();
       guidedHandler.cancel();
 
       setIsExecuting(false);
@@ -1019,7 +1085,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 className="interactive-guided-retry-btn"
                 data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
               >
-                ↻ Try again
+                ↻ Retry current step
               </Button>
               {aiFixEnabled && failedStepIndex >= 0 && (
                 <AiFixButton

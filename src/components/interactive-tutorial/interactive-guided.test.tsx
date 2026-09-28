@@ -512,6 +512,34 @@ describe('InteractiveGuided — objectives completion', () => {
     expect(screen.queryByTestId(testIds.interactive.errorMessage('objectives-step'))).not.toBeInTheDocument();
   });
 });
+describe('InteractiveGuided — current action recovery', () => {
+  it('retries the failed action without replaying completed predecessors', async () => {
+    mockExecuteGuidedStep
+      .mockResolvedValueOnce('completed')
+      .mockResolvedValueOnce('error')
+      .mockResolvedValueOnce('completed');
+    render(
+      <InteractiveGuided
+        stepId="resume-current"
+        internalActions={[
+          { targetAction: 'noop', targetComment: 'First' },
+          { targetAction: 'noop', targetComment: 'Second' },
+        ]}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.step('resume-current'))).toHaveAttribute(
+        'data-test-step-state',
+        'error'
+      )
+    );
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('resume-current')));
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(3));
+    expect(mockExecuteGuidedStep.mock.calls.map((call) => call[1])).toEqual([0, 1, 1]);
+  });
+});
+
 describe('InteractiveGuided — completeEarly retry', () => {
   it('reruns failed actions without persisting the failed run', async () => {
     mockExecuteGuidedStep.mockResolvedValueOnce('error').mockResolvedValueOnce('completed');

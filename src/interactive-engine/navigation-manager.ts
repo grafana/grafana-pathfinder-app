@@ -26,6 +26,7 @@ export interface NavigationOptions {
 }
 
 export interface CommentBoxOptions {
+  signal?: AbortSignal;
   showKeyboardHint?: boolean;
   stepTitle?: string;
   skipAnimations?: boolean;
@@ -115,9 +116,9 @@ export class NavigationManager {
    * Show a centered comment for noop actions (informational steps without element interaction)
    * Used by multi-step sequences to display step instructions
    */
-  showNoopComment(comment: string): void {
+  showNoopComment(comment: string, onCancel?: () => void): void {
     // Clear any existing highlights first
-    this.clearAllHighlights();
+    this.clearOwnedHighlights();
 
     // Create a centered comment box
     const commentBox = document.createElement('div');
@@ -156,7 +157,16 @@ export class NavigationManager {
     commentBox.appendChild(content);
 
     // Add to document body (centered via CSS)
+    if (onCancel) {
+      const cancel = document.createElement('button');
+      cancel.className = 'interactive-comment-cancel-btn';
+      cancel.textContent = 'Cancel';
+      cancel.addEventListener('click', onCancel);
+      content.appendChild(cancel);
+      this.activeCleanupHandlers.push(() => cancel.removeEventListener('click', onCancel));
+    }
     document.body.appendChild(commentBox);
+    this.ownedHighlights.add(commentBox);
   }
 
   /**
@@ -734,6 +744,7 @@ export class NavigationManager {
     // and DOM is stable. Highlight immediately for better responsiveness!
 
     // If selector targeted a hidden input (common in dropdowns), highlight the visible parent instead
+    options?.signal?.throwIfAborted();
     const highlightTarget = getVisibleHighlightTarget(element);
 
     // Position the outline around the target element using CSS custom properties
