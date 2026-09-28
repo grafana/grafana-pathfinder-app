@@ -39,6 +39,8 @@ type RequestPayload =
   | Omit<CheckRequirementsMessage, 'source' | 'senderId' | 'timestamp' | 'requestId'>
   | Omit<FixRequirementMessage, 'source' | 'senderId' | 'timestamp' | 'requestId'>;
 
+type RemoteStepResult = 'completed' | 'failed' | 'timeout' | 'cancelled' | 'disconnected';
+
 interface ControllerChannel {
   post: (payload: CrossTabPayload) => void;
   requestRequirementCheck: (
@@ -50,6 +52,7 @@ interface ControllerChannel {
     stepId: string,
     opts: { requirements: ConditionInput; fixType?: string; targetHref?: string; scrollContainer?: string }
   ) => Promise<FixOutcome>;
+  awaitStepResult: (stepId: string, runId: string, timeoutMs?: number) => Promise<RemoteStepResult>;
   awaitStepComplete: (stepId: string, runId: string, timeoutMs?: number) => Promise<boolean>;
   cancelStepComplete: (stepId: string, runId: string) => void;
   onStepProgress: (stepId: string, runId: string, cb: (index: number, total: number) => void) => () => void;
@@ -94,7 +97,7 @@ export function ControllerChannelProvider({
   // heartbeat); replies from any other tab are ignored.
   const pairedLiveIdRef = useRef<string | null>(null);
   const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
-  const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
+  const stepCompletionRef = useRef<Map<string, (result: RemoteStepResult) => void>>(new Map());
   const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
 
   const signForLive = useCallback(
@@ -201,7 +204,7 @@ export function ControllerChannelProvider({
         entry.resolve(entry.fallback);
       });
       pending.clear();
-      stepDone.forEach((resolve) => resolve(false));
+      stepDone.forEach((resolve) => resolve('disconnected'));
       stepDone.clear();
       stepProgressRef.current.clear();
     };
@@ -266,7 +269,7 @@ export function ControllerChannelProvider({
         const resolve = stepDone.get(key);
         if (resolve) {
           stepDone.delete(key);
-          resolve(message.ok);
+          resolve(message.ok ? 'completed' : 'failed');
         }
       }
     });
@@ -362,14 +365,14 @@ export function ControllerChannelProvider({
     [request]
   );
 
-  const awaitStepComplete = useCallback<ControllerChannel['awaitStepComplete']>(
+  const awaitStepResult = useCallback<ControllerChannel['awaitStepResult']>(
     (stepId, runId, timeoutMs = 15 * 60_000) =>
-      new Promise<boolean>((resolve) => {
+      new Promise<RemoteStepResult>((resolve) => {
         const key = `${stepId}:${runId}`;
         const timer = setTimeout(() => {
           stepCompletionRef.current.delete(key);
           post({ kind: 'step-cancel', stepId, runId });
-          resolve(false);
+          resolve('timeout');
         }, timeoutMs);
         stepCompletionRef.current.set(key, (ok) => {
           clearTimeout(timer);
@@ -379,6 +382,11 @@ export function ControllerChannelProvider({
     [post]
   );
 
+  const awaitStepComplete = useCallback<ControllerChannel['awaitStepComplete']>(
+    async (stepId, runId, timeoutMs) => (await awaitStepResult(stepId, runId, timeoutMs)) === 'completed',
+    [awaitStepResult]
+  );
+
   const cancelStepComplete = useCallback<ControllerChannel['cancelStepComplete']>(
     (stepId, runId) => {
       post({ kind: 'step-cancel', stepId, runId });
@@ -386,7 +394,7 @@ export function ControllerChannelProvider({
       const resolve = stepCompletionRef.current.get(key);
       if (resolve) {
         stepCompletionRef.current.delete(key);
-        resolve(false);
+        resolve('cancelled');
       }
     },
     [post]
@@ -403,8 +411,16 @@ export function ControllerChannelProvider({
   }, []);
 
   const channel = useMemo<ControllerChannel>(
-    () => ({ post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete, onStepProgress }),
-    [post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete, onStepProgress]
+    () => ({
+      post,
+      requestRequirementCheck,
+      requestFix,
+      awaitStepResult,
+      awaitStepComplete,
+      cancelStepComplete,
+      onStepProgress,
+    }),
+    [post, requestRequirementCheck, requestFix, awaitStepResult, awaitStepComplete, cancelStepComplete, onStepProgress]
   );
 
   return (

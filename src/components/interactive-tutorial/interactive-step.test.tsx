@@ -600,6 +600,85 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     expect(screen.queryByRole('button', { name: /do it/i })).not.toBeInTheDocument();
   });
 
+  it('reports a negative remote acknowledgement as an action failure', async () => {
+    const transport = makeTransport();
+    await renderPairedController(
+      transport,
+      <InteractiveStep targetAction="button" refTarget="#ok" stepId="remote-failed">
+        Step
+      </InteractiveStep>
+    );
+    const button = await screen.findByRole('button', { name: /do it/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-command' })));
+    const command = transport.post.mock.calls
+      .map(([message]) => message)
+      .find((message) => message.kind === 'step-command');
+    await act(async () => {
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live',
+        timestamp: 0,
+        kind: 'step-complete',
+        stepId: command.stepId,
+        runId: command.runId,
+        ok: false,
+      });
+    });
+    expect(
+      screen.getByText('The action did not complete in the live tab. Restore the required state and try again.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Refresh both tabs/)).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.step('remote-failed'))).not.toHaveAttribute(
+      'data-test-step-state',
+      'completed'
+    );
+  });
+
+  it('does not cancel or fail a credited completeEarly remote action when no acknowledgement arrives', async () => {
+    const transport = makeTransport();
+    const onComplete = jest.fn();
+    await renderPairedController(
+      transport,
+      <InteractiveStep
+        targetAction="button"
+        refTarget="#ok"
+        stepId="early-remote"
+        completeEarly
+        onComplete={onComplete}
+      >
+        Step
+      </InteractiveStep>
+    );
+    const button = await screen.findByRole('button', { name: /do it/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    jest.useFakeTimers();
+    try {
+      fireEvent.click(button);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(100);
+      });
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId(testIds.interactive.step('early-remote'))).toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      );
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(31000);
+      });
+      expect(screen.getByTestId(testIds.interactive.step('early-remote'))).toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      );
+      expect(transport.post).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-cancel' }));
+      expect(screen.queryByText(/Refresh both tabs/)).not.toBeInTheDocument();
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('stops a simple remote step after 30 seconds when an older live tab never acknowledges it', async () => {
     const transport = makeTransport();
     await renderPairedController(

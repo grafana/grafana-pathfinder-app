@@ -154,7 +154,6 @@ jest.mock('../../interactive-engine', () => ({
     executeGuidedStep: mockExecuteGuidedStep,
     execute: jest.fn(),
     cancel: mockCancel,
-    resetProgress: jest.fn(),
   })),
   InteractiveStateManager: jest.fn().mockImplementation(() => ({
     setState: jest.fn(),
@@ -677,30 +676,55 @@ describe('InteractiveGuided — objectives completion', () => {
   });
 });
 describe('InteractiveGuided — current action recovery', () => {
-  it('retries the failed action without replaying completed predecessors', async () => {
+  it.each(['error', 'timeout'] as const)(
+    'retries a %s action without replaying completed predecessors',
+    async (failure) => {
+      mockExecuteGuidedStep
+        .mockResolvedValueOnce('completed')
+        .mockResolvedValueOnce(failure)
+        .mockResolvedValueOnce('completed');
+      render(
+        <InteractiveGuided
+          stepId="resume-current"
+          internalActions={[
+            { targetAction: 'noop', targetComment: 'First' },
+            { targetAction: 'noop', targetComment: 'Second' },
+          ]}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.step('resume-current'))).toHaveAttribute(
+          'data-test-step-state',
+          'error'
+        )
+      );
+      fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('resume-current')));
+      await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(3));
+      expect(mockExecuteGuidedStep.mock.calls.map((call) => call[1])).toEqual([0, 1, 1]);
+    }
+  );
+  it('restarts from step zero after cancellation', async () => {
     mockExecuteGuidedStep
       .mockResolvedValueOnce('completed')
-      .mockResolvedValueOnce('error')
-      .mockResolvedValueOnce('completed');
+      .mockResolvedValueOnce('cancelled')
+      .mockResolvedValueOnce('completed')
+      .mockResolvedValueOnce('cancelled');
     render(
       <InteractiveGuided
-        stepId="resume-current"
+        stepId="cancel-restart"
         internalActions={[
           { targetAction: 'noop', targetComment: 'First' },
           { targetAction: 'noop', targetComment: 'Second' },
         ]}
       />
     );
+    const step = screen.getByTestId(testIds.interactive.step('cancel-restart'));
     fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
-    await waitFor(() =>
-      expect(screen.getByTestId(testIds.interactive.step('resume-current'))).toHaveAttribute(
-        'data-test-step-state',
-        'error'
-      )
-    );
-    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('resume-current')));
-    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(3));
-    expect(mockExecuteGuidedStep.mock.calls.map((call) => call[1])).toEqual([0, 1, 1]);
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'cancelled'));
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('cancel-restart')));
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(4));
+    expect(mockExecuteGuidedStep.mock.calls.map((call) => call[1])).toEqual([0, 1, 0, 1]);
   });
 });
 

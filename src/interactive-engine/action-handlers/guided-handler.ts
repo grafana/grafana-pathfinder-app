@@ -97,6 +97,9 @@ export class GuidedHandler {
     if (this.runController) {
       return 'error';
     }
+    if (stepIndex === 0) {
+      this.resetProgress();
+    }
     const controller = new AbortController();
     this.runController = controller;
     this.runId = crypto.randomUUID();
@@ -208,7 +211,8 @@ export class GuidedHandler {
             recoveryDeadline ? 100 : INTERACTIVE_CONFIG.guided.retryInterval,
             !recoveryDeadline && action.isSkippable === true,
             signal,
-            recoveryDeadline !== undefined
+            recoveryDeadline !== undefined,
+            revalidate
           );
         } catch (_error) {
           if (signal.aborted) {
@@ -477,10 +481,12 @@ export class GuidedHandler {
     retryInterval: number,
     skipRetryOnFailure = false,
     signal?: AbortSignal,
-    recovering = false
+    recovering = false,
+    prepareTarget?: () => Promise<boolean>
   ): Promise<HTMLElement> {
     const startTime = Date.now();
     let attemptCount = 0;
+    let preparedTarget = false;
 
     while (Date.now() - startTime < timeout) {
       signal?.throwIfAborted();
@@ -499,6 +505,13 @@ export class GuidedHandler {
         const element = await this.findTargetElement(selector, actionType);
         return element;
       } catch (error) {
+        if (!preparedTarget && prepareTarget) {
+          preparedTarget = true;
+          // A failed check can still repair prerequisites without ending target discovery.
+          await prepareTarget();
+          signal?.throwIfAborted();
+          continue;
+        }
         const elapsed = Date.now() - startTime;
         const remaining = timeout - elapsed;
 

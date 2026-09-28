@@ -690,13 +690,9 @@ export const InteractiveStep = forwardRef<
           setPostVerifyError('Connect a live Grafana tab to run this step.');
           return false;
         }
-        if (phase === 'do' && completeEarly) {
-          persistCompletion();
-          onStepComplete?.(stepId);
-          onComplete?.();
-        }
+        const completeOnDispatch = phase === 'do' && completeEarly;
         const runId = crypto.randomUUID();
-        const completion = controllerChannel.awaitStepComplete(stepId, runId, 30_000);
+        const completion = completeOnDispatch ? undefined : controllerChannel.awaitStepResult(stepId, runId, 30_000);
         controllerChannel.post({
           kind: 'step-command',
           phase,
@@ -715,8 +711,19 @@ export const InteractiveStep = forwardRef<
             refTarget,
           },
         });
-        if (!(await completion)) {
-          setPostVerifyError('The live tab did not confirm completion. Refresh both tabs and try again.');
+        if (completeOnDispatch) {
+          persistCompletion();
+          onStepComplete?.(stepId);
+          onComplete?.();
+          return true;
+        }
+        const result = await completion;
+        if (result !== 'completed') {
+          setPostVerifyError(
+            result === 'timeout'
+              ? 'The live tab did not confirm completion. Refresh both tabs and try again.'
+              : 'The action did not complete in the live tab. Restore the required state and try again.'
+          );
           return false;
         }
         if (phase === 'do' && postVerify?.trim()) {

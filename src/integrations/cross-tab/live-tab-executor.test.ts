@@ -394,6 +394,74 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
+  it('starts successive guided runs on the same handler at step zero', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    const internalActions = [
+      { targetAction: 'highlight', refTarget: '#a' },
+      { targetAction: 'button', refTarget: '#b' },
+    ];
+    const executeGuidedStep = (GuidedHandler as jest.Mock).mock.results[0]?.value.executeGuidedStep as jest.Mock;
+
+    for (const runId of ['run-A', 'run-B']) {
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'step-command',
+        phase: 'do',
+        stepId: 'guided-restart',
+        runId,
+        action: { targetAction: 'guided', refTarget: '', internalActions },
+      });
+      await waitFor(() =>
+        expect(transport.postedMessages).toContainEqual(
+          expect.objectContaining({ kind: 'step-complete', stepId: 'guided-restart', runId, ok: true })
+        )
+      );
+    }
+
+    expect(GuidedHandler).toHaveBeenCalledTimes(1);
+    expect(executeGuidedStep).toHaveBeenCalledTimes(4);
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(
+      1,
+      internalActions[0],
+      0,
+      2,
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(
+      2,
+      internalActions[1],
+      1,
+      2,
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(
+      3,
+      internalActions[0],
+      0,
+      2,
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(
+      4,
+      internalActions[1],
+      1,
+      2,
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    uninstall();
+  });
+
   // The cross-tab receive gate keeps its own hand-written guided verb list,
   // deliberately not derived from GUIDED_ACTION_TYPES: deriving a wire contract
   // from a local action union lets a refactor widen what one tab accepts from

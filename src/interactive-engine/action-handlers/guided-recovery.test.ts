@@ -84,20 +84,20 @@ it('does not let a second start clobber the first run', async () => {
   expect(await first).toBe('completed');
 });
 
-it('waits for a late target before checking its requirements', async () => {
+it('keeps waiting for a late target when prerequisite checks cannot fix it', async () => {
   jest.useFakeTimers();
   const { handler, navigation } = setup();
   const revalidate = jest.fn(async () => document.querySelector('#target') !== null);
   const pending = handler.executeGuidedStep(action, 0, 1, 10000, undefined, { revalidate });
   await jest.advanceTimersByTimeAsync(2000);
-  expect(revalidate).not.toHaveBeenCalled();
+  expect(revalidate).toHaveBeenCalledTimes(1);
   document.body.innerHTML = '<button id="target">Continue</button>';
   navigation.highlightWithComment.mockImplementation(async () => {
     document.querySelector<HTMLElement>('#target')!.click();
   });
   await jest.advanceTimersByTimeAsync(2000);
   expect(await pending).toBe('completed');
-  expect(revalidate).toHaveBeenCalledTimes(1);
+  expect(revalidate).toHaveBeenCalledTimes(2);
 });
 
 it('expands a collapsed navigation parent before checking the substep', async () => {
@@ -147,4 +147,35 @@ it('gives each target loss a fresh recovery window within the step deadline', as
   expect(navigation.highlightWithComment).toHaveBeenCalledTimes(3);
   document.querySelector<HTMLElement>('#target')!.click();
   expect(await pending).toBe('completed');
+});
+
+it.each([false, true])('repairs requirements that create a missing target (skippable: %s)', async (isSkippable) => {
+  const { handler, navigation } = setup();
+  const revalidate = jest.fn(async () => {
+    if (!document.querySelector('#target')) {
+      document.body.innerHTML = '<button id="target">Revealed by requirement fix</button>';
+    }
+    return true;
+  });
+  navigation.highlightWithComment.mockImplementation(async () =>
+    document.querySelector<HTMLElement>('#target')!.click()
+  );
+  expect(await handler.executeGuidedStep({ ...action, isSkippable }, 0, 1, 2000, undefined, { revalidate })).toBe(
+    'completed'
+  );
+  expect(revalidate).toHaveBeenCalledTimes(2);
+});
+
+it('does not highlight a repaired target if cancellation happens during its prerequisite fix', async () => {
+  const { handler, navigation } = setup();
+  const controller = new AbortController();
+  const revalidate = jest.fn(async () => {
+    controller.abort();
+    document.body.innerHTML = '<button id="target">Late repair</button>';
+    return true;
+  });
+  expect(
+    await handler.executeGuidedStep(action, 0, 1, 2000, undefined, { signal: controller.signal, revalidate })
+  ).toBe('cancelled');
+  expect(navigation.highlightWithComment).not.toHaveBeenCalled();
 });
