@@ -23,9 +23,11 @@ import { logger } from '../../../lib/logging';
  */
 const SOURCE_EXCLUSION_REASONS = {
   markdown: null,
+  divider: null,
   html: null,
   image: null,
   video: null,
+  callout: null,
   interactive: null,
   multistep: null,
   guided: null,
@@ -57,9 +59,11 @@ const SOURCE_EXCLUSION_REASONS = {
  */
 const TARGET_EXCLUSION_REASONS = {
   markdown: null,
+  divider: 'a divider has no editable fields to receive converted content',
   html: null,
   image: null,
   video: null,
+  callout: null,
   interactive: null,
   multistep: null,
   guided: null,
@@ -103,6 +107,7 @@ const COMMON_FIELDS = ['requirements', 'objectives', 'skippable'] as const;
  */
 const CONTENT_FIELDS: Record<BlockType, string | null> = {
   markdown: 'content',
+  divider: null,
   html: 'content',
   interactive: 'content',
   multistep: 'content',
@@ -113,6 +118,7 @@ const CONTENT_FIELDS: Record<BlockType, string | null> = {
   'terminal-connect': 'content',
   challenge: 'brief',
   'code-block': 'content',
+  callout: 'content',
   image: null,
   video: null,
   section: null,
@@ -140,6 +146,7 @@ const REQUIRED_DEFAULTS: Record<BlockType, Record<string, unknown> | null> = {
   input: { inputType: 'text', variableName: 'userInput' },
   image: { src: PLACEHOLDER_URL, alt: '' },
   video: { src: PLACEHOLDER_URL },
+  callout: { title: 'Note' },
   interactive: { action: 'noop' },
   multistep: { content: 'Complete these steps', steps: [{ action: 'noop' }] },
   guided: { content: 'Follow these steps', steps: [{ action: 'noop' }] },
@@ -152,6 +159,7 @@ const REQUIRED_DEFAULTS: Record<BlockType, Record<string, unknown> | null> = {
   },
   'code-block': { reftarget: "div[data-testid='data-testid Code editor container']", code: '// Your code here' },
   markdown: null,
+  divider: null,
   html: null,
   section: null,
   conditional: null,
@@ -160,6 +168,29 @@ const REQUIRED_DEFAULTS: Record<BlockType, Record<string, unknown> | null> = {
   'grot-guide': null,
   'snippet-ref': null,
 };
+
+const CONTENT_REQUIRED_TARGETS = new Set<BlockType>([
+  'markdown',
+  'html',
+  'callout',
+  'interactive',
+  'quiz',
+  'input',
+  'terminal',
+]);
+
+function canProvideTargetContent(sourceType: BlockType, targetType: BlockType): boolean {
+  if (!CONTENT_REQUIRED_TARGETS.has(targetType) || CONTENT_FIELDS[sourceType]) {
+    return true;
+  }
+
+  const targetContentField = CONTENT_FIELDS[targetType];
+  if (!targetContentField) {
+    return true;
+  }
+
+  return REQUIRED_DEFAULTS[targetType]?.[targetContentField] !== undefined;
+}
 
 // ============ Public API ============
 
@@ -182,7 +213,9 @@ export function getAvailableConversions(sourceType: BlockType): BlockType[] {
     return [];
   }
 
-  return CONVERTIBLE_TYPES.filter((t) => t !== sourceType);
+  return CONVERTIBLE_TYPES.filter(
+    (targetType) => targetType !== sourceType && canProvideTargetContent(sourceType, targetType)
+  );
 }
 
 /**

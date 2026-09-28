@@ -14,10 +14,10 @@ import { guideLaunchStore } from '../../global-state/guide-launch';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
-import { REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
+import { REQUEST_FLOATING_GUIDE_EVENT, REQUEST_FULLSCREEN_GUIDE_EVENT } from '../../lib/event-names';
 import { locationService } from '@grafana/runtime';
 import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
-import type { RawContent } from '../../types/content.types';
+import type { PreparedRawContent } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
 
@@ -103,8 +103,9 @@ jest.mock('../../lib/storage/extension-sidebar', () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-const rawContent: RawContent = {
+const rawContent: PreparedRawContent = {
   content: '{"id":"g","title":"g","blocks":[]}',
+  countingSource: { kind: 'pre-inlining', guideJson: '{"id":"g","title":"g","blocks":[]}' },
   metadata: { title: 'g' },
   type: 'interactive',
   url: 'bundled:first-dashboard',
@@ -158,6 +159,29 @@ describe('HomePanelRenderer', () => {
       expect(panelModeManager.capturePriorPath).toHaveBeenCalled();
       expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('fullscreen');
       expect(locationService.push).toHaveBeenCalledWith(expect.stringContaining('doc=bundled'));
+    });
+
+    it('signals an already-mounted full-screen surface to consume, once per launch, after staging', () => {
+      // @grafana/scenes caches the full-screen SceneAppPage by pathname only
+      // (it ignores the ?doc= query string), so the full-screen surface's
+      // mount effect — which consumes the pending guide — fires once per
+      // session, not once per launch. Without this signal, every launch
+      // after the first stages a pending guide that nobody is listening
+      // for anymore (mirrors the floating case above, which has the same
+      // shape for a different reason: no mode-change event on a same-mode
+      // relaunch).
+      const stagedWhenHeard: number[] = [];
+      const listener = () => {
+        stagedWhenHeard.push((panelModeManager.setPendingGuide as jest.Mock).mock.calls.length);
+      };
+      document.addEventListener(REQUEST_FULLSCREEN_GUIDE_EVENT, listener);
+
+      render(<HomePanelRenderer />);
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: false }));
+      capturedOnOpenGuide!(preparedLaunch({ requiresGrafanaUi: false }));
+
+      document.removeEventListener(REQUEST_FULLSCREEN_GUIDE_EVENT, listener);
+      expect(stagedWhenHeard).toEqual([1, 2]);
     });
   });
 

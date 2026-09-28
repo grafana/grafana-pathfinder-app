@@ -11,8 +11,8 @@ export interface ActiveOutlineItem {
 
 export function useActiveOutlineItem(
   items: OutlineItem[],
-  containerRef: React.RefObject<HTMLDivElement>,
-  scrollRootRef: React.RefObject<HTMLDivElement>
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  scrollRootRef: React.RefObject<HTMLDivElement | null>
 ): ActiveOutlineItem {
   const [activeId, setActiveId] = useState<string | null>(null);
   const suppressedUntilRef = useRef(0);

@@ -1,10 +1,10 @@
 # AI auto-heal (`ai-fix`)
 
-AI auto-heal adds an opt-in "Fix this ✨" affordance to a **failing interactive step**. When a step's selector can't be matched and no deterministic recovery applies, the user can ask the Grafana Assistant to propose a patch to the guide's JSON; the patch is validated against the live DOM before it is applied.
+AI auto-heal adds a "Fix this ✨" affordance to a **failing interactive step**. When a step's selector can't be matched and no deterministic recovery applies, the user can ask the Grafana Assistant to propose a patch to the guide's JSON; the patch is validated against the live DOM before it is applied.
 
 This is distinct from the `<assistant>`-tag feature (see [`ASSISTANT_INTEGRATION.md`](ASSISTANT_INTEGRATION.md)), which makes _authored content_ customizable. AI auto-heal _repairs a broken step at runtime_.
 
-The whole flow is **dark by default** — see [Enablement](#enablement).
+The whole flow requires the Grafana Assistant and can be switched off per tenant — see [Enablement](#enablement).
 
 ## Table of contents
 
@@ -23,9 +23,11 @@ The feature is gated by **two conditions that must both hold**, expressed by `us
 1. **Assistant available** — `useIsAssistantAvailable()` (the Grafana Assistant is reachable in this instance).
 2. **Admin opt-in** — the `enableAiAutoHeal` plugin setting is on.
 
-`DEFAULT_ENABLE_AI_AUTO_HEAL = false` (`src/constants.ts`), flowed through `getConfigWithDefaults`, so the AI write path is **off until an admin explicitly opts in per tenant**. The toggle lives in the plugin config UI under "AI auto-heal" (`src/components/AppConfig/InteractiveFeatures.tsx`, testId `config-interactive-enable-ai-auto-heal`): _"Enable AI-powered 'Fix this' on failing steps."_ When on, the UI shows a "Write path — opt-in" warning that accepted suggestions mutate the in-memory guide JSON for the user's session.
+`DEFAULT_ENABLE_AI_AUTO_HEAL = true` (`src/constants.ts`), flowed through `getConfigWithDefaults`, so the second condition holds unless an admin turns it off. **Assistant availability is the load-bearing gate**: an instance without the Grafana Assistant never reaches the AI write path regardless of the setting, so the default-on toggle changes nothing for those tenants. The toggle lives in the plugin config UI under "AI auto-heal" (`src/components/AppConfig/InteractiveFeatures.tsx`, testId `config-interactive-enable-ai-auto-heal`): _"Enable AI-powered 'Fix this' on failing steps."_ When on, the UI notes that accepted suggestions mutate the in-memory guide JSON for the user's session.
 
-Defense in depth: the buttons read `useAiFixEnabled()` (render nothing when off), **and** the orchestrator re-checks both gates inside its request handler, so a stray dispatched event is dropped even if a button were shown in error. No PR in this feature flips the default — activation is always an opt-in admin toggle.
+Defense in depth: the buttons read `useAiFixEnabled()` (render nothing when off), **and** the orchestrator re-checks both gates inside its request handler, so a stray dispatched event is dropped even if a button were shown in error. The admin toggle is a **kill switch, not a rollout gate** — flipping it off must fully disable the feature for a tenant, so both gate sites keep reading the same setting.
+
+Only `InteractiveFeatures.tsx` (the tab that owns this toggle) writes `enableAiAutoHeal` on save. `ConfigurationForm.tsx` and `TermsAndConditions.tsx` pass the raw, possibly-absent value through unchanged rather than resolving it via `getConfigWithDefaults` — materializing it there would silently freeze a tenant's config to whatever the default happened to be at the time of an unrelated save, defeating any future default change (see `settings-preservation.test.ts`).
 
 ## End-to-end flow
 
@@ -85,20 +87,21 @@ There is no token/similarity heuristic — a correct fix often shares no tokens 
 
 ## Module map
 
-| File                                                            | Role                                                            |
-| --------------------------------------------------------------- | --------------------------------------------------------------- |
-| `integrations/assistant-integration/ai-fix-event.ts`            | Event name + `AiFixRequestDetail` contract                      |
-| `integrations/assistant-integration/use-ai-fix-enabled.ts`      | `useAiFixEnabled()` dual gate                                   |
-| `integrations/assistant-integration/ai-fix-patch.schema.ts`     | Patch wire-format schema + `SafeSelectorSchema`                 |
-| `integrations/assistant-integration/useAiFixGeneration.hook.ts` | Assistant call, prompt building, sentinel + schema parsing      |
-| `integrations/assistant-integration/ai-fix-dom-context.ts`      | `collectDomContext` + DOM candidate scoring helpers             |
-| `integrations/assistant-integration/ai-fix-step-content.ts`     | `extractStepContent` (failing step's instruction text)          |
-| `integrations/assistant-integration/ai-fix-step-id.ts`          | `materializeStepIds` / `materializeStepIdsInJson` canonical ids |
-| `integrations/assistant-integration/ai-fix-confidence.ts`       | `evaluatePatchConfidence` live-DOM gate                         |
-| `integrations/assistant-integration/apply-ai-fix-patch.ts`      | `applyPatchToGuide` (validate → mutate → re-validate)           |
-| `components/docs-panel/AiFixOrchestrator.tsx`                   | Listener; orchestrates generate → gate → apply; lazy-mounted    |
-| `components/interactive-tutorial/ai-fix-button.tsx`             | Shared `<AiFixButton>` + `dispatchAiFixRequest`                 |
-| `requirements-manager/step-checker.hook.ts`                     | `requiresDomElement` signal + `refTarget` recheck               |
+| File                                                            | Role                                                                                                      |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `integrations/assistant-integration/ai-fix-event.ts`            | Event name + `AiFixRequestDetail` contract                                                                |
+| `integrations/assistant-integration/use-ai-fix-enabled.ts`      | `useAiFixEnabled()` dual gate                                                                             |
+| `integrations/assistant-integration/ai-fix-patch.schema.ts`     | Patch wire-format schema + `SafeSelectorSchema`                                                           |
+| `integrations/assistant-integration/useAiFixGeneration.hook.ts` | Assistant call, prompt building, sentinel + schema parsing                                                |
+| `integrations/assistant-integration/ai-fix-dom-context.ts`      | `collectDomContext` + DOM candidate scoring helpers                                                       |
+| `integrations/assistant-integration/ai-fix-step-content.ts`     | `extractStepContent` (failing step's instruction text)                                                    |
+| `integrations/assistant-integration/ai-fix-step-id.ts`          | `materializeStepIds` / `materializeStepIdsInJson` — the walk that writes canonical ids onto a guide clone |
+| `global-state/guide-step-id-resolver.ts`                        | `resolveStepIdForBlock` — the canonical id itself, shared with the completion counter                     |
+| `integrations/assistant-integration/ai-fix-confidence.ts`       | `evaluatePatchConfidence` live-DOM gate                                                                   |
+| `integrations/assistant-integration/apply-ai-fix-patch.ts`      | `applyPatchToGuide` (validate → mutate → re-validate)                                                     |
+| `components/docs-panel/AiFixOrchestrator.tsx`                   | Listener; orchestrates generate → gate → apply; lazy-mounted                                              |
+| `components/interactive-tutorial/ai-fix-button.tsx`             | Shared `<AiFixButton>` + `dispatchAiFixRequest`                                                           |
+| `requirements-manager/step-checker.hook.ts`                     | `requiresDomElement` signal + `refTarget` recheck                                                         |
 
 ## Testing
 

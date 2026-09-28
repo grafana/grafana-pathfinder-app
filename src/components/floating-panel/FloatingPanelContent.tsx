@@ -1,6 +1,8 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
+import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
+import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -13,7 +15,7 @@ import {
 } from '../docs-panel/components';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
 import { useLinkClickHandler } from '../docs-panel/link-handler.hook';
-import type { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
+import type { DocsPanelModelOperations } from '../docs-panel/types';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 
 interface FloatingPanelContentProps {
@@ -48,7 +50,7 @@ interface FloatingPanelContentProps {
    * embedded links, etc.). Without this, content links and the
    * "Ready to Begin" CTA on the cover page have no handler.
    */
-  model: CombinedLearningJourneyPanel;
+  model: DocsPanelModelOperations;
 }
 
 /**
@@ -127,8 +129,6 @@ export function FloatingPanelContent({
               panel={model}
               activeTab={activeTab}
               surface={surface}
-              contentRoot={contentRef}
-              actionButtonClassName={floatingStyles.secondaryActionButton}
               hasInteractiveProgress={!!hasInteractiveProgress}
               progressKey={progressKey ?? null}
               onResetGuide={onResetGuide!}
@@ -145,12 +145,31 @@ export function FloatingPanelContent({
             />
           </div>
         )}
+        {/* Treatment arm of the interactive-learning banner experiment; renders null
+            otherwise. Covers floating and full-screen, neither of which has a
+            context page to carry it. */}
+        <InteractiveLearningBanner placement="guide" />
+
         <ContentRenderer
           key={content.url}
           content={content}
           containerRef={contentRef}
           className={contentClassName}
-          onGuideComplete={onGuideComplete}
+          onGuideComplete={() => {
+            // Emit the completion fact beneath the surface: floating and
+            // full-screen both render through here, so neither manager needs to
+            // wire emission and neither can silently drop it.
+            recordGuideCompletionForSurface({
+              baseUrl: activeTab?.baseUrl,
+              contentUrl: content.url,
+              currentUrl: activeTab?.currentUrl,
+              contentType: content.type,
+              metadata: content.metadata,
+              guideTitle: activeTab?.title,
+            });
+            onGuideComplete?.();
+          }}
+          onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}
         />
       </div>
     </AlignmentPendingContext.Provider>

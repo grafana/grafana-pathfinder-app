@@ -38,7 +38,7 @@ If future scale or UX requirements demonstrate a need for server-side sessions (
 
 ## Artifact shape
 
-The canonical artifact is package-shaped, mirroring the CLI's two-file package model. Even though the MVP App Platform target only persists content-shaped fields, the manifest is generated correctly into the artifact and is preserved end-to-end by the authoring tools — only the publish step strips it. See [Grafana App Platform publish handoff — Fields dropped at publish](./APP-PLATFORM-PUBLISH-HANDOFF.md#fields-dropped-at-publish-mvp).
+The canonical artifact is package-shaped, mirroring the CLI's two-file package model. The manifest is generated correctly into the artifact, preserved end-to-end by the authoring tools, and projected onto the App Platform CRD at `spec.manifest` by the publish step. See [Grafana App Platform publish handoff — Manifest fields at publish](./APP-PLATFORM-PUBLISH-HANDOFF.md#manifest-fields-at-publish).
 
 ```json
 {
@@ -94,7 +94,7 @@ Finalization output must include:
 
 - Current artifact summary
 - Validation result
-- App Platform `InteractiveGuide` resource payload (content-shaped; manifest data is artifact-local and stripped on the way to the CRD for the MVP)
+- App Platform `InteractiveGuide` resource payload (content-shaped, plus the artifact's manifest projected onto `spec.manifest`)
 - POST/PUT endpoint templates
 - Draft/published status recommendation
 - Viewer deep link fields

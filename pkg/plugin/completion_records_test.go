@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -68,14 +69,24 @@ func rec(userID, guideSource, guideID, title, category, pathID, source, complete
 	}
 }
 
-// testGrafanaConfig is the healthy config: aggregation toggles on, app URL set.
-// Enables both the legacy `.com` toggle (completion-records proxy) and the GAP
-// `.app` toggle (custom-guide catalogue proxy) so this shared helper models a
-// transition-state stack aggregating both groups.
+// testGrafanaConfig is the healthy config shared by the completion and
+// custom-guide proxy tests: the `.app` aggregation toggle on and an app URL set.
+//
+// It enables ONLY the `.app` toggle, deliberately. A real stack reports the
+// legacy `.com` toggle true as well, but enabling both here would make every
+// gate in the suite tautological — a regression that moved the gate back onto
+// `.com` would find that toggle enabled and stay green. Keeping the fixture to
+// the one toggle the routes actually key on is what gives these tests the
+// ability to fail. The both-toggles-true reality is covered where it belongs, in
+// TestCompletionRoute_GatesOnAppToggleOnly.
+//
+// The app URL points at the test JWKS endpoint (app_platform_identity_test.go)
+// because the identity gate resolves the stack's signing keys from it. Upstream
+// LISTs go to injected listers, so nothing else dials this origin.
 func testGrafanaConfig() map[string]string {
 	return map[string]string{
-		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
-		sdkconfig.AppURL:               "http://grafana.example",
+		featuretoggles.EnabledFeatures: completionRecordsAggregationToggle,
+		sdkconfig.AppURL:               testSigningKeysURL(),
 	}
 }
 
@@ -86,7 +97,7 @@ func completionRequestWithConfig(t *testing.T, target, sub string, cfg map[strin
 	t.Helper()
 	r, _ := http.NewRequest(http.MethodGet, target, nil)
 	if sub != "" {
-		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeIDToken(t, sub, timeNow().Add(time.Hour).Unix()))
+		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeValidIDToken(t, sub))
 	}
 	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: testNamespace})
 	ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
@@ -360,6 +371,112 @@ func TestCache_Singleflight(t *testing.T) {
 	}
 }
 
+// A write invalidates the read cache, but the superseded index is kept as the
+// stale-serve fallback. Both halves matter: the next read must still refresh
+// (or a just-written record would not surface until the TTL), and if that
+// refresh fails the reader must still get the slightly-stale index rather than
+// a cold error.
+func TestCache_InvalidationKeepsStaleServeFallback(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	var calls atomic.Int32
+	l := &fakeLister{respond: func(_ string) (*completionRecordPage, error) {
+		if calls.Add(1) == 1 {
+			return &completionRecordPage{Records: []completionRecordSpec{
+				rec("user:1", "bundled", "old", "Old", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100),
+			}}, nil
+		}
+		return nil, errors.New("upstream blip")
+	}}
+	resetCompletionRecordsCache()
+	t.Cleanup(resetCompletionRecordsCache)
+
+	warm, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	if err != nil {
+		t.Fatalf("warm read: %v", err)
+	}
+	if got := warm.byUser["user:1"][0].GuideID; got != "old" {
+		t.Fatalf("warm guide = %q, want old", got)
+	}
+
+	invalidateCompletionIndex(testNamespace)
+
+	// Well inside the TTL: without the invalidation this would be a cache hit,
+	// so a second LIST proves the write still forces a refresh.
+	idx, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	if calls.Load() != 2 {
+		t.Fatalf("LIST calls = %d, want 2 — invalidation must force a refresh", calls.Load())
+	}
+	// The forced refresh failed, so the kept entry is served instead of a cold
+	// error. Deleting the entry on invalidation would make this a nil index.
+	if idx == nil {
+		t.Fatalf("post-write refresh failure returned no index, want the stale one (err: %v)", err)
+	}
+	if got := idx.byUser["user:1"][0].GuideID; got != "old" {
+		t.Fatalf("stale-served guide = %q, want old", got)
+	}
+}
+
+func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var calls atomic.Int32
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		if calls.Add(1) == 1 {
+			close(firstStarted)
+			<-releaseFirst
+			return &completionRecordPage{Records: []completionRecordSpec{
+				rec("user:1", "bundled", "old", "Old", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100),
+			}}, nil
+		}
+		return &completionRecordPage{Records: []completionRecordSpec{
+			rec("user:1", "bundled", "new", "New", "interactive", "", "objectives", "2026-07-10T01:00:00Z", 100),
+		}}, nil
+	}}
+	resetCompletionRecordsCache()
+	t.Cleanup(resetCompletionRecordsCache)
+
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		_, _ = getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	}()
+	<-firstStarted
+
+	invalidateCompletionIndex(testNamespace)
+	fresh, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	if err != nil {
+		t.Fatalf("post-invalidation refresh: %v", err)
+	}
+	if got := fresh.byUser["user:1"][0].GuideID; got != "new" {
+		t.Fatalf("post-invalidation guide = %q, want new", got)
+	}
+
+	close(releaseFirst)
+	<-firstDone
+
+	cached, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	if err != nil {
+		t.Fatalf("cached read: %v", err)
+	}
+	if got := cached.byUser["user:1"][0].GuideID; got != "new" {
+		t.Fatalf("stale in-flight refresh replaced the cache with %q", got)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("LIST calls = %d, want 2", got)
+	}
+
+	// The fenced refresh still lands in the §9 vital signs: every miss must be
+	// answered by a refresh or a failure, or the per-namespace counters an operator
+	// reads stop reconciling exactly when the write path is busiest.
+	completionCacheMu.Lock()
+	stats := *completionStatsFor(testNamespace)
+	completionCacheMu.Unlock()
+	if stats.refreshes+stats.refreshFailures != stats.misses {
+		t.Errorf("stats do not reconcile (a fenced refresh went uncounted): %+v", stats)
+	}
+}
+
 func TestCache_ForcedRefreshBypassAndRateLimit(t *testing.T) {
 	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := singlePageLister(rec("user:1", "bundled", "a", "A", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100))
@@ -407,6 +524,42 @@ func TestErrors_ColdTransientReturns503WithRetryAfter(t *testing.T) {
 	}
 	if rr.Header().Get("Retry-After") == "" {
 		t.Errorf("expected Retry-After header on cold 503")
+	}
+}
+
+// An unfollowed 3xx on the LIST path is classified TRANSIENT, so the read path
+// serves §7's 503 hiccup rather than the terminal capability=false envelope. The
+// 2xx/3xx clause in isTransientUpstreamStatus exists to stop a redirect being
+// acknowledged as a durable create, but it also decides this; a redirect is a
+// misrouted stack, which is recoverable, not a standing "never works here".
+func TestErrors_UnexpectedRedirectOnListIsTransient(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	for _, status := range []int{
+		http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect,
+		http.StatusAccepted,
+	} {
+		t.Run(fmt.Sprintf("%d", status), func(t *testing.T) {
+			resetCompletionRecordsCache()
+			t.Cleanup(resetCompletionRecordsCache)
+			withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) {
+				return nil, &appPlatformUpstreamError{status: status, msg: "unfollowed redirect"}
+			}})
+
+			rr, body := doMyCompletions(t, "/completion-records/my", "user:1")
+			if rr.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d, want 503 — a %d LIST must be transient, not terminal (body: %s)",
+					rr.Code, status, rr.Body.String())
+			}
+			if rr.Header().Get("Retry-After") == "" {
+				t.Errorf("expected Retry-After on the transient 503")
+			}
+			if body.Capability.Reason != "" {
+				t.Errorf("capability reason = %q, want empty — a transient blip must not report a standing condition", body.Capability.Reason)
+			}
+		})
 	}
 }
 
@@ -681,7 +834,7 @@ func TestMyCompletions_ToggleOffStructurallyUnavailable(t *testing.T) {
 	l := singlePageLister()
 	withLister(t, l)
 
-	cfg := map[string]string{sdkconfig.AppURL: "http://grafana.example"} // toggle absent
+	cfg := map[string]string{sdkconfig.AppURL: testSigningKeysURL()} // toggle absent
 	rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -694,21 +847,37 @@ func TestMyCompletions_ToggleOffStructurallyUnavailable(t *testing.T) {
 	}
 }
 
-func TestMyCompletions_NoAppURLStructurallyUnavailable(t *testing.T) {
+// The identity gate resolves the stack's signing keys from the app URL, so with
+// no app URL the caller cannot be verified and the request fails closed there —
+// before the config branch that would otherwise report backend-unavailable.
+func TestMyCompletions_NoAppURLFailsIdentityClosed(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := singlePageLister()
 	withLister(t, l)
 
-	cfg := map[string]string{featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle} // no app URL
+	cfg := map[string]string{featuretoggles.EnabledFeatures: completionRecordsAggregationToggle} // no app URL
 	rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
-	if body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
-		t.Fatalf("expected capability=false %q, got %+v", reasonBackendUnavailable, body.Capability)
+	if body.Capability.Available || body.Capability.Reason != reasonIdentityUnverifiable {
+		t.Fatalf("expected capability=false %q, got %+v", reasonIdentityUnverifiable, body.Capability)
 	}
 	if l.callCount() != 0 {
 		t.Fatalf("structural unavailability must not hit upstream, got %d calls", l.callCount())
+	}
+}
+
+// resolveCompletionBackend keeps its own app-URL guard so it cannot build an
+// upstream URL against an empty base, independent of the gate that runs above
+// it. Exercised directly because the identity gate now subsumes it end-to-end.
+func TestResolveCompletionBackend_NoAppURL(t *testing.T) {
+	r := completionRequestWithConfig(t, "/completion-records/my", "user:1",
+		map[string]string{featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle})
+
+	_, _, available, reason := newTestApp(t).resolveCompletionBackend(r)
+	if available || reason != reasonBackendUnavailable {
+		t.Errorf("available = %v, reason = %q; want false / %q", available, reason, reasonBackendUnavailable)
 	}
 }
 
@@ -770,6 +939,33 @@ func TestCapability_IdentityUnavailable(t *testing.T) {
 	}
 	if cap.Reason != reasonIdentityUnavailable {
 		t.Errorf("reason = %q, want %q", cap.Reason, reasonIdentityUnavailable)
+	}
+}
+
+// The probe shares the identity gate with the data route, so a stack that can
+// never verify a caller must read the same way on both. Asserted end to end
+// here, not just on the status enum, because this route builds its own envelope.
+func TestCapability_IdentityUnverifiableWithNoAppURL(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := singlePageLister()
+	withLister(t, l)
+
+	cfg := map[string]string{featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle} // no app URL
+	rr := httptest.NewRecorder()
+	r := completionRequestWithConfig(t, "/completion-records/capability", "user:1", cfg)
+	newTestApp(t).handleCompletionCapability(rr, r)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var cap completionCapability
+	if err := json.Unmarshal(rr.Body.Bytes(), &cap); err != nil {
+		t.Fatalf("decode: %v (raw %s)", err, rr.Body.String())
+	}
+	if cap.Available || cap.Reason != reasonIdentityUnverifiable {
+		t.Fatalf("expected capability=false %q, got %+v", reasonIdentityUnverifiable, cap)
+	}
+	if l.callCount() != 0 {
+		t.Fatalf("unverifiable identity must not hit upstream, got %d calls", l.callCount())
 	}
 }
 

@@ -1,3 +1,4 @@
+import { KioskCatalogSchema } from '../../types/kiosk-page.schema';
 /**
  * Schema Command
  *
@@ -5,9 +6,11 @@
  * Uses Zod v4's native z.toJSONSchema() for conversion.
  */
 
-import { Command } from 'commander';
 import { z } from 'zod';
 
+import { REQUIREMENT_TOKEN_CATALOGUE } from '../../types/requirements.types';
+import { carriesRequirementTokens, defineCommand } from '../contracts';
+import type { CommandOutcome } from '../utils/output';
 import { JsonGuideSchemaStrict, JsonBlockSchema, CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
 import {
   ContentJsonSchema,
@@ -40,6 +43,7 @@ interface SchemaRegistryEntry {
  * Keys are the public names used on the CLI.
  */
 export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
+  kiosk: { schema: KioskCatalogSchema, description: 'Structured kiosk catalog', schemaVersion: '1' },
   guide: {
     schema: JsonGuideSchemaStrict,
     description: 'Root JSON guide schema (strict, no extra fields)',
@@ -101,6 +105,33 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
   },
 };
 
+/**
+ * Does this JSON Schema declare a property that takes requirement tokens?
+ *
+ * Walked rather than declared per registry entry: a schema carries the
+ * vocabulary because it has somewhere to put it, and `guide` / `block` /
+ * `content` gaining or losing a `requirements` field should not need a second
+ * edit here. `RequirementTokenSchema` is a refined `z.string()`, so the tokens
+ * themselves are invisible in the converted schema — a consumer that only reads
+ * the export has no other way to learn them.
+ */
+function declaresRequirementTokens(node: unknown): boolean {
+  if (!node || typeof node !== 'object') {
+    return false;
+  }
+  if (Array.isArray(node)) {
+    return node.some(declaresRequirementTokens);
+  }
+  const obj = node as Record<string, unknown>;
+  const properties = obj['properties'];
+  if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
+    if (Object.keys(properties).some(carriesRequirementTokens)) {
+      return true;
+    }
+  }
+  return Object.values(obj).some(declaresRequirementTokens);
+}
+
 function stripAdditionalPropertiesFalse(node: unknown): void {
   if (!node || typeof node !== 'object' || Array.isArray(node)) {
     return;
@@ -134,6 +165,10 @@ function convertSchema(entry: SchemaRegistryEntry, includeVersion: boolean): Rec
     jsonSchema['x-refinements'] = entry.refinements;
   }
 
+  if (declaresRequirementTokens(jsonSchema)) {
+    jsonSchema['x-requirement-tokens'] = REQUIREMENT_TOKEN_CATALOGUE;
+  }
+
   if (includeVersion) {
     jsonSchema['x-schema-version'] = entry.schemaVersion ?? CURRENT_SCHEMA_VERSION;
   }
@@ -164,48 +199,87 @@ export function exportAllSchemas(includeVersion: boolean): Record<string, Record
   return result;
 }
 
-interface SchemaOptions {
-  list?: boolean;
-  all?: boolean;
-  includeVersion?: boolean;
+const SCHEMA_NAMES = Object.keys(SCHEMA_REGISTRY);
+
+export const SchemaCommand = z.object({
+  name: z.string().optional().describe('Schema name to export').meta({ role: 'addressing' }),
+  list: z.boolean().optional().describe('List available schema names with descriptions').meta({ role: 'control' }),
+  all: z
+    .boolean()
+    .optional()
+    .describe('Export all schemas as a single JSON object keyed by name')
+    .meta({ role: 'control' }),
+  includeVersion: z
+    .boolean()
+    .optional()
+    .describe('Include schema version in output metadata')
+    .meta({ role: 'control' }),
+});
+
+export type SchemaInput = z.output<typeof SchemaCommand>;
+
+/**
+ * Export one schema, all of them, or the index.
+ *
+ * `artifact` is what the CLI writes to stdout, `data` the envelope an agent reads.
+ * They differ deliberately: a redirected file should hold the schema and nothing else,
+ * while an agent benefits from being told which schema it got and what else exists.
+ * Deciding both here is what stopped the MCP tool re-deciding the same three cases.
+ */
+export function runSchema(input: SchemaInput): CommandOutcome {
+  const includeVersion = input.includeVersion === true;
+
+  if (input.list === true) {
+    const schemas = listSchemas();
+    return {
+      status: 'ok',
+      summary: `${schemas.length} schemas available`,
+      artifact: schemas,
+      data: { schemas },
+    };
+  }
+
+  if (input.all === true) {
+    const schemas = exportAllSchemas(includeVersion);
+    return {
+      status: 'ok',
+      summary: `Exported ${Object.keys(schemas).length} schemas`,
+      artifact: schemas,
+      data: { schemas, available: SCHEMA_NAMES },
+    };
+  }
+
+  if (input.name === undefined) {
+    return {
+      status: 'error',
+      code: 'MISSING_NAME',
+      // Named, not spelled as flags: one runner serves both entrypoints, and `--list`
+      // would be the wrong vocabulary for an agent (§2).
+      message: `Please specify a schema name, or set "list" or "all". Available: ${SCHEMA_NAMES.join(', ')}.`,
+    };
+  }
+
+  const schema = exportSchema(input.name, includeVersion);
+  if (!schema) {
+    return {
+      status: 'error',
+      code: 'UNKNOWN_SCHEMA',
+      message: `Unknown schema "${input.name}". Available: ${SCHEMA_NAMES.join(', ')}.`,
+    };
+  }
+
+  return {
+    status: 'ok',
+    summary: `Exported ${input.name} schema`,
+    artifact: schema,
+    data: { name: input.name, schema },
+  };
 }
 
-export const schemaCommand = new Command('schema')
-  .description('Export Zod validation schemas as JSON Schema')
-  .argument('[name]', 'Schema name to export')
-  .option('--list', 'List available schema names with descriptions')
-  .option('--all', 'Export all schemas as a single JSON object keyed by name')
-  .option('--include-version', 'Include schema version in output metadata')
-  .action((name: string | undefined, options: SchemaOptions) => {
-    try {
-      if (options.list) {
-        const schemas = listSchemas();
-        console.log(JSON.stringify(schemas, null, 2));
-        return;
-      }
-
-      if (options.all) {
-        const all = exportAllSchemas(!!options.includeVersion);
-        console.log(JSON.stringify(all, null, 2));
-        return;
-      }
-
-      if (!name) {
-        console.error('Please specify a schema name, or use --list or --all');
-        console.error('Available schemas: ' + Object.keys(SCHEMA_REGISTRY).join(', '));
-        process.exit(1);
-      }
-
-      const schema = exportSchema(name, !!options.includeVersion);
-      if (!schema) {
-        console.error(`Unknown schema: "${name}"`);
-        console.error('Available schemas: ' + Object.keys(SCHEMA_REGISTRY).join(', '));
-        process.exit(1);
-      }
-
-      console.log(JSON.stringify(schema, null, 2));
-    } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
-      process.exit(1);
-    }
-  });
+export const schemaSpec = defineCommand({
+  name: 'schema',
+  summary: 'Export Zod validation schemas as JSON Schema',
+  schema: SchemaCommand,
+  emits: 'artifact',
+  run: runSchema,
+});

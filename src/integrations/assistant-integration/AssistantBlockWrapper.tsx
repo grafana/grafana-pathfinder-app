@@ -136,7 +136,7 @@ export function AssistantBlockWrapper({
     try {
       const storageKey = buildAssistantStorageKey(contentKey, assistantId);
       return localStorage.getItem(storageKey);
-    } catch (error) {
+    } catch {
       return null;
     }
   }, [contentKey, assistantId]);

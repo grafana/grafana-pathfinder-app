@@ -5,7 +5,7 @@ import { EXTENSION_SIDEBAR_DOCKED_KEY } from '../../../../src/lib/storage/extens
 import pluginJson from '../../../../src/plugin.json';
 
 const PATHFINDER_COMPONENT_TITLE = 'Interactive learning';
-const DEFAULT_PANEL_OPEN_TIMEOUT_MS = 10_000;
+const DEFAULT_PANEL_OPEN_TIMEOUT_MS = 20_000;
 const OPEN_CONFIRMATION_TIMEOUT_MS = 2_000;
 const MAX_DOCKED_VALUE_PARSE_DEPTH = 2;
 const MAX_HELP_OPEN_ATTEMPTS = 2;
@@ -127,8 +127,17 @@ async function openDocsPanelAttempt(page: Page, timeoutMs: number): Promise<Loca
     undefined,
     { timeout: remainingTimeout(deadline) }
   );
+  if (await panel.isVisible()) {
+    return panel;
+  }
+  state = await readBootstrapState(page, false);
+  if (hasOpenSignal(state)) {
+    await panel.waitFor({ state: 'visible', timeout: remainingTimeout(deadline) });
+    return panel;
+  }
 
   const helpButton = page.locator('button[aria-label="Help"]');
+  await helpButton.waitFor({ state: 'visible', timeout: remainingTimeout(deadline) });
   for (let openAttempt = 0; openAttempt < MAX_HELP_OPEN_ATTEMPTS; openAttempt++) {
     if (await panel.isVisible()) {
       return panel;

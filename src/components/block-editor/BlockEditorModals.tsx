@@ -2,7 +2,6 @@
  * BlockEditorModals Component
  *
  * Container for modal dialogs in the block editor:
- * - GuideMetadataForm
  * - ConfirmModal (new guide)
  * - ImportGuideModal
  * - GitHubPRModal
@@ -14,7 +13,6 @@
 
 import React from 'react';
 import { ConfirmModal } from '@grafana/ui';
-import { GuideMetadataForm } from './GuideMetadataForm';
 import { ImportGuideModal } from './ImportGuideModal';
 import { GitHubPRModal } from './GitHubPRModal';
 import { BlockEditorTour } from './BlockEditorTour';
@@ -34,9 +32,6 @@ export interface BlockEditorModalsProps {
   /** Whether there are any blocks */
   hasBlocks: boolean;
 
-  /** Guide metadata handlers */
-  onUpdateGuideMetadata: (metadata: Partial<JsonGuide>) => void;
-
   /** New guide handlers */
   onNewGuideConfirm: () => void;
 
@@ -50,19 +45,11 @@ export function BlockEditorModals({
   guide,
   isDirty,
   hasBlocks,
-  onUpdateGuideMetadata,
   onNewGuideConfirm,
   onImportGuide,
 }: BlockEditorModalsProps) {
   return (
     <>
-      <GuideMetadataForm
-        isOpen={isModalOpen('metadata')}
-        guide={guide}
-        onUpdate={onUpdateGuideMetadata}
-        onClose={() => closeModal('metadata')}
-      />
-
       <ConfirmModal
         isOpen={isModalOpen('newGuideConfirm')}
         title="Start new guide"

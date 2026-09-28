@@ -133,3 +133,44 @@ export const createReactSdkMock = () => {
 export const mockOpenFeature = (): void => {
   clearMockFeatureFlags();
 };
+
+/**
+ * Create a per-call @openfeature/web-sdk mock for `jest.isolateModules` suites.
+ *
+ * Unlike `createWebSdkMock`, the returned client has bare `jest.fn()` value
+ * getters, so each test drives them directly and no state leaks between the
+ * isolated module registries.
+ */
+export const createIsolatedWebSdkMock = () => {
+  const mockClient = {
+    getBooleanValue: jest.fn(),
+    getStringValue: jest.fn(),
+    getNumberValue: jest.fn(),
+    getObjectValue: jest.fn(),
+    addHooks: jest.fn(),
+    providerStatus: MockClientProviderStatus.READY,
+    addHandler: jest.fn(),
+  };
+
+  return {
+    mockClient,
+    OpenFeature: {
+      setProvider: jest.fn(),
+      setProviderAndWait: jest.fn().mockResolvedValue(undefined),
+      getProvider: jest.fn(() => ({ name: 'mock' })),
+      getClient: jest.fn(() => mockClient),
+      addHooks: jest.fn(),
+    },
+    ClientProviderStatus: MockClientProviderStatus,
+    ProviderEvents: MockProviderEvents,
+  };
+};
+
+/**
+ * Create a per-call @openfeature/react-sdk mock for `jest.isolateModules` suites.
+ */
+export const createIsolatedReactSdkMock = () => ({
+  useBooleanFlagValue: jest.fn(),
+  useStringFlagValue: jest.fn(),
+  useNumberFlagValue: jest.fn(),
+});

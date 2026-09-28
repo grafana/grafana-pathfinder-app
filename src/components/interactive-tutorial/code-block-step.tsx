@@ -6,7 +6,9 @@
  * Participates in section step counting and sequential execution the same way InteractiveStep does.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -14,18 +16,20 @@ import { css } from '@emotion/css';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { clearAndInsertCode, useInteractiveElements } from '../../interactive-engine';
 import { STEP_STATES, type StepStateValue } from './step-states';
-import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { panelModeManager, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
 import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import { logger } from '../../lib/logging';
 import { useAssistantBlockValue } from '../../integrations/assistant-integration';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 export interface CodeBlockStepProps {
   code: string;
   language?: string;
   refTarget: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   skippable?: boolean;
   hints?: string;
   children?: React.ReactNode;
@@ -38,12 +42,14 @@ export interface CodeBlockStepProps {
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   resetTrigger?: number;
-  onStepReset?: () => void;
 
   stepIndex?: number;
   totalSteps?: number;
   sectionId?: string;
   sectionTitle?: string;
+
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
 let codeBlockStepCounter = 0;
@@ -55,7 +61,6 @@ export function resetCodeBlockStepCounter(): void {
 const getStyles = (theme: GrafanaTheme2) => ({
   disabled: css({
     opacity: 0.5,
-    pointerEvents: 'none' as const,
   }),
   content: css({
     marginBottom: theme.spacing(1),
@@ -114,11 +119,11 @@ export const CodeBlockStep = forwardRef<
       isCurrentlyExecuting = false,
       onStepComplete,
       resetTrigger,
-      onStepReset,
       stepIndex,
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -131,14 +136,23 @@ export const CodeBlockStep = forwardRef<
     }
     const renderedStepId = stepId ?? generatedStepIdRef.current;
 
+    const analyticsStepMeta = useMemo(
+      () => ({
+        stepId: stepId ?? renderedStepId,
+        stepIndex,
+        totalSteps,
+        sectionId,
+        sectionTitle,
+      }),
+      [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
+    );
+
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isInsertRunning, setIsInsertRunning] = useState(false);
     const [insertError, setInsertError] = useState<string | null>(null);
 
-    // Check for customized value from parent AssistantBlockWrapper context
     const assistantBlockValue = useAssistantBlockValue();
 
-    // Use the assistant's customized code if available, otherwise the original prop
     const [currentCode, setCurrentCode] = useState(assistantBlockValue?.customizedValue ?? code);
 
     useEffect(() => {
@@ -146,12 +160,10 @@ export const CodeBlockStep = forwardRef<
       if (customizedValue !== null && customizedValue !== undefined) {
         setCurrentCode(customizedValue);
       } else {
-        // No active customization (cleared, or no AssistantBlockWrapper context at all) - track the prop.
         setCurrentCode(code);
       }
     }, [assistantBlockValue?.customizedValue, code]);
 
-    // Get executeInteractiveAction for "Show me" highlighting
     const { executeInteractiveAction } = useInteractiveElements();
 
     const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
@@ -165,13 +177,31 @@ export const CodeBlockStep = forwardRef<
     const checker = useStepChecker({
       requirements: requirements || '',
       objectives: objectives || '',
+      hints,
       targetAction: 'noop',
       refTarget: '',
       stepId: renderedStepId,
       isEligibleForChecking,
       skippable,
-      sectionId, // Lets the checker write skip / objectives transitions to the store
+      sectionId,
     });
+
+    const persistReset = useCallback(() => {
+      if (isStandalone) {
+        resetStep(renderedStepId, sectionId);
+      }
+    }, [isStandalone, renderedStepId, sectionId]);
+
+    // The section owns store resets so preceding completions survive a later step's redo.
+    useEffect(() => {
+      if (resetTrigger && resetTrigger > 0) {
+        persistReset();
+        setInsertError(null);
+        if (checker.resetStep) {
+          checker.resetStep({ skipStoreWrite: true });
+        }
+      }
+    }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep and persistReset are stable but including checker rebuilds every render
 
     const markComplete = useCallback(() => {
       if (isCompleted) {
@@ -190,21 +220,47 @@ export const CodeBlockStep = forwardRef<
       if (isShowRunning) {
         return;
       }
+      reportAppInteraction(
+        UserInteraction.ShowMeButtonClick,
+        buildInteractiveStepProperties(
+          { target_action: 'code-block', ref_target: refTarget, interaction_location: 'code_block_step' },
+          analyticsStepMeta
+        )
+      );
       setIsShowRunning(true);
       try {
-        // Highlight the target Monaco editor using the interactive engine
-        await executeInteractiveAction({ targetAction: 'highlight', refTarget, buttonType: 'show' });
+        await executeInteractiveAction({
+          targetAction: 'highlight',
+          refTarget,
+          buttonType: 'show',
+          fullScreenFallbackLocation,
+        });
       } catch (err) {
         logger.error('[CodeBlockStep] Show me failed', { error: err });
       } finally {
         setIsShowRunning(false);
       }
-    }, [refTarget, isShowRunning, executeInteractiveAction]);
+    }, [refTarget, isShowRunning, executeInteractiveAction, fullScreenFallbackLocation, analyticsStepMeta]);
+
+    // Insert bypasses executeInteractiveAction, so it must hand off from full screen itself.
+    const handOffFromFullScreenIfNeeded = useCallback(async () => {
+      if (panelModeManager.getMode() === 'fullscreen') {
+        await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
+      }
+    }, [fullScreenFallbackLocation]);
 
     const handleInsert = useCallback(async () => {
+      reportAppInteraction(
+        UserInteraction.DoItButtonClick,
+        buildInteractiveStepProperties(
+          { target_action: 'code-block', ref_target: refTarget, interaction_location: 'code_block_step' },
+          analyticsStepMeta
+        )
+      );
       setIsInsertRunning(true);
       setInsertError(null);
       try {
+        await handOffFromFullScreenIfNeeded();
         const result = await clearAndInsertCode(refTarget, currentCode);
         if (result.success) {
           markComplete();
@@ -217,7 +273,7 @@ export const CodeBlockStep = forwardRef<
       } finally {
         setIsInsertRunning(false);
       }
-    }, [currentCode, refTarget, markComplete]);
+    }, [currentCode, refTarget, markComplete, handOffFromFullScreenIfNeeded, analyticsStepMeta]);
 
     useImperativeHandle(
       ref,
@@ -226,6 +282,7 @@ export const CodeBlockStep = forwardRef<
           if (isCompleted) {
             return true;
           }
+          await handOffFromFullScreenIfNeeded();
           const result = await clearAndInsertCode(refTarget, currentCode);
           if (result.success) {
             markComplete();
@@ -237,7 +294,7 @@ export const CodeBlockStep = forwardRef<
           markComplete();
         },
       }),
-      [isCompleted, currentCode, refTarget, markComplete]
+      [isCompleted, currentCode, refTarget, markComplete, handOffFromFullScreenIfNeeded]
     );
 
     const isEnabled = checker.isEnabled && !disabled;
@@ -247,6 +304,8 @@ export const CodeBlockStep = forwardRef<
       stepState = STEP_STATES.COMPLETED;
     } else if (isInsertRunning || isShowRunning || isCurrentlyExecuting) {
       stepState = STEP_STATES.EXECUTING;
+    } else if (insertError) {
+      stepState = STEP_STATES.ERROR;
     } else if (checker.isChecking) {
       stepState = STEP_STATES.CHECKING;
     } else if (!isEnabled) {
@@ -266,7 +325,9 @@ export const CodeBlockStep = forwardRef<
     return (
       <div
         className={containerClasses}
+        {...getTrackedStepRootAttributes('codeblock', renderedStepId)}
         data-test-step-state={stepState}
+        data-test-skippable={skippable}
         data-testid={testIds.codeBlock.step(renderedStepId)}
       >
         {children && <div className={styles.content}>{children}</div>}
@@ -276,7 +337,10 @@ export const CodeBlockStep = forwardRef<
         </div>
 
         {!isEnabled && !isCompleted && checker.explanation && (
-          <div className={`${styles.requirementMessage} interactive-feedback-box interactive-feedback-box--warning`}>
+          <div
+            className={`${styles.requirementMessage} interactive-feedback-box interactive-feedback-box--warning`}
+            data-testid={testIds.interactive.requirementCheck(renderedStepId)}
+          >
             {checker.explanation}
             {skippable && (
               <Button
@@ -320,7 +384,11 @@ export const CodeBlockStep = forwardRef<
           </div>
         )}
 
-        {insertError && !isCompleted && <div className={styles.errorMessage}>{insertError}</div>}
+        {insertError && !isCompleted && (
+          <div className={styles.errorMessage} data-testid={testIds.interactive.errorMessage(renderedStepId)}>
+            {insertError}
+          </div>
+        )}
 
         {isCompleted && (
           <div className={styles.completedBadge}>

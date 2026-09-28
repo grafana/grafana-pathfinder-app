@@ -14,55 +14,75 @@
  * schema version it supports, same as `pathfinder-cli --version`.
  */
 
-import { Command, Option } from 'commander';
+import { z } from 'zod';
 
-import { CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
-import { runHttp } from './transports/http';
-import { runStdio } from './transports/stdio';
+import { defineCommand } from '../contracts';
+import type { CommandOutcome } from '../utils/output';
 
-export const mcpCommand = new Command('mcp')
-  .description('Pathfinder authoring MCP server')
-  .version(CURRENT_SCHEMA_VERSION)
-  .addOption(new Option('--transport <transport>', 'Transport to bind').choices(['stdio', 'http']).default('stdio'))
-  .addOption(
-    new Option('--port <port>', 'HTTP port (when --transport http)').default('8080').argParser((v) => Number(v))
-  )
-  .addOption(
-    new Option(
-      '--host <host>',
+export const McpCommand = z.object({
+  transport: z.enum(['stdio', 'http']).default('stdio').describe('Transport to bind').meta({ role: 'io' }),
+  port: z.number().default(8080).describe('HTTP port (when --transport http)').meta({ role: 'io' }),
+  host: z
+    .string()
+    .default('127.0.0.1')
+    .describe(
       'HTTP bind host (when --transport http). Defaults to 127.0.0.1 so a local dev run is not exposed on the network; pass --host 0.0.0.0 in container deployments.'
-    ).default('127.0.0.1')
-  )
-  .action(async function (this: Command) {
-    const opts = this.opts() as { transport: 'stdio' | 'http'; port: number; host: string };
+    )
+    .meta({ role: 'io' }),
+});
 
-    if (opts.transport === 'stdio') {
-      await runStdio();
+export type McpInput = z.output<typeof McpCommand>;
+
+/**
+ * Serve until signalled. The transports are imported lazily so that registering
+ * this subcommand does not pull the MCP server — and the tool modules that read
+ * the command registry — into every `pathfinder-cli` invocation.
+ */
+export async function runMcp(args: McpInput): Promise<CommandOutcome> {
+  if (args.transport === 'stdio') {
+    const { runStdio } = await import('./transports/stdio');
+    await runStdio();
+    return { status: 'ok', summary: 'stdio transport attached' };
+  }
+
+  const { runHttp } = await import('./transports/http');
+  const handle = await runHttp({ port: args.port, host: args.host });
+  process.stderr.write(`pathfinder-cli mcp listening on http://${args.host}:${handle.port}/mcp\n`);
+  process.stderr.write('sessions: in-memory, process-local — run a single instance (Cloud Run --max-instances=1)\n');
+
+  let shuttingDown = false;
+  const shutdown = (): void => {
+    // Idempotent: a second SIGINT/SIGTERM while draining must not start a
+    // second close() that races the first.
+    if (shuttingDown) {
       return;
     }
+    shuttingDown = true;
+    // Hard fallback: if close() hangs past 10s (e.g. a bug in the force-
+    // close path), exit non-zero rather than burning the full container
+    // grace period and making orchestrators wait for a SIGKILL.
+    const fallback = setTimeout(() => process.exit(1), 10_000);
+    fallback.unref();
+    handle
+      .close()
+      .then(() => process.exit(0))
+      .catch(() => process.exit(1));
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+  return { status: 'ok', summary: `http transport listening on ${args.host}:${handle.port}` };
+}
 
-    const handle = await runHttp({ port: opts.port, host: opts.host });
-    process.stderr.write(`pathfinder-cli mcp listening on http://${opts.host}:${handle.port}/mcp\n`);
-    process.stderr.write('sessions: in-memory, process-local — run a single instance (Cloud Run --max-instances=1)\n');
-
-    let shuttingDown = false;
-    const shutdown = (): void => {
-      // Idempotent: a second SIGINT/SIGTERM while draining must not start a
-      // second close() that races the first.
-      if (shuttingDown) {
-        return;
-      }
-      shuttingDown = true;
-      // Hard fallback: if close() hangs past 10s (e.g. a bug in the force-
-      // close path), exit non-zero rather than burning the full container
-      // grace period and making orchestrators wait for a SIGKILL.
-      const fallback = setTimeout(() => process.exit(1), 10_000);
-      fallback.unref();
-      handle
-        .close()
-        .then(() => process.exit(0))
-        .catch(() => process.exit(1));
-    };
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
-  });
+/**
+ * What starting this server takes, and nothing about who asks. The command line renders
+ * it as a subcommand of its own (see `cli-commands`); this module states the shape and
+ * runs it, the same as any other spec.
+ */
+export const mcpSpec = defineCommand({
+  name: 'mcp',
+  summary: 'Pathfinder authoring MCP server',
+  schema: McpCommand,
+  // The server owns the process and speaks its own protocol on stdout.
+  emits: 'stream',
+  run: runMcp,
+});

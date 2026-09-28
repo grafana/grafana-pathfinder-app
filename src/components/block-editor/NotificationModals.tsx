@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { Modal, Button } from '@grafana/ui';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 
 export interface ConfirmModalProps {
   isOpen: boolean;
@@ -62,7 +63,11 @@ export function AlertModal({ isOpen, title, message, severity = 'info', buttonTe
         return 'destructive';
       case 'success':
         return 'primary';
+      case 'info':
+      case 'warning':
+        return 'secondary';
       default:
+        assertExhaustive(severity);
         return 'secondary';
     }
   };

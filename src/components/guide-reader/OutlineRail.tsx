@@ -47,7 +47,7 @@ function handleListKeyDown(event: React.KeyboardEvent<HTMLUListElement>): void {
 
 interface OutlineRailProps {
   items: OutlineItem[];
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
   activeId?: string | null;
   onJump?: (id: string) => void;
 }

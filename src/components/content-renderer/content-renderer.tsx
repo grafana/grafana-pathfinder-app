@@ -1,9 +1,13 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react';
+import { getGuideResponseId } from '../../lib/guide-response-id';
+import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBoundary';
+import { finishGuideLoad, pauseGuideLoad, resumeGuideLoad } from '../../lib/telemetry/guide-load';
+import { useIsAlignmentPaused } from '../../global-state/alignment-pending-context';
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
 
-import { RawContent, ContentParseResult } from '../../types/content.types';
+import { RawContent, ContentParseResult, GuideCountingSource } from '../../types/content.types';
 import { logger } from '../../lib/logging';
 import {
   parseHTMLToComponents,
@@ -13,6 +17,7 @@ import {
   resolveRelativeUrls,
   CodeBlock,
   CollapsibleBlock,
+  CalloutBlock,
   ExpandableTable,
   ImageRenderer,
   ContentParsingError,
@@ -22,8 +27,9 @@ import {
   GuideResponseProvider,
   useGuideResponses,
   isJourneyCoverPage,
+  getCurrentMilestone,
 } from '../../docs-retrieval';
-import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
+import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
 import {
   InteractiveSection,
@@ -56,10 +62,27 @@ import {
   TextSelectionState,
 } from '../../integrations/assistant-integration';
 import { substituteVariables } from '../../utils/variable-substitution';
-import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
+import {
+  STANDALONE_SECTION_ID,
+  isBlockEditorPreviewUrl,
+  refreshGuidePercentageOnLoad,
+} from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { resolveGuideContentKey } from '../../global-state/guide-content-key';
+import {
+  evictGuideIndex,
+  getGuideIndexEvictionRevision,
+  publishGuideIndex,
+  subscribeGuideIndexEvictions,
+} from '../../global-state/active-guide-index';
+import { resolveCountedBlockStepId } from '../../global-state/guide-step-id-resolver';
+import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { selectCountingTree } from '../../lib/guide-counting-source';
+import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
+import { MarkCompleteFooter } from '../mark-complete';
+import { resolveFullScreenFallbackLocation } from './full-screen-fallback-location';
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -94,10 +117,10 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
         targetElement!.classList.remove('fragment-highlight');
       }, 3000);
     } else {
-      logger.warn(`Fragment element not found: #${fragment}`);
+      logger.warn('Fragment element not found');
     }
-  } catch (error) {
-    logger.warn(`Error scrolling to fragment #${fragment}`, { error });
+  } catch {
+    logger.warn('Error scrolling to fragment');
   }
 }
 
@@ -105,8 +128,15 @@ interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
   onGuideComplete?: () => void;
+  /**
+   * Advance to the next milestone, for the milestone form of the Mark complete
+   * control. Surfaces that cannot navigate — or that are on the last milestone
+   * — leave it unset, which downgrades the label to "Mark complete"; the
+   * control itself is never conditional.
+   */
+  onContinueToNextMilestone?: () => void;
   className?: string;
-  containerRef?: React.RefObject<HTMLDivElement>;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 // Style to hide default browser selection highlight
@@ -119,10 +149,31 @@ const selectionStyle = css`
 
 // Memoize ContentRenderer to prevent re-renders when parent re-renders
 // but content prop hasn't changed
-export const ContentRenderer = React.memo(function ContentRenderer({
+export const ContentRenderer = React.memo(function ContentRenderer(props: ContentRendererProps) {
+  const context = props.content.loadContext;
+  const paused = useIsAlignmentPaused();
+  useEffect(() => {
+    if (paused) {
+      pauseGuideLoad(context, true);
+    } else {
+      resumeGuideLoad(context);
+    }
+    return () => pauseGuideLoad(context);
+  }, [context, paused]);
+  return (
+    <GuideRenderBoundary key={context?.loadId ?? props.content.url} context={context}>
+      <GuideLoadTelemetryContext.Provider value={context}>
+        <ContentRendererInner {...props} />
+      </GuideLoadTelemetryContext.Provider>
+    </GuideRenderBoundary>
+  );
+});
+
+const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
   onGuideComplete,
+  onContinueToNextMilestone,
   className,
   containerRef,
 }: ContentRendererProps) {
@@ -147,10 +198,59 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     onGuideCompleteRef.current = onGuideComplete;
   }, [onGuideComplete]);
 
+  const markCompleteRearmedRef = useRef(false);
+
+  // The one gate every completion route passes through — the automatic
+  // section/step routes below and the Mark complete control at the foot of the
+  // content alike — so a guide records exactly one completion however it was
+  // finished, and a click followed by an auto-complete does not record twice.
+  // Emitting also spends any pending re-arm: whichever route gets here first
+  // is the one completion, so a later click cannot re-open a gate that has
+  // already closed on this guide.
+  const triggerGuideComplete = useCallback(() => {
+    if (guideCompleteCalledRef.current) {
+      return;
+    }
+    guideCompleteCalledRef.current = true;
+    markCompleteRearmedRef.current = false;
+    onGuideCompleteRef.current?.();
+  }, []);
+
+  // The Mark complete route's own entry to that gate. A reset arms this route
+  // and only this route, so the reader's next click records once; the gate
+  // closes again inside `triggerGuideComplete`, leaving the automatic routes
+  // exactly the state they would have seen without the reset.
+  const triggerGuideCompleteFromMark = useCallback(() => {
+    if (markCompleteRearmedRef.current) {
+      markCompleteRearmedRef.current = false;
+      guideCompleteCalledRef.current = false;
+    }
+    triggerGuideComplete();
+  }, [triggerGuideComplete]);
+
   // Reset tracking state when content changes (new guide = fresh start)
   useEffect(() => {
     guideCompleteCalledRef.current = false;
     completedSectionsRef.current = new Set();
+    markCompleteRearmedRef.current = false;
+  }, [content?.url]);
+
+  // A reset clears a guide's progress without remounting this renderer, so a
+  // re-mark afterwards would otherwise write progress and record no completion.
+  // This arms the Mark complete route only: the automatic routes read the
+  // shared gate at their own invocation time and a reset must not change what
+  // they see, so nothing here touches the gate or the tracked sections.
+  useEffect(() => {
+    const handleCleared = (event: Event) => {
+      const clearedKey = (event as CustomEvent).detail?.contentKey;
+      if (clearedKey === '*' || clearedKey === resolveGuideContentKey(content?.url)) {
+        markCompleteRearmedRef.current = true;
+      }
+    };
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    return () => {
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    };
   }, [content?.url]);
 
   // Ref to track the current content URL - updated synchronously before effects run
@@ -204,8 +304,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         }
         const totalSections = countSections();
         if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current?.();
+          triggerGuideComplete();
         }
       }, 100); // Small delay to ensure DOM is stable
     };
@@ -230,10 +329,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 
       // Check if all sections complete - trigger immediately if count is accurate
       if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
-        if (!guideCompleteCalledRef.current && onGuideCompleteRef.current) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current();
-        }
+        triggerGuideComplete();
       } else {
         // If count seems off, use debounced check as fallback
         debouncedCompletionCheck();
@@ -268,8 +364,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       const allComplete = Array.from(sections).every((section) => section.classList.contains('completed'));
 
       if (allComplete) {
-        guideCompleteCalledRef.current = true;
-        onGuideCompleteRef.current?.();
+        triggerGuideComplete();
       }
     };
 
@@ -292,7 +387,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         return; // This handler was created for different content
       }
       const detail = (event as CustomEvent).detail;
-      const currentTabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+      const currentTabUrl = window.__DocsPluginActiveTabUrl;
       if (detail?.completionPercentage >= 100 && detail?.contentKey && currentTabUrl) {
         // Only trigger if the event is for the current page (strict equality after normalization).
         // Bidirectional startsWith would produce false matches when URLs share a common prefix
@@ -300,8 +395,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         const eventKeyNorm = detail.contentKey.replace(/\/+$/, '');
         const tabUrlNorm = currentTabUrl.replace(/\/+$/, '');
         if (eventKeyNorm === tabUrlNorm) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current?.();
+          triggerGuideComplete();
         }
       }
     };
@@ -335,14 +429,14 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         clearTimeout(debounceTimer);
       }
     };
-  }, [activeRef, content?.url]); // Removed onGuideComplete - using ref instead
+  }, [activeRef, content?.url, triggerGuideComplete]); // Removed onGuideComplete - using ref instead
 
   // Expose current content key globally for interactive persistence.
   // MUST be useLayoutEffect so the global is set before children's useEffect
   // (progress restoration) runs — prevents stale key from a previous milestone.
   useLayoutEffect(() => {
     try {
-      (window as any).__DocsPluginContentKey = content?.url || '';
+      window.__DocsPluginContentKey = content?.url || '';
     } catch {
       // no-op
     }
@@ -371,40 +465,57 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processedContent, content.hashFragment]);
 
-  useEffect(() => {
-    if (onContentReady) {
-      const timer = setTimeout(onContentReady, 50);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [processedContent, onContentReady]);
-
-  // Derive guide ID from content URL for response storage
-  const guideId = useMemo(() => {
-    // Use the URL path as the guide identifier, or fallback to 'default'
-    try {
-      const url = new URL(content.url, window.location.origin);
-      // Remove leading slash and use path as ID
-      return url.pathname.replace(/^\//, '').replace(/\//g, '-') || 'default';
-    } catch {
-      return content.url || 'default';
-    }
-  }, [content.url]);
+  const guideId = useMemo(() => getGuideResponseId(content.url, window.location.origin), [content.url]);
 
   // Mirror this guide for compatibility callers outside the scoped provider.
   useLayoutEffect(() => registerCompatibilityGuideId(guideId), [guideId]);
 
   const journey = content.metadata.learningJourney;
+  const packageManifestId = content.metadata.packageManifest?.id;
+  const packageManifestDescription = content.metadata.packageManifest?.description;
+  const pathId = typeof packageManifestId === 'string' ? packageManifestId : undefined;
+  const pathDescription = typeof packageManifestDescription === 'string' ? packageManifestDescription : undefined;
+  // Full-screen -> sidebar handoff target (see interactive-engine/interactive.hook.ts):
+  // prefer the current milestone's own starting location, then the course's.
+  // `/` and empty/missing both mean "no real signal" for this feature specifically
+  // — the existing alignment system (resolveStartingLocation) treats `/` as a
+  // real, confirmation-gated target for its own unrelated purpose; this handoff
+  // has no confirmation step, so a bare default must not silently relocate the user.
+  const courseStartingLocation = content.metadata.packageManifest?.startingLocation;
+  const fullScreenFallbackLocation =
+    resolveFullScreenFallbackLocation(getCurrentMilestone(content)?.startingLocation) ??
+    resolveFullScreenFallbackLocation(typeof courseStartingLocation === 'string' ? courseStartingLocation : undefined);
+  const isCoverPage = isJourneyCoverPage(content);
   const beforeContent =
-    isJourneyCoverPage(content) && journey && journey.milestones.length > 0 ? (
-      <LearningPathTableOfContents milestones={journey.milestones} baseUrl={journey.baseUrl} />
+    isCoverPage && journey && journey.milestones.length > 0 ? (
+      <LearningPathTableOfContents
+        milestones={journey.milestones}
+        baseUrl={journey.baseUrl}
+        pathId={pathId}
+        title={content.metadata.title}
+        description={pathDescription}
+      />
     ) : null;
+
+  // Unconditional for every guide and every milestone (COMPLETION-MODEL.md,
+  // decision 2). A path's cover page is the one thing it is absent from, and
+  // that is not the deleted predicate: a table of contents is neither a guide
+  // nor a milestone, and marking it complete would record a guide nobody read.
+  const afterContent = isCoverPage ? null : (
+    <MarkCompleteFooter
+      context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
+      contentUrl={content.url}
+      onMarkComplete={triggerGuideCompleteFromMark}
+      onContinue={onContinueToNextMilestone}
+    />
+  );
 
   return (
     <GuideResponseProvider guideId={guideId}>
       <GuideRequirementsProvider guideId={guideId}>
         <ContentWithVariables
           processedContent={processedContent}
+          countingSource={content.countingSource}
           contentType={content.type}
           baseUrl={content.url}
           title={content.metadata.title}
@@ -415,6 +526,8 @@ export const ContentRenderer = React.memo(function ContentRenderer({
           selectionState={selectionState}
           documentContext={documentContext}
           beforeContent={beforeContent}
+          afterContent={afterContent}
+          fullScreenFallbackLocation={fullScreenFallbackLocation}
         />
       </GuideRequirementsProvider>
     </GuideResponseProvider>
@@ -424,20 +537,26 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 /** Inner component that has access to GuideResponseContext for variable substitution */
 interface ContentWithVariablesProps {
   processedContent: string;
+  /** @see RawContent.countingSource */
+  countingSource?: GuideCountingSource;
   contentType: 'learning-journey' | 'single-doc' | 'interactive';
   baseUrl: string;
   title: string;
   isNativeJson: boolean;
   onContentReady?: () => void;
-  activeRef: React.RefObject<HTMLDivElement>;
+  activeRef: React.RefObject<HTMLDivElement | null>;
   className?: string;
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
   beforeContent?: React.ReactNode;
+  afterContent?: React.ReactNode;
+  /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
 function ContentWithVariables({
   processedContent,
+  countingSource,
   contentType,
   baseUrl,
   title,
@@ -448,6 +567,8 @@ function ContentWithVariables({
   selectionState,
   documentContext,
   beforeContent,
+  afterContent,
+  fullScreenFallbackLocation,
 }: ContentWithVariablesProps) {
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
   // This avoids breaking JSON structure when user values contain special characters
@@ -522,15 +643,18 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
-      {title && isNativeJson && <h1 className={titleStyle}>{title}</h1>}
+      {title && isNativeJson && !beforeContent && <h1 className={titleStyle}>{title}</h1>}
       {beforeContent}
       <ContentProcessor
         html={processedContent}
+        countingSource={countingSource}
         contentType={contentType}
         baseUrl={baseUrl}
         onReady={onContentReady}
         responses={responses}
+        fullScreenFallbackLocation={fullScreenFallbackLocation}
       />
+      {afterContent}
       {selectionState.isValid && (
         <AssistantSelectionPopover
           selectedText={selectionState.selectedText}
@@ -545,16 +669,29 @@ function ContentWithVariables({
 
 interface ContentProcessorProps {
   html: string;
+  /** @see RawContent.countingSource — absent when `html` is itself the pre-inlining tree. */
+  countingSource?: GuideCountingSource;
   contentType: 'learning-journey' | 'single-doc' | 'interactive';
   theme?: GrafanaTheme2;
   baseUrl: string;
   onReady?: () => void;
   /** User responses for variable substitution at render time */
   responses: Record<string, unknown>;
+  /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
-function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: ContentProcessorProps) {
+function ContentProcessor({
+  html,
+  countingSource,
+  baseUrl,
+  responses,
+  fullScreenFallbackLocation,
+  onReady,
+}: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const loadContext = React.useContext(GuideLoadTelemetryContext);
+  const alignmentPaused = useIsAlignmentPaused();
 
   // Reset interactive counters only when content changes (not on every render)
   // This must run BEFORE parsing to ensure clean state for section registration
@@ -576,23 +713,136 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     return parseHTMLToComponents(html, baseUrl);
   }, [html, baseUrl]);
 
-  // A guide may reference snippets that resolve asynchronously from the CDN.
-  const guideWithSnippetRefs = useMemo<JsonGuide | null>(() => {
+  // Raw parse of the tree as received — pre-inlining on a direct open,
+  // already-expanded on the launch path (`prepare-guide-launch.ts`). Shared
+  // by the snippet-ref detection below and the frozen block index, so a
+  // guide-shaped `html` is only ever JSON.parsed once here.
+  const rawGuide = useMemo<JsonGuide | null>(() => {
     if (!isJsonGuideContent(html)) {
       return null;
     }
     try {
-      const guide = JSON.parse(html) as JsonGuide;
-      return guideHasSnippetRefs(guide) ? guide : null;
+      return JSON.parse(html) as JsonGuide;
     } catch {
       return null;
     }
   }, [html]);
 
+  // A guide may reference snippets that resolve asynchronously from the CDN.
+  const guideWithSnippetRefs = useMemo<JsonGuide | null>(() => {
+    return rawGuide && guideHasSnippetRefs(rawGuide) ? rawGuide : null;
+  }, [rawGuide]);
+
+  // The tree the canonical index is counted from. `rawGuide` is the tree that
+  // RENDERS, which on the prepared-launch path arrives already snippet-expanded
+  // and therefore holds more blocks than the counting rule gives it — a
+  // `snippet-ref` is one position however many blocks it resolves to. `null`
+  // means a known-expanded payload arrived without the pre-inlining tree it was
+  // expanded from, which is the one case with nothing honest to count.
+  const countingGuide = useMemo<JsonGuide | null>(() => {
+    if (!rawGuide) {
+      return null;
+    }
+    const selection = selectCountingTree(html, countingSource);
+    if (!selection.available) {
+      return null;
+    }
+    if (selection.guideJson === html) {
+      return rawGuide;
+    }
+    try {
+      return JSON.parse(selection.guideJson) as JsonGuide;
+    } catch {
+      return null;
+    }
+  }, [rawGuide, html, countingSource]);
+
+  // The frozen block index (docs/design/COMPLETION-MODEL.md, decision 1):
+  // one traversal over the PRE-inlining tree — `countingGuide`, not whichever
+  // render tree arrived — published once per content key and never
+  // recomputed for the life of that key. `publishGuideIndex` is itself
+  // idempotent, so a re-render or an unrelated prop change is a no-op here.
+  // It owns both the denominator and the numerator's positions so they can
+  // never come from two traversals and disagree.
+  //
+  // The eviction revision is a dependency because this is the only
+  // producer: a reset that evicts the index while this guide stays mounted
+  // would otherwise leave it with no index for the rest of the session, and
+  // no percentage with it.
+  //
+  // Passive effect, not `useMemo`/`useLayoutEffect`, for the same reason
+  // MarkCompleteFooter resolves its key in one: both producers of the
+  // content key publish it from a layout effect, so resolving during
+  // render (or in a child layout effect, which runs first) would publish
+  // the PREVIOUS milestone's key and leave this one with no index at all.
+  const guideIndexEvictionRevision = useSyncExternalStore(
+    subscribeGuideIndexEvictions,
+    getGuideIndexEvictionRevision,
+    getGuideIndexEvictionRevision
+  );
+
+  // The freeze contract's premise — a content key's content is immutable —
+  // holds for a real guide but not for a block-editor preview, whose key
+  // (block-editor://preview/<id>) stays constant for the whole editing
+  // session while the content underneath it changes on every edit. Tracking
+  // the last rawGuide this component published under a given preview key
+  // lets the effect below tell "content actually changed" apart from
+  // "this render was caused by the eviction this same effect just made" —
+  // without that distinction, evicting on every run would notify, which
+  // re-renders, which re-runs the effect, forever.
+  const lastPublishedPreviewGuideRef = useRef<{ contentKey: string; guide: JsonGuide } | null>(null);
+
+  useEffect(() => {
+    if (!rawGuide) {
+      return;
+    }
+    const contentKey = resolveGuideContentKey(baseUrl);
+    if (!countingGuide) {
+      // Rendering survives; a canonical index does not get invented from the
+      // expanded tree, because that denominator is not the canonical one and
+      // the freeze would keep it for the life of this content key.
+      logger.warn(
+        '[ContentRenderer] Expanded guide carries no usable pre-inlining tree; no canonical index published',
+        {
+          reason: 'counting-source-unavailable',
+        }
+      );
+      return;
+    }
+    if (isBlockEditorPreviewUrl(baseUrl)) {
+      const last = lastPublishedPreviewGuideRef.current;
+      if (last && last.contentKey === contentKey && last.guide !== rawGuide) {
+        // Content changed under the same stable preview key — republish
+        // rather than silently keep serving the index from before this
+        // edit, which is what publishGuideIndex's ordinary idempotency
+        // would otherwise do.
+        evictGuideIndex(contentKey);
+      }
+      lastPublishedPreviewGuideRef.current = { contentKey, guide: rawGuide };
+    }
+    publishGuideIndex({
+      contentKey,
+      index: computeGuideBlockIndex(countingGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
+      denominatorSource: 'live-pre-inlining',
+    });
+    // A percentage persisted under the deleted step-count rule is read back
+    // verbatim by the new position-based one and is systematically higher,
+    // with no version on the record to tell old from new — reopening a
+    // guide with real evidence is the point this becomes recomputable
+    // (old-rule-percentages-reinterpreted). No-ops for a guide with no
+    // evidence at all, so this never fills the capped percentage namespace
+    // with zeros just from being opened.
+    refreshGuidePercentageOnLoad(contentKey);
+  }, [rawGuide, countingGuide, baseUrl, guideIndexEvictionRevision]);
+
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.
   const overlayKey = `${html}\x00${baseUrl}`;
-  const [snippetOverlay, setSnippetOverlay] = useState<{ key: string; result: ContentParseResult } | null>(null);
+  const [snippetOverlay, setSnippetOverlay] = useState<{
+    key: string;
+    result: ContentParseResult;
+    degraded: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!guideWithSnippetRefs) {
@@ -600,20 +850,52 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
     }
     let cancelled = false;
     (async () => {
-      const resolved = await inlineSnippetRefsInGuide(guideWithSnippetRefs);
+      const resolved = await inlineSnippetRefsInGuideWithStatus(guideWithSnippetRefs);
       if (cancelled) {
         return;
       }
-      setSnippetOverlay({ key: overlayKey, result: parseJsonGuide(resolved, baseUrl) });
-    })();
+      setSnippetOverlay({
+        key: overlayKey,
+        result: parseJsonGuide(resolved.guide, baseUrl),
+        degraded: resolved.unresolvedSnippetIds.length > 0,
+      });
+    })().catch(() => {
+      if (!cancelled) {
+        setSnippetOverlay({ key: overlayKey, result: baseParseResult, degraded: true });
+      }
+    });
     return () => {
       cancelled = true;
     };
-  }, [guideWithSnippetRefs, baseUrl, overlayKey]);
+  }, [guideWithSnippetRefs, baseUrl, overlayKey, baseParseResult]);
 
   const overlayMatchesCurrent = snippetOverlay?.key === overlayKey;
-  const parseResult = overlayMatchesCurrent && snippetOverlay ? snippetOverlay.result : baseParseResult;
+  const currentSnippetOverlay = overlayMatchesCurrent ? snippetOverlay : null;
+  const parseResult = currentSnippetOverlay?.result ?? baseParseResult;
   const isResolvingSnippets = guideWithSnippetRefs !== null && !overlayMatchesCurrent;
+
+  const readyReported = useRef<string | null>(null);
+  useEffect(() => {
+    if (isResolvingSnippets || alignmentPaused || readyReported.current === overlayKey) {
+      return;
+    }
+    readyReported.current = overlayKey;
+    const source = loadContext?.source ?? 'other';
+    if (!parseResult.isValid || !parseResult.data) {
+      finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'parse-error' });
+    } else if (parseResult.data.elements.length === 0) {
+      finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'empty-content' });
+    } else {
+      if (parseResult.warnings.length > 0 && !currentSnippetOverlay?.degraded) {
+        finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'parse-error' });
+      }
+      if (currentSnippetOverlay?.degraded) {
+        finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'snippet-unavailable' });
+      }
+      finishGuideLoad(loadContext, 'rendered');
+      onReady?.();
+    }
+  }, [parseResult, isResolvingSnippets, alignmentPaused, overlayKey, loadContext, onReady, currentSnippetOverlay]);
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {
@@ -665,9 +947,14 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
 
     elements.forEach((el, idx) => {
       if (el.type === 'interactive-section') {
-        // Predict sectionId using the same logic as InteractiveSection's useMemo:
-        // prefer the explicit HTML id prop, otherwise use the sequential counter.
-        const sectionId = el.props.id ? `section-${el.props.id}` : `section-${++sectionCounter}`;
+        // Same precedence InteractiveSection's own useMemo applies: the
+        // parser-stamped sectionId (sectionRuntimeId) wins outright. Falling
+        // through to the id-based/counter derivation here for an id-less
+        // section double-registers it under a second key the parser-stamped
+        // id has already claimed, inflating the total (section-registry
+        // -third-deriver-double-count).
+        const sectionId =
+          el.props.sectionId ?? (el.props.id ? `section-${el.props.id}` : `section-${++sectionCounter}`);
         const stepCount = countStepsInSection(el);
         registerSectionSteps(sectionId, stepCount, docOrder);
         docOrder++;
@@ -692,7 +979,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
 
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
-    logger.error('Content parsing failed', { errors: parseResult.errors });
+    // Parser details can contain private guide content; only the typed outcome is reported.
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -799,7 +1086,14 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
         // Look up standalone step position from precomputed document layout
         const groupInfo = documentLayout.standaloneGroupMap.get(index);
         const stepPosition = groupInfo ? getDocumentStepPosition(groupInfo.groupId, groupInfo.indexInGroup) : undefined;
-        return renderParsedElement(element, `element-${index}`, baseUrl, responses, stepPosition);
+        return renderParsedElement(
+          element,
+          `element-${index}`,
+          baseUrl,
+          responses,
+          stepPosition,
+          fullScreenFallbackLocation
+        );
       })}
     </div>
   );
@@ -923,17 +1217,21 @@ interface StandaloneStepPosition {
  * `src/components/interactive-tutorial/step-type-registry.ts`.
  *
  * Note: input-block is intentionally excluded — it doesn't track completion
- * and would inflate the total step count, making 100% completion impossible.
+ * and would inflate the total step count, putting a step-derived 100% out of
+ * reach.
  * An `input` block emits `datasource-check-step` instead when its author asked
  * a failing data check to block, and only that form is tracked here.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 2. Adding a new interactive step
- * component type requires updates in 2 places:
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 4. Adding a new interactive step
+ * component type requires updates in 3 places:
  *   1. step-type-registry.ts STEP_TYPE_SCHEMAS (parse + orchestration)
  *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
  *      (#842 acknowledgement-gate classification)
- * The `step-type-registry.tripwire.test.ts` parity test fails if any
- * registry entry disagrees with this derived set.
+ *   3. lib/guide-stats/completion-affordance.ts (the stamped denominator's
+ *      notion of "can emit completion evidence")
+ * The `step-type-registry.tripwire.test.ts` and
+ * `completion-affordance.parity.test.ts` parity tests fail if any registry
+ * entry disagrees with the derived sets.
  */
 const INTERACTIVE_STEP_TYPES: ReadonlySet<string> = new Set<string>(STEP_TYPE_PARSE_KEYS);
 
@@ -999,10 +1297,13 @@ function renderParsedElement(
   key: string | number,
   contentKey?: string,
   responses: Record<string, unknown> = {},
-  standaloneStepPosition?: StandaloneStepPosition
+  standaloneStepPosition?: StandaloneStepPosition,
+  fullScreenFallbackLocation?: string
 ): React.ReactNode {
   if (Array.isArray(element)) {
-    return element.map((child, i) => renderParsedElement(child, `${key}-${i}`, contentKey, responses));
+    return element.map((child, i) =>
+      renderParsedElement(child, `${key}-${i}`, contentKey, responses, undefined, fullScreenFallbackLocation)
+    );
   }
 
   // Helper to substitute variables in strings at render time
@@ -1024,7 +1325,14 @@ function renderParsedElement(
     children.map((child: ParsedElement | string, childIndex: number) =>
       typeof child === 'string'
         ? sub(child)
-        : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses, childStepPosition)
+        : renderParsedElement(
+            child,
+            `${key}-child-${childIndex}`,
+            contentKey,
+            responses,
+            childStepPosition,
+            fullScreenFallbackLocation
+          )
     );
 
   // Helper to substitute variables in internal actions (for multistep/guided blocks)
@@ -1063,6 +1371,7 @@ function renderParsedElement(
           objectives={element.props.objectives}
           hints={element.props.hints}
           id={element.props.id} // Pass the HTML id attribute
+          sectionId={element.props.sectionId}
           autoCollapse={element.props.autoCollapse}
         >
           {renderChildren(element.children)}
@@ -1080,7 +1389,9 @@ function renderParsedElement(
           whenFalseSectionConfig={element.props.whenFalseSectionConfig}
           whenTrueChildren={element.props.whenTrueChildren || []}
           whenFalseChildren={element.props.whenFalseChildren || []}
-          renderElement={(child: ParsedElement, childKey: string) => renderParsedElement(child, childKey, contentKey)}
+          renderElement={(child: ParsedElement, childKey: string) =>
+            renderParsedElement(child, childKey, contentKey, undefined, undefined, fullScreenFallbackLocation)
+          }
           keyPrefix={String(key)}
         />
       );
@@ -1109,6 +1420,7 @@ function renderParsedElement(
           // Standalone step position (for guides without sections)
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
+          fullScreenFallbackLocation={fullScreenFallbackLocation}
         >
           {renderChildren(element.children)}
         </InteractiveStep>
@@ -1128,6 +1440,7 @@ function renderParsedElement(
           // Standalone step position (for guides without sections)
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
+          fullScreenFallbackLocation={fullScreenFallbackLocation}
         >
           {renderChildren(element.children)}
         </InteractiveMultiStep>
@@ -1148,6 +1461,7 @@ function renderParsedElement(
           // Standalone step position (for guides without sections)
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
+          fullScreenFallbackLocation={fullScreenFallbackLocation}
         >
           {renderChildren(element.children)}
         </InteractiveGuided>
@@ -1197,6 +1511,7 @@ function renderParsedElement(
           vmTemplate={element.props.vmTemplate}
           vmApp={element.props.vmApp}
           vmScenario={element.props.vmScenario}
+          gcx={element.props.gcx}
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
         >
@@ -1219,6 +1534,9 @@ function renderParsedElement(
           successCriteria={element.props.successCriteria}
           hintLevels={element.props.hintLevels}
           failureMessage={element.props.failureMessage}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          skippable={element.props.skippable}
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
         />
@@ -1237,6 +1555,7 @@ function renderParsedElement(
           hints={element.props.hints}
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
+          fullScreenFallbackLocation={fullScreenFallbackLocation}
         >
           {renderChildren(element.children)}
         </CodeBlockStep>
@@ -1262,6 +1581,7 @@ function renderParsedElement(
           defaultValue={element.props.defaultValue}
           required={element.props.required}
           pattern={element.props.pattern}
+          format={element.props.format}
           validationMessage={sub(element.props.validationMessage)}
           requirements={element.props.requirements}
           skippable={element.props.skippable}
@@ -1370,6 +1690,12 @@ function renderParsedElement(
           {renderChildren(element.children)}
         </CollapsibleBlock>
       );
+    case 'callout':
+      return (
+        <CalloutBlock key={key} id={element.props.id} title={sub(element.props.title) ?? ''}>
+          {renderChildren(element.children)}
+        </CalloutBlock>
+      );
     case 'expandable-table':
       return (
         <ExpandableTable
@@ -1452,7 +1778,14 @@ function renderParsedElement(
             ?.map((child: ParsedElement | string, childIndex: number) =>
               typeof child === 'string'
                 ? sub(child)
-                : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses)
+                : renderParsedElement(
+                    child,
+                    `${key}-child-${childIndex}`,
+                    contentKey,
+                    responses,
+                    undefined,
+                    fullScreenFallbackLocation
+                  )
             )
             .filter((child: React.ReactNode) => child !== null);
 
@@ -1467,7 +1800,7 @@ function renderParsedElement(
 
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
-        logger.error('Invalid element type for parsed element', { element });
+        logger.error('Invalid element type for parsed element');
         throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
 
@@ -1501,7 +1834,14 @@ function renderParsedElement(
               const substituted = sub(child);
               return substituted && substituted.length > 0 ? substituted : null;
             }
-            return renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses);
+            return renderParsedElement(
+              child,
+              `${key}-child-${childIndex}`,
+              contentKey,
+              responses,
+              undefined,
+              fullScreenFallbackLocation
+            );
           })
           .filter((child: React.ReactNode) => child !== null);
 

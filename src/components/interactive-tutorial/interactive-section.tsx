@@ -1,6 +1,6 @@
+import { usePathfinderPluginConfig } from '../../hooks';
 import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef } from 'react';
 import { Button } from '@grafana/ui';
-import { usePluginContext } from '@grafana/data';
 
 import {
   useInteractiveElements,
@@ -80,8 +80,9 @@ import {
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
+import type { InteractiveElementData } from '../../types/interactive.types';
+import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
 import {
@@ -90,7 +91,7 @@ import {
   computeStepEligibility,
   type AcknowledgementAnalysis,
 } from './step-section-utils';
-import { classifySectionChild } from './section-child-classifier';
+import { classifySectionChild, mapSectionChild, unwrapSectionChild } from './section-child-classifier';
 import { useDocumentStepProgress } from './hooks/use-document-step-progress';
 import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
 import { useSectionPersistence } from './hooks/use-section-persistence';
@@ -145,7 +146,6 @@ export function InteractiveSection({
   title,
   description,
   children,
-  isSequence = false,
   requirements,
   objectives,
   hints,
@@ -153,19 +153,23 @@ export function InteractiveSection({
   disabled = false,
   className,
   id, // HTML id attribute from parsed content
+  sectionId: derivedSectionId, // `sectionRuntimeId`, stamped on by the JSON parser
   autoCollapse, // Author control for auto-collapse behavior
 }: InteractiveSectionProps) {
-  // Use provided HTML id or generate sequential fallback
   const sectionId = useMemo(() => {
-    if (id) {
-      // Use the HTML id attribute, prefixed with section- for consistency
-      const generatedId = `section-${id}`;
-      return generatedId;
+    // The parser's derivation wins: it is the same function the block index
+    // keys container positions under, so an acknowledgement stored under it
+    // resolves to a position. The two fallbacks are for HTML-parsed content,
+    // which carries no block path — the counter is a last resort and cannot
+    // carry evidence, being unstable across renders.
+    if (derivedSectionId) {
+      return derivedSectionId;
     }
-    // Fallback to sequential ID for sections without explicit id
-    const generatedId = `section-${nextSectionCounter()}`;
-    return generatedId;
-  }, [id]);
+    if (id) {
+      return `section-${id}`;
+    }
+    return `section-${nextSectionCounter()}`;
+  }, [derivedSectionId, id]);
 
   // Sequential state management.
   //
@@ -246,26 +250,16 @@ export function InteractiveSection({
   // Use executeInteractiveAction directly (no wrapper needed)
   // Section-level blocking is managed separately at the section level
 
-  // Extract step information from children. Iterates the children once,
-  // resolves each child to its `StepTypeSchema` via STEP_TYPE_LOOKUP,
-  // and builds the StepInfo entry from the schema's `toStepInfoExtension`.
-  // Non-step children (markdown / media / wrapper) are skipped.
   const stepComponents = useMemo((): StepInfo[] => {
     const steps: StepInfo[] = [];
     let stepIndex = 0;
 
-    React.Children.forEach(children, (child) => {
+    React.Children.forEach(children, (wrappedChild) => {
+      const child = unwrapSectionChild(wrappedChild);
       const schema = lookupStepSchema(child);
       if (!schema) {
         return;
       }
-      // Prefer the author/parser-supplied stable stepId on the child over
-      // the positional fallback. The JSON parser threads `props.stepId`
-      // through every interactive-block converter (either the author's
-      // `id` or `deriveStepId(...)`); without this preference the
-      // `cloneElement` in `enhancedChildren` below would overwrite the
-      // stable ID with the positional one on every section render,
-      // re-orphaning completion whenever a sibling block is inserted.
       const childProps = (child as React.ReactElement<any>).props;
       const stepId: string =
         typeof childProps?.stepId === 'string' && childProps.stepId.length > 0
@@ -322,7 +316,7 @@ export function InteractiveSection({
   // Roster reconciliation (MF-2): drop any stored step IDs that no
   // longer appear in the section's current roster. Self-heals storage
   // after author edits (rename / delete / re-order under stable IDs)
-  // so `countAllCompleted` / `getGuideProgress` can't run > 100%. Runs
+  // so the completion percentage can't run > 100%. Runs
   // once per roster change; idempotent when storage is already aligned.
   // Skipped in preview mode where storage writes are sandboxed.
   useEffect(() => {
@@ -423,10 +417,7 @@ export function InteractiveSection({
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
 
   // Get plugin configuration to determine if auto-detection is enabled
-  const pluginContext = usePluginContext();
-  const pluginConfig = useMemo(() => {
-    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-  }, [pluginContext?.meta?.jsonData]);
+  const { config: pluginConfig } = usePathfinderPluginConfig();
 
   // Get runtime interactive config with plugin overrides
   const interactiveConfig = useMemo(() => {
@@ -478,8 +469,7 @@ export function InteractiveSection({
 
   // Trigger reactive checks when section completion status changes.
   // The `gateAnalysis.isAllPassive` branch lets sections with zero
-  // interactive steps still persist `sectionDoneStorage` + refresh
-  // guide progress (F-1, #909 follow-up).
+  // interactive steps reach this at all (F-1, #909 follow-up).
   useEffect(() => {
     if (isCompleted && (stepComponents.length > 0 || gateAnalysis.isAllPassive)) {
       // Single unified event — replaces the two legacy CustomEvents
@@ -497,11 +487,11 @@ export function InteractiveSection({
         // Preview mode is sandboxed — keep the ephemeral check DOM-only.
         if (!isPreviewMode) {
           sectionDoneStorage.set(getContentKey(), sectionId, true);
-          // All-passive sections bypass `persistSection`, so refresh
-          // the guide percentage explicitly.
-          if (gateAnalysis.isAllPassive) {
-            refreshAndNotifyGuideProgress(getContentKey());
-          }
+          // An acknowledgement is percentage-bearing evidence for every
+          // section shape — it credits the section's last block — and no
+          // ack write goes through `persistSection`, so refresh here for
+          // all of them, not only the all-passive ones.
+          refreshAndNotifyGuideProgress(getContentKey());
         }
       }
 
@@ -627,15 +617,21 @@ export function InteractiveSection({
       }
 
       try {
-        // Execute the action using existing interactive logic
-        const actionOutcome = await executeInteractiveAction({
-          ...stepInfo,
-          targetAction: stepInfo.targetAction!,
-          buttonType: 'do',
-        });
-        if (actionOutcome === 'error') {
-          logger.warn(`Sequence action did not complete for ${stepInfo.stepId}`);
-          return false;
+        const { targetAction } = stepInfo;
+        if (targetAction !== undefined && isInteractiveActionType(targetAction)) {
+          const actionOutcome = await executeInteractiveAction({
+            ...stepInfo,
+            targetAction,
+            buttonType: 'do',
+          });
+          if (actionOutcome === 'error') {
+            logger.warn(`Sequence action did not complete for ${stepInfo.stepId}`);
+            return false;
+          }
+        } else {
+          // Preserve the legacy section-runner behavior for component-owned
+          // steps while their pause semantics are handled separately.
+          logger.warn(`Unknown interactive action: ${targetAction}`);
         }
 
         // Only run post-verification if explicitly specified
@@ -767,15 +763,14 @@ export function InteractiveSection({
     }
 
     // Start section-level blocking (persists for entire section)
-    const dummyData = {
+    const dummyData: InteractiveElementData = {
       refTarget: `section-${sectionId}`,
-      targetAction: 'section',
+      targetAction: 'noop',
       targetValue: undefined,
       requirements: undefined,
       tagName: 'section',
       textContent: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
       timestamp: Date.now(),
-      isPartOfSection: true,
     };
     startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
@@ -924,7 +919,10 @@ export function InteractiveSection({
 
             // First, show the step (highlight it) - skip for multi-step components OR if showMe is false
             if (!stepInfo.isMultiStep && stepInfo.showMe !== false) {
-              await executeInteractiveAction({ ...stepInfo, targetAction: stepInfo.targetAction!, buttonType: 'show' });
+              const targetAction = stepInfo.targetAction;
+              if (targetAction !== undefined && isInteractiveActionType(targetAction)) {
+                await executeInteractiveAction({ ...stepInfo, targetAction, buttonType: 'show' });
+              }
 
               // Wait for highlight to be visible and animation to complete
               // Check cancellation during wait
@@ -1186,11 +1184,6 @@ export function InteractiveSection({
     completedSteps,
   });
 
-  // Render enhanced children with coordination props. For each child:
-  //   1. Look up its `StepTypeSchema` (undefined → pass-through).
-  //   2. Build the cloneElement bag via `schema.toEnhancedProps(ctx)`.
-  //   3. Attach a `ref` callback based on `schema.refTarget`
-  //      ('stepRefs' / 'multiStepRefs' / 'none').
   const enhancedChildren = useMemo(() => {
     let stepIndex = 0;
 
@@ -1206,54 +1199,55 @@ export function InteractiveSection({
       };
 
     // eslint-disable-next-line react-hooks/refs -- the stepRefs/multiStepRefs Maps are read inside the ref callback, which runs at commit time, not during render
-    return React.Children.map(children, (child) => {
-      const schema = lookupStepSchema(child);
-      if (!schema) {
-        return child;
-      }
-      const stepInfo = stepComponents[stepIndex];
-      if (!stepInfo) {
-        return child;
-      }
+    return React.Children.map(children, (wrappedChild) =>
+      mapSectionChild(wrappedChild, (child) => {
+        const schema = lookupStepSchema(child);
+        if (!schema) {
+          return child;
+        }
+        const stepInfo = stepComponents[stepIndex];
+        if (!stepInfo) {
+          return child;
+        }
 
-      const isEligibleForChecking = stepEligibility[stepIndex] ?? false;
-      const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-      const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
-        sectionId,
-        stepIndex
-      );
+        const isEligibleForChecking = stepEligibility[stepIndex] ?? false;
+        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
+        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+          sectionId,
+          stepIndex
+        );
 
-      const enhanceCtx: EnhanceContext = {
-        stepInfo,
-        isEligibleForChecking,
-        isCurrentlyExecuting,
-        documentStepIndex,
-        documentTotalSteps,
-        sectionId,
-        sectionTitle: title,
-        baseDisabled: disabled,
-        isRunning,
-        sectionRequirementsPassed: sectionRequirementsStatus.passed,
-        resetTrigger,
-        onStepComplete: handleStepComplete,
-        onStepReset: handleStepReset,
-      };
+        const enhanceCtx: EnhanceContext = {
+          stepInfo,
+          isEligibleForChecking,
+          isCurrentlyExecuting,
+          documentStepIndex,
+          documentTotalSteps,
+          sectionId,
+          sectionTitle: title,
+          baseDisabled: disabled,
+          isRunning,
+          sectionRequirementsPassed: sectionRequirementsStatus.passed,
+          resetTrigger,
+          onStepComplete: handleStepComplete,
+          onStepReset: handleStepReset,
+        };
 
-      const enhancedProps = schema.toEnhancedProps(enhanceCtx);
+        const enhancedProps = schema.toEnhancedProps(enhanceCtx);
 
-      // `ref` and `key` are React-special — they must go onto the
-      // cloneElement props directly, not into `enhancedProps`.
-      const refCallback = schema.refTarget === 'none' ? undefined : makeRefCallback(schema.refTarget, stepInfo.stepId);
+        const refCallback =
+          schema.refTarget === 'none' ? undefined : makeRefCallback(schema.refTarget, stepInfo.stepId);
 
-      stepIndex++;
+        stepIndex++;
 
-      return React.cloneElement(child as React.ReactElement<any>, {
-        ...(child as React.ReactElement<any>).props,
-        ...enhancedProps,
-        key: stepInfo.stepId,
-        ...(refCallback ? { ref: refCallback } : {}),
-      });
-    });
+        return React.cloneElement(child as React.ReactElement<any>, {
+          ...(child as React.ReactElement<any>).props,
+          ...enhancedProps,
+          key: stepInfo.stepId,
+          ...(refCallback ? { ref: refCallback } : {}),
+        });
+      })
+    );
   }, [
     children,
     stepComponents,
@@ -1312,7 +1306,7 @@ export function InteractiveSection({
       {/* Section requirements status banner */}
       {!isCollapsed && requirements && !sectionRequirementsStatus.passed && (
         <div
-          className="interactive-feedback-box interactive-feedback-box--neutral interactive-requirement-box interactive-section-requirements-banner"
+          className="interactive-feedback-box interactive-feedback-box--neutral interactive-section-requirements-banner"
           data-testid={testIds.interactive.sectionRequirementsBanner(sectionId)}
         >
           <div className="interactive-section-requirements-content">
@@ -1374,7 +1368,7 @@ export function InteractiveSection({
             disabled={disabled || isRunning || isCompletedByObjectives}
             size="sm"
             variant="secondary"
-            className="interactive-section-reset-button"
+            className="interactive-guide-button-sm interactive-section-reset-button"
             data-testid={testIds.interactive.resetSectionButton(sectionId)}
             title="Reset section and clear all step completion"
           >
@@ -1410,7 +1404,7 @@ export function InteractiveSection({
               disabled={disabled}
               size="sm"
               variant="secondary"
-              className="interactive-guided-cancel-btn"
+              className="interactive-guide-button-sm interactive-guided-cancel-btn"
               title="Cancel section execution"
             >
               Cancel

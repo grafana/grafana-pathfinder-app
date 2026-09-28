@@ -523,3 +523,91 @@ describe('validatePackage — stable message codes', () => {
     expect(taggedFields).toEqual(['conflicts', 'depends', 'provides', 'recommends', 'replaces', 'suggests']);
   });
 });
+
+describe('validatePackage — malformed stats stamp', () => {
+  let tmpDir: string;
+
+  const wellFormedStats = {
+    version: 1,
+    blockCount: 3,
+    sectionCount: 1,
+    completableBlockCount: 1,
+    finalCompletablePosition: 3,
+  };
+
+  beforeEach(() => {
+    tmpDir = createTmpDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writePackageWithStats(stats: unknown): string {
+    const pkgDir = path.join(tmpDir, 'stamped-guide');
+    writeJson(path.join(pkgDir, 'content.json'), {
+      id: 'stamped-guide',
+      title: 'Stamped guide',
+      blocks: [{ type: 'markdown', content: '# Hello' }],
+    });
+    const manifest: Record<string, unknown> = {
+      id: 'stamped-guide',
+      type: 'guide',
+      description: 'A stamped guide',
+      category: 'testing',
+      startingLocation: '/test',
+      targeting: { match: { urlPrefix: '/' } },
+    };
+    if (stats !== undefined) {
+      manifest['stats'] = stats;
+    }
+    writeJson(path.join(pkgDir, 'manifest.json'), manifest);
+    return pkgDir;
+  }
+
+  function statsMessages(pkgDir: string) {
+    return validatePackage(pkgDir).messages.filter((m) => m.code === 'manifest_stats_malformed');
+  }
+
+  // The lenient half. `stats` is `.catch(undefined)`, so a partial stamp must
+  // not fail the package — `build-stats` has to be able to read a broken stamp
+  // to repair it.
+  it('keeps the package valid when the stamp is malformed', () => {
+    const result = validatePackage(writePackageWithStats({ version: 1, blockCount: 99 }));
+
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  // The loud half. Without this the author sees exactly what an unstamped
+  // package shows: nothing.
+  it('warns that a partial stamp is present but ignored', () => {
+    const [message, ...rest] = statsMessages(writePackageWithStats({ version: 1, blockCount: 99 }));
+
+    expect(rest).toHaveLength(0);
+    expect(message?.severity).toBe('warn');
+    expect(message?.path).toEqual(['manifest.json', 'stats']);
+    expect(message?.remediation).toContain('build-stats');
+    expect(message?.message).toContain('present but malformed');
+  });
+
+  it('names the fields that make the stamp malformed', () => {
+    const [message] = statsMessages(writePackageWithStats({ ...wellFormedStats, blockCount: -1 }));
+
+    expect(message?.message).toContain('blockCount');
+  });
+
+  it('warns when the stamp is not an object at all', () => {
+    const [message] = statsMessages(writePackageWithStats('nonsense'));
+
+    expect(message?.severity).toBe('warn');
+  });
+
+  it('stays silent for a well-formed stamp', () => {
+    expect(statsMessages(writePackageWithStats(wellFormedStats))).toHaveLength(0);
+  });
+
+  it('stays silent when the manifest carries no stamp', () => {
+    expect(statsMessages(writePackageWithStats(undefined))).toHaveLength(0);
+  });
+});

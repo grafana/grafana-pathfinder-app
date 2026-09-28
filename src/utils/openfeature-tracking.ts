@@ -2,7 +2,7 @@ import type { Hook, HookContext, EvaluationDetails, JsonValue } from '@openfeatu
 
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { StorageKeys } from '../lib/storage-keys';
-import { pathfinderFeatureFlags, type FeatureFlagName } from './openfeature';
+import { pathfinderFeatureFlags, type ExperimentConfig, type FeatureFlagName } from './openfeature';
 
 /**
  * In-memory fast path so the same flag never fires twice within one page load
@@ -35,24 +35,32 @@ function markReportedExposure(flagKey: string, variant: string): void {
 }
 
 /**
- * Variants for which we emit a FeatureFlagEvaluated exposure event.
+ * Experiment-arm membership and exposure policy at the analytics boundary.
  *
- * We intentionally skip 'excluded' (user isn't in the experiment) so the
- * event stream only contains real experiment exposures (control + treatment),
- * which is what downstream A/B analysis needs.
+ * Every valid arm is an own key; `false` keeps `excluded` out of the event
+ * stream while control and treatment emit the exposures used by A/B analysis.
  */
-const TRACKED_EXPERIMENT_VARIANTS = new Set(['control', 'treatment']);
+const EXPERIMENT_VARIANT_EMITS_EXPOSURE = {
+  excluded: false,
+  control: true,
+  treatment: true,
+} satisfies Record<ExperimentConfig['variant'], boolean>;
 
-/**
- * Safely extract a string `variant` field from a JSON flag value.
- * Returns null if the value isn't an object or has no string variant.
- */
-function extractVariant(value: JsonValue): string | null {
-  if (value && typeof value === 'object' && !Array.isArray(value) && 'variant' in value) {
-    const raw = (value as { variant: unknown }).variant;
-    return typeof raw === 'string' ? raw : null;
+function isExperimentVariant(variant: string): variant is ExperimentConfig['variant'] {
+  return Object.hasOwn(EXPERIMENT_VARIANT_EMITS_EXPOSURE, variant);
+}
+
+function extractExperimentVariant(value: JsonValue): ExperimentConfig['variant'] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !('variant' in value)) {
+    return null;
   }
-  return null;
+
+  const variant = (value as { variant: unknown }).variant;
+  if (typeof variant !== 'string' || !isExperimentVariant(variant)) {
+    return null;
+  }
+
+  return variant;
 }
 
 /**
@@ -113,8 +121,8 @@ export function reportFeatureFlagExposure(flagKey: string, value: JsonValue): vo
     return;
   }
 
-  const variant = extractVariant(value);
-  if (!variant || !TRACKED_EXPERIMENT_VARIANTS.has(variant)) {
+  const variant = extractExperimentVariant(value);
+  if (!variant || !EXPERIMENT_VARIANT_EMITS_EXPOSURE[variant]) {
     return;
   }
 

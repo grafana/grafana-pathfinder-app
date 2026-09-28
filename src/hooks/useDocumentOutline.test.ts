@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { useDocumentOutline } from './useDocumentOutline';
 
-function containerWith(html: string): React.RefObject<HTMLDivElement> {
+function containerWith(html: string): React.RefObject<HTMLDivElement | null> {
   const div = document.createElement('div');
   div.innerHTML = html;
   return { current: div };

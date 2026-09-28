@@ -35,7 +35,7 @@ jest.mock('../../lib/analytics', () => ({
 }));
 
 // Spy only markMilestoneDone; every other docs-retrieval export (getMilestoneSlug,
-// countUnlockedMilestones, getJourneyProgress) stays real.
+// getJourneyProgress) stays real.
 jest.mock('../../docs-retrieval', () => ({
   ...jest.requireActual('../../docs-retrieval'),
   markMilestoneDone: jest.fn(),
@@ -61,7 +61,7 @@ describe('useLinkClickHandler', () => {
 
   // Create a div to hold our content and links
   let contentDiv: HTMLDivElement;
-  let contentRef: React.RefObject<HTMLDivElement>;
+  let contentRef: React.RefObject<HTMLDivElement | null>;
 
   beforeEach(() => {
     // Reset all mocks
@@ -113,6 +113,44 @@ describe('useLinkClickHandler', () => {
       // Verify the unified dispatcher was used (so packaged journeys
       // route through the docs loader internally).
       expect(mockModel.loadTab).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1');
+    });
+
+    // Regression test: the cover-page CTA and GuideList's clickable current
+    // row (both added this PR) route through this same handler with no
+    // guard of their own — a rapid double-click could re-enter loadTab before
+    // isLoading's React state update was ever visible.
+    it('ignores a second click while the first loadTab call is still in flight', async () => {
+      let resolveLoadTab!: () => void;
+      mockModel.loadTab.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveLoadTab = resolve;
+        })
+      );
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const startButton = document.createElement('button');
+      startButton.setAttribute('data-journey-start', 'true');
+      startButton.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone1');
+      contentDiv.appendChild(startButton);
+
+      fireEvent.click(startButton);
+      fireEvent.click(startButton);
+      expect(mockModel.loadTab).toHaveBeenCalledTimes(1);
+
+      resolveLoadTab();
+      await Promise.resolve();
+
+      // Once settled, a further click is allowed through again.
+      fireEvent.click(startButton);
+      expect(mockModel.loadTab).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -205,7 +243,10 @@ describe('useLinkClickHandler', () => {
       expect(mockModel.navigateToPreviousMilestone).toHaveBeenCalled();
     });
 
-    it('completes a step-free milestone against the UNLOCKED count, not the locked-inclusive total', () => {
+    // Decision 6 (docs/design/COMPLETION-MODEL.md): navigation earns no
+    // completion credit, on a step-free milestone or otherwise. Only
+    // evidence or the Mark complete button may call `markMilestoneDone`.
+    it('does NOT complete a step-free milestone on bottom-nav Next', () => {
       const { markMilestoneDone } = jest.requireMock('../../docs-retrieval');
       mockModel.getActiveTab.mockReturnValue({
         id: 'tab1',
@@ -218,7 +259,6 @@ describe('useLinkClickHandler', () => {
           metadata: {
             learningJourney: {
               baseUrl: 'backend-guide:fe-alerting-path',
-              // 3 declared, 1 locked → 2 reachable.
               totalMilestones: 3,
               milestones: [
                 { number: 1, title: 'm1', url: 'backend-guide:fe-alerting-01', isActive: false },
@@ -236,19 +276,13 @@ describe('useLinkClickHandler', () => {
         useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
       );
 
-      // No `[data-step-id]` in contentDiv → the milestone is completed on Next.
+      // No `[data-step-id]` in contentDiv — a prose-only milestone.
       const nextButton = document.createElement('button');
       nextButton.setAttribute('data-journey-nav', 'next');
       contentDiv.appendChild(nextButton);
       fireEvent.click(nextButton);
 
-      // 2 (unlocked), not 3 — a locked trailing member must not block completion.
-      expect(markMilestoneDone).toHaveBeenCalledWith(
-        'backend-guide:fe-alerting-path',
-        'fe-alerting-01',
-        2,
-        expect.any(Object)
-      );
+      expect(markMilestoneDone).not.toHaveBeenCalled();
     });
 
     // -------------------------------------------------------------------------
@@ -276,6 +310,7 @@ describe('useLinkClickHandler', () => {
             learningJourney: {
               currentMilestone: 2,
               totalMilestones: 6,
+              milestones: [],
             },
           },
         },
@@ -325,6 +360,7 @@ describe('useLinkClickHandler', () => {
             learningJourney: {
               currentMilestone: 3,
               totalMilestones: 6,
+              milestones: [],
             },
           },
         },
@@ -640,7 +676,63 @@ describe('useLinkClickHandler', () => {
           content_title: 'Test Journey',
           content_url: 'https://grafana.com/docs/test-journey',
           total_milestones: 5,
+          interaction_location: 'ready_to_begin_button',
         })
+      );
+    });
+
+    it('reports the caller-supplied interaction_location when a data-journey-start element carries data-interaction-location', () => {
+      // The cover-page CTA and current-module row both reuse this attribute
+      // contract but tag themselves distinctly, so a fresh start, a resume,
+      // and a direct row click stay separable from the legacy button's label.
+      const { reportAppInteraction } = require('../../lib/analytics');
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const resumeButton = document.createElement('button');
+      resumeButton.setAttribute('data-journey-start', 'true');
+      resumeButton.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone1');
+      resumeButton.setAttribute('data-interaction-location', 'resume_cta');
+      contentDiv.appendChild(resumeButton);
+
+      fireEvent.click(resumeButton);
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.StartLearningJourneyClick,
+        expect.objectContaining({ interaction_location: 'resume_cta' })
+      );
+    });
+
+    it('falls back to the default interaction_location for an unrecognized value, since the element can come from remote content', () => {
+      const { reportAppInteraction } = require('../../lib/analytics');
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const spoofedButton = document.createElement('button');
+      spoofedButton.setAttribute('data-journey-start', 'true');
+      spoofedButton.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone1');
+      spoofedButton.setAttribute('data-interaction-location', 'attacker_supplied_value');
+      contentDiv.appendChild(spoofedButton);
+
+      fireEvent.click(spoofedButton);
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.StartLearningJourneyClick,
+        expect.objectContaining({ interaction_location: 'ready_to_begin_button' })
       );
     });
   });

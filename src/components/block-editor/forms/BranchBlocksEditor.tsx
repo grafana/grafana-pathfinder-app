@@ -37,8 +37,9 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, INTERACTIVE_ACTIONS } from '../constants';
+import { BLOCK_TYPE_METADATA, INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { assertExhaustive } from '../../../lib/assert-exhaustive';
 import type { BlockType, JsonBlock, JsonInteractiveAction, BlockFormProps } from '../types';
 import {
   isMarkdownBlock,
@@ -46,6 +47,7 @@ import {
   isImageBlock,
   isVideoBlock,
   isInputBlock,
+  isCalloutBlock,
   type JsonInteractiveBlock,
 } from '../../../types/json-guide.types';
 import { getBlockPreview } from '../utils';
@@ -261,47 +263,76 @@ const getStyles = (theme: GrafanaTheme2) => ({
 // Helper Functions
 // ============================================================================
 
-/**
- * Create a default block of a given type
- */
-function createDefaultBlock(type: BlockType): JsonBlock {
+const BLOCK_DEFAULT_BUILDERS = {
+  markdown: () => ({ type: 'markdown', content: '' }),
+  divider: () => ({ type: 'divider' }),
+  interactive: () => ({ type: 'interactive', action: 'highlight', reftarget: '', content: '' }),
+  image: () => ({ type: 'image', src: '' }),
+  video: () => ({ type: 'video', src: '' }),
+  quiz: () => ({
+    type: 'quiz',
+    question: '',
+    choices: [
+      { id: 'a', text: '', correct: true },
+      { id: 'b', text: '' },
+    ],
+  }),
+  input: () => ({ type: 'input', prompt: '', inputType: 'text', variableName: '' }),
+  multistep: () => ({ type: 'multistep', content: '', steps: [] }),
+  guided: () => ({ type: 'guided', content: '', steps: [] }),
+  challenge: () => ({ type: 'challenge', title: '', brief: '', successCriteria: '' }),
+  callout: () => ({ type: 'callout', title: '', content: '' }),
+} as const satisfies { [K in BlockType]?: () => Extract<JsonBlock, { type: K }> };
+
+/** Block types that have an intentional default builder. */
+export type DefaultableBlockType = keyof typeof BLOCK_DEFAULT_BUILDERS;
+
+/** Builder-backed block types safe to offer in the branch picker (see #1542). */
+export type BranchAddableBlockType = Exclude<DefaultableBlockType, 'challenge'>;
+
+function isDefaultableBlockType(type: BlockType): type is DefaultableBlockType {
+  return Object.hasOwn(BLOCK_DEFAULT_BUILDERS, type);
+}
+
+export function createDefaultBlock(type: BlockType): JsonBlock {
+  if (isDefaultableBlockType(type)) {
+    return BLOCK_DEFAULT_BUILDERS[type]();
+  }
+
   switch (type) {
-    case 'markdown':
+    case 'section':
+    case 'html':
+    case 'conditional':
+    case 'assistant':
+    case 'terminal':
+    case 'terminal-connect':
+    case 'code-block':
+    case 'grot-guide':
+    case 'collapsible':
+    case 'snippet-ref':
       return { type: 'markdown', content: '' };
-    case 'interactive':
-      return { type: 'interactive', action: 'highlight', reftarget: '', content: '' };
-    case 'image':
-      return { type: 'image', src: '' };
-    case 'video':
-      return { type: 'video', src: '' };
-    case 'quiz':
-      return {
-        type: 'quiz',
-        question: '',
-        choices: [
-          { id: 'a', text: '', correct: true },
-          { id: 'b', text: '' },
-        ],
-      };
-    case 'input':
-      return { type: 'input', prompt: '', inputType: 'text', variableName: '' };
-    case 'multistep':
-      return { type: 'multistep', content: '', steps: [] };
-    case 'guided':
-      return { type: 'guided', content: '', steps: [] };
     default:
+      assertExhaustive(type);
       return { type: 'markdown', content: '' };
   }
 }
 
-// Block types allowed in conditional branches (no nested containers)
-const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BLOCK_TYPE_ORDER.filter(
-  (t) => t !== 'section' && t !== 'collapsible' && t !== 'conditional'
-);
+export const ALLOWED_BRANCH_BLOCK_TYPES = [
+  'markdown',
+  'divider',
+  'interactive',
+  'image',
+  'video',
+  'input',
+  'callout',
+  'quiz',
+  'multistep',
+  'guided',
+] as const satisfies readonly BranchAddableBlockType[];
 
 // Block types that support inline form editing in BranchBlocksEditor
 // quiz, multistep, and guided require the dedicated editors and cannot be edited inline
-const INLINE_EDITABLE_TYPES: BlockType[] = ['markdown', 'interactive', 'image', 'video', 'input'];
+const INLINE_EDITABLE_TYPES: BlockType[] = ['markdown', 'interactive', 'image', 'video', 'input', 'callout'];
 
 const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
   value: a.value as JsonInteractiveAction,
@@ -359,7 +390,7 @@ export interface BranchBlocksEditorProps {
   /** Called when blocks change */
   onChange: (blocks: JsonBlock[]) => void;
   /** Block types offered in the add menu. Defaults to ALLOWED_BRANCH_BLOCK_TYPES. */
-  addableBlockTypes?: BlockType[];
+  addableBlockTypes?: readonly BranchAddableBlockType[];
   /** Called to start/stop the element picker */
   onPickerModeChange?: BlockFormProps['onPickerModeChange'];
 }
@@ -394,6 +425,7 @@ export function BranchBlocksEditor({
   const [formAlt, setFormAlt] = useState('');
   const [formPrompt, setFormPrompt] = useState('');
   const [formVariableName, setFormVariableName] = useState('');
+  const [formTitle, setFormTitle] = useState('');
 
   // DnD sensors
   const pointerSensor = useSensor(PointerSensor, {
@@ -418,6 +450,7 @@ export function BranchBlocksEditor({
     setFormAlt('');
     setFormPrompt('');
     setFormVariableName('');
+    setFormTitle('');
   }, []);
 
   // Populate form fields from a block
@@ -440,6 +473,9 @@ export function BranchBlocksEditor({
       } else if (isInputBlock(block)) {
         setFormPrompt(block.prompt);
         setFormVariableName(block.variableName);
+      } else if (isCalloutBlock(block)) {
+        setFormTitle(block.title);
+        setFormContent(block.content);
       }
     },
     [resetFormFields]
@@ -484,7 +520,36 @@ export function BranchBlocksEditor({
             inputType: 'text',
             variableName: formVariableName,
           };
+        case 'callout': {
+          // Mirrors the interactive case above: carry over fields this reduced
+          // form doesn't manage (id, authorNote) instead of dropping them.
+          const carried =
+            existing && isCalloutBlock(existing)
+              ? {
+                  ...(existing.id && { id: existing.id }),
+                  ...(existing.authorNote && { authorNote: existing.authorNote }),
+                }
+              : {};
+          return { ...carried, type: 'callout', title: formTitle, content: formContent };
+        }
+        case 'section':
+        case 'divider':
+        case 'html':
+        case 'multistep':
+        case 'guided':
+        case 'conditional':
+        case 'quiz':
+        case 'assistant':
+        case 'terminal':
+        case 'terminal-connect':
+        case 'code-block':
+        case 'grot-guide':
+        case 'collapsible':
+        case 'challenge':
+        case 'snippet-ref':
+          return createDefaultBlock(type);
         default:
+          assertExhaustive(type);
           return createDefaultBlock(type);
       }
     },
@@ -498,6 +563,7 @@ export function BranchBlocksEditor({
       formAlt,
       formPrompt,
       formVariableName,
+      formTitle,
     ]
   );
 
@@ -744,7 +810,46 @@ export function BranchBlocksEditor({
           </>
         );
 
+      case 'callout':
+        return (
+          <>
+            <Field label="Label" required description="Shown at the top of the box, e.g. Objective">
+              <Input value={formTitle} onChange={(e) => setFormTitle(e.currentTarget.value)} placeholder="Objective" />
+            </Field>
+            <Field label="Content" required description="Markdown body shown inside the callout">
+              <TextArea
+                value={formContent}
+                onChange={(e) => setFormContent(e.currentTarget.value)}
+                rows={3}
+                placeholder="In this section you will learn..."
+              />
+            </Field>
+          </>
+        );
+
+      case 'section':
+      case 'divider':
+      case 'html':
+      case 'multistep':
+      case 'guided':
+      case 'conditional':
+      case 'quiz':
+      case 'assistant':
+      case 'terminal':
+      case 'terminal-connect':
+      case 'code-block':
+      case 'grot-guide':
+      case 'collapsible':
+      case 'challenge':
+      case 'snippet-ref':
+        return (
+          <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+            This block type cannot be edited inline. To modify it, edit the JSON directly or use a dedicated editor for
+            this block type.
+          </div>
+        );
       default:
+        assertExhaustive(type);
         return (
           <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
             This block type cannot be edited inline. To modify it, edit the JSON directly or use a dedicated editor for

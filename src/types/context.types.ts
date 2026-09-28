@@ -59,6 +59,9 @@ export interface ResolvedNavLink {
   title: string;
   contentUrl: string;
   manifest?: Record<string, unknown>;
+  /** Resolved source repository, carried so a nav-opened package keys its
+   *  durable completion on the true source rather than the manifest default. */
+  repository?: string;
 }
 
 export interface Recommendation {

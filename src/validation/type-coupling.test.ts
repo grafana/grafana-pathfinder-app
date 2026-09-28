@@ -1,4 +1,4 @@
-import type { JsonGuide, JsonBlock } from '../types/json-guide.types';
+import type { JsonGuide, JsonBlock, PresentationalBlock } from '../types/json-guide.types';
 import {
   JsonGuideSchema,
   JsonMarkdownBlockSchema,
@@ -10,6 +10,8 @@ import {
   JsonGuidedBlockSchema,
   JsonSectionBlockSchema,
   JsonCollapsibleBlockSchema,
+  JsonCalloutBlockSchema,
+  JsonDividerBlockSchema,
   PresentationalBlockSchema,
   JsonQuizBlockSchema,
   JsonAssistantBlockSchema,
@@ -20,7 +22,13 @@ import {
   KNOWN_FIELDS,
   type InferredJsonGuide,
 } from '../types/json-guide.schema';
-import { z } from 'zod';
+import type { z } from 'zod';
+
+type InferredPresentational = z.infer<typeof PresentationalBlockSchema>;
+
+// Each direction catches an addition the other side did not get.
+export const _schemaMatchesType: PresentationalBlock = {} as InferredPresentational;
+export const _typeMatchesSchema: InferredPresentational = {} as PresentationalBlock;
 
 describe('Type Coupling: TypeScript <-> Zod', () => {
   it('JsonGuide types should be assignable', () => {
@@ -149,9 +157,14 @@ describe('KNOWN_FIELDS sync', () => {
     verifyFields(JsonCollapsibleBlockSchema, 'collapsible');
   });
 
-  // Drift guard: PresentationalBlockSchema (collapsible children) and the
-  // PresentationalBlock type must list the same block types. If the union
-  // gains/loses a member on one side only, one of these assertions fails.
+  it('should match callout schema fields', () => {
+    verifyFields(JsonCalloutBlockSchema, 'callout');
+  });
+
+  it('should match divider schema fields', () => {
+    verifyFields(JsonDividerBlockSchema, 'divider');
+  });
+
   describe('PresentationalBlockSchema membership', () => {
     it('accepts the content block types', () => {
       const accepted: unknown[] = [
@@ -159,6 +172,8 @@ describe('KNOWN_FIELDS sync', () => {
         { type: 'html', content: '<p>x</p>' },
         { type: 'image', src: 'https://example.com/x.png' },
         { type: 'video', src: 'https://example.com/x.mp4', provider: 'native' },
+        { type: 'callout', title: 'Objective', content: 'x' },
+        { type: 'divider' },
       ];
       for (const block of accepted) {
         expect(PresentationalBlockSchema.safeParse(block).success).toBe(true);

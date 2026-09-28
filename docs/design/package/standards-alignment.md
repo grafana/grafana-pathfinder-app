@@ -71,7 +71,7 @@ SCORM-specific fields (`source`, `rights`, `educationalContext`) are deferred to
 
 ### Extensible flat namespace
 
-Metadata fields live flat at the top level of `manifest.json`. Adding new optional fields is always backward-compatible. The Zod schema uses `.passthrough()` for forward compatibility — unknown fields in newer packages generate warnings but don't fail validation. See [namespace collision note](../PATHFINDER-PACKAGE-DESIGN.md#namespace-collision-note) for why flat structure is safe given the bounded, standards-aligned field inventory.
+Metadata fields live flat at the top level of `manifest.json`. Adding new optional fields is always backward-compatible. The Zod manifest schema is a `z.looseObject`, so unknown top-level fields in newer packages neither warn nor fail — they are preserved as extension metadata and forwarded into the package's `repository.json` entry. See [namespace collision note](../PATHFINDER-PACKAGE-DESIGN.md#namespace-collision-note) for the open-namespace contract and the fields the build refuses to let a manifest overwrite.
 
 ### The `source` provenance pattern (future)
 

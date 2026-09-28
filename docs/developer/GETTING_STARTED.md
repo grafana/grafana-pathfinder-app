@@ -37,7 +37,8 @@ node -v && npm -v && go version && docker --version && mage --version
 ### Build and run
 
 ```bash
-npm install            # installs frontend deps and triggers husky hook setup
+npm install            # frontend deps only; .npmrc sets ignore-scripts=true
+npm run prepare        # install the husky git hooks (once, after a fresh clone)
 npm run build:all      # frontend + Linux/ARM64 backend (what docker-compose mounts)
 npm run server         # build:all + docker compose up --build
 ```
@@ -74,18 +75,19 @@ Before opening a pull request, run:
 npm run check
 ```
 
-This is the same set of checks CI runs:
+This is the local pre-merge gate. It announces each step as it starts and stops at the first failure. To
+see what it contains without running it:
 
-```text
-npm run typecheck       # tsc --noEmit
-npm run lint            # eslint --cache .
-npm run prettier-test   # prettier formatting check
-npm run lint:go         # mage -v lint (golangci-lint)
-npm run test:go         # mage -v test (Go tests)
-npm run test:ci         # jest --passWithNoTests --maxWorkers 4
+```bash
+npm run check -- --list
 ```
 
-Each step also runs as a separate npm script if you only want to re-run one of them.
+Each step is also a separate npm script, so you can re-run just one — `--list` names them, and
+[`COMMANDS.md`](COMMANDS.md) describes them.
+
+CI does not run `npm run check`, and the two are not the same set: CI additionally enforces manifest
+freshness and the production build. A green local gate is a good signal, not a guarantee that `CI Gate`
+will be green.
 
 ## Recommended IDE setup
 
@@ -95,7 +97,9 @@ The project ships with `.eslintrc`, `.prettierrc.js`, and `tsconfig.json` config
 - **Prettier — Code formatter** (`esbenp.prettier-vscode`) — set as default formatter, format on save.
 - **Go** (`golang.go`) — for backend work.
 
-A husky pre-commit hook runs `lint-staged`, which applies Prettier to staged `.ts`/`.tsx`/`.js`/`.json`/`.yaml`/`.md` files automatically.
+A husky pre-commit hook runs `lint-staged`, which applies `eslint --fix` then Prettier to
+staged `.ts`/`.tsx`/`.js`/`.mjs` files, and Prettier alone to staged
+`.json`/`.yaml`/`.md` files.
 
 ## First-week reading list
 
@@ -134,7 +138,7 @@ go install github.com/magefile/mage@latest
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
-### Husky pre-commit hook fails
+### Husky pre-commit hook fails or blocks the commit
 
 `npm run check` reproduces the failure locally. Fix the root cause; do not bypass with `--no-verify`.
 

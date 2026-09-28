@@ -37,6 +37,17 @@ grafana:components.Breadcrumbs.breadcrumb:Home
 
 The final segment after the last colon is the argument for a parameterized selector. At runtime, Pathfinder resolves the path against the running Grafana version and queries both the resolved `data-testid` and `aria-label` forms. Reverse lookup covers both `components.*` and `pages.*`; if an attribute value maps ambiguously to multiple paths, the picker skips `grafana:` and uses its CSS strategies instead. The raw test ID remains available as an alternative selector.
 
+#### A `grafana:` path is only as old as the release that added it
+
+Version-aware means the _value_ follows the running version, not that the selector exists on every version. `resolveSelectors` floors an out-of-range target to the lowest entry in a selector's version map, so a path Grafana added in 13.2 still resolves on a 12.3 stack — to its 13.2 value, which that stack never renders. Nothing throws; the step's `exists-reftarget` simply never passes.
+
+A guide that uses a path newer than the plugin's own `grafanaDependency` floor therefore owes two things:
+
+- `testEnvironment.minVersion` in `manifest.json`, at or above the newest path the guide uses, so E2E routing sends it to a stack that can run it.
+- A `min-version:<semver>` requirement on the step or its section, so a user below that floor sees "This feature requires Grafana version X or higher" instead of a step that never unblocks. `minVersion` alone gates nothing at runtime.
+
+`src/validation/bundled-guide-selectors.test.ts` enforces both over every bundled guide, and names the offending token and the release that introduced it when either is missing.
+
 ### Generated structural fallbacks
 
 The element picker only uses positional selectors as a last resort:

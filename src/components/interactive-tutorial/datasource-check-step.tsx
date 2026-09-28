@@ -4,6 +4,7 @@
  * one is a tracked step, so only this one can hold a section up.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { Alert, Button, Combobox, Field, Icon, useStyles2, type ComboboxOption } from '@grafana/ui';
@@ -18,6 +19,7 @@ import { useStepChecker, validateInteractiveRequirements } from '../../requireme
 import { DataCheckControls } from './data-check-controls';
 import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
 import { STEP_STATES, type StepStateValue } from './step-states';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 import { useDataCheck } from './use-data-check';
 
 export interface DatasourceCheckStepProps {
@@ -28,7 +30,7 @@ export interface DatasourceCheckStepProps {
   failureMessage?: string;
   timeFrom?: string;
   timeTo?: string;
-  requirements?: string;
+  requirements?: ConditionInput;
   skippable?: boolean;
   hints?: string;
   children?: React.ReactNode;
@@ -347,6 +349,7 @@ export function DatasourceCheckStep({
   return (
     <div
       className={containerClasses}
+      {...getTrackedStepRootAttributes('datasource-check', renderedStepId)}
       data-test-step-state={stepState}
       data-testid={testIds.dataCheck.step(renderedStepId)}
     >

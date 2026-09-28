@@ -154,7 +154,6 @@ export function BlockList({
     coordinateGetter: sortableKeyboardCoordinates,
   });
   const sensors = useSensors(pointerSensor, keyboardSensor);
-  const activeSensors = useMemo(() => (isSelectionMode ? [] : sensors), [isSelectionMode, sensors]);
 
   const rootBlockIds = useMemo(() => blocks.map((b) => b.id), [blocks]);
 
@@ -625,7 +624,7 @@ export function BlockList({
 
   return (
     <DndContext
-      sensors={activeSensors}
+      sensors={sensors}
       collisionDetection={pointerWithin}
       measuring={{ droppable: { strategy: MeasuringStrategy.WhileDragging } }}
       onDragStart={handleDragStart}

@@ -17,8 +17,23 @@
 
 import { z } from 'zod';
 
+import { GuideStatsSummarySchema } from './guide-stats.schema';
+
 /** Any JSON value. Mirrors Go `json.RawMessage` / `interface{}` passthrough. */
 export const JsonValueSchema = z.json();
+
+export const GuideProxyDiagnosticWireSchema = z.strictObject({
+  stage: z.string().optional(),
+  resource: z.string().optional(),
+  operation: z.string().optional(),
+  outcome: z.enum(['ok', 'error', 'degraded']),
+  reason: z.string().optional(),
+  upstreamStatus: z.number().int().min(100).max(599).optional(),
+  cache: z.enum(['hit', 'shared', 'refresh', 'stale']).optional(),
+  cacheAgeMs: z.number().int().nonnegative(),
+  manifestFailures: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  budgetExhausted: z.boolean().optional(),
+});
 
 // ============ /completion-records/capability ============
 
@@ -27,6 +42,7 @@ export const JsonValueSchema = z.json();
  * @coupling Go struct: completionCapability
  */
 export const CompletionCapabilityWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   available: z.boolean(),
   reason: z.string().optional(),
 });
@@ -48,14 +64,15 @@ export const CollatedCompletionWireSchema = z.strictObject({
 
 /**
  * `completions` is a required array, never nullable and never `.catch([])`:
- * the handler builds a non-nil slice unconditionally
- * (completion_records.go:389, :501) and `completion_records_test.go:231`
- * asserts it serializes as `[]`. A `null` here is a Go bug that should fail
- * loudly rather than be absorbed.
+ * the handler builds a non-nil slice unconditionally (`collateByUser` and
+ * `handleMyCompletions` in completion_records.go) and
+ * `TestMyCompletions_UnknownUserEmptyList` asserts it serializes as `[]`.
+ * A `null` here is a Go bug that should fail loudly rather than be absorbed.
  *
  * @coupling Go struct: myCompletionsResponse
  */
 export const MyCompletionsResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   capability: CompletionCapabilityWireSchema,
   userId: z.string().optional(),
   completions: z.array(CollatedCompletionWireSchema),
@@ -77,7 +94,21 @@ export const CustomGuideAuthorWireSchema = z.strictObject({
 });
 
 /**
- * Two fields are deliberately wider here than in `CustomGuideManifest`
+ * The stamped block statistics — the completion denominator. `version` is the
+ * version of the counting rules that produced the counts, not a content
+ * version.
+ *
+ * Derived from the canonical `GuideStatsSummarySchema` rather than restated, so
+ * the wire cannot admit a stamp the producer would reject — in particular the
+ * non-negative invariant every member carries. `strictObject` adds only the
+ * closed-shape rule the rest of this module's wire schemas apply.
+ *
+ * @coupling Go struct: customGuideStats
+ */
+export const CustomGuideStatsWireSchema = z.strictObject(GuideStatsSummarySchema.shape);
+
+/**
+ * Three fields are deliberately wider here than in `CustomGuideManifest`
  * (src/lib/custom-guide-repository-client.ts), because Go emits more than that
  * interface admits:
  *
@@ -89,6 +120,12 @@ export const CustomGuideAuthorWireSchema = z.strictObject({
  *   `Depends []json.RawMessage`, which forwards whatever the CR holds; the
  *   client declares no `depends` field, so nothing reads it as a typed
  *   `DependencyList`.
+ * - `stats` is on the wire but off the interface. Nothing populates it yet: the
+ *   CRD's `#Manifest` declares no `stats` and prunes a top-level write silently,
+ *   so both App Platform writers stamp `additionalFields.stats` instead, which
+ *   this proxy does not carry. Once the platform CUE field lands, the counts
+ *   will reach the browser untyped — the client declares no `stats` field for a
+ *   reader to use.
  *
  * @coupling Go struct: customGuideManifest
  */
@@ -100,6 +137,7 @@ export const CustomGuideManifestWireSchema = z.strictObject({
   category: z.string().optional(),
   author: CustomGuideAuthorWireSchema.optional(),
   depends: z.array(JsonValueSchema).optional(),
+  stats: CustomGuideStatsWireSchema.optional(),
 });
 
 /** @coupling Go struct: customGuideRepositoryEntry */
@@ -117,6 +155,7 @@ export const CustomGuideRepositoryEntryWireSchema = z.strictObject({
  * @coupling Go struct: customGuideRepositoryResponse
  */
 export const CustomGuideRepositoryResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   capability: CustomGuideCapabilityWireSchema,
   guides: z.array(CustomGuideRepositoryEntryWireSchema),
   asOf: z.string().optional(),
@@ -147,6 +186,7 @@ export const PackageEntryWireSchema = z.strictObject({
 
 /** @coupling Go struct: PackageRecommendationsResponse */
 export const PackageRecommendationsResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   baseUrl: z.string(),
   packages: z.array(PackageEntryWireSchema),
 });
@@ -160,6 +200,7 @@ export const PackageRecommendationsResponseWireSchema = z.strictObject({
  * struct — or a stale schema — fails.
  */
 export const GO_STRUCT_SCHEMAS = {
+  guideProxyDiagnostic: GuideProxyDiagnosticWireSchema,
   PackageRecommendationsResponse: PackageRecommendationsResponseWireSchema,
   PackageEntry: PackageEntryWireSchema,
   PackageTargeting: PackageTargetingWireSchema,
@@ -167,6 +208,7 @@ export const GO_STRUCT_SCHEMAS = {
   customGuideCapability: CustomGuideCapabilityWireSchema,
   customGuideRepositoryEntry: CustomGuideRepositoryEntryWireSchema,
   customGuideManifest: CustomGuideManifestWireSchema,
+  customGuideStats: CustomGuideStatsWireSchema,
   'customGuideManifest.author': CustomGuideAuthorWireSchema,
   myCompletionsResponse: MyCompletionsResponseWireSchema,
   completionCapability: CompletionCapabilityWireSchema,

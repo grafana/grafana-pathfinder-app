@@ -13,7 +13,10 @@ export const locationHandler: FixHandler = {
     if (!ctx.targetHref || !ctx.navigationManager) {
       return { ok: false, error: 'Missing targetHref or navigationManager' };
     }
-    await ctx.navigationManager.fixLocationRequirement(ctx.targetHref);
+    const success = await ctx.navigationManager.fixLocationRequirement(ctx.targetHref);
+    if (!success) {
+      return { ok: false, error: 'Location requirement target is not allowed' };
+    }
     return { ok: true };
   },
 };

@@ -21,6 +21,7 @@ export async function terminalActiveCheck(check: string): Promise<CheckResultErr
     };
   } catch {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: 'Terminal integration is not available.',

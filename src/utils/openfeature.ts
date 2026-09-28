@@ -1,11 +1,26 @@
-import { ClientProviderStatus, OpenFeature, ProviderEvents, type Client, type JsonValue } from '@openfeature/web-sdk';
+import {
+  ClientProviderStatus,
+  OpenFeature,
+  ProviderEvents,
+  MultiProvider,
+  type Client,
+  type JsonValue,
+} from '@openfeature/web-sdk';
 import { useBooleanFlagValue, useStringFlagValue, useNumberFlagValue } from '@openfeature/react-sdk';
 import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
-import { config } from '@grafana/runtime';
+import { config, createOpenFeatureLocalStorageProvider, createOpenFeatureOFREPWebProvider } from '@grafana/runtime';
 
-import { TrackingHook, reportFeatureFlagExposure } from './openfeature-tracking';
-import { StorageKeys } from '../lib/storage-keys';
+import { TrackingHook } from './openfeature-tracking';
 import { logger } from '../lib/logging';
+import {
+  EXPERIMENT_VARIANTS,
+  type ExperimentConfig,
+  type HighlightedGuideConfig,
+  type HighlightedGuideDocType,
+} from '../types/openfeature.types';
+
+export { EXPERIMENT_VARIANTS };
+export type { ExperimentConfig, HighlightedGuideConfig, HighlightedGuideDocType };
 
 // ============================================================================
 // TYPES
@@ -24,47 +39,6 @@ type FeatureFlag =
   | { valueType: 'object'; values: readonly JsonValue[]; defaultValue: JsonValue; trackingKey?: string }
   | { valueType: 'number'; values: readonly number[]; defaultValue: number; trackingKey?: string }
   | { valueType: 'string'; values: readonly string[]; defaultValue: string; trackingKey?: string };
-
-/**
- * Experiment configuration returned by GOFF
- * Contains both the variant assignment and target pages for auto-open
- *
- * @param variant - The experiment variant assignment
- * @param pages - Target pages where sidebar should auto-open (for treatment)
- * @param resetCache - When toggled true, clears session storage to allow sidebar to auto-open again
- */
-export interface ExperimentConfig {
-  variant: 'excluded' | 'control' | 'treatment';
-  pages: string[];
-  resetCache?: boolean;
-}
-
-/**
- * Highlighted-guide experiment configuration
- *
- * Drives the once-per-browser A/B test that opens the Pathfinder sidebar on a
- * matched Grafana page and surfaces a specific guide in the Featured slot.
- * Both `control` and `treatment` arms keep Pathfinder visible (this is the
- * key difference from the existing `pathfinder.experiment-variant` flag, whose
- * `control` arm hides the sidebar).
- *
- * @param variant - 'control' and 'treatment' both trigger sidebar-open + injection; 'excluded' is no-op
- * @param pages - URL path patterns where the sidebar should open (empty array ⇒ no match, NOT all pages)
- * @param guideId - Doc id or shorthand: 'bundled:<id>' | 'api:<id>' | 'backend-guide:<id>' | full URL
- * @param autoOpen - When false, only the Featured-slot injection runs (no auto-open of the sidebar)
- * @param resetCache - When toggled true, clears the once-per-browser markers so auto-open re-fires
- * @param docType - Optional override for the Featured-card type. When omitted, `findDocPage`
- *                  infers the type from the URL pattern. Set explicitly when the inference is
- *                  wrong (e.g. a `/docs/learning-paths/...` URL that should open as a learning
- *                  journey, not a single docs page).
- */
-export type HighlightedGuideDocType = 'docs-page' | 'learning-journey' | 'interactive';
-
-export interface HighlightedGuideConfig extends ExperimentConfig {
-  guideId: string;
-  autoOpen: boolean;
-  docType?: HighlightedGuideDocType;
-}
 
 /**
  * Default highlighted-guide config when flag is not set or errors.
@@ -173,6 +147,39 @@ const pathfinderFeatureFlags = {
     defaultValue: DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue,
     trackingKey: 'highlighted_guide_experiment',
   },
+  /**
+   * Interactive-learning banner A/B experiment
+   * - "excluded": Not in experiment, no banner
+   * - "control": In experiment, no banner (variant A)
+   * - "treatment": In experiment, explanatory banner at the top of the context
+   *   page (variant B)
+   *
+   * Unlike the highlighted-guide flag, this one is read lazily at the sidebar-mount
+   * seam rather than at boot. Everything else about it lives in
+   * `src/utils/experiments/interactive-learning-banner.ts`.
+   */
+  'pathfinder.interactive-learning-banner-experiment': {
+    valueType: 'object',
+    values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
+    defaultValue: { variant: 'excluded' },
+    trackingKey: 'interactive_learning_banner_experiment',
+  },
+  /**
+   * Enables the Coda sandbox terminal on its own, without the dev-mode
+   * allowlist or `jsonData.enableCodaTerminal`. The app-config toggle reflects
+   * it as an on, disabled switch, and a save never persists the forced value —
+   * so turning this back off restores whatever the stack itself had set.
+   *
+   * Defaults to false because the Coda plugin is not a declared dependency:
+   * enabling this makes every page load probe for `grafana-coda-app`, which
+   * 404s on a stack that does not have it.
+   */
+  'pathfinder.coda-terminal': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'coda_terminal',
+  },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 
 // Helper to get typed keys from the flag definitions
@@ -195,7 +202,7 @@ export type FlagTrackingKey = (typeof pathfinderFeatureFlags)[keyof typeof pathf
 export interface ExperimentAnalyticsEntry {
   flag: FeatureFlagName;
   variant: ExperimentConfig['variant'];
-  pages: string[];
+  pages?: string[];
   resetCache?: boolean;
   [key: string]: unknown;
 }
@@ -259,20 +266,33 @@ export async function initializeOpenFeature(): Promise<void> {
     return;
   }
 
-  await OpenFeature.setProviderAndWait(
-    OPENFEATURE_DOMAIN,
-    new OFREPWebProvider({
-      baseUrl: `/apis/features.grafana.app/v0alpha1/namespaces/${namespace}`,
-      disableVisibilityRefresh: true, // Do not refresh
-      cacheMode: 'disabled', // Do not write to localStorage
-      timeoutMs: 10_000, // Timeout after 10 seconds
-    }),
-    {
-      targetingKey: config.namespace, // Dimension of uniqueness, to ensure flags are evaluated consistently for a given stack
-      namespace: config.namespace, // Required by the multi-tenant feature flag service
-      ...config.openFeatureContext,
-    }
-  );
+  if (
+    typeof createOpenFeatureLocalStorageProvider === 'function' &&
+    typeof createOpenFeatureOFREPWebProvider === 'function'
+  ) {
+    await OpenFeature.setProviderAndWait(
+      OPENFEATURE_DOMAIN,
+      new MultiProvider([
+        { provider: createOpenFeatureLocalStorageProvider() },
+        { provider: createOpenFeatureOFREPWebProvider() },
+      ])
+    );
+  } else {
+    await OpenFeature.setProviderAndWait(
+      OPENFEATURE_DOMAIN,
+      new OFREPWebProvider({
+        baseUrl: `${config.appSubUrl || ''}/apis/features.grafana.app/v0alpha1/namespaces/${config.namespace}`,
+        disableVisibilityRefresh: true, // Do not refresh
+        cacheMode: 'disabled', // Do not write to localStorage
+        timeoutMs: 10_000, // Timeout after 10 seconds
+      }),
+      {
+        // Standard context used by all plugins
+        targetingKey: config.namespace,
+        ...config.openFeatureContext,
+      }
+    );
+  }
 
   // Add TrackingHook at API level (not client level) so it applies to ALL clients
   // This is necessary because OpenFeature.getClient() may return different instances
@@ -364,58 +384,6 @@ export async function evaluateFeatureFlag<T extends FeatureFlagName>(flagName: T
 }
 
 // ============================================================================
-// LOCAL OVERRIDES (for browser console testing)
-// ============================================================================
-
-const FLAG_OVERRIDE_STORAGE_KEY = StorageKeys.FLAG_OVERRIDES;
-
-/**
- * Read all flag overrides from localStorage.
- * Returns an empty object if none are set or localStorage is unavailable.
- */
-export function getFlagOverrides(): Record<string, unknown> {
-  try {
-    const raw = localStorage.getItem(FLAG_OVERRIDE_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Set a local override for a feature flag.
- * The override is stored in localStorage and takes effect on the next page load.
- *
- * @param flagName - The flag to override (e.g. 'pathfinder.after-24h-experiment')
- * @param value - The override value (boolean, string, number, or object)
- */
-export function setFlagOverride(flagName: string, value: unknown): void {
-  const overrides = getFlagOverrides();
-  overrides[flagName] = value;
-  localStorage.setItem(FLAG_OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
-}
-
-/**
- * Remove a single flag override.
- */
-export function removeFlagOverride(flagName: string): void {
-  const overrides = getFlagOverrides();
-  delete overrides[flagName];
-  if (Object.keys(overrides).length === 0) {
-    localStorage.removeItem(FLAG_OVERRIDE_STORAGE_KEY);
-  } else {
-    localStorage.setItem(FLAG_OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
-  }
-}
-
-/**
- * Remove all flag overrides.
- */
-export function clearFlagOverrides(): void {
-  localStorage.removeItem(FLAG_OVERRIDE_STORAGE_KEY);
-}
-
-// ============================================================================
 // BACKWARDS COMPATIBLE SYNC FUNCTIONS
 // ============================================================================
 // Note: All sync functions below are automatically tracked by the TrackingHook
@@ -438,12 +406,6 @@ export function clearFlagOverrides(): void {
  */
 export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): boolean => {
   try {
-    const overrides = getFlagOverrides();
-    if (flagName in overrides && typeof overrides[flagName] === 'boolean') {
-      logger.warn(`[OpenFeature] Using local override for '${flagName}'`, { override: overrides[flagName] });
-      return overrides[flagName] as boolean;
-    }
-
     const client = getFeatureFlagClient();
     return client.getBooleanValue(flagName, defaultValue);
   } catch (error) {
@@ -468,12 +430,6 @@ export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): bo
  */
 export const getNumberFlagValue = (flagName: string, defaultValue: number): number => {
   try {
-    const overrides = getFlagOverrides();
-    if (flagName in overrides && typeof overrides[flagName] === 'number') {
-      logger.warn(`[OpenFeature] Using local override for '${flagName}'`, { override: overrides[flagName] });
-      return overrides[flagName] as number;
-    }
-
     const client = getFeatureFlagClient();
     return client.getNumberValue(flagName, defaultValue);
   } catch (error) {
@@ -513,15 +469,8 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
  * `guideId`, or carries a variant outside the known arms. Rejection is
  * whole-payload — `resetCache` and `pages` are discarded with the rest.
  *
- * The two sources fall back differently, which matters when debugging:
- *   - Remote (MTFF) payload rejected, or evaluation throws ⇒
- *     `DEFAULT_HIGHLIGHTED_GUIDE_CONFIG` (variant: 'excluded').
- *   - localStorage override rejected ⇒ the override is *ignored* and the remote
- *     MTFF value applies instead. Locally there is no MTFF provider, so the
- *     client returns the default we pass it — which is why this looks like the
- *     same thing in dev but is not on a Cloud stack.
- *
- * Supports the localStorage flag-override mechanism for QA / demos.
+ * A rejected remote payload or evaluation error returns
+ * `DEFAULT_HIGHLIGHTED_GUIDE_CONFIG` (variant: 'excluded').
  *
  * @returns The validated highlighted-guide config or the safe default
  *
@@ -534,26 +483,11 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
 export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
   const flagName = 'pathfinder.highlighted-guide-experiment';
   try {
-    const overrides = getFlagOverrides();
-    if (flagName in overrides) {
-      const override = overrides[flagName];
-      const validated = validateHighlightedGuideValue(override);
-      if (validated) {
-        logger.warn(`[OpenFeature] Using local override for '${flagName}'`, { override: validated });
-        // Fire the exposure event so override-driven QA / demo runs produce
-        // the same analytics as a real MTFF assignment. The dedup state is
-        // shared with the OpenFeature hook path — see openfeature-tracking.ts.
-        reportFeatureFlagExposure(flagName, validated as unknown as JsonValue);
-        return validated;
-      }
-      warnHighlightedGuideRejection('override', flagName, override);
-    }
-
     const client = getFeatureFlagClient();
     const value = client.getObjectValue(flagName, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue);
     const validatedRemote = validateHighlightedGuideValue(value);
     if (!validatedRemote) {
-      warnHighlightedGuideRejection('remote', flagName, value);
+      warnExperimentRejection('remote', flagName, value);
     }
     return validatedRemote ?? DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
   } catch (error) {
@@ -562,60 +496,70 @@ export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
   }
 };
 
-const VALID_VARIANTS: ReadonlySet<HighlightedGuideConfig['variant']> = new Set(['excluded', 'control', 'treatment']);
+const VALID_VARIANTS: ReadonlySet<string> = new Set(EXPERIMENT_VARIANTS);
 
 const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set(['docs-page', 'learning-journey', 'interactive']);
 
-type HighlightedGuideRejectionSource = 'override' | 'remote';
+export type ExperimentRejectionSource = 'remote';
 
-// Once per source per page load: getActiveExperiments re-reads this flag on every
-// reportAppInteraction, so an unguarded warn would flood the console and Faro.
-const warnedRejectionSources = new Set<HighlightedGuideRejectionSource>();
+// Once per source per flag per page load: getActiveExperiments re-reads these flags
+// on every reportAppInteraction, so an unguarded warn would flood the console and Faro.
+const warnedRejectionSources = new Set<string>();
+
+/**
+ * Read a known experiment arm off an unvalidated payload.
+ *
+ * @param value - Any payload that may carry a `variant` field
+ * @returns The arm, or null if the payload is not an object or the arm is unknown
+ */
+export function parseExperimentVariant(value: unknown): ExperimentConfig['variant'] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const { variant } = value as Record<string, unknown>;
+  if (typeof variant !== 'string' || !VALID_VARIANTS.has(variant)) {
+    return null;
+  }
+  return variant as ExperimentConfig['variant'];
+}
 
 // Classification, not the raw string: the payload is operator free text and would
 // be a high-cardinality Faro attribute (TELEMETRY.md privacy invariants).
-function classifyHighlightedGuideRejection(value: unknown): 'unknown_variant' | 'invalid_shape' {
+function classifyExperimentRejection(value: unknown): 'unknown_variant' | 'invalid_shape' {
   const variant =
     value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>).variant
       : undefined;
-  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant as HighlightedGuideConfig['variant']);
+  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant);
   return isUnknownArm ? 'unknown_variant' : 'invalid_shape';
 }
 
-function warnHighlightedGuideRejection(
-  source: HighlightedGuideRejectionSource,
-  flagName: string,
-  value: unknown
-): void {
-  if (warnedRejectionSources.has(source)) {
+export function warnExperimentRejection(source: ExperimentRejectionSource, flagName: string, value: unknown): void {
+  const warnKey = `${source}:${flagName}`;
+  if (warnedRejectionSources.has(warnKey)) {
     return;
   }
-  warnedRejectionSources.add(source);
+  warnedRejectionSources.add(warnKey);
 
-  const consequence =
-    source === 'override'
-      ? 'ignoring it and using the MTFF value instead (locally, with no MTFF provider, that is the safe excluded default)'
-      : 'using the safe excluded default, so nobody is enrolled';
-  logger.warn(`[OpenFeature] Rejected the ${source} payload for '${flagName}' — ${consequence}`, {
-    reason: classifyHighlightedGuideRejection(value),
-  });
+  logger.warn(
+    `[OpenFeature] Rejected the remote payload for '${flagName}' — using the safe excluded default, so nobody is enrolled`,
+    {
+      reason: classifyExperimentRejection(value),
+    }
+  );
 }
 
 function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+  const variant = parseExperimentVariant(value);
+  if (!variant) {
     return null;
   }
   const record = value as Record<string, unknown>;
   if (
-    typeof record.variant !== 'string' ||
     !Array.isArray(record.pages) ||
     !record.pages.every((p): p is string => typeof p === 'string') ||
     typeof record.guideId !== 'string'
   ) {
-    return null;
-  }
-  if (!VALID_VARIANTS.has(record.variant as HighlightedGuideConfig['variant'])) {
     return null;
   }
   const docType =
@@ -624,7 +568,7 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
       : undefined;
 
   return {
-    variant: record.variant as HighlightedGuideConfig['variant'],
+    variant,
     pages: record.pages,
     guideId: record.guideId,
     autoOpen: typeof record.autoOpen === 'boolean' ? record.autoOpen : true,
@@ -632,20 +576,6 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
     ...(docType ? { docType } : {}),
   };
 }
-
-// ============================================================================
-// EXPERIMENT ANALYTICS
-// ============================================================================
-
-const HIGHLIGHTED_GUIDE_FLAG: FeatureFlagName = 'pathfinder.highlighted-guide-experiment';
-
-// The highlighted-guide experiment is the only live experiment. Excluded arms
-// are dropped — 'excluded' means the user isn't enrolled, matching the
-// exposure-event convention (openfeature-tracking.ts).
-export const getActiveExperiments = (): ExperimentAnalyticsEntry[] => {
-  const config = getHighlightedGuideConfig();
-  return config.variant === 'excluded' ? [] : [{ flag: HIGHLIGHTED_GUIDE_FLAG, ...config }];
-};
 
 // ============================================================================
 // URL PATTERN MATCHING

@@ -4,6 +4,7 @@ import * as path from 'path';
 
 import type {
   JsonBlock,
+  JsonChallengeBlock,
   JsonInteractiveBlock,
   JsonMarkdownBlock,
   JsonMultistepBlock,
@@ -15,6 +16,7 @@ import type { ContentJson, ManifestJson } from '../../types/package.types';
 import {
   appendBlock,
   appendChoice,
+  appendHint,
   appendStep,
   collectAllIds,
   editBlock,
@@ -90,6 +92,15 @@ const quiz = (id: string, choices: JsonQuizBlock['choices'] = []): JsonQuizBlock
   id,
   question: 'q?',
   choices: choices.length > 0 ? choices : [{ id: 'a', text: 'A' }],
+});
+const challenge = (id: string, hintLevels?: JsonChallengeBlock['hintLevels']): JsonChallengeBlock => ({
+  type: 'challenge',
+  id,
+  mode: 'standard',
+  title: 'Repair the dashboard',
+  brief: 'Find and fix the broken dashboard.',
+  successCriteria: 'is-admin',
+  ...(hintLevels ? { hintLevels } : {}),
 });
 
 // ---------------------------------------------------------------------------
@@ -332,6 +343,11 @@ describe('appendBlock', () => {
     throw new Error('expected throw');
   });
 
+  it('rejects appending into a challenge parent (hints go through add-hint)', () => {
+    const content = baseContent([challenge('challenge-1')]);
+    expect(() => appendBlock(content, markdown(), { parentId: 'challenge-1' })).toThrow(/add-hint/);
+  });
+
   it('requires --branch when parent is a conditional', () => {
     const content = baseContent([
       {
@@ -421,7 +437,7 @@ describe('appendBlock --if-absent', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Mutators: appendStep / appendChoice
+// Mutators: appendStep / appendChoice / appendHint
 // ---------------------------------------------------------------------------
 
 describe('appendStep', () => {
@@ -472,6 +488,27 @@ describe('appendChoice', () => {
   });
 });
 
+describe('appendHint', () => {
+  it('initializes and appends to a challenge hintLevels array', () => {
+    const content = baseContent([challenge('challenge-1')]);
+    const first = appendHint(content, { text: 'Check the dashboard variables.' }, 'challenge-1');
+    const second = appendHint(content, { text: 'Inspect the variable query.' }, 'challenge-1');
+    expect(first.position).toBe('blocks[0].hintLevels[0]');
+    expect(second.position).toBe('blocks[0].hintLevels[1]');
+    expect((content.blocks[0] as JsonChallengeBlock).hintLevels).toEqual([
+      { text: 'Check the dashboard variables.' },
+      { text: 'Inspect the variable query.' },
+    ]);
+  });
+
+  it('rejects a non-challenge parent', () => {
+    const content = baseContent([quiz('q1')]);
+    expect(() => appendHint(content, { text: 'Not for quizzes' }, 'q1')).toThrow(
+      expect.objectContaining({ code: 'WRONG_PARENT_KIND' })
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Mutators: editBlock
 // ---------------------------------------------------------------------------
@@ -490,7 +527,7 @@ describe('editBlock', () => {
 
   it('rejects edits to forbidden structural fields', () => {
     const content = baseContent([section('intro', [markdown('m1')])]);
-    for (const field of ['type', 'blocks', 'id', 'steps', 'choices', 'whenTrue', 'whenFalse']) {
+    for (const field of ['type', 'blocks', 'id', 'steps', 'choices', 'hintLevels', 'whenTrue', 'whenFalse']) {
       try {
         editBlock(content, 'intro', { patch: { [field]: 'x' } });
       } catch (err) {
@@ -535,6 +572,16 @@ describe('removeBlock', () => {
       return;
     }
     throw new Error('expected throw');
+  });
+
+  it('counts challenge hints as children for cascade protection', () => {
+    const content = baseContent([challenge('repair-dashboard', [{ text: 'Check variables.' }])]);
+    expect(() => removeBlock(content, 'repair-dashboard')).toThrow(
+      expect.objectContaining({ code: 'CONTAINER_HAS_CHILDREN' })
+    );
+    const result = removeBlock(content, 'repair-dashboard', { cascade: true });
+    expect(result.childrenRemoved).toBe(1);
+    expect(content.blocks).toHaveLength(0);
   });
 
   it('removes a container with cascade', () => {

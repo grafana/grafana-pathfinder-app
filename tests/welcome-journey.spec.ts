@@ -14,8 +14,7 @@ async function handleFixMeButtons(page: any, stepId: string) {
     await expect(fixButton.first())
       .toBeVisible({ timeout: 2000 })
       .catch(() => {
-        // If button disappears, exit loop
-        return;
+        // If button disappears, leave this attempt without throwing.
       });
 
     if ((await fixButton.count()) > 0) {

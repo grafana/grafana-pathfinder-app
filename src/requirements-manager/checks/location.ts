@@ -25,6 +25,7 @@ export async function onPageCheck(check: string): Promise<CheckResultError> {
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Page check failed: ${error}`,

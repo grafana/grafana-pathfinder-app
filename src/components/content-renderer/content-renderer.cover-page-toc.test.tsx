@@ -76,4 +76,21 @@ describe('ContentRenderer cover-page table of contents', () => {
 
     expect(screen.queryByTestId(testIds.learningPaths.tableOfContents)).not.toBeInTheDocument();
   });
+
+  it('does not duplicate the title once the hero card owns it', () => {
+    render(<ContentRenderer content={makeContent({ isNativeJson: true })} />);
+
+    // The hero renders its own <h1> with the title; the standalone one above
+    // it must be suppressed, not both — a document-wide role query catches
+    // duplication regardless of which element it comes from.
+    expect(screen.getAllByRole('heading', { level: 1, name: 'Demo' })).toHaveLength(1);
+    expect(screen.getByTestId(testIds.learningPaths.coverHero)).toHaveTextContent('Demo');
+  });
+
+  it('still shows the standalone title on non-cover content', () => {
+    render(<ContentRenderer content={makeContent({ isNativeJson: true, type: 'single-doc' })} />);
+
+    expect(screen.getAllByRole('heading', { level: 1, name: 'Demo' })).toHaveLength(1);
+    expect(screen.queryByTestId(testIds.learningPaths.coverHero)).not.toBeInTheDocument();
+  });
 });

@@ -6,7 +6,7 @@ This guide covers what we look for in a pull request. When in doubt, open the is
 
 ## Ways to contribute
 
-- **Report a bug**: open an issue. For problems with an interactive guide, the recording-bug issue template helps us reproduce it.
+- **Report a bug**: open an issue. The optional [structured issue form](https://github.com/grafana/grafana-pathfinder-app/issues/new?template=structured-issue.yml) helps describe the impact and acceptance criteria, or you can open a blank issue.
 - **Suggest an improvement**: open an issue describing the problem you're trying to solve before writing code, especially for anything user-facing or architectural. It saves you building something we'd ask you to rework.
 - **Fix a bug or add a feature**: open a pull request. Read the rest of this guide first.
 
@@ -41,7 +41,7 @@ If you're partway through and realise a change is growing beyond one concern, it
 
 ## Before you open a pull request
 
-- **Run the full check.** `npm run check` runs the same gate as CI (typecheck, lint, prettier, Go lint, Go tests, and frontend tests with coverage). PRs that pass locally move faster.
+- **Run the full check.** `npm run check` runs the local pre-merge gate; `npm run check -- --list` prints what it contains. CI is not the same set — it additionally enforces manifest freshness and the production build — but PRs that pass the local gate move faster.
 - **Add or update tests** for the behaviour you're changing.
 - **Match the existing style.** All UI text and documentation uses [sentence case](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/#capitalization): capitalise only the first word and proper nouns. Keep comments to what the code can't say for itself.
 - **Link the issue(s)** your PR addresses in the description.

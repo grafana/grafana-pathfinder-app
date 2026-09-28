@@ -13,6 +13,15 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { ViewMode, JsonModeState, PositionedError, EditorBlock, JsonGuide } from '../types';
 import { parseAndValidateGuide } from '../utils/block-import';
+import { validateGuideFromString } from '../../../validation';
+
+function hasDuplicateHeading(json: string): boolean {
+  return validateGuideFromString(json).errors.some((e) => e.code === 'duplicate_heading');
+}
+
+function validateJsonAgainstSnapshot(json: string, originalJson: string) {
+  return parseAndValidateGuide(json, { allowDuplicateHeading: hasDuplicateHeading(originalJson) });
+}
 
 /**
  * Minimal interface for editor functionality needed by this hook.
@@ -138,7 +147,7 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
         return;
       }
 
-      const result = parseAndValidateGuide(jsonModeState.json);
+      const result = validateJsonAgainstSnapshot(jsonModeState.json, jsonModeState.originalJson);
       if (!result.isValid) {
         setJsonValidationErrors(result.errors);
         setIsJsonValid(false);
@@ -160,10 +169,15 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
 
   // Handle JSON text changes - update state and validate
   const handleJsonChange = useCallback((newJson: string) => {
-    setJsonModeState((prev) => (prev ? { ...prev, json: newJson } : null));
-    const result = parseAndValidateGuide(newJson);
-    setIsJsonValid(result.isValid);
-    setJsonValidationErrors(result.errors);
+    setJsonModeState((prev) => {
+      if (!prev) {
+        return null;
+      }
+      const result = validateJsonAgainstSnapshot(newJson, prev.originalJson);
+      setIsJsonValid(result.isValid);
+      setJsonValidationErrors(result.errors);
+      return { ...prev, json: newJson };
+    });
   }, []);
 
   const restoreJsonMode = useCallback((guide: JsonGuide, blockIds?: string[], savedState?: JsonModeState) => {
@@ -173,7 +187,7 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
       originalBlockIds: blockIds ?? [],
       originalJson: json,
     };
-    const result = parseAndValidateGuide(restoredState.json);
+    const result = validateJsonAgainstSnapshot(restoredState.json, restoredState.originalJson);
     setJsonModeState(restoredState);
     setJsonValidationErrors(result.errors);
     setIsJsonValid(result.isValid);
@@ -185,8 +199,7 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
       if (!prev) {
         return null;
       }
-      // Re-validate the original JSON (should be valid, but be safe)
-      const result = parseAndValidateGuide(prev.originalJson);
+      const result = validateJsonAgainstSnapshot(prev.originalJson, prev.originalJson);
       setIsJsonValid(result.isValid);
       setJsonValidationErrors(result.errors);
       return { ...prev, json: prev.originalJson };

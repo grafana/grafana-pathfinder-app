@@ -191,7 +191,7 @@ describe('BlockEditorHeader: selection mode (in the more-actions kebab)', () => 
   it('shows the selection item only in edit mode with blocks', () => {
     render(<BlockEditorHeader {...baseProps} viewMode="edit" hasBlocks={true} />);
     openKebab();
-    expect(selectionItem()).toHaveTextContent('Select blocks for merging');
+    expect(selectionItem()).toHaveTextContent('Select blocks');
   });
 
   it('hides the selection item when the guide has no blocks', () => {

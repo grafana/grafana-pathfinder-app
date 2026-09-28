@@ -523,7 +523,6 @@ describe('tab-storage-restore', () => {
             {
               number: 1,
               title: 'Page',
-              duration: '',
               url: 'https://grafana.com/docs/a/page/',
               isActive: true,
             },

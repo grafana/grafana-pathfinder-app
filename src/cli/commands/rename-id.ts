@@ -13,36 +13,24 @@
  * site.
  */
 
-import { Command } from 'commander';
+import { z } from 'zod';
 
-import { PACKAGE_ID_REGEX } from '../../types/package.schema';
+import { packageIdSchema } from '../../types/package.schema';
+import { defineCommand } from '../contracts';
 import { mutateAndValidate, PackageIOError } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
+import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
-export const renameIdCommand = new Command('rename-id')
-  .description('Atomically rename a package id in both content.json and manifest.json')
-  .argument('<dir>', 'package directory')
-  .argument('<new-id>', 'new package id (kebab-case, must match PACKAGE_ID_REGEX)')
-  .action(async function (this: Command, dir: string, newId: string) {
-    const output = readOutputOptions(this);
-    const outcome = await runRenameId({ dir, newId });
-    process.exit(printOutcome(outcome, output));
-  });
+export const RenameIdCommand = z.object({
+  dir: z.string().describe('package directory').meta({ role: 'io' }),
+  // Same schema `content.id`/`manifest.id` validate against — a bare
+  // `z.string()` here would let a bad id past the CommandSpec parse and rely
+  // on a second, hand-written regex check to reject it later.
+  newId: packageIdSchema.describe('new package id (kebab-case)').meta({ role: 'content' }),
+});
 
-interface RenameIdArgs {
-  dir: string;
-  newId: string;
-}
+export type RenameIdInput = z.output<typeof RenameIdCommand>;
 
-export async function runRenameId(args: RenameIdArgs): Promise<CommandOutcome> {
-  if (!PACKAGE_ID_REGEX.test(args.newId)) {
-    return {
-      status: 'error',
-      code: 'SCHEMA_VALIDATION',
-      message: `id must be kebab-case (lowercase alphanumeric and hyphens, no leading/trailing hyphen): "${args.newId}"`,
-    };
-  }
-
+export async function runRenameId(args: RenameIdInput): Promise<CommandOutcome> {
   let oldId = '';
   let renamed = false;
   try {
@@ -95,3 +83,10 @@ export async function runRenameId(args: RenameIdArgs): Promise<CommandOutcome> {
     data: { oldId, newId: args.newId, renamed: true },
   };
 }
+
+export const renameIdSpec = defineCommand({
+  name: 'rename-id',
+  summary: 'Atomically rename a package id in both content.json and manifest.json',
+  schema: RenameIdCommand,
+  run: runRenameId,
+});

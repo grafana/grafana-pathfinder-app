@@ -198,13 +198,13 @@ const getCodeBlockStyles = (theme: GrafanaTheme2) => ({
 });
 
 const GUIDE_ACTION_BUTTON_SELECTOR = [
-  '.interactive-step-action-buttons > button',
-  '.interactive-guided-actions > button',
-  '.interactive-guided-executing > button',
-  '.interactive-guided-error-actions > button',
-  '.interactive-guided-cancelled-actions > button',
-  '.interactive-guided-completed > button',
-  '.interactive-section-actions > button',
+  '.interactive-step-action-buttons > button.interactive-guide-button-sm',
+  '.interactive-guided-actions > button.interactive-guide-button-sm',
+  '.interactive-guided-executing > button.interactive-guide-button-sm',
+  '.interactive-guided-error-actions > button.interactive-guide-button-sm',
+  '.interactive-guided-cancelled-actions > button.interactive-guide-button-sm',
+  '.interactive-guided-completed > button.interactive-guide-button-sm',
+  '.interactive-section-actions > button.interactive-guide-button-sm',
 ].join(', ');
 
 // Interactive component styles (sections and steps)
@@ -374,6 +374,26 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
   },
 
+  // Conditionals that resolve empty before showing content do not consume a number.
+  '.interactive-section-content > li[data-numbered="true"]:empty': {
+    display: 'none',
+  },
+
+  // Keep nested conditionals mounted while their own listeners wait for
+  // content to become renderable, but do not count the empty wrapper yet.
+  '.interactive-section-content > li[data-numbered="true"]:has(> .section-numbering-empty)': {
+    display: 'none',
+  },
+
+  // Passive conditional children lack the horizontal padding supplied by step cards.
+  '.interactive-section-content > li[data-numbered="true"] .interactive-conditional > .section-numbering-plain': {
+    paddingLeft: `calc(${theme.spacing(2)} + 2px)`,
+
+    '&:first-child': {
+      paddingTop: theme.spacing(2),
+    },
+  },
+
   '.interactive-section-description': {
     padding: `0 ${theme.spacing(2)} ${theme.spacing(1.5)}`,
     color: theme.colors.text.secondary,
@@ -393,87 +413,68 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     listStyle: 'none', // Hide default markers since we use CSS counters
     counterReset: 'step-counter', // Initialize counter
 
-    // Every direct child sits in a wrapper <li>. Only li[data-numbered="true"]
-    // participates in the sequential numbering — media (image/video) and wrapper
-    // (conditional) blocks render without a number. See issue #841.
     '& > li': {
       listStyle: 'none',
     },
 
-    // Interactive blocks keep local margins for standalone guide-root and
-    // inline-conditional mounts. Inside a section, this flex container's gap
-    // is the single vertical rhythm, so suppress those component-owned margins.
-    // Scope to data-step=true to preserve authored prose and media spacing.
     '& > li[data-step="true"] > *': {
       marginTop: 0,
       marginBottom: 0,
     },
 
+    // The borderless list item keeps counters aligned across different card borders.
     '& > li[data-numbered="true"]': {
+      position: 'relative',
       counterIncrement: 'step-counter',
+      paddingLeft: theme.spacing(4),
+      paddingRight: theme.spacing(2),
+
+      '&::before': {
+        content: 'counter(step-counter) "."',
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        color: theme.colors.text.secondary,
+        fontWeight: theme.typography.fontWeightMedium,
+        fontSize: theme.typography.body.fontSize,
+        width: theme.spacing(3),
+        textAlign: 'right',
+      },
     },
 
-    '& > li[data-numbered="true"][data-step="true"] > :first-child': {
-      position: 'relative',
-      paddingLeft: theme.spacing(4),
-      paddingRight: theme.spacing(4),
+    '& > li[data-numbered="true"][data-step="true"]': {
+      '&::before': {
+        top: theme.spacing(2),
+      },
 
-      // InteractiveStep owns padding when mounted standalone. In a section,
-      // active steps borrow the section's vertical inset while retaining the
-      // horizontal number gutter above. Terminal states remain self-padded.
-      '&.interactive-step:not(.completed):not(.skipped)': {
+      '&:has(> .interactive-step:not(.completed):not(.skipped))::before': {
+        top: '2px',
+      },
+
+      '& > .interactive-step:not(.completed):not(.skipped)': {
         paddingTop: 0,
         paddingBottom: 0,
       },
-
-      // Anchor the number to the block's own top inset so it lines up with the
-      // first line of text. Default assumes a self-padded card (quiz, input,
-      // challenge and grot-guide all use spacing(2)); interactive-step is flush
-      // until it reaches a terminal state, so it opts out below.
-      '&::before': {
-        content: 'counter(step-counter) "."',
-        position: 'absolute',
-        left: 0,
-        top: theme.spacing(2),
-        color: theme.colors.text.secondary,
-        fontWeight: theme.typography.fontWeightMedium,
-        fontSize: theme.typography.body.fontSize,
-        width: theme.spacing(3),
-        textAlign: 'right',
-      },
-
-      '&.interactive-step::before': {
-        top: 0,
-      },
-
-      '&.interactive-step.completed::before, &.interactive-step.skipped::before': {
-        top: theme.spacing(2),
-      },
     },
 
-    // Plain content has no card to contain the number. Give the list item the
-    // same horizontal inset as a step card, while leaving vertical rhythm to
-    // the section gap just like data-step=true items.
     '& > li[data-numbered="true"][data-step="false"]': {
-      position: 'relative',
-      paddingLeft: theme.spacing(4),
-      paddingRight: theme.spacing(4),
+      paddingLeft: `calc(${theme.spacing(4)} + ${theme.spacing(2)} + 2px)`,
 
-      '& > :first-child': {
+      '& > *': {
         marginTop: 0,
         marginBottom: 0,
       },
+    },
+
+    // Once visible, a conditional keeps its counter slot so later steps do not renumber.
+    // This follows the base/data-step padding rules so its reset wins the cascade.
+    '& > li[data-numbered="true"]:has(> .section-numbering-retained)': {
+      height: 0,
+      overflow: 'hidden',
+      padding: 0,
 
       '&::before': {
-        content: 'counter(step-counter) "."',
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        color: theme.colors.text.secondary,
-        fontWeight: theme.typography.fontWeightMedium,
-        fontSize: theme.typography.body.fontSize,
-        width: theme.spacing(3),
-        textAlign: 'right',
+        display: 'none',
       },
     },
 
@@ -529,8 +530,10 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // because the paused state is recoverable via the prompt above.
   '.interactive-section-alignment-banner': {
     margin: `${theme.spacing(1.5)} ${theme.spacing(2)} 0`,
-    borderLeft: `3px solid ${theme.colors.info.main}`,
     borderRadius: '4px',
+    '&.interactive-feedback-box': {
+      borderLeft: `3px solid ${theme.colors.info.main}`,
+    },
   },
 
   '.interactive-section-alignment-message': {
@@ -740,7 +743,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-requirement-retry-btn': {
-    padding: '4px 10px',
+    padding: '0px 12px',
     fontSize: '0.8rem',
     fontWeight: 500,
     border: `1px solid ${theme.colors.border.medium}`,
@@ -809,7 +812,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-lazy-retry-btn': {
-    padding: '4px 10px',
+    padding: '0px 12px',
     fontSize: '0.8rem',
     fontWeight: 500,
     border: `1px solid ${theme.colors.border.medium}`,
@@ -938,7 +941,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-guided-fix-btn': {
-    padding: '6px 12px',
+    padding: '0px 12px',
     fontSize: '0.8rem',
     fontWeight: 500,
     border: `1px solid ${theme.colors.border.medium}`,
@@ -955,7 +958,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-requirement-ai-fix-btn, .interactive-guided-ai-fix-btn': {
-    padding: '4px 10px',
+    padding: '0px 12px',
     fontSize: '0.8rem',
     fontWeight: 500,
     border: `1px solid ${theme.colors.border.medium}`,

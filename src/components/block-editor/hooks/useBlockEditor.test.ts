@@ -94,6 +94,45 @@ describe('mergeBlocksToMultistep / mergeBlocksToGuided', () => {
   });
 });
 
+describe('deleteSelectedBlocks', () => {
+  it('removes the selected blocks in one undoable transition', () => {
+    const onChange = jest.fn();
+    const guide: JsonGuide = {
+      id: 'g',
+      title: 'T',
+      blocks: [mkInteractive('first'), mkInteractive('second'), { type: 'markdown', content: 'keep' }],
+    };
+    const { result } = renderHook(() => useBlockEditor({ initialGuide: guide, onChange }));
+    const firstId = result.current.state.blocks[0]!.id;
+    const secondId = result.current.state.blocks[1]!.id;
+
+    act(() => result.current.deleteSelectedBlocks([firstId, secondId]));
+
+    expect(result.current.state.blocks).toHaveLength(1);
+    expect(result.current.state.blocks[0]!.block).toEqual({ type: 'markdown', content: 'keep' });
+    expect(result.current.undoLabel).toBe('Delete 2 blocks');
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.undo());
+    expect(result.current.state.blocks).toHaveLength(3);
+  });
+
+  it('ignores stale selections without notifying or adding undo history', () => {
+    const onChange = jest.fn();
+    const guide: JsonGuide = { id: 'g', title: 'T', blocks: [mkInteractive('keep')] };
+    const { result } = renderHook(() => useBlockEditor({ initialGuide: guide, onChange }));
+    const blocksBefore = result.current.state.blocks;
+
+    act(() => result.current.deleteSelectedBlocks(['missing', 'stale']));
+
+    expect(result.current.state.blocks).toBe(blocksBefore);
+    expect(result.current.state.isDirty).toBe(false);
+    expect(result.current.canUndo).toBe(false);
+    expect(result.current.undoLabel).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
 describe('useBlockEditor updateNestedBlock', () => {
   it('marks editor dirty and notifies by default', () => {
     const onChange = jest.fn();

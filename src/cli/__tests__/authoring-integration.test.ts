@@ -56,8 +56,8 @@ describe('agent authoring round-trip (full multi-block guide)', () => {
     r = await runAddBlock({
       dir,
       type: 'section',
-      explicitId: 'intro',
-      flagValues: { title: 'Introduction' },
+      id: 'intro',
+      fields: { title: 'Introduction' },
     });
     expect(r.status).toBe('ok');
 
@@ -65,8 +65,8 @@ describe('agent authoring round-trip (full multi-block guide)', () => {
     r = await runAddBlock({
       dir,
       type: 'markdown',
-      parentId: 'intro',
-      flagValues: {
+      parent: 'intro',
+      fields: {
         content: 'In this guide you will learn how to send logs to **Loki** and query them in Grafana.',
       },
     });
@@ -76,8 +76,8 @@ describe('agent authoring round-trip (full multi-block guide)', () => {
     r = await runAddBlock({
       dir,
       type: 'interactive',
-      parentId: 'intro',
-      flagValues: {
+      parent: 'intro',
+      fields: {
         action: 'navigate',
         reftarget: '[data-testid="nav-item-connections"]',
         content: 'Open the **Connections** page from the sidebar.',
@@ -91,32 +91,28 @@ describe('agent authoring round-trip (full multi-block guide)', () => {
     r = await runAddBlock({
       dir,
       type: 'guided',
-      explicitId: 'add-loki',
-      parentId: 'intro',
-      flagValues: { content: 'Add Loki as a data source.' },
+      id: 'add-loki',
+      parent: 'intro',
+      fields: { content: 'Add Loki as a data source.' },
     });
     expect(r.status).toBe('ok');
 
     let s = await runAddStep({
       dir,
-      parentId: 'add-loki',
-      flagValues: {
-        action: 'button',
-        reftarget: '[data-testid="add-datasource-button"]',
-        description: 'Click **Add data source**.',
-      },
+      parent: 'add-loki',
+      action: 'button',
+      reftarget: '[data-testid="add-datasource-button"]',
+      description: 'Click **Add data source**.',
     });
     expect(s.status).toBe('ok');
 
     s = await runAddStep({
       dir,
-      parentId: 'add-loki',
-      flagValues: {
-        action: 'formfill',
-        reftarget: '[data-testid="datasource-search"]',
-        targetvalue: 'Loki',
-        description: 'Search for Loki.',
-      },
+      parent: 'add-loki',
+      action: 'formfill',
+      reftarget: '[data-testid="datasource-search"]',
+      targetvalue: 'Loki',
+      description: 'Search for Loki.',
     });
     expect(s.status).toBe('ok');
 
@@ -124,8 +120,8 @@ describe('agent authoring round-trip (full multi-block guide)', () => {
     r = await runAddBlock({
       dir,
       type: 'quiz',
-      explicitId: 'check-understanding',
-      flagValues: {
+      id: 'check-understanding',
+      fields: {
         question: 'Which query language does Loki use?',
         requirements: ['section-completed:intro'],
       },
@@ -138,18 +134,16 @@ describe('agent authoring round-trip (full multi-block guide)', () => {
       { id: 'c', text: 'SQL', hint: 'Loki uses its own query language, not SQL.' },
     ];
     for (const c of choices) {
-      const cr = await runAddChoice({ dir, parentId: 'check-understanding', flagValues: c });
+      const cr = await runAddChoice({ dir, parent: 'check-understanding', ...c });
       expect(cr.status).toBe('ok');
     }
 
     // manifest update
     const m = await runSetManifest({
       dir,
-      flagValues: {
-        description: 'Learn to send logs to Loki and query them in Grafana',
-        provides: ['loki-basics'],
-        recommends: ['first-dashboard'],
-      },
+      description: 'Learn to send logs to Loki and query them in Grafana',
+      provides: ['loki-basics'],
+      recommends: ['first-dashboard'],
     });
     expect(m.status).toBe('ok');
 

@@ -1,11 +1,17 @@
+import { reportProxyFailure } from '../../lib/proxy-diagnostics';
+import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
+import { diagnoseGuideError } from '../../lib/guide-diagnostics';
+import { observeGuideRequest } from '../../lib/telemetry/guide-load';
 // Loader for `backend-guide:` content URLs — custom interactive guides served
 // by the Pathfinder backend's Kubernetes-style resource API, scoped to the
 // current Grafana namespace.
 import { ContentFetchResult } from '../../types/content.types';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
-import { itemUrl } from '../../utils/interactive-guides-api';
+import { guideReadUrl } from '../../utils/interactive-guides-api';
 import { validateGuide } from '../../validation';
+import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
+import type { JsonBlock } from '../../types/json-guide.types';
 
 export interface BackendGuideResource {
   metadata?: {
@@ -16,7 +22,38 @@ export interface BackendGuideResource {
     title?: string;
     schemaVersion?: string;
     blocks?: unknown[];
+    manifest?: Record<string, unknown>;
   };
+}
+
+const APP_PLATFORM_REPOSITORY = 'app-platform';
+
+/**
+ * Completion identity for a launch that carries no resolved package — an orphan
+ * guide from the custom guides list, a `?doc=api:<id>` share link, auto-dock tab
+ * restore. `id` and `repository` are forced over any persisted manifest value per
+ * `repository-identity-authority` (docs/design/CONCERN_DETAILS.md); a resource with no
+ * id of its own gets none, so the recorder fails closed rather than keying on the
+ * loader URL. `type` is carried through unforced so a path cover is not recorded
+ * as a standalone guide.
+ *
+ * `description` falls back to `spec.title` when the resource carries no manifest
+ * description, matching `buildManifest` in the app-platform resolver. The two
+ * sites synthesize a manifest for the same resource shape, so a reader that gets
+ * one of them must not see a different shape depending on which entry point the
+ * guide was opened from.
+ */
+function buildLoaderManifest(guideResource: BackendGuideResource): Record<string, unknown> {
+  const manifest: Record<string, unknown> = {
+    type: 'guide',
+    ...guideResource.spec?.manifest,
+    id: guideResource.spec?.id || guideResource.metadata?.name,
+    repository: APP_PLATFORM_REPOSITORY,
+  };
+  if (typeof manifest.description !== 'string' || manifest.description.length === 0) {
+    manifest.description = guideResource.spec?.title;
+  }
+  return manifest;
 }
 
 /**
@@ -31,10 +68,15 @@ export function buildBackendGuideContent(
   url: string,
   resourceName: string
 ): ContentFetchResult {
-  if (!guideResource?.spec?.blocks || !guideResource.spec.title) {
+  if (
+    !Array.isArray(guideResource?.spec?.blocks) ||
+    typeof guideResource.spec.title !== 'string' ||
+    !guideResource.spec.title.trim()
+  ) {
     return {
       content: null,
-      error: `Custom guide is missing required fields: ${resourceName}`,
+      error: 'Custom guide is missing required fields',
+      diagnostic: { source: 'app-platform', stage: 'validate', reason: 'missing-fields' },
       errorType: 'other',
     };
   }
@@ -43,15 +85,21 @@ export function buildBackendGuideContent(
     id: guideResource.spec.id || guideResource.metadata?.name || resourceName,
     title: guideResource.spec.title,
     schemaVersion: guideResource.spec.schemaVersion || '1.0',
-    blocks: guideResource.spec.blocks,
+    blocks: decodeAppPlatformGuideBlocks(guideResource.spec.blocks as JsonBlock[]),
   };
 
-  const validationResult = validateGuide(guide);
+  const validationResult = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
   if (!validationResult.isValid) {
     const errorMessage = validationResult.errors[0]?.message || 'Schema validation failed';
     return {
       content: null,
       error: `Invalid custom guide: ${errorMessage}`,
+      diagnostic: {
+        source: 'app-platform',
+        stage: 'validate',
+        reason: 'schema-invalid',
+        validationCount: validationResult.errors.length,
+      },
       errorType: 'other',
     };
   }
@@ -61,6 +109,8 @@ export function buildBackendGuideContent(
       content: JSON.stringify(guide),
       metadata: {
         title: guide.title,
+        packageManifest: buildLoaderManifest(guideResource),
+        repository: APP_PLATFORM_REPOSITORY,
       },
       type: 'interactive',
       url,
@@ -74,33 +124,45 @@ export function buildBackendGuideContent(
 // publish status here would break "copy workshop link" and a live workshop
 // whose author flips a guide to draft mid-session. The publish gate lives at
 // fetchPackageById instead (see #1561).
-export async function fetchBackendInteractive(url: string): Promise<ContentFetchResult> {
+export async function fetchBackendInteractive(url: string, context?: GuideLoadContext): Promise<ContentFetchResult> {
   const resourceName = url.replace('backend-guide:', '').trim();
   const namespace = config.namespace;
 
   if (!resourceName) {
-    return { content: null, error: 'Invalid backend guide resource name', errorType: 'other' };
+    return {
+      content: null,
+      error: 'Invalid backend guide resource name',
+      errorType: 'other',
+      diagnostic: { source: 'app-platform', stage: 'resolve', reason: 'invalid-url' },
+    };
   }
 
   if (!namespace) {
-    return { content: null, error: 'No namespace available to load custom guide', errorType: 'other' };
+    return {
+      content: null,
+      error: 'No namespace available to load custom guide',
+      errorType: 'other',
+      diagnostic: { source: 'app-platform', stage: 'resolve', reason: 'namespace-unavailable' },
+    };
   }
 
   try {
-    // itemUrl encodes resourceName to prevent path traversal (F3).
-    const response = await lastValueFrom(
-      getBackendSrv().fetch<BackendGuideResource>({
-        url: itemUrl(namespace, resourceName),
-        method: 'GET',
-        // Optional rollout endpoint: don't show a global toast when unavailable.
-        showErrorAlert: false,
-      })
+    const response = await observeGuideRequest(guideReadUrl(resourceName), 'content', context, () =>
+      lastValueFrom(
+        getBackendSrv().fetch<BackendGuideResource>({
+          url: guideReadUrl(resourceName),
+          method: 'GET',
+          showErrorAlert: false,
+        })
+      )
     );
     return buildBackendGuideContent(response.data, url, resourceName);
   } catch (error) {
+    reportProxyFailure(error);
     return {
       content: null,
       error: `Failed to load custom guide: ${resourceName}`,
+      diagnostic: diagnoseGuideError(error, 'app-platform'),
       errorType: 'other',
       statusCode: (error as { status?: number })?.status,
     };

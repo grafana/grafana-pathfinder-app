@@ -56,6 +56,8 @@ Categories:
 
 Group findings by tier (High first, then Suggestive if requested). Within each tier, order by hotspot score descending.
 
+When invoked by `/review`, emit canonical observations from `docs/design/PR_REVIEW.md` instead of the standalone Markdown below. Use the routed owning concern, or `cross-cutting-architecture` when no narrower concern owns the evidence. Emit `kind: suggestion` for structural improvement and `kind: defect` only for a concrete current behavior or contract failure. Preserve checked provenance in `origin`, whether the action grows the PR in `scope_effect`, disqualifier evidence in `evidence`, and the actual runtime impact. Do not supply or imply a disposition. The parent review supplies `timing` and runs every observation through `review-policy.mjs`.
+
 ### Per finding
 
 ```markdown

@@ -13,11 +13,25 @@
   "provides": ["loki-configured"],
   "targeting": {
     "match": {
-      "and": [{ "urlPrefix": "/connections" }, { "targetPlatform": "oss" }]
+      "and": [
+        {
+          "urlPrefix": "/connections"
+        },
+        {
+          "targetPlatform": "oss"
+        }
+      ]
     }
   },
   "testEnvironment": {
     "tier": "local",
     "minVersion": "12.2.0"
+  },
+  "stats": {
+    "version": 1,
+    "blockCount": 26,
+    "sectionCount": 2,
+    "completableBlockCount": 21,
+    "finalCompletablePosition": 25
   }
 }

@@ -85,6 +85,57 @@ describe('buildSnippetCatalog', () => {
     expect(catalog['pinned']!.schemaVersion).toBe('1.0.0');
   });
 
+  // Snippet bodies share every block schema with a guide, so `JsonSnippetSchema`
+  // admits a guided block carrying a verb `GuidedHandler` cannot drive. Publishing
+  // is an authoring gate, so it must refuse the body rather than let the bad step
+  // reach readers through a `snippet-ref`.
+  it.each([
+    {
+      when: 'a guided step carries a non-guided verb',
+      blocks: [{ type: 'guided', content: 'Follow along', steps: [{ action: 'navigate', reftarget: '/explore' }] }],
+      verb: 'navigate',
+    },
+    {
+      when: 'the guided block is nested inside a section',
+      blocks: [
+        {
+          type: 'section',
+          title: 'S',
+          blocks: [{ type: 'guided', content: 'Follow along', steps: [{ action: 'popout', targetvalue: 'sidebar' }] }],
+        },
+      ],
+      verb: 'popout',
+    },
+  ])('drops the snippet and reports an error when $when', ({ blocks, verb }) => {
+    writeJson(path.join(tmpDir, 'bad-guided.json'), validBody('bad-guided', { blocks }));
+
+    const { catalog, errors } = buildSnippetCatalog(tmpDir);
+
+    expect(catalog['bad-guided']).toBeUndefined();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(verb);
+  });
+
+  it('accepts a guided block whose steps all use drivable verbs', () => {
+    writeJson(
+      path.join(tmpDir, 'good-guided.json'),
+      validBody('good-guided', {
+        blocks: [
+          {
+            type: 'guided',
+            content: 'Follow along',
+            steps: [{ action: 'button', reftarget: '#go' }, { action: 'noop' }],
+          },
+        ],
+      })
+    );
+
+    const { catalog, errors } = buildSnippetCatalog(tmpDir);
+
+    expect(errors).toHaveLength(0);
+    expect(catalog['good-guided']).toBeDefined();
+  });
+
   // Each invalid body must be dropped from the catalog and reported as an error.
   it.each([
     {

@@ -3,6 +3,8 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { querySelectorAllEnhanced } from '../../lib/dom';
 import { withFaroUserAction } from '../../lib/faro';
+import type { InteractiveElementData } from '../../types/interactive.types';
+import { logger } from '../../lib/logging';
 
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
@@ -53,7 +55,7 @@ describe('GuidedHandler', () => {
 
   describe('execute', () => {
     it('should set state to running and then completed', async () => {
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: '#test',
         targetAction: 'guided',
         tagName: 'button',
@@ -68,7 +70,7 @@ describe('GuidedHandler', () => {
     });
 
     it('should call waitForReactUpdates when performGuided is false', async () => {
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: '#test',
         targetAction: 'guided',
         tagName: 'button',
@@ -83,10 +85,51 @@ describe('GuidedHandler', () => {
   });
 
   describe('resetProgress', () => {
-    it('should reset completed steps tracking', () => {
+    const runTwoStepSequence = async (labelPrefix: string) => {
+      for (const stepIndex of [0, 1]) {
+        await guidedHandler.executeGuidedStep(
+          {
+            targetAction: 'highlight',
+            refTarget: '#drawer',
+            targetState: true,
+            targetComment: `${labelPrefix} step ${stepIndex}`,
+          },
+          stepIndex,
+          2,
+          5
+        );
+      }
+    };
+
+    const firstPaintOf = (labelPrefix: string) =>
+      (mockNavigationManager.highlightWithComment as jest.Mock).mock.calls.find((call) =>
+        String(call[1]).includes(`${labelPrefix} step 0`)
+      )?.[3];
+
+    beforeEach(() => {
+      document.body.innerHTML = '<button id="drawer" aria-expanded="true">Add</button>';
+      const button = document.querySelector<HTMLButtonElement>('#drawer')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('clears prior-run credit so a restarted sequence paints from zero', async () => {
+      await runTwoStepSequence('run A');
+      expect(firstPaintOf('run A')).toMatchObject({ current: 0, completedSteps: [] });
+
       guidedHandler.resetProgress();
-      // Method should not throw
-      expect(guidedHandler.resetProgress).toBeDefined();
+      await runTwoStepSequence('run B');
+
+      expect(firstPaintOf('run B')).toMatchObject({ current: 0, total: 2, completedSteps: [], progress: 'performed' });
+    });
+
+    it('carries stale credit into a second sequence when it is not called', async () => {
+      await runTwoStepSequence('run A');
+      await runTwoStepSequence('run B');
+
+      // Guard: this is the state resetProgress exists to prevent - a full bar
+      // beside a "Step 1 of 2" badge. interactive-guided.tsx calls it at run start.
+      expect(firstPaintOf('run B')).toMatchObject({ current: 0, completedSteps: [0, 1] });
     });
   });
 
@@ -195,6 +238,42 @@ describe('GuidedHandler', () => {
       expect(highlighted).toBe(button);
       expect(shownComment).toContain('Already in the right position');
       expect(shownComment).toContain('Click Add');
+    });
+
+    it('asks for performed progress, crediting only steps the reader finished', async () => {
+      document.body.innerHTML = '<button id="drawer" aria-expanded="true">Add</button>';
+      const button = document.querySelector<HTMLButtonElement>('#drawer')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
+
+      await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: 'First instruction' },
+        0,
+        2,
+        5
+      );
+      await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: 'Second instruction' },
+        1,
+        2,
+        5
+      );
+
+      const paints = (mockNavigationManager.highlightWithComment as jest.Mock).mock.calls;
+      const stepInfoFor = (needle: string) => paints.find((call) => String(call[1]).includes(needle))?.[3];
+
+      expect(stepInfoFor('First instruction')).toEqual({
+        current: 0,
+        total: 2,
+        completedSteps: [],
+        progress: 'performed',
+      });
+      expect(stepInfoFor('Second instruction')).toEqual({
+        current: 1,
+        total: 2,
+        completedSteps: [0],
+        progress: 'performed',
+      });
     });
 
     it('still waits for the user when targetState is not yet satisfied', async () => {
@@ -423,6 +502,79 @@ describe('GuidedHandler', () => {
       // Cleanup spies
       addEventListenerSpy.mockRestore();
       removeEventListenerSpy.mockRestore();
+    });
+  });
+
+  describe('verbs the handler cannot drive', () => {
+    // `JsonGuidedBlockSchema` shares its step schema with multistep, so a guide
+    // published before the authoring gate existed can still carry these. The
+    // step must settle without reaching a listener that cannot settle it — see
+    // `validate-guide.ts` / `allowUnsupportedGuidedAction`.
+    const UNDRIVABLE = ['navigate', 'popout', 'multistep', 'guided'] as const;
+
+    let documentListener: jest.SpyInstance;
+
+    beforeEach(() => {
+      // A resolvable target, so a step that settles without touching the
+      // element proves the verb was refused before resolution rather than
+      // merely failing to find anything.
+      document.body.innerHTML = '<button id="target">Go</button>';
+      const target = document.querySelector<HTMLButtonElement>('#target')!;
+      documentListener = jest.spyOn(document, 'addEventListener');
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [target], usedFallback: false });
+    });
+
+    const expectNothingDriven = (targetAction: string) => {
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('cannot drive'),
+        expect.objectContaining({ targetAction })
+      );
+      // The completion, skip, and cancel listeners all bind on `document`.
+      expect(documentListener).not.toHaveBeenCalled();
+      // Nothing was highlighted, so the reader was never asked to act.
+      expect(mockNavigationManager.highlightWithComment).not.toHaveBeenCalled();
+    };
+
+    it.each(UNDRIVABLE)('reports a non-skippable guided "%s" step as an error', async (targetAction) => {
+      const result = await guidedHandler.executeGuidedStep({ targetAction, refTarget: '#target' }, 0, 1, 1000);
+
+      expect(result).toBe('error');
+      expectNothingDriven(targetAction);
+    });
+
+    // An author marking the step skippable is asking for exactly this, and it is
+    // what element resolution already produced for a `navigate` step whose
+    // refTarget is a URL path — the guided run must keep going.
+    it.each(UNDRIVABLE)('skips a skippable guided "%s" step so the run continues', async (targetAction) => {
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction, refTarget: '#target', isSkippable: true },
+        0,
+        1,
+        1000
+      );
+
+      expect(result).toBe('skipped');
+      expectNothingDriven(targetAction);
+    });
+
+    it('credits a skipped undrivable step so the next step paints it as done', async () => {
+      await guidedHandler.executeGuidedStep(
+        { targetAction: 'navigate', refTarget: '/explore', isSkippable: true },
+        0,
+        2,
+        5
+      );
+      await guidedHandler.executeGuidedStep({ targetAction: 'highlight', refTarget: '#target' }, 1, 2, 5);
+
+      expect((mockNavigationManager.highlightWithComment as jest.Mock).mock.calls[0]![3]).toMatchObject({
+        completedSteps: [0],
+      });
+    });
+
+    it('does not reject, so the caller sees a result rather than a thrown error', async () => {
+      await expect(
+        guidedHandler.executeGuidedStep({ targetAction: 'navigate', refTarget: '/explore' }, 0, 1, 1000)
+      ).resolves.toBe('error');
     });
   });
 

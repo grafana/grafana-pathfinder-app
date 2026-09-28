@@ -18,6 +18,7 @@
  * reducer's parallel-state set.
  */
 
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import type { StepInfo } from '../../types/component-props.types';
 import type { AcknowledgementAnalysis } from './step-section-utils';
 
@@ -105,10 +106,7 @@ export function sectionReducer(state: SectionState, action: SectionAction): Sect
     }
 
     default: {
-      // Exhaustive-check anchor — TypeScript flags any future action that
-      // forgets to handle a case.
-      const _never: never = action;
-      void _never;
+      assertExhaustive(action);
       return state;
     }
   }

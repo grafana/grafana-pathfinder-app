@@ -43,7 +43,28 @@ describe('CachingSnippetResolver', () => {
     expect(inner.resolveCalls).toBe(2);
   });
 
-  it('does not cache failures', async () => {
+  it('caches not-found resolutions within the TTL', async () => {
+    const inner = new StubResolver((id) => ({
+      ok: false,
+      id,
+      error: { code: 'not-found', message: 'missing' },
+    }));
+
+    let now = 0;
+    const cache = new CachingSnippetResolver(inner, { ttlMs: 1000, now: () => now });
+
+    await cache.resolve('foo');
+    await cache.resolve('foo');
+
+    expect(inner.resolveCalls).toBe(1);
+
+    now = 1500;
+    await cache.resolve('foo');
+
+    expect(inner.resolveCalls).toBe(2);
+  });
+
+  it('does not cache transient failures', async () => {
     const inner = new StubResolver((id) => ({ ok: false, id, error: { code: 'network-error', message: 'down' } }));
     const cache = new CachingSnippetResolver(inner, { ttlMs: 1000, now: () => 0 });
 

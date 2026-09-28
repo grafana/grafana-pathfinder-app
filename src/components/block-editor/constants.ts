@@ -21,6 +21,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Markdown',
     description: 'Formatted text with headings, lists, and code',
   },
+  divider: {
+    type: 'divider',
+    icon: '➖',
+    grafanaIcon: 'minus',
+    name: 'Divider',
+    description: 'Horizontal separator between guide sections',
+  },
   html: {
     type: 'html',
     icon: '🔧',
@@ -41,6 +48,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     grafanaIcon: 'gf-layout-simple',
     name: 'Video',
     description: 'YouTube or native video embed',
+  },
+  callout: {
+    type: 'callout',
+    icon: '🎯',
+    grafanaIcon: 'star',
+    name: 'Callout',
+    description: 'Highlighted, labeled box for calling out anything you want to set apart',
   },
   section: {
     type: 'section',
@@ -161,7 +175,7 @@ export const BLOCK_TYPE_GROUPS = [
   {
     id: 'content',
     label: 'Content',
-    types: ['markdown', 'image', 'video', 'code-block'],
+    types: ['markdown', 'divider', 'image', 'video', 'code-block', 'callout'],
   },
   {
     id: 'interactive',

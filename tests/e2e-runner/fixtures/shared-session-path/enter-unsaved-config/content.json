@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "shared-session-enter-unsaved-config",
+  "title": "Enter an unsaved configuration value",
+  "blocks": [
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "input[data-testid=\"config-tutorial-url\"]",
+      "targetvalue": "https://shared-session.invalid/exact-browser-marker",
+      "validateInput": true,
+      "requirements": ["exists-reftarget"],
+      "content": "Enter a configuration value without saving or reloading the page."
+    }
+  ]
+}

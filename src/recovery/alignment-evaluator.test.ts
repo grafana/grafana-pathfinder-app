@@ -80,6 +80,18 @@ describe('evaluateAlignment', () => {
     expect(result).toEqual({ shouldPrompt: false, reason: 'source-skipped' });
   });
 
+  it('prompts for a custom guide opened from inside a path', () => {
+    // The custom guides section is not the recommender: its list is not
+    // URL-filtered, so a member launch still needs the alignment check.
+    // Refs: https://github.com/grafana/grafana-pathfinder-app/issues/1681
+    const result = evaluateAlignment({
+      currentPath: '/explore',
+      startingLocation: '/alerting/routes',
+      launchSource: 'custom_guide',
+    });
+    expect(result).toEqual({ shouldPrompt: true, reason: 'mismatch' });
+  });
+
   it('does not prompt for mcp_launch even when paths differ', () => {
     const result = evaluateAlignment({
       currentPath: '/dashboards',

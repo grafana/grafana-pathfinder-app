@@ -117,7 +117,11 @@ const NEXT_HEADING_RE = /^#{1,3}\s+/m;
  *
  * Falls back to returning the original content if parsing fails.
  */
-export function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: LearningJourneyMetadata): string {
+export function injectJourneyExtrasIntoJsonGuide(
+  jsonContent: string,
+  metadata: LearningJourneyMetadata,
+  skipReadyToBegin = false
+): string {
   try {
     const parsed = JSON.parse(jsonContent) as {
       id?: string;
@@ -131,7 +135,7 @@ export function injectJourneyExtrasIntoJsonGuide(jsonContent: string, metadata: 
 
     wrapExpectBlockInOrangeOutline(parsed.blocks);
 
-    const extrasHtml = generateJourneyContentWithExtras('', metadata);
+    const extrasHtml = generateJourneyContentWithExtras('', metadata, skipReadyToBegin);
     const blocks = extrasHtml.trim() ? [...parsed.blocks, { type: 'html', content: extrasHtml }] : parsed.blocks;
 
     return JSON.stringify({

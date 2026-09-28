@@ -83,6 +83,67 @@ describe('parseAndValidateGuide', () => {
     });
   });
 
+  describe('duplicate leading heading', () => {
+    const guide = JSON.stringify({
+      id: 'test',
+      title: 'Create your first dashboard',
+      blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
+    });
+
+    it('rejects the guide, so it cannot be imported', () => {
+      const result = parseAndValidateGuide(guide);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(true);
+    });
+  });
+
+  // The import path is the repair surface for an already-published guide, so it
+  // is the one authoring gate that must not refuse this error.
+  describe('unsupported guided action', () => {
+    const guide = JSON.stringify({
+      id: 'test',
+      title: 'Test',
+      blocks: [
+        {
+          type: 'guided',
+          content: 'Follow along',
+          steps: [
+            { action: 'button', reftarget: '#a' },
+            { action: 'navigate', reftarget: '/explore' },
+          ],
+        },
+      ],
+    });
+
+    it('imports the guide, so the author can reach the offending step', () => {
+      const result = parseAndValidateGuide(guide);
+      expect(result.isValid).toBe(true);
+      expect(result.guide).not.toBeNull();
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('names the offending step and the remedy in a warning', () => {
+      const result = parseAndValidateGuide(guide);
+      const warning = result.warnings.find((w) => w.includes('blocks[0].steps[1].action'));
+
+      expect(warning).toBeDefined();
+      expect(warning).toContain('navigate');
+      expect(warning).toContain('multistep');
+    });
+
+    it('still refuses a guide whose other faults are real', () => {
+      const missingContent = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [{ type: 'guided', steps: [{ action: 'navigate', reftarget: '/explore' }] }],
+      });
+
+      const result = parseAndValidateGuide(missingContent);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+  });
+
   describe('required top-level fields', () => {
     it('should reject guide without id', () => {
       const guide = JSON.stringify({ title: 'Test', blocks: [] });

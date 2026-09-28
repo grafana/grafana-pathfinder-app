@@ -1,22 +1,14 @@
 /**
- * Debug surface for the highlighted-guide experiment (window.__pathfinderExperiment).
+ * Debug surface for the live experiments (window.__pathfinderExperiment).
  *
- * Exposes flag overrides (setOverride / removeOverride / clearOverrides /
- * showOverrides) and analytics exposure inspection (showExposures /
- * clearExposures) for local QA and demos. See docs/developer/EXPERIMENT_TESTING.md.
+ * Exposes feature-flag names and analytics exposure inspection for local QA and
+ * demos. See docs/developer/EXPERIMENT_TESTING.md.
  */
 
 import { collectKeysByPrefix } from '../../lib/storage/key-utils';
 import { StorageKeys } from '../../lib/storage-keys';
-import { logger } from '../../lib/logging';
-import {
-  setFlagOverride,
-  removeFlagOverride,
-  clearFlagOverrides,
-  getFlagOverrides,
-  pathfinderFeatureFlags,
-  type HighlightedGuideConfig,
-} from '../openfeature';
+import { pathfinderFeatureFlags, type HighlightedGuideConfig } from '../openfeature';
+import { getEnrolledInteractiveLearningBannerConfig } from './interactive-learning-banner';
 
 interface ExposureMarker {
   key: string;
@@ -43,50 +35,18 @@ function listExposureMarkers(hostname: string): ExposureMarker[] {
 export function createExperimentDebugger(config: HighlightedGuideConfig): void {
   const hostname = window.location.hostname;
 
-  (window as any).__pathfinderExperiment = {
+  window.__pathfinderExperiment = {
     // Highlighted-guide config captured at module load time
     config,
     variant: config.variant,
     loadedAt: new Date().toISOString(),
 
-    // --- Flag override methods (persist in localStorage, take effect on next page load) ---
+    // A getter, not a snapshot: the banner arm is resolved lazily when a Pathfinder
+    // panel first opens, so a value captured here would always read 'not-enrolled'.
+    // Reads the memo only — calling this never enrolls anyone.
+    bannerVariant: () => getEnrolledInteractiveLearningBannerConfig()?.variant ?? 'not-enrolled',
 
     flags: Object.keys(pathfinderFeatureFlags),
-
-    setOverride: (flagName: string, value: unknown) => {
-      if (!(flagName in pathfinderFeatureFlags)) {
-        logger.warn(`[Pathfinder] Unknown flag '${flagName}'. Known flags`, {
-          knownFlags: Object.keys(pathfinderFeatureFlags),
-        });
-      }
-      setFlagOverride(flagName, value);
-      console.log(`[Pathfinder] Override set for '${flagName}':`, value);
-      console.log('[Pathfinder] Refresh the page for the override to take effect.');
-    },
-
-    removeOverride: (flagName: string) => {
-      removeFlagOverride(flagName);
-      console.log(`[Pathfinder] Override removed for '${flagName}'. Refresh the page to use GOFF value.`);
-    },
-
-    clearOverrides: () => {
-      clearFlagOverrides();
-      console.log('[Pathfinder] All overrides cleared. Refresh the page to use GOFF values.');
-    },
-
-    showOverrides: () => {
-      const overrides = getFlagOverrides();
-      if (Object.keys(overrides).length === 0) {
-        console.log('[Pathfinder] No flag overrides set.');
-      } else {
-        console.log('[Pathfinder] Active flag overrides (take effect on page load):');
-        for (const [flag, value] of Object.entries(overrides)) {
-          console.log(`  ${flag}:`, value);
-        }
-      }
-      return overrides;
-    },
-
     // --- Analytics exposure dedup ---
     // pathfinder_feature_flag_evaluated fires at most once per (hostname, flag, variant)
     // per browser, persisted under StorageKeys.EXPERIMENT_EXPOSURE_REPORTED_PREFIX. These

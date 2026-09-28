@@ -29,7 +29,11 @@ export class ButtonHandler {
       }
 
       await this.handleDoMode(buttons, target);
-      await this.markAsCompleted(data);
+      if (buttons.length > 0 || !data.skipCompletionOnEmptyTarget) {
+        await this.markAsCompleted(data);
+      } else {
+        data.completionSuppressed = true;
+      }
     } catch (error) {
       this.stateManager.handleError(error as Error, 'ButtonHandler', data, false);
     }

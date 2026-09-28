@@ -18,6 +18,8 @@
  * This session owns view + scroll + staleness token only.
  */
 
+import { assertExhaustive } from '../../lib/assert-exhaustive';
+
 export type FloatingPanelView = 'full' | 'compact' | 'minimized';
 
 export interface DodgeSessionState {
@@ -78,10 +80,7 @@ export function dodgeSessionReducer(state: DodgeSessionState, action: DodgeSessi
       };
 
     default: {
-      // Exhaustiveness check: adding a DodgeSessionAction variant without
-      // handling it above fails to compile here.
-      const _exhaustive: never = action;
-      void _exhaustive;
+      assertExhaustive(action);
       return state;
     }
   }

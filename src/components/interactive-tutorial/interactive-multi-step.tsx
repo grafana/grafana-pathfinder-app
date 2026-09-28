@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
@@ -14,7 +15,8 @@ import { logger } from '../../lib/logging';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
-import type { InteractiveElementData } from '../../types/interactive.types';
+import type { InteractiveElementData, InteractiveRequirementsData } from '../../types/interactive.types';
+import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
@@ -25,6 +27,7 @@ import { useInteractiveMode } from '../../global-state/interactive-mode-context'
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 let anonymousMultiStepCounter = 0;
 
@@ -49,8 +52,8 @@ interface InteractiveMultiStepProps {
   className?: string;
   disabled?: boolean;
   hints?: string;
-  requirements?: string; // Overall requirements for the multi-step
-  objectives?: string; // Overall objectives for the multi-step
+  requirements?: ConditionInput; // Overall requirements for the multi-step
+  objectives?: ConditionInput; // Overall objectives for the multi-step
   onComplete?: () => void;
   skippable?: boolean; // Whether this multi-step can be skipped if requirements fail
   completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
@@ -64,6 +67,9 @@ interface InteractiveMultiStepProps {
   // Timing configuration
   stepDelay?: number; // Delay between steps in milliseconds (default: 1800ms)
   resetTrigger?: number; // Signal from parent to reset local completion state
+
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
 interface MultiStepUiStateInput {
@@ -101,12 +107,11 @@ export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateV
 async function checkActionRequirements(
   action: InternalAction,
   actionIndex: number,
-  checkRequirementsFromData: (data: InteractiveElementData) => Promise<any>
+  checkRequirementsFromData: (data: InteractiveRequirementsData) => Promise<any>
 ): Promise<{ pass: boolean; explanation?: string }> {
   if (!action.requirements) {
     return { pass: true };
   }
-
   try {
     // Create data structure compatible with checkRequirementsFromData
     const actionData = {
@@ -176,6 +181,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -364,7 +370,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       // Only start blocking if we're not already in a blocking state (avoid double-blocking)
       if (!isNestedInSection) {
         // Create dummy data for blocking overlay
-        const dummyData = {
+        const dummyData: InteractiveElementData = {
           refTarget: `multistep-${multiStepId}`,
           targetAction: 'multistep',
           targetValue: undefined,
@@ -385,6 +391,14 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           if (isCancelledRef.current) {
             break;
           }
+
+          if (!isInteractiveActionType(action.targetAction)) {
+            logger.error(`Unknown multi-step action: ${action.targetAction}`);
+            setFailedStepIndex(i);
+            setExecutionError(`Unsupported action "${action.targetAction}".`);
+            return false;
+          }
+          const targetAction = action.targetAction;
           setCurrentActionIndex(i);
 
           // Just-in-time requirements checking for this specific action
@@ -403,7 +417,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           // Execute the action (show first, then do)
           try {
             // Show mode (highlight what will be acted upon, with comment if available)
-            await executeInteractiveAction({ ...action, buttonType: 'show' });
+            await executeInteractiveAction({
+              ...action,
+              targetAction,
+              buttonType: 'show',
+              fullScreenFallbackLocation,
+            });
 
             // Delay between show and do with cancellation check
             for (let j = 0; j < INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations; j++) {
@@ -417,7 +436,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             } // Skip to cancellation check at loop start
 
             // Do mode (actually perform the action)
-            const doOutcome = await executeInteractiveAction({ ...action, buttonType: 'do' });
+            const doOutcome = await executeInteractiveAction({
+              ...action,
+              targetAction,
+              buttonType: 'do',
+              fullScreenFallbackLocation,
+            });
             if (doOutcome === 'error') {
               setFailedStepIndex(i);
               setExecutionError(`Step ${i + 1} did not complete successfully.`);
@@ -503,6 +527,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       title,
       renderedStepId,
       persistCompletion,
+      fullScreenFallbackLocation,
     ]);
 
     // Expose execute method for parent (sequence execution)
@@ -772,6 +797,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         className={`interactive-step${className ? ` ${className}` : ''}${
           uiState === STEP_STATES.COMPLETED ? ' completed' : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
+        {...getTrackedStepRootAttributes('multistep', stepId || renderedStepId)}
         data-targetaction="multistep"
         data-reftarget={renderedStepId}
         data-internal-actions={JSON.stringify(internalActions)}
@@ -800,7 +826,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="primary"
-                className="interactive-guided-start-btn"
+                className="interactive-guide-button-sm interactive-guided-start-btn"
                 data-testid={testIds.interactive.doItButton(renderedStepId)}
                 title={getButtonTitle()}
               >
@@ -823,7 +849,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   disabled={disabled || isAnyActionRunning}
                   size="sm"
                   variant="secondary"
-                  className="interactive-guided-skip-btn"
+                  className="interactive-guide-button-sm interactive-guided-skip-btn"
                   data-testid={testIds.interactive.skipButton(renderedStepId)}
                 >
                   Skip
@@ -872,7 +898,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               disabled={disabled}
               size="sm"
               variant="secondary"
-              className="interactive-guided-cancel-btn"
+              className="interactive-guide-button-sm interactive-guided-cancel-btn"
               title="Cancel execution"
             >
               Cancel
@@ -901,6 +927,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               disabled={disabled || isAnyActionRunning}
               data-testid={testIds.interactive.redoButton(renderedStepId)}
               title="Redo this multi-step"
+              className="interactive-guide-button-sm"
             >
               ↻ Redo
             </Button>
@@ -912,7 +939,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         ═══════════════════════════════════════════════════════════════════ */}
         {uiState === STEP_STATES.REQUIREMENTS_UNMET && checker.explanation && (
           <div
-            className="interactive-feedback-box interactive-feedback-box--neutral interactive-requirement-box interactive-step-requirement-explanation"
+            className="interactive-feedback-box interactive-feedback-box--neutral interactive-step-requirement-explanation"
             data-testid={testIds.interactive.requirementCheck(renderedStepId)}
           >
             {checker.explanation}
@@ -944,7 +971,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 }}
                 size="sm"
                 variant="primary"
-                className="interactive-guided-retry-btn"
+                className="interactive-guide-button-sm interactive-guided-retry-btn"
                 data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
               >
                 ↻ Try again
@@ -986,7 +1013,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   }}
                   size="sm"
                   variant="secondary"
-                  className="interactive-guided-skip-btn"
+                  className="interactive-guide-button-sm interactive-guided-skip-btn"
                   data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
                 >
                   Skip this step

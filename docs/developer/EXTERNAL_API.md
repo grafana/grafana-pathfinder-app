@@ -68,7 +68,7 @@ scripts/upsert-guide.sh \
 
 The script:
 
-1. **Auto-detects the input format** — accepts either a bare spec or a full Kubernetes envelope (e.g. from Library → Export).
+1. **Auto-detects the input format** — accepts either a bare spec (what the editor's **Copy JSON** / **Download JSON** items produce) or a full Kubernetes envelope (what a GET against the endpoint returns).
 2. **Auto-detects the stack namespace** from `/api/frontend/settings` (or accepts `--namespace`).
 3. **Fills in missing required fields**: defaults `status` to `"published"` and `schemaVersion` to `"1.0.0"`, and backfills `spec.id` from the slugified `title` when absent.
 4. Slugifies the resource name from `spec.id` (or the slugified `spec.title` if `id` is missing).
@@ -124,24 +124,27 @@ harmlessly. For a path they must not:
 
 `metadata.name` is the slugified `spec.id`, so any id that isn't
 already slug-shaped produces a resource the path can't reach, and every
-milestone 404s with no error surfaced in the UI. The script refuses to
-upload in that case; rename the package instead.
+milestone renders as a locked "(not yet available)" row rather than an
+error. The script refuses to upload in that case; rename the package instead.
 
 ### Block fields the CRD doesn't declare
 
 The CRD's block schema is generated from `_blockFields` / `#Block` /
 `#NestedBlock` / `#Step` in `kinds/interactiveguide.cue`. A field the app
-accepts and that file does not declare is **silently pruned**: there is
-no 422 and no warning from the API, the write returns 200, and the field
-is gone on the next GET. Blocks nested three or more levels deep fall
-under `x-kubernetes-preserve-unknown-fields` and survive; anything
-shallower does not.
+accepts and that file does not declare is **silently pruned**. The API can emit
+a `Warning` response header, but there is no 422 or error body; the write may
+still return 200 or 201, and the field is gone on the next GET.
+`getBackendSrv().fetch()` exposes it through `FetchResponse.headers`; the
+`get`/`post`/`put`/`delete` shorthand helpers return only the parsed body.
+Blocks nested three or more levels deep fall under
+`x-kubernetes-preserve-unknown-fields` and survive; anything shallower does
+not.
 
-The gap is currently the `input` block: `defaultValue`, which costs the
-input its prefilled value, and the whole `dataCheck*` family
-(`dataCheckQuery`, `dataCheckBlocking`, `dataCheckFailureMessage`,
-`dataCheckTimeFrom`, `dataCheckTimeTo`), which lands the picker without
-its data check — it renders, and the check simply never runs.
+The gap is currently `defaultValue` on the `input` block, which costs the
+input its prefilled value; the whole `dataCheck*` family (`dataCheckQuery`,
+`dataCheckBlocking`, `dataCheckFailureMessage`, `dataCheckTimeFrom`,
+`dataCheckTimeTo`), which lands the picker without its data check — it
+renders, and the check simply never runs; and `gcx` on `terminal-connect`.
 
 It has been much wider, and it moves in both directions. At one point
 the CUE was missing twenty-six fields including `autoCollapse`,
@@ -156,9 +159,9 @@ Two things keep it honest instead:
   your content would lose, and `--strict-blocks` turns that warning into
   a failure. Run it with `--dry-run` before an upload — that is the live
   check.
-- `src/validation/upsert-script-crd-fields.test.ts` fails when the app's
-  `KNOWN_FIELDS` gains a block field the script's `BLOCK` allowlist
-  lacks, so app-side drift cannot land silently.
+- `src/validation/upsert-script-crd-fields.test.ts` pins that set as
+  `PRUNED_BY_CRD` and fails when the app's `KNOWN_FIELDS` gains a block
+  field the script's `BLOCK` allowlist lacks, so drift cannot land silently.
 
 Neither can see the backend repo. When the CUE changes, update the
 `BLOCK` / `STEP` arrays in `upsert-learning-path.sh` and the
@@ -201,14 +204,14 @@ replaced.
 
 `upsert-guide.sh` merges its annotations over whatever the resource
 already carries, so an update through the scripts preserves annotations
-another tool set. **Nothing else does.** The block editor's save,
-publish, and unpublish each send `metadata` as
-`{name, namespace, resourceVersion}`, and a PUT replaces the whole
-object — so one **unpublish** click on a script-uploaded milestone
-erases `managed-by`, and the next run refuses the entire package as
-foreign. Neither the refusal message nor `--overwrite` can distinguish
-that self-inflicted detachment from a genuine collision, so if you know
-the guides are yours, `--overwrite` is the answer.
+another tool set. The block editor's save, publish, and unpublish do the
+same — each carries `metadata.annotations` and `metadata.labels` through
+from the resource it last read, so editing a script-uploaded guide no
+longer detaches it from the package. The exception is a confirmed
+name-collision overwrite, which intentionally inherits neither the
+previous resource's `spec.manifest` nor its annotations; after one of
+those the next run refuses the package as foreign, and `--overwrite` is
+the answer.
 
 `--dry-run` performs the same LIST, so the preview marks each resource
 as new, an update, or a collision. It exits non-zero on any validation
@@ -256,6 +259,25 @@ argv either: it goes in a `0600` curl config file, and payloads are sent
 with `--data-binary @file`. `--stack` must be a bare hostname with an
 optional port; a value carrying userinfo, a path, or a brace expansion is
 rejected before the token is attached to anything.
+
+## Provisioning with Terraform
+
+The Grafana provider's `grafana_apps_generic_resource` manages any
+namespaced App Platform kind from a Kubernetes-style manifest, and
+`InteractiveGuide` is one — so guides can be provisioned with Terraform
+today, with no provider or backend change. That buys deletion, drift
+detection and state, none of which the scripts above offer.
+
+It comes with one sharp caveat. The provider refreshes `spec` from the
+server on every read and takes arrays wholesale, so a block field the
+CRD prunes (see [block fields the CRD doesn't
+declare](#block-fields-the-crd-doesnt-declare)) turns into a plan that
+never converges rather than a silent content loss. For package-shaped
+content, keep `upsert-learning-path.sh --dry-run --strict-blocks` as the
+pre-flight that names the offending field; a bare spec has none.
+
+See [`TERRAFORM.md`](TERRAFORM.md) for a worked example, the
+path-ordering pattern, and what Terraform does and does not solve.
 
 ## Authentication
 
@@ -308,9 +330,15 @@ The wire format is the standard Kubernetes envelope:
 | `spec.blocks`              | yes      | Array of content blocks. The full schema is owned by the CUE definition in [grafana-pathfinder-backend/kinds/interactiveguide.cue](https://github.com/grafana/grafana-pathfinder-backend/blob/main/kinds/interactiveguide.cue) — that file is the source of truth. |
 | `spec.manifest`            | no       | Package metadata: grouping, sequencing, dependencies. Absent for content-only guides. See [Manifest](#manifest).                                                                                                                                                   |
 
-The CRD schema **is the validator**. Submit unknown fields and you'll
-get a `422 Unprocessable Entity` with a K8s `Status` envelope explaining
-which field is wrong.
+The CRD validates declared fields. A required declared field that is missing,
+or a declared value with an invalid type or value, returns a
+`422 Unprocessable Entity` with a K8s `Status` envelope.
+
+Unknown fields are **not rejected by default**. Kubernetes prunes them and
+may still return `200 OK` or `201 Created`. The API can emit a `Warning`
+response header, but callers that do not inspect headers receive no signal.
+For manifest extensions, `spec.manifest.additionalFields` is the only durable
+home for keys the CRD does not declare.
 
 ### Manifest
 
@@ -326,16 +354,87 @@ and what makes a path a path.
 | `author`           | no       | `{ name?, team? }`. The CRD declares no other keys; `upsert-learning-path.sh` moves any it finds (`email`, `github`, …) to `additionalFields.author` instead of dropping them. |
 | `category`         | no       | Free-form grouping label.                                                                                                                                                      |
 | `depends`          | no       | CNF (AND of ORs): an **array of arrays**. A single dependency is a singleton clause — `[["a"], ["b"]]` is "a AND b", `[["a","b"]]` is "a OR b". A bare string is not accepted. |
-| `additionalFields` | no       | Free-form escape hatch, `x-kubernetes-preserve-unknown-fields`. Anything not typed above goes here.                                                                            |
+| `additionalFields` | no       | Free-form escape hatch, `x-kubernetes-preserve-unknown-fields`. This is the only durable home for manifest keys not declared above.                                            |
 
 `recommends`, `suggests`, `provides`, `targeting`, `testEnvironment`,
-and `startingLocation` have no typed home yet, so
+`startingLocation`, and the generated `stats` stamp have no typed home yet, so
 `upsert-learning-path.sh` writes them under `additionalFields` rather
 than dropping them — as it does for any manifest key the CRD doesn't
-declare, including surplus `author` subkeys. Note that the frontend reads `recommends` and
-`suggests` from the top level of the manifest, so they have no effect
-while they live in `additionalFields` — promoting a key out of
-`additionalFields` into a real CUE field is additive and safe.
+declare, including surplus `author` subkeys. The block editor writes the two it
+derives, `stats` and `startingLocation`, to the same place.
+
+Which of them actually _work_ from `additionalFields` depends on whether
+anything reads that location:
+
+| Key                                        | Read from `additionalFields`?                                                                                                                                                                |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `startingLocation`                         | On some routes only — see below.                                                                                                                                                             |
+| `stats`                                    | No — the catalogue proxy decodes a typed `manifest.stats` but not `additionalFields`, so a stamp written here is dropped at the wire boundary. Promoting it to a typed CUE field is the fix. |
+| `recommends`, `suggests`                   | No — the frontend reads these from the manifest's top level, so they are inert here.                                                                                                         |
+| `provides`, `targeting`, `testEnvironment` | No consumer on the App Platform path at all.                                                                                                                                                 |
+
+`src/recovery/starting-location.ts` reads both locations, typed field first, so
+`startingLocation` takes effect wherever the manifest reaches it with
+`additionalFields` intact.
+
+Whichever location it came from, the value is authored data on its way to
+`locationService.push`, so it leaves the resolver only if
+`validateInternalNavigationPath` accepts it: a same-origin, single-leading-slash
+internal path that is not a denied route for this reader. A value that fails
+produces no prompt at all. Writing a `startingLocation` that is an absolute URL,
+a protocol-relative value, or `/admin/...` for non-admin readers is therefore
+inert rather than dangerous — but it is also silent, so keep it a plain path.
+
+The rule is about the ROUTE, not the guide, and two things have to hold. The
+manifest has to reach the reader with `additionalFields` intact — only the
+`backend-guide:` loader (`src/docs-retrieval/content-fetcher/backend-guide.ts`)
+spreads `spec.manifest` through unchanged — and nothing earlier in the launch
+must supply a manifest that takes precedence over it. Known routes today — not a
+closed list, so check the launch path rather than assuming a new one behaves like
+these:
+
+| Launch route                                 | Gets the prompt? |
+| -------------------------------------------- | ---------------- |
+| Standalone guide from the Custom guides list | Yes              |
+| `?doc=api:<id>` share link                   | Yes              |
+| Auto-dock tab restore                        | Yes              |
+| Path **member** opened from a path card      | Yes              |
+| Path **cover page** opened from a path card  | No               |
+
+The two path rows differ, and only the cover page is a transport problem.
+
+**Path cover page — the value never arrives.** `packageInfoForPath`
+(`src/components/docs-panel/CustomGuidesSection.tsx`) builds the cover's
+`packageManifest` from the catalogue-proxy entry, and that proxy's
+`customGuideManifest` (`pkg/plugin/custom_guide_repository_client.go`) declares
+no `additionalFields`, so `encoding/json` drops the key at the wire boundary
+before the reader ever sees it. Promoting `startingLocation` to a typed CUE field
+is the fix for this one.
+
+**Path member — the value arrives intact and survives the seam.** `openMember`
+opens `member.url`, which `resolvePackageMilestones` takes from the resolution's
+`contentUrl` — `backend-guide:<memberId>` for an App Platform package
+(`src/package-engine/app-platform-resolver.ts`). So the member's own resource is
+fetched through the `backend-guide:` loader, whose `buildLoaderManifest` spreads
+`spec.manifest` through with `additionalFields` intact. `openMember` also passes
+the PATH's `packageInfo`, and `resolveDocsLoadAlignment`
+(`src/components/docs-panel/utils/docs-load-finalizer.ts`) offers
+`packageInfo?.packageManifest` ahead of `fetchedContent.metadata.packageManifest`.
+Precedence is per-declaration rather than per-manifest:
+`resolveStartingLocation` (`src/recovery/starting-location.ts`) walks the
+candidates in order and stops only at one that declares `startingLocation` or
+`additionalFields.startingLocation`. The catalogue manifest declares neither, so
+resolution falls through to the member's own manifest and the member's starting
+location wins.
+
+The CUE promotion is not neutral here. Once the path's `startingLocation` is a
+typed field the catalogue manifest WOULD declare it, it would settle resolution
+at the first candidate, and a member would be prompted towards the cover's entry
+page. Tracked as
+[#1681](https://github.com/grafana/grafana-pathfinder-app/issues/1681).
+
+Promoting a key out of `additionalFields` into a real CUE field is additive and
+safe, and is the fix for the inert rows generally.
 
 ## Examples
 
@@ -466,14 +565,14 @@ The aggregator returns standard Kubernetes `Status` envelopes:
 
 Common cases:
 
-| HTTP | Reason        | When                                                                         |
-| ---- | ------------- | ---------------------------------------------------------------------------- |
-| 401  | -             | Missing or invalid Bearer token.                                             |
-| 403  | -             | Token's role is too low for the operation (need Editor for writes).          |
-| 404  | NotFound      | The named guide doesn't exist (or, on listing, the namespace doesn't exist). |
-| 409  | AlreadyExists | POST against a name that already exists. Use PUT to update.                  |
-| 409  | Conflict      | Stale `resourceVersion` on PUT. Re-GET and retry.                            |
-| 422  | Invalid       | Spec failed CRD validation — message names the offending field.              |
+| HTTP | Reason        | When                                                                                             |
+| ---- | ------------- | ------------------------------------------------------------------------------------------------ |
+| 401  | -             | Missing or invalid Bearer token.                                                                 |
+| 403  | -             | Token's role is too low for the operation (need Editor for writes).                              |
+| 404  | NotFound      | The named guide doesn't exist (or, on listing, the namespace doesn't exist).                     |
+| 409  | AlreadyExists | POST against a name that already exists. Use PUT to update.                                      |
+| 409  | Conflict      | Stale `resourceVersion` on PUT. Re-GET and retry.                                                |
+| 422  | Invalid       | A required declared field is missing, or a declared value is invalid; the message identifies it. |
 
 ## Choosing this vs. the editor
 
@@ -488,6 +587,7 @@ Common cases:
 ## Related
 
 - [`CUSTOM_GUIDES.md`](CUSTOM_GUIDES.md) — full custom-guide lifecycle (draft/publish, the editor library, status badges).
+- [`TERRAFORM.md`](TERRAFORM.md) — provisioning guides with Terraform: worked example, path ordering, and the CRD-shape caveat.
 - [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) — the bash helper.
 - [`src/components/block-editor/hooks/useBackendGuides.ts`](../../src/components/block-editor/hooks/useBackendGuides.ts) — the editor's frontend client (calls the same endpoints from the browser via the user's session).
 - [`grafana-pathfinder-backend/kinds/interactiveguide.cue`](https://github.com/grafana/grafana-pathfinder-backend/blob/main/kinds/interactiveguide.cue) — authoritative CUE schema for the spec.

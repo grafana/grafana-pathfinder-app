@@ -9,7 +9,6 @@
 import React, { useState, useCallback } from 'react';
 import { Button, Field, Input, TextArea, Checkbox, Combobox, useStyles2, type ComboboxOption } from '@grafana/ui';
 import { css } from '@emotion/css';
-import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { testIds } from '../../../constants/testIds';
@@ -37,7 +36,7 @@ const LANGUAGE_OPTIONS = [
 
 const DEFAULT_REFTARGET = "div[data-testid='data-testid Code editor container']";
 
-const getCodeBlockFormStyles = (theme: GrafanaTheme2) => ({
+const getCodeBlockFormStyles = () => ({
   codeTextarea: css({
     fontFamily: 'monospace',
     fontSize: '13px',
@@ -74,7 +73,7 @@ export function CodeBlockForm({
   }, [onPickerModeChange]);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
 
       const parsedRequirements = requirements

@@ -33,15 +33,6 @@ jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
 }));
 
-// Mock ContextService
-jest.mock('../context-engine', () => ({
-  ContextService: {
-    fetchPlugins: jest.fn(),
-    fetchDashboardsByName: jest.fn(),
-    fetchDataSources: jest.fn(),
-  },
-}));
-
 describe('is-terminal-active requirement', () => {
   beforeEach(() => {
     jest.clearAllMocks();

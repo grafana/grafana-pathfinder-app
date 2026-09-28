@@ -22,6 +22,7 @@ export {
   getBadgesToAward,
   getBadgeById,
   getBadgesByTriggerType,
+  getBadgeForPath,
   getEarnedBadgeCount,
   getTotalBadgeCount,
   sortBadgesForDisplay,
@@ -47,3 +48,14 @@ export type { PathsDataSet } from './paths-data';
 
 // Guide-completion coordinator (badge eval + analytics + event dispatch)
 export { markGuideCompleted } from './badge-coordinator';
+
+// Self-register this engine's implementation of the Tier 1 guide-completion
+// bridge so docs-retrieval can reach it without a lateral Tier 2 import.
+import { registerGuideCompletionBridge } from '../lib/guide-completion-bridge';
+import { markGuideCompleted as markGuideCompletedImpl } from './badge-coordinator';
+import { findPathByUrl as findPathByUrlImpl } from './paths-data';
+
+registerGuideCompletionBridge({
+  markGuideCompleted: markGuideCompletedImpl,
+  findPathByUrl: findPathByUrlImpl,
+});

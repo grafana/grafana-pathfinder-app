@@ -1,0 +1,12 @@
+{
+  "id": "shared-session-path",
+  "type": "path",
+  "repository": "test-fixture",
+  "description": "Proves that explicit path milestones share one unsaved browser state.",
+  "milestones": ["shared-session-enter-unsaved-config", "shared-session-use-unsaved-config"],
+  "startingLocation": "/plugins/grafana-pathfinder-app?page=configuration",
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}

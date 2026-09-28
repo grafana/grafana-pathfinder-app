@@ -137,6 +137,48 @@ describe('HoverHandler', () => {
 
       expect(mockStateManager.handleError).toHaveBeenCalled();
     });
+
+    it('does not complete and sets completionSuppressed when no elements found and skipCompletionOnEmptyTarget is set', async () => {
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
+      resolveWithRetry.mockResolvedValue(null);
+
+      const data: InteractiveElementData = {
+        refTarget: '#non-existent',
+        targetAction: 'hover',
+        tagName: 'div',
+        textContent: 'Test',
+        timestamp: Date.now(),
+        skipCompletionOnEmptyTarget: true,
+      };
+
+      await hoverHandler.execute(data, true);
+
+      expect(mockStateManager.handleError).not.toHaveBeenCalled();
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
+      // executeInteractiveAction reads this to report 'error' instead of 'ok' —
+      // without it, the caller's own completion persistence (gated on the
+      // outcome, not on stateManager) would mark the step done anyway.
+      expect(data.completionSuppressed).toBe(true);
+    });
+
+    it('does not set completionSuppressed when an element is found (regression guard)', async () => {
+      const { resolveWithRetry } = require('../../lib/dom/selector-retry');
+      const mockElement = createMockElement();
+      resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
+
+      const data: InteractiveElementData = {
+        refTarget: '#test',
+        targetAction: 'hover',
+        tagName: 'div',
+        textContent: 'Test',
+        timestamp: Date.now(),
+        skipCompletionOnEmptyTarget: true,
+      };
+
+      await hoverHandler.execute(data, true);
+
+      expect(data.completionSuppressed).toBeUndefined();
+    }, 10000);
   });
 
   describe('hover state application', () => {

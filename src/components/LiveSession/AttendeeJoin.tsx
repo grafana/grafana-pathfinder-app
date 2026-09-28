@@ -147,7 +147,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
           setJoinCode('');
           setError(null);
         }
-      } catch (err) {
+      } catch {
         // Parsing error - reset to join code input
         setSessionOffer(null);
         setJoinCode('');
@@ -195,7 +195,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
         const offer = parseJoinCode(trimmedCode);
         setSessionOffer(offer);
       }
-    } catch (err) {
+    } catch {
       setError('Invalid join code or URL. Please check and try again.');
     }
   };

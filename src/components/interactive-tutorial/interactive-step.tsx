@@ -26,11 +26,13 @@ import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai
 import { CodeBlock } from '../../docs-retrieval';
 import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
+import { isGrafanaDrivingHandoffNeeded } from '../../global-state/panel-mode';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -86,6 +88,18 @@ export async function executeWithLazyScroll(
 ): Promise<LazyScrollResult> {
   // Navigate, noop, and popout actions don't target DOM elements - execute immediately without element checking
   if (targetAction === 'navigate' || targetAction === 'noop' || targetAction === 'popout') {
+    return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
+  }
+
+  // A full-screen -> sidebar handoff is about to happen inside `action()`
+  // (executeInteractiveAction's own gate) — full screen has no live Grafana
+  // DOM yet for this action to target, so the precheck below would always
+  // fail fast and `action()` would never run, silently skipping the handoff
+  // gate entirely. Skip straight to the real action; its handler does its
+  // own full-retry DOM resolution against the destination page once the
+  // handoff completes. Applies to "Show me" as well as "Do it" — both need
+  // the live Grafana UI in place before they have anything to preview or act on.
+  if (targetAction && isGrafanaDrivingHandoffNeeded(targetAction)) {
     return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
@@ -208,6 +222,7 @@ export const InteractiveStep = forwardRef<
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -304,6 +319,7 @@ export const InteractiveStep = forwardRef<
 
     const checker = useStepChecker({
       requirements,
+      objectives,
       hints,
       targetAction,
       refTarget,
@@ -374,9 +390,6 @@ export const InteractiveStep = forwardRef<
         }
       }
     }, [isNoopAction, isEligibleForChecking, disabled, stepId, onStepComplete, onComplete]);
-
-    // NOTE: Auto-completion when objectives are met is now handled by useStepChecker
-    // via the onObjectivesComplete callback passed above.
 
     const shouldShowExplanation = isPartOfSection
       ? !isNoopAction && (!isEligibleForChecking || (requirements && !checker.isEnabled && !lazyScrollAvailable))
@@ -489,6 +502,7 @@ export const InteractiveStep = forwardRef<
           targetState,
           targetComment,
           buttonType: 'do',
+          fullScreenFallbackLocation,
         });
         if (actionOutcome === 'error') {
           setPostVerifyError('Action did not complete successfully.');
@@ -564,6 +578,7 @@ export const InteractiveStep = forwardRef<
       onComplete,
       renderedStepId,
       persistCompletion,
+      fullScreenFallbackLocation,
     ]);
 
     // Expose execute method for parent (sequence execution)
@@ -579,7 +594,7 @@ export const InteractiveStep = forwardRef<
     // Auto-detection: Use shared hook for detecting user actions
     // Handler for auto-detected action match
     const handleAutoDetectedMatch = useCallback(
-      async (detectedAction: DetectedActionEvent) => {
+      async (_detectedAction: DetectedActionEvent) => {
         // Run post-verification if specified (same as "Do it" button)
         if (postVerify && postVerify.trim() !== '') {
           try {
@@ -608,7 +623,7 @@ export const InteractiveStep = forwardRef<
               );
               return;
             }
-          } catch (error) {
+          } catch {
             // Verification error - don't auto-complete
             // Track failure in analytics
             reportAppInteraction(
@@ -745,6 +760,7 @@ export const InteractiveStep = forwardRef<
               targetState,
               targetComment,
               buttonType: 'show',
+              fullScreenFallbackLocation,
             });
             return outcome !== 'error';
           },
@@ -784,6 +800,7 @@ export const InteractiveStep = forwardRef<
       finalIsEnabled,
       lazyRender,
       scrollContainer,
+      fullScreenFallbackLocation,
       executeInteractiveAction,
       onStepComplete,
       onComplete,
@@ -932,8 +949,6 @@ export const InteractiveStep = forwardRef<
           return `Navigate to ${refTarget}`;
         case 'hover':
           return `Hover over element`;
-        case 'sequence':
-          return `Run sequence`;
         case 'noop':
           return `Instructional step`;
         case 'popout':
@@ -964,6 +979,7 @@ export const InteractiveStep = forwardRef<
     return (
       <div
         className={`interactive-step${className ? ` ${className}` : ''}${completedClass}${isCurrentlyExecuting ? ' executing' : ''}`}
+        {...getTrackedStepRootAttributes('plain', stepId || renderedStepId)}
         data-targetaction={targetAction}
         data-reftarget={refTarget}
         data-targetvalue={currentTargetValue}
@@ -1031,7 +1047,7 @@ export const InteractiveStep = forwardRef<
                   disabled={disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable)}
                   size="sm"
                   variant="secondary"
-                  className="interactive-step-show-btn"
+                  className="interactive-guide-button-sm interactive-step-show-btn"
                   data-testid={testIds.interactive.showMeButton(renderedStepId)}
                   title={hints || `${showMeText ? `${showMeText}:` : 'Show me:'} ${getActionDescription()}`}
                 >
@@ -1041,44 +1057,38 @@ export const InteractiveStep = forwardRef<
 
             {/* Only show "Do it" button when doIt prop is true AND not a noop action */}
             {/* Noop actions are informational only - no buttons needed */}
-            {doIt &&
-              !isNoopAction &&
-              !isCompletedWithObjectives &&
-              (finalIsEnabled || checker.completionReason === 'objectives') && (
-                <Button
-                  onClick={handleDoAction}
-                  disabled={
-                    disabled ||
-                    isAnyActionRunning ||
-                    (checker.isChecking && !lazyScrollAvailable) ||
-                    (!finalIsEnabled && checker.completionReason !== 'objectives')
-                  }
-                  size="sm"
-                  variant="primary"
-                  className="interactive-step-do-btn"
-                  data-testid={testIds.interactive.doItButton(renderedStepId)}
-                  title={
-                    hints ||
-                    (targetAction === 'navigate'
-                      ? `Go there: ${getActionDescription()}`
-                      : isPopoutAction
-                        ? `${popoutButtonLabel}: ${getActionDescription()}`
-                        : `Do it: ${getActionDescription()}`)
-                  }
-                >
-                  {isDoRunning || isCurrentlyExecuting
-                    ? targetAction === 'navigate'
-                      ? 'Going...'
-                      : isPopoutAction
-                        ? popoutButtonRunningLabel
-                        : 'Executing...'
-                    : targetAction === 'navigate'
-                      ? 'Go there'
-                      : isPopoutAction
-                        ? popoutButtonLabel
-                        : 'Do it'}
-                </Button>
-              )}
+            {doIt && !isNoopAction && !isCompletedWithObjectives && finalIsEnabled && (
+              <Button
+                onClick={handleDoAction}
+                disabled={
+                  disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable) || !finalIsEnabled
+                }
+                size="sm"
+                variant="primary"
+                className="interactive-guide-button-sm interactive-step-do-btn"
+                data-testid={testIds.interactive.doItButton(renderedStepId)}
+                title={
+                  hints ||
+                  (targetAction === 'navigate'
+                    ? `Go there: ${getActionDescription()}`
+                    : isPopoutAction
+                      ? `${popoutButtonLabel}: ${getActionDescription()}`
+                      : `Do it: ${getActionDescription()}`)
+                }
+              >
+                {isDoRunning || isCurrentlyExecuting
+                  ? targetAction === 'navigate'
+                    ? 'Going...'
+                    : isPopoutAction
+                      ? popoutButtonRunningLabel
+                      : 'Executing...'
+                  : targetAction === 'navigate'
+                    ? 'Go there'
+                    : isPopoutAction
+                      ? popoutButtonLabel
+                      : 'Do it'}
+              </Button>
+            )}
 
             {/* Show "Skip" button when step is skippable (always available, not just on error) */}
             {/* Noop actions don't need skip - they're just informational */}
@@ -1101,7 +1111,7 @@ export const InteractiveStep = forwardRef<
                 disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="secondary"
-                className="interactive-step-skip-btn"
+                className="interactive-guide-button-sm interactive-step-skip-btn"
                 data-testid={testIds.interactive.skipButton(renderedStepId)}
                 title="Skip this step without executing"
               >
@@ -1135,6 +1145,7 @@ export const InteractiveStep = forwardRef<
                     ? 'Redo this step (try again)'
                     : 'Redo this step (execute again)'
                 }
+                className="interactive-guide-button-sm"
               >
                 ↻ Redo
               </Button>
@@ -1217,7 +1228,7 @@ export const InteractiveStep = forwardRef<
           !isCompletedWithObjectives &&
           explanationText && (
             <div
-              className={`interactive-feedback-box interactive-feedback-box--neutral interactive-requirement-box interactive-step-requirement-explanation${checker.isChecking ? ' rechecking' : ''}`}
+              className={`interactive-feedback-box interactive-feedback-box--neutral interactive-step-requirement-explanation${checker.isChecking ? ' rechecking' : ''}`}
               data-testid={testIds.interactive.requirementCheck(renderedStepId)}
             >
               <span id={`requirement-explanation-${renderedStepId}`}>{explanationText}</span>

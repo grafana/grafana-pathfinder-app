@@ -61,7 +61,8 @@ export interface BackendSaveFlowGuidesInterface {
     guide: JsonGuide,
     existingResourceName?: string,
     existingMetadata?: any,
-    status?: 'draft' | 'published'
+    status?: 'draft' | 'published',
+    replacesForeignResource?: boolean
   ) => Promise<void>;
   refreshGuides: () => Promise<BackendSaveFlowGuideEntry[]>;
   unpublishGuide: (resourceName: string, currentMetadata: any) => Promise<void>;
@@ -190,7 +191,8 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
       metadata: any,
       isUpdate: boolean,
       status: 'draft' | 'published',
-      previousStatus: 'draft' | 'published' | null
+      previousStatus: 'draft' | 'published' | null,
+      replacesForeignResource = false
     ) => {
       // Generate resource name if not provided
       const generatedResourceName = resourceName || toResourceName(guide.id || guide.title);
@@ -199,7 +201,7 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
         throw new Error('Guide title or ID must contain at least one alphanumeric character');
       }
 
-      await backendGuides.saveGuide(guide, resourceName, metadata, status);
+      await backendGuides.saveGuide(guide, resourceName, metadata, status, replacesForeignResource);
 
       // Track the content that was last synced to the backend
       setLastPublishedJson(JSON.stringify(guide));
@@ -252,16 +254,27 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
                 existingTitle: existingGuide.spec.title,
                 onConfirm: async () => {
                   setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-                  setCurrentGuideResourceName(existingGuide.metadata.name);
-                  await performBackendSave(
-                    guide,
-                    existingGuide.metadata.name,
-                    existingGuide.metadata,
-                    true,
-                    status,
-                    existingGuide.spec.status ?? 'draft'
-                  );
-                  resolve();
+                  // This runs after orchestrateSave's try/catch has already returned, so it owns its
+                  // own reporting — and must settle either way or the caller awaits forever.
+                  try {
+                    // Tracking is NOT set here. performBackendSave sets it once the write landed, so
+                    // a failed overwrite leaves this guide untracked and the next save re-asks
+                    // rather than inheriting the foreign resource's manifest and provenance.
+                    await performBackendSave(
+                      guide,
+                      existingGuide.metadata.name,
+                      existingGuide.metadata,
+                      true,
+                      status,
+                      existingGuide.spec.status ?? 'draft',
+                      true
+                    );
+                  } catch (error) {
+                    logger.error('[BlockEditor] Failed to overwrite guide', { error });
+                    notify('error', 'Save failed', error instanceof Error ? error.message : 'Unknown error');
+                  } finally {
+                    resolve();
+                  }
                 },
                 onCancel: resolve,
               });

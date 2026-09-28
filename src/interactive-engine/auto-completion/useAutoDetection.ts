@@ -1,3 +1,5 @@
+// eslint-disable-next-line no-restricted-imports -- [ratchet] Shared resolved settings dependency tracked in PR #1691.
+import { usePathfinderPluginConfig } from '../../hooks';
 /**
  * Shared hook for auto-detection of user actions in interactive elements
  *
@@ -8,10 +10,8 @@
  */
 
 import { useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
-import { usePluginContext } from '@grafana/data';
 import { matchesStepAction, type DetectedActionEvent, type StepActionConfig } from './action-matcher';
 import { getInteractiveConfig } from '../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { resolveSelector } from '../../lib/dom/selector-resolver';
@@ -147,12 +147,8 @@ export function useAutoDetection(options: UseAutoDetectionOptions): void {
     verificationDelay: customDelay,
   } = options;
 
-  // Get plugin configuration for auto-detection settings
-  const pluginContext = usePluginContext();
-  const interactiveConfig = useMemo(() => {
-    const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-    return getInteractiveConfig(config);
-  }, [pluginContext?.meta?.jsonData]);
+  const { config: pluginConfig } = usePathfinderPluginConfig();
+  const interactiveConfig = useMemo(() => getInteractiveConfig(pluginConfig), [pluginConfig]);
 
   // Stable callback ref to avoid effect re-runs
   const onActionDetectedRef = useRef(onActionDetected);

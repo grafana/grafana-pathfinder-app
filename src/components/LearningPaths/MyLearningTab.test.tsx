@@ -13,14 +13,36 @@
 
 import React from 'react';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { finishGuideLoad } from '../../lib/telemetry/guide-load';
+import { recordGuideRender } from '../../lib/telemetry/facade';
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { pushFaroLog } from '../../lib/telemetry/bridge';
+import { reportAppInteraction } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
-import { milestoneCompletionStorage } from '../../lib/user-storage';
+import {
+  guideCompletionMarkStorage,
+  learningProgressStorage,
+  milestoneCompletionStorage,
+} from '../../lib/user-storage';
+import { discardQueuedCompletionWrites, invalidateAllEmittedCompletions } from '../../completion-records';
+
+jest.mock('../../lib/telemetry/facade', () => ({
+  ...jest.requireActual('../../lib/telemetry/facade'),
+  recordGuideRender: jest.fn(),
+  recordGuideRequest: jest.fn(),
+}));
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
+}));
+
+// The discard behaviour itself (queue and storage emptied, nothing left to
+// drain) is covered in completion-write-hook.test.ts; here the contract is that
+// reset reaches it at all.
+jest.mock('../../completion-records', () => ({
+  discardQueuedCompletionWrites: jest.fn(),
+  invalidateAllEmittedCompletions: jest.fn(),
 }));
 
 // Not mocking `lib/logging`: the assertion below is about what the real
@@ -30,6 +52,11 @@ jest.mock('../../lib/telemetry/bridge', () => ({
   pushFaroLog: jest.fn(),
   pushFaroUserAction: jest.fn(),
   registerTelemetryBridge: jest.fn(),
+}));
+
+const resolvePackageNavLinksMock = jest.fn();
+jest.mock('../../docs-retrieval', () => ({
+  resolvePackageNavLinks: (...args: unknown[]) => resolvePackageNavLinksMock(...args),
 }));
 
 const publishMock = jest.fn();
@@ -67,6 +94,7 @@ let mockDiscoverItems: Array<{
   contentUrl: string;
   milestoneCount?: number;
   description?: string;
+  manifest?: Record<string, unknown>;
 }> = [];
 let mockDiscoverExcludeTitles: Set<string> | undefined;
 
@@ -104,6 +132,7 @@ jest.mock('../../lib/user-storage', () => ({
   interactiveStepStorage: { clearAll: jest.fn() },
   interactiveCompletionStorage: { clearAll: jest.fn() },
   milestoneCompletionStorage: { clearAll: jest.fn() },
+  guideCompletionMarkStorage: { clearAllWithPrefix: jest.fn() },
 }));
 jest.mock('../../global-state/completion-store', () => ({ evictAllContentCaches: jest.fn() }));
 
@@ -169,6 +198,14 @@ beforeEach(() => {
   );
   mockIsPathCompleted.mockImplementation((id: string) => id === 'path-done');
   mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/learning-paths/path-1/guide-1/');
+  resolvePackageNavLinksMock.mockResolvedValue([]);
+});
+
+afterEach(() => {
+  for (const [, context] of prepareMock.mock.calls) {
+    finishGuideLoad(context.loadContext, 'cancelled');
+  }
+  jest.useRealTimers();
 });
 
 describe('MyLearningTab launch flow', () => {
@@ -191,19 +228,44 @@ describe('MyLearningTab launch flow', () => {
     expect(continueButton).not.toHaveTextContent('Opening…');
   });
 
-  it('drops a launch that resolves after unmount instead of opening the guide', async () => {
+  it('cancels an unmounted launch before preparation resolves and suppresses late outcomes', async () => {
+    jest.useFakeTimers();
     const { promise, resolve } = deferred();
     prepareMock.mockReturnValue(promise);
     const onOpenGuide = jest.fn();
 
     const { unmount } = render(<MyLearningTab onOpenGuide={onOpenGuide} />);
     fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+    const loadContext = prepareMock.mock.calls[0]![1].loadContext;
     unmount();
+    expect(recordGuideRender).toHaveBeenCalledWith(loadContext, 'cancelled', expect.any(Number), undefined);
+    act(() => jest.advanceTimersByTime(60_000));
 
     await act(async () => resolve(okResult));
+    finishGuideLoad(loadContext, 'error', { source: 'docs', stage: 'prepare', reason: 'unexpected-error' });
+    expect(recordGuideRender).toHaveBeenCalledTimes(1);
 
     expect(onOpenGuide).not.toHaveBeenCalled();
     expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('hands the attempt to the destination without cancelling it when the launcher unmounts', async () => {
+    const { promise, resolve } = deferred();
+    prepareMock.mockReturnValue(promise);
+    const onOpenGuide = jest.fn();
+    const { unmount } = render(<MyLearningTab onOpenGuide={onOpenGuide} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+    const loadContext = prepareMock.mock.calls[0]![1].loadContext;
+    if (!okResult.ok) {
+      throw new Error('Expected successful fixture');
+    }
+    const launch = { ...okResult.launch, preparedContent: { ...okResult.launch.preparedContent, loadContext } };
+    await act(async () => resolve({ ok: true, launch }));
+    expect(onOpenGuide).toHaveBeenCalledWith(launch);
+    unmount();
+    expect(recordGuideRender).not.toHaveBeenCalled();
+    finishGuideLoad(loadContext, 'rendered');
+    expect(recordGuideRender).toHaveBeenCalledWith(loadContext, 'rendered', expect.any(Number), undefined);
   });
 
   it('surfaces a failed prepare as an error alert without opening a guide', async () => {
@@ -224,8 +286,12 @@ describe('MyLearningTab launch flow', () => {
   });
 
   it('keeps launch-URL secrets and forwarded error text out of logger and Faro context', async () => {
-    mockGetGuideUrlForPath.mockReturnValue(
-      'https://grafana.com/docs/learning-paths/path-1/guide-1/?token=url-secret#fragment-secret'
+    // The cover url (path-1's own .url, now what actually gets launched) is
+    // where a secret would leak from, not the resolved-milestone url.
+    mockPaths = mockPaths.map((path) =>
+      path.id === 'path-1'
+        ? { ...path, url: 'https://grafana.com/docs/learning-paths/path-1/?token=url-secret#fragment-secret' }
+        : path
     );
     // Shaped like the fetch tier's forwarded Zod message (content-fetcher's
     // `Invalid guide: ${message}`), which interpolates the authored token.
@@ -243,7 +309,7 @@ describe('MyLearningTab launch flow', () => {
 
       await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
       const expectedContext = {
-        content_url: 'grafana.com/docs/learning-paths/path-1/guide-1/',
+        content_url: 'grafana.com/docs/learning-paths/path-1/',
         error_code: 'fetch-failed',
       };
       expect(consoleError).toHaveBeenCalledWith('[MyLearning] Guide launch preparation failed', expectedContext);
@@ -493,7 +559,33 @@ describe('MyLearningTab launch flow', () => {
     await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
     expect(prepareMock).toHaveBeenCalledWith(
       'https://cdn.example/pkg-1/content.json',
-      expect.objectContaining({ title: 'Package one' })
+      expect.objectContaining({ title: 'Package one', packageInfo: undefined })
+    );
+  });
+
+  it('threads the inlined manifest through as packageInfo so the item resolves its milestone context', async () => {
+    mockDiscoverItems = [
+      {
+        id: 'pkg-1',
+        title: 'Package one',
+        contentUrl: 'https://cdn.example/pkg-1/content.json',
+        manifest: { type: 'path', milestones: ['m1', 'm2'] },
+      },
+    ];
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.discoverMoreStart('pkg-1')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
+    expect(prepareMock).toHaveBeenCalledWith(
+      'https://cdn.example/pkg-1/content.json',
+      expect.objectContaining({
+        packageInfo: {
+          packageId: 'pkg-1',
+          packageManifest: { type: 'path', milestones: ['m1', 'm2'], id: 'pkg-1' },
+        },
+      })
     );
   });
 });
@@ -537,8 +629,178 @@ describe('MyLearningTab — private paths split', () => {
   });
 });
 
+describe('MyLearningTab — online course package cover launch', () => {
+  it('resolves and lands a fresh public/CDN package path on its own cover page', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(0);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      {
+        packageId: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        contentUrl: 'bundled:core-grafana-concepts-lj/content.json',
+      },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['core-grafana-concepts-lj']);
+    // A real navLink.contentUrl resolved, so this is a genuine cover launch —
+    // contrasts with the 'first_guide_fallback' case below.
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      'OpenResourceClick',
+      expect.objectContaining({ launch_target: 'cover_page' })
+    );
+    expect(prepareMock).toHaveBeenCalledWith('bundled:core-grafana-concepts-lj/content.json', {
+      title: 'Core Grafana concepts',
+      source: 'home_page',
+      loadContext: expect.objectContaining({ loadId: expect.any(String) }),
+      packageInfo: {
+        packageId: 'core-grafana-concepts-lj',
+        packageManifest: {
+          type: 'path',
+          milestones: ['core-grafana-concepts-data-sources'],
+          id: 'core-grafana-concepts-lj',
+        },
+      },
+    });
+  });
+
+  it('resuming an in-progress public/CDN package path also lands on its cover page', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(40);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      {
+        packageId: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        contentUrl: 'bundled:core-grafana-concepts-lj/content.json',
+      },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['core-grafana-concepts-lj']);
+    expect(prepareMock).toHaveBeenCalledWith('bundled:core-grafana-concepts-lj/content.json', {
+      title: 'Core Grafana concepts',
+      source: 'home_page',
+      loadContext: expect.objectContaining({ loadId: expect.any(String) }),
+      packageInfo: {
+        packageId: 'core-grafana-concepts-lj',
+        packageManifest: {
+          type: 'path',
+          milestones: ['core-grafana-concepts-data-sources'],
+          id: 'core-grafana-concepts-lj',
+        },
+      },
+    });
+  });
+
+  // Regression test (Cursor Bugbot, "Cover launch lock starts too late"): the
+  // in-flight lock used to be acquired inside `launch`, which only runs after
+  // resolvePackageNavLinks resolves — leaving the Continue button clickable
+  // (launchingId stays null) for that whole window. A second click during
+  // the resolve could start a second resolve/launch, potentially opening a
+  // different path if the second click hit another path's Continue button.
+  it('does not start a second resolve/launch when clicked again while resolvePackageNavLinks is still pending', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(0);
+    let resolveNavLinks!: (value: Array<{ packageId: string; title: string; contentUrl: string }>) => void;
+    resolvePackageNavLinksMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveNavLinks = resolve;
+      })
+    );
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    const continueButton = screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj'));
+    fireEvent.click(continueButton);
+    await waitFor(() => expect(resolvePackageNavLinksMock).toHaveBeenCalledTimes(1));
+
+    // Second click while the resolve is still pending — the lock must
+    // already be held at this point, before resolvePackageNavLinks settles.
+    fireEvent.click(continueButton);
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledTimes(1);
+
+    resolveNavLinks([
+      {
+        packageId: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        contentUrl: 'bundled:core-grafana-concepts-lj/content.json',
+      },
+    ]);
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
+  });
+
+  // Regression test (Cursor Bugbot, "Empty cover URL still launches"):
+  // openPathCover used to call launch unconditionally even when
+  // resolvePackageNavLinks resolved with no contentUrl, sending an empty URL
+  // through prepareGuideLaunch to fail with only a generic error toast.
+  it('falls back to the first member guide when resolvePackageNavLinks resolves with no contentUrl', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(0);
+    resolvePackageNavLinksMock.mockResolvedValue([]);
+    mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/core-grafana-concepts-data-sources/');
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(mockGetGuideUrlForPath).toHaveBeenCalledWith(
+      'core-grafana-concepts-data-sources',
+      'core-grafana-concepts-lj'
+    );
+    // Regression test (Cursor Bugbot, "Fallback launch mislabeled cover"):
+    // this fallback opens the first member guide, not the cover — the
+    // analytics discriminator must reflect what actually opened.
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      'OpenResourceClick',
+      expect.objectContaining({ launch_target: 'first_guide_fallback' })
+    );
+    expect(prepareMock).toHaveBeenCalledWith(
+      'https://grafana.com/docs/core-grafana-concepts-data-sources/',
+      expect.objectContaining({ title: 'Core Grafana concepts' })
+    );
+  });
+});
+
 describe('MyLearningTab — App Platform guide launch', () => {
-  it('launches an App Platform path member with the path manifest as packageInfo (milestone chrome)', async () => {
+  it('lands a fresh App Platform path on its own cover page, same as any other package path', async () => {
     mockPaths = [
       {
         id: 'ap-path',
@@ -547,21 +809,60 @@ describe('MyLearningTab — App Platform guide launch', () => {
         manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
       },
     ];
-    mockGetPathGuides.mockReturnValue([
-      { id: 'fe-alerting-01', title: 'Alerting module 1', completed: false, isCurrent: true },
+    mockGetPathProgress.mockReturnValue(0);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      { packageId: 'ap-path', title: 'Alerting enablement', contentUrl: 'backend-guide:ap-path' },
     ]);
-    mockGetGuideUrlForPath.mockReturnValue('backend-guide:fe-alerting-01');
     prepareMock.mockResolvedValue(okResult);
 
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
     fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalled());
-    // Without packageInfo the loader falls through to a standalone guide with no
-    // milestone toolbar; the PATH manifest (with id merged) is what renders chrome.
-    expect(prepareMock).toHaveBeenCalledWith('backend-guide:fe-alerting-01', {
-      title: expect.any(String),
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['ap-path']);
+    expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
+      title: 'Alerting enablement',
       source: 'home_page',
+      loadContext: expect.objectContaining({ loadId: expect.any(String) }),
+      packageInfo: {
+        packageId: 'ap-path',
+        packageManifest: {
+          type: 'path',
+          repository: 'app-platform',
+          milestones: ['fe-alerting-01', 'fe-alerting-02'],
+          id: 'ap-path',
+        },
+      },
+    });
+  });
+
+  it('resuming an in-progress App Platform path still lands on its cover page', async () => {
+    mockPaths = [
+      {
+        id: 'ap-path',
+        title: 'Alerting enablement',
+        guides: ['fe-alerting-01'],
+        manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(40);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      { packageId: 'ap-path', title: 'Alerting enablement', contentUrl: 'backend-guide:ap-path' },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    // Same cover-launch outcome as the fresh case above — the cover's own CTA
+    // (LearningPathTableOfContents) is what resolves the current milestone,
+    // not this launch call.
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['ap-path']);
+    expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
+      title: 'Alerting enablement',
+      source: 'home_page',
+      loadContext: expect.objectContaining({ loadId: expect.any(String) }),
       packageInfo: {
         packageId: 'ap-path',
         packageManifest: {
@@ -589,6 +890,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     expect(prepareMock).toHaveBeenCalledWith('bundled:bundled-guide', {
       title: expect.any(String),
       source: 'home_page',
+      loadContext: expect.objectContaining({ loadId: expect.any(String) }),
       packageInfo: undefined,
     });
   });
@@ -605,6 +907,16 @@ describe('MyLearningTab — reset all learning progress', () => {
     confirmSpy.mockRestore();
   });
 
+  it('drops every guide completion mark, so a marked guide comes back unmarked', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(guideCompletionMarkStorage.clearAllWithPrefix).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
   it('leaves milestone checklists alone when the confirmation is declined', async () => {
     const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
 
@@ -613,6 +925,53 @@ describe('MyLearningTab — reset all learning progress', () => {
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect(milestoneCompletionStorage.clearAll).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('discards queued completion writes, so the queue cannot mint records for the guides just cleared', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(discardQueuedCompletionWrites).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
+  // Reset-then-re-mark defect: without this, a guide re-completed after
+  // "Reset all learning progress" dedupes against a completion this reset
+  // just erased and gets no durable record.
+  it('lifts the completion-recorder dedupe guard for every guide', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(invalidateAllEmittedCompletions).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
+  it('discards before the first awaited clear, so a drain cannot fire mid-reset', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(learningProgressStorage.clear).toHaveBeenCalledTimes(1));
+    const discardOrder = (discardQueuedCompletionWrites as jest.Mock).mock.invocationCallOrder[0]!;
+    const firstClearOrder = (learningProgressStorage.clear as jest.Mock).mock.invocationCallOrder[0]!;
+    expect(discardOrder).toBeLessThan(firstClearOrder);
+    confirmSpy.mockRestore();
+  });
+
+  it('keeps queued completion writes when the confirmation is declined', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    expect(discardQueuedCompletionWrites).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 });

@@ -98,9 +98,11 @@ jest.mock('../../lib/user-storage', () => ({
 }));
 
 jest.mock('../../lib/analytics', () => ({
+  createInteractionName: (name: string) => `pathfinder_${name}`,
   setupScrollTracking: jest.fn(),
   reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
   UserInteraction: {
+    DocsPanelInteraction: 'docs_panel_interaction',
     AlignmentPromptShown: 'alignment_prompt_shown',
     AlignmentPromptConfirmed: 'alignment_prompt_confirmed',
     AlignmentPromptDismissed: 'alignment_prompt_dismissed',
@@ -136,10 +138,7 @@ jest.mock('../../global-state/link-interception', () => ({
   linkInterceptionState: { addToQueue: jest.fn() },
 }));
 
-// Pass-through that captures the loader's resolved outcome.
-const mockWithGuideOpenAction = jest.fn(async (_url: string, work: () => Promise<unknown>) => work());
 jest.mock('../../lib/telemetry', () => ({
-  withGuideOpenAction: (...args: [string, () => Promise<unknown>]) => mockWithGuideOpenAction(...args),
   recordPanelReady: jest.fn(),
 }));
 
@@ -213,6 +212,8 @@ jest.mock('./utils', () => ({
   loadDocsTabContentResult: (...args: unknown[]) => mockLoadDocsTabContentResult(...args),
   ...jest.requireActual('./utils/tab-kinds'),
   ...jest.requireActual('./utils/tab-gates'),
+  ...jest.requireActual('./utils/tab-state-transitions'),
+  ...jest.requireActual('./utils/docs-load-finalizer'),
 }));
 
 jest.mock('./hooks', () => ({
@@ -255,6 +256,7 @@ jest.mock(
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import type { LaunchSource } from '../../recovery';
+import type { RawContent } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 
 // ---------------------------------------------------------------------------
@@ -269,6 +271,28 @@ function makeContentResult(overrides?: { startingLocation?: string }) {
       content: [],
       metadata: {
         ...(overrides?.startingLocation ? { packageManifest: { startingLocation: overrides.startingLocation } } : {}),
+      },
+    },
+  };
+}
+
+/**
+ * A private App Platform guide as the `backend-guide:` loader shapes it: the
+ * synthesized manifest spreads `spec.manifest` through, so `startingLocation`
+ * arrives under `additionalFields` (the CRD prunes it at the top level).
+ */
+function makeAppPlatformContentResult(startingLocation?: string) {
+  return {
+    content: {
+      url: 'backend-guide:my-private-guide',
+      type: 'interactive',
+      content: [],
+      metadata: {
+        packageManifest: {
+          type: 'guide',
+          repository: 'app-platform',
+          ...(startingLocation ? { additionalFields: { startingLocation } } : {}),
+        },
       },
     },
   };
@@ -293,6 +317,25 @@ function getTab(panel: CombinedLearningJourneyPanel, tabId: string) {
   return ((panel as any).state.tabs as Array<{ id: string }>).find((t) => t.id === tabId) as any;
 }
 
+function makeJourneyContent(url = 'bundled:fetched/content.json'): RawContent {
+  return {
+    content: '{"id":"guide","title":"Guide","blocks":[]}',
+    type: 'interactive',
+    url,
+    lastFetched: '2026-08-27T00:00:00.000Z',
+    metadata: {
+      title: 'Fetched guide',
+      learningJourney: {
+        currentMilestone: 1,
+        totalMilestones: 2,
+        milestones: [],
+        baseUrl: 'bundled:fetched',
+      },
+      packageManifest: { startingLocation: '/alerting' },
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -301,11 +344,178 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetLocation.mockReturnValue({ pathname: '/explore', search: '' });
+    jest.requireMock('../../global-state/panel-mode').panelModeManager.getMode.mockReturnValue('sidebar');
+    jest.requireMock('../../types/package.types').getPackageRenderType.mockReturnValue('interactive');
     // openDocsPage routes through loadTab → shouldUseDocsLoader; force the docs loader.
     jest.requireMock('./utils').shouldUseDocsLoader.mockReturnValue(true);
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('loadDocsTabContent — pendingAlignment decision', () => {
+    it('commits the complete prompted package journey once before reporting the prompt', async () => {
+      const fetchedContent = makeJourneyContent();
+      const packageInfo = {
+        packageId: 'connections-guide',
+        packageManifest: { type: 'path', startingLocation: '/connections' },
+      };
+      const events: string[] = [];
+      jest.spyOn(Date, 'now').mockReturnValue(123);
+      jest.requireMock('../../types/package.types').getPackageRenderType.mockReturnValue('learning-journey');
+      mockLoadDocsTabContentResult.mockResolvedValue({ content: fetchedContent });
+      mockReportAppInteraction.mockImplementation(() => events.push('telemetry'));
+      const panel = new CombinedLearningJourneyPanel();
+      const originalSetState = panel.setState.bind(panel);
+      const setState = jest.spyOn(panel, 'setState').mockImplementation((patch) => {
+        events.push('commit');
+        originalSetState(patch);
+      });
+      const save = jest.spyOn(panel as any, 'saveTabsToStorage').mockImplementation(() => events.push('save'));
+
+      const tabId = await openTabAndLoad(panel, 'bundled:launch/content.json', 'home_page', packageInfo);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(getTab(panel, tabId)).toEqual({
+        id: tabId,
+        title: 'Test Guide',
+        baseUrl: 'bundled:launch/content.json',
+        currentUrl: 'bundled:fetched/content.json',
+        content: { ...fetchedContent, loadContext: expect.objectContaining({ loadId: expect.any(String) }) },
+        isLoading: false,
+        error: null,
+        type: 'learning-journey',
+        packageInfo,
+        pathContext: { learningJourney: fetchedContent.metadata.learningJourney },
+        pendingAlignment: {
+          startingLocation: '/connections',
+          currentPath: '/explore',
+          launchSource: 'home_page',
+          decidedAt: 123,
+        },
+      });
+      expect(setState).toHaveBeenCalledTimes(3);
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
+      expect(mockReportAppInteraction).toHaveBeenCalledWith('alignment_prompt_shown', {
+        guide_url: 'bundled:launch/content.json',
+        guide_title: 'Test Guide',
+        launch_source: 'home_page',
+        current_path: '/explore',
+        starting_location: '/connections',
+      });
+      expect(events).toEqual(['commit', 'save', 'commit', 'commit', 'save', 'telemetry']);
+    });
+
+    it('derives the tab render type from the launch manifest on every load', async () => {
+      const packageInfo = { packageId: 'connections-guide', packageManifest: { type: 'guide' } };
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', packageInfo);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(jest.requireMock('../../types/package.types').getPackageRenderType).toHaveBeenCalledWith({
+        type: 'guide',
+      });
+      expect(getTab(panel, tabId).type).toBe('interactive');
+    });
+
+    it('suppresses the pending decision and telemetry in full-screen mode', async () => {
+      let resolveLoad: (value: unknown) => void = () => {};
+      jest.requireMock('../../global-state/panel-mode').panelModeManager.getMode.mockReturnValueOnce('fullscreen');
+      mockLoadDocsTabContentResult.mockReturnValue(
+        new Promise((resolve) => {
+          resolveLoad = resolve;
+        })
+      );
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'bundled:launch/content.json', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      const now = jest.spyOn(Date, 'now');
+      resolveLoad({ content: makeJourneyContent() });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+      expect(now).not.toHaveBeenCalled();
+      expect(mockReportAppInteraction).not.toHaveBeenCalledWith('alignment_prompt_shown', expect.anything());
+    });
+
+    it('preserves docs fallbacks when fetched content has no package, journey, or URL', async () => {
+      const fetchedContent: RawContent = {
+        content: 'documentation',
+        type: 'single-doc',
+        url: '',
+        lastFetched: '2026-08-27T00:00:00.000Z',
+        metadata: { title: 'Documentation' },
+      };
+      mockLoadDocsTabContentResult.mockResolvedValue({ content: fetchedContent });
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'https://grafana.com/docs/grafana/latest/', 'home_page');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(getTab(panel, tabId)).toEqual({
+        id: tabId,
+        title: 'Test Guide',
+        baseUrl: 'https://grafana.com/docs/grafana/latest/',
+        currentUrl: 'https://grafana.com/docs/grafana/latest/',
+        content: { ...fetchedContent, loadContext: expect.objectContaining({ loadId: expect.any(String) }) },
+        isLoading: false,
+        error: null,
+        type: 'docs',
+        packageInfo: undefined,
+        pathContext: undefined,
+        pendingAlignment: undefined,
+      });
+    });
+
+    it('resolves alignment before one atomic success commit and persistence request', async () => {
+      let resolveLoad: (value: unknown) => void = () => {};
+      mockLoadDocsTabContentResult.mockReturnValue(
+        new Promise((resolve) => {
+          resolveLoad = resolve;
+        })
+      );
+      const events: string[] = [];
+      const panel = new CombinedLearningJourneyPanel();
+      const tabId = await openTabAndLoad(panel, 'bundled:launch/content.json', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      panel.setState({
+        tabs: (panel.state.tabs as any[]).map((tab) =>
+          tab.id === tabId ? { ...tab, title: 'Latest title', baseUrl: 'bundled:latest-base' } : tab
+        ),
+      });
+      mockGetLocation.mockImplementation(() => {
+        events.push('alignment');
+        return { pathname: '/explore', search: '' };
+      });
+      const originalSetState = panel.setState.bind(panel);
+      const setState = jest.spyOn(panel, 'setState').mockImplementation((patch) => {
+        events.push('commit');
+        originalSetState(patch);
+      });
+      const save = jest.spyOn(panel as any, 'saveTabsToStorage').mockImplementation(() => events.push('save'));
+      mockReportAppInteraction.mockImplementation(() => events.push('telemetry'));
+
+      resolveLoad({ content: makeJourneyContent() });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(setState).toHaveBeenCalledTimes(1);
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
+      expect(events).toEqual(['alignment', 'commit', 'save', 'telemetry']);
+      expect(getTab(panel, tabId).baseUrl).toBe('bundled:latest-base');
+      expect(mockReportAppInteraction).toHaveBeenCalledWith(
+        'alignment_prompt_shown',
+        expect.objectContaining({ guide_title: 'Latest title' })
+      );
+    });
+
     it('sets pendingAlignment when manifest startingLocation differs and source is home_page', async () => {
       mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();
@@ -464,6 +674,73 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
         'https://interactive-learning.grafana.net/foo/content.json',
         'home_page'
       );
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
+    // A standalone private guide is opened from the custom guides list with no packageInfo at all,
+    // so the fetched content's own manifest is the only place its startingLocation can come from.
+    it('sets pendingAlignment from content metadata additionalFields when the launch carries no packageInfo', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult('/alerting'));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
+      await new Promise((r) => setTimeout(r, 0));
+
+      const tab = getTab(panel, tabId);
+      expect(tab.pendingAlignment).toBeDefined();
+      expect(tab.pendingAlignment.startingLocation).toBe('/alerting');
+      expect(tab.pendingAlignment.currentPath).toBe('/explore');
+    });
+
+    it('does NOT set pendingAlignment when the private guide declares no startingLocation', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
+    it('prefers an explicit packageInfo manifest over the fetched content metadata', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult('/alerting'));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment.startingLocation).toBe('/connections');
+    });
+
+    // A manifest is authored data, and `confirmAlignment` pushes what the prompt
+    // carries. A value that would not pass as an authored navigate target must
+    // not become a prompt either.
+    it.each([
+      ['a protocol-relative value', '//evil.com'],
+      ['an absolute external URL', 'https://evil.com/explore'],
+      ['a backslash-smuggled authority', '/\\evil.com'],
+      ['an encoded traversal', '/foo/..%2Fbar'],
+      ['an always-denied route', '/logout'],
+    ])('does NOT set pendingAlignment for %s', async (_label, startingLocation) => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult(startingLocation));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
+    // config.bootData.user in this suite is a plain viewer.
+    it('does NOT set pendingAlignment for an admin-only route when the reader is not an admin', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult('/admin/users'));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
       await new Promise((r) => setTimeout(r, 0));
 
       expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
@@ -776,28 +1053,6 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(tab.error).toBe('Failed to load documentation');
     });
 
-    it('reports a completed guide-open outcome for successful loads', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
-      const panel = new CombinedLearningJourneyPanel();
-
-      await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
-      await new Promise((r) => setTimeout(r, 0));
-
-      expect(mockWithGuideOpenAction).toHaveBeenCalledWith('bundled:connections-guide', expect.any(Function));
-      await expect(mockWithGuideOpenAction.mock.results[0]!.value).resolves.toBe('completed');
-    });
-
-    it('reports an error guide-open outcome when the loader stores the failure and resolves', async () => {
-      mockLoadDocsTabContentResult.mockResolvedValue({ content: null, error: 'boom' });
-      const panel = new CombinedLearningJourneyPanel();
-
-      const tabId = await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
-      await new Promise((r) => setTimeout(r, 0));
-
-      expect(getTab(panel, tabId).error).toBe('boom');
-      await expect(mockWithGuideOpenAction.mock.results[0]!.value).resolves.toBe('error');
-    });
-
     it('reaches the docs loader via the packageInfo trigger when shouldUseDocsLoader is false', async () => {
       // Isolate loadTab's second dispatch arm: with shouldUseDocsLoader false,
       // reaching the docs loader proves `options.packageInfo != null` alone
@@ -819,5 +1074,34 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(tab.isLoading).toBe(false);
       expect(tab.content).toBeDefined();
     });
+  });
+});
+
+describe('CombinedLearningJourneyPanel — package resolver config source', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    delete (window as any).__pathfinderPluginConfig;
+  });
+
+  it('seeds the resolver from the published global, not the constructor pluginConfig', () => {
+    const globalConfig = { acceptedTermsAndConditions: true } as any;
+    (window as any).__pathfinderPluginConfig = globalConfig;
+    const constructorConfig = { acceptedTermsAndConditions: false } as any;
+
+    new CombinedLearningJourneyPanel(constructorConfig);
+
+    expect(jest.requireMock('../../package-engine').createCompositeResolver).toHaveBeenCalledWith(globalConfig);
+  });
+
+  it('falls back to the constructor pluginConfig when the global is not set', () => {
+    delete (window as any).__pathfinderPluginConfig;
+    const constructorConfig = { acceptedTermsAndConditions: true } as any;
+
+    new CombinedLearningJourneyPanel(constructorConfig);
+
+    expect(jest.requireMock('../../package-engine').createCompositeResolver).toHaveBeenCalledWith(constructorConfig);
   });
 });

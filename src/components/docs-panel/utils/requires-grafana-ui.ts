@@ -22,6 +22,8 @@
  */
 
 import { isInteractiveBlockType, type InteractiveBlockType } from '../../../constants/json-guide-classification';
+import { GRAFANA_DRIVING_ACTIONS } from '../../../constants/interactive-actions';
+import { assertExhaustive } from '../../../lib/assert-exhaustive';
 import type { JsonBlock, JsonGuide, JsonInteractiveAction, JsonStep } from '../../../types/json-guide.types';
 
 type InteractiveBlock = Extract<JsonBlock, { type: InteractiveBlockType }>;
@@ -29,15 +31,6 @@ type InteractiveBlock = Extract<JsonBlock, { type: InteractiveBlockType }>;
 function isInteractiveBlock(block: JsonBlock): block is InteractiveBlock {
   return isInteractiveBlockType(block.type);
 }
-
-/** The action values that require the live Grafana UI. */
-const GRAFANA_DRIVING_ACTIONS: ReadonlySet<JsonInteractiveAction> = new Set<JsonInteractiveAction>([
-  'highlight',
-  'button',
-  'formfill',
-  'navigate',
-  'hover',
-]);
 
 function isGrafanaDrivingAction(action: JsonInteractiveAction | undefined): boolean {
   return action !== undefined && GRAFANA_DRIVING_ACTIONS.has(action);
@@ -87,9 +80,11 @@ function blockRequiresGrafanaUi(block: JsonBlock): boolean {
     case 'snippet-ref':
       return true;
     case 'markdown':
+    case 'divider':
     case 'html':
     case 'image':
     case 'video':
+    case 'callout':
       return false;
     default: {
       // Exhaustiveness: adding a JsonBlock member without classifying it here
@@ -97,8 +92,7 @@ function blockRequiresGrafanaUi(block: JsonBlock): boolean {
       // unknown block type) fail safe in the never-hide-an-action direction:
       // an unknown container may nest Grafana-driving steps, so keep the
       // guide beside Grafana rather than full screen with dead buttons.
-      const unhandled: never = block;
-      void unhandled;
+      assertExhaustive(block);
       return true;
     }
   }

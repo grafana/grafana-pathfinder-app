@@ -97,7 +97,7 @@ function tryNativeSelector(selector: string): NodeListOf<Element> | null {
     // Test if browser supports this selector natively
     const testResult = document.querySelectorAll(selector);
     return testResult;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -288,7 +288,7 @@ function handleHasSelector(selector: string): SelectorResult {
         originalSelector: selector,
       };
     }
-  } catch (error) {
+  } catch {
     // Native :has() not supported, use fallback
   }
 
@@ -641,7 +641,7 @@ function handleTestIdSelector(selector: string): SelectorResult {
           effectiveSelector: relaxedSelector,
         };
       }
-    } catch (e) {
+    } catch {
       // Ignore relaxed attempt errors
     }
   }
@@ -661,7 +661,7 @@ function handleTestIdSelector(selector: string): SelectorResult {
           effectiveSelector: strictSelector,
         };
       }
-    } catch (e) {
+    } catch {
       // Ignore strict attempt errors
     }
   }
@@ -723,7 +723,7 @@ function supportsHasSelector(): boolean {
     document.body.removeChild(testContainer);
 
     return !!result;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

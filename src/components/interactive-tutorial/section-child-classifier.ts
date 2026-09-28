@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { AssistantBlockWrapper } from '../../integrations/assistant-integration/AssistantBlockWrapper';
 import { ChallengeBlock } from './challenge-block';
 import { CodeBlockStep } from './code-block-step';
 import { DatasourceCheckStep } from './datasource-check-step';
@@ -11,15 +12,43 @@ import { TerminalConnectStep } from './terminal-connect-step';
 import { TerminalStep } from './terminal-step';
 import type { ChildKind } from './step-section-utils';
 
+function assistantChild(child: React.ReactNode): React.ReactNode | undefined {
+  if (!React.isValidElement<{ children?: React.ReactNode }>(child) || child.type !== AssistantBlockWrapper) {
+    return undefined;
+  }
+  const children = React.Children.toArray(child.props.children);
+  return children.length === 1 ? children[0] : undefined;
+}
+
+export function unwrapSectionChild(child: React.ReactNode): React.ReactNode {
+  const inner = assistantChild(child);
+  return inner === undefined ? child : unwrapSectionChild(inner);
+}
+
+export function mapSectionChild(
+  child: React.ReactNode,
+  transform: (step: React.ReactNode) => React.ReactNode
+): React.ReactNode {
+  const inner = assistantChild(child);
+  if (inner === undefined) {
+    return transform(child);
+  }
+  return React.cloneElement(child as React.ReactElement<{ children?: React.ReactNode }>, {
+    children: mapSectionChild(inner, transform),
+  });
+}
+
 /**
  * React component types whose presence as a direct child of an interactive
  * section counts as an "interactive" step the user must actually execute.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 2 of 2. Adding a new interactive step
- * component type requires updates in 2 places:
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 2 of 4. Adding a new interactive step
+ * component type requires updates in 3 places:
  *   1. step-type-registry.ts `STEP_TYPE_SCHEMAS` (parse + orchestration)
  *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES (this set,
  *      lazily realised below)
+ *   3. lib/guide-stats/completion-affordance.ts (the stamped denominator's
+ *      notion of "can emit completion evidence")
  *
  * Forgetting this set: the issue-#842 acknowledgement gate misclassifies the
  * new type as *passive*, so sections containing it will wrongly require
@@ -58,10 +87,11 @@ export const INTERACTIVE_STEP_COMPONENT_TYPES: ReadonlySet<unknown> = new Set<un
  *   markdown HTML, images, videos, plain text, html blocks, divs and any
  *   non-tracked renderable child.
  * - 'ignore': structurally invisible content (whitespace text nodes,
- *   booleans, null, undefined, empty fragments) — does not count for
- *   acknowledgement either way.
+ *   booleans, null, undefined, empty fragments, dividers) — does not count
+ *   for acknowledgement either way.
  */
 export function classifySectionChild(child: React.ReactNode): ChildKind {
+  child = unwrapSectionChild(child);
   if (child === null || child === undefined || typeof child === 'boolean') {
     return 'ignore';
   }
@@ -75,6 +105,9 @@ export function classifySectionChild(child: React.ReactNode): ChildKind {
     return 'ignore';
   }
   const childType = (child as React.ReactElement).type;
+  if (childType === 'hr') {
+    return 'ignore';
+  }
   if (childType === InteractiveStep) {
     // All InteractiveStep variants — including noop — count as interactive
     // per issue #842. The `nonNoopSteps` filter inside InteractiveSection

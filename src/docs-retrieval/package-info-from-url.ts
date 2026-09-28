@@ -1,3 +1,6 @@
+import type { GuideLoadContext } from '../types/guide-diagnostics.types';
+import { fetchGuideResource, finishGuideLoad } from '../lib/telemetry/guide-load';
+import { diagnoseGuideError, guideSource } from '../lib/guide-diagnostics';
 /**
  * Derive PackageOpenInfo from a remote package content URL.
  *
@@ -8,24 +11,74 @@
  * milestone toolbar — see context-panel.tsx ("All packages route through
  * openDocsPage because it handles packageInfo").
  *
- * Pattern matched: `https://interactive-learning.grafana.{net,-dev.net}/packages/<id>/content.json`.
- * The sibling `manifest.json` is fetched and parsed with the loose
- * `ManifestJsonObjectSchema` (no cross-field refinement) so partially-spec
- * manifests still yield enough metadata for routing.
+ * Two URL shapes are recognized:
+ * - `https://interactive-learning.grafana.{net,-dev.net}/packages/<id>/content.json`
+ *   — the sibling `manifest.json` is fetched directly and parsed with the loose
+ *   `ManifestJsonObjectSchema` (no cross-field refinement) so partially-spec
+ *   manifests still yield enough metadata for routing.
+ * - `backend-guide:<id>` — App Platform custom guides. There is no sibling
+ *   manifest URL to fetch; the manifest is resolved metadata-only through the
+ *   shared PackageResolver (same call `resolvePackageMilestones` uses), which
+ *   ultimately reaches `AppPlatformPackageResolver`.
  */
 import { isInteractiveLearningUrl } from '../security';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import { ManifestJsonObjectSchema } from '../types/package.schema';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
+import { getPackageResolver } from './content-fetcher/package-resolver-registry';
 
 const PACKAGE_CONTENT_URL_PATTERN = /\/packages\/([^/]+)\/content\.json(?:[?#].*)?$/;
+const BACKEND_GUIDE_URL_PREFIX = 'backend-guide:';
 
 /** True if the URL is shaped like an interactive-learning package content URL. */
-export function isPackageContentUrl(url: string): boolean {
-  if (!isInteractiveLearningUrl(url)) {
-    return false;
+function isInteractiveLearningPackageUrl(url: string): boolean {
+  return isInteractiveLearningUrl(url) && PACKAGE_CONTENT_URL_PATTERN.test(url);
+}
+
+/** Extracts the bare package id from a `backend-guide:<id>` URL, or undefined if not that scheme. */
+function extractBackendGuideId(url: string): string | undefined {
+  if (!url.startsWith(BACKEND_GUIDE_URL_PREFIX)) {
+    return undefined;
   }
-  return PACKAGE_CONTENT_URL_PATTERN.test(url);
+  const id = url.slice(BACKEND_GUIDE_URL_PREFIX.length).trim();
+  return id.length > 0 ? id : undefined;
+}
+
+/** True if the URL is a package-content URL this module can resolve packageInfo for. */
+export function isPackageContentUrl(url: string): boolean {
+  return isInteractiveLearningPackageUrl(url) || extractBackendGuideId(url) !== undefined;
+}
+
+/**
+ * Resolve packageInfo for a `backend-guide:<id>` URL via the shared
+ * PackageResolver, metadata-only (no content fetch). Mirrors the
+ * resolution → field mapping `resolvePackageMilestones`/`resolvePackageNavLinks`
+ * already use in package-content.ts, just shaped as PackageOpenInfo.
+ */
+async function fetchAppPlatformPackageInfo(
+  packageId: string,
+  context?: GuideLoadContext
+): Promise<PackageOpenInfo | undefined> {
+  const resolver = await getPackageResolver();
+  if (!resolver) {
+    return undefined;
+  }
+  try {
+    const resolution = await resolver.resolve(packageId, {
+      loadContent: 'metadata-only',
+      ...(context && { loadContext: context }),
+    });
+    if (!resolution.ok) {
+      return undefined;
+    }
+    return {
+      packageId: resolution.id,
+      packageManifest: resolution.manifest as unknown as Record<string, unknown> | undefined,
+      repository: resolution.repository,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function deriveManifestUrl(contentUrl: string): string | undefined {
@@ -40,8 +93,16 @@ function deriveManifestUrl(contentUrl: string): string | undefined {
  * Returns `undefined` for non-package URLs, network errors, or schema failures
  * — callers fall back to the legacy plain-fetch path in those cases.
  */
-export async function fetchPackageInfoFromUrl(url: string): Promise<PackageOpenInfo | undefined> {
-  if (!isPackageContentUrl(url)) {
+export async function fetchPackageInfoFromUrl(
+  url: string,
+  context?: GuideLoadContext
+): Promise<PackageOpenInfo | undefined> {
+  const backendGuideId = extractBackendGuideId(url);
+  if (backendGuideId) {
+    return fetchAppPlatformPackageInfo(backendGuideId, context);
+  }
+
+  if (!isInteractiveLearningPackageUrl(url)) {
     return undefined;
   }
   const manifestUrl = deriveManifestUrl(url);
@@ -50,25 +111,51 @@ export async function fetchPackageInfoFromUrl(url: string): Promise<PackageOpenI
   }
 
   try {
-    const response = await fetch(manifestUrl, {
-      method: 'GET',
-      signal: AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT),
-      redirect: 'follow',
-    });
+    const response = await fetchGuideResource(
+      manifestUrl,
+      {
+        method: 'GET',
+        signal: AbortSignal.timeout(DEFAULT_CONTENT_FETCH_TIMEOUT),
+        redirect: 'follow',
+      },
+      context,
+      'manifest'
+    );
     if (!response.ok) {
+      finishGuideLoad(context, 'degraded', {
+        source: guideSource(url),
+        stage: 'fetch',
+        reason: 'http-error',
+        statusCode: response.status,
+      });
       return undefined;
     }
     const json: unknown = await response.json();
     const parsed = ManifestJsonObjectSchema.safeParse(json);
     if (!parsed.success) {
+      finishGuideLoad(context, 'degraded', {
+        source: guideSource(url),
+        stage: 'validate',
+        reason: 'schema-invalid',
+        validationCount: parsed.error.issues.length,
+      });
       return undefined;
     }
     const manifest = parsed.data;
     return {
       packageId: typeof manifest.id === 'string' ? manifest.id : undefined,
       packageManifest: manifest as unknown as Record<string, unknown>,
+      // Carry the manifest's repository to the top-level completion key. The
+      // schema defaults an absent repository to 'interactive-tutorials', so this
+      // is the true source when the author set one and the default otherwise.
+      repository: typeof manifest.repository === 'string' ? manifest.repository : undefined,
     };
-  } catch {
+  } catch (error) {
+    finishGuideLoad(
+      context,
+      'degraded',
+      diagnoseGuideError(error, guideSource(url), error instanceof SyntaxError ? 'decode' : 'fetch')
+    );
     return undefined;
   }
 }

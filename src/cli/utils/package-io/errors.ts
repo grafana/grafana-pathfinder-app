@@ -26,10 +26,27 @@ export type PackageIOErrorCode =
   | 'UNKNOWN_REQUIREMENT'
   | 'WRITE_FAILED';
 
+/**
+ * The command that resolves an issue, named rather than spelled.
+ *
+ * `{ command: 'rename-id', args: ['<dir>', '<chosen-id>'] }` is what a surface needs
+ * to say "run `pathfinder-cli rename-id <dir> <chosen-id>`" — or, for a surface where
+ * that command is not reachable, to say nothing. Writing the recipe into the message
+ * instead put a command line in every reader's mouth, including the ones that have no
+ * shell.
+ */
+export interface IssueRemedy {
+  /** A manifest command name. */
+  command: string;
+  /** Its arguments, as placeholders or literals. */
+  args?: readonly string[];
+}
+
 export interface PackageIOIssue {
   code: PackageIOErrorCode;
   message: string;
   path?: string[];
+  remedy?: IssueRemedy;
 }
 
 export class PackageIOError extends Error {

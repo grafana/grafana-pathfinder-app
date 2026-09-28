@@ -6,8 +6,8 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 
 | File                                           | Purpose                                                                                                 |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `index.ts`                                     | Public API barrel export                                                                                |
-| `paths-data.ts`                                | Runtime platform selection (OSS vs Grafana Cloud)                                                       |
+| `index.ts`                                     | Public API barrel export; also registers the Tier 1 guide-completion bridge                             |
+| `paths-data.ts`                                | Runtime platform selection (OSS vs Grafana Cloud) and path lookup by URL (`findPathByUrl`)              |
 | `paths.json`                                   | OSS path definitions (static, bundled guide IDs)                                                        |
 | `paths-cloud.json`                             | Grafana Cloud path definitions (superset of OSS; includes URL-based paths)                              |
 | `app-platform-paths.ts`                        | Adapts published App Platform path and journey packages into learning paths                             |
@@ -67,9 +67,9 @@ The `useLearningPaths()` hook merges these dynamically fetched guides into the p
 
 ### App Platform paths
 
-`fetchAppPlatformLearningPaths()` reads the stack's private custom-guide catalogue through `fetchCustomGuideRepository()`. It includes only published packages whose manifest type is `path` or `journey`, and includes only published milestone members in each synthesized path. The adapter also builds metadata for every published catalogue entry, using `backend-guide:{id}` URLs so path members launch through the App Platform content resolver.
+`fetchAppPlatformLearningPaths()` reads the stack's private custom-guide catalogue through `fetchCustomGuideRepository()`. It includes only published packages whose manifest type is `path` or `journey`, and includes only published milestone members in each synthesized path. The adapter marks every synthesized path with `isPrivate: true` and builds metadata for every published catalogue entry, using `backend-guide:{id}` URLs so path members launch through the App Platform content resolver.
 
-These paths are fetched when `config.namespace` is available and appended after the bundled and URL-based paths. Their package manifest is carried on the `LearningPath` so the My Learning launch flow can preserve milestone context.
+These paths are fetched when `config.namespace` is available and appended after the bundled and URL-based paths. Their package manifest is carried on the `LearningPath` so the My Learning launch flow can preserve milestone context. In-progress private paths appear in the separate **Private paths** section, completed private paths join the shared **Completed** section, and their titles remain excluded from **Discover more**.
 
 ## Platform selection
 
@@ -168,7 +168,7 @@ If more than one day has elapsed since the last activity, the streak is reported
 
 ### Marking guides completed
 
-`markGuideCompleted(guideId)` delegates to the Tier 2 coordinator in `badge-coordinator.ts`. The coordinator loads and persists progress through `learningProgressStorage`, updates the streak, evaluates and records new badges, reports badge analytics, and dispatches the progress event. The storage layer only persists learning progress and exposes focused mutation helpers. The coordinator function is also exported directly from the module's `index.ts` barrel for completion flows that do not need the hook.
+`markGuideCompleted(guideId)` delegates to the Tier 2 coordinator in `badge-coordinator.ts`. The coordinator loads and persists progress through `learningProgressStorage`, updates the streak, evaluates and records new badges, reports badge analytics, and dispatches the progress event. The storage layer only persists learning progress and exposes focused mutation helpers. The coordinator function is also exported directly from the module's `index.ts` barrel for completion flows that do not need the hook. `docs-retrieval` reaches it — and `findPathByUrl`, which resolves a journey base URL to its path so `markMilestoneDone` can award the path badge — through the Tier 1 `lib/guide-completion-bridge.ts` seam rather than a lateral import; this barrel registers that implementation on load, so a consumer that imports a bare file from this module instead of the barrel gets the bridge's warn-and-degrade fallback.
 
 ### Dismissing celebrations
 
@@ -178,13 +178,15 @@ If more than one day has elapsed since the last activity, the streak is reported
 
 `resetPath(pathId)` clears progress for a path. The behavior differs by path type:
 
-**Static and App Platform paths**: Clears interactive steps, interactive completion, and journey completion for both the path's own keys and each member guide under both `bundled:` and `backend-guide:` schemes. It also clears milestone completion for the path keys, evicts the corresponding in-memory completion cache entries, and removes the member guide IDs from `completedGuides`. Clearing both schemes lets the same reset path handle bundled and App Platform entries without inferring the source from bare guide IDs.
+**Static and App Platform paths**: Clears interactive steps, interactive completion, and journey completion for both the path's own keys and each member guide under every launch scheme a bare guide ID may have been opened under. The scheme list is not restated here — `src/global-state/path-member-join.ts` owns it, and `resetPath` reads it in the two key spaces the namespaces actually use: `pathMemberContentKeys` for the sanitized content keys of `interactiveStepStorage` and `interactiveCompletionStorage`, `pathMemberIdSchemeKeys` for the raw launch URLs of `milestoneCompletionStorage` and `journeyCompletionStorage`. It also clears milestone completion for the path keys, evicts the corresponding in-memory completion cache entries, and removes the member guide IDs from `completedGuides`. Clearing every scheme lets the same reset path handle bundled and App Platform entries without inferring the source from bare guide IDs. Sharing the list with the completion join is what keeps the two sides in step: a reset never spares a key the join would read a stale percentage back from, because both refuse the same keys. The join declines any candidate the content-key sanitizer would rewrite — that map is lossy, and these keys are deleted — so a member whose ID cannot be keyed safely has its raw-keyed records cleared and its sanitized ones deliberately spared. See decision 9 in `docs/design/COMPLETION-MODEL.md`.
 
-**URL-based paths**: Clears milestone tracking for the path URL and removes the fetched guide slugs from `completedGuides`. It discovers interactive and journey completion keys by normalized URL prefix, clears them in batches (including the path URL's own journey-completion key), clears matching interactive steps, and evicts matching in-memory completion cache entries.
+**URL-based paths**: Clears milestone tracking for the path URL and removes the fetched guide slugs from `completedGuides`. It discovers interactive and journey completion keys under the normalized path URL — the URL itself and its children below a `/`, `?`, or `#` boundary (via `isKeyUnderPrefix`), never a sibling that merely shares the text prefix such as `/alerting-advanced` under `/alerting`. That delimiter boundary is the only thing keeping a reset of one path from wiping a sibling's progress (#1928), so a future author adding a fourth sweep here must match keys the same way rather than by bare `startsWith`. It clears the discovered keys in batches (including the path URL's own journey-completion key), clears matching interactive steps, and evicts matching in-memory completion cache entries.
+
+Clearing interactive steps can fail: `interactiveStepStorage.clearAllForContent` rejects when a record survives the delete, so a reset cannot report success having changed nothing (see `docs/developer/STEP_MODEL.md`). Both branches attempt every content key before reporting — one rejection does not leave the rest of the path untouched — and a sweep with any failure in it publishes a single `alertError` toast (`myLearning.resetPathError*`).
 
 After either reset path, the hook dispatches `CustomEvent('interactive-progress-cleared')` and reloads learning progress so UI components refresh.
 
-The My Learning **Reset all progress** action is broader: it clears all learning progress, journey completion, milestone checklists, interactive steps, interactive completion, and in-memory completion caches before dispatching the same refresh event. Clearing milestone storage prevents an old checklist from immediately re-crossing the whole-path completion threshold after the reset.
+The My Learning **Reset all progress** action is broader: it discards queued durable completion writes, then clears all learning progress, journey completion, milestone checklists, interactive steps, interactive completion, and in-memory completion caches before dispatching the same refresh event. Clearing milestone storage prevents an old checklist from immediately re-crossing the whole-path completion threshold after the reset. The `discardQueuedCompletionWrites()` call runs first, before the reset's first `await`: a completion write that has not left the browser is still the user's to withdraw, and a drain scheduled before the reset would otherwise fire inside that window and mint durable records for the guides they just asked us to forget.
 
 ## Key hooks and exports
 
@@ -239,7 +241,7 @@ From the highest-priority path, it selects the first guide with `isCurrent: true
 
 ### `useDiscoverMore()`
 
-Surfaces novel external learning paths for the My Learning "Discover more" section. It deliberately bypasses the context recommender's path-targeting — which returns few or zero packages on the home surface — and instead pulls the full upstream package index (`repository.json`, proxied by the backend) via `fetchOnlinePackageRecommendations`. It keeps only `path`-typed entries (whole learning paths, not individual guides), mapping each to a `DiscoverMoreItem` whose `contentUrl` points at the package's `content.json`. It returns up to `count` items (default 5), skipping any whose title is already shown elsewhere on the page (via `excludeTitles`). Fails soft: the client never throws and yields an empty index when offline, so the UI renders an empty state rather than an error.
+Surfaces novel external learning paths for the My Learning "Discover more" section. It deliberately bypasses the context recommender's path-targeting — which returns few or zero packages on the home surface — and instead pulls the full upstream package index (`repository.json`, proxied by the backend) via `fetchOnlinePackageRecommendations`. It keeps only `path`-typed entries (whole learning paths, not individual guides), mapping each to a `DiscoverMoreItem` whose `contentUrl` points at the package's `content.json`. When an entry has an inlined manifest, the hook validates it with `ManifestJsonObjectSchema` and carries the valid result on the item. My Learning passes that manifest to `prepareGuideLaunch()` as `packageInfo`, avoiding a redundant manifest fetch while preserving milestone context; when it is absent or invalid, launch preparation can derive package context from the content URL. The hook returns up to `count` items (default 5), skipping any whose title is already shown elsewhere on the page (via `excludeTitles`). It fails soft: the client never throws and yields an empty index when offline, so the UI renders an empty state rather than an error.
 
 ## Integration points
 
@@ -252,12 +254,13 @@ The module depends on several storage instances:
 - `interactiveCompletionStorage` — interactive guide completion flags (used by `resetPath`)
 - `journeyCompletionStorage` — journey-level completion (used by `resetPath`)
 - `milestoneCompletionStorage` — milestone completion for URL-based and package-backed paths (used by resets)
+- `guideCompletionMarkStorage` — the foot-of-guide "Mark complete" mark, cleared by `resetPath` on the URL branch by content-key hierarchy (the path key and its `/`, `?`, `#`-delimited children, never a text-prefix sibling — see `isKeyUnderPrefix`), since a marked-but-unstepped milestone has no other record to recover its key from
 
 Static guide completion flows through `markGuideCompleted()` in `badge-coordinator.ts`, which evaluates badges against the bundled path definitions. URL-based and App Platform journey milestones flow through `markMilestoneDone` in `docs-retrieval/learning-journey-helpers.ts`; it updates local completion state and emits completion facts (including the whole-journey `journey_completed` trigger) through the `completion-records` recorder.
 
 ### UI components (`src/components/LearningPaths/`)
 
-The components consume the hooks exported from this module to render learning path cards, badge collections, streak indicators, and the learning dashboard. The module provides the data and actions; the components handle rendering and user interaction.
+The components consume the hooks exported from this module to render learning path cards, badge collections, streak indicators, and the learning dashboard. `MyLearningTab` separates incomplete paths by `isPrivate`: `PrivatePathsSection` renders organization-published paths above the curated courses and badges, while returning nothing when there are no private paths. The module provides the data and actions; the components handle rendering and user interaction.
 
 ### Content system (`src/docs-retrieval/`)
 
@@ -266,6 +269,8 @@ The components consume the hooks exported from this module to render learning pa
 ### App Platform package system
 
 `app-platform-paths.ts` consumes the private catalogue exposed by `src/lib/custom-guide-repository-client.ts`. That client calls the backend `/custom-guide-repository` proxy, applies a short per-namespace cache with in-flight request deduplication, and fails soft to an empty catalogue when the capability or request is unavailable. My Learning launches `backend-guide:` member URLs through the package-content resolver while carrying the parent manifest as package context.
+
+The shared resolver lifecycle lives in `src/docs-retrieval/content-fetcher/package-resolver-registry.ts`. During synchronous plugin initialization, `module.tsx` registers a factory before any panel mounts. The factory dynamically imports and constructs the composite resolver only on the first `getPackageResolver()` call, and the registry memoizes that promise. Package-content consumers use it to resolve milestones, related package links, path base URLs, and bare package IDs. A refreshed plugin configuration re-registers the factory so the next read uses the current settings.
 
 ### Events
 

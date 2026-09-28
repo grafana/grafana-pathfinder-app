@@ -1,7 +1,7 @@
 import { useEffect, useRef, RefObject } from 'react';
 import { StorageKeys } from '../../../lib/storage-keys';
 
-export function useRecommendationsScrollPosition(isReady: boolean): RefObject<HTMLDivElement> {
+export function useRecommendationsScrollPosition(isReady: boolean): RefObject<HTMLDivElement | null> {
   const containerRef = useRef<HTMLDivElement>(null);
   const hasRestoredRef = useRef(false);
 

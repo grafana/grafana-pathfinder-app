@@ -1,6 +1,6 @@
 /**
- * Integration proof for #1448 — browser Back out of a transient prose
- * full-screen launch is a QUIET exit.
+ * Integration proof for #1448 and #1472 — browser Back and ordinary
+ * navigation out of a transient prose full-screen launch are quiet exits.
  *
  * Unlike `full-screen-autodock.test.ts`, this wires the REAL
  * `panelModeManager`, REAL `dockOnLeavingFullScreen`, and REAL `sidebarState`
@@ -12,13 +12,20 @@
  */
 
 const publishedEvents: Array<{ type: string }> = [];
+const mockLocationPush = jest.fn();
 
 jest.mock('@grafana/runtime', () => ({
+  config: {
+    bootData: { user: { orgRole: 'Viewer', isGrafanaAdmin: false } },
+  },
   getAppEvents: () => ({
     publish: (event: { type: string }) => {
       publishedEvents.push(event);
     },
   }),
+  locationService: {
+    push: (...args: unknown[]) => mockLocationPush(...args),
+  },
 }));
 
 jest.mock('../../lib/telemetry/surface', () => ({
@@ -36,6 +43,7 @@ jest.mock('../../lib/storage/extension-sidebar', () => ({
 }));
 
 import { OpenExtensionSidebarEvent } from '../../global-state/sidebar';
+import { REQUEST_SIDEBAR_HANDOFF_EVENT } from '../../lib/event-names';
 import { StorageKeys } from '../../lib/storage-keys';
 
 const FULL_SCREEN_PATHNAME = '/a/grafana-pathfinder-app/fullscreen';
@@ -44,6 +52,7 @@ interface Wired {
   panelModeManager: typeof import('../../global-state/panel-mode').panelModeManager;
   sidebarState: typeof import('../../global-state/sidebar').sidebarState;
   dockOnLeavingFullScreen: typeof import('./full-screen-autodock').dockOnLeavingFullScreen;
+  NavigationManager: typeof import('../../interactive-engine/navigation-manager').NavigationManager;
 }
 
 // Fresh singleton graph per test so `_transientMode` never leaks across cases.
@@ -54,6 +63,7 @@ function wireRealModules(): Wired {
       panelModeManager: require('../../global-state/panel-mode').panelModeManager,
       sidebarState: require('../../global-state/sidebar').sidebarState,
       dockOnLeavingFullScreen: require('./full-screen-autodock').dockOnLeavingFullScreen,
+      NavigationManager: require('../../interactive-engine/navigation-manager').NavigationManager,
     };
   });
   return wired;
@@ -63,11 +73,12 @@ function sidebarOpenRequests() {
   return publishedEvents.filter((e) => e.type === OpenExtensionSidebarEvent.type);
 }
 
-describe('#1448 quiet exit — real panel-mode + auto-dock + sidebar', () => {
+describe('#1448 and #1472 quiet exits — real panel-mode + auto-dock + sidebar', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     localStorage.clear();
     publishedEvents.length = 0;
+    mockLocationPush.mockClear();
   });
   afterEach(() => {
     jest.useRealTimers();
@@ -137,7 +148,7 @@ describe('#1448 quiet exit — real panel-mode + auto-dock + sidebar', () => {
     expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
   });
 
-  it('a PUSH mid-session (interactive navigate step) still docks and DOES reopen the sidebar', () => {
+  it('a Grafana navigation PUSH from transient prose exits quietly without reopening the sidebar', () => {
     const { panelModeManager, dockOnLeavingFullScreen } = wireRealModules();
 
     localStorage.setItem(StorageKeys.PANEL_MODE, 'sidebar');
@@ -154,7 +165,52 @@ describe('#1448 quiet exit — real panel-mode + auto-dock + sidebar', () => {
     });
     jest.runAllTimers();
 
-    expect(outcome).toBe('sidebar');
+    expect(outcome).toBe('transient_navigation');
+    expect(sidebarOpenRequests()).toHaveLength(0);
+    expect(panelModeManager.getMode()).toBe('sidebar');
+    expect(panelModeManager.isTransient()).toBe(false);
+    expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
+  });
+
+  it('a location requirement fix hands off before its PUSH so the sidebar survives', async () => {
+    const { panelModeManager, sidebarState, dockOnLeavingFullScreen, NavigationManager } = wireRealModules();
+
+    localStorage.setItem(StorageKeys.PANEL_MODE, 'sidebar');
+    panelModeManager.setModeTransient('fullscreen');
+    publishedEvents.length = 0;
+
+    let autoDockOutcome: ReturnType<Wired['dockOnLeavingFullScreen']> | undefined;
+    const handleHandoff = (event: Event) => {
+      const targetPath = (event as CustomEvent<{ targetPath?: string }>).detail.targetPath;
+      panelModeManager.setMode('sidebar');
+      sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
+      sidebarState.openSidebar('Interactive learning');
+      mockLocationPush(targetPath);
+      autoDockOutcome = dockOnLeavingFullScreen({
+        pathname: '/explore',
+        fullScreenPathname: FULL_SCREEN_PATHNAME,
+        myPluginId: 'grafana-pathfinder-app',
+        guideUrl: 'https://example.com/guide.json',
+        title: 'My journey',
+        action: 'PUSH',
+      });
+      window.dispatchEvent(new CustomEvent('pathfinder-sidebar-mounted'));
+    };
+    document.addEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handleHandoff);
+
+    try {
+      const result = new NavigationManager().fixLocationRequirement('/explore?orgId=1#queries');
+      await jest.runAllTimersAsync();
+      await expect(result).resolves.toBe(true);
+    } finally {
+      document.removeEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handleHandoff);
+    }
+
+    expect(mockLocationPush).toHaveBeenCalledWith('/explore?orgId=1#queries');
+    expect(autoDockOutcome).toBe('noop');
     expect(sidebarOpenRequests()).toHaveLength(1);
+    expect(panelModeManager.getMode()).toBe('sidebar');
+    expect(panelModeManager.isTransient()).toBe(true);
+    expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('sidebar');
   });
 });

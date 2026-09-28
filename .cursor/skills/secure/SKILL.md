@@ -1,6 +1,6 @@
 ---
 name: secure
-description: Security audit — frontend (F1-F6 rules from `.cursor/rules/frontend-security.mdc`), Go backend (URL allowlists, token handling, hardcoded secrets, unbounded reads), MCP HTTP transport (size / wallclock / concurrency caps, Zod-validated tool inputs), and dependency audit (`npm audit` high+critical, Go module advisories). Reports findings with concrete remediation per rule. Never edits source — the user applies fixes.
+description: 'Security audit of frontend code (F1-F6 from `.cursor/rules/frontend-security.mdc`), the Go backend, the MCP HTTP transport, and dependencies (`npm audit`, Go advisories). Reports findings with concrete remediation per rule and never edits source. Use for a security audit or a change touching auth, tokens, URLs, or trust boundaries.'
 ---
 
 # Security audit
@@ -228,7 +228,8 @@ This helps the reviewer scan the surface quickly.
 - `pkg/plugin/app_platform_identity.go` — forwarded-identity validation helpers.
 - `pkg/plugin/package_recommendations.go` — bounded memory + allowlist pattern.
 - `src/cli/mcp/transports/http.ts` — MCP HTTP transport safety caps.
-- `docs/design/CONCERNS.md` — security concern routing + one-way doors.
+- `docs/design/CONCERNS.md` — security concern routing.
+- `docs/design/CONCERN_DETAILS.md` — security review questions and one-way doors; load through the review concern extractor.
 - `docs/design/MCP-AGENT-UX-HARDENING.md` — MCP UX security guidance.
 - `docs/design/CLIENT-ORCHESTRATION-GUIDE.md`, `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md` — confirmation flow contracts.
 

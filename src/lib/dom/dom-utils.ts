@@ -1,5 +1,6 @@
 import { InteractiveElementData } from '../../types/interactive.types';
 import { logger } from '../logging';
+import { isInteractiveActionType } from '../interactive-action';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 import { resolveSelector } from './selector-resolver';
 import { isCssSelector } from './selector-detector';
@@ -25,10 +26,22 @@ export function getAllTextContent(element: Element): string {
   return text.trim();
 }
 
-/**
- * Extract interactive data from a DOM element
- */
-export function extractInteractiveDataFromElement(element: HTMLElement): InteractiveElementData {
+type RawInteractiveElementData = Omit<InteractiveElementData, 'targetAction'> & {
+  targetAction: string | null;
+};
+
+function decodeInteractiveElementData(raw: RawInteractiveElementData): InteractiveElementData | null {
+  if (raw.targetAction === null) {
+    return null;
+  }
+  if (!isInteractiveActionType(raw.targetAction)) {
+    logger.warn(`Unknown interactive action: ${raw.targetAction}`);
+    return null;
+  }
+  return { ...raw, targetAction: raw.targetAction };
+}
+
+export function extractInteractiveDataFromElement(element: HTMLElement): InteractiveElementData | null {
   const customData: Record<string, string> = {};
 
   // Extract all data-* attributes except the core ones
@@ -57,7 +70,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   // by HTML convention; the resulting JS object uses camelCase, matching
   // the InteractiveElementData type.
   const refTarget = element.getAttribute('data-reftarget') || '';
-  const targetAction = element.getAttribute('data-targetaction') || '';
+  const targetAction = element.getAttribute('data-targetaction');
   const targetValue = element.getAttribute('data-targetvalue') || undefined;
   const targetState = element.getAttribute('data-targetstate') || undefined;
   const requirements = element.getAttribute('data-requirements') || undefined;
@@ -72,7 +85,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     logger.warn(`refTarget "${refTarget}" matches element text — check data-reftarget attribute`);
   }
 
-  return {
+  return decodeInteractiveElementData({
     refTarget,
     targetAction,
     targetValue,
@@ -90,7 +103,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     parentTagName: element.parentElement?.tagName.toLowerCase() || undefined,
     timestamp: Date.now(),
     customData: Object.keys(customData).length > 0 ? customData : undefined,
-  };
+  });
 }
 
 /**
@@ -345,9 +358,23 @@ export async function scrollUntilElementFound(
     return existingResult.elements[0];
   }
 
+  const getScrollBoundaries = () => ({
+    atEndY:
+      scrollContainer.scrollHeight <= scrollContainer.clientHeight ||
+      scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10,
+    atEndX:
+      scrollContainer.scrollWidth <= scrollContainer.clientWidth ||
+      scrollContainer.scrollLeft + scrollContainer.clientWidth >= scrollContainer.scrollWidth - 10,
+  });
+
   for (let attempt = 0; attempt < maxScrollAttempts; attempt++) {
-    // Scroll down with smooth animation for better UX
-    scrollContainer.scrollBy({ top: scrollIncrement, behavior: 'smooth' });
+    const { atEndY, atEndX } = getScrollBoundaries();
+    // Scroll each axis that still has undiscovered content.
+    scrollContainer.scrollBy({
+      top: atEndY ? 0 : scrollIncrement,
+      left: atEndX ? 0 : scrollIncrement,
+      behavior: 'smooth',
+    });
 
     // Wait for smooth scroll animation + lazy render to kick in
     await new Promise((resolve) => setTimeout(resolve, waitTime));
@@ -359,11 +386,9 @@ export async function scrollUntilElementFound(
       return result.elements[0];
     }
 
-    // Check if we've reached the bottom
-    const atBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10;
-
-    if (atBottom) {
-      console.log(`[LazyScroll] Reached bottom without finding element: ${selector}`);
+    const afterScroll = getScrollBoundaries();
+    if (afterScroll.atEndY && afterScroll.atEndX) {
+      console.log(`[LazyScroll] Reached scroll boundary without finding element: ${selector}`);
       break;
     }
   }

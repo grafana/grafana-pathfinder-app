@@ -46,9 +46,9 @@ jest.mock('@playwright/test', () => {
     },
   };
 });
-
 jest.mock('./requirements', () => ({
   handleRequirementsWithFix: jest.fn(),
+  validateSession: jest.fn().mockResolvedValue({ valid: true }),
 }));
 jest.mock('./badge-celebrations', () => ({
   dismissBadgeCelebrations: jest.fn().mockResolvedValue(undefined),
@@ -58,33 +58,35 @@ import type { Locator, Page } from '@playwright/test';
 
 import {
   scrollStepIntoView,
-  clickSkipButtonAndSync,
   waitForGuidedCommentBoxReady,
   runGuidedSubstepLoop,
+  calculateStepDeadline,
+  calculateStepTimeout,
   executeStep,
+  executeAllSteps,
   summarizeResults,
 } from './execution';
+import { clickSkipButtonAndSync } from './drivers';
 import { handleRequirementsWithFix } from './requirements';
 import { dismissBadgeCelebrations } from './badge-celebrations';
 import {
   SCROLL_INTO_VIEW_TIMEOUT_MS,
   GUIDED_RELOAD_LOAD_TIMEOUT_MS,
   LATE_COMPLETION_CHECK_TIMEOUT_MS,
+  STEP_OVERHEAD_TIMEOUT_MS,
 } from './constants';
 import type { StepTestResult, TestableStep } from './types';
 
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
   return {
+    stepKind: 'guided',
     stepId: 'test-step-1',
     index: 0,
     skippable: false,
     hasDoItButton: true,
     hasShowMeButton: false,
     isPreCompleted: false,
-    isMultistep: false,
-    internalActionCount: 0,
-    isGuided: true,
-    guidedStepCount: 1,
+    actionCount: 1,
     locator: {} as unknown as TestableStep['locator'],
     ...overrides,
   };
@@ -134,6 +136,31 @@ function createSkipRoutedPage(routes: {
   } as unknown as Page;
 }
 
+function createDeadlinePage(closeOverride?: jest.Mock): Page {
+  let rejectCount!: (error: Error) => void;
+  const locator = createLocator({
+    count: jest.fn(
+      () =>
+        new Promise<number>((_resolve, reject) => {
+          rejectCount = reject;
+        })
+    ),
+  });
+  const close =
+    closeOverride ??
+    jest.fn(async () => {
+      rejectCount(new Error('Target page has been closed'));
+    });
+  return {
+    getByTestId: jest.fn(() => locator),
+    on: jest.fn(),
+    off: jest.fn(),
+    url: jest.fn(() => 'http://localhost:3000/'),
+    close,
+    isClosed: jest.fn(() => true),
+  } as unknown as Page;
+}
+
 describe('scrollStepIntoView', () => {
   it('bounds scrollIntoViewIfNeeded with the scroll timeout', async () => {
     const stepElement = createLocator();
@@ -142,7 +169,7 @@ describe('scrollStepIntoView', () => {
       waitForTimeout: jest.fn().mockResolvedValue(undefined),
     } as unknown as Page;
 
-    await scrollStepIntoView(page, 'step-1', 0);
+    await scrollStepIntoView(page, { stepKind: 'plain', stepId: 'step-1' }, 0);
 
     expect(stepElement.scrollIntoViewIfNeeded).toHaveBeenCalledWith({ timeout: SCROLL_INTO_VIEW_TIMEOUT_MS });
   });
@@ -154,9 +181,211 @@ describe('scrollStepIntoView', () => {
       waitForTimeout: jest.fn().mockResolvedValue(undefined),
     } as unknown as Page;
 
-    await scrollStepIntoView(page, 'step-1', 0, 1234);
+    await scrollStepIntoView(page, { stepKind: 'plain', stepId: 'step-1' }, 0, 1234);
 
     expect(stepElement.scrollIntoViewIfNeeded).toHaveBeenCalledWith({ timeout: 1234 });
+  });
+});
+
+describe('hard step deadline', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('closes the page and preserves the authored skippable flag', async () => {
+    jest.useFakeTimers();
+    const onDeadline = jest.fn();
+    const page = createDeadlinePage();
+    const result = executeStep(page, createTestableStep({ skippable: true }), {
+      timeout: 50,
+      deadlineMs: 100,
+      onDeadline,
+    });
+
+    await jest.advanceTimersByTimeAsync(100);
+
+    await expect(result).resolves.toMatchObject({
+      status: 'failed',
+      deadlineExceeded: true,
+      skippable: true,
+      classification: 'infrastructure',
+    });
+    expect(onDeadline).toHaveBeenCalledTimes(1);
+    expect(page.close).toHaveBeenCalledWith({ runBeforeUnload: false });
+    expect(page.off).toHaveBeenCalledWith('console', expect.any(Function));
+  });
+
+  it('stops the guide as infrastructure when a skippable step exceeds its deadline', async () => {
+    jest.useFakeTimers();
+    const page = createDeadlinePage();
+    const result = executeAllSteps(page, [createTestableStep({ skippable: true })], {
+      timeout: 50,
+      deadlineMs: 100,
+    });
+
+    await jest.advanceTimersByTimeAsync(100);
+
+    await expect(result).resolves.toMatchObject({
+      aborted: true,
+      infrastructureError: true,
+      results: [{ status: 'failed', deadlineExceeded: true, skippable: true }],
+    });
+  });
+
+  it('returns after the page-close grace period when close does not settle', async () => {
+    jest.useFakeTimers();
+    const page = createDeadlinePage(jest.fn(() => new Promise<void>(() => undefined)));
+    const result = executeStep(page, createTestableStep(), { timeout: 50, deadlineMs: 100 });
+    let settled = false;
+    void result.then(() => {
+      settled = true;
+    });
+
+    await jest.advanceTimersByTimeAsync(100);
+    expect(settled).toBe(false);
+    await jest.advanceTimersByTimeAsync(2000);
+
+    await expect(result).resolves.toMatchObject({ deadlineExceeded: true });
+  });
+
+  it('clears the deadline when the step finishes', async () => {
+    jest.useFakeTimers();
+    const page = createDeadlinePage();
+    const result = executeStep(page, createTestableStep({ isPreCompleted: true }), {
+      timeout: 50,
+      deadlineMs: 100,
+    });
+
+    await expect(result).resolves.toMatchObject({ status: 'skipped' });
+    await jest.advanceTimersByTimeAsync(100);
+    expect(page.close).not.toHaveBeenCalled();
+  });
+
+  it('adds a second step budget and overhead to the inner operation timeout', () => {
+    const simple = createTestableStep({ stepKind: 'plain', actionCount: 0 });
+    const guided = createTestableStep({ stepKind: 'guided', actionCount: 3 });
+
+    expect(calculateStepDeadline(simple)).toBe(calculateStepTimeout(simple) * 2 + STEP_OVERHEAD_TIMEOUT_MS);
+    expect(calculateStepDeadline(guided)).toBe(calculateStepTimeout(guided) * 2 + STEP_OVERHEAD_TIMEOUT_MS);
+  });
+
+  it('allows preamble work to finish after the inner operation budget', async () => {
+    jest.useFakeTimers();
+    const locator = createLocator({
+      getAttribute: jest.fn().mockResolvedValueOnce('idle').mockResolvedValueOnce('completed'),
+    });
+    const page = {
+      getByTestId: jest.fn(() => locator),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      off: jest.fn(),
+      url: jest.fn(() => 'http://localhost:3000/'),
+      close: jest.fn().mockResolvedValue(undefined),
+      isClosed: jest.fn(() => false),
+    } as unknown as Page;
+    (handleRequirementsWithFix as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                requirements: { requirementsMet: true, status: 'met' },
+                fixResult: undefined,
+              }),
+            60
+          );
+        })
+    );
+    const result = executeStep(page, createTestableStep({ stepKind: 'plain', actionCount: 0 }), {
+      timeout: 50,
+      deadlineMs: 100,
+    });
+
+    await jest.advanceTimersByTimeAsync(60);
+
+    await expect(result).resolves.toMatchObject({ status: 'passed' });
+    expect(page.close).not.toHaveBeenCalled();
+  });
+
+  it('keeps ordinary skippable failures on the continue path', async () => {
+    (handleRequirementsWithFix as jest.Mock).mockResolvedValueOnce({
+      requirements: {
+        requirementsMet: false,
+        status: 'unmet',
+        skippable: true,
+        hasFixButton: false,
+        isChecking: false,
+        hasSkipButton: false,
+        hasRetryButton: false,
+      },
+    });
+    const stepLocator = createLocator({ getAttribute: jest.fn().mockResolvedValue(null) });
+    const page = createSkipRoutedPage({
+      stepLocator,
+      extra: {
+        on: jest.fn(),
+        off: jest.fn(),
+        url: jest.fn(() => 'http://localhost:3000/'),
+        isClosed: jest.fn(() => false),
+      },
+    });
+
+    const result = await executeAllSteps(page, [
+      createTestableStep({ skippable: true, stepKind: 'plain', actionCount: 0 }),
+      createTestableStep({ stepId: 'next-step', isPreCompleted: true }),
+    ]);
+
+    expect(result).toMatchObject({
+      aborted: false,
+      infrastructureError: false,
+      results: [
+        { status: 'failed', skippable: true },
+        { stepId: 'next-step', status: 'skipped' },
+      ],
+    });
+    expect(result.results[0].deadlineExceeded).toBeUndefined();
+  });
+
+  it('uses an injected session validator before step execution', async () => {
+    const sessionValidator = jest.fn().mockResolvedValue({
+      valid: false,
+      failureKind: 'auth_expired',
+      error: 'Session expired',
+    });
+    const page = {
+      url: jest.fn(() => 'http://localhost:3000/'),
+    } as unknown as Page;
+
+    const result = await executeAllSteps(page, [createTestableStep()], { sessionValidator });
+
+    expect(sessionValidator).toHaveBeenCalledWith(page);
+    expect(result).toMatchObject({
+      aborted: true,
+      abortReason: 'AUTH_EXPIRED',
+      results: [{ status: 'not_reached', classification: 'infrastructure' }],
+    });
+  });
+
+  it('reports session transport loss as infrastructure instead of auth expiry', async () => {
+    const page = {
+      url: jest.fn(() => 'http://localhost:3000/'),
+    } as unknown as Page;
+
+    const result = await executeAllSteps(page, [createTestableStep()], {
+      sessionValidator: jest.fn().mockResolvedValue({
+        valid: false,
+        failureKind: 'infrastructure_error',
+        error: 'The browser context closed.',
+      }),
+    });
+
+    expect(result).toMatchObject({
+      aborted: true,
+      infrastructureError: true,
+      abortReason: undefined,
+      abortMessage: 'The browser context closed.',
+      results: [{ status: 'not_reached', classification: 'infrastructure' }],
+    });
   });
 });
 
@@ -532,7 +761,7 @@ describe('executeStep - skip sync sequential-flow regression', () => {
       stepLocator,
       extra: { on: jest.fn(), off: jest.fn(), url: jest.fn().mockReturnValue('http://localhost:3000/') },
     });
-    const step = createTestableStep({ skippable: true, isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ skippable: true, stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -557,7 +786,7 @@ describe('executeStep - skip sync sequential-flow regression', () => {
       stepLocator,
       extra: { on: jest.fn(), off: jest.fn(), url: jest.fn().mockReturnValue('http://localhost:3000/') },
     });
-    const step = createTestableStep({ skippable: true, isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ skippable: true, stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -577,7 +806,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -597,7 +826,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -614,7 +843,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -630,7 +859,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const lateResult = await executeStep(page, step, {});
     const otherSkippableFailure: StepTestResult = {
@@ -667,7 +896,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -692,7 +921,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 

@@ -23,6 +23,7 @@ import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 
 const PR_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_URL;
 const SELECTED_FILE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_FILE;
@@ -150,9 +151,9 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   const [testSuccess, setTestSuccess] = useState(false);
 
   // REACT: refs for cleanup on unmount (R1, R4)
-  const abortControllerRef = useRef<AbortController>();
-  const metaAbortRef = useRef<AbortController>();
-  const successTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
+  const metaAbortRef = useRef<AbortController | undefined>(undefined);
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     return () => {
@@ -610,7 +611,12 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         return `${styles.statusBadge} ${styles.statusAdded}`;
       case 'modified':
         return `${styles.statusBadge} ${styles.statusModified}`;
+      case 'unchanged':
+      case 'renamed':
+      case 'removed':
+        return styles.statusBadge;
       default:
+        assertExhaustive(status);
         return styles.statusBadge;
     }
   };

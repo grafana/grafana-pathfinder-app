@@ -168,7 +168,7 @@ export function AssistantCustomizable({
       const storageKey = buildAssistantStorageKey(contentKey, assistantId);
       const storedValue = localStorage.getItem(storageKey);
       return storedValue !== null;
-    } catch (error) {
+    } catch {
       return false;
     }
   }, [contentKey, assistantId]);

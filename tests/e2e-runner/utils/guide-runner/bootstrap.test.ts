@@ -7,6 +7,7 @@ interface HarnessOptions {
   bootstrapStates?: Array<{ rawDockedValue: string | null; sidebarMounted: boolean }>;
   dockedValue?: string | null;
   helpExpanded?: boolean;
+  helpWaitError?: Error;
   helpMenuVisible?: boolean;
   panelWaitResults?: Array<'resolve' | Error>;
   openConfirmationResults?: Array<'resolve' | Error>;
@@ -37,6 +38,9 @@ function createHarness(options: HarnessOptions = {}) {
     waitFor: panelWaitFor,
   } as unknown as Locator;
   const helpButton = {
+    waitFor: options.helpWaitError
+      ? jest.fn().mockRejectedValue(options.helpWaitError)
+      : jest.fn().mockResolvedValue(undefined),
     click: jest.fn().mockImplementation(async () => options.onHelpClick?.()),
     getAttribute: jest.fn().mockResolvedValue(options.helpExpanded ? 'true' : 'false'),
   } as unknown as Locator;
@@ -89,6 +93,7 @@ function createHarness(options: HarnessOptions = {}) {
     page,
     panel,
     helpButton,
+    helpWaitFor: helpButton.waitFor as jest.Mock,
     panelIsVisible,
     panelWaitFor,
     evaluate,
@@ -160,25 +165,35 @@ describe('ensureDocsPanelOpen', () => {
   });
 
   it('does not treat an expanded generic Help menu as an open Pathfinder panel', async () => {
-    const { page, helpButton, panelWaitFor } = createHarness({
+    const { page, helpButton, helpWaitFor, panelWaitFor } = createHarness({
       helpExpanded: true,
       helpMenuVisible: true,
     });
 
     await ensureDocsPanelOpen(page);
+    expect(helpWaitFor).toHaveBeenCalledTimes(1);
+    expect(helpWaitFor.mock.calls[0]?.[0]).toEqual({
+      state: 'visible',
+      timeout: expect.any(Number),
+    });
+    expect(helpWaitFor.mock.calls[0]?.[0].timeout).toBeGreaterThan(0);
+    expect(helpWaitFor.mock.calls[0]?.[0].timeout).toBeLessThanOrEqual(20_000);
 
     expect(helpButton.click).toHaveBeenCalledTimes(1);
     expect(panelWaitFor).toHaveBeenCalledTimes(1);
   });
 
   it('returns when the panel becomes visible while waiting for plugin readiness', async () => {
-    const { page, panel, helpButton, panelWaitFor, waitForFunction } = createHarness({
+    const { page, panel, helpButton, helpWaitFor, panelWaitFor, waitForFunction } = createHarness({
       panelVisible: [false, true],
+      helpWaitError: new Error('Help is not available'),
     });
 
     await expect(ensureDocsPanelOpen(page)).resolves.toBe(panel);
 
     expect(waitForFunction).toHaveBeenCalledTimes(1);
+    expect(page.locator).not.toHaveBeenCalled();
+    expect(helpWaitFor).not.toHaveBeenCalled();
     expect(helpButton.click).not.toHaveBeenCalled();
     expect(panelWaitFor).not.toHaveBeenCalled();
   });
@@ -224,6 +239,7 @@ describe('ensureDocsPanelOpen', () => {
     });
     const { page, helpButton, panelWaitFor } = createHarness({
       bootstrapStates: [
+        { rawDockedValue: null, sidebarMounted: false },
         { rawDockedValue: null, sidebarMounted: false },
         { rawDockedValue: null, sidebarMounted: false },
         { rawDockedValue: pathfinderDocked, sidebarMounted: false },
@@ -281,24 +297,55 @@ describe('ensureDocsPanelOpen', () => {
     expect((window as Window & { __pathfinderE2ESidebarMounted?: boolean }).__pathfinderE2ESidebarMounted).toBe(false);
   });
 
-  it('runs one setup-only recovery callback after an initial bootstrap failure', async () => {
-    const beforeRetry = jest.fn().mockResolvedValue(undefined);
-    const { page, helpButton, panelWaitFor } = createHarness({
+  it('uses a fresh 20-second bound for each of at most two bootstrap attempts', async () => {
+    let now = 1_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    const beforeRetry = jest.fn().mockImplementation(async () => {
+      now += 5_000;
+    });
+    const { page, panel, helpButton, panelWaitFor, waitForFunction } = createHarness({
+      panelWaitResults: [new Error('first bootstrap failed'), 'resolve'],
+      openConfirmationResults: ['resolve', 'resolve'],
+    });
+    await expect(ensureDocsPanelOpen(page, { beforeRetry })).resolves.toBe(panel);
+
+    expect(beforeRetry).toHaveBeenCalledTimes(1);
+    expect(helpButton.click).toHaveBeenCalledTimes(2);
+    expect(helpButton.click).toHaveBeenNthCalledWith(1, { timeout: 20_000 });
+    expect(helpButton.click).toHaveBeenNthCalledWith(2, { timeout: 20_000 });
+    expect(panelWaitFor).toHaveBeenCalledTimes(2);
+    expect(panelWaitFor).toHaveBeenNthCalledWith(1, { state: 'visible', timeout: 20_000 });
+    expect(panelWaitFor).toHaveBeenNthCalledWith(2, { state: 'visible', timeout: 20_000 });
+    expect(waitForFunction.mock.calls.map((call) => call[2]?.timeout)).toEqual([20_000, 2_000, 20_000, 2_000]);
+  });
+
+  it('uses the explicit timeout independently for both bootstrap attempts', async () => {
+    let now = 1_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    const beforeRetry = jest.fn().mockImplementation(async () => {
+      now += 100;
+    });
+    const { page, panel, helpButton, panelWaitFor, waitForFunction } = createHarness({
       panelWaitResults: [new Error('first bootstrap failed'), 'resolve'],
       openConfirmationResults: ['resolve', 'resolve'],
     });
 
-    await ensureDocsPanelOpen(page, { beforeRetry });
+    await expect(ensureDocsPanelOpen(page, { beforeRetry, timeoutMs: 250 })).resolves.toBe(panel);
 
     expect(beforeRetry).toHaveBeenCalledTimes(1);
     expect(helpButton.click).toHaveBeenCalledTimes(2);
+    expect(helpButton.click).toHaveBeenNthCalledWith(1, { timeout: 250 });
+    expect(helpButton.click).toHaveBeenNthCalledWith(2, { timeout: 250 });
     expect(panelWaitFor).toHaveBeenCalledTimes(2);
+    expect(panelWaitFor).toHaveBeenNthCalledWith(1, { state: 'visible', timeout: 250 });
+    expect(panelWaitFor).toHaveBeenNthCalledWith(2, { state: 'visible', timeout: 250 });
+    expect(waitForFunction.mock.calls.map((call) => call[2]?.timeout)).toEqual([250, 250, 250, 250]);
   });
 
-  it('propagates the second bootstrap failure without another retry', async () => {
+  it('stops after the second bounded bootstrap attempt fails', async () => {
     const beforeRetry = jest.fn().mockResolvedValue(undefined);
     const secondFailure = new Error('second bootstrap failed');
-    const { page, helpButton } = createHarness({
+    const { page, helpButton, panelWaitFor } = createHarness({
       panelWaitResults: [new Error('first bootstrap failed'), secondFailure],
       openConfirmationResults: ['resolve', 'resolve'],
     });
@@ -307,6 +354,22 @@ describe('ensureDocsPanelOpen', () => {
 
     expect(beforeRetry).toHaveBeenCalledTimes(1);
     expect(helpButton.click).toHaveBeenCalledTimes(2);
+    expect(panelWaitFor).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops before the second bootstrap attempt when the retry callback fails', async () => {
+    const callbackFailure = new Error('retry callback failed');
+    const beforeRetry = jest.fn().mockRejectedValue(callbackFailure);
+    const { page, helpButton, panelWaitFor } = createHarness({
+      panelWaitResults: [new Error('first bootstrap failed')],
+      openConfirmationResults: ['resolve'],
+    });
+
+    await expect(ensureDocsPanelOpen(page, { beforeRetry })).rejects.toBe(callbackFailure);
+
+    expect(beforeRetry).toHaveBeenCalledTimes(1);
+    expect(helpButton.click).toHaveBeenCalledTimes(1);
+    expect(panelWaitFor).toHaveBeenCalledTimes(1);
   });
 
   it('propagates a custom timeout to every wait in one bootstrap attempt', async () => {
@@ -335,12 +398,14 @@ describe('ensureDocsPanelOpen', () => {
     expect(panelWaitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 1 });
   });
 
-  it('surfaces a timeout failure when no setup retry is configured', async () => {
+  it('stops after one bounded bootstrap attempt when no retry callback exists', async () => {
     const timeoutError = new Error('Panel wait timed out');
-    const { page } = createHarness({
+    const { page, helpButton, panelWaitFor } = createHarness({
       panelWaitResults: [timeoutError],
     });
+    await expect(ensureDocsPanelOpen(page)).rejects.toBe(timeoutError);
 
-    await expect(ensureDocsPanelOpen(page, { timeoutMs: 100 })).rejects.toBe(timeoutError);
+    expect(helpButton.click).toHaveBeenCalledTimes(1);
+    expect(panelWaitFor).toHaveBeenCalledTimes(1);
   });
 });

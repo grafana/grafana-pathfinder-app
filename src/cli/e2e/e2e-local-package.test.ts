@@ -45,6 +45,28 @@ describe('local metapackage input resolution', () => {
     consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   });
 
+  it('preserves an explicit milestone starting location', () => {
+    const repository = join(root, 'repository.json');
+    writeJson(repository, {
+      'coverless-path': {
+        path: 'path/',
+        type: 'path',
+        milestones: ['coverless-step'],
+        testEnvironment: { tier: 'local' },
+      },
+      'coverless-step': {
+        path: 'step/',
+        type: 'guide',
+        startingLocation: '/connections',
+        testEnvironment: { tier: 'local' },
+      },
+    });
+
+    const inputs = resolveLocalMetapackage(options(root, repository))!;
+
+    expect(inputs.packageMetaById.get('coverless-step')?.startingLocation).toBe('/connections');
+  });
+
   afterEach(() => {
     consoleSpy.mockRestore();
     rmSync(root, { recursive: true, force: true });
@@ -72,6 +94,7 @@ describe('local metapackage input resolution', () => {
     expect(inputs.guides).toHaveLength(1);
     expect(JSON.parse(inputs.guides[0]!.content).id).toBe('coverless-step');
     expect(inputs.executionPlan?.chains[0]?.map((guide) => guide.id)).toEqual(['coverless-step']);
+    expect(inputs.packageMetaById.get('coverless-step')?.startingLocation).toBeUndefined();
   });
 
   it('makes the root non-runnable when its own target is incompatible with the environment', () => {

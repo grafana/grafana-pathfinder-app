@@ -24,13 +24,14 @@ These constraints are absolute and override any other instructions:
 4. **Before staging anything, verify the constraint.** Run `git diff --name-only` after edits and confirm every changed path is in the allowed list above. Abort if any disallowed file appears.
 5. **One commit max.** All doc updates land as a single follow-up commit on the same PR branch (or, if invoked from `/review`, as a recommended diff block in the review output — see "Operating modes" below).
 6. **Do not amend the PR's existing commits.** Create a new commit.
+7. **Respect the always-on budget.** `AGENTS.md` loads into every agent and is capped by `src/validation/always-on-context-budget.test.ts`. Add at most one line there per change, and only for a rule nearly every task needs. Put detail in the enforcing test's failure message, a skill, or `docs/developer/CONTEXT_INDEX.md`.
 
 ## Operating modes
 
 The skill has two modes:
 
 - **Apply mode** (default when invoked directly): the working tree is the PR branch. Apply edits, stage, commit with a clear message, push.
-- **Review mode** (invoked from `/review`): output a single fenced patch block per file with the proposed edits. Do not modify the working tree. The reviewer agent embeds these in the review comment so the author can apply them.
+- **Review mode** (invoked from `/review`): emit one canonical observation with the proposed patch evidence. Do not modify the working tree. The shared review policy decides its disposition.
 
 Decide which mode applies based on context: if a `gh pr` command can determine the current branch is a PR branch and the user invoked this skill directly, use apply mode. If the parent is `/review`, use review mode.
 
@@ -80,22 +81,21 @@ For each bucket with hits, consult the rules table below. Each rule lists the ta
 | --------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | New frontend subsystem                              | `AGENTS.md`                                             | Add the directory to the inline tier list in "Frontend tier model" under the correct tier (Tier 0 types, Tier 1 support, Tier 2 engines/hooks, Tier 3 integrations, Tier 4 UI). AGENTS.md carries only the one-line tier summary; the annotated tier definitions and the "Key dependency edges" table live in `.cursor/rules/systemPatterns.mdc` — if the subsystem participates in a load-bearing import edge, add the row there (see the next row). |
 | New frontend subsystem                              | `.cursor/rules/systemPatterns.mdc`                      | Add a one-paragraph entry in "Frontend subsystem reference" (purpose, entry point, tier), placed under the correct tier sub-heading.                                                                                                                                                                                                                                                                                                                  |
-| New frontend subsystem                              | `docs/developer/CONTEXT_INDEX.md`                       | Add a row in the most relevant section (e.g., "Subsystem references") with path pattern (`src/<name>/*`), when-to-load description, and glob trigger (for the "Auto-triggered by globs" column — Cursor metadata, see CONTEXT_INDEX preamble) if the subsystem has a natural file-glob trigger.                                                                                                                                                       |
+| New frontend subsystem                              | `docs/developer/CONTEXT_INDEX.md`                       | Add an entry in the most relevant section (e.g., "Subsystem references") with path pattern (`src/<name>/*`) and a when-to-load description.                                                                                                                                                                                                                                                                                                           |
 | New backend file                                    | `.cursor/rules/systemPatterns.mdc`                      | Add a row to the `pkg/` "File map" table in "Backend architecture (`pkg/`)" with a one-line role description. AGENTS.md's "Backend (`pkg/`)" section is intentionally a short prose summary and is not the per-file catalog.                                                                                                                                                                                                                          |
-| New developer doc                                   | `AGENTS.md`                                             | If broadly load-bearing, add a bullet to the hot-paths list in "On-demand context". Otherwise just rely on the next row (CONTEXT_INDEX is the canonical routing table).                                                                                                                                                                                                                                                                               |
-| New developer doc                                   | `docs/developer/CONTEXT_INDEX.md`                       | Verify a row exists in the relevant section pointing at the new doc; add one if missing, with a when-to-load description and glob trigger if applicable.                                                                                                                                                                                                                                                                                              |
+| New developer doc                                   | `AGENTS.md`                                             | Only if nearly every task needs it, add one bullet to the hot-paths list in "On-demand context" (the file has a byte budget). Otherwise rely on the next row (CONTEXT_INDEX is the canonical routing table).                                                                                                                                                                                                                                          |
+| New developer doc                                   | `docs/developer/CONTEXT_INDEX.md`                       | Verify an entry exists in the relevant section pointing at the new doc; add one if missing, with a when-to-load description.                                                                                                                                                                                                                                                                                                                          |
 | New developer doc with `.cursor/rules/` counterpart | `.cursor/rules/<counterpart>.mdc`                       | Add a "For full reference, see `docs/developer/<file>.md`" link near the top of the rule file.                                                                                                                                                                                                                                                                                                                                                        |
-| New design doc                                      | `docs/developer/CONTEXT_INDEX.md`                       | Add a row in "AI-authoring design docs" (or the closest matching section) with the note "Design intent (may not match implementation)" in the when-to-load column.                                                                                                                                                                                                                                                                                    |
-| New rule                                            | `docs/developer/CONTEXT_INDEX.md`                       | Verify a row exists in "Architecture and project context" (or the relevant section) with glob trigger from the rule's frontmatter; add one if missing. If the rule is broadly load-bearing, also add a bullet to the hot-paths list in AGENTS.md's "On-demand context".                                                                                                                                                                               |
+| New design doc                                      | `docs/developer/CONTEXT_INDEX.md`                       | Add an entry in "AI-authoring design docs" (or the closest matching section) whose when-to-load description starts with "Design intent (may not match implementation)".                                                                                                                                                                                                                                                                               |
+| New rule                                            | `docs/developer/CONTEXT_INDEX.md`                       | Verify an entry exists in "Architecture and project context" (or the relevant section); add one if missing. The rule's `globs:` frontmatter carries its Cursor trigger. Only if nearly every task needs the rule, also add one bullet to the hot-paths list in AGENTS.md's "On-demand context".                                                                                                                                                       |
 | New skill                                           | `.claude/skills/<name>/SKILL.md`                        | Verify the new skill has both halves: the body under `.cursor/skills/<name>/SKILL.md` and a pointer stub at `.claude/skills/<name>/SKILL.md` whose `name` + `description` frontmatter matches the body verbatim. `src/validation/skill-references.test.ts` enforces this. No AGENTS.md, CLAUDE.md, or CONTEXT_INDEX skill enumeration to maintain — frontmatter is the single source of truth.                                                        |
 | New npm script                                      | `AGENTS.md`                                             | If the script belongs in the short list at the top of "Essential commands", add it there. Otherwise rely on `docs/developer/COMMANDS.md` (the canonical full command reference, which AGENTS.md links to).                                                                                                                                                                                                                                            |
 | New plugin HTTP route                               | `.cursor/rules/systemPatterns.mdc`                      | Document the route under "Backend architecture (`pkg/`)" — extend the `plugin/resources.go` row in the file map or the request-flow narrative below it with method + path + one-line purpose. AGENTS.md's `pkg/` summary stays prose.                                                                                                                                                                                                                 |
-| New plugin stream message type                      | `.cursor/rules/systemPatterns.mdc`                      | Add to the "Stream message types" bullet under "Backend architecture (`pkg/`)".                                                                                                                                                                                                                                                                                                                                                                       |
 | New feature flag                                    | `docs/developer/FEATURE_FLAGS.md`                       | Add the flag — name, type, default, what it controls.                                                                                                                                                                                                                                                                                                                                                                                                 |
 | New `data-test-*` attribute                         | `docs/developer/E2E_TESTING_CONTRACT.md`                | Add the new selector to the relevant section.                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Renamed / moved subsystem                           | All doc files                                           | `grep -lr <old-path> AGENTS.md CLAUDE.md .cursor/rules/ docs/developer/` and rewrite each occurrence to the new path.                                                                                                                                                                                                                                                                                                                                 |
 | Removed subsystem                                   | `AGENTS.md`, `.cursor/rules/systemPatterns.mdc`, others | Remove the corresponding rows / paragraphs. If the removed feature represents an epic-scale change, recommend (in the PR description) a follow-up note in `docs/history/`.                                                                                                                                                                                                                                                                            |
-| Tier rule edit                                      | `AGENTS.md`, `.cursor/rules/systemPatterns.mdc`         | If the architecture allowlist changed, update the one-line tier summary in AGENTS.md and the annotated tier model in `.cursor/rules/systemPatterns.mdc` to reflect the new exception with one sentence of justification.                                                                                                                                                                                                                              |
+| Tier rule edit                                      | `AGENTS.md`, `.cursor/rules/systemPatterns.mdc`         | If a directory changed tier, update the tier list in AGENTS.md. Record a new allowlisted exception, with one sentence of justification, only in the annotated tier model in `.cursor/rules/systemPatterns.mdc`.                                                                                                                                                                                                                                       |
 
 **CONCERNS.md coverage check (read-only)**: `docs/design/CONCERNS.md` is author-curated and forbidden from edits. However, for every **new frontend subsystem** detected, run:
 
@@ -107,8 +107,7 @@ If no concern's `trigger_paths` covers the new directory, the subsystem has no r
 
 - **Apply mode**: append a backlog item to `docs/_maintenance-backlog.md` (Phase 5):
   `YYYY-MM-DD: No CONCERNS.md concern covers src/<new-dir>/ — consider adding one or extending the nearest subsystem concern.`
-- **Review mode**: add a note in the "Doc-drift updates recommended" section:
-  `No CONCERNS.md concern covers src/<new-dir>/. Consider adding one or extending the nearest subsystem concern (e.g., <closest-matching-concern-id>).`
+- **Review mode**: include this checked gap in the observation evidence and make the suggested action: `Add src/<new-dir>/ to the nearest concern, <closest-matching-concern-id>.`
 
 To identify the closest matching concern, scan the `trigger_paths` column for the concern whose paths share the most path segments with `src/<new-dir>/`.
 
@@ -150,27 +149,26 @@ If multiple rules target the same file (e.g., several new scripts), batch their 
 
 **Review mode** (invoked from `/review`):
 
-Output a single section the reviewer can paste into the PR comment:
+Do not modify the working tree. Emit one observation using `Canonical observation` from `docs/design/PR_REVIEW.md`:
 
-```
-## Doc-drift updates recommended
+- `finding_id`: a stable `doc-drift-<bucket>` identifier
+- `concern_id`: `documentation-alignment`
+- `kind`: `defect`
+- `severity`: `low`
+- `confidence`: `high` only when the changed contract and stale guidance are both checked
+- `evidence`: changed contract evidence plus one proposed fenced patch per affected file
+- `why_it_matters`: the specific stale instruction a future contributor or agent would follow
+- `suggested_action`: apply the minimal proposed documentation edits
+- `reversibility`: `reversible`
+- `applies_to_files`: affected guidance files
+- `origin`: `regression`
+- `impact`: `none`
+- `timing`: supplied by the parent review
+- `scope_effect`: `widens_changed_surface` unless every affected guidance file is already changed
+- `breaks_shipped_path`: `false`
+- `induced`: whether the drift exists only because optional earlier review advice was implemented
 
-The following changes introduce new <bucket>, which require updates to agent guidance. Apply these diffs to keep the docs in sync:
-
-### AGENTS.md
-\`\`\`diff
-<unified diff>
-\`\`\`
-
-### CLAUDE.md
-\`\`\`diff
-<unified diff>
-\`\`\`
-
-(... per target file ...)
-```
-
-Do not modify the working tree in review mode.
+Do not supply or imply a disposition. The parent runs the observation through `review-policy.mjs`.
 
 ### Phase 5 — Backlog handoff
 
@@ -243,7 +241,7 @@ In each case, report briefly: "No drift detected — exiting cleanly."
 
 ## Integration with `/review`
 
-When `/review` runs, after the routed reviewers have produced their findings, invoke this skill in **review mode** to attach a "Doc-drift updates recommended" section. The reviewer agent should include the section verbatim in the review output. The PR author can then apply the diffs themselves or invoke this skill in apply mode to commit them.
+When `/review` runs, fold this skill into a routed worker or the root and use **review mode**. It emits a canonical no-impact defect and stays silent when no drift exists. `review-policy.mjs` owns disposition and `review-report.mjs` owns publication. The PR author can apply the suggested edits or invoke this skill in apply mode.
 
 ## Examples
 
@@ -262,7 +260,8 @@ Detected buckets: **New frontend subsystem**.
 
 Detected updates:
 
-- `AGENTS.md` "Frontend tier model" — add `recommendation-cache/` to the Tier 2 bullet (engines & hooks) and add the edge `context-engine` → `recommendation-cache` to the "Key dependency edges" table in the same section
+- `AGENTS.md` "Frontend tier model" — add `recommendation-cache/` to the Tier 2 bullet (engines & hooks)
+- `.cursor/rules/systemPatterns.mdc` "Key dependency edges" — add the edge `context-engine` → `recommendation-cache`
 - `.cursor/rules/systemPatterns.mdc` "Frontend subsystem reference" — add a paragraph entry under the Tier 2 sub-heading (purpose, entry point, tier)
 
 ### Example 2: PR adds a new npm script and feature flag
@@ -295,7 +294,7 @@ Detected buckets: **New backend file**, **New plugin HTTP route**.
 Detected updates:
 
 - `.cursor/rules/systemPatterns.mdc` "Backend architecture (`pkg/`)" — add `plugin/sessions.go` row to the file map with a one-line role description, and add the new `POST /sessions` route to the request-flow narrative (or extend the `plugin/resources.go` row note)
-- `AGENTS.md` "Backend (`pkg/`)" — no edit needed unless the route changes the three primary request paths (HTTP resource API, streaming terminal, Coda JWT client) summarized in the section's prose
+- `AGENTS.md` "Backend (`pkg/`)" — no edit needed — the section only points at `docs/design/BACKEND_PROXY_PATTERN.md`, and routes are documented in `.cursor/rules/systemPatterns.mdc`
 
 ### Example 4: contributor already updated docs
 

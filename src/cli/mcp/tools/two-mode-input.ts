@@ -1,27 +1,17 @@
 /**
- * Shared schema and runtime-discriminator for the
- * `{artifact} | {sessionToken}` two-mode input contract.
+ * Shared schema and runtime discriminator for `{artifact} | {sessionToken}`.
  *
- * Two tool surfaces speak this contract today — read-only (inspect /
- * validate) and mutation (add_block / edit_block / …). Each accepts EITHER
- * `artifact` (stateless, the historical contract) OR `sessionToken` (P7
- * session-mode). This module centralizes the Zod shape and the
- * runtime XOR check so the surfaces cannot drift on either. `finalize`
- * adopts the same contract in the next stack layer (session-mode finalize).
- *
- * Per-tool `.describe()` text is layered on at the call site — the
- * descriptions are LLM-visible and intentionally tool-specific (mutation
- * mentions `__etag` and session-write semantics, inspection mentions the
- * escape-hatch). The shared schema only fixes the shape.
+ * Transport plumbing used by both cli-routed wrappers (create, manage_*,
+ * inspect) and mcp-native tools that load an in-memory artifact (validate,
+ * finalize). Each call accepts exactly one of `artifact` or `sessionToken`.
+ * Per-tool `.describe()` text is layered on at the call site.
  */
 
 import { z } from 'zod';
 
-import { inputModeAmbiguousResult, inputModeMissingResult } from './result';
+import { inputModeAmbiguousResult, inputModeMissingResult, type ToolResult } from './result';
 
-type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
-
-/** Bare two-mode artifact shape. Used by inspection-tools; finalize adopts it in the next stack layer. */
+/** Bare two-mode artifact shape for read-only and finalize tools. */
 export const ArtifactInputBase = z
   .object({
     content: z.record(z.string(), z.unknown()),

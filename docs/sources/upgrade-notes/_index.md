@@ -9,6 +9,22 @@ weight: 100
 
 This section contains the headline changes for each Interactive learning release, including breaking changes and migration steps. For the full per-release detail, see the project [CHANGELOG](https://github.com/grafana/grafana-pathfinder-app/blob/main/CHANGELOG.md).
 
+## Version 3.0: Unfinished guides restart from the beginning
+
+**One-time effect for anyone with a guide in progress.** Completed guides, badges, streaks, and finished milestones are unaffected.
+
+### What changed
+
+Step-by-step progress inside a guide was saved under a name that did not mark where one guide's name ended, so a guide whose name begins another's — **Welcome to Grafana** and **Welcome to Grafana Cloud**, for example — could count the other guide's steps toward its own percent complete. Progress is now saved under a name that marks the boundary, so one guide can never count another guide's steps.
+
+Progress saved before the upgrade does not identify which guide it belongs to, so moving it to the new format would risk attaching it to the wrong guide permanently. It is discarded instead, the first time you open Grafana after upgrading.
+
+The effect is that a guide you started and did not finish opens at its first step again. A guide's percent complete in the guide list can also keep its previous value until you open that guide, and updates when you do.
+
+### Action required
+
+None.
+
 ## Version 3.0: Coda sandbox terminal moves to its own plugin
 
 **Breaking change for anyone using the Coda terminal.** If you have never enabled it, nothing changes for you.

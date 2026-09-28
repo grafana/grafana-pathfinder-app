@@ -4,12 +4,13 @@ The `pathfinder-cli` is a command-line interface for working with interactive JS
 
 - **validate** — Validates guide definitions and package directories against schemas and best practices
 - **build-repository** — Generates `repository.json` from a package tree
+- **build-stats** — Writes the computed completion block stats into every package's `manifest.json`
 - **build-graph** — Generates a D3-compatible dependency graph from repository indexes
 - **build-snippets** — Generates a snippet catalog (`index.json`) from a directory of snippet bodies
 - **schema** — Exports Zod validation schemas as JSON Schema for cross-language consumers
 - **e2e** — Runs end-to-end tests on guides in a live Grafana instance (see [E2E testing](./E2E_TESTING.md))
 
-This document covers the `validate`, `build-repository`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
+This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
 
 ---
 
@@ -78,6 +79,7 @@ node dist/cli/cli/index.js validate [options] [files...]
 - `--format <format>`: Output format. Options are `text` (default) or `json`.
 - `--package <dir>`: Validate a single package directory (expects `content.json` and optionally `manifest.json`).
 - `--packages <dir>`: Validate a tree of package directories recursively.
+- `--snippets-catalog <file>`: Optional generated snippet `index.json` to check every `snippet-ref` ID against. The catalog must satisfy the snippet catalog schema; a missing or invalid catalog fails validation. This option applies to file, stdin, bundled, package, and package-tree validation. Omit it when no local catalog is available.
 - File arguments accept explicit paths to JSON guide files.
 
 ### Examples
@@ -114,6 +116,13 @@ npm run validate:strict
 # Equivalent to: node dist/cli/cli/index.js validate --bundled --strict
 ```
 
+**Validate guide references against a generated snippets catalog:**
+
+```bash
+node dist/cli/cli/index.js build-snippets shared/snippets -o /tmp/snippets-index.json
+node dist/cli/cli/index.js validate --strict --snippets-catalog /tmp/snippets-index.json guides/my-guide/content.json
+```
+
 **Get JSON output for CI integration:**
 
 ```bash
@@ -143,6 +152,9 @@ The validator performs these checks in order:
 2. **Schema compliance** - Types, nesting depth, field names
 3. **Unknown fields** - Warns on unrecognized fields (forward compatibility)
 4. **Condition syntax** - Validates requirements/objectives mini-grammar
+5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (the title is rendered separately). This is an error, so the command fails; remove the heading from the block.
+6. **Guided step actions** - A `guided` block's steps must not use `navigate` or `popout`; the block waits for the reader to act and neither verb produces an interaction to wait on. This is an error, so the command fails. See [actions a guided step accepts](./interactive-examples/json-guide-format.md#actions-a-guided-step-accepts)
+7. **Snippet references** - When `--snippets-catalog` is supplied, every `snippet-ref` ID must be a key in that catalog
 
 Example output with condition warnings:
 
@@ -151,6 +163,8 @@ Example output with condition warnings:
   Warning: blocks[2].requirements[0]: Unknown condition type 'typo-requirement'
   Warning: blocks[5].objectives[0]: 'has-datasource:' requires an argument
 ```
+
+Warnings are reported for a file even when that file also has errors.
 
 In strict mode (`--strict`), warnings become errors and cause the command to fail.
 
@@ -271,7 +285,95 @@ The command walks the directory tree starting at `<root>`. Any subdirectory at a
 
 ### Output format
 
-The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.). The output is formatted with Prettier using the project's configuration.
+The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.), plus any unknown top-level manifest key forwarded verbatim as extension metadata — see [extension fields](./package-authoring.md#extension-fields) for the forwarding rules and the names the build refuses. Every `build-*` command writes JSON through the same formatter, so the same Prettier-where-available caveat applies — see [determinism](#determinism).
+
+Diagnostics are printed to stderr — the per-package `forwarding N extension field(s): …` line, warnings, and errors — so the JSON on stdout stays parseable when piped.
+
+---
+
+## Build-stats command
+
+Computes the block stats that completion tracking uses as its denominator and writes them into each package's `manifest.json` under a `stats` key. Authors never assert these numbers, so they cannot be wrong.
+
+The arithmetic is not implemented here. It lives in `src/lib/guide-stats` (Tier 1, pure, dependency-free) so the CLI, an upload script, the plugin frontend, and a Go port all inherit one rule. This command is argument parsing, file IO, and ordering.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js build-stats <root> [options]
+```
+
+### Arguments
+
+- `<root>` (required): Root directory containing package directories. Discovery is identical to `build-repository`.
+
+### Options
+
+- `-e, --exclude <paths...>`: Path(s) to exclude from the scan, relative to `<root>`. Excluded trees are not descended into.
+- `--check`: Report packages whose committed stats have drifted from their content and exit non-zero. Writes nothing. A `<root>` holding no packages at all is an error under `--check` — a gate pointed at a moved root would otherwise report success having verified nothing.
+
+### Examples
+
+**Stamp every manifest under a package tree, then index it:**
+
+```bash
+node dist/cli/cli/index.js build-stats packages/
+node dist/cli/cli/index.js build-repository packages/ -o dist/repository.json
+```
+
+Run `build-stats` first. The ordering is load-bearing: `build-repository` carries `stats` from each manifest onto its `repository.json` entry, so an index built before the manifests are stamped omits stats for every package. (`stats` is a declared field on both schemas, so it is copied by name rather than by the unknown-key forwarding that carries extension keys.)
+
+**Fail CI when a committed manifest is stale:**
+
+```bash
+node dist/cli/cli/index.js build-stats packages/ --check
+```
+
+There are convenience npm scripts for the bundled tree:
+
+```bash
+npm run stats:build   # Stamp every manifest under src/bundled-interactives
+npm run stats:check   # Fail if a committed manifest's stats have drifted
+```
+
+### What gets written
+
+The `stats` key holds a fixed set of numbers in a fixed key order, so unchanged content re-stamps byte-identically:
+
+- `version` — the stamp's rule version, bumped when the counting rule or these fields change. It is what lets a reader tell an old-rule stamp from a new-rule one; it says nothing about whether the guide changed.
+- `blockCount` — the completion denominator.
+- `sectionCount` — section containers, reported for authoring insight and not part of the denominator.
+- `completableBlockCount` — counted blocks that can emit completion evidence.
+- `finalCompletablePosition` — position of the last completable block, `0` when there is none.
+
+### What gets counted
+
+- Every block counts once, except containers (`section`, `assistant`, `collapsible`), which contribute their contents and nothing of their own. A section holding five blocks contributes five, not six.
+- `multistep` and `guided` count as exactly one block each. Their inner steps are deliberately outside the denominator.
+- `conditional` counts as one block, and neither branch is descended into. Descending into both would put blocks in the denominator the reader can never see.
+- `snippet-ref` counts as one block, and its resolved contents inherit that single position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in before the parser sees the guide, so the stamped denominator is the **pre-inlining** count and a consumer must index the pre-inlining tree. Mapping an inlined block back to its ref is not an option today: the splice carries no provenance, so there is nothing to map back from.
+- Completion is `n / total` with no special case. A "Do it" yields 100% only when its block is the guide's last counted one — `finalCompletablePosition === blockCount`. Anything less means step evidence alone stops short, and the reader closes the gap with the foot-of-guide "Mark complete" control, which every guide carries regardless of this field (`docs/design/COMPLETION-MODEL.md`, decision 2).
+- A `path` or `journey` rolls up as its own body followed by its milestones in declared order. Milestones are measured before their parents.
+
+### Strictness
+
+A milestone missing from the tree, and a manifest that fails schema validation, both abort the run with a non-zero exit and nothing written. That is knowingly stricter than the sibling tooling — `build-graph` warns on an unresolvable milestone, `build-repository` degrades a manifest schema failure to a warning, and `docs-retrieval`'s package content keeps an unresolvable milestone as a locked placeholder. Those tolerate a partial tree at read time; this command's whole purpose is to produce a denominator that is never wrong, and a rollup silently missing a milestone would publish one that is. No manifest is written until every package in the tree has resolved, so a failed run leaves the tree completely unstamped rather than half-stamped.
+
+One consequence worth knowing before putting `build-stats` ahead of `build-repository` in a pipeline that uses `--exclude`, and it is independent of the passthrough: if an excluded subtree holds a package that a path lists as a milestone, that milestone is missing from the tree, so `build-stats` aborts and leaves _unrelated_ packages unstamped too. `build-repository` with the same `--exclude` omits the entry and succeeds. The strictness is deliberate, but it converts a tree shape the sibling tolerates into a hard stop.
+
+A duplicated milestone, and a milestone reachable through two parents, are both errors as well. Summing a package twice inflates the denominator, and because positions are first-occurrence-wins the second copy's blocks can never be evidenced — so the reader would be permanently stuck below 100%.
+
+### `stats.blockCount` is not `inspect`'s `blockCount`
+
+`pathfinder-cli inspect --format json` also emits a `blockCount`, counted over the whole tree — containers included, conditional branches descended. `manifest.stats.blockCount` is the completion denominator and counts neither. The two therefore disagree by design on the same guide: `inspect` answers "how many blocks are in this file", `stats` answers "what is the reader measured against".
+
+### Determinism
+
+Re-running on unchanged content is a byte-for-byte no-op: the command compares the computed stats against what is on disk and skips the write when they match. Stats keys are emitted in a fixed order and carry no timestamps. An existing `stats` key is replaced in place, so a manifest's authored key order survives a rewrite.
+
+Output is formatted with Prettier using the project's configuration wherever Prettier resolves — a repo checkout, or any environment that has it installed. The published CLI image does not: Prettier is a devDependency and is absent from `RUNTIME_DEPS`, so every `build-*` command degrades to two-space `JSON.stringify` output with a trailing newline rather than failing. Both forms are valid JSON and `--check` compares stats field by field, so neither reads as drift against the other; a tree stamped from the image and then re-stamped locally will show a formatting-only diff, though.
+
+The run that first stamps a manifest can re-expand nested objects an author had collapsed onto one line — both forms are Prettier-clean, and the file is stable from that run onward.
 
 ---
 
@@ -355,7 +457,7 @@ node dist/cli/cli/index.js build-snippets <dir> [options]
 
 ### How it works
 
-The command reads every `*.json` file in `<dir>` except `index.json`, validates each against the snippet schema, and builds a catalog mapping each snippet `id` to its `id`, `title`, `description`, and optional `category`, `tags`, and `schemaVersion`. It enforces two rules: each file name must equal the `id` inside it (the resolver fetches `<id>.json`), and ids must be unique. If any body fails validation, a file name does not match its id, or an id is duplicated, no output is written and the command exits non-zero.
+The command reads every `*.json` file in `<dir>` except `index.json`, validates each against the snippet schema, and builds a catalog mapping each snippet `id` to its `id`, `title`, `description`, and optional `category`, `tags`, and `schemaVersion`. It enforces three rules: each file name must equal the `id` inside it (the resolver fetches `<id>.json`), ids must be unique, and a `guided` block in a snippet body must not use the `navigate` or `popout` actions (the same rule `validate` applies to a guide). If any body fails validation, a file name does not match its id, an id is duplicated, or a guided step uses an unsupported action, no output is written and the command exits non-zero.
 
 Snippet bodies live in the content repository alongside package content, not in this plugin repo. A convenience npm script wraps the command — append the snippet directory:
 
@@ -387,6 +489,8 @@ node dist/cli/cli/index.js schema <name> [options]
 
 ### Available schemas
 
+These mirror the `description` strings in `SCHEMA_REGISTRY` (`src/cli/commands/schema.ts`), which is authoritative — `pathfinder-cli schema --list` prints them verbatim.
+
 | Name               | Description                                                                 |
 | ------------------ | --------------------------------------------------------------------------- |
 | `guide`            | Root JSON guide schema (strict, no extra fields)                            |
@@ -397,6 +501,8 @@ node dist/cli/cli/index.js schema <name> [options]
 | `graph`            | Dependency graph schema (D3-compatible output)                              |
 | `e2e-report`       | E2E single-guide test report (open-world: no `additionalProperties: false`) |
 | `e2e-multi-report` | E2E multi-guide aggregate test report (open-world)                          |
+
+The `manifest` and `repository` exports are open at the top level only (`additionalProperties: {}` on the manifest root and on each repository entry); see [extension fields](./package-authoring.md#extension-fields).
 
 ### Examples
 
@@ -450,7 +556,7 @@ Consumers in other languages should reimplement these rules in their own validat
 
 ## CI workflow example with package validation
 
-This GitHub Actions snippet validates packages and checks `repository.json` freshness — the pattern used in this repository's `.github/workflows/ci.yml`:
+This GitHub Actions snippet validates packages and checks `repository.json` and manifest-stats freshness — the pattern used in this repository's `.github/workflows/ci.yml`:
 
 ```yaml
 validate-packages:
@@ -477,6 +583,9 @@ validate-packages:
 
     - name: Check repository.json freshness
       run: npm run repository:check
+
+    - name: Check manifest stats freshness
+      run: npm run stats:check
 ```
 
-The `repository:check` script rebuilds `repository.json` to a temp file and diffs it against the committed version. If the committed file is stale (a manifest was changed without rebuilding), the diff fails and CI reports an error.
+The `repository:check` script rebuilds `repository.json` to a temp file and diffs it against the committed version. If the committed file is stale (a manifest was changed without rebuilding), the diff fails and CI reports an error. `stats:check` does the same job for the `stats` key stamped into each `manifest.json`, without writing anything.

@@ -2,7 +2,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useAutoOpenListener } from './useAutoOpenListener';
 import { guideLaunchStore } from '../../../global-state/guide-launch';
 import { linkInterceptionState } from '../../../global-state/link-interception';
-import type { RawContent } from '../../../types/content.types';
+import type { PreparedRawContent } from '../../../types/content.types';
 import type { DocsPanelModelOperations } from '../types';
 
 function makeModel(): DocsPanelModelOperations {
@@ -115,8 +115,9 @@ describe('useAutoOpenListener', () => {
     // guideLaunchStore, and anything beyond {url, title, source, launchKey}
     // in the detail is ignored.
     const DOC_URL = 'https://grafana.com/docs/grafana/latest/';
-    const rawContent: RawContent = {
+    const rawContent: PreparedRawContent = {
       content: '{"id":"g","title":"g","blocks":[]}',
+      countingSource: { kind: 'pre-inlining', guideJson: '{"id":"g","title":"g","blocks":[]}' },
       metadata: { title: 'g' },
       type: 'interactive',
       url: DOC_URL,

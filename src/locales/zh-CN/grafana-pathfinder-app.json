@@ -85,6 +85,16 @@
       "toggleViewMode": "切换视图模式"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "所有路径已完成！",
     "allCompleteTooltip": "您已完成所有学习路径——干得漂亮！",

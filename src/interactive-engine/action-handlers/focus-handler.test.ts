@@ -152,6 +152,27 @@ describe('FocusHandler', () => {
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });
 
+    it('does not complete when no element is found and skipCompletionOnEmptyTarget is set', async () => {
+      mockQuerySelectorAll.mockReturnValue([]);
+      const data: InteractiveElementData = { ...mockData, skipCompletionOnEmptyTarget: true };
+
+      await focusHandler.execute(data, true);
+
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
+      // executeInteractiveAction reads this to report 'error' instead of 'ok' —
+      // without it, the caller's own completion persistence (gated on the
+      // outcome, not on stateManager) would mark the step done anyway.
+      expect(data.completionSuppressed).toBe(true);
+    });
+
+    it('does not set completionSuppressed when an element is found (regression guard)', async () => {
+      const data: InteractiveElementData = { ...mockData, skipCompletionOnEmptyTarget: true };
+
+      await focusHandler.execute(data, true);
+
+      expect(data.completionSuppressed).toBeUndefined();
+    });
+
     it('should warn when element is not visible but continue execution', async () => {
       mockIsElementVisible.mockReturnValue(false);
 

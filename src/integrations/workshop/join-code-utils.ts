@@ -62,7 +62,7 @@ export function parseJoinCode(code: string): SessionOffer {
           sessionPublicKey: sessionData.pubkey || sessionData.sessionPublicKey,
         };
       }
-    } catch (decodeError) {
+    } catch {
       // Not base64/JSON, try legacy format (plain peer ID)
     }
 

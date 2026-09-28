@@ -1,11 +1,28 @@
+import type { GuideDiagnostic, GuideLoadContext } from './guide-diagnostics.types';
+
 // Unified content types for the new retrieval architecture
 // This replaces the separate interfaces in docs-fetcher.ts and single-docs-fetcher.ts
 
 export type ContentType = 'learning-journey' | 'single-doc' | 'interactive';
 
 export interface RawContent {
+  loadContext?: GuideLoadContext;
   /** Raw content - always a JSON guide string */
   content: string;
+
+  /**
+   * Which tree this payload's canonical block index must be counted from.
+   *
+   * `content` is the RENDER tree, and on a direct open it is the counting tree
+   * too — producers leave this unset. `prepare-guide-launch.ts` hands the
+   * renderer a snippet-EXPANDED tree instead, whose block count is not the
+   * canonical one (a `snippet-ref` counts as one block however many it expands
+   * into), so an expanded payload names its counting tree here.
+   *
+   * Internal to the content/launch handoff: never author-supplied guide JSON,
+   * never fetched from a CDN, never persisted with the tab.
+   */
+  countingSource?: GuideCountingSource;
 
   /** Metadata extracted during fetching */
   metadata: ContentMetadata;
@@ -26,6 +43,38 @@ export interface RawContent {
   isNativeJson?: boolean;
 }
 
+/**
+ * The preserved pre-inlining guide an expanded payload was expanded from —
+ * the tree `computeGuideBlockIndex` must traverse.
+ */
+export interface PreInliningCountingSource {
+  kind: 'pre-inlining';
+  /** Serialized pre-inlining guide. */
+  guideJson: string;
+}
+
+/**
+ * A payload known to be snippet-expanded whose pre-inlining tree was not
+ * preserved. Rendering stays available; no canonical index is published from
+ * the expanded tree, because that count would not be the canonical one.
+ */
+export interface UnavailableCountingSource {
+  kind: 'unavailable';
+}
+
+export type GuideCountingSource = PreInliningCountingSource | UnavailableCountingSource;
+
+/**
+ * A `RawContent` whose `content` is snippet-expanded. The counting source is
+ * required rather than optional here: an expanded payload that does not carry
+ * the tree it was expanded from cannot be counted, so the type makes dropping
+ * it a compile error rather than a silent 3-for-2 denominator. Build one with
+ * `createPreparedContent` in `src/lib/guide-counting-source.ts`.
+ */
+export interface PreparedRawContent extends RawContent {
+  countingSource: PreInliningCountingSource;
+}
+
 export interface ContentMetadata {
   /** Extracted title from the content */
   title: string;
@@ -37,11 +86,20 @@ export interface ContentMetadata {
   singleDoc?: SingleDocMetadata;
 
   /**
-   * Package manifest metadata — present when content was fetched via fetchPackageContent().
+   * Package manifest metadata — present when content was fetched via fetchPackageContent(),
+   * or synthesized by the `backend-guide:` loader for a launch that carries no resolved package.
    * Carries through manifest fields (category, author, recommends, suggests, depends, milestones, etc.)
    * so the content display layer can render richer UI without needing a separate manifest fetch.
    */
   packageManifest?: Record<string, unknown>;
+
+  /**
+   * Recommendation-level repository (sibling of the manifest in the V1 wire
+   * shape; V1PackageManifest has no repository of its own). Carried alongside
+   * packageManifest so completion emission can key the durable
+   * `(guideSource, guideId)` on the true source rather than a manifest default.
+   */
+  repository?: string;
 }
 
 export interface LearningJourneyMetadata {
@@ -83,7 +141,8 @@ export interface SingleDocMetadata {
 export interface Milestone {
   number: number;
   title: string;
-  duration: string;
+  /** Author-provided estimate from the member's own manifest. Absent when not authored — never a guessed default. */
+  estimatedMinutes?: number;
   url: string;
   isActive: boolean;
   /**
@@ -95,6 +154,10 @@ export interface Milestone {
   isLocked?: boolean;
   /** Canonical website URL for this milestone (e.g., grafana.com/docs/learning-paths/.../milestone-slug/) */
   websiteUrl?: string;
+  /** Short summary shown under the title in the cover-page module list. Package paths only — sourced from the member's manifest description. */
+  description?: string;
+  /** Author-provided starting location from the member's own manifest. Absent when not authored. */
+  startingLocation?: string;
   sideJourneys?: SideJourneys;
   relatedJourneys?: RelatedJourneys;
   conclusionImage?: ConclusionImage;
@@ -128,6 +191,7 @@ export interface ConclusionImage {
 
 // Content fetching interfaces
 export interface ContentFetchOptions {
+  loadContext?: GuideLoadContext;
   /** Whether to use authentication headers */
   useAuth?: boolean;
 
@@ -145,6 +209,7 @@ export interface ContentFetchOptions {
 }
 
 export interface ContentFetchResult {
+  diagnostic?: GuideDiagnostic;
   /** The raw content, or null if fetch failed */
   content: RawContent | null;
 

@@ -5,7 +5,7 @@
 
 import { SceneObject, SceneObjectState } from '@grafana/scenes';
 import { RawContent, LearningJourneyMetadata, Milestone } from './content.types';
-import { DocsPluginConfig } from '../constants';
+import { PathfinderPluginConfig } from '../constants';
 
 /**
  * Resolved milestone context for path-type packages.
@@ -79,8 +79,15 @@ export interface PersistedTabData {
 export interface PackageOpenInfo {
   packageId?: string;
   packageManifest?: Record<string, unknown>;
+  /** Recommendation-level repository (sibling of manifest in the V1 wire shape;
+   *  V1PackageManifest carries no repository of its own). Threaded to the durable
+   *  completion key so real V1 / online-cdn guides persist under their true source. */
+  repository?: string;
   /** Pre-resolved milestones from context panel to avoid redundant resolution in fetchPackageContent */
   resolvedMilestones?: Milestone[];
+  /** Launching surface, for context-panel sections that are not the recommender.
+   *  Narrowed with `coerceLaunchSource` at the launch boundary (Tier 0 cannot import it). */
+  launchSource?: string;
 }
 
 export interface ContextPanelState extends SceneObjectState {
@@ -97,5 +104,5 @@ export interface CombinedPanelState extends SceneObjectState {
   tabs: LearningJourneyTab[];
   activeTabId: string;
   contextPanel: SceneObject<ContextPanelState>;
-  pluginConfig: DocsPluginConfig;
+  pluginConfig: PathfinderPluginConfig;
 }

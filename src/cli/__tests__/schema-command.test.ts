@@ -1,7 +1,13 @@
+import {
+  REQUIREMENT_DESCRIPTIONS,
+  REQUIREMENT_TOKEN_CATALOGUE,
+  type RequirementTokenDoc,
+} from '../../types/requirements.types';
 import { SCHEMA_REGISTRY, listSchemas, exportSchema, exportAllSchemas } from '../commands/schema';
 
 const EXPECTED_SCHEMA_NAMES = [
   'guide',
+  'kiosk',
   'block',
   'content',
   'manifest',
@@ -67,10 +73,41 @@ describe('schema command', () => {
       expect((schema!['x-refinements'] as string[]).length).toBeGreaterThan(0);
     });
 
+    it('exports accurate challenge mode and snippet reference descriptions', () => {
+      const schema = exportSchema('block', false);
+      const serialized = JSON.stringify(schema);
+
+      expect(serialized).toContain('Upstream snippet ID, resolved after validation and before render');
+      expect(serialized).toContain("The schema has no default: JSON that omits mode resolves to 'coda' at runtime");
+      expect(serialized).not.toContain('Upstream snippet ID to resolve at parse time');
+      expect(serialized).not.toContain("'coda' (default)");
+    });
+
     it('omits x-refinements for schemas without refinements', () => {
       const schema = exportSchema('repository', false);
       expect(schema).not.toBeNull();
       expect(schema!['x-refinements']).toBeUndefined();
+    });
+
+    // `RequirementTokenSchema` is a refined `z.string()`, so a `requirements` /
+    // `conditions` field converts to `{ type: 'string' }` and the vocabulary it
+    // actually accepts is invisible in the export. A consumer that reads only the
+    // schema — the case this extension exists for — cannot author a valid guide
+    // without it: a step with a `reftarget` needs `exists-reftarget`, and the
+    // serialized schema does not contain that string anywhere else.
+    describe('x-requirement-tokens', () => {
+      it.each(['guide', 'block', 'content'])('publishes the whole vocabulary on "%s"', (name) => {
+        const tokens = exportSchema(name, false)?.['x-requirement-tokens'] as RequirementTokenDoc[] | undefined;
+        expect(tokens?.map((entry) => entry.token)).toEqual(REQUIREMENT_TOKEN_CATALOGUE.map((entry) => entry.token));
+      });
+
+      it.each(Object.keys(REQUIREMENT_DESCRIPTIONS))('serializes %s into the guide export', (token) => {
+        expect(JSON.stringify(exportSchema('guide', true))).toContain(token);
+      });
+
+      it.each(['repository', 'graph', 'e2e-report'])('omits it from "%s", which takes no tokens', (name) => {
+        expect(exportSchema(name, false)?.['x-requirement-tokens']).toBeUndefined();
+      });
     });
 
     // Regression: see src/cli/commands/schema.ts `convertSchema`. The block

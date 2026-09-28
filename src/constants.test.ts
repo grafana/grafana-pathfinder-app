@@ -1,4 +1,9 @@
-import { getDefaultRecommenderUrl, getConfigWithDefaults, isKnownRecommenderUrl, DocsPluginConfig } from './constants';
+import {
+  getDefaultRecommenderUrl,
+  getConfigWithDefaults,
+  isKnownRecommenderUrl,
+  PathfinderPluginConfig,
+} from './constants';
 
 describe('getDefaultRecommenderUrl', () => {
   it('returns dev recommender for *.grafana-dev.net hosts', () => {
@@ -51,7 +56,7 @@ describe('isKnownRecommenderUrl', () => {
 
 describe('getConfigWithDefaults recommender wiring', () => {
   it('uses auto-detection when a known recommender URL is saved (prevents CORS mismatch)', () => {
-    const pluginConfig: DocsPluginConfig = {
+    const pluginConfig: PathfinderPluginConfig = {
       recommenderServiceUrl: 'https://recommender.grafana.com',
     };
     const result = getConfigWithDefaults(pluginConfig);
@@ -59,7 +64,7 @@ describe('getConfigWithDefaults recommender wiring', () => {
   });
 
   it('respects custom (non-known) recommenderServiceUrl override', () => {
-    const pluginConfig: DocsPluginConfig = {
+    const pluginConfig: PathfinderPluginConfig = {
       recommenderServiceUrl: 'http://localhost:8080',
     };
     const result = getConfigWithDefaults(pluginConfig);
@@ -73,8 +78,12 @@ describe('getConfigWithDefaults recommender wiring', () => {
 });
 
 describe('getConfigWithDefaults feature flags', () => {
-  it('defaults enableAiAutoHeal to false when jsonData is absent', () => {
-    expect(getConfigWithDefaults({}).enableAiAutoHeal).toBe(false);
+  it('defaults enableAiAutoHeal to true when jsonData is absent', () => {
+    expect(getConfigWithDefaults({}).enableAiAutoHeal).toBe(true);
+  });
+
+  it('honors an explicit enableAiAutoHeal opt-out', () => {
+    expect(getConfigWithDefaults({ enableAiAutoHeal: false }).enableAiAutoHeal).toBe(false);
   });
 
   it('defaults enableTwoTabController to false when jsonData is absent', () => {

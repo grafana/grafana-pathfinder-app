@@ -19,10 +19,14 @@ import (
 )
 
 const (
+	// authAPIBaseURL is auth-api's in-cluster address. It resolves per-cell, so
+	// the same value is correct in every region. The trailing dot makes the name
+	// absolute, so the resolver skips the cluster's ndots search-path expansion
+	// instead of failing through it first.
+	authAPIBaseURL = "http://api-lb.auth.svc.cluster.local."
+
 	// DefaultTokenExchangeURL is auth-api's in-cluster token-exchange endpoint.
-	// The address resolves per-cell, so the same value is correct in every
-	// region.
-	DefaultTokenExchangeURL = "http://api-lb.auth.svc.cluster.local./v1/sign-access-token"
+	DefaultTokenExchangeURL = authAPIBaseURL + "/v1/sign-access-token"
 
 	// AccessTokenHeader is the header Grafana reads the minted on-behalf-of
 	// access token from (authlib's authenticator contract). The minted token is

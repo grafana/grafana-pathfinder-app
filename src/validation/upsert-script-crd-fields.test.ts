@@ -27,13 +27,23 @@ const SCRIPT_PATH = path.resolve(__dirname, '..', '..', 'scripts', 'upsert-learn
 // yet, so an `input` block uploaded through the scripts loses its data check
 // entirely — the picker renders, the check does not run. This entry is what made
 // that visible; remove it when `#Block` declares them.
+//
+// `gcx` on `terminal-connect` is the same story: `#Block` declares `vmTemplate`,
+// `vmApp` and `vmScenario` but not `gcx` (verified against
+// kinds/interactiveguide.cue), so a guide loses the flag and its terminal step
+// connects without installing a credential. The prune belongs to the CRD, not to
+// the script, so it applies to every write through the resource — a block-editor
+// save or publish included. Remove this entry when the CUE declares it.
 const PRUNED_BY_CRD = new Set([
+  'format', // The InteractiveGuide CRD has no input format field yet.
+
   'defaultValue',
   'dataCheckQuery',
   'dataCheckBlocking',
   'dataCheckFailureMessage',
   'dataCheckTimeFrom',
   'dataCheckTimeTo',
+  'gcx',
 ]);
 
 function scriptArray(name: string): Set<string> {
@@ -49,8 +59,8 @@ function scriptArray(name: string): Set<string> {
 function appBlockFields(): Set<string> {
   const fields = new Set<string>();
   for (const [key, set] of Object.entries(KNOWN_FIELDS)) {
-    // _guide, _choice and _manifest describe envelopes rather than blocks, and
-    // _step is checked separately against the CRD's own #Step.
+    // _guide and _choice describe envelopes rather than blocks, and _step is
+    // checked separately against the CRD's own #Step.
     if (key.startsWith('_')) {
       continue;
     }

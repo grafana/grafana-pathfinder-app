@@ -14,6 +14,7 @@
   - [add-block](#add-block)
   - [add-step](#add-step)
   - [add-choice](#add-choice)
+  - [add-hint](#add-hint)
   - [set-manifest](#set-manifest)
   - [inspect](#inspect)
   - [edit-block](#edit-block)
@@ -73,9 +74,9 @@ Instead of asking agents to understand the schema and produce raw JSON, we give 
 
 2. **Impossible to produce invalid output.** Every mutation validates the full package (both `content.json` and `manifest.json`) before writing. If validation fails, the file is not modified and the error is printed.
 
-3. **Append-first.** New blocks are appended sequentially. There is no insert-at-index and no reordering. The agent writes blocks in the order they should appear. Existing blocks can be updated in place via `edit-block` or removed via `remove-block` using their ID.
+3. **Append-first for agents.** The CLI itself supports arbitrary placement (`add-block --before`/`--after`/`--position`, `move-block`) for human/power use, but the MCP agent surface withholds those parameters via a bind-time blacklist (see [The command's Zod schema is the stability contract](#the-commands-zod-schema-is-the-stability-contract)), so an agent's own procedure stays append-only: it writes blocks in the order they should appear, updates them in place via `edit-block`, and removes them via `remove-block` using their ID.
 
-4. **ID-based addressing.** All blocks have an `id`. Container blocks (sections, conditionals, assistant, multistep, guided, quiz) require an author-supplied `--id`. Leaf blocks are auto-assigned an ID by the CLI when none is provided. All IDs are stored in `content.json` — the guide file is the source of truth for block identity and is durable across sessions.
+4. **ID-based addressing.** All blocks have an `id`. Container blocks (sections, conditionals, assistant, multistep, guided, quiz, challenge) require an author-supplied `--id`. Leaf blocks are auto-assigned an ID by the CLI when none is provided. All IDs are stored in `content.json` — the guide file is the source of truth for block identity and is durable across sessions.
 
 5. **Progressive discovery.** An agent runs `add-block interactive --help` and gets exactly the fields, types, constraints, and valid values for an interactive block. No upfront schema study required.
 
@@ -116,7 +117,8 @@ Created package: my-guide/
 
 Add blocks with: pathfinder-cli add-block <type> my-guide/
 Block types: markdown, section, interactive, multistep, guided, quiz, input,
-  image, video, html, terminal, terminal-connect, code-block, conditional, assistant
+  image, video, html, terminal, terminal-connect, code-block, conditional, assistant,
+  challenge
 ```
 
 ### `add-block`
@@ -133,7 +135,7 @@ The block type is the _first_ positional argument so each type's `--help` (`path
 
 The `--parent` flag targets a container block by its `id`. Without `--parent`, the block is appended to the top-level `blocks` array. When the parent is a `conditional` block, `--branch true` or `--branch false` selects the target branch.
 
-Container block types (`section`, `conditional`, `assistant`, `multistep`, `guided`, `quiz`) require `--id` so they can be targeted by subsequent commands.
+Container block types (`section`, `conditional`, `assistant`, `multistep`, `guided`, `quiz`, `challenge`) require `--id` so they can be targeted by subsequent commands.
 
 **Example — adding a section:**
 
@@ -182,6 +184,8 @@ pathfinder-cli add-step <dir> --parent <id> [flags]
 
 Flags are derived from `JsonStepSchema`. The `--parent` flag is required and must reference a block of type `multistep` or `guided`.
 
+A `guided` parent accepts a narrower set of actions than a `multistep` one: `navigate` and `popout` are rejected, because a guided step waits for the reader to act and neither of those produces an interaction to wait on. Use a sibling `interactive` block for the action, or a `multistep` parent, which performs its steps automatically.
+
 **Output on success:**
 
 ```
@@ -211,6 +215,25 @@ Added choice "b" to quiz block "check-understanding" in my-guide/
   Package valid: yes
 
 Add another choice with: pathfinder-cli add-choice my-guide/ --parent check-understanding --id c --text "..."
+```
+
+### `add-hint`
+
+Append a progressive hint to a `challenge` block.
+
+```
+pathfinder-cli add-hint <dir> --parent <id> --text <markdown>
+```
+
+The `--parent` flag is required and must reference a block of type `challenge`. Hints append in reveal order, so add the broadest hint first and the most explicit hint last.
+
+**Output on success:**
+
+```
+Added hint to challenge "repair-dashboard" at blocks[3].hintLevels[0]
+  Package valid: yes
+
+Add another hint with: pathfinder-cli add-hint my-guide/ --parent repair-dashboard --text <text>
 ```
 
 ### `set-manifest`
@@ -282,7 +305,7 @@ pathfinder-cli edit-block <dir> <id> [flags]
 - **Scalar fields** use merge semantics — only the flags provided change; unspecified fields are preserved.
 - **Array fields** (e.g., `--requirements`, `--objectives`) use replace semantics — the new value replaces the existing array entirely.
 - **`--type` is not accepted.** Changing a block's type is not supported. Remove and re-add the block if a different type is needed.
-- **Structural fields** (`blocks`, `whenTrue`, `whenFalse`, `steps`) cannot be edited via this command — they are managed by `add-block`, `add-step`, and `add-choice`.
+- **Structural fields** (`blocks`, `whenTrue`, `whenFalse`, `steps`, `choices`, `hintLevels`) cannot be edited via this command — they are managed by `add-block`, `add-step`, `add-choice`, and `add-hint`.
 
 **Example:**
 
@@ -350,13 +373,13 @@ The addressing model defines how commands locate where to append content within 
 
 1. **Top-level is the default.** Without `--parent`, blocks are appended to the guide's root `blocks` array.
 
-2. **Container blocks require `id`.** When creating a `section`, `conditional`, `assistant`, `multistep`, `guided`, or `quiz` block, the `--id` flag is required. The CLI enforces this — the command fails if `--id` is omitted for these types. All other block types accept an optional `--id`; if omitted, the CLI auto-assigns one (see [Auto-assignment of IDs](#auto-assignment-of-ids)).
+2. **Container blocks require `id`.** When creating a `section`, `conditional`, `assistant`, `multistep`, `guided`, `quiz`, or `challenge` block, the `--id` flag is required. The CLI enforces this — the command fails if `--id` is omitted for these types. All other block types accept an optional `--id`; if omitted, the CLI auto-assigns one (see [Auto-assignment of IDs](#auto-assignment-of-ids)).
 
 3. **`--parent <id>` locates a container.** The CLI searches the block tree depth-first for a block with the matching `id`. If not found, the command fails with an error listing available container IDs.
 
 4. **`--branch` disambiguates conditional branches.** When the parent is a `conditional` block, `--branch true` appends to `whenTrue` and `--branch false` appends to `whenFalse`. If the parent is a conditional and `--branch` is omitted, the command fails.
 
-5. **No positional mutation.** There is no insert-at-index and no reordering. New blocks are always appended. `edit-block` and `remove-block` operate on existing blocks by ID without touching positions of other blocks.
+5. **CLI positional mutation is a human/power-user path, not an agent one.** `add-block` accepts `--before <id>` / `--after <id>` / `--position <n>` for placement within the resolved parent (default: append), and `move-block` repositions an existing block. The MCP agent surface withholds all three placement parameters, plus `move-block` itself, via a bind-time blacklist, so an agent's own writes are still append-only. `edit-block` and `remove-block` operate on existing blocks by ID without touching positions of other blocks.
 
 6. **IDs must be unique within the guide.** The CLI enforces ID uniqueness at creation time.
 
@@ -422,64 +445,80 @@ The central design challenge is keeping CLI flags tightly coupled to the Zod sch
 
 ### The bridge module
 
-A new module `src/cli/utils/schema-options.ts` provides the Zod-to-Commander bridge.
+`src/cli/utils/schema-options.ts` answers one question about a Zod field — what kind of parameter is this? — and `src/cli/contracts/` renders the answer onto each entrypoint.
 
 ```typescript
-// Conceptual interface — not the final API
-function zodFieldToOption(name: string, field: z.ZodType): commander.Option | null;
+// What kind of value the field holds: string, number, boolean, enum, array,
+// array-enum, a union of primitives, literal, or unsupported.
+function describeField(field: z.ZodType): FieldShape;
 
-function registerSchemaOptions(cmd: Command, schema: z.ZodObject): Command;
+// The Commander spelling of one field, or null when it has none.
+function buildOptionForField(name: string, field: z.ZodType): commander.Option | null;
 ```
 
-The bridge walks the `.shape` of a `z.object()` schema and generates a Commander option for each field:
+Which fields become parameters is stated by a command's own schema (`CommandSpec`), and `mountCommander` walks it. The type mapping below is what `describeField` decides and both entrypoints read, so a parameter cannot be an enum on one surface and an array on the other:
 
-| Zod type                  | Commander option             | Help display                 |
-| ------------------------- | ---------------------------- | ---------------------------- |
-| `z.string()`              | `--name <string>`            | `--name <string>`            |
-| `z.string().optional()`   | `--name <string>` (optional) | `--name <string>`            |
-| `z.boolean().optional()`  | `--name` (flag)              | `--name`                     |
-| `z.enum(['a', 'b', 'c'])` | `--name <a\|b\|c>`           | `--name <a\|b\|c>`           |
-| `z.array(z.string())`     | `--name <item>` (repeatable) | `--name <item> (repeatable)` |
-| `z.number()`              | `--name <number>`            | `--name <number>`            |
-| `z.literal(...)`          | skipped                      | —                            |
+| Zod type                             | Commander option             | Help display                 |
+| ------------------------------------ | ---------------------------- | ---------------------------- |
+| `z.string()`                         | `--name <string>`            | `--name <string>`            |
+| `z.string().optional()`              | `--name <string>` (optional) | `--name <string>`            |
+| `z.boolean().optional()`             | `--name` (flag)              | `--name`                     |
+| `z.enum(['a', 'b', 'c'])`            | `--name <a\|b\|c>`           | `--name <a\|b\|c>`           |
+| `z.array(z.string())`                | `--name <item>` (repeatable) | `--name <item> (repeatable)` |
+| `z.number()`                         | `--name <number>`            | `--name <number>`            |
+| `z.union([z.string(), z.boolean()])` | `--name <string-or-boolean>` | `--name <string-or-boolean>` |
+| `z.literal(...)`                     | skipped                      | —                            |
 
 For array fields like `requirements` and `objectives`, options are repeatable: `--requirements on-page:/dashboards --requirements is-admin`.
 
-Fields named `type` are skipped — the block type is the subcommand name. Fields named `blocks`, `whenTrue`, `whenFalse`, and `steps` are skipped — these are populated by subcommands (`add-block`, `add-step`), not flags.
+A union of primitives (string, number, boolean — `input.defaultValue`'s `z.union([z.string(), z.boolean()])` is the schema's own example) is one parameter with more than one acceptable shape, not an unsupported one: the CLI coerces the typed token toward whichever branch it looks like (`"true"`/`"false"` to a boolean, a numeric string to a number where the union declares one) before the schema ever sees it, and the agent interface publishes `valueType: 'union'` with a `unionOf` list naming the accepted types. A union that mixes in a non-primitive branch — an object, an array, a nested union — still cannot become one CLI token and stays `unsupported`.
+
+Which fields become parameters is a fact about a `CommandSpec`'s own schema, not a name this bridge recognizes: a variant's schema simply does not declare `type` (the block type is the subcommand name) or `blocks` / `whenTrue` / `whenFalse` / `steps` (populated by subcommands like `add-block` and `add-step`, not flags), so there is nothing for `describeField` to see. An earlier version of this bridge walked a runtime schema and skipped fields by a hardcoded name list, which is also what silently dropped `create --type` — a package-type enum unrelated to any block discriminator, but named `type` all the same.
 
 ### Field descriptions via `.describe()`
 
 Zod v4 supports `.describe()` on any schema field. The bridge reads these descriptions and passes them to Commander as option descriptions. This makes the Zod schema file the single source of truth for both validation and CLI help text.
 
+<!-- Byte-exact copy of the schema. `src/validation/agent-authoring-docs.test.ts` fails if this drifts, so prettier must not reflow it. -->
+<!-- prettier-ignore -->
 ```typescript
-// In json-guide.schema.ts
-export const JsonInteractiveBlockSchema = z.object({
-  type: z.literal('interactive'),
-  action: JsonInteractiveActionSchema.describe('Action to perform on target element'),
-  reftarget: z
-    .string()
-    .optional()
-    .describe('CSS selector or data-testid for the target element (required for non-noop actions)'),
-  content: z.string().min(1).describe('Instructional text shown to user (markdown)'),
-  tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
-  requirements: z
-    .array(z.string())
-    .optional()
-    .describe('Prerequisite conditions (e.g., on-page:/dashboards, is-admin)'),
-  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
-  skippable: z.boolean().optional().describe('Allow user to skip this block'),
-  hint: z.string().optional().describe('Hint text shown if user is stuck'),
-  formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
-  validateInput: z.boolean().optional().describe('Strictly validate formfill input against targetvalue'),
-  showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
-  doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
-  completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
-  verify: z.string().optional().describe('CSS selector to check for verification after action'),
-  lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
-  scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
-  openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
-  ...AssistantPropsSchema.shape,
-});
+// src/types/json-guide.schema.ts
+export const JsonInteractiveBlockSchema = z
+  .object({
+    type: z.literal('interactive'),
+    id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+    action: JsonInteractiveActionSchema.describe('Action to perform on target element'),
+    // ...
+    tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
+    requirements: z
+      .array(RequirementTokenSchema)
+      .optional()
+      .describe('Prerequisite conditions, one condition per entry (e.g., on-page:/dashboards)'),
+    objectives: z.array(ObjectiveTokenSchema).optional().describe(objectivesDescription('block')),
+    skippable: z.boolean().optional().describe('Allow user to skip this block'),
+    hint: z.string().optional().describe('Hint text shown if user is stuck'),
+    formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
+    validateInput: z.boolean().optional().describe('Strictly validate formfill input against targetvalue'),
+    showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
+    doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
+    completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
+    verify: VerifyConditionSchema.optional().describe(
+      'Post-action verification condition, evaluated after the action runs; the step completes only once it is satisfied. Same condition vocabulary as `requirements` (e.g., on-page:/connections/datasources/edit) — not a CSS selector. One string, comma-separated for more than one condition.'
+    ),
+    lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
+    scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
+    openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
+    // Assistant customization props
+    ...AssistantPropsSchema.shape,
+    // Editor-only annotation (stripped on export)
+    ...AuthorAnnotatedSchema.shape,
+  })
+```
+
+The excerpt stops at the object literal; the `.refine()` chain that follows supplies the `Constraints:` block in `--help`, not option descriptions. `objectivesDescription` is a generator so the block, section and conditional-branch surfaces cannot drift apart — for a block it resolves to:
+
+```text
+Conditions that automatically complete this block, in the same vocabulary as `requirements`. Checked first, before eligibility and requirements, so a block whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a block that creates one). Prefer this over `skippable` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.
 ```
 
 Fields without `.describe()` fall back to a generic description derived from the field name and type (e.g., `"scrollContainer (string, optional)"`). Descriptions should be added incrementally — start with the most commonly used block types and expand over time.
@@ -559,6 +598,7 @@ Details are minimal — just enough for the agent to confirm intent (block type,
 - After `add-block` to a section → suggest adding more blocks to the same section, or a new top-level block
 - After `add-step` → suggest adding another step, or moving on to the next block
 - After `add-choice` → suggest adding another choice
+- After `add-hint` → suggest adding another hint
 
 ### Quiet mode (`--quiet`)
 
@@ -641,7 +681,7 @@ Error: --parent "setup" not found in my-guide/
 
 ### Help output
 
-Help output is terse and structured for agent parsing. When an agent runs `--help` on a block type subcommand:
+Help output is terse and structured for agent parsing. The sketch below is abridged in both directions — the real output lists every option, and prints each `.describe()` string in full rather than the one-line summaries shown here. The schema is the authority on wording; this is the authority on shape.
 
 ```
 $ pathfinder-cli add-block interactive my-guide/ --help
@@ -660,13 +700,14 @@ Optional:
   --tooltip <string>                Tooltip shown on highlighted element
   --requirements <item> (repeatable)
                                     Prerequisite conditions (e.g., on-page:/dashboards)
-  --objectives <item> (repeatable)  Learning objectives this block addresses
+  --objectives <item> (repeatable)  Conditions that automatically complete this block (checked
+                                    before requirements)
   --skippable                       Allow user to skip this block
   --hint <string>                   Hint text shown if user is stuck
   --show-me                         Enable "Show me" button
   --do-it                           Enable "Do it" button
   --complete-early                  Allow completion before all steps done
-  --verify <string>                 CSS selector for post-action verification
+  --verify <string>                 Post-action verification condition
   --open-guide <string>             Guide ID to open when block completes
 
 Constraints:
@@ -678,7 +719,7 @@ Addressing:
   --id <string>                     ID for this block (required for container types)
 ```
 
-Note what is absent: no verbose paragraphs, no full schema dumps, no JSON examples. An agent gets exactly the flag names, types, descriptions, and constraints. This is the minimum viable context for correct usage.
+Note what is absent: no prose around the flags, no full schema dumps, no JSON examples. An agent gets exactly the flag names, types, descriptions, and constraints. This is the minimum viable context for correct usage.
 
 The help also includes a summary of valid values for common repeatable fields. For `--requirements`:
 
@@ -691,15 +732,19 @@ Common requirements:
     has-permission:<perm>, var-<name>:<value>, renderer:<type>
 ```
 
-### `--help --format json` is a stability contract
+### The command's Zod schema is the stability contract
 
-The Pathfinder authoring MCP exposes a `pathfinder_help` tool that returns the output of `pathfinder-cli <command> [<subcommand>] --help --format json` directly to the calling agent (see [Pathfinder authoring MCP service — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)). This makes the JSON shape of `--help` part of the public contract:
+Since #1639, `pathfinder_help` no longer forwards `pathfinder-cli <command> [<subcommand>] --help --format json` verbatim. Every bound command's `CommandSpec` (`src/cli/contracts/spec.ts`) is the single authority for its input shape, and both entrypoints render it rather than one projecting the other: Commander renders it into flags for `--help --format json`, and `src/cli/mcp/lib/command-interface.ts` renders the same schema into the agent-facing interface `pathfinder_help` publishes (see [Pathfinder authoring MCP service — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)). This makes the schema, not either rendering, the public contract:
 
-- The top-level keys (e.g., `command`, `summary`, `required`, `optional`, `constraints`, `addressing`) are stable. New keys may be added as additive fields. Existing keys are not renamed or removed within a major version.
-- Per-flag entries have stable keys (`name`, `valueType`, `enum`, `repeatable`, `description`, `default`).
-- Removing or renaming a flag is a breaking change and rides the schema version.
+- A field's name is its schema field name; its type, enum, requiredness, and description come straight from the Zod shape and its `.describe()` text — nothing is inferred from a flag string.
+- Parameters are published in three lists, and only two of them are named for requiredness. `addressing` is named for role and overlaps both: `add-block --type section`'s `id` is required and lands there, so `required` + `optional` is **not** the interface. `requiredParams` states every parameter the caller must supply regardless of bucket — for a group variant, the discriminator followed by that variant's `requiredByType` entry, which is also the list the preflight demands — and every parameter also carries its own `required` flag. `requiredByType` is that list without the discriminator, so it is the per-variant summary and not a substitute for the variant's own `requiredParams`. A consumer that reads only the two requiredness-named buckets builds a field list with a required parameter missing from it.
+- `requirements` / `conditions` accept a closed vocabulary that the schema cannot express (`RequirementTokenSchema` is a refined `z.string()`). A surface that publishes one of those parameters and has no way to print the vocabulary is given it: `pathfinder_help` attaches `requirementTokens`, and `pathfinder_get_schema` attaches `x-requirement-tokens`, both enumerated from `REQUIREMENT_TOKEN_CATALOGUE`. The command line is pointed at `pathfinder-cli requirements list` instead and gets no copy.
+- Binding is opt-in: `pathfinder_help` and `validateCommandArgs` only address commands an MCP tool has registered (`bindCommandInterface`); an unbound CLI command reports `UNKNOWN_COMMAND` rather than publishing flags no tool accepts.
+- A binding may withhold parameters the command declares (e.g. `add-block`'s `before`/`after`/`position`) as a narrowing of the agent procedure, not a fact about the command — the CLI still offers them. Withheld or unknown parameters sent in `opts` are rejected with `UNSUPPORTED_PARAMETER`, never silently dropped.
+- `validateCommandArgs` preflights an `opts` bag against the exact interface `pathfinder_help` publishes, so a missing required field, an unknown field, or a withheld field is reported before the runner is called, in the same vocabulary `pathfinder_help` uses.
+- Removing a schema field, changing its role, or renaming it is a breaking change and rides the schema version, same as before.
 
-Agents call `pathfinder_help` instead of carrying field-level guidance locally; promoting `--help --format json` to a contract is what lets the MCP layer be a thin pass-through with no schema knowledge of its own.
+Agents call `pathfinder_help` instead of carrying field-level guidance locally; rendering both the CLI's flags and the agent's `opts` shape from one schema is what keeps them from drifting apart, and is what replaced the old thin pass-through.
 
 ---
 
@@ -726,12 +771,12 @@ The `create` command stamps `schemaVersion: CURRENT_SCHEMA_VERSION` into both `c
 
 The coupling between schema and CLI is maintained at three levels:
 
-| Level               | Mechanism                                                  | What it catches                                                          |
-| ------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **Compile-time**    | `BLOCK_SCHEMA_MAP` keys tested against `VALID_BLOCK_TYPES` | Forgetting to register a new block type                                  |
-| **Runtime (help)**  | `registerSchemaOptions()` walks `schema.shape` dynamically | New fields automatically appear in `--help` and are accepted as flags    |
-| **Runtime (write)** | `validatePackage()` on every mutation                      | Any bug in option parsing, schema introspection, or flag-to-JSON mapping |
-| **Version**         | `program.version(CURRENT_SCHEMA_VERSION)`                  | Version drift between CLI and schema                                     |
+| Level               | Mechanism                                                                | What it catches                                                                           |
+| ------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| **Compile-time**    | `BLOCK_SCHEMA_MAP` keys tested against `VALID_BLOCK_TYPES`               | Forgetting to register a new block type                                                   |
+| **Runtime (help)**  | `mountCommander()` / `renderInterface()` walk the command schema's shape | New fields automatically appear in `--help`, publish to agents, and are accepted as flags |
+| **Runtime (write)** | `validatePackage()` on every mutation                                    | Any bug in option parsing, schema introspection, or flag-to-JSON mapping                  |
+| **Version**         | `program.version(CURRENT_SCHEMA_VERSION)`                                | Version drift between CLI and schema                                                      |
 
 The only thing that requires manual maintenance is `.describe()` text on Zod fields. Fields without descriptions get a generic fallback. This is intentional — descriptions are documentation, not structural coupling, and can be added incrementally without breaking anything.
 
@@ -850,6 +895,16 @@ pathfinder-cli add-choice my-guide/ --parent check-understanding \
   --id d --text "All of the above" --pinned \
   --hint "Only one is correct."
 
+# Add a challenge with progressive hints
+pathfinder-cli add-block challenge my-guide/ \
+  --id repair-dashboard --mode standard \
+  --title "Repair the dashboard" \
+  --brief "Find and fix the broken dashboard." \
+  --success-criteria is-admin
+
+pathfinder-cli add-hint my-guide/ --parent repair-dashboard \
+  --text "Check the dashboard variables."
+
 # Set manifest metadata
 pathfinder-cli set-manifest my-guide/ \
   --description "Learn to send logs to Loki and query them in Grafana" \
@@ -872,6 +927,7 @@ Use `pathfinder-cli` to author Pathfinder guides. Commands:
 - pathfinder-cli add-block <type> <dir> [--parent <id>] [--branch true|false]
 - pathfinder-cli add-step <dir> --parent <id> --action <action> [flags]
 - pathfinder-cli add-choice <dir> --parent <id> --id <id> --text <text> [flags]
+- pathfinder-cli add-hint <dir> --parent <id> --text <text>
 - pathfinder-cli set-manifest <dir> [flags]
 - pathfinder-cli inspect <dir> [--block <id>] [--at <jsonpath>]
 - pathfinder-cli edit-block <dir> <id> [flags]
@@ -881,9 +937,10 @@ Run any command with --help to see available flags for that block type.
 All commands support --quiet (terse output) and --format json (structured output).
 
 Block types: markdown, section, interactive, multistep, guided, quiz, input,
-  image, video, html, terminal, terminal-connect, code-block, conditional, assistant
+  image, video, html, terminal, terminal-connect, code-block, conditional, assistant,
+  challenge
 
-Container types (require --id): section, conditional, assistant, multistep, guided, quiz
+Container types (require --id): section, conditional, assistant, multistep, guided, quiz, challenge
 Leaf blocks are auto-assigned an ID (e.g., markdown-1) if --id is not provided.
 Use --parent <id> to append inside a container. New blocks are always appended in order.
 Use --if-absent on container blocks to make retries safe.
@@ -921,7 +978,7 @@ Implement `src/cli/utils/package-io.ts` — read a package directory into memory
 
 ### Phase 5: Commands
 
-Implement the eight commands: `create`, `add-block`, `add-step`, `add-choice`, `set-manifest`, `inspect`, `edit-block`, `remove-block`. The six mutation commands follow the read-mutate-validate-write pattern and produce agent-oriented output with next-step hints. The `inspect` command is read-only.
+Implement the nine commands: `create`, `add-block`, `add-step`, `add-choice`, `add-hint`, `set-manifest`, `inspect`, `edit-block`, `remove-block`. The seven mutation commands follow the read-mutate-validate-write pattern and produce agent-oriented output with next-step hints. The `inspect` command is read-only.
 
 All commands support `--quiet` and `--format json` flags via shared output formatting. The `--if-absent` flag is implemented on `add-block` for container types. Auto-ID assignment is implemented in the `add-block` write path — when no `--id` is provided for a leaf block, a `<type>-<n>` ID is generated before the write.
 
@@ -931,6 +988,7 @@ The `create` command's auto-generated package `id` (when `--id` is omitted) take
 
 - Unit tests for the bridge module (Zod field → Commander option mapping)
 - Unit tests for each command (using in-memory fixtures, not subprocess calls, following existing CLI test patterns)
+- `add-hint` tests: ordered append, empty-text rejection, wrong-parent rejection, and MCP dispatch
 - Integration test: author a complete guide via CLI commands and validate the resulting package
 - Registry completeness test: `BLOCK_SCHEMA_MAP` keys === `VALID_BLOCK_TYPES`
 - `inspect` command tests: verify output for empty packages, populated packages, `--block` targeting, and `--at` JSONPath targeting
@@ -967,7 +1025,7 @@ If the CLI is published as a standalone npm package, the version is already coup
 
 ### Reordering
 
-Block reordering (`move-block`) is intentionally excluded. Moving blocks creates positional instability that is difficult for agents to reason about correctly. If structure needs to be substantially rearranged, removing and re-adding blocks in the correct order is the supported path.
+`move-block` exists on the CLI, but is withheld from the MCP agent surface: an agent that could reposition a block by moving it could also reorder by proxy, which is a bigger procedural surface than we want agents holding. A human using the CLI directly can call `move-block`; an agent instead removes and re-adds blocks in the correct order.
 
 ### Dry-run mode
 

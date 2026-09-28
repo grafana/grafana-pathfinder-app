@@ -13,15 +13,22 @@
  * directly from `@grafana/coda-client` rather than through this adapter.
  */
 
+import { config, getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
+
 import {
   CodaClient,
+  codaWorkspaceUrl as clientWorkspaceUrl,
   CodaError,
   toCodaError,
   isNotReady,
   isUnavailable,
+  canMintGrafanaToken,
+  provisionGcxCredential,
   CODA_PLUGIN_ID,
   V1_DEFAULTS,
   isCodaUsable,
+  codaSupports,
   codaSessionEligibility,
   type CatalogueItem,
   type CodaErrorCode,
@@ -30,6 +37,9 @@ import {
   type CreateSessionOptions,
   type ExecOptions,
   type ExecResult,
+  type GcxCredential,
+  type MintTokenOptions,
+  type VM,
 } from '@grafana/coda-client';
 
 export {
@@ -37,12 +47,14 @@ export {
   toCodaError,
   isNotReady,
   isUnavailable,
+  canMintGrafanaToken,
   CODA_PLUGIN_ID,
   V1_DEFAULTS,
   isCodaUsable,
+  codaSupports,
   codaSessionEligibility,
 };
-export type { CatalogueItem, CodaErrorCode, CodaCapabilities, CodaSessionRole };
+export type { CatalogueItem, CodaErrorCode, CodaCapabilities, CodaSessionRole, GcxCredential, MintTokenOptions };
 
 export type TerminalVMOptions = CreateSessionOptions;
 export type ExecRequest = ExecOptions & { command: string };
@@ -71,6 +83,15 @@ export const PATHFINDER_READY_FILE = '/tmp/pathfinder-ready';
  */
 export function isRoleForbidden(err: unknown): boolean {
   return toCodaError(err).code === 'role_forbidden';
+}
+
+/**
+ * Grafana declined the mint — not a fault, and not `role_forbidden`. The
+ * expected answer below Admin, so branch to a pasted token. The code is
+ * synthesised by the client, never sent by the Coda backend.
+ */
+export function isMintForbidden(err: unknown): boolean {
+  return toCodaError(err).code === 'mint_forbidden';
 }
 
 /**
@@ -110,18 +131,60 @@ export function codaErrorCodeMessage(code: CodaErrorCode | undefined, fallback: 
     case 'role_forbidden':
       return codaRoleForbiddenMessage();
     case 'vm_quota_exceeded':
-      // Deliberately does not say "close another terminal": CodaSession.close()
-      // releases the terminal but leaves the VM holding its quota slot, so only
-      // expiry or an operator-side delete frees one.
       return 'You already have the maximum number of sandbox VMs. Wait for one to expire before starting another.';
     case 'rate_limited':
       return 'Too many sandbox requests. Wait a moment and try again.';
+    case 'mint_forbidden':
+      return 'Grafana did not allow this account to create a service account token. Paste one instead.';
+    case 'invalid_token':
+      return 'That does not look like a usable Grafana service account token.';
+    case 'credential_write_failed':
+      return 'The credential could not be written into the sandbox VM. Try again.';
     case 'terminal_disconnected':
       return 'The sandbox VM is no longer connected. Connect again to start a new session.';
     case 'coda_unavailable':
     case 'upstream_failed':
       return 'The sandbox service could not be reached. Wait a moment and try again.';
+    case 'file_permission_denied':
+    case 'file_not_found':
+    case 'file_conflict':
+    case 'file_too_large':
+    case 'directory_too_large':
+    case 'file_unsupported':
+    case 'file_metadata_unsupported':
+    case 'file_operation_failed':
+    case 'workspace_unavailable':
+    case 'file_timeout':
+    case 'too_many_sessions':
+    case 'host_identity_unverified':
+    case 'vm_expired':
+    case 'vm_failed':
+    case 'instance_disposing':
+    case 'stream_stalled':
+    case 'protocol_mismatch':
+    case 'mint_account_role_mismatch':
+    case 'recovery_exhausted':
+    case undefined:
+    case 'invalid_request':
+    case 'invalid_ready_file':
+    case 'conflicting_gate':
+    case 'no_enrollment_key':
+    case 'no_api_url':
+    case 'api_url_not_allowed':
+    case 'no_user':
+    case 'admin_required':
+    case 'session_not_found':
+    case 'vm_not_found':
+    case 'method_not_allowed':
+    case 'terminal_not_connected':
+    case 'vm_conflict':
+    case 'already_registered':
+    case 'registration_in_progress':
+    case 'internal':
+    case 'exec_failed':
+      return fallback;
     default:
+      // The SDK also accepts unknown strings for additive backend error codes.
       return fallback;
   }
 }
@@ -140,6 +203,14 @@ export function createSession(vmOpts?: TerminalVMOptions) {
   return client.createSession(vmOpts);
 }
 
+export function listVMs(): Promise<VM[]> {
+  return client.listVMs();
+}
+
+export function deleteVM(vmId: string) {
+  return client.deleteVM(vmId, true);
+}
+
 export function deleteSession(sessionId: string) {
   return client.deleteSession(sessionId);
 }
@@ -149,3 +220,62 @@ export function execInSession(sessionId: string, req: ExecRequest) {
   const { command, ...options } = req;
   return client.exec(sessionId, command, options);
 }
+
+/**
+ * Give a session's VM a Grafana credential for the `gcx` CLI. Wrapped here
+ * because `provisionGcxCredential` takes the client and this module owns the
+ * only instance. The session's terminal must already be connected — the backend
+ * has no other route to the box and answers 409 before then.
+ */
+export function provisionGcx(sessionId: string, options: MintTokenOptions & { token?: string } = {}) {
+  return provisionGcxCredential(client, sessionId, options);
+}
+
+export function codaWorkspaceUrl(vmId: string, path?: string, line?: number): string {
+  const url = new URL(clientWorkspaceUrl(vmId, path, line), window.location.origin);
+  url.pathname = `${config.appSubUrl ?? ''}/a/${CODA_PLUGIN_ID}/ide`;
+  return `${url.pathname}${url.search}`;
+}
+
+// Additive wire types keep this PR compatible with the currently published SDK.
+export interface SandboxLifetime {
+  extensionMinutes: number;
+  extensionsUsed: number;
+  extensionsRemaining: number;
+  eligibleAt: string | null;
+  maxExpiresAt: string | null;
+  canExtend: boolean;
+  unavailableReason: string | null;
+}
+export type LifetimeVM = VM & { lifetime?: SandboxLifetime };
+export const lifetimeClient = {
+  getVM: async (vmId: string): Promise<LifetimeVM> => {
+    const response = await lastValueFrom(
+      getBackendSrv().fetch<LifetimeVM>({
+        method: 'GET',
+        url: `/api/plugins/grafana-coda-app/resources/v1/vms/${encodeURIComponent(vmId)}`,
+        showErrorAlert: false,
+      })
+    );
+    return response.data;
+  },
+  extendVM: async (
+    vmId: string,
+    requestKey: string,
+    expiresAt: string
+  ): Promise<Pick<LifetimeVM, 'id' | 'expiresAt' | 'lifetime'>> => {
+    try {
+      const response = await lastValueFrom(
+        getBackendSrv().fetch<Pick<LifetimeVM, 'id' | 'expiresAt' | 'lifetime'>>({
+          method: 'POST',
+          url: `/api/plugins/grafana-coda-app/resources/v1/vms/${encodeURIComponent(vmId)}/extend`,
+          data: { requestKey, expiresAt },
+          showErrorAlert: false,
+        })
+      );
+      return response.data;
+    } catch (err) {
+      throw toCodaError(err);
+    }
+  },
+};

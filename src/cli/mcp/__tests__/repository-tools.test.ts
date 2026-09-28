@@ -10,7 +10,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-import { __resetRepositoryClientForTests, REPOSITORY_URL_ENV_VAR } from '../lib/repository-client';
+import { __resetRepositoryClientForTests, REPOSITORY_URL_ENV_VAR } from '../../utils/repository-client';
 import { buildServer } from '../server';
 
 const sampleIndex = {
@@ -97,10 +97,12 @@ beforeEach(() => {
   global.fetch = fetchMock as unknown as typeof fetch;
 });
 
-describe('pathfinder_list_packages', () => {
+describe('pathfinder_read_repository — list-packages', () => {
   it('returns all packages from the index when no filters are supplied', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_list_packages', {});
+    const payload = await callTool('pathfinder_read_repository', {
+      operation: 'list-packages',
+    });
     expect(payload.baseUrl).toBe('https://interactive-learning.grafana.net/packages/');
     const packages = payload.packages as Array<{ id: string }>;
     expect(packages.map((p) => p.id).sort()).toEqual(['business-value', 'getting-started', 'tour-journey']);
@@ -108,21 +110,30 @@ describe('pathfinder_list_packages', () => {
 
   it('filters by type', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_list_packages', { type: 'journey' });
+    const payload = await callTool('pathfinder_read_repository', {
+      operation: 'list-packages',
+      type: 'journey',
+    });
     const packages = payload.packages as Array<{ id: string }>;
     expect(packages.map((p) => p.id)).toEqual(['tour-journey']);
   });
 
   it('filters by category', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_list_packages', { category: 'onboarding' });
+    const payload = await callTool('pathfinder_read_repository', {
+      operation: 'list-packages',
+      category: 'onboarding',
+    });
     const packages = payload.packages as Array<{ id: string }>;
     expect(packages.map((p) => p.id).sort()).toEqual(['getting-started', 'tour-journey']);
   });
 
   it('matches q against title and description, case-insensitive', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_list_packages', { q: 'TOUR' });
+    const payload = await callTool('pathfinder_read_repository', {
+      operation: 'list-packages',
+      q: 'TOUR',
+    });
     const packages = payload.packages as Array<{ id: string }>;
     // Matches "Grafana tour" title and "Take a tour." description.
     expect(packages.map((p) => p.id)).toEqual(['tour-journey']);
@@ -130,18 +141,23 @@ describe('pathfinder_list_packages', () => {
 
   it('surfaces network errors from the index fetch', async () => {
     fetchMock.mockRejectedValueOnce(new Error('connection refused'));
-    const payload = await callTool('pathfinder_list_packages', {});
+    const payload = await callTool('pathfinder_read_repository', {
+      operation: 'list-packages',
+    });
     expect(payload.status).toBe('error');
     expect(payload.code).toBe('NETWORK_ERROR');
   });
 });
 
-describe('pathfinder_get_package', () => {
+describe('pathfinder_read_repository — get-package', () => {
   it('returns content + manifest with validation reports on the happy path', async () => {
     mockFetchJsonOnce(sampleIndex);
     mockFetchJsonOnce(sampleContent);
     mockFetchJsonOnce(sampleManifest);
-    const payload = await callTool('pathfinder_get_package', { id: 'business-value' });
+    const payload = await callTool('pathfinder_read_repository', {
+      operation: 'get-package',
+      id: 'business-value',
+    });
     expect(payload.id).toBe('business-value');
     const content = payload.content as { url: string; raw: unknown; validation: { isValid: boolean } };
     const manifest = payload.manifest as { url: string; raw: unknown; validation: { isValid: boolean } };
@@ -158,7 +174,10 @@ describe('pathfinder_get_package', () => {
     const driftedContent = { ...sampleContent, blocks: 'not an array' };
     mockFetchJsonOnce(driftedContent);
     mockFetchJsonOnce(sampleManifest);
-    const payload = await callTool('pathfinder_get_package', { id: 'business-value' });
+    const payload = await callTool('pathfinder_read_repository', {
+      operation: 'get-package',
+      id: 'business-value',
+    });
     const content = payload.content as { raw: unknown; validation: { isValid: boolean; issues: unknown[] } };
     expect(content.raw).toEqual(driftedContent);
     expect(content.validation.isValid).toBe(false);
@@ -167,17 +186,23 @@ describe('pathfinder_get_package', () => {
 
   it('returns NOT_FOUND for an unknown id', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_get_package', { id: 'does-not-exist' });
+    const payload = await callTool('pathfinder_read_repository', {
+      operation: 'get-package',
+      id: 'does-not-exist',
+    });
     expect(payload.status).toBe('error');
     expect(payload.code).toBe('NOT_FOUND');
   });
 });
 
-describe('pathfinder_get_manifest', () => {
+describe('pathfinder_read_repository — get-manifest', () => {
   it('returns manifest only on the happy path', async () => {
     mockFetchJsonOnce(sampleIndex);
     mockFetchJsonOnce(sampleManifest);
-    const payload = await callTool('pathfinder_get_manifest', { id: 'business-value' });
+    const payload = await callTool('pathfinder_read_repository', {
+      operation: 'get-manifest',
+      id: 'business-value',
+    });
     const manifest = payload.manifest as { url: string; raw: unknown };
     expect(manifest.url).toBe('https://interactive-learning.grafana.net/packages/business-value/manifest.json');
     expect(manifest.raw).toEqual(sampleManifest);
@@ -186,7 +211,10 @@ describe('pathfinder_get_manifest', () => {
 
   it('returns NOT_FOUND for an unknown id', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_get_manifest', { id: 'nope' });
+    const payload = await callTool('pathfinder_read_repository', {
+      operation: 'get-manifest',
+      id: 'nope',
+    });
     expect(payload.status).toBe('error');
     expect(payload.code).toBe('NOT_FOUND');
   });

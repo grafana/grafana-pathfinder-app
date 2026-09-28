@@ -19,14 +19,15 @@ import { renderHook, act } from '@testing-library/react';
 import { useAutoOpenListener } from './useAutoOpenListener';
 import { guideLaunchStore } from '../../../global-state/guide-launch';
 import { linkInterceptionState } from '../../../global-state/link-interception';
-import type { RawContent } from '../../../types/content.types';
+import type { PreparedRawContent } from '../../../types/content.types';
 import type { PackageOpenInfo } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
 const DOC_URL = 'https://grafana.com/docs/grafana/latest/';
 
-const preparedContent: RawContent = {
+const preparedContent: PreparedRawContent = {
   content: '{"id":"g","title":"g","blocks":[]}',
+  countingSource: { kind: 'pre-inlining', guideJson: '{"id":"g","title":"g","blocks":[]}' },
   metadata: { title: 'g' },
   type: 'interactive',
   url: DOC_URL,

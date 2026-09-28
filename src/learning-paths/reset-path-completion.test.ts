@@ -40,11 +40,13 @@ jest.mock('../lib/analytics', () => ({
 import { __resetRecorderForTests, onCompletionRecorded, type CompletionFact } from '../completion-records';
 import { markMilestoneDone } from '../docs-retrieval';
 import {
+  guideCompletionMarkStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
   journeyCompletionStorage,
   milestoneCompletionStorage,
 } from '../lib/user-storage';
+import { pathMemberContentKeys } from '../global-state/path-member-join';
 import { useLearningPaths } from './learning-paths.hook';
 
 const PATH_ID = 'fe-alerting-path';
@@ -127,14 +129,19 @@ describe('resetPath — App Platform path (no url)', () => {
 
     __resetRecorderForTests();
     const facts: CompletionFact[] = [];
-    const unsubscribe = onCompletionRecorded((fact) => facts.push(fact));
+    const unsubscribe = onCompletionRecorded((fact) => {
+      facts.push(fact);
+      return true;
+    });
 
-    await markMilestoneDone(PATH_KEY, GUIDES[0]!, GUIDES.length, {
+    const memberUrls = GUIDES.map((id) => `backend-guide:${id}`);
+    await markMilestoneDone(PATH_KEY, GUIDES[0]!, memberUrls[0]!, memberUrls, {
       packageManifest: { id: PATH_ID, repository: 'app-platform' },
     });
     unsubscribe();
 
-    await expect(milestoneCompletionStorage.getCompleted(PATH_KEY)).resolves.toEqual(new Set([GUIDES[0]]));
+    const interactives = await interactiveCompletionStorage.getAll();
+    expect(memberUrls.filter((url) => interactives[url] === 100)).toEqual([memberUrls[0]]);
     expect(facts.filter((fact) => fact.kind === 'journey')).toEqual([]);
   });
 
@@ -154,6 +161,85 @@ describe('resetPath — App Platform path (no url)', () => {
     expect(MEMBER_KEYS.filter((key) => key in interactives)).toEqual([]);
     expect(journeys[SENTINEL_KEY]).toBe(100);
     expect(interactives[SENTINEL_KEY]).toBe(100);
+  });
+
+  it('clears the package-launch shape of a member, which the join also reads', async () => {
+    // A bundled member opened from the context panel persists under
+    // `bundled:<id>/content.json`. Sparing it would leave the member reading
+    // its pre-reset percentage back through `pathMemberContentKeys`.
+    const packageKeys = GUIDES.map((id) => `bundled:${id}/content.json`);
+    for (const key of packageKeys) {
+      await interactiveCompletionStorage.set(key, 100);
+      await interactiveStepStorage.setCompleted(key, 'section-one', new Set(['step-1']));
+    }
+
+    await renderAndResetPath();
+
+    const interactives = await interactiveCompletionStorage.getAll();
+    expect(packageKeys.filter((key) => key in interactives)).toEqual([]);
+    for (const key of packageKeys) {
+      await expect(interactiveStepStorage.getCompleted(key, 'section-one')).resolves.toEqual(new Set());
+    }
+  });
+
+  it('clears the raw key space and spares the unsafe sanitized one when they differ', async () => {
+    // `journeyCompletionStorage` and `milestoneCompletionStorage` are keyed by
+    // the raw launch URL; the interactive namespaces by its sanitized content
+    // key. A CR-authored member id long enough to cross MAX_KEY_LENGTH (200)
+    // makes the two lists diverge, which every other id here does not.
+    const longId = `fe-${'x'.repeat(230)}`;
+    const rawKey = `bundled:${longId}`;
+    const truncatedKey = rawKey.slice(0, 200);
+    expect(truncatedKey).not.toBe(rawKey);
+
+    mockFetchAppPlatformLearningPaths.mockResolvedValue({
+      paths: [
+        {
+          id: PATH_ID,
+          title: 'Alerting enablement',
+          description: '',
+          guides: [longId],
+          badgeId: '',
+          manifest: { id: PATH_ID, type: 'path', repository: 'app-platform', milestones: [longId] },
+        },
+      ],
+      guideMetadata: { [longId]: { title: longId, estimatedMinutes: 5 } },
+    });
+
+    await journeyCompletionStorage.set(rawKey, 100);
+    await interactiveCompletionStorage.set(truncatedKey, 100);
+
+    await renderAndResetPath();
+
+    const [journeys, interactives] = await Promise.all([
+      journeyCompletionStorage.getAll(),
+      interactiveCompletionStorage.getAll(),
+    ]);
+
+    // Raw-keyed namespace: cleared, because the raw key names only this
+    // member. Feeding it sanitized keys instead would spare this record.
+    expect(rawKey in journeys).toBe(false);
+
+    // Sanitized namespace: deliberately SPARED. The truncated key is not
+    // uniquely this member's — another id agreeing on its first 192 characters
+    // sanitizes to the same string — so the join refuses to form it and the
+    // reset must not delete it. The containment invariant still holds because
+    // the join refuses the same key, so nothing stale is readable back.
+    expect(truncatedKey in interactives).toBe(true);
+    expect(pathMemberContentKeys({ id: longId })).toEqual([]);
+  });
+
+  it('clears every member guide completion mark and spares unrelated content', async () => {
+    for (const key of [...MEMBER_KEYS, SENTINEL_KEY]) {
+      await guideCompletionMarkStorage.set(key, true);
+    }
+
+    await renderAndResetPath();
+
+    for (const key of MEMBER_KEYS) {
+      await expect(guideCompletionMarkStorage.get(key)).resolves.toBeNull();
+    }
+    await expect(guideCompletionMarkStorage.get(SENTINEL_KEY)).resolves.toBe(true);
   });
 
   it('clears interactive progress recorded against the path cover itself', async () => {
@@ -194,6 +280,51 @@ describe('resetPath — URL-based journey path', () => {
     ];
   });
 
+  it('does NOT clear sibling paths that share a URL prefix (regression test for #1928)', async () => {
+    // Bug: resetting `/alerting` cleared `/alerting-advanced` because
+    // key.startsWith(normalizedUrl) matched both.
+    const SIBLING_PATH_URL = 'https://grafana.com/docs/learning-journeys/alerting-advanced/';
+    const SIBLING_MILESTONE = `${SIBLING_PATH_URL}milestone-1/`;
+
+    // Seed progress for both the target path and the sibling
+    await interactiveCompletionStorage.set(PATH_URL, 100);
+    await journeyCompletionStorage.set(PATH_URL, 100);
+    await guideCompletionMarkStorage.set(PATH_URL, true);
+    for (const url of MILESTONE_URLS) {
+      await interactiveCompletionStorage.set(url, 100);
+      await journeyCompletionStorage.set(url, 100);
+      await guideCompletionMarkStorage.set(url, true);
+    }
+
+    await interactiveCompletionStorage.set(SIBLING_PATH_URL, 50);
+    await journeyCompletionStorage.set(SIBLING_PATH_URL, 50);
+    await guideCompletionMarkStorage.set(SIBLING_PATH_URL, true);
+    await interactiveCompletionStorage.set(SIBLING_MILESTONE, 75);
+    await journeyCompletionStorage.set(SIBLING_MILESTONE, 75);
+    await guideCompletionMarkStorage.set(SIBLING_MILESTONE, true);
+
+    // Reset the target path
+    await renderAndResetPath(URL_PATH_ID);
+
+    // Target path and its milestones must be cleared
+    await expect(interactiveCompletionStorage.get(PATH_URL)).resolves.toBe(0);
+    await expect(journeyCompletionStorage.get(PATH_URL)).resolves.toBe(0);
+    await expect(guideCompletionMarkStorage.get(PATH_URL)).resolves.toBeNull();
+    for (const url of MILESTONE_URLS) {
+      await expect(interactiveCompletionStorage.get(url)).resolves.toBe(0);
+      await expect(journeyCompletionStorage.get(url)).resolves.toBe(0);
+      await expect(guideCompletionMarkStorage.get(url)).resolves.toBeNull();
+    }
+
+    // Sibling path and its milestone must NOT be cleared
+    await expect(interactiveCompletionStorage.get(SIBLING_PATH_URL)).resolves.toBe(50);
+    await expect(journeyCompletionStorage.get(SIBLING_PATH_URL)).resolves.toBe(50);
+    await expect(guideCompletionMarkStorage.get(SIBLING_PATH_URL)).resolves.toBe(true);
+    await expect(interactiveCompletionStorage.get(SIBLING_MILESTONE)).resolves.toBe(75);
+    await expect(journeyCompletionStorage.get(SIBLING_MILESTONE)).resolves.toBe(75);
+    await expect(guideCompletionMarkStorage.get(SIBLING_MILESTONE)).resolves.toBe(true);
+  });
+
   it('clears every milestone key in one pass, without restoring siblings, and spares other journeys', async () => {
     for (const url of [...MILESTONE_URLS, OTHER_JOURNEY_KEY]) {
       await interactiveCompletionStorage.set(url, 100);
@@ -211,5 +342,18 @@ describe('resetPath — URL-based journey path', () => {
     expect(MILESTONE_URLS.filter((url) => url in interactives)).toEqual([]);
     expect(journeys[OTHER_JOURNEY_KEY]).toBe(100);
     expect(interactives[OTHER_JOURNEY_KEY]).toBe(100);
+  });
+
+  it('clears a milestone mark recovered by prefix, even with no interactive progress to find it by', async () => {
+    for (const url of [...MILESTONE_URLS, OTHER_JOURNEY_KEY]) {
+      await guideCompletionMarkStorage.set(url, true);
+    }
+
+    await renderAndResetPath(URL_PATH_ID);
+
+    for (const url of MILESTONE_URLS) {
+      await expect(guideCompletionMarkStorage.get(url)).resolves.toBeNull();
+    }
+    await expect(guideCompletionMarkStorage.get(OTHER_JOURNEY_KEY)).resolves.toBe(true);
   });
 });

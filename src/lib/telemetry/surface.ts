@@ -56,6 +56,10 @@ export function isPathfinderOpen(): boolean {
   return getPathfinderSurface() !== 'closed';
 }
 
+export function hasReportedPathfinderSurface(): boolean {
+  return reportedSurface !== null;
+}
+
 export function reportPathfinderSurface(surface: PathfinderSurface): void {
   if (surface === reportedSurface) {
     return;

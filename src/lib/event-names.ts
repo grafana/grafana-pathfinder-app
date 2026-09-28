@@ -15,6 +15,24 @@ export const PANEL_MODE_CHANGE_EVENT = 'pathfinder-panel-mode-change';
 // already-mounted floating panel must be signalled to consume directly.
 export const REQUEST_FLOATING_GUIDE_EVENT = 'pathfinder-request-floating-guide';
 
+// Dispatched by HomePanel's openFullScreen after panelModeManager.setPendingGuide,
+// for the same reason REQUEST_FLOATING_GUIDE_EVENT exists: @grafana/scenes
+// caches the full-screen SceneAppPage by pathname only (it ignores the ?doc=
+// query string), so the full-screen surface's mount effect — which consumes
+// the pending guide — only ever fires once per session. Every launch after
+// the first would otherwise navigate to an already-initialized surface with
+// nobody listening. Consumed by FullScreenPanel's existing already-mounted
+// consume listener (shared with `pathfinder-request-full-screen`).
+export const REQUEST_FULLSCREEN_GUIDE_EVENT = 'pathfinder-request-fullscreen-guide';
+
+// Dispatched by global-state/panel-mode.ts's requestSidebarHandoffAndWait
+// when the user clicks "Do it" on a step whose action needs the live Grafana
+// UI while in full-screen mode — full screen has no live Grafana UI behind it
+// for that action to act on. Fires at click time, not proactively when a
+// milestone loads: surface is a property of what the user is about to do.
+// Consumed by FullScreenPanel, which reuses its existing handleExitToSidebar.
+export const REQUEST_SIDEBAR_HANDOFF_EVENT = 'pathfinder-request-sidebar-handoff';
+
 // Signals that window.__pathfinderPluginConfig has a new value; carries no
 // payload, because any script sharing the document can dispatch it. Owned by
 // publishPathfinderPluginConfig in hooks/usePathfinderPluginConfig.ts.
@@ -26,6 +44,13 @@ export const PATHFINDER_CONFIG_UPDATED_EVENT = 'pathfinder-config-updated';
 // — the optional launchKey redeems a prepared launch from guideLaunchStore;
 // the payload itself never rides this forgeable event.
 export const AUTO_OPEN_DOCS_EVENT = 'pathfinder-auto-open-docs';
+
+// Dispatched by integrations/coda's TerminalProvider on every connection-status
+// change, with detail { status }. `is-terminal-active` and `coda-exit-zero:`
+// read live module state, so they can see a connection — but nothing tells them
+// to look again when one arrives, and provisioning a VM takes about a minute.
+// Consumed by requirements-manager/step-checker.hook.ts.
+export const TERMINAL_STATUS_CHANGED_EVENT = 'pathfinder-terminal-status-changed';
 
 export const FloatingPanelEvents = {
   Dodge: 'pathfinder-floating-dodge',

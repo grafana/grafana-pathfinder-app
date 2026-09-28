@@ -65,6 +65,12 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     overflowWrap: 'break-word',
   },
 
+  '& .guide-divider': {
+    border: 0,
+    borderTop: `1px solid ${theme.colors.border.medium}`,
+    margin: `${theme.spacing(4)} 0`,
+  },
+
   '& ul, & ol': {
     marginBottom: theme.spacing(2),
     paddingLeft: theme.spacing(3),
@@ -529,6 +535,30 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
       '&:before': {
         content: '"💡 "',
       },
+    },
+  },
+
+  // Callout blocks (JSON-guide `callout` blocks, rendered by CalloutBlock).
+  // Distinct from the `.admonition-*` classes above, which style
+  // externally-sourced docs HTML from a different content pipeline. The
+  // label is author-authored free text, so it's bold but not uppercased —
+  // uppercase reads fine on a short system word, not on a sentence.
+  '& .callout': {
+    margin: `${theme.spacing(2)} 0`,
+    padding: theme.spacing(2),
+    borderRadius: theme.shape.radius.default,
+    borderLeft: `4px solid ${theme.colors.warning.main}`,
+    backgroundColor: theme.colors.warning.transparent,
+
+    '& .callout-label': {
+      fontSize: theme.typography.body.fontSize,
+      fontWeight: theme.typography.fontWeightBold,
+      color: theme.colors.warning.text,
+      marginBottom: theme.spacing(1),
+    },
+
+    '& p:last-child': {
+      marginBottom: 0,
     },
   },
 

@@ -1,3 +1,9 @@
+export type StepStatus = 'idle' | 'checking' | 'blocked' | 'enabled' | 'completed';
+
+export type CheckVerdict = 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
+
+export type ConditionInput = string | readonly string[];
+
 /**
  * Type-safe requirement definitions for compile-time checking
  * This prevents unknown requirement types from reaching runtime
@@ -63,6 +69,7 @@ export const isValidRequirement = (req: string): req is ValidRequirement => {
  * importing each other (#1359).
  */
 export interface CheckResultError {
+  verdict?: CheckVerdict;
   requirement: string;
   pass: boolean;
   error?: string;
@@ -77,7 +84,7 @@ export interface CheckResultError {
 
 // Type-safe requirement checker options
 export interface TypeSafeRequirementsCheckOptions {
-  requirements: string; // We keep this as string for backward compatibility, but validate at runtime
+  requirements: ConditionInput;
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;
@@ -159,6 +166,45 @@ export const REQUIREMENT_DESCRIPTIONS: Readonly<Record<string, string>> = Object
   'coda-exit-zero:':
     "A command exits 0 against the user's active challenge VM (e.g. coda-exit-zero:curl -sf localhost:9090/-/healthy)",
 });
+
+/** One requirement token as an authoring surface publishes it. */
+export interface RequirementTokenDoc {
+  /**
+   * The canonical token string: a whole token for a fixed requirement,
+   * or the prefix including its trailing `:` or `-` for a parameterized one.
+   */
+  token: string;
+  kind: 'fixed' | 'parameterized';
+  description: string;
+  /** A copyable token. A fixed requirement is its own example. */
+  example: string;
+}
+
+/**
+ * The whole requirement vocabulary, as a publishable list.
+ *
+ * Enumerated from the enums rather than written out, so a new
+ * `FixedRequirementType` or `ParameterizedRequirementPrefix` member appears here
+ * — and in every surface that publishes this — without a second edit. A member
+ * with no `REQUIREMENT_DESCRIPTIONS` entry publishes a blank description; a prefix
+ * with no `PARAMETERIZED_REQUIREMENT_EXAMPLES` entry publishes the `<prefix><value>`
+ * placeholder below, which reads as an example and is not one. Both are gaps
+ * `requirements.types.test.ts` fails on rather than gaps a reader has to notice.
+ */
+export const REQUIREMENT_TOKEN_CATALOGUE: readonly RequirementTokenDoc[] = Object.freeze([
+  ...FIXED_REQUIREMENTS.map((token) => ({
+    token,
+    kind: 'fixed' as const,
+    description: REQUIREMENT_DESCRIPTIONS[token] ?? '',
+    example: token,
+  })),
+  ...PARAMETERIZED_REQUIREMENT_PREFIXES.map((token) => ({
+    token,
+    kind: 'parameterized' as const,
+    description: REQUIREMENT_DESCRIPTIONS[token] ?? '',
+    example: PARAMETERIZED_REQUIREMENT_EXAMPLES.find((entry) => entry.prefix === token)?.example ?? `${token}<value>`,
+  })),
+]);
 
 /**
  * Levenshtein distance, capped at `max` for early-exit.

@@ -1,4 +1,6 @@
 /**
+ * Contract: mcp-native
+ *
  * `pathfinder_finalize_for_app_platform` — produces the publish handoff
  * payload defined in `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md`.
  *
@@ -17,11 +19,10 @@
  * Platform write payload — clients must not be tempted to publish an
  * invalid artifact.
  *
- * P7 session-mode: accepts `{sessionToken}` in place of `{artifact}` using
- * the shared `resolveReadOnlyInput` helper. On a successful finalize the
- * server deletes the session — the token is single-use through here. A
- * failed delete logs but does not fail the response: the sliding session
- * TTL is the safety net so we cannot strand a session.
+ * Accepts `{sessionToken}` in place of `{artifact}` using
+ * `resolveReadOnlyInput`. On a successful finalize the server deletes the
+ * session — the token is single-use through here. A failed delete logs but
+ * does not fail the response: the sliding session TTL is the safety net.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -29,12 +30,15 @@ import { z } from 'zod';
 
 import { runValidate } from '../../commands/validate';
 import { renderMachineJson } from '../../utils/output';
+import { projectManifestForCrd } from '../lib/crd-manifest';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
+import { encodeAppPlatformGuideBlocks } from '../../../types/app-platform-guide-compat';
+import type { JsonBlock } from '../../../types/json-guide.types';
 import type { AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
-import { textResult, withToolErrorEnvelope } from './result';
+import { textResult, withToolErrorEnvelope, type ToolResult } from './result';
 import { ArtifactInputBase, SessionTokenBase } from './two-mode-input';
 
 const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.app/v1alpha1';
@@ -85,7 +89,7 @@ async function finalizeImpl(args: {
   status: 'draft' | 'published';
   sessionStore: AuthoringSessionStore;
   mcpSessionId: string | undefined;
-}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+}): Promise<ToolResult> {
   const { artifact, sessionToken, status, sessionStore, mcpSessionId } = args;
   const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
   if (!resolved.ok) {
@@ -126,6 +130,19 @@ async function finalizeImpl(args: {
 
   const confirmationPrompt = `Publish guide "${title}" to <namespace> as <status>?`;
 
+  // The artifact was authored as a package, so it still carries manifest-level
+  // fields. Emit the manifest the CRD understands rather than dropping it: a
+  // package authored as a `path` must not publish as a flat guide.
+  //
+  // `type` is not declared on `ContentJson`, but clients send it alongside the
+  // typed fields, so it has to be stripped through a widened view.
+  const { type: _packageType, ...specContent } = content as unknown as Record<string, unknown>;
+  const persistedSpecContent = {
+    ...specContent,
+    blocks: encodeAppPlatformGuideBlocks(specContent.blocks as JsonBlock[]),
+  };
+  const crdManifest = projectManifestForCrd(manifest);
+
   const handoff = {
     status: 'ready',
     id,
@@ -151,9 +168,13 @@ async function finalizeImpl(args: {
       metadata: {
         name: id,
       },
+      // `type` belongs to the package manifest, not the guide spec — the CRD
+      // declares no `spec.type`, so leaving it in earns a pruning warning on
+      // every write. `manifest` carries it, projected onto the CRD's shape.
       spec: {
-        ...content,
+        ...persistedSpecContent,
         status,
+        ...(crdManifest ? { manifest: crdManifest } : {}),
       },
     },
     viewer: {
@@ -185,7 +206,7 @@ async function finalizeImpl(args: {
           'Ask the user whether to save the guide as a draft only, or save and then publish (default draft). A draft is private authoring state; a published guide is visible to every user on this Grafana instance.',
           'Preferred path — save the draft. If pathfinder_manage_guide_drafts is available, call it with op=apply, namespace=<resolved namespace>, guide=<resource object from this response>. The harness will prompt the user to confirm before the write executes. On success you have a saved draft regardless of what status field you sent.',
           'Preferred path — publish if requested. If the user chose to publish AND pathfinder_publish_guide is available, call it with op=publish, namespace=<resolved namespace>, name=<resource.metadata.name> after the draft save succeeds. The harness always prompts for explicit user confirmation on this call — do not try to bypass it.',
-          'Generic-write fallback — only if the preferred tools above are not registered in your environment. POST resource to appPlatform.collectionPathTemplate (substitute {namespace}) using appPlatform.createMethod (POST). To overwrite an existing resource, GET appPlatform.itemPathTemplate first, copy metadata.resourceVersion into resource.metadata.resourceVersion, then PUT to appPlatform.itemPathTemplate using appPlatform.updateMethod (PUT). Set resource.spec.status to "draft" or "published" as the user chose. Show the user the confirmationPrompt copy before writing and proceed only on explicit yes.',
+          'Generic-write fallback — only if the preferred tools above are not registered in your environment. POST resource to appPlatform.collectionPathTemplate (substitute {namespace}) using appPlatform.createMethod (POST). To overwrite an existing resource, GET appPlatform.itemPathTemplate first, copy metadata.resourceVersion into resource.metadata.resourceVersion, merge the response metadata.annotations into resource.metadata.annotations so existing annotations survive the whole-object PUT, then PUT to appPlatform.itemPathTemplate using appPlatform.updateMethod (PUT). Set resource.spec.status to "draft" or "published" as the user chose. Show the user the confirmationPrompt copy before writing and proceed only on explicit yes.',
           "On success (either path), resolve viewer.floatingPath against the user's Grafana instance origin to produce an absolute URL (e.g., https://example.grafana.net + /a/grafana-pathfinder-app?...) and surface that URL to the user. Do NOT surface a relative path.",
         ],
         errorHandling: [
@@ -195,7 +216,7 @@ async function finalizeImpl(args: {
           'Preferred-path refusal to mutate a currently-published guide: call pathfinder_publish_guide op=unpublish first (with user confirmation), then retry pathfinder_manage_guide_drafts op=apply.',
           'Generic-write 404 on collection POST: the InteractiveGuide CRD or the aggregator is not installed in this instance. Switch to the grafanaOss branch (localExport). Do not retry.',
           'Generic-write 403: the user lacks interactiveguides.create permission. Tell the user, then offer localExport. Do not retry.',
-          'Generic-write 409 on PUT: stale resourceVersion. Re-GET the resource, copy the new metadata.resourceVersion, ask the user to confirm overwrite, retry once. A second 409 means concurrent edits — tell the user and offer localExport.',
+          'Generic-write 409 on PUT: stale resourceVersion. Re-GET the resource, copy the new metadata.resourceVersion, merge the current metadata.annotations into the outgoing resource so the retry preserves them, ask the user to confirm overwrite, and retry once. A second 409 means concurrent edits — tell the user and offer localExport.',
           '5xx, network error, or timeout (any path): retry once with short backoff. If it still fails, surface the error and offer localExport.',
           'Any other 4xx (any path): surface the error verbatim to the user and offer localExport. Do not retry.',
         ],

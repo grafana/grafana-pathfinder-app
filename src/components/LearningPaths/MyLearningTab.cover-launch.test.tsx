@@ -1,7 +1,8 @@
 /**
- * Tests for the cover-page launch routing (issue #1467): a fresh URL-based path
- * lands on the cover page (base URL / milestone 0); an in-progress path resumes
- * the current module's resolved URL.
+ * Tests for the cover-page launch routing: every URL-based path launch from
+ * My Learning lands on its own cover page (base URL / milestone 0), fresh or
+ * resumed alike. The cover's own CTA (LearningPathTableOfContents) is what
+ * resolves the current module from there, using real completion data.
  */
 
 import React from 'react';
@@ -108,7 +109,7 @@ describe('MyLearningTab cover-page launch routing', () => {
     );
   });
 
-  it('resumes an in-progress path on the resolved module URL', async () => {
+  it('resuming an in-progress path also lands on the cover page', async () => {
     pathProgress = 40;
     prepareMock.mockResolvedValue(okResult);
 
@@ -118,7 +119,10 @@ describe('MyLearningTab cover-page launch routing', () => {
     });
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
-    expect(prepareMock).toHaveBeenCalledWith(moduleUrl, expect.objectContaining({ title: 'Guide one' }));
-    expect(reportMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ launch_target: 'milestone' }));
+    expect(prepareMock).toHaveBeenCalledWith(pathBaseUrl, expect.objectContaining({ title: 'First path' }));
+    expect(reportMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ launch_target: 'cover_page' })
+    );
   });
 });

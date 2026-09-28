@@ -242,7 +242,7 @@ function installHighlightedGuideNavListener(tryAutoOpen: (path: string) => void)
     const history = locationService.getHistory();
     if (history) {
       const unlisten = history.listen(handler);
-      (window as any).__pathfinderHighlightedGuideNavUnlisten = unlisten;
+      window.__pathfinderHighlightedGuideNavUnlisten = unlisten;
     }
   } catch {
     window.addEventListener('popstate', handler);

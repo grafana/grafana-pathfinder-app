@@ -8,6 +8,7 @@ import {
   useTerminalContext,
 } from './TerminalContext';
 import type { ConnectionStatus } from './useTerminalLive.hook';
+import { TERMINAL_STATUS_CHANGED_EVENT } from '../../lib/event-names';
 
 jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
@@ -83,5 +84,53 @@ describe('TerminalProvider', () => {
       );
       expect(getTerminalSessionId()).toBeNull();
     });
+  });
+});
+
+describe('TERMINAL_STATUS_CHANGED_EVENT', () => {
+  // The requirements checker runs outside React, so it cannot observe the module
+  // state above changing. Without this event a step that checked while the
+  // terminal was disconnected keeps that answer for the whole guide — and
+  // provisioning a VM takes about a minute, so that is every terminal step.
+  it('fires when a panel reports a new status, carrying it in the detail', () => {
+    const seen: string[] = [];
+    const listener = (e: Event) => seen.push((e as CustomEvent).detail.status);
+    window.addEventListener(TERMINAL_STATUS_CHANGED_EVENT, listener);
+
+    const { rerender } = render(
+      <TerminalProvider>
+        <FakePanel status="connecting" sessionId={null} />
+      </TerminalProvider>
+    );
+    rerender(
+      <TerminalProvider>
+        <FakePanel status="connected" sessionId={SESSION_ID} />
+      </TerminalProvider>
+    );
+
+    window.removeEventListener(TERMINAL_STATUS_CHANGED_EVENT, listener);
+    expect(seen).toContain('connected');
+    // And the module state a listener would then read agrees with the event.
+    expect(getTerminalConnectionStatus()).toBe('connected');
+  });
+
+  it('fires on disconnect too, so a step can block again', () => {
+    const seen: string[] = [];
+    const listener = (e: Event) => seen.push((e as CustomEvent).detail.status);
+
+    const { rerender } = render(
+      <TerminalProvider>
+        <FakePanel status="connected" sessionId={SESSION_ID} />
+      </TerminalProvider>
+    );
+    window.addEventListener(TERMINAL_STATUS_CHANGED_EVENT, listener);
+    rerender(
+      <TerminalProvider>
+        <FakePanel status="disconnected" sessionId={null} />
+      </TerminalProvider>
+    );
+
+    window.removeEventListener(TERMINAL_STATUS_CHANGED_EVENT, listener);
+    expect(seen).toContain('disconnected');
   });
 });

@@ -106,7 +106,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
     locationService.push(PLUGIN_BASE_URL);
   };
 
-  const [kioskEnabled, setKioskEnabled] = useState(!!(window as any).__pathfinderKioskConfig);
+  const [kioskEnabled, setKioskEnabled] = useState(!!window.__pathfinderKioskConfig);
 
   useEffect(() => {
     const onReady = () => setKioskEnabled(true);

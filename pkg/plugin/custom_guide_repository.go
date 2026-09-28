@@ -13,12 +13,18 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
-// Granular unavailability reasons. The shared reasonBackendUnavailable lumps
-// four distinct structural causes plus every upstream error under one token,
-// which is undiagnosable from the capability envelope alone (the only signal
-// available without backend log access). These split it so the reason field
-// pinpoints the cause from the client. Machine tokens; the frontend gates on
-// capability.available and ignores the specific string.
+// Granular unavailability reasons, split out of the shared
+// reasonBackendUnavailable so the reason field names the cause rather than
+// lumping four structural causes and every upstream error under one token.
+// Machine tokens; the frontend gates on capability.available and ignores the
+// specific string.
+//
+// Only reasonFeatureToggleDisabled and reasonOBOUnavailable actually reach a
+// client on this route. The identity gate runs before resolveCustomGuideBackend
+// and needs both a namespace and an app URL itself, so a stack missing either
+// reports identity-unverifiable first; the reasonGrafanaConfigUnavailable guard
+// is dead for its own reason (config.GrafanaConfigFromContext never returns
+// nil). See customGuideCapability below for what the envelope can carry.
 const (
 	reasonGrafanaConfigUnavailable = "grafana-config-unavailable"
 	reasonFeatureToggleDisabled    = "feature-toggle-disabled"
@@ -81,8 +87,12 @@ var customGuideListMaxTotalEntries = 50_000
 // customGuideCapability is the availability signal the front-end gates the
 // Custom Guides / My Learning surfaces on. `available` is read-derived: it
 // measures identity presence plus read-path reachability of the
-// interactiveguides API on this stack. Reasons use the shared machine tokens
-// reasonIdentityUnavailable / reasonBackendUnavailable (completion_records.go).
+// interactiveguides API on this stack. Reasons are reasonIdentityUnavailable,
+// reasonIdentityUnverifiable and reasonSigningKeysUnreachable (all via
+// identityStatus.capabilityReason()), reasonFeatureToggleDisabled,
+// reasonOBOUnavailable, and `upstream-<status>` for a terminal upstream.
+// reasonBackendUnavailable is unreachable here: its only assignment is
+// overwritten by `upstream-<status>`.
 type customGuideCapability struct {
 	Available bool   `json:"available"`
 	Reason    string `json:"reason,omitempty"`
@@ -92,9 +102,10 @@ type customGuideCapability struct {
 // (BACKEND_PROXY_PATTERN.md §6): a capability object, the always-non-null data
 // array, and asOf — when this request's underlying LIST completed.
 type customGuideRepositoryResponse struct {
-	Capability customGuideCapability        `json:"capability"`
-	Guides     []customGuideRepositoryEntry `json:"guides"`
-	AsOf       string                       `json:"asOf,omitempty"`
+	Diagnostics *guideProxyDiagnostic        `json:"diagnostics,omitempty"`
+	Capability  customGuideCapability        `json:"capability"`
+	Guides      []customGuideRepositoryEntry `json:"guides"`
+	AsOf        string                       `json:"asOf,omitempty"`
 }
 
 // customGuideListerOverride injects a fake lister in tests. nil selects the
@@ -111,16 +122,19 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Identity gate first. This is a namespace-global catalogue, so we only
-	// STRUCTURALLY validate the ID token (validIDToken); there is no per-user
-	// need, so we deliberately do not extract `sub`. Missing/invalid identity on
-	// a GET read is a soft-200 capability envelope (not 401): these routes gate
-	// whether a feature renders at all, and a bare error status conflates "never
-	// works here" with a transient blip (BACKEND_PROXY_PATTERN.md §3, §7).
-	if !validIDToken(r) {
+	// Identity gate first. This is a namespace-global catalogue, so validIDToken
+	// only needs a verified caller; there is no per-user need, so we deliberately
+	// do not extract `sub`. Every identity failure on a GET read is a soft-200
+	// capability envelope (not 401, not 503), because none of them is retryable
+	// and the reason token says which one it was (BACKEND_PROXY_PATTERN.md §3,
+	// §7). The envelope is STICKIER than the 503 it replaced, not equivalent to
+	// it: the client caches `available:false` for its TTL but never caches a
+	// thrown 503, so a recovered stack stays dark until the entry expires.
+	if status := a.validIDToken(r); status != identityVerified {
 		a.writeJSON(w, customGuideRepositoryResponse{
-			Capability: customGuideCapability{Available: false, Reason: reasonIdentityUnavailable},
-			Guides:     []customGuideRepositoryEntry{},
+			Diagnostics: proxyGateDiagnostic("identity-unavailable", "interactiveguides", "list", "identity"),
+			Capability:  customGuideCapability{Available: false, Reason: status.capabilityReason()},
+			Guides:      []customGuideRepositoryEntry{},
 		}, http.StatusOK)
 		return
 	}
@@ -128,8 +142,9 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 	lister, namespace, available, reason := a.resolveCustomGuideBackend(r)
 	if !available {
 		a.writeJSON(w, customGuideRepositoryResponse{
-			Capability: customGuideCapability{Available: false, Reason: reason},
-			Guides:     []customGuideRepositoryEntry{},
+			Diagnostics: proxyGateDiagnostic("proxy-unavailable", "interactiveguides", "list", "configuration"),
+			Capability:  customGuideCapability{Available: false, Reason: reason},
+			Guides:      []customGuideRepositoryEntry{},
 		}, http.StatusOK)
 		return
 	}
@@ -137,11 +152,11 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 	// Detach the drain from the caller's cancellation, bounded by the aggregate
 	// deadline. Per-request (no cross-caller sharing): this fetch rides this
 	// caller's identity and is never handed to another caller.
+	logger := a.ctxLogger(r.Context())
 	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), customGuideAggregateDeadline)
-	entries, pages, err := drainCustomGuides(fetchCtx, namespace, lister)
+	entries, pages, err := drainCustomGuides(fetchCtx, namespace, lister, logger)
 	cancel()
 
-	logger := a.ctxLogger(r.Context())
 	if err != nil {
 		if isTerminalUpstreamError(err) {
 			// Structurally can't serve for this caller ("never works here") —
@@ -154,10 +169,11 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 			if errors.As(err, &upErr) {
 				reason = fmt.Sprintf("upstream-%d", upErr.status)
 			}
-			logger.Info("custom guide catalogue unavailable (terminal)", "namespace", namespace, "error", err)
+			logger.Info("custom guide catalogue unavailable (terminal)", "namespace", namespace, "reason", classifyGuideProxyError(err).Reason)
 			a.writeJSON(w, customGuideRepositoryResponse{
-				Capability: customGuideCapability{Available: false, Reason: reason},
-				Guides:     []customGuideRepositoryEntry{},
+				Diagnostics: appPlatformDiagnostic(err, "interactiveguides", "list"),
+				Capability:  customGuideCapability{Available: false, Reason: reason},
+				Guides:      []customGuideRepositoryEntry{},
 			}, http.StatusOK)
 			return
 		}
@@ -166,9 +182,8 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 		// Info (not Debug) so a wrong CAP token or unreachable auth-api — which 503s
 		// this route indefinitely — is diagnosable without raising the log level
 		// (matches getCompletionIndex on the completions route).
-		logger.Info("custom guide catalogue unavailable (transient)", "namespace", namespace, "error", err)
-		w.Header().Set("Retry-After", strconv.Itoa(customGuideRetryAfterSeconds))
-		a.writeError(w, "custom-guide-repository-unavailable", http.StatusServiceUnavailable)
+		logger.Info("custom guide catalogue unavailable (transient)", "namespace", namespace, "reason", classifyGuideProxyError(err).Reason)
+		a.writeCustomGuideUnavailable(w, err)
 		return
 	}
 
@@ -180,9 +195,21 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 	}, http.StatusOK)
 }
 
+// writeCustomGuideUnavailable serves BACKEND_PROXY_PATTERN.md §7's transient
+// hiccup — 503 plus a Retry-After hint, never a capability envelope — so every
+// retryable failure on this route answers in one shape.
+func (a *App) writeCustomGuideUnavailable(w http.ResponseWriter, err error) {
+	w.Header().Set("Retry-After", strconv.Itoa(customGuideRetryAfterSeconds))
+	a.writeJSON(w, map[string]interface{}{"error": "custom-guide-repository-unavailable", "diagnostics": appPlatformDiagnostic(err, "interactiveguides", "list")}, http.StatusServiceUnavailable)
+}
+
 // drainCustomGuides drains the namespace LIST across pages — up to the
 // aggregate entry budget — and returns the shaped catalogue entries.
-func drainCustomGuides(ctx context.Context, namespace string, lister customGuideLister) ([]customGuideRepositoryEntry, int, error) {
+func drainCustomGuides(ctx context.Context, namespace string, lister customGuideLister, logger log.Logger) ([]customGuideRepositoryEntry, int, error) {
+	if finalizer, ok := lister.(customGuideDrainFinalizer); ok {
+		defer finalizer.finalizeDrain(namespace)
+	}
+
 	entries := []customGuideRepositoryEntry{}
 	continueToken := ""
 	pages := 0
@@ -203,7 +230,7 @@ func drainCustomGuides(ctx context.Context, namespace string, lister customGuide
 				entries = entries[:customGuideListMaxTotalEntries]
 			}
 			if truncated {
-				log.DefaultLogger.Warn("custom guide catalogue LIST truncated at aggregate budget",
+				logger.Warn("custom guide catalogue LIST truncated at aggregate budget",
 					"namespace", namespace, "maxTotalEntries", customGuideListMaxTotalEntries, "pages", pages)
 			}
 			break

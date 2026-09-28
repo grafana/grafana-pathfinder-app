@@ -227,8 +227,6 @@ Bring the guide back into the sidebar:
 }
 ```
 
-If you specify `"requirements": ["exists-reftarget"]` on a multistep, also set `reftarget` to the first step's target so the requirement check has something to find.
-
 ### guided
 
 - **Purpose**: highlights elements and waits for the user to perform actions manually.

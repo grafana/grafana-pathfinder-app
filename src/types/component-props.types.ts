@@ -3,6 +3,7 @@
  * Centralized prop interfaces for components used across the application
  */
 
+import type { ConditionInput } from './requirements.types';
 import React from 'react';
 
 // ============================================================================
@@ -13,8 +14,8 @@ import React from 'react';
  * Base props shared by all interactive components
  */
 export interface BaseInteractiveProps {
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   hints?: string;
   onComplete?: () => void;
   disabled?: boolean;
@@ -26,7 +27,7 @@ export interface BaseInteractiveProps {
  * Single interactive step with show/do buttons
  */
 export interface InteractiveStepProps extends BaseInteractiveProps {
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover' | 'noop' | 'popout';
+  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'hover' | 'noop' | 'popout';
   refTarget: string;
   targetValue?: string;
   targetState?: boolean | string;
@@ -45,6 +46,8 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   title?: string;
   description?: string;
   children?: React.ReactNode;
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 
   // Unified state management props (added by parent)
   stepId?: string;
@@ -71,6 +74,14 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
   children: React.ReactNode;
   isSequence?: boolean;
   id?: string; // HTML id attribute for section identification
+  /**
+   * The section's runtime id, derived once by `sectionRuntimeId` and stamped
+   * on by the JSON parser. Load-bearing: it is the key an acknowledgement is
+   * recorded under and the key the block index registers the container's end
+   * position under, so a section that derived its own would evidence nothing.
+   * Absent for HTML-parsed content, which has no block path to derive from.
+   */
+  sectionId?: string;
   skippable?: boolean; // Whether this section can be skipped if requirements fail
   autoCollapse?: boolean; // Whether to auto-collapse on completion (default: true, can be overridden by user preference)
 }
@@ -88,7 +99,7 @@ export interface StepInfo {
   targetValue?: string;
   targetState?: boolean | string;
   targetComment?: string; // Optional comment to show during execution
-  requirements?: string;
+  requirements?: ConditionInput;
   postVerify?: string;
   skippable?: boolean; // Whether this step can be skipped
   showMe?: boolean; // Whether to show the "Show me" button and phase
@@ -98,6 +109,8 @@ export interface StepInfo {
   // Do Section stops here for the user. Without it the runner falls through to
   // `executeInteractiveAction`'s default branch, which warns and reports success.
   pausesSectionRun?: boolean;
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
 // ============================================================================

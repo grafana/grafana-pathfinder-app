@@ -1,11 +1,10 @@
 /**
  * @jest-environment node
  *
- * Tests for the P7 session-mode branch on pathfinder_inspect and
- * pathfinder_validate. The existing stateless-mode tests in
- * artifact-tools.test.ts and server.test.ts continue to cover the
- * artifact-in/artifact-out path; this file pins the session-mode
- * additions.
+ * Tests for the P7 session-mode branch on pathfinder_inspect (`inspect.ts`)
+ * and pathfinder_validate (`validate.ts`). The existing stateless-mode tests
+ * in server.test.ts continue to cover the artifact-in/artifact-out path;
+ * this file pins the session-mode additions.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -53,7 +52,7 @@ async function newHarness(): Promise<{
 }
 
 async function mintSession(call: (n: string, a: Record<string, unknown>) => Promise<ToolPayload>): Promise<string> {
-  const created = await call('pathfinder_create_package', { title: 'Inspect Test' });
+  const created = await call('pathfinder_create_package', { opts: { title: 'Inspect Test' } });
   if (!created.sessionToken) {
     throw new Error('mint failed');
   }
@@ -65,7 +64,7 @@ describe('pathfinder_inspect — session mode', () => {
     const h = await newHarness();
     try {
       const token = await mintSession(h.call);
-      const r = await h.call('pathfinder_inspect', { sessionToken: token });
+      const r = await h.call('pathfinder_inspect', { sessionToken: token, opts: {} });
       expect(r.status).toBe('ok');
       expect(r.artifact?.content.title).toBe('Inspect Test');
     } finally {
@@ -76,7 +75,7 @@ describe('pathfinder_inspect — session mode', () => {
   it('returns SESSION_NOT_FOUND for an unknown token', async () => {
     const h = await newHarness();
     try {
-      const r = await h.call('pathfinder_inspect', { sessionToken: TOKEN });
+      const r = await h.call('pathfinder_inspect', { sessionToken: TOKEN, opts: {} });
       expect(r.code).toBe('SESSION_NOT_FOUND');
     } finally {
       await h.close();
@@ -90,6 +89,7 @@ describe('pathfinder_inspect — session mode', () => {
       const r = await h.call('pathfinder_inspect', {
         sessionToken: token,
         artifact: { content: { id: 'x', title: 'x', blocks: [] } },
+        opts: {},
       });
       expect(r.code).toBe('INPUT_MODE_AMBIGUOUS');
     } finally {
@@ -100,7 +100,7 @@ describe('pathfinder_inspect — session mode', () => {
   it('errors INPUT_MODE_MISSING when neither is provided', async () => {
     const h = await newHarness();
     try {
-      const r = await h.call('pathfinder_inspect', {});
+      const r = await h.call('pathfinder_inspect', { opts: {} });
       expect(r.code).toBe('INPUT_MODE_MISSING');
     } finally {
       await h.close();

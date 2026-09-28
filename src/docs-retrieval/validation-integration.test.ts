@@ -1,4 +1,5 @@
 import { fetchContent } from './content-fetcher';
+import { buildBackendGuideContent } from './content-fetcher/backend-guide';
 import { parseJsonGuide } from './json-parser';
 
 // Mock validateGuide to control validation results if needed,
@@ -112,5 +113,51 @@ describe('Validation Integration Phase 1', () => {
       expect(result.error).toContain('Invalid guide');
       expect(result.error).toContain('title'); // Should mention missing title
     });
+  });
+});
+
+describe('already-published guide whose blocks[0] duplicates the title', () => {
+  const duplicateHeadingGuide = {
+    id: 'create-your-first-dashboard',
+    title: 'Create your first dashboard',
+    blocks: [
+      { type: 'markdown', content: '# Create your first dashboard\n\nBuild your first dashboard.' },
+      { type: 'markdown', content: 'Open the **Dashboards** page to begin.' },
+    ],
+  };
+
+  it('still parses and renders through parseJsonGuide, reporting only a warning', () => {
+    const result = parseJsonGuide(JSON.stringify(duplicateHeadingGuide));
+
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+    expect(result.data?.elements).toHaveLength(2);
+    expect(result.warnings.some((w) => w.includes('duplicates the guide title'))).toBe(true);
+  });
+
+  it('still loads through fetchContent from an external URL', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      url: 'https://example.com/content.json',
+      text: () => Promise.resolve(JSON.stringify(duplicateHeadingGuide)),
+      headers: { get: () => null },
+    });
+
+    const result = await fetchContent('https://example.com/content.json');
+
+    expect(result.error).toBeUndefined();
+    expect(result.content).not.toBeNull();
+    expect(JSON.parse(result.content?.content || '{}')).toEqual(duplicateHeadingGuide);
+  });
+
+  it('still loads through the App Platform custom-guide loader', () => {
+    const result = buildBackendGuideContent(
+      { metadata: { name: 'resource-name' }, spec: duplicateHeadingGuide },
+      'backend-guide:resource-name',
+      'resource-name'
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(result.content?.content || '{}').blocks).toHaveLength(2);
   });
 });

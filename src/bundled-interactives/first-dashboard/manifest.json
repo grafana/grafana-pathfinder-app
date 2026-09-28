@@ -13,11 +13,25 @@
   "provides": ["first-dashboard-created"],
   "targeting": {
     "match": {
-      "and": [{ "urlPrefix": "/" }, { "targetPlatform": "oss" }]
+      "and": [
+        {
+          "urlPrefix": "/"
+        },
+        {
+          "targetPlatform": "oss"
+        }
+      ]
     }
   },
   "testEnvironment": {
     "tier": "local",
     "minVersion": "12.2.0"
+  },
+  "stats": {
+    "version": 1,
+    "blockCount": 19,
+    "sectionCount": 2,
+    "completableBlockCount": 14,
+    "finalCompletablePosition": 17
   }
 }

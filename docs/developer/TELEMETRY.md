@@ -73,18 +73,102 @@ Privacy protection is split between enforced normalization and caller discipline
 
 ## Gating and environments
 
-Faro initializes only when `resolveFaroEnvironment()` resolves: Grafana Cloud with analytics enabled, on `.grafana.com` / `.grafana.net` / `.grafana-ops.net` / `.grafana-dev.net` hosts, and only when the default-on `pathfinder.frontend-telemetry` flag is set. Local development sends nothing unless `localStorage['pathfinder.faro.local'] = 'true'` in a dev build. The activity gate drops everything except errors until Pathfinder is opened, so collector sessions mean "used Pathfinder or Pathfinder errored", not "loaded a Grafana page".
+Faro initializes only when `resolveFaroEnvironment()` resolves: Grafana Cloud with analytics enabled, on `.grafana.com` / `.grafana.net` / `.grafana-ops.net` / `.grafana-dev.net` hosts, and only when the default-on `pathfinder.frontend-telemetry` flag is set. Local development sends nothing unless `localStorage['pathfinder.faro.local'] = 'true'` in a dev build. The activity gate drops everything except errors until a Pathfinder surface reports itself on mount — a persisted panel mode alone no longer opens it — so collector sessions mean "used Pathfinder or Pathfinder errored", not "loaded a Grafana page".
 
-Session replay adds a second remote switch (`pathfinder.session-replay`, also default-on) plus a volume dial (`pathfinder.session-replay-sampling-rate`, default `1`, range-checked at the point of use), but no new environment gate: it is registered from inside `initFaro`, after the `resolveFaroEnvironment()` early return, so a self-hosted or OSS Grafana never reaches it — such an instance does not construct a Faro instance in the first place, and the rrweb chunk is never fetched. The open that latches the activity gate is also what starts the recording, and once started it runs for the rest of the page, including after Pathfinder is closed again.
+Session replay adds a second remote switch (`pathfinder.session-replay`, also default-on) plus a volume dial (`pathfinder.session-replay-sampling-rate`, default `1`, range-checked at the point of use), but no new environment gate: it is registered from inside `initFaro`, after the `resolveFaroEnvironment()` early return, so a self-hosted or OSS Grafana never reaches it — such an instance does not construct a Faro instance in the first place, and the rrweb chunk is never fetched. The first Pathfinder surface open latches the activity gate and starts recording; closing the panel pauses recording after five seconds, while reopening resumes it immediately.
 
 Two consequences of it being default-on. Recordings are only viewable on a stack where Grafana has switched on the private-preview feature. And Grafana core ships its own replay recorder behind `FlagKeys.FaroSessionReplay`: two rrweb instances on one page double DOM serialization per mutation and compound rrweb's global `CSSStyleSheet.insertRule` proxy, which is Emotion's hot path. `resolveSessionReplayOptions` in `telemetry/faro-adapter.ts` yields automatically when `config.featureToggles.faroSessionReplay` reads `true`, so the safe state does not depend on anyone remembering — but that toggle is private-preview and may never be surfaced to the frontend, in which case the read is `undefined` and the automatic guard does nothing. Still set `pathfinder.session-replay` false wherever core's flag goes true.
 
 ### Stopping a recording
 
-**Both replay flags are read once, during plugin bootstrap.** OFREP visibility refresh is off, and the recorder has no removal path, so flipping either flag — or reverting the plugin — reaches a tab only on its next page load. A tab that was already recording keeps recording until it is closed or reloaded. Deliberate: re-evaluating the flag mid-session would mean either polling it or tearing the recorder down live, and a torn-down rrweb leaves a mutation stream with no snapshot to apply it to.
+**Both replay flags are read once, during plugin bootstrap.** OFREP visibility refresh is off, and the recorder is never removed from the Faro instance, so flipping either flag — or reverting the plugin — reaches a tab only on its next page load. Deliberate: re-evaluating a flag mid-session would mean polling it, and neither flag is worth a poll.
+
+The recorder does stop and start within a session, but on the surface lifecycle rather than on the flags. Closing the last Pathfinder surface pauses recording five seconds later, and reopening resumes it immediately. A pause stops rrweb outright and the resume emits a fresh full-DOM snapshot, so each open yields a playable clip rather than orphaned mutations. `inactivityThresholdMs` is deliberately `0`, which turns the SDK's own idle auto-pause off: its paired auto-resume rebinds document-wide interaction listeners and would restart recording on the first mouse move while Pathfinder was closed. Surface state is the sole pause authority — which also means an open panel on an idle tab keeps recording where the SDK default would have paused it after 60 seconds.
 
 What that means operationally:
 
-- **The kill switch is "no new recordings"**, not "recording stops now". Budget for the tail of long-lived tabs — a dashboard left open overnight is the worst case.
+- **The kill switch is "no new recordings"**, not "recording stops now". Budget for the tail of long-lived tabs, now bounded by Pathfinder use rather than tab lifetime: a tab with no surface open stops five seconds after the last close, so the worst case is a docked sidebar left open on an auto-refreshing dashboard overnight.
 - **Recordings already ingested are not undone by the flip.** Removing them is a collector-side deletion request against the Frontend Observability app, not something a flag or a release can do.
 - If a recording must stop immediately on a known stack, the only in-band lever is a plugin release plus a forced reload; otherwise the flag flip plus natural page turnover is the mechanism.
+
+## Investigating guide loading and rendering
+
+A guide open carries an in-memory `load_id` from launch preparation through content fetching and the renderer. A successful `pathfinder_content_fetch` measurement means that content was fetched and shaped; it does not prove the guide appeared. Use `pathfinder_guide_render` for the final visible outcome. The mirrored `open_guide` action now finishes with this outcome on instrumented launches (`phase=render`); its `duration_ms` records active loading time.
+
+| Signal                                          | What it explains                                                                                                                                                            |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pathfinder_guide_request`                      | Each HTTP attempt: source, file role, duration, HTTP status, and transport reason. Attempts in a fallback ladder share a load ID.                                           |
+| `pathfinder_guide_render`                       | `rendered`, `error`, `timeout`, or `cancelled` terminal outcome. `awaiting-user` and `degraded` are intermediate states, not failed opens.                                  |
+| `pathfinder_content_fetch`                      | Existing latency measurement, enriched with load ID and structured failure diagnostics.                                                                                     |
+| `pathfinder_content_fetch_fallback`             | Existing fallback event, correlated with the load ID when supplied.                                                                                                         |
+| `pathfinder_package_index`                      | Index availability, backend cache disposition/age, manifest failure counts by HTTP/timeout/JSON/other reason, enrichment-budget exhaustion, and suppressed session retries. |
+| `pathfinder_custom_guide_catalogue_unavailable` | Existing private-catalogue signal, now preserving bounded transient proxy reasons and upstream status.                                                                      |
+
+Failure diagnostics contain `source`, `stage`, `reason`, optional `http_status`, and `validation_count`. Stages distinguish resolution, fetching, JSON decoding, schema validation, launch preparation, and rendering. A browser network failure is classified as `network-error`, without guessing whether CORS caused it. When every package resolver fails, the first diagnostic other than a routine lookup miss takes precedence; if every attempt misses, the first lookup diagnostic is retained. Later fallback misses do not replace an earlier index, content, or permission failure. This diagnostic selection does not change resolver order, returned error codes, or cache behavior. Native guide JSON that cannot be parsed is rejected; deliberate HTML documents and supported missing/null JSON fallbacks remain supported.
+
+A load has one terminal outcome. Closing or replacing its tab cancels it, hidden content pauses its budget, and alignment prompts pause the 60-second active-time budget until the learner responds. Render success is emitted from the committed valid content tree after snippet resolution, not from a readiness timer. Partial parser/snippet failures produce degradation signals; a later React crash after initial success is also a degradation rather than a second terminal outcome. Requests correlated to an explicitly initiated guide load, along with render errors and timeouts, pass the activity gate before a destination mounts. Uncorrelated requests and unrelated events remain gated; consent and environment gates still apply.
+
+Private guides use random opaque references held only in memory. Private resource names, namespaces, titles, content, raw validation messages, and upstream response bodies are not diagnostic attributes. Existing private-guide URL/view attributes are anonymized, and private guide actions omit authored metadata from the Faro mirror. Public content URLs retain only normalized hostname/path. No load state is written to tab storage. These changes do not redact historical telemetry.
+
+The optional `diagnostics` object on `/package-recommendations` reports `outcome`, bounded `reason`, `upstreamStatus`, `cache` (`hit`, `shared`, or `refresh`), `cacheAgeMs`, `manifestFailures` counts by reason, and `budgetExhausted`. Error responses retain `package-index-unavailable` and HTTP 503. Transient `/custom-guide-repository` responses retain their error identifier, HTTP 503, and Retry-After header and add the same safe diagnostic shape. Cache diagnostics contain no user data; cache lifetimes and retry policies are unchanged. Older clients ignore these additions and newer clients tolerate missing diagnostics.
+
+In the ops Loki datasource, use the application's `app_id` label and parse the Faro logfmt fields. For example:
+
+```logql
+{app_id="77"} | logfmt | event_name="pathfinder_guide_render" | event_data_outcome=~"error|timeout"
+```
+
+Once a failing event provides a load ID, inspect its request attempts and outcome together:
+
+```logql
+{app_id="77"} | logfmt | event_data_load_id="<load ID>"
+```
+
+Inspect CDN index degradation independently of guide-not-found outcomes:
+
+```logql
+{app_id="77"} | logfmt | event_name="pathfinder_package_index" | event_data_outcome=~"error|degraded|suppressed"
+```
+
+Private guide content and settings reads use the plugin backend OBO proxy. The plugin backend also owns the private catalogue, completion and public CDN index proxies. Adding instrumentation to the local Go handlers in `grafana-pathfinder-backend` does not add production reporting: that repository currently deploys the CRD manifest only.
+
+### App Platform proxy failures
+
+The frontend Faro event `pathfinder_proxy_failure` records sanitized optional proxy diagnostics: `stage`,
+`resource`, `operation`, `reason`, `upstream_status`, `outcome`, and `cache`.
+The browser parser allowlists these fields; raw errors, guide names, user identities,
+credentials and upstream response bodies are not event attributes. Faro app metadata
+supplies the plugin version. Older backend responses without diagnostics remain valid.
+`pathfinder_settings_store_resolved` remains the complementary settings outcome signal.
+
+Backend `event=pathfinder_proxy_failure` logs contain `stack_namespace` (the trusted
+plugin-context namespace), `resource`, `operation`, `stage`, `reason`, and
+`upstream_status`. Unexpected errors also carry `error_type`, the Go type of the
+unwrapped error, never its message. `outcome` and `cache` belong to the response/Faro
+envelope, not this per-operation log. Grafana supplies plugin version and trace context.
+These backend logs are the primary alert source, so browser
+initialization and Faro activity gating are not detection prerequisites. A silent period
+is not recovery proof; verify successful endpoint/user flows. Frontend degraded rendering
+and upstream service recovery are separate observations.
+
+## Kiosk catalogs and launches
+
+`pathfinder_kiosk_catalog_loaded` records the served `tier` (`override`, `configured`, `generic`, or `bundled`) and whether loading `degraded`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason; rejected rule logs name the invalid field without its value.
+
+`KioskDemoStarted` includes `launch_mode` (`instance` or `presentation`). Since URL-selected kiosks were added, `target_instance` is the current origin for instance launches and the catalog target (or current origin) for presentation launches. Filter by `launch_mode = presentation` for booth-demo comparisons; older events lack this field. Catalog URLs, rule content, and raw failure messages are not added to catalog telemetry.
+
+Structured kiosk controls emit `kiosk_interaction`, mirrored to Faro through the normal analytics bridge:
+
+| Component     | Actions                                                                   | Extra fields                                                           |
+| ------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `input`       | `change` once per field per mounted form; `invalid` for native validation | `input_type`, zero-based `input_index`                                 |
+| `launch-form` | `submit`, `ready`, `error`                                                | Errors use bounded `reason`: `validation`, `storage`, or `unavailable` |
+| `command`     | `copy`                                                                    | `outcome`: `success` or `error`                                        |
+
+Explicit exits emit the same event with `component=kiosk`, `action=exit`, and `method=button` or `escape`. Launching a guide is not counted as an exit, and dismissing a child dropdown is not counted either.
+
+All carry `launch_mode`; page controls also carry zero-based `block_index`. `fallback` means the guide opened without transferring inputs because its declarations or variable usage were incompatible. This is silent for visitors. `ready` means destination validation and input persistence succeeded; it does not assert that the guide rendered. Existing `KioskDemoStarted` and guide-render telemetry cover the subsequent launch. Alternative cards and links use that same launch event. Input engagement is measured on the first change, not focus or each keystroke. Unmounted/aborted forms do not emit a terminal outcome.
+
+These events deliberately omit values, selected data source names, variable names, prompts, command text, catalog URLs, and raw exceptions. They use the existing consent gates and analytics-to-Faro bridge; they do not introduce another telemetry client.
+
+Kiosk input launch failures log a bounded stage and reason through the shared logger (console and Faro), for example `destination/input-format-mismatch`. Diagnostics exclude submitted values, guide URLs, authored text, and raw exceptions. Ordinary input validation errors are not operational error logs.

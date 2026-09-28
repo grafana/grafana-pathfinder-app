@@ -9,7 +9,6 @@ describe('useModalManager', () => {
   it('starts with all modals closed', () => {
     const { result } = renderHook(() => useModalManager());
 
-    expect(result.current.isOpen('metadata')).toBe(false);
     expect(result.current.isOpen('newGuideConfirm')).toBe(false);
     expect(result.current.isOpen('import')).toBe(false);
     expect(result.current.isOpen('githubPr')).toBe(false);
@@ -20,24 +19,24 @@ describe('useModalManager', () => {
     const { result } = renderHook(() => useModalManager());
 
     act(() => {
-      result.current.open('metadata');
+      result.current.open('githubPr');
     });
 
-    expect(result.current.isOpen('metadata')).toBe(true);
+    expect(result.current.isOpen('githubPr')).toBe(true);
   });
 
   it('closes a modal', () => {
     const { result } = renderHook(() => useModalManager());
 
     act(() => {
-      result.current.open('metadata');
+      result.current.open('newGuideConfirm');
     });
-    expect(result.current.isOpen('metadata')).toBe(true);
+    expect(result.current.isOpen('newGuideConfirm')).toBe(true);
 
     act(() => {
-      result.current.close('metadata');
+      result.current.close('newGuideConfirm');
     });
-    expect(result.current.isOpen('metadata')).toBe(false);
+    expect(result.current.isOpen('newGuideConfirm')).toBe(false);
   });
 
   it('toggles a modal open', () => {
@@ -67,11 +66,11 @@ describe('useModalManager', () => {
     const { result } = renderHook(() => useModalManager());
 
     act(() => {
-      result.current.open('metadata');
+      result.current.open('githubPr');
       result.current.open('tour');
     });
 
-    expect(result.current.isOpen('metadata')).toBe(true);
+    expect(result.current.isOpen('githubPr')).toBe(true);
     expect(result.current.isOpen('tour')).toBe(true);
     expect(result.current.isOpen('import')).toBe(false);
   });
@@ -80,15 +79,15 @@ describe('useModalManager', () => {
     const { result } = renderHook(() => useModalManager());
 
     act(() => {
-      result.current.open('metadata');
+      result.current.open('githubPr');
       result.current.open('tour');
     });
 
     act(() => {
-      result.current.close('metadata');
+      result.current.close('githubPr');
     });
 
-    expect(result.current.isOpen('metadata')).toBe(false);
+    expect(result.current.isOpen('githubPr')).toBe(false);
     expect(result.current.isOpen('tour')).toBe(true);
   });
 

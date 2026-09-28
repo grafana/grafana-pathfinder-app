@@ -84,42 +84,4 @@ export const getFullScreenStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.secondary,
     fontSize: theme.typography.body.fontSize,
   }),
-  // Open / Reset guide action buttons inside the journey sub-header.
-  // Visual parity with the sidebar's secondaryActionButton.
-  secondaryActionButton: css({
-    backgroundColor: 'transparent',
-    color: theme.colors.text.primary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: theme.shape.radius.default,
-    padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing(0.5),
-    '&:hover:not(:disabled)': {
-      backgroundColor: theme.colors.action.hover,
-      borderColor: theme.colors.border.strong,
-      boxShadow: theme.shadows.z1,
-    },
-    '& svg': {
-      width: '12px',
-      height: '12px',
-      flexShrink: 0,
-    },
-    // Container query mirroring the sidebar's `secondaryActionButton`:
-    // the button collapses to icon-only when its parent toolbar
-    // (`milestoneActions` from `getMilestoneStyles`, which declares
-    // `containerType: inline-size`) gets too narrow. Same threshold so
-    // sidebar and full-screen flip together at the same breakpoint.
-    '@container (max-width: 360px)': {
-      padding: theme.spacing(0.5),
-      '& > span': {
-        display: 'none',
-      },
-    },
-  }),
 });

@@ -36,7 +36,7 @@ describe('instrumentServer', () => {
     const fake = makeFakeServer();
     instrumentServer(fake, (obs) => observed.push(obs));
 
-    fake.registerTool('pathfinder_add_block', {}, async () => ({
+    fake.registerTool('pathfinder_manage_block', {}, async () => ({
       content: [
         {
           type: 'text',
@@ -54,7 +54,7 @@ describe('instrumentServer', () => {
 
     expect(observed).toHaveLength(1);
     const obs = observed[0]!;
-    expect(obs.toolName).toBe('pathfinder_add_block');
+    expect(obs.toolName).toBe('pathfinder_manage_block');
     expect(obs.isError).toBe(false);
     expect(obs.toolStatus).toBe('ok');
     expect(obs.artifactBytesIn).toBe(Buffer.byteLength(JSON.stringify(args.artifact)));
@@ -66,7 +66,7 @@ describe('instrumentServer', () => {
     const fake = makeFakeServer();
     instrumentServer(fake, (obs) => observed.push(obs));
 
-    fake.registerTool('pathfinder_add_block', {}, async () => ({
+    fake.registerTool('pathfinder_manage_block', {}, async () => ({
       content: [{ type: 'text', text: JSON.stringify({ status: 'error', code: 'BAD_INPUT' }) }],
       isError: true,
     }));

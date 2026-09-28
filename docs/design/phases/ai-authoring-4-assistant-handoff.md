@@ -37,7 +37,7 @@
   - `pkg/plugin/mcp.go` — unchanged from `main` per the P3 cross-cutting concern.
   - The Grafana Assistant repository — broad rollout via Assistant's default MCP list is deferred to P5.
   - Hardening issues #1–#5 from [`MCP-AGENT-UX-HARDENING.md`](../MCP-AGENT-UX-HARDENING.md). Only #6 is incidentally closed by Stage C.
-  - The `InteractiveGuide` CRD shape and the `aggregation.pathfinderbackend-ext-grafana-com.enabled` feature toggle.
+  - The `InteractiveGuide` CRD shape and the current `aggregation.pathfinderbackend-ext-grafana-app.enabled` feature toggle.
 
 **Open questions to resolve during execution:**
 
@@ -57,7 +57,7 @@ Atomic-commit-sized. Reference epic in every commit message (`P4: <subject>` + `
 ### Stage A — Design and verification (de-risks the rewrite)
 
 - [ ] **A1.** Walk the current `pathfinder_finalize_for_app_platform` payload against each of the three working-assumption client branches (Grafana+AppPlatform / Grafana+OSS / non-Grafana). For each branch, list which existing fields the agent uses and which it ignores. Pick the wire shape (single labeled `instructions[]` vs. structured `clientGuidance` object — OQ1). Record decision and the chosen error-code → action table (OQ2) in the Decision log. **Output: a numbered branch taxonomy ready for Stage B to encode.**
-- [ ] **A2.** Verify the existing `?doc=api:<id>` resolution path resolves an AI-authored `InteractiveGuide` end-to-end on a local Grafana with the aggregator enabled. Method: drive `pathfinder-cli mcp` over stdio to author a tiny guide → hand-roll a `curl` POST against `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/<ns>/interactiveguides` → open `/a/grafana-pathfinder-app?doc=api:<id>&panelMode=floating` → confirm the guide renders in floating mode. Record outcome in the Decision log.
+- [ ] **A2.** Verify the existing `?doc=api:<id>` resolution path resolves an AI-authored `InteractiveGuide` end-to-end on a local Grafana with the aggregator enabled. Method: drive `pathfinder-cli mcp` over stdio to author a tiny guide → hand-roll a `curl` POST against `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/<ns>/interactiveguides` → open `/a/grafana-pathfinder-app?doc=api:<id>&panelMode=floating` → confirm the guide renders in floating mode. Record outcome in the Decision log.
 - [ ] **A3.** Capture the canonical-`id` cross-doc consistency snapshot from A2's run: `content.id`, `manifest.id`, handoff top-level `id`, `resource.metadata.name`, `viewer.docParam`, the URL the user clicked. Assert all six are byte-identical. Record in the Decision log. (Closes index exit criterion 3 ahead of the integration tests in Stage D.)
 
 ### Stage B — Rewrite the handoff instructions
@@ -76,7 +76,7 @@ Atomic-commit-sized. Reference epic in every commit message (`P4: <subject>` + `
 ### Stage D — Integration tests on real instances
 
 - [ ] **D1.** **Per-instance integration test on a Grafana Cloud instance.** Configure the deployed `pathfinder-cli mcp` Cloud Run URL as a per-instance MCP server in Grafana Assistant per [the docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/configure/mcp-servers/). Drive a turn end-to-end: ask Assistant to create a guide → MCP authors it → finalize call returns the new branched instructions → Assistant prompts draft/published → user confirms publish → Assistant performs the write → Assistant returns the absolute floating-mode URL → user clicks → guide opens in Pathfinder. Capture the turn transcript on epic #811.
-- [ ] **D2.** **Per-instance integration test on Grafana OSS** (or Cloud with `aggregation.pathfinderbackend-ext-grafana-com.enabled` off). Same flow up to publish; verify the new instructions route the agent to `localExport`, files are written, the user is told about the block-editor import path, no viewer link is offered.
+- [ ] **D2.** **Per-instance integration test on Grafana OSS** (or Cloud with `aggregation.pathfinderbackend-ext-grafana-app.enabled` off). Same flow up to publish; verify the new instructions route the agent to `localExport`, files are written, the user is told about the block-editor import path, no viewer link is offered.
 - [ ] **D3.** **Non-Grafana-client smoke test.** From Cursor or Claude Desktop with `npx pathfinder-cli mcp` over stdio, drive the same flow. Verify the new instructions route straight to `localExport` (no POST attempted), files land in the user's workspace, the agent surfaces the block-editor import path.
 - [ ] **D4.** **Update path with explicit `--id`.** Author with `--id existing-guide`, finalize → agent performs GET-then-PUT → verify `resourceVersion` is preserved. Then simulate a stale `resourceVersion` (concurrent edit) and verify the 409 path matches the OQ2 rule (re-GET + user confirm).
 - [ ] **D5.** Have a non-engineer read the new `localExport` re-publish copy in context (OQ3). Adjust if it surprises them.
@@ -141,6 +141,10 @@ _Appended during execution. Each entry: date, decision, alternatives considered,
 - **Alternatives considered.** Leave `localExport` as a dead end ("here are your files, good luck"). Tell the user to use the CLI to re-publish — no published `pathfinder-cli` publish command exists; this is a lie. Tell the user to file a PR against the bundled-interactives repo — that's the long path, not the short one.
 - **Rationale.** `src/components/block-editor/ImportGuideModal.tsx` already accepts paste/upload of guide JSON. This is the existing OSS re-publish loop; the handoff just has to point at it.
 - **Touches.** `src/cli/mcp/tools/finalize.ts` (`clientGuidance.grafanaOss.steps`, `clientGuidance.nonGrafanaClient.steps`, `localExport.instructions`).
+
+### 2026-09-14 — CAP → GAP migration note
+
+- The active verification steps above use the current `pathfinderbackend.ext.grafana.app` group and `aggregation.pathfinderbackend-ext-grafana-app.enabled` toggle. Earlier decision entries retain `.com` references as the pre-migration CAP record and are intentionally historical.
 
 ---
 

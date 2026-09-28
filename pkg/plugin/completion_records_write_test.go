@@ -1,0 +1,1239 @@
+package plugin
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
+	"github.com/grafana/grafana-plugin-sdk-go/experimental/featuretoggles"
+)
+
+const testOrgID = int64(7)
+
+// fakeCreator is an injectable completionRecordCreator. It captures the last
+// object it was asked to create and returns a configurable error.
+type fakeCreator struct {
+	err  error
+	last *completionRecordObject
+	n    int
+}
+
+func (f *fakeCreator) Create(_ context.Context, _ string, obj completionRecordObject) error {
+	f.n++
+	captured := obj
+	f.last = &captured
+	return f.err
+}
+
+func withCreator(t *testing.T, c completionRecordCreator) {
+	t.Helper()
+	prev := completionCreatorOverride
+	completionCreatorOverride = c
+	t.Cleanup(func() { completionCreatorOverride = prev })
+}
+
+// validWriteBody is a well-formed client fact (all CRD value domains satisfied).
+// idempotencyKey is required, so a well-formed body always carries one; tests
+// that exercise the key contract override or delete it.
+func validWriteBody() map[string]any {
+	return map[string]any{
+		"guideSource":       "bundled",
+		"guideId":           "first-dashboard",
+		"guideTitle":        "First dashboard",
+		"guideCategory":     "interactive",
+		"pathId":            "",
+		"completionPercent": 100,
+		"source":            "objectives",
+		"completedAt":       timeNow().UTC().Format(time.RFC3339),
+		"platform":          "cloud",
+		"idempotencyKey":    "evt-default",
+	}
+}
+
+func writeRequest(t *testing.T, sub string, body map[string]any, cfg map[string]string) *http.Request {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+	r, _ := http.NewRequest(http.MethodPost, "/completion-records", bytes.NewReader(raw))
+	if sub != "" {
+		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeValidIDToken(t, sub))
+	}
+	//nolint:staticcheck // OrgID is the numeric org the CRD requires; see completion_records_write.go
+	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: testNamespace, OrgID: testOrgID})
+	ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
+	return r.WithContext(ctx)
+}
+
+// writeRequestWithUser is writeRequest plus a trusted PluginContext.User (the
+// SDK's authenticated session). It is NOT a fallback source for the profile
+// snapshot — no such fallback exists, and the tests below pin that these values
+// never reach the record. It overlays the user onto the plugin context; the
+// Grafana config from writeRequest survives (different context key).
+func writeRequestWithUser(t *testing.T, sub string, body map[string]any, cfg map[string]string, login, name string) *http.Request {
+	t.Helper()
+	r := writeRequest(t, sub, body, cfg)
+	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{
+		Namespace: testNamespace,
+		OrgID:     testOrgID, //nolint:staticcheck // see writeRequest
+		User:      &backend.User{Login: login, Name: name},
+	})
+	return r.WithContext(ctx)
+}
+
+func doWrite(t *testing.T, app *App, r *http.Request) *httptest.ResponseRecorder {
+	t.Helper()
+	if app == nil {
+		app = newTestApp(t)
+	}
+	rec := httptest.NewRecorder()
+	app.handleCreateCompletionRecord(rec, r)
+	return rec
+}
+
+// --- Happy path & server-side stamping --------------------------------------
+
+func TestCompletionWrite_Created_StampsServerFields(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
+		makeValidIDTokenWithProfile(t, "user:abc", "alice", "alice"))
+	rec := doWrite(t, nil, r)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if creator.n != 1 || creator.last == nil {
+		t.Fatalf("expected exactly one create, got n=%d", creator.n)
+	}
+	obj := creator.last
+	if obj.APIVersion != completionRecordsGroupVersion || obj.Kind != "CompletionRecord" {
+		t.Fatalf("bad object coordinates: %+v", obj)
+	}
+	if obj.Metadata.Name == "" || obj.Metadata.Namespace != testNamespace {
+		t.Fatalf("bad metadata: %+v", obj.Metadata)
+	}
+	s := obj.Spec
+	if s.UserID != "user:abc" {
+		t.Errorf("userId = %q, want user:abc", s.UserID)
+	}
+	if s.UserLogin != "alice" {
+		t.Errorf("userLogin = %q, want alice (from the ID token's username claim)", s.UserLogin)
+	}
+	if s.UserDisplayName != "alice" {
+		t.Errorf("userDisplayName = %q, want alice (from the ID token's name claim)", s.UserDisplayName)
+	}
+	if s.OrgID != testOrgID {
+		t.Errorf("orgId = %d, want %d", s.OrgID, testOrgID)
+	}
+	if s.StackNamespace != testNamespace {
+		t.Errorf("stackNamespace = %q, want %q", s.StackNamespace, testNamespace)
+	}
+	if s.SchemaVersion != completionWriteSchemaVersion {
+		t.Errorf("schemaVersion = %d, want %d", s.SchemaVersion, completionWriteSchemaVersion)
+	}
+	if s.RecordedAt != timeNow().UTC().Format(time.RFC3339) {
+		t.Errorf("recordedAt = %q, want server clock", s.RecordedAt)
+	}
+	if s.Platform != "cloud" {
+		t.Errorf("platform = %q, want cloud (client-supplied, passed through)", s.Platform)
+	}
+	if s.GuideSource != "bundled" || s.GuideID != "first-dashboard" {
+		t.Errorf("durable identity not carried: %+v", s)
+	}
+}
+
+// Distinct completion events (distinct keys) from the same user derive distinct
+// record names, so separate completions never collapse into one object.
+func TestCompletionWrite_DistinctKeysDistinctNames(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	body1 := validWriteBody()
+	body1["idempotencyKey"] = "event-1"
+	rec1 := doWrite(t, nil, writeRequest(t, "user:abc", body1, testGrafanaConfig()))
+	name1 := creator.last.Metadata.Name
+
+	body2 := validWriteBody()
+	body2["idempotencyKey"] = "event-2"
+	rec2 := doWrite(t, nil, writeRequest(t, "user:abc", body2, testGrafanaConfig()))
+	name2 := creator.last.Metadata.Name
+
+	if rec1.Code != http.StatusCreated || rec2.Code != http.StatusCreated {
+		t.Fatalf("both writes should succeed: %d, %d", rec1.Code, rec2.Code)
+	}
+	if name1 == "" || name1 == name2 {
+		t.Fatalf("distinct keys must derive non-empty, distinct names: %q, %q", name1, name2)
+	}
+}
+
+func TestCompletionWrite_DurationMsConvertedToSeconds(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["durationMs"] = 4200
+	doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+
+	if got := creator.last.Spec.DurationSeconds; got != 4 {
+		t.Fatalf("durationSeconds = %d, want 4 (4200ms floored)", got)
+	}
+}
+
+// durationMs has a bounded domain (D6), but an out-of-range value is a producer
+// bug in ONE denormalized convenience field — not grounds to discard a
+// completion the user really earned. Out-of-range clamps into range and the
+// record is still written; the ceiling itself is accepted untouched.
+func TestCompletionWrite_DurationDomain(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	t.Run("negative clamped to zero, record still written", func(t *testing.T) {
+		creator := &fakeCreator{}
+		withCreator(t, creator)
+		body := validWriteBody()
+		body["durationMs"] = -1
+		rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (negative durationMs must not drop the record)", rec.Code)
+		}
+		if creator.n != 1 {
+			t.Fatalf("creates = %d, want 1", creator.n)
+		}
+		if got := creator.last.Spec.DurationSeconds; got != 0 {
+			t.Fatalf("durationSeconds = %d, want 0 (clamped)", got)
+		}
+	})
+
+	t.Run("above ceiling clamped to ceiling, record still written", func(t *testing.T) {
+		creator := &fakeCreator{}
+		withCreator(t, creator)
+		body := validWriteBody()
+		body["durationMs"] = completionMaxDurationMs + 1
+		rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (over-ceiling durationMs must not drop the record)", rec.Code)
+		}
+		if creator.n != 1 {
+			t.Fatalf("creates = %d, want 1", creator.n)
+		}
+		if got := creator.last.Spec.DurationSeconds; got != completionMaxDurationMs/1000 {
+			t.Fatalf("durationSeconds = %d, want %d (clamped to ceiling)", got, completionMaxDurationMs/1000)
+		}
+	})
+
+	t.Run("ceiling accepted", func(t *testing.T) {
+		creator := &fakeCreator{}
+		withCreator(t, creator)
+		body := validWriteBody()
+		body["durationMs"] = completionMaxDurationMs
+		rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (exactly the ceiling is valid)", rec.Code)
+		}
+		if got := creator.last.Spec.DurationSeconds; got != completionMaxDurationMs/1000 {
+			t.Fatalf("durationSeconds = %d, want %d", got, completionMaxDurationMs/1000)
+		}
+	})
+}
+
+// --- Profile snapshot identity (token claims → trusted PluginContext) --------
+
+// The durable login/display-name snapshots prefer the ID-token username/name
+// claims; when both are present, the trusted PluginContext.User must NOT override
+// them (token claims win).
+func TestCompletionWrite_ProfileFromTokenClaims(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	r := writeRequestWithUser(t, "user:abc", validWriteBody(), testGrafanaConfig(), "ctx-login", "Context Name")
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
+		makeValidIDTokenWithProfile(t, "user:abc", "token-login", "Token Name"))
+	rec := doWrite(t, nil, r)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", rec.Code)
+	}
+	s := creator.last.Spec
+	if s.UserLogin != "token-login" {
+		t.Errorf("userLogin = %q, want token-login (token claim wins over PluginContext)", s.UserLogin)
+	}
+	if s.UserDisplayName != "Token Name" {
+		t.Errorf("userDisplayName = %q, want Token Name", s.UserDisplayName)
+	}
+}
+
+// The signed ID token is the ONLY source for the profile snapshots. When it
+// carries no username/name claims the fields are omitted — the write still
+// succeeds, and nothing is substituted from PluginContext.User or any header.
+// A plausible-but-unverified login reads as verified; absence is auditable.
+func TestCompletionWrite_ProfileOmittedWhenClaimAbsent(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	// The test token from writeRequest carries only sub/exp — no profile claims.
+	// Both a populated PluginContext.User and a raw X-Grafana-User header are
+	// present, and neither may reach the record.
+	r := writeRequestWithUser(t, "user:abc", validWriteBody(), testGrafanaConfig(), "ctx-login", "Context Name")
+	r.Header.Set("X-Grafana-User", "spoofed")
+	rec := doWrite(t, nil, r)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (an absent claim must not fail the write)", rec.Code)
+	}
+	s := creator.last.Spec
+	if s.UserLogin != "" || s.UserDisplayName != "" {
+		t.Errorf("snapshots = (%q, %q), want empty: only the signed ID token may populate them", s.UserLogin, s.UserDisplayName)
+	}
+	if s.UserID != "user:abc" {
+		t.Errorf("userId = %q, want user:abc — the identity of record is unaffected", s.UserID)
+	}
+}
+
+// Absent token claims and absent PluginContext.User yield empty snapshots — a
+// valid, schema-permitted value. The raw header is never a fallback.
+func TestCompletionWrite_ProfileEmptyWhenNoTrustedSource(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
+	r.Header.Set("X-Grafana-User", "spoofed")
+	rec := doWrite(t, nil, r)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", rec.Code)
+	}
+	s := creator.last.Spec
+	if s.UserLogin != "" || s.UserDisplayName != "" {
+		t.Errorf("snapshots = (%q, %q), want empty (raw header is never trusted)", s.UserLogin, s.UserDisplayName)
+	}
+}
+
+// --- Body identity is never trusted -----------------------------------------
+
+func TestCompletionWrite_BodyIdentityRejected(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["userId"] = "user:evil"
+	body["userLogin"] = "evil"
+	body["userDisplayName"] = "Evil"
+	body["orgId"] = 9999
+	body["stackNamespace"] = "stacks-evil"
+	body["recordedAt"] = "2000-01-01T00:00:00Z"
+	body["schemaVersion"] = 999
+
+	r := writeRequest(t, "user:good", body, testGrafanaConfig())
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
+		makeValidIDTokenWithProfile(t, "user:good", "good", ""))
+	rec := doWrite(t, nil, r)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", rec.Code)
+	}
+	s := creator.last.Spec
+	if s.UserID != "user:good" || s.UserLogin != "good" {
+		t.Errorf("identity not overridden: userId=%q userLogin=%q", s.UserID, s.UserLogin)
+	}
+	if s.OrgID != testOrgID || s.StackNamespace != testNamespace {
+		t.Errorf("org/stack not overridden: orgId=%d ns=%q", s.OrgID, s.StackNamespace)
+	}
+	if s.SchemaVersion != completionWriteSchemaVersion {
+		t.Errorf("schemaVersion not overridden: %d", s.SchemaVersion)
+	}
+	if s.RecordedAt == "2000-01-01T00:00:00Z" {
+		t.Errorf("recordedAt honored body value; must be server clock")
+	}
+}
+
+// --- Auth & method ----------------------------------------------------------
+
+func TestCompletionWrite_Unauthenticated(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	rec := doWrite(t, nil, writeRequest(t, "", validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+	if creator.n != 0 {
+		t.Fatalf("must not reach upstream on auth failure")
+	}
+}
+
+// The write path's identity gate arms are NOT interchangeable, because the
+// status IS the client's retry instruction. 401 means "retry after re-auth", so
+// it belongs only to a time-recoverable verdict; a standing condition served
+// that way would retry every queued write until the 30-day horizon and never
+// disarm. The distinct reason string keeps each 404 diagnosable apart from
+// obo-unavailable/backend-unavailable and from the other standing condition.
+func TestCompletionWrite_IdentityGateArms(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	deadJWKS, _ := startJWKSServer(t)
+	deadJWKS.Close()
+	// auth-api unreachable too, so NO source answers and the chain reports the
+	// address unusable rather than the token unknown.
+	withSigningKeysURL(t, deadJWKS.URL+"/v1/keys")
+
+	// Both configs enable the aggregation toggle, so a 404 here can only come from
+	// the identity gate that runs before the structural resolver.
+	noAppURL := map[string]string{featuretoggles.EnabledFeatures: completionRecordsAggregationToggle}
+	signingKeysDown := map[string]string{
+		featuretoggles.EnabledFeatures: completionRecordsAggregationToggle,
+		sdkconfig.AppURL:               deadJWKS.URL,
+	}
+
+	cases := []struct {
+		name           string
+		sub            string
+		cfg            map[string]string
+		wantStatus     int
+		wantReason     string
+		wantRetryAfter bool
+		wantCreates    int
+	}{
+		{
+			name: "verified caller creates", sub: "user:abc", cfg: testGrafanaConfig(),
+			wantStatus: http.StatusCreated, wantCreates: 1,
+		},
+		{
+			name: "rejected token is the transient 401 the client retries after re-auth",
+			sub:  "", cfg: testGrafanaConfig(), wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name: "unverifiable stack disarms with the structural 404",
+			sub:  "user:abc", cfg: noAppURL,
+			wantStatus: http.StatusNotFound, wantReason: reasonIdentityUnverifiable,
+		},
+		{
+			name: "no reachable signing-keys source disarms with the structural 404",
+			sub:  "user:abc", cfg: signingKeysDown,
+			wantStatus: http.StatusNotFound, wantReason: reasonSigningKeysUnreachable,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			creator := &fakeCreator{}
+			withCreator(t, creator)
+
+			rec := doWrite(t, nil, writeRequest(t, tc.sub, validWriteBody(), tc.cfg))
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, tc.wantStatus, rec.Body.String())
+			}
+			if creator.n != tc.wantCreates {
+				t.Errorf("upstream creates = %d, want %d", creator.n, tc.wantCreates)
+			}
+			if ra := rec.Header().Get("Retry-After"); tc.wantRetryAfter != (ra != "") {
+				t.Errorf("Retry-After = %q, want present = %v", ra, tc.wantRetryAfter)
+			}
+			if tc.wantReason == "" {
+				return
+			}
+			var envelope struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("decoding response: %v (body: %s)", err, rec.Body.String())
+			}
+			if envelope.Error != tc.wantReason {
+				t.Errorf("error = %q, want %q", envelope.Error, tc.wantReason)
+			}
+		})
+	}
+}
+
+func TestCompletionWrite_MethodNotAllowed(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
+	r.Method = http.MethodGet
+	rec := doWrite(t, nil, r)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+}
+
+func TestCompletionWrite_StructurallyUnavailableIsTerminal(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	// Feature toggle absent → structurally unavailable. The app URL still points
+	// at the test JWKS so identity verifies: this pins the toggle gate, not the
+	// identity gate.
+	cfg := map[string]string{sdkconfig.AppURL: testSigningKeysURL()}
+	rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), cfg))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 terminal", rec.Code)
+	}
+	if creator.n != 0 {
+		t.Fatalf("must not reach upstream when unavailable")
+	}
+}
+
+// --- Validation (all → terminal 400) ----------------------------------------
+
+func TestCompletionWrite_Validation(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	cases := []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{"missing guideId", func(b map[string]any) { delete(b, "guideId") }},
+		{"missing guideSource", func(b map[string]any) { delete(b, "guideSource") }},
+		{"missing idempotencyKey", func(b map[string]any) { delete(b, "idempotencyKey") }},
+		{"blank idempotencyKey", func(b map[string]any) { b["idempotencyKey"] = "" }},
+		{"whitespace idempotencyKey", func(b map[string]any) { b["idempotencyKey"] = "   " }},
+		{"oversized idempotencyKey", func(b map[string]any) { b["idempotencyKey"] = strings.Repeat("a", completionMaxIDLen+1) }},
+		{"invalid source", func(b map[string]any) { b["source"] = "teleport" }},
+		{"invalid guideCategory", func(b map[string]any) { b["guideCategory"] = "podcast" }},
+		{"invalid platform", func(b map[string]any) { b["platform"] = "mainframe" }},
+		{"percent over 100", func(b map[string]any) { b["completionPercent"] = 101 }},
+		{"percent negative", func(b map[string]any) { b["completionPercent"] = -1 }},
+		{"oversized guideId", func(b map[string]any) { b["guideId"] = strings.Repeat("a", completionMaxIDLen+1) }},
+		{"oversized guideSource", func(b map[string]any) { b["guideSource"] = strings.Repeat("a", completionMaxIDLen+1) }},
+		{"oversized pathId", func(b map[string]any) { b["pathId"] = strings.Repeat("a", completionMaxIDLen+1) }},
+		{"oversized guideTitle", func(b map[string]any) { b["guideTitle"] = strings.Repeat("a", completionMaxTitleLen+1) }},
+		{"control characters in guideTitle", func(b map[string]any) { b["guideTitle"] = "First\x00dashboard" }},
+		{"newline in guideId", func(b map[string]any) { b["guideId"] = "first\ndashboard" }},
+		{"malformed completedAt", func(b map[string]any) { b["completedAt"] = "last tuesday" }},
+		{"future completedAt", func(b map[string]any) {
+			b["completedAt"] = timeNow().Add(time.Hour).UTC().Format(time.RFC3339)
+		}},
+		{"grossly backdated completedAt", func(b map[string]any) {
+			b["completedAt"] = timeNow().Add(-completionMaxBackdate - 24*time.Hour).UTC().Format(time.RFC3339)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			creator := &fakeCreator{}
+			withCreator(t, creator)
+			body := validWriteBody()
+			tc.mutate(body)
+			rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
+			}
+			if creator.n != 0 {
+				t.Fatalf("must not reach upstream on validation failure")
+			}
+		})
+	}
+}
+
+// TestCompletionWrite_AcceptsEveryFrontendValue pins the FE↔BE value-domain
+// contract: every enum value the frontend can emit (CompletionSource /
+// CompletionCategory in src/completion-records/types.ts, CompletionPlatform in
+// completion-write-client.ts) and its real millisecond-RFC3339 completedAt wire
+// format must be accepted. Drift here fails silently in production — a value
+// the backend rejects becomes a terminal 400 the retry queue drops.
+func TestCompletionWrite_AcceptsEveryFrontendValue(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	frontendSources := []string{"objectives", "manual", "skipped"}
+	frontendCategories := []string{"interactive", "documentation", "learning-journey"}
+	frontendPlatforms := []string{"oss", "cloud"}
+
+	for _, source := range frontendSources {
+		for _, category := range frontendCategories {
+			for _, platform := range frontendPlatforms {
+				t.Run(source+"/"+category+"/"+platform, func(t *testing.T) {
+					creator := &fakeCreator{}
+					withCreator(t, creator)
+					body := validWriteBody()
+					body["source"] = source
+					body["guideCategory"] = category
+					body["platform"] = platform
+					// The frontend sends new Date().toISOString() — millisecond precision.
+					body["completedAt"] = timeNow().UTC().Format("2006-01-02T15:04:05.000Z07:00")
+					rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+					if rec.Code != http.StatusCreated {
+						t.Fatalf("status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+					}
+				})
+			}
+		}
+	}
+}
+
+// validateBoundedText's UTF-8 branch is exercised DIRECTLY, not through the
+// request path. Going through a request would prove nothing: encoding/json
+// replaces invalid UTF-8 at decode, so a hostile field arrives already valid and
+// merely trips the byte cap — a green test that never reaches this guard. The
+// branch is unreachable from today's callers by construction; this pins the
+// validator's own contract for any future non-JSON caller.
+func TestValidateBoundedText_RejectsInvalidUTF8(t *testing.T) {
+	invalid := string([]byte{0xff, 0xfe, 0xfd})
+
+	err := validateBoundedText("guideTitle", invalid, completionMaxTitleLen)
+	if err == nil {
+		t.Fatal("invalid UTF-8 must be rejected")
+	}
+	if !strings.Contains(err.Error(), "invalid UTF-8") {
+		t.Errorf("error = %q, want the invalid-UTF-8 reason (not the byte cap or control-character check)", err)
+	}
+
+	// The guard must not reject legitimate multi-byte text, nor a genuine U+FFFD
+	// the client meant to send (which is what a JSON-decoded hostile byte becomes).
+	for _, valid := range []string{"Grafana データソース", "café", "�"} {
+		if err := validateBoundedText("guideTitle", valid, completionMaxTitleLen); err != nil {
+			t.Errorf("valid UTF-8 %q rejected: %v", valid, err)
+		}
+	}
+}
+
+// The caps are BYTE caps, and invalid UTF-8 must not buy a caller extra bytes.
+// This is the end-to-end complement to the unit test above: it drives the real
+// request path with hostile bytes and pins the outcome Tom Glenn's review asked
+// about — whether a field capped at N bytes can land ~3N bytes in a durable
+// record. It cannot: encoding/json expands each invalid byte to U+FFFD (3 bytes)
+// at DECODE, so the expansion happens BEFORE the cap, the byte cap rejects the
+// inflated string with a terminal 400, and nothing is created upstream.
+func TestCompletionWrite_InvalidUTF8CannotExceedByteCap(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	// Exactly at the cap in raw bytes — only the 3x decode expansion can push it
+	// over, so a rune-based (or absent) cap would let this through.
+	hostile := strings.Repeat("\xff", completionMaxTitleLen)
+	body := validWriteBody()
+	body["guideTitle"] = hostile
+
+	rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "bytes") {
+		t.Errorf("body = %s, want the byte-cap reason", rec.Body.String())
+	}
+	if creator.n != 0 {
+		t.Fatalf("hostile field reached upstream: %d creates", creator.n)
+	}
+
+	// And the server-derived snapshot fields cap on bytes too: ranging a string
+	// yields U+FFFD per invalid byte and boundedIdentityField accounts for its
+	// full 3-byte width, so the output can never exceed maxBytes.
+	got := boundedIdentityField(strings.Repeat("\xff", completionMaxDisplayLen), completionMaxDisplayLen)
+	if len(got) > completionMaxDisplayLen {
+		t.Errorf("boundedIdentityField returned %d bytes, want <= %d", len(got), completionMaxDisplayLen)
+	}
+}
+
+func TestDecodeCompletionWriteRequest_RejectsTrailingAndOversizedBodies(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"trailing JSON value", `{"guideId":"a"} {"guideId":"b"}`},
+		{"oversized", `{"guideTitle":"` + strings.Repeat("x", completionWriteMaxBodyBytes) + `"}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/completion-records", strings.NewReader(tc.body))
+			if _, err := decodeCompletionWriteRequest(httptest.NewRecorder(), r); err == nil {
+				t.Fatal("expected invalid request body")
+			}
+		})
+	}
+}
+
+// completedAt legitimately delayed by days (offline queue) must be accepted.
+func TestCompletionWrite_ToleratesDelayedOfflineRetry(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["completedAt"] = timeNow().Add(-5 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (5-day-old completion is a valid queued retry)", rec.Code)
+	}
+}
+
+// --- Idempotency (finding 1) ------------------------------------------------
+
+// A stable idempotencyKey must derive a DETERMINISTIC record name, so a retried
+// POST targets the same object instead of minting a duplicate.
+func TestCompletionWrite_IdempotencyKeyDeterministicName(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["idempotencyKey"] = "event-123"
+	doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	name1 := creator.last.Metadata.Name
+	doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	name2 := creator.last.Metadata.Name
+
+	if name1 == "" || name1 != name2 {
+		t.Fatalf("same idempotencyKey must derive the same name: %q vs %q", name1, name2)
+	}
+
+	// A different key derives a different name; the key is never persisted.
+	body["idempotencyKey"] = "event-456"
+	doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if creator.last.Metadata.Name == name1 {
+		t.Fatalf("distinct idempotencyKey must derive a distinct name, both %q", name1)
+	}
+}
+
+// An upstream "already exists" (409) on a deterministically-named retry means
+// the write already committed — it must surface as success, not a failure.
+func TestCompletionWrite_AlreadyExistsTreatedAsSuccess(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusConflict, msg: "already exists"}}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["idempotencyKey"] = "event-123"
+	rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (409 is an idempotent success)", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "completion-") {
+		t.Fatalf("expected the record name in the body, got %q", rec.Body.String())
+	}
+}
+
+// Two users submitting the SAME idempotency key must target DIFFERENT records:
+// the name is scoped to the trusted userID. This is the cross-user integrity
+// invariant — user B can never receive a 409 for user A's record, so B is never
+// falsely acknowledged as durable when nothing was written for B.
+func TestCompletionWrite_CrossUserSameKeyDistinctRecords(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["idempotencyKey"] = "shared-event-key"
+
+	recA := doWrite(t, nil, writeRequest(t, "user:alice", body, testGrafanaConfig()))
+	if recA.Code != http.StatusCreated {
+		t.Fatalf("user A status = %d, want 201", recA.Code)
+	}
+	nameA, userA := creator.last.Metadata.Name, creator.last.Spec.UserID
+
+	recB := doWrite(t, nil, writeRequest(t, "user:bob", body, testGrafanaConfig()))
+	if recB.Code != http.StatusCreated {
+		t.Fatalf("user B status = %d, want 201", recB.Code)
+	}
+	nameB, userB := creator.last.Metadata.Name, creator.last.Spec.UserID
+
+	if userA != "user:alice" || userB != "user:bob" {
+		t.Fatalf("identity not stamped per caller: %q, %q", userA, userB)
+	}
+	if nameA == nameB {
+		t.Fatalf("same key from different users must derive DIFFERENT names, both %q", nameA)
+	}
+}
+
+// A keyless request is a terminal 400 BEFORE any upstream work, so a keyless
+// caller never reaches the create path and can never have an upstream 409
+// blindly acknowledged as success — even when the upstream would report one.
+func TestCompletionWrite_KeylessNeverReachesUpstream(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusConflict, msg: "already exists"}}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	delete(body, "idempotencyKey")
+	rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (keyless is terminal, never a 409-ack)", rec.Code)
+	}
+	if creator.n != 0 {
+		t.Fatalf("keyless request must not reach upstream")
+	}
+}
+
+// Same user replaying the SAME key with the SAME payload is idempotent: the
+// derived name is stable, and an upstream 409 on the replay surfaces as success
+// (201) — no duplicate, no false failure.
+func TestCompletionWrite_SameUserReplayIdempotent(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	body := validWriteBody()
+	body["idempotencyKey"] = "event-replay"
+
+	rec1 := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if rec1.Code != http.StatusCreated {
+		t.Fatalf("first write status = %d, want 201", rec1.Code)
+	}
+	name1 := creator.last.Metadata.Name
+
+	// The replay now finds the record already committed upstream.
+	creator.err = &appPlatformUpstreamError{status: http.StatusConflict, msg: "already exists"}
+	rec2 := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+	if rec2.Code != http.StatusCreated {
+		t.Fatalf("replay status = %d, want 201 (idempotent success)", rec2.Code)
+	}
+	if creator.last.Metadata.Name != name1 {
+		t.Fatalf("replay name = %q, want stable %q", creator.last.Metadata.Name, name1)
+	}
+}
+
+// --- Durable display-identity bounds (finding 6) ----------------------------
+
+func TestCompletionWrite_DisplayIdentityBounded(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	// A hostile / oversized identity-provider value arrives via the trusted
+	// PluginContext.User (no username/name claims in the test token, so login
+	// falls back to it). Control characters appear BEFORE the truncation boundary
+	// so stripping is exercised independently of the length cap, not merely
+	// truncated away.
+	hostile := "\x00\x07" + strings.Repeat("a", 10) + "\x01" + strings.Repeat("b", completionMaxDisplayLen+50) + "tail"
+	r := writeRequestWithUser(t, "user:abc", validWriteBody(), testGrafanaConfig(), hostile, "")
+	rec := doWrite(t, nil, r)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (odd identity is sanitized, not rejected)", rec.Code)
+	}
+	s := creator.last.Spec
+	if len(s.UserLogin) > completionMaxDisplayLen {
+		t.Errorf("userLogin len = %d, want <= %d", len(s.UserLogin), completionMaxDisplayLen)
+	}
+	for _, ru := range s.UserLogin + s.UserDisplayName {
+		if ru < 0x20 || ru == 0x7f {
+			t.Fatalf("control character survived normalization in %q / %q", s.UserLogin, s.UserDisplayName)
+		}
+	}
+	if len(s.UserDisplayName) > completionMaxDisplayLen {
+		t.Errorf("userDisplayName len = %d, want <= %d", len(s.UserDisplayName), completionMaxDisplayLen)
+	}
+}
+
+// --- Upstream error taxonomy ------------------------------------------------
+
+func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	cases := []struct {
+		name           string
+		err            error
+		wantStatus     int
+		wantRetryAfter string // "" means: header must be present (transient) but value unchecked; "-" means absent
+	}{
+		{"transient 503", &appPlatformUpstreamError{status: 503, msg: "boom"}, http.StatusServiceUnavailable, ""},
+		{"transient 429 echoes retry-after", &appPlatformUpstreamError{status: 429, retryAfter: "12", msg: "slow down"}, http.StatusTooManyRequests, "12"},
+		{"transient 408 request timeout", &appPlatformUpstreamError{status: 408, msg: "request timeout"}, http.StatusRequestTimeout, ""},
+		{"terminal 400 schema", &appPlatformUpstreamError{status: 400, msg: "bad spec"}, http.StatusBadRequest, "-"},
+		{"terminal 422 schema", &appPlatformUpstreamError{status: 422, msg: "unprocessable"}, 422, "-"},
+		{"collection 404 preserved as structural disarm signal", &appPlatformUpstreamError{status: 404, msg: "not found"}, http.StatusNotFound, "-"},
+		{"identity-scoped 401 echoed for client-side re-auth retry", &appPlatformUpstreamError{status: 401, msg: "unauthorized"}, http.StatusUnauthorized, "-"},
+		{"identity-scoped 403 echoed for client-side disarm-and-keep", &appPlatformUpstreamError{status: 403, msg: "forbidden"}, http.StatusForbidden, "-"},
+		{"unexpected success status", &appPlatformUpstreamError{status: 202, msg: "not created"}, http.StatusBadGateway, ""},
+		{"unfollowed redirect mapped to retryable 502", &appPlatformUpstreamError{status: 302, msg: "moved"}, http.StatusBadGateway, ""},
+		{"network error is transient", fmt.Errorf("dial tcp: connection refused"), http.StatusServiceUnavailable, ""},
+		// A token exchange that fails at RUNTIME (the credential IS provisioned) is
+		// an auth-api blip, not a structural absence: retryable, so the queued fact
+		// survives. Structural absence takes the separate obo-unavailable → 404 path
+		// (TestCompletionWriteHandler_UnprovisionedStackReturns404) and must never
+		// land here, or an unprovisioned stack would retry until the 30-day horizon.
+		{"token exchange failure is transient", &tokenExchangeError{err: fmt.Errorf("auth-api unavailable")}, http.StatusServiceUnavailable, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			creator := &fakeCreator{err: tc.err}
+			withCreator(t, creator)
+			rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d", rec.Code, tc.wantStatus)
+			}
+			ra := rec.Header().Get("Retry-After")
+			switch tc.wantRetryAfter {
+			case "-":
+				if ra != "" {
+					t.Errorf("Retry-After = %q, want absent (not retried server-side)", ra)
+				}
+			case "":
+				if ra == "" {
+					t.Errorf("Retry-After missing on transient")
+				}
+			default:
+				if ra != tc.wantRetryAfter {
+					t.Errorf("Retry-After = %q, want %q", ra, tc.wantRetryAfter)
+				}
+			}
+		})
+	}
+}
+
+// An upstream 403 is echoed VERBATIM and nothing is dropped: the front end maps
+// it to disarm-and-keep — writes stop for the session, the queued records stay
+// persisted for a later drain, because a missing grant can be added without the
+// completion ever happening again. It carries no Retry-After and is not
+// classified transient: a systemic RBAC/grant denial will not clear by retrying,
+// so the server does not invite one.
+func TestCompletionWrite_Forbidden403DisarmsAndRetains(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusForbidden, msg: "forbidden"}}
+	withCreator(t, creator)
+
+	rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want the upstream 403 echoed verbatim (disarms, records retained)", rec.Code)
+	}
+	if ra := rec.Header().Get("Retry-After"); ra != "" {
+		t.Errorf("Retry-After = %q, want absent (403 is not retried server-side)", ra)
+	}
+	if isTransientUpstreamStatus(http.StatusForbidden) {
+		t.Errorf("403 must not be classified transient")
+	}
+}
+
+// An upstream 401 means the MINTED access token was rejected — the handler's own
+// gate already gave a missing/expired inbound ID token its 401. The client retries
+// it as transient, so a persistent cause (wrong audience, bad access policy,
+// missing CAP scopes) retries until the 30-day horizon. Same shape as the 403 and
+// token-exchange warns, so it must clear the same Faro-visible bar.
+func TestCompletionWrite_Upstream401IsLoud(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	withCreator(t, &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusUnauthorized, msg: "unauthorized"}})
+
+	logger := newCapturingLogger()
+	app := newTestApp(t)
+	app.logger = logger
+
+	rec := doWrite(t, app, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want the upstream 401 echoed verbatim", rec.Code)
+	}
+	if !logger.warnedWith("unauthorized upstream") {
+		t.Errorf("a rejected minted credential must be logged at warn (Faro-visible), got %+v", *logger.lines)
+	}
+
+	// An ordinary terminal 4xx stays quiet — only the credential-rejection case is
+	// loud, or the signal drowns.
+	quiet := newCapturingLogger()
+	app.logger = quiet
+	withCreator(t, &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusBadRequest, msg: "schema"}})
+	doWrite(t, app, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	if quiet.warnedWith("unauthorized upstream") {
+		t.Error("a plain 400 must not be reported as a rejected credential")
+	}
+}
+
+// A runtime token-exchange failure is retryable, but it must not be silent. The
+// one bad shape it can hide — a provisioned credential in an environment whose
+// delegated-permissions grant is missing — retries every queued write until the
+// 30-day retention horizon, so it is logged at warn (the same Faro-visible bar
+// as the 403 disarm decision), never at debug alongside ordinary network blips.
+func TestCompletionWrite_TokenExchangeFailureIsLoudAndRetryable(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	withCreator(t, &fakeCreator{err: &tokenExchangeError{err: fmt.Errorf("auth-api unavailable")}})
+
+	logger := newCapturingLogger()
+	app := newTestApp(t)
+	app.logger = logger
+
+	rec := doWrite(t, app, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 (transient — a brief auth-api blip must recover)", rec.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("Retry-After missing: an exchange failure must be retried, not dropped")
+	}
+	if !logger.warnedWith("token exchange") {
+		t.Errorf("exchange failure must be logged at warn (Faro-visible), got %+v", *logger.lines)
+	}
+
+	// An ordinary network failure stays at debug — only the exchange case is loud,
+	// or the signal drowns.
+	quiet := newCapturingLogger()
+	app.logger = quiet
+	withCreator(t, &fakeCreator{err: fmt.Errorf("dial tcp: connection refused")})
+	doWrite(t, app, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	if quiet.warnedWith("token exchange") {
+		t.Error("a plain network failure must not be reported as a token-exchange failure")
+	}
+}
+
+// The stamped subject comes from the INBOUND ID token, and only from there. The
+// outbound credential changed from the ID token to a minted on-behalf-of access
+// token; this pins that the change did not — and a future outbound refactor
+// cannot silently — move identity onto the minted token instead.
+func TestCompletionWrite_SubjectComesFromInboundIDToken(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	// A plain numeric subject, matching what a real stack forwards; the format
+	// follows the identity provider, so nothing may depend on its shape.
+	const inboundSubject = "user:27"
+	rec := doWrite(t, nil, writeRequest(t, inboundSubject, validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if creator.last.Spec.UserID != inboundSubject {
+		t.Errorf("stamped userId = %q, want the inbound ID token's sub %q", creator.last.Spec.UserID, inboundSubject)
+	}
+	// The record name is derived from the same trusted subject, so it must track
+	// the inbound token too.
+	if want := completionRecordName(inboundSubject, "evt-default"); creator.last.Metadata.Name != want {
+		t.Errorf("record name = %q, want %q (derived from the inbound subject)", creator.last.Metadata.Name, want)
+	}
+}
+
+// --- Rate limit -------------------------------------------------------------
+
+func TestCompletionWrite_RateLimited(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	app := &App{logger: log.DefaultLogger, completionWriteRateLimiter: newCompletionWriteRateLimiter()}
+
+	var last int
+	// Burst is completionWriteRateBurst; the next request over budget is 429.
+	for i := 0; i < int(completionWriteRateBurst)+1; i++ {
+		rec := doWrite(t, app, writeRequest(t, "user:flood", validWriteBody(), testGrafanaConfig()))
+		last = rec.Code
+		if i < int(completionWriteRateBurst) && rec.Code != http.StatusCreated {
+			t.Fatalf("request %d within burst got %d, want 201", i, rec.Code)
+		}
+	}
+	if last != http.StatusTooManyRequests {
+		t.Fatalf("over-budget request got %d, want 429", last)
+	}
+}
+
+func TestCompletionWrite_RateLimitIsPerUser(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+	app := &App{logger: log.DefaultLogger, completionWriteRateLimiter: newCompletionWriteRateLimiter()}
+
+	// Exhaust user A's burst.
+	for i := 0; i < int(completionWriteRateBurst)+1; i++ {
+		doWrite(t, app, writeRequest(t, "user:a", validWriteBody(), testGrafanaConfig()))
+	}
+	// User B is unaffected.
+	rec := doWrite(t, app, writeRequest(t, "user:b", validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("user B got %d, want 201 (rate limit must be per-user)", rec.Code)
+	}
+}
+
+// The limiter reads the package-wide timeNow seam (finding 7), so freezing then
+// advancing the clock drives refill deterministically: exhaust the burst → 429
+// with a Retry-After, advance past one refill interval → the next request is
+// admitted again.
+func TestCompletionWrite_RateLimitRefillsAfterClockAdvance(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	withCreator(t, &fakeCreator{})
+	app := &App{logger: log.DefaultLogger, completionWriteRateLimiter: newCompletionWriteRateLimiter()}
+
+	// Drain the whole burst, then one more to hit the limit.
+	for i := 0; i < int(completionWriteRateBurst); i++ {
+		if rec := doWrite(t, app, writeRequest(t, "user:flood", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
+			t.Fatalf("request %d within burst got %d, want 201", i, rec.Code)
+		}
+	}
+	rec := doWrite(t, app, writeRequest(t, "user:flood", validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("over-budget request got %d, want 429", rec.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("429 must carry a Retry-After hint")
+	}
+
+	// Without advancing the clock, still limited.
+	if rec := doWrite(t, app, writeRequest(t, "user:flood", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("still-exhausted request got %d, want 429", rec.Code)
+	}
+
+	// Advance past one refill interval (1/refillPerSec seconds) → one token back.
+	advance(time.Duration(float64(time.Second) / completionWriteRateRefillPerSec))
+	if rec := doWrite(t, app, writeRequest(t, "user:flood", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
+		t.Fatalf("after clock advance got %d, want 201 (token refilled)", rec.Code)
+	}
+}
+
+// --- Read-cache invalidation on create --------------------------------------
+
+func TestCompletionWrite_InvalidatesReadCache(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	lister := singlePageLister(
+		rec("user:abc", "bundled", "linux", "Linux", "interactive", "", "objectives", "2026-07-20T10:00:00Z", 100),
+	)
+	withLister(t, lister)
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	// Prime the read cache (1 upstream LIST).
+	doMyCompletions(t, "/completion-records/my", "user:abc")
+	if lister.callCount() != 1 {
+		t.Fatalf("expected 1 LIST after first read, got %d", lister.callCount())
+	}
+	// A second read within TTL is a cache hit (still 1 LIST).
+	doMyCompletions(t, "/completion-records/my", "user:abc")
+	if lister.callCount() != 1 {
+		t.Fatalf("expected cache hit (1 LIST), got %d", lister.callCount())
+	}
+
+	// A successful write must invalidate the namespace index.
+	if rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
+		t.Fatalf("write status = %d, want 201", rec.Code)
+	}
+
+	// The next read refreshes (LIST count advances).
+	doMyCompletions(t, "/completion-records/my", "user:abc")
+	if lister.callCount() != 2 {
+		t.Fatalf("expected a refresh after invalidation (2 LISTs), got %d", lister.callCount())
+	}
+}
+
+func TestCompletionWrite_ClearsFailureCooldown(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	fail := true
+	lister := &fakeLister{respond: func(string) (*completionRecordPage, error) {
+		if fail {
+			return nil, fmt.Errorf("upstream down")
+		}
+		return &completionRecordPage{Records: []completionRecordSpec{
+			rec("user:abc", "bundled", "linux", "Linux", "interactive", "", "objectives", "2026-07-20T10:00:00Z", 100),
+		}}, nil
+	}}
+	withLister(t, lister)
+	withCreator(t, &fakeCreator{})
+
+	// A cold read fails and stamps the failure cooldown.
+	doMyCompletions(t, "/completion-records/my", "user:abc")
+	if lister.callCount() != 1 {
+		t.Fatalf("expected 1 LIST after failing read, got %d", lister.callCount())
+	}
+
+	// Upstream recovers and a write succeeds inside the cooldown window. The
+	// invalidation must clear the cooldown so the post-write read refreshes
+	// instead of replaying the stale error.
+	fail = false
+	if rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
+		t.Fatalf("write status = %d, want 201", rec.Code)
+	}
+	rr, body := doMyCompletions(t, "/completion-records/my", "user:abc")
+	if lister.callCount() != 2 {
+		t.Fatalf("expected post-write read to refresh (2 LISTs), got %d", lister.callCount())
+	}
+	if rr.Code != http.StatusOK || len(body.Completions) != 1 {
+		t.Fatalf("post-write read = %d with %d completions, want 200 with 1", rr.Code, len(body.Completions))
+	}
+}
+
+// The write path stamps the caller's identity onto a durable, compliance-grade
+// record, so the §3 stack binding has to hold here too: a genuine, correctly
+// signed token from a sibling stack in the same auth-api cell must write
+// nothing. It takes the 401, which is what identityRejected means on this path.
+func TestCompletionWrite_SiblingStackTokenWritesNothing(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	r := writeRequest(t, "", validWriteBody(), testGrafanaConfig())
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
+		makeIDTokenForNamespace(t, "user:abc", "stacks-2"))
+
+	if rr := doWrite(t, nil, r); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (body %s)", rr.Code, rr.Body.String())
+	}
+	if creator.n != 0 {
+		t.Fatalf("wrote %d records for a sibling stack's token, want 0", creator.n)
+	}
+}
+
+// Both standing identity conditions must serve the structural 404 that disarms
+// the client queue, never the 401. The 401 is defined as transient — the write
+// client retries it with backoff to the 30-day horizon — and neither an absent
+// server-derived namespace nor an unreachable signing-keys chain recovers on
+// retry, so a 401 would spin forever without ever disarming.
+func TestCompletionWrite_StandingIdentityFailuresDisarmWithTheirOwnReason(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	unreachable, _ := startJWKSServer(t)
+	unreachable.Close()
+
+	cases := []struct {
+		name string
+		// build produces a POST whose identity gate lands on a standing status.
+		build      func(*testing.T) *http.Request
+		wantReason string
+	}{
+		{
+			name: "no server-derived namespace",
+			build: func(t *testing.T) *http.Request {
+				r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
+				//nolint:staticcheck // OrgID is the numeric org the CRD requires; see completion_records_write.go
+				return r.WithContext(backend.WithPluginContext(r.Context(),
+					backend.PluginContext{Namespace: "", OrgID: testOrgID}))
+			},
+			wantReason: reasonIdentityUnverifiable,
+		},
+		{
+			name: "no reachable signing-keys source",
+			build: func(t *testing.T) *http.Request {
+				withSigningKeysURL(t, unreachable.URL+"/v1/keys")
+				return writeRequest(t, "user:abc", validWriteBody(), map[string]string{
+					featuretoggles.EnabledFeatures: completionRecordsAggregationToggle,
+					sdkconfig.AppURL:               unreachable.URL,
+				})
+			},
+			wantReason: reasonSigningKeysUnreachable,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			creator := &fakeCreator{}
+			withCreator(t, creator)
+
+			rr := doWrite(t, nil, tt.build(t))
+
+			if rr.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want 404 so the client disarms (body %s)", rr.Code, rr.Body.String())
+			}
+			if got := rr.Header().Get("Retry-After"); got != "" {
+				t.Errorf("Retry-After = %q on a standing condition, want none", got)
+			}
+			var body struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode body: %v (raw %s)", err, rr.Body.String())
+			}
+			if body.Error != tt.wantReason {
+				t.Fatalf("error = %q, want %q", body.Error, tt.wantReason)
+			}
+			if creator.n != 0 {
+				t.Fatalf("wrote %d records with no verifiable identity, want 0", creator.n)
+			}
+		})
+	}
+}

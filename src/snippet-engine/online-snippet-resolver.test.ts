@@ -1,3 +1,4 @@
+import { logger } from '../lib/logging';
 import { createOnlineSnippetResolver, deriveSnippetsBaseUrl } from './online-snippet-resolver';
 
 jest.mock('../lib/package-recommendations-client', () => ({
@@ -72,10 +73,18 @@ describe('OnlineCdnSnippetResolver.resolve', () => {
     expect(global.fetch).toHaveBeenCalledWith(`${SNIPPETS_BASE}/..%2F..%2Fetc%2Fpasswd.json`, expect.anything());
   });
 
-  it('returns a network-error failure on a non-ok HTTP response (no throw)', async () => {
+  it('returns a not-found failure on a 404 response (no throw)', async () => {
     mockFetchResolved({ ok: false, status: 404 });
 
     const result = await createOnlineSnippetResolver().resolve('missing');
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not-found' } });
+  });
+
+  it('returns a network-error failure on a server error (no throw)', async () => {
+    mockFetchResolved({ ok: false, status: 500 });
+
+    const result = await createOnlineSnippetResolver().resolve('datasource-picker');
 
     expect(result).toMatchObject({ ok: false, error: { code: 'network-error' } });
   });
@@ -86,6 +95,34 @@ describe('OnlineCdnSnippetResolver.resolve', () => {
     const result = await createOnlineSnippetResolver().resolve('datasource-picker');
 
     expect(result).toMatchObject({ ok: false, error: { code: 'validation-error' } });
+  });
+
+  // Snippet bodies never met the guided-verb gate before it existed, so this is
+  // the runtime half of the authoring/runtime split: warn, never drop, so every
+  // block that still does work keeps rendering for readers.
+  it('resolves a published snippet whose nested guided step carries a non-guided verb, warning instead of dropping it', async () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    mockFetchResolved({
+      ok: true,
+      json: async () => ({
+        ...validSnippet,
+        blocks: [
+          {
+            type: 'section',
+            title: 'Open Explore',
+            blocks: [
+              { type: 'guided', content: 'Follow along', steps: [{ action: 'navigate', reftarget: '/explore' }] },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const result = await createOnlineSnippetResolver().resolve('datasource-picker');
+
+    expect(result).toMatchObject({ ok: true, id: 'datasource-picker', source: 'online-cdn' });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('navigate'));
+    warn.mockRestore();
   });
 
   it('returns a network-error failure when fetch rejects', async () => {

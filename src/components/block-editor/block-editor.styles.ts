@@ -813,30 +813,3 @@ export const getBlockPreviewStyles = (theme: GrafanaTheme2) => ({
     marginLeft: theme.spacing(1),
   }),
 });
-
-/**
- * Guide metadata form styles
- */
-export const getGuideMetadataStyles = (theme: GrafanaTheme2) => ({
-  container: css({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2),
-  }),
-
-  row: css({
-    display: 'flex',
-    gap: theme.spacing(2),
-
-    '& > *': {
-      flex: 1,
-    },
-  }),
-
-  tagsInput: css({
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(0.5),
-    alignItems: 'center',
-  }),
-});

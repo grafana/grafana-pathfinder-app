@@ -1,3 +1,4 @@
+import { readProxyDiagnostics, reportProxyFailure, reportProxyResponse } from './proxy-diagnostics';
 /**
  * Client for the /custom-guide-repository backend proxy — a slim,
  * denormalized catalogue of the caller's private InteractiveGuide packages
@@ -43,11 +44,24 @@ export interface CustomGuideRepositoryEntry {
 /**
  * Availability signal the catalogue surfaces gate on. `available` is false with
  * a machine `reason` when the proxy can't serve (the response is still a
- * soft-200 in that case). Reasons: `identity-unavailable`,
- * `grafana-config-unavailable`, `feature-toggle-disabled`, `namespace-unavailable`,
- * `app-url-unavailable`, `obo-unavailable` (no provisioned on-behalf-of token —
- * check this first when the surface is unexpectedly empty), `backend-unavailable`,
- * or `upstream-<status>` for an upstream error.
+ * soft-200 in that case, for every reason below). Reasons:
+ * `identity-unavailable` (no acceptable caller token — absent, expired, forged,
+ * or issued for another stack), `identity-unverifiable` (nothing this stack
+ * supplies makes verification possible: no app URL to build a verifier from, or
+ * no server-derived namespace to bind the token to), `signing-keys-unreachable`
+ * (no signing-keys endpoint answered at all, which points at the configured
+ * address rather than at the caller), `feature-toggle-disabled`,
+ * `obo-unavailable` (no provisioned on-behalf-of token — check this first when
+ * the surface is unexpectedly empty), or `upstream-<status>` for an upstream
+ * error.
+ *
+ * The identity gate runs before the backend resolver, so that resolver's
+ * `namespace-unavailable` and `app-url-unavailable` are unreachable on this
+ * route — a stack missing either reports `identity-unverifiable` first. Its
+ * `grafana-config-unavailable` is unreachable for an unrelated reason: the guard
+ * is `cfg == nil`, and the plugin SDK never returns a nil Grafana config (a
+ * missing context value and a nil pointer both yield an empty one), so that
+ * branch is dead whatever the gate ordering.
  */
 interface CustomGuideCapability {
   available: boolean;
@@ -90,8 +104,12 @@ function classifyRequestFailure(err: unknown): string {
 }
 
 function reportCatalogueFetchFailure(err: unknown): void {
+  reportProxyFailure(err);
   try {
-    const reason = classifyRequestFailure(err);
+    const diagnostic = readProxyDiagnostics((err as { data?: { diagnostics?: unknown } })?.data?.diagnostics);
+    const reason = diagnostic?.upstreamStatus
+      ? `upstream-${diagnostic.upstreamStatus}`
+      : (diagnostic?.reason ?? classifyRequestFailure(err));
     // The log context bridges to Faro too (logging.ts sanitizes it, it does not
     // strip it), so it carries the same bounded token — never `err.message`.
     logger.warn('[custom-guides] catalogue fetch failed', { reason });
@@ -147,6 +165,7 @@ async function requestCatalogue(): Promise<CatalogueResult> {
     undefined,
     { showErrorAlert: false, showSuccessAlert: false }
   );
+  reportProxyResponse(response);
   if (!response?.capability?.available) {
     // Surface WHY the catalogue is empty — otherwise a degraded capability (e.g.
     // obo-unavailable) presents as "no guides" with nothing in the console, which

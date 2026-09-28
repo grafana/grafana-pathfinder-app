@@ -34,10 +34,31 @@ describe('loadDocsTabContentResult', () => {
     expect(mockFetchPackageContent).toHaveBeenCalledWith(
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
       packageManifest,
+      undefined,
+      undefined,
+      undefined,
       undefined
     );
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchContent).not.toHaveBeenCalled();
+  });
+
+  it('threads the recommendation-level repository through to fetchPackageContent', async () => {
+    mockFetchPackageContent.mockResolvedValueOnce({ content: null, error: 'x', errorType: 'other' });
+
+    const packageManifest = { id: 'alerting-101', type: 'guide' };
+    await loadDocsTabContentResult('https://interactive-learning.grafana.net/packages/alerting-101/content.json', {
+      packageInfo: { packageId: 'alerting-101', packageManifest, repository: 'app-platform' },
+    });
+
+    expect(mockFetchPackageContent).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+      packageManifest,
+      undefined,
+      'app-platform',
+      undefined,
+      undefined
+    );
   });
 
   it('falls back to fetchPackageById when package URL is empty but packageId is known', async () => {
@@ -55,7 +76,7 @@ describe('loadDocsTabContentResult', () => {
       },
     });
 
-    expect(mockFetchPackageById).toHaveBeenCalledWith('alerting-101', packageManifest);
+    expect(mockFetchPackageById).toHaveBeenCalledWith('alerting-101', packageManifest, undefined, undefined);
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
     expect(mockFetchContent).not.toHaveBeenCalled();
   });
@@ -71,6 +92,7 @@ describe('loadDocsTabContentResult', () => {
       content: null,
       error: UNRESOLVED_PACKAGE_ERROR,
       errorType: 'not-found',
+      diagnostic: { source: 'other', stage: 'resolve', reason: 'not-found' },
     });
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
@@ -94,4 +116,9 @@ describe('loadDocsTabContentResult', () => {
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
   });
+});
+
+it('classifies an empty docs URL before attempting a fetch', async () => {
+  const result = await loadDocsTabContentResult('  ');
+  expect(result.diagnostic).toEqual({ source: 'other', stage: 'resolve', reason: 'invalid-url' });
 });

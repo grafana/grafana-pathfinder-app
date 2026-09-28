@@ -155,10 +155,11 @@ export async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Pro
         const milestones = validItems.map((item, index) => {
           // Use array index + 1 for sequential numbering (1, 2, 3, etc.)
           // This ensures no gaps in numbering even when items are skipped
+          // No per-guide time estimate is available from this Hugo/Jekyll
+          // index.json — estimatedMinutes stays absent rather than guessed.
           const milestone: Milestone = {
             number: index + 1,
             title: item.params?.title || item.params?.menutitle || `Step ${index + 1}`,
-            duration: '5-10 min', // Default duration as it's not in the data
             url: `${new URL(baseUrl).origin}${item.permalink || item.params?.permalink || ''}`,
             isActive: false,
           };

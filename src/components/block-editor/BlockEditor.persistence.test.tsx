@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
@@ -71,5 +71,46 @@ describe('BlockEditor persistence', () => {
     expect(screen.getByTestId(testIds.blockEditor.jsonEditor)).toHaveTextContent(jsonModeState.json);
     expect(screen.getByTestId(testIds.blockEditor.jsonEditor)).toHaveAttribute('data-json-valid', 'false');
     expect(screen.getByTestId(testIds.blockEditor.jsonEditor)).toHaveAttribute('data-can-undo', 'true');
+  });
+
+  it('persists a confirmed multi-selection delete and restores it with undo', async () => {
+    const guide: JsonGuide = {
+      id: 'bulk-delete-guide',
+      title: 'Bulk delete guide',
+      blocks: [
+        { type: 'markdown', content: 'first' },
+        { type: 'markdown', content: 'second' },
+        { type: 'markdown', content: 'keep' },
+      ],
+    };
+    const { container } = render(<BlockEditor initialGuide={guide} />);
+
+    fireEvent.click(screen.getByTestId(testIds.blockEditor.moreActionsButton));
+    fireEvent.click(screen.getByTestId(testIds.blockEditor.toggleSelectionButton));
+    const checkboxes = screen.getAllByRole('checkbox');
+    fireEvent.click(checkboxes[0]!);
+    fireEvent.click(checkboxes[1]!);
+    fireEvent.click(screen.getByTestId(testIds.blockEditor.bulkDeleteButton));
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+
+    expect(container.querySelectorAll('[data-block-card]')).toHaveLength(1);
+    expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+    await waitFor(
+      () => {
+        const stored = JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!);
+        expect(stored.guide.blocks).toEqual([{ type: 'markdown', content: 'keep' }]);
+      },
+      { timeout: 3_000 }
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo: Delete 2 blocks' }));
+    expect(container.querySelectorAll('[data-block-card]')).toHaveLength(3);
+    await waitFor(
+      () => {
+        const stored = JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!);
+        expect(stored.guide.blocks).toEqual(guide.blocks);
+      },
+      { timeout: 3_000 }
+    );
   });
 });

@@ -34,9 +34,11 @@ const BLOCK_EDITOR_MODAL_ATTR = 'data-block-editor-modal';
 
 // Import form components
 import { MarkdownBlockForm } from './forms/MarkdownBlockForm';
+import { DividerBlockForm } from './forms/DividerBlockForm';
 import { HtmlBlockForm } from './forms/HtmlBlockForm';
 import { ImageBlockForm } from './forms/ImageBlockForm';
 import { VideoBlockForm } from './forms/VideoBlockForm';
+import { CalloutBlockForm } from './forms/CalloutBlockForm';
 import { SectionBlockForm } from './forms/SectionBlockForm';
 import { CollapsibleBlockForm } from './forms/CollapsibleBlockForm';
 import { ConditionalBlockForm } from './forms/ConditionalBlockForm';
@@ -113,9 +115,11 @@ export interface BlockFormModalProps {
 // suppresses the whole modal rather than rendering an empty one.
 const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps> | null> = {
   markdown: MarkdownBlockForm,
+  divider: DividerBlockForm,
   html: HtmlBlockForm,
   image: ImageBlockForm,
   video: VideoBlockForm,
+  callout: CalloutBlockForm,
   section: SectionBlockForm,
   collapsible: CollapsibleBlockForm,
   conditional: ConditionalBlockForm,

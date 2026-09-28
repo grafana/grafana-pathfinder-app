@@ -11,7 +11,7 @@ interface AssistantSelectionPopoverProps {
   selectedText: string;
   position: SelectionPosition | null;
   context: ChatContextItem[];
-  containerRef: RefObject<HTMLElement>;
+  containerRef: RefObject<HTMLElement | null>;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({

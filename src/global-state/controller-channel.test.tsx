@@ -350,6 +350,45 @@ describe('ControllerChannelProvider', () => {
     await waitFor(() => expect(screen.getByTestId('fix')).toHaveTextContent('ok:true'));
   });
 
+  it('resolves an in-flight requestFix with the fix fallback when the provider unmounts', async () => {
+    let resolveOutcome: ((value: string) => void) | undefined;
+    const outcome = new Promise<string>((resolve) => {
+      resolveOutcome = resolve;
+    });
+
+    function PendingFixProbe() {
+      const channel = useControllerChannel();
+
+      return (
+        <button
+          onClick={() =>
+            channel
+              ?.requestFix('s1', { requirements: 'navmenu-open', fixType: 'navigation' })
+              .then((result) => resolveOutcome?.(`ok:${result.ok}`))
+          }
+        >
+          fix
+        </button>
+      );
+    }
+
+    const transport = new FakeCrossTabTransport();
+    const { unmount } = render(
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+        <PendingFixProbe />
+      </ControllerChannelProvider>
+    );
+
+    await pairWithLive(transport);
+
+    fireEvent.click(screen.getByText('fix'));
+    await waitForPostedOfKind(transport, 'fix-requirement');
+
+    unmount();
+
+    await expect(outcome).resolves.toBe('ok:false');
+  });
+
   it('falls back to null when no live tab answers within the timeout', async () => {
     jest.useFakeTimers();
     try {

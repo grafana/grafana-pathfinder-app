@@ -9,6 +9,8 @@
 
 The CLI validates `content.json` and `manifest.json` with separate schemas, then performs cross-file consistency checks when both are present.
 
+The snippets below are the original design sketch; `src/types/package.schema.ts` is authoritative and has moved on. In particular `ManifestJsonObjectSchema` is a `z.looseObject`, so the manifest top level is open — see [extension fields](../../developer/package-authoring.md#extension-fields).
+
 ### Shared sub-schemas
 
 ```typescript

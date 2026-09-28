@@ -93,6 +93,16 @@
       "toggleViewMode": "Přepnout režim zobrazení"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "Všechny cesty dokončeny!",
     "allCompleteTooltip": "Dokončili jste každou vzdělávací cestu – skvělá práce!",

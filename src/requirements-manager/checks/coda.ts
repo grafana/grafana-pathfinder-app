@@ -89,6 +89,7 @@ export async function codaExitZeroCheck(check: string): Promise<CheckResultError
       error = `Could not reach the challenge VM: ${codaErr.message}`;
     }
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error,

@@ -79,7 +79,7 @@ jest.mock('../lib/telemetry', () => ({
   recordRecommenderFallback: (...args: unknown[]) => mockRecordRecommenderFallback(...args),
 }));
 
-jest.mock('../docs-retrieval', () => ({
+jest.mock('../lib/learning-journey-content-bridge', () => ({
   fetchContent: jest.fn().mockResolvedValue({
     content: { metadata: { learningJourney: { milestones: [], summary: '' } } },
   }),

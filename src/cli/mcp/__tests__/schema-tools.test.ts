@@ -38,9 +38,11 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<To
 }
 
 describe('pathfinder_get_schema', () => {
-  describe('mode=one (named schema)', () => {
-    it('returns the guide schema with x-schema-version by default', async () => {
-      const payload = await callTool('pathfinder_get_schema', { name: 'guide' });
+  describe('named schema', () => {
+    it('returns the guide schema with x-schema-version when requested', async () => {
+      const payload = await callTool('pathfinder_get_schema', {
+        opts: { name: 'guide', includeVersion: true },
+      });
       expect(payload.name).toBe('guide');
       const schema = payload.schema as Record<string, unknown>;
       expect(schema).toBeDefined();
@@ -50,10 +52,9 @@ describe('pathfinder_get_schema', () => {
       expect(schema.type).toBe('object');
     });
 
-    it('omits x-schema-version when includeVersion=false', async () => {
+    it('omits x-schema-version by default', async () => {
       const payload = await callTool('pathfinder_get_schema', {
-        name: 'manifest',
-        includeVersion: false,
+        opts: { name: 'manifest' },
       });
       const schema = payload.schema as Record<string, unknown>;
       expect(schema['x-schema-version']).toBeUndefined();
@@ -62,29 +63,34 @@ describe('pathfinder_get_schema', () => {
     it('returns each registered schema by name', async () => {
       const names = ['guide', 'block', 'content', 'manifest', 'repository', 'graph'];
       for (const name of names) {
-        const payload = await callTool('pathfinder_get_schema', { name });
+        const payload = await callTool('pathfinder_get_schema', { opts: { name } });
         expect(payload.name).toBe(name);
         expect(payload.schema).toBeDefined();
       }
     });
 
     it('returns UNKNOWN_SCHEMA for an unregistered name', async () => {
-      const payload = await callTool('pathfinder_get_schema', { name: 'nonexistent' });
+      const payload = await callTool('pathfinder_get_schema', { opts: { name: 'nonexistent' } });
       expect(payload.status).toBe('error');
       expect(payload.code).toBe('UNKNOWN_SCHEMA');
       expect(payload.message).toMatch(/nonexistent/);
     });
 
-    it('returns MISSING_NAME when mode=one is explicit but name is omitted', async () => {
-      const payload = await callTool('pathfinder_get_schema', { mode: 'one' });
+    // Pins the absence of Commander vocabulary on an agent-facing message (§2), not
+    // one particular wording.
+    it('returns MISSING_NAME when no name or mode flag is supplied', async () => {
+      const payload = await callTool('pathfinder_get_schema', { opts: {} });
       expect(payload.status).toBe('error');
       expect(payload.code).toBe('MISSING_NAME');
+      expect(String(payload.message)).toMatch(/"list"/);
+      expect(String(payload.message)).toMatch(/"all"/);
+      expect(String(payload.message)).not.toMatch(/--list|--all/);
     });
   });
 
-  describe('mode=list', () => {
+  describe('--list', () => {
     it('returns the registry summary without payloads', async () => {
-      const payload = await callTool('pathfinder_get_schema', { mode: 'list' });
+      const payload = await callTool('pathfinder_get_schema', { opts: { list: true } });
       const schemas = payload.schemas as Array<{ name: string; description: string }>;
       expect(schemas).toBeDefined();
       expect(schemas.length).toBeGreaterThan(0);
@@ -95,9 +101,9 @@ describe('pathfinder_get_schema', () => {
     });
   });
 
-  describe('mode=all', () => {
-    it('returns every schema keyed by name when neither name nor mode is supplied', async () => {
-      const payload = await callTool('pathfinder_get_schema', {});
+  describe('--all', () => {
+    it('returns every schema keyed by name', async () => {
+      const payload = await callTool('pathfinder_get_schema', { opts: { all: true } });
       const schemas = payload.schemas as Record<string, Record<string, unknown>>;
       expect(schemas).toBeDefined();
       expect(Object.keys(schemas)).toEqual(
@@ -111,10 +117,13 @@ describe('pathfinder_get_schema', () => {
       expect(guideSchema!.type).toBe('object');
     });
 
-    it('honors mode=all explicitly', async () => {
-      const payload = await callTool('pathfinder_get_schema', { mode: 'all' });
+    it('includes version metadata when requested', async () => {
+      const payload = await callTool('pathfinder_get_schema', {
+        opts: { all: true, includeVersion: true },
+      });
       const schemas = payload.schemas as Record<string, unknown>;
       expect(schemas.manifest).toBeDefined();
+      expect((schemas.manifest as Record<string, unknown>)['x-schema-version']).toBe(CURRENT_SCHEMA_VERSION);
     });
   });
 });

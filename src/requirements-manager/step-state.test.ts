@@ -37,6 +37,7 @@ describe('step-state', () => {
           retryCount: 0,
           canSkip: false,
           canFix: false,
+          isSequentialBlock: false,
         })
       );
       // Verify config integration separately
@@ -188,6 +189,23 @@ describe('step-state', () => {
 
         expect(state.error).toBe('Error only');
         expect(state.explanation).toBeUndefined();
+      });
+
+      it('should mark SET_BLOCKED as a sequential block but not SET_ERROR', () => {
+        const blocked = stepReducer(initialState, {
+          type: 'SET_BLOCKED',
+          error: 'Sequential dependency not met',
+        });
+        expect(blocked.isSequentialBlock).toBe(true);
+        expect(toLegacyState(blocked).isSequentialBlock).toBe(true);
+
+        const errored = stepReducer(initialState, {
+          type: 'SET_ERROR',
+          error: 'Dashboard not found',
+        });
+        expect(errored.status).toBe('blocked');
+        expect(errored.isSequentialBlock).toBe(false);
+        expect(toLegacyState(errored).isSequentialBlock).toBe(false);
       });
     });
 
@@ -698,11 +716,13 @@ describe('step-state', () => {
         retryCount: 1,
         maxRetries: 3,
         canSkip: true,
+        isSequentialBlock: false,
       };
 
       const legacy = toLegacyState(state);
 
       expect(legacy).toEqual({
+        status: 'enabled',
         isEnabled: true,
         isCompleted: false,
         isChecking: false,
@@ -718,6 +738,7 @@ describe('step-state', () => {
         retryCount: 1,
         maxRetries: 3,
         isRetrying: false, // Not checking, so not retrying
+        isSequentialBlock: false,
       });
     });
 
@@ -792,6 +813,7 @@ describe('step-state', () => {
       for (const state of states) {
         const legacy = toLegacyState(state);
 
+        expect(legacy.status).toBe(state.status);
         expect(legacy.isEnabled).toBe(deriveIsEnabled(state));
         expect(legacy.isCompleted).toBe(deriveIsCompleted(state));
         expect(legacy.isChecking).toBe(deriveIsChecking(state));

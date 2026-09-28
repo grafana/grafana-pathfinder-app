@@ -20,7 +20,7 @@ description.
 - [ ] This PR addresses a **single concern** (one bug fix or feature, or a set of closely-related changes). Unrelated changes belong in separate PRs; see [CONTRIBUTING.md](../CONTRIBUTING.md#pull-request-scope).
 - [ ] All commits are signed (required, or the checks will not pass). See [CONTRIBUTING.md](../CONTRIBUTING.md#signed-commits).
 - [ ] I've added or updated tests for the change.
-- [ ] `npm run check` passes locally (typecheck, lint, prettier, Go lint/tests, frontend tests).
+- [ ] `npm run check` passes locally — the pre-merge gate. `npm run check -- --list` prints what it runs.
 - [ ] UI text and docs use [sentence case](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/#capitalization).
 
 <!-- Not sure how to split a larger change, or whether something fits in one PR? Open it as a draft and ask. We're happy to help. -->

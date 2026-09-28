@@ -36,7 +36,11 @@ export class FocusHandler {
       }
 
       await this.handleDoMode(targetElements, data.targetState);
-      await this.markAsCompleted(data);
+      if (targetElements.length > 0 || !data.skipCompletionOnEmptyTarget) {
+        await this.markAsCompleted(data);
+      } else {
+        data.completionSuppressed = true;
+      }
     } catch (error) {
       this.stateManager.handleError(error as Error, 'FocusHandler', data, false);
     }

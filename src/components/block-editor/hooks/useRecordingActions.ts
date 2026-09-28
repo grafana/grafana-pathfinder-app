@@ -72,7 +72,7 @@ export interface UseRecordingActionsReturn {
   /** Submit a section block and immediately start recording into it */
   submitAndStartRecording: (block: JsonBlock, insertAtIndex?: number) => void;
   /** Ref for pending section ID (exposed for special cases) */
-  pendingSectionIdRef: React.MutableRefObject<string | null>;
+  pendingSectionIdRef: React.RefObject<string | null>;
 }
 
 /**

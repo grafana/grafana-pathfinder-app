@@ -1,0 +1,32 @@
+{
+  "shared-session-path": {
+    "path": "./",
+    "title": "Shared browser session path",
+    "type": "path",
+    "milestones": ["shared-session-enter-unsaved-config", "shared-session-use-unsaved-config"],
+    "startingLocation": "/plugins/grafana-pathfinder-app?page=configuration",
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
+  },
+  "shared-session-enter-unsaved-config": {
+    "path": "enter-unsaved-config/",
+    "title": "Enter an unsaved configuration value",
+    "type": "guide",
+    "startingLocation": "/plugins/grafana-pathfinder-app?page=configuration",
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
+  },
+  "shared-session-use-unsaved-config": {
+    "path": "use-unsaved-config/",
+    "title": "Use the unsaved configuration value",
+    "type": "guide",
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
+  }
+}

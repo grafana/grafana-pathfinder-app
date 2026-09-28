@@ -13,6 +13,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 16,
+      "sectionCount": 3,
+      "completableBlockCount": 7,
+      "finalCompletablePosition": 11
     }
   },
   "e2e-framework-test": {
@@ -29,6 +36,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 5,
+      "sectionCount": 0,
+      "completableBlockCount": 3,
+      "finalCompletablePosition": 4
     }
   },
   "first-dashboard": {
@@ -59,6 +73,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 19,
+      "sectionCount": 2,
+      "completableBlockCount": 14,
+      "finalCompletablePosition": 17
     }
   },
   "first-dashboard-cloud": {
@@ -88,7 +109,14 @@
     },
     "testEnvironment": {
       "tier": "cloud",
-      "minVersion": "12.2.0"
+      "minVersion": "13.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 25,
+      "sectionCount": 3,
+      "completableBlockCount": 19,
+      "finalCompletablePosition": 23
     }
   },
   "interactive-style-validation": {
@@ -105,6 +133,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 77,
+      "sectionCount": 7,
+      "completableBlockCount": 51,
+      "finalCompletablePosition": 76
     }
   },
   "json-guide-demo": {
@@ -121,6 +156,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 33,
+      "sectionCount": 6,
+      "completableBlockCount": 12,
+      "finalCompletablePosition": 31
     }
   },
   "loki-grafana-101": {
@@ -151,13 +193,20 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 26,
+      "sectionCount": 2,
+      "completableBlockCount": 21,
+      "finalCompletablePosition": 25
     }
   },
   "prometheus-advanced-queries": {
     "path": "prometheus-advanced-queries/",
-    "title": "Advanced Prometheus Queries",
+    "title": "Advanced Prometheus queries",
     "type": "guide",
-    "description": "Master advanced PromQL patterns including aggregations, histograms, predictions, and SLO calculations. Queries can be customized with Assistant for your datasources.",
+    "description": "Practice advanced PromQL in Explore: aggregation, joins, time comparisons, histograms, and rule expressions. Customize queries for your data with Grafana Assistant.",
     "category": "querying",
     "author": {
       "name": "Interactive Learning",
@@ -167,12 +216,23 @@
     "recommends": ["prometheus-grafana-101", "loki-grafana-101"],
     "targeting": {
       "match": {
-        "urlPrefix": "/explore"
+        "or": [
+          {
+            "urlPrefix": "/explore"
+          }
+        ]
       }
     },
     "testEnvironment": {
-      "tier": "local",
+      "tier": "cloud",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 59,
+      "sectionCount": 19,
+      "completableBlockCount": 38,
+      "finalCompletablePosition": 58
     }
   },
   "prometheus-grafana-101": {
@@ -203,6 +263,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 33,
+      "sectionCount": 3,
+      "completableBlockCount": 27,
+      "finalCompletablePosition": 32
     }
   },
   "welcome-to-grafana": {
@@ -232,6 +299,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 10,
+      "sectionCount": 1,
+      "completableBlockCount": 7,
+      "finalCompletablePosition": 9
     }
   },
   "welcome-to-grafana-cloud": {
@@ -261,6 +335,13 @@
     "testEnvironment": {
       "tier": "cloud",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 10,
+      "sectionCount": 1,
+      "completableBlockCount": 7,
+      "finalCompletablePosition": 9
     }
   }
 }

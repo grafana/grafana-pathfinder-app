@@ -16,7 +16,7 @@
 import { validateGuideFromString } from '../../validation';
 import type { RepositoryEntry, RepositoryJson, TestEnvironment } from '../../types/package.types';
 import { resolvePackageById } from './recommender-resolver';
-import { fetchRepositoryIndex, buildPackageFileUrl, type RepositoryPackage } from '../mcp/lib/repository-client';
+import { fetchRepositoryIndex, buildPackageFileUrl, type RepositoryPackage } from '../utils/repository-client';
 import { hydrateExecutionPlan, planGuideExecution, planPackageExecution, type ExecutionPlan } from './guide-chains';
 import type { LoadedGuide } from '../utils/file-loader';
 import { resolveTarget, type CloudTargetCapabilities } from './e2e-targets';
@@ -58,7 +58,7 @@ export interface ResolvedRemoteGuide {
   targetUrl: string;
   /** The content.json URL the guide was fetched from. */
   sourceUrl: string;
-  startingLocation: string;
+  startingLocation?: string;
   /** Conservative side-effect classification for the fetched content. */
   sideEffects: SideEffectClassification;
   /** Plugin IDs required by this guide, from testEnvironment.plugins. */
@@ -169,19 +169,21 @@ async function buildGuideOrSkip(
     };
   }
 
-  let resolvedStartingLocation: string;
-  try {
-    resolvedStartingLocation = resolveStartingPath(target.targetUrl!, startingLocation);
-  } catch (error) {
-    return {
-      skipped: {
-        id,
-        reason: 'validation_failed',
-        message: `Invalid startingLocation: ${error instanceof Error ? error.message : 'unknown error'}`,
-        sourceUrl: contentUrl,
-        tier: target.tier,
-      },
-    };
+  let resolvedStartingLocation: string | undefined;
+  if (startingLocation !== undefined) {
+    try {
+      resolvedStartingLocation = resolveStartingPath(target.targetUrl!, startingLocation);
+    } catch (error) {
+      return {
+        skipped: {
+          id,
+          reason: 'validation_failed',
+          message: `Invalid startingLocation: ${error instanceof Error ? error.message : 'unknown error'}`,
+          sourceUrl: contentUrl,
+          tier: target.tier,
+        },
+      };
+    }
   }
 
   const fetched = await fetchText(contentUrl);
@@ -231,7 +233,7 @@ async function buildGuideOrSkip(
       instance: target.instance,
       targetUrl: target.targetUrl!,
       sourceUrl: contentUrl,
-      startingLocation: resolvedStartingLocation,
+      ...(resolvedStartingLocation !== undefined ? { startingLocation: resolvedStartingLocation } : {}),
       sideEffects,
       ...(testEnvironment.plugins?.length ? { plugins: testEnvironment.plugins } : {}),
     },

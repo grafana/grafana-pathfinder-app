@@ -141,10 +141,11 @@ The frontend plugin does **not** fetch, store, or reason about repository indexe
 
 The recommender shares its cached repository indexes between the package resolution endpoint and the recommendation endpoints. Both consumers benefit from the same periodic refresh cycle (~20 minutes). The recommendation engine uses the indexes for targeting, dependency graph analysis, and recommendation quality; the resolution endpoint uses them to map bare IDs to CDN content locations.
 
-All tiers return the same resolution shape:
+All resolver implementations return the same discriminated union:
 
 ```typescript
-interface PackageResolution {
+interface PackageResolutionSuccess {
+  ok: true;
   id: string;
   contentUrl: string;
   manifestUrl: string;
@@ -153,20 +154,32 @@ interface PackageResolution {
   manifest?: ManifestJson;
   /** Populated when resolve options request content loading */
   content?: ContentJson;
-  /** Graph-derived navigation (populated by recommender resolution, Phase 5+) */
-  navigation?: PackageNavigation;
+  /** Short title from the repository index, when available */
+  entryTitle?: string;
+  /** Resource already fetched while verifying publication, when available */
+  probedResource?: unknown;
 }
 
-interface PackageNavigation {
-  /** Paths/journeys this package participates in, with the parent's full steps array for progress computation */
-  memberOf?: Array<{ id: string; type: string; steps: string[] }>;
-  /** Packages linked via recommends edges in the dependency graph */
-  recommended?: string[];
+interface ResolutionError {
+  code: 'not-found' | 'permission-denied' | 'network-error' | 'parse-error' | 'validation-error';
+  message: string;
 }
+
+interface PackageResolutionFailure {
+  ok: false;
+  id: string;
+  error: ResolutionError;
+  /** Repository that produced the failure, when known */
+  repository?: string;
+}
+
+type PackageResolution = PackageResolutionSuccess | PackageResolutionFailure;
 
 interface ResolveOptions {
-  /** When true, fetch and populate manifest and content on the resolution result */
-  loadContent?: boolean;
+  /** Load both files, manifest metadata only, or URLs only when omitted */
+  loadContent?: boolean | 'metadata-only';
+  /** For URL-only resolution, verify publication where the resolver supports it */
+  verifyPublished?: boolean;
 }
 
 interface PackageResolver {
@@ -174,9 +187,9 @@ interface PackageResolver {
 }
 ```
 
-The `PackageResolver` interface is the abstraction that makes resolution strategy swappable. Resolution always returns the package ID and CDN URLs. When `loadContent` is requested, the resolver also fetches and populates the `manifest` and `content` objects on the result (fetching from the CDN URLs in the response). Callers that only need to know where a package is (e.g., catalog UI) skip the load; callers that need the actual package (e.g., the plugin renderer) pass the flag.
+The `ok` discriminant is the resolution contract: every result carries the requested package ID, but callers must narrow on `ok` before reading success-only URLs or loaded data. Failures instead carry a structured error and, when known, the repository that produced it.
 
-The `navigation` field is populated by the recommender's resolution endpoint starting in Phase 5. The recommender computes `memberOf` by scanning all metapackages whose `steps` arrays contain this package ID, copying each parent's full `steps` array into the entry, and `recommended` from `recommends` edges — all from its cached repository indexes. The `memberOf` entry carries only the parent's `id`, `type`, and `steps` — the frontend derives position (`steps.indexOf(currentId)`), total (`steps.length`), next step, and completion progress locally. This keeps the recommender's response minimal and avoids baking in structural navigation decisions (like "next") that may conflict with the frontend's completion-aware logic. The frontend renders this navigation directly, overlaying client-side completion state for display. In a future phase, the frontend will send completion data alongside context, enabling the recommender to return completion-aware navigation.
+The `PackageResolver` interface makes the resolution strategy swappable. On success, `loadContent: true` populates both `manifest` and `content`, while `'metadata-only'` loads the manifest without the heavier content payload. Omitting `loadContent` returns locators only. For URL-only calls that must not resolve unpublished packages, `verifyPublished` asks resolvers with a publish-status concept to probe first; resolvers without that distinction ignore it. A probe may return its already-fetched resource as `probedResource` so the loader can reuse it, and repository-backed resolvers may expose the index's short title as `entryTitle`.
 
 Repositories are internal to the recommender — they are URLs that point to indexes, not first-class objects the frontend sees. The recommender knows its set of repository URLs via environment configuration, fetches their indexes on a periodic refresh cycle, and resolves bare IDs from the merged lookup. Phase 7 evolves the config-driven repository list into a dynamic registry with webhook-triggered refresh. The frontend resolver and `PackageResolver` interface are unchanged — only the recommender's repository management evolves.
 

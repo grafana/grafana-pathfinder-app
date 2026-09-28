@@ -352,6 +352,9 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing(1),
+      padding: theme.spacing(1),
+      borderRadius: theme.shape.radius.default,
+      border: '1px solid transparent',
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
     }),
@@ -359,27 +362,79 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
     }),
-    guideIcon: css({
-      width: 16,
-      height: 16,
+    // Separate from guideItemCurrent because the click affordance only holds
+    // where GuideList's own consumer wires up a handler for it (the cover
+    // page's shared link-handler contract) — see enableCurrentRowLink.
+    guideItemCurrentClickable: css({
+      cursor: 'pointer',
+    }),
+    // Same accent-card idiom as getLearningPathCardStyles.card, scoped here
+    // since it decorates a GuideList row, not that component's own card.
+    guideItemCurrentCard: css({
+      background: `linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      borderColor: colors.pathAccentMedium,
+    }),
+    guideItemLocked: css({
+      color: theme.colors.text.disabled,
+    }),
+    guideItemWithDescription: css({
+      alignItems: 'flex-start',
+    }),
+    guideIconBadge: css({
+      width: 32,
+      height: 32,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
+      borderRadius: theme.shape.radius.default,
     }),
-    guideIconCompleted: css({
+    guideIconBadgeCurrent: css({
+      backgroundColor: colors.pathAccent,
+      color: theme.colors.primary.contrastText,
+    }),
+    guideIconBadgeCompleted: css({
+      backgroundColor: colors.successLight,
       color: colors.success,
     }),
-    guideIconCurrent: css({
-      color: colors.pathAccent,
-    }),
-    guideIconPending: css({
+    guideIconBadgeLocked: css({
+      backgroundColor: theme.colors.background.primary,
       color: theme.colors.text.disabled,
     }),
     guideTitle: css({
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
+    }),
+    guideTextGroup: css({
+      display: 'flex',
+      flexDirection: 'column',
+      flex: 1,
+      minWidth: 0,
+      gap: 2,
+    }),
+    guideDescription: css({
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.disabled,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+    }),
+    guideMeta: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.disabled,
+    }),
+    guideUpNext: css({
+      flexShrink: 0,
+      whiteSpace: 'nowrap',
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: colors.pathAccent,
+      fontWeight: theme.typography.fontWeightMedium,
     }),
   };
 };
@@ -389,6 +444,8 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
 // ============================================================================
 
 export const getTableOfContentsStyles = (theme: GrafanaTheme2) => {
+  const colors = getColorPalette(theme);
+
   return {
     container: css({
       margin: `${theme.spacing(2)} 0`,
@@ -397,17 +454,80 @@ export const getTableOfContentsStyles = (theme: GrafanaTheme2) => {
       backgroundColor: theme.colors.background.secondary,
       border: `1px solid ${theme.colors.border.weak}`,
     }),
+    header: css({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      gap: theme.spacing(1),
+      marginBottom: theme.spacing(1.5),
+    }),
     heading: css({
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing(1),
-      margin: `0 0 ${theme.spacing(1.5)}`,
+      margin: 0,
       fontSize: theme.typography.h5.fontSize,
       fontWeight: theme.typography.fontWeightMedium,
       color: theme.colors.text.primary,
     }),
     headingIcon: css({
       color: theme.colors.text.secondary,
+    }),
+    headerActions: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1.5),
+    }),
+    ctaButton: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: colors.pathAccent,
+      color: '#fff',
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      border: 'none',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      whiteSpace: 'nowrap',
+
+      '&:hover': {
+        filter: 'brightness(1.1)',
+      },
+    }),
+    hero: css({
+      margin: `${theme.spacing(2)} 0 0`,
+      padding: theme.spacing(2),
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
+    }),
+    heroTitle: css({
+      margin: `0 0 ${theme.spacing(1)}`,
+      fontSize: theme.typography.h3.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+    }),
+    heroDescription: css({
+      margin: `0 0 ${theme.spacing(1.5)}`,
+      color: theme.colors.text.primary,
+      lineHeight: theme.typography.body.lineHeight,
+    }),
+    heroMeta: css({
+      display: 'flex',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: theme.spacing(2),
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.secondary,
+    }),
+    heroMetaItem: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
     }),
   };
 };

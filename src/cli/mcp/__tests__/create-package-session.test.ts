@@ -1,8 +1,7 @@
 /**
  * @jest-environment node
  *
- * Tests for the P7 session-minting branch of pathfinder_create_package
- * (and the same wiring on pathfinder_create_guide_template).
+ * Tests for the P7 session-minting branch of pathfinder_create_package.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -57,7 +56,9 @@ async function withHarness<T>(
 describe('pathfinder_create_package — session mint', () => {
   it('mints a session token at generation 1 and persists the seed artifact', async () => {
     await withHarness(async (call, store) => {
-      const r = await call('pathfinder_create_package', { title: 'My Guide', description: 'A test' });
+      const r = await call('pathfinder_create_package', {
+        opts: { title: 'My Guide', description: 'A test' },
+      });
       expect(r.status).toBe('ok');
       expect(typeof r.sessionToken).toBe('string');
       expect(isValidSessionToken(r.sessionToken!)).toBe(true);
@@ -76,8 +77,8 @@ describe('pathfinder_create_package — session mint', () => {
 
   it('mints distinct tokens for two distinct calls', async () => {
     await withHarness(async (call, store) => {
-      const a = await call('pathfinder_create_package', { title: 'A' });
-      const b = await call('pathfinder_create_package', { title: 'B' });
+      const a = await call('pathfinder_create_package', { opts: { title: 'A' } });
+      const b = await call('pathfinder_create_package', { opts: { title: 'B' } });
       expect(a.sessionToken).toBeDefined();
       expect(b.sessionToken).toBeDefined();
       expect(a.sessionToken).not.toBe(b.sessionToken);
@@ -87,15 +88,15 @@ describe('pathfinder_create_package — session mint', () => {
     });
   });
 
-  it('the minted token works for subsequent session-mode add_block calls', async () => {
+  it('the minted token works for subsequent session-mode add-block calls', async () => {
     await withHarness(async (call, store) => {
-      const created = await call('pathfinder_create_package', { title: 'Chained' });
+      const created = await call('pathfinder_create_package', { opts: { title: 'Chained' } });
       expect(created.sessionToken).toBeDefined();
 
-      const added = await call('pathfinder_add_block', {
+      const added = await call('pathfinder_manage_block', {
+        operation: 'add-block',
         sessionToken: created.sessionToken,
-        type: 'markdown',
-        fields: { content: 'Hello' },
+        opts: { type: 'markdown', content: 'Hello' },
       });
       expect(added.status).toBe('ok');
       expect(added.sessionToken).toBe(created.sessionToken);
@@ -111,29 +112,10 @@ describe('pathfinder_create_package — session mint', () => {
 
   it('returns INVALID_TITLE when the title has no alphanumeric chars (regression — sessionToken branch must not mask this)', async () => {
     await withHarness(async (call) => {
-      const r = await call('pathfinder_create_package', { title: '!!!' });
+      const r = await call('pathfinder_create_package', { opts: { title: '!!!' } });
       expect(r.code).toBe('INVALID_TITLE');
       // No sessionToken on errors — sessionToken only appears on success.
       expect(r.sessionToken).toBeUndefined();
-    });
-  });
-});
-
-describe('pathfinder_create_guide_template — session mint', () => {
-  it('mints a session containing the pre-populated template', async () => {
-    await withHarness(async (call, store) => {
-      const r = await call('pathfinder_create_guide_template', {
-        id: 'starter-pack',
-        title: 'Starter Pack',
-      });
-      expect(r.status).toBe('ok');
-      expect(isValidSessionToken(r.sessionToken!)).toBe(true);
-      expect(r.generation).toBe(1);
-      expect(r.artifact?.content.blocks.length).toBeGreaterThan(0);
-      const loaded = await store.load(r.sessionToken!);
-      expect((loaded?.artifact.content.blocks as unknown[]).length).toBe(
-        (r.artifact?.content.blocks as unknown[]).length
-      );
     });
   });
 });

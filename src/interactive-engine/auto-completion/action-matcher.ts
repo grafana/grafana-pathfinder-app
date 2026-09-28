@@ -10,6 +10,7 @@
 import type { DetectedAction } from '../../lib/dom/action-detector';
 import { findButtonByText } from '../../lib/dom';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 
 // ============ REGEX PATTERN MATCHING ============
@@ -180,7 +181,7 @@ export function matchFormValue(
 // ============ STEP ACTION CONFIG ============
 
 export interface StepActionConfig {
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover' | 'noop';
+  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'hover' | 'noop';
   refTarget: string;
   targetValue?: string;
 }
@@ -328,11 +329,10 @@ export function matchesStepAction(
     case 'hover':
       return matchesHoverAction(element, refTarget, targetElement);
 
-    case 'sequence':
-      // Sequence actions are handled at multi-step level, not here
+    case 'noop':
       return false;
-
     default:
+      assertExhaustive(targetAction);
       return false;
   }
 }

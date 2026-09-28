@@ -324,6 +324,29 @@ describe('FormFillHandler', () => {
       );
     });
 
+    it('does not complete and sets completionSuppressed when no elements found and skipCompletionOnEmptyTarget is set', async () => {
+      mockQuerySelectorAll.mockReturnValue([]);
+      const data: InteractiveElementData = { ...mockData, skipCompletionOnEmptyTarget: true };
+
+      await formFillHandler.execute(data, true);
+
+      expect(mockStateManager.handleError).not.toHaveBeenCalled();
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
+      // executeInteractiveAction reads this to report 'error' instead of 'ok' —
+      // without it, the caller's own completion persistence (gated on the
+      // outcome, not on stateManager) would mark the step done anyway.
+      expect(data.completionSuppressed).toBe(true);
+    });
+
+    it('does not set completionSuppressed when an element is found (regression guard)', async () => {
+      mockQuerySelectorAll.mockReturnValue([mockElement]);
+      const data: InteractiveElementData = { ...mockData, skipCompletionOnEmptyTarget: true };
+
+      await formFillHandler.execute(data, true);
+
+      expect(data.completionSuppressed).toBeUndefined();
+    });
+
     it('should handle navigation manager errors', async () => {
       const navigationError = new Error('Navigation failed');
       mockQuerySelectorAll.mockReturnValue([mockElement]);

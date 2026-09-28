@@ -61,6 +61,9 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
 
   const deepLink = parsePathfinderDeepLink(search);
   const { doc: docsParam, page: pageParam, source: sourceParam, type: typeParam } = deepLink;
+  if (deepLink.pathfinderKiosk && !docsParam && !deepLink.controller) {
+    return false;
+  }
   const kioskSessionParam = deepLink.kioskSession;
   const panelModeParam = deepLink.panelMode;
 
@@ -78,10 +81,13 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   lastProcessedSearch = search;
 
   if (kioskSessionParam) {
-    (window as any).__pathfinderKioskSessionId = kioskSessionParam;
+    window.__pathfinderKioskSessionId = kioskSessionParam;
   }
 
-  if (panelModeParam === 'floating') {
+  if (panelModeParam === 'sidebar') {
+    panelModeManager.setModePersisted('sidebar');
+    rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
+  } else if (panelModeParam === 'floating') {
     panelModeManager.setModePersisted('floating');
     rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
   } else if (panelModeParam === 'fullscreen') {
@@ -130,7 +136,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       const docsPage = findDocPage(ctx.docsParam);
 
       // SECURITY: page only processed when doc is also present (not a general redirector).
-      const rawRedirectTarget = ctx.pageParam || docsPage?.targetPage;
+      const rawRedirectTarget = ctx.pageParam || (kioskSessionParam ? undefined : docsPage?.targetPage);
       const redirectTarget = rawRedirectTarget ? validateRedirectPath(rawRedirectTarget) : null;
 
       if (!docsPage) {
@@ -145,7 +151,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
         return;
       }
 
-      const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
+      const needsRedirect = redirectTarget && redirectTarget !== locationService.getLocation().pathname;
       const currentMode = panelModeManager.getMode();
       const isFloatingMode = currentMode === 'floating';
       const isFullScreenMode = currentMode === 'fullscreen';
@@ -197,7 +203,7 @@ export function installDeepLinkNavListener(deps: DeepLinkHandlerDeps): void {
     const history = locationService.getHistory();
     if (history) {
       const unlisten = history.listen(handler);
-      (window as any).__pathfinderDeepLinkNavUnlisten = unlisten;
+      window.__pathfinderDeepLinkNavUnlisten = unlisten;
     }
   } catch {
     window.addEventListener('popstate', handler);

@@ -30,9 +30,11 @@ export interface JsonGuide {
  */
 export type JsonBlock =
   | JsonMarkdownBlock
+  | JsonDividerBlock
   | JsonHtmlBlock
   | JsonSectionBlock
   | JsonCollapsibleBlock
+  | JsonCalloutBlock
   | JsonConditionalBlock
   | JsonInteractiveBlock
   | JsonMultistepBlock
@@ -95,6 +97,15 @@ export interface JsonMarkdownBlock extends AssistantProps, AuthorAnnotated {
   id?: string;
   /** Markdown-formatted content */
   content: string;
+}
+
+/**
+ * Visual separator between adjacent guide blocks.
+ */
+export interface JsonDividerBlock extends AuthorAnnotated {
+  type: 'divider';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
 }
 
 /**
@@ -209,7 +220,30 @@ export interface JsonCollapsibleBlock extends AuthorAnnotated {
  * Content-only blocks — the only blocks a collapsible may hold.
  * Mirrors `PresentationalBlockSchema` in json-guide.schema.ts.
  */
-export type PresentationalBlock = JsonMarkdownBlock | JsonHtmlBlock | JsonImageBlock | JsonVideoBlock;
+export type PresentationalBlock =
+  JsonMarkdownBlock | JsonDividerBlock | JsonHtmlBlock | JsonImageBlock | JsonVideoBlock | JsonCalloutBlock;
+
+// ============ CALLOUT BLOCK ============
+
+/**
+ * Callout block: a highlighted, labeled box for calling out anything the
+ * author wants to set apart (an objective, a summary, a call to action —
+ * the author writes the label, not a fixed vocabulary). Presentational
+ * only, like `image`/`video`/`markdown` — it carries no completion state.
+ *
+ * Not to be confused with the unrelated `objectives?: string[]` field
+ * present on other block types (e.g. `JsonSectionBlock`), which drives
+ * auto-completion and is never rendered.
+ */
+export interface JsonCalloutBlock extends AuthorAnnotated {
+  type: 'callout';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
+  /** Label shown at the top of the box, e.g. "Objective" */
+  title: string;
+  /** Markdown-formatted body content */
+  content: string;
+}
 
 // ============ CONDITIONAL BLOCK ============
 
@@ -528,6 +562,7 @@ export interface JsonInputBlock extends AuthorAnnotated {
   prompt: string;
   /** Input type determines the UI: text input, checkbox, or datasource picker */
   inputType: 'text' | 'boolean' | 'datasource';
+  format?: 'http-origin';
   /** Variable name for storing/referencing the response */
   variableName: string;
   /** Placeholder text (for text input) */
@@ -618,6 +653,8 @@ export interface JsonTerminalConnectBlock extends AuthorAnnotated {
   vmApp?: string;
   /** Scenario name for alloy-scenario template. Only used with vm-aws-alloy-scenario. */
   vmScenario?: string;
+  /** Also install a Grafana credential for the `gcx` CLI shipped in the VM. */
+  gcx?: boolean;
 }
 
 // ============ CHALLENGE BLOCK ============
@@ -873,6 +910,10 @@ export function isMarkdownBlock(block: JsonBlock): block is JsonMarkdownBlock {
   return block.type === 'markdown';
 }
 
+export function isDividerBlock(block: JsonBlock): block is JsonDividerBlock {
+  return block.type === 'divider';
+}
+
 /**
  * Type guard for JsonHtmlBlock
  */
@@ -892,6 +933,13 @@ export function isSectionBlock(block: JsonBlock): block is JsonSectionBlock {
  */
 export function isCollapsibleBlock(block: JsonBlock): block is JsonCollapsibleBlock {
   return block.type === 'collapsible';
+}
+
+/**
+ * Type guard for JsonCalloutBlock
+ */
+export function isCalloutBlock(block: JsonBlock): block is JsonCalloutBlock {
+  return block.type === 'callout';
 }
 
 /**

@@ -135,7 +135,7 @@ When the `changelog` skill is invoked from `release-prep`, override its Phase 3 
    npm run check
    ```
 
-   This runs (per `package.json`): typecheck + lint + prettier-test + docs:sync-terms:check + lint:go + test:go + test:ci. If any step fails, **abort**. Print the failure log verbatim. Do not commit. Do not retry.
+   The gate announces each step as it starts and stops at the first failure; `npm run check -- --list` prints its composition without running it. If any step fails, **abort**. Print the failure log verbatim. Do not commit. Do not retry.
 
 2. **Run `npm run build`** — confirm the production bundle still builds:
 
@@ -182,19 +182,18 @@ When the `changelog` skill is invoked from `release-prep`, override its Phase 3 
 
    To cut the release, run:
 
-     git push origin main
      git tag -a v<version> -m "Release v<version>"
      git push origin v<version>
 
    The `release.yml` workflow triggers on `v*` tag push and creates the GitHub release.
    ```
 
-   Order matters: push the commit first so the tag points at an upstream-known SHA, then tag, then push the tag. Confirm this order with the user if they're unfamiliar.
+   The release-prep commit must already be merged before tagging, so the tag points at an upstream-known SHA. Then push the tag. Confirm this order with the user if they're unfamiliar.
 
 ## Reuses
 
 - `.cursor/skills/changelog/SKILL.md` — drafts the changelog entry. Run as a sub-skill.
-- `npm run check` — single command for the pre-merge gate. Defined in `package.json`.
+- `npm run check` — single command for the pre-merge gate. Its steps are declared in `scripts/check.js`.
 - `npm run build` — production build verification.
 - `docs/developer/RELEASE_PROCESS.md` — canonical release reference. If this skill diverges from that doc, update the doc.
 
@@ -272,9 +271,8 @@ Reply with the version to proceed.
 
 Ready to release v2.11.0.
 
-To cut the release, run:
+To cut the release after the release-prep PR is merged, run:
 
-  git push origin main
   git tag -a v2.11.0 -m "Release v2.11.0"
   git push origin v2.11.0
 

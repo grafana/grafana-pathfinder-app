@@ -1,11 +1,10 @@
-import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
 /**
  * Custom Prism.js theme that matches the existing SCSS color scheme
  * Based on the _prism.scss file colors
  */
-export const getPrismStyles = (theme: GrafanaTheme2) => css`
+export const getPrismStyles = () => css`
   /* Generated with http://k88hudson.github.io/syntax-highlighting-theme-generator/www */
   /* http://k88hudson.github.io/react-markdocs */
   /**

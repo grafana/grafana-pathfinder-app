@@ -44,6 +44,27 @@ function normalizeFieldValue(canonicalKey: string, value: unknown): unknown {
   return normalizeJsonGuideAliases(value);
 }
 
+/**
+ * Reads `canonicalKey` off a record that may not have been normalized yet,
+ * falling back to whichever alias maps to it. Canonical wins when both are
+ * present, matching `normalizeJsonGuideAliases`.
+ *
+ * For the read paths that see raw guide JSON — a backend guide loaded straight
+ * into editor state never passes through `validateGuide` — so a camelCase-only
+ * guide is not silently read as having no action at all.
+ */
+export function readAliasedField(source: Record<string, unknown>, canonicalKey: string): unknown {
+  if (Object.prototype.hasOwnProperty.call(source, canonicalKey)) {
+    return source[canonicalKey];
+  }
+  for (const [alias, canonical] of FIELD_ALIASES) {
+    if (canonical === canonicalKey && Object.prototype.hasOwnProperty.call(source, alias)) {
+      return source[alias];
+    }
+  }
+  return undefined;
+}
+
 export function normalizeJsonGuideAliases(raw: unknown): unknown {
   if (Array.isArray(raw)) {
     return raw.map(normalizeJsonGuideAliases);

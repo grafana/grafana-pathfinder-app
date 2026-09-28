@@ -101,6 +101,35 @@ describe('ButtonHandler', () => {
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });
 
+    it('does not complete when no button is found and skipCompletionOnEmptyTarget is set', async () => {
+      resolveWithRetry.mockResolvedValue(null);
+      const data: InteractiveElementData = { ...mockData, skipCompletionOnEmptyTarget: true };
+
+      await buttonHandler.execute(data, true);
+
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
+      // executeInteractiveAction reads this to report 'error' instead of 'ok' —
+      // without it, the caller's own completion persistence (gated on the
+      // outcome, not on stateManager) would mark the step done anyway.
+      expect(data.completionSuppressed).toBe(true);
+    });
+
+    it('does not set completionSuppressed when a button is found (regression guard)', async () => {
+      const data: InteractiveElementData = { ...mockData, skipCompletionOnEmptyTarget: true };
+
+      await buttonHandler.execute(data, true);
+
+      expect(data.completionSuppressed).toBeUndefined();
+    });
+
+    it('still completes when no button is found and skipCompletionOnEmptyTarget is not set (regression guard)', async () => {
+      resolveWithRetry.mockResolvedValue(null);
+
+      await buttonHandler.execute(mockData, true);
+
+      expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
+    });
+
     it('should handle errors gracefully', async () => {
       const testError = new Error('Button not found');
       resolveWithRetry.mockRejectedValue(testError);

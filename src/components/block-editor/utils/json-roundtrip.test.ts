@@ -120,8 +120,8 @@ describe('JSON Round-trip Conversion', () => {
             reftarget: '[data-testid="submit-btn"]',
             content: 'Click the submit button',
             tooltip: 'This will submit the form',
-            requirements: ['on-page:/dashboard'],
-            objectives: ['clicked-submit'],
+            requirements: ['on-page:/dashboard', 'exists-reftarget'],
+            objectives: ['has-dashboard-named:Example'],
             skippable: true,
             hint: 'Look for the blue button',
           },
@@ -135,8 +135,8 @@ describe('JSON Round-trip Conversion', () => {
       expect(block.reftarget).toBe('[data-testid="submit-btn"]');
       expect(block.content).toBe('Click the submit button');
       expect(block.tooltip).toBe('This will submit the form');
-      expect(block.requirements).toEqual(['on-page:/dashboard']);
-      expect(block.objectives).toEqual(['clicked-submit']);
+      expect(block.requirements).toEqual(['on-page:/dashboard', 'exists-reftarget']);
+      expect(block.objectives).toEqual(['has-dashboard-named:Example']);
       expect(block.skippable).toBe(true);
       expect(block.hint).toBe('Look for the blue button');
     });
@@ -227,7 +227,7 @@ describe('JSON Round-trip Conversion', () => {
               { type: 'interactive', action: 'highlight', reftarget: '.nav', content: 'Look here' },
             ],
             requirements: ['on-page:/'],
-            objectives: ['completed-intro'],
+            objectives: ['section-completed:intro'],
           },
         ],
       };
@@ -238,7 +238,7 @@ describe('JSON Round-trip Conversion', () => {
       expect(section.title).toBe('Getting Started');
       expect(section.blocks).toHaveLength(2);
       expect(section.requirements).toEqual(['on-page:/']);
-      expect(section.objectives).toEqual(['completed-intro']);
+      expect(section.objectives).toEqual(['section-completed:intro']);
     });
 
     test('deeply nested sections', () => {
@@ -338,7 +338,7 @@ describe('JSON Round-trip Conversion', () => {
               { action: 'button', reftarget: '.save', tooltip: 'Save changes' },
             ],
             requirements: ['on-page:/dashboard'],
-            objectives: ['dashboard-configured'],
+            objectives: ['has-dashboard-named:Example'],
             skippable: true,
           },
         ],

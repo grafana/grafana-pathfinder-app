@@ -1,8 +1,8 @@
 /**
  * Wraps a resolver with a short-lived cache (~5 min TTL) and in-flight
  * dedupe — the parser splice and editor picker can race for the same snippet
- * on first open. Failures aren't cached; they surface as the caller's
- * inert placeholder.
+ * on first open. Successful and not-found resolutions are cached; transient
+ * failures remain uncached.
  */
 
 import type { SnippetCatalog } from '../types/json-snippet.types';
@@ -44,9 +44,7 @@ export class CachingSnippetResolver implements SnippetResolver, SnippetCatalogPr
     const promise = this.inner
       .resolve(snippetId)
       .then((resolution) => {
-        // Only cache successes — a transient failure shouldn't pin a guide
-        // to an error for the session.
-        if (resolution.ok) {
+        if (resolution.ok || resolution.error.code === 'not-found') {
           this.cache.set(snippetId, { resolution, expiresAt: this.now() + this.ttlMs });
         }
         return resolution;

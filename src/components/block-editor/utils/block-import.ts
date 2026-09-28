@@ -25,6 +25,10 @@ export interface ImportValidationResult {
   guide: JsonGuide | null;
 }
 
+export interface ParseAndValidateGuideOptions {
+  allowDuplicateHeading?: boolean;
+}
+
 /**
  * Read a file as text
  *
@@ -84,10 +88,20 @@ export function validateFile(file: File): { isValid: boolean; errors: string[] }
  * Errors include line/column positions for Monaco markers.
  *
  * @param jsonString - JSON string to parse
+ * @param options - Leniency options forwarded to the validator
  * @returns Validation result with parsed guide if valid
  */
-export function parseAndValidateGuide(jsonString: string): ImportValidationResult {
-  const result = validateGuideFromString(jsonString);
+export function parseAndValidateGuide(
+  jsonString: string,
+  options: ParseAndValidateGuideOptions = {}
+): ImportValidationResult {
+  // The one error this repair surface must not block on: an already-published
+  // guide carrying it is what the author opens the editor to fix. `guide-lint.ts`
+  // still flags the step and `block-export.ts` / `github-pr.ts` still refuse to ship it.
+  const result = validateGuideFromString(jsonString, {
+    allowUnsupportedGuidedAction: true,
+    allowDuplicateHeading: options.allowDuplicateHeading,
+  });
 
   // Enrich errors with line/column positions using jsonc-parser
   const errorsWithPositions = addPositionsToErrors(

@@ -65,6 +65,7 @@ export enum UserInteraction {
   StepAutoCompleted = 'step_auto_completed',
   StepAutoCompleteFailed = 'step_auto_complete_failed',
   ResetProgressClick = 'reset_progress_click',
+  MarkCompleteClicked = 'mark_complete_clicked',
 
   // Global Link Interception
   GlobalDocsLinkIntercepted = 'global_docs_link_intercepted',
@@ -110,17 +111,26 @@ export enum UserInteraction {
 
   // Kiosk Mode
   KioskDemoStarted = 'kiosk_demo_started',
+  KioskInteraction = 'kiosk_interaction',
 
   // Initial-state alignment ("implied 0th step") — Phase 1 auto-recovery
   AlignmentPromptShown = 'alignment_prompt_shown',
   AlignmentPromptConfirmed = 'alignment_prompt_confirmed',
   AlignmentPromptDismissed = 'alignment_prompt_dismissed',
 
+  // Sandbox gcx credentials
+  GcxCredentialInstalled = 'gcx_credential_installed',
+  GcxSetupSkipped = 'gcx_setup_skipped',
+
   // AI auto-heal
   AiFixOffered = 'ai_fix_offered',
   AiFixAccepted = 'ai_fix_accepted',
   AiFixApplied = 'ai_fix_applied',
   AiFixFailed = 'ai_fix_failed',
+
+  // Interactive-learning banner experiment
+  InteractiveLearningBannerShown = 'interactive_learning_banner_shown',
+  InteractiveLearningBannerDismissed = 'interactive_learning_banner_dismissed',
 }
 
 // ============================================================================
@@ -170,14 +180,31 @@ function getExperimentsForAnalytics(): ExperimentAnalyticsEntry[] | null {
   }
 }
 
+/**
+ * The enrolled experiment arms, via the provider bound in module.tsx.
+ *
+ * Exported so the Faro session stamper reads cohorts from here rather than
+ * importing utils/experiments directly — that edge would pull the experiments
+ * modules into the telemetry import cycle.
+ *
+ * @returns The enrolled arms, or an empty array before the provider is bound
+ */
+export function getBoundActiveExperiments(): ExperimentAnalyticsEntry[] {
+  return getExperimentsForAnalytics() ?? [];
+}
+
+const EXPERIMENT_VARIANT_PRECEDENCE = {
+  excluded: 0,
+  control: 1,
+  treatment: 2,
+} satisfies Record<ExperimentConfig['variant'], number>;
+
 function rollUpVariant(experiments: ExperimentAnalyticsEntry[]): ExperimentConfig['variant'] {
-  if (experiments.some((experiment) => experiment.variant === 'treatment')) {
-    return 'treatment';
-  }
-  if (experiments.some((experiment) => experiment.variant === 'control')) {
-    return 'control';
-  }
-  return 'excluded';
+  return experiments.reduce<ExperimentConfig['variant']>((highest, experiment) => {
+    return EXPERIMENT_VARIANT_PRECEDENCE[experiment.variant] > EXPERIMENT_VARIANT_PRECEDENCE[highest]
+      ? experiment.variant
+      : highest;
+  }, 'excluded');
 }
 
 /**
@@ -252,7 +279,7 @@ export function reportAppInteraction(
     const experiments = activeExperiments && activeExperiments.length > 0 ? activeExperiments : null;
     const variant = experiments ? rollUpVariant(experiments) : null;
 
-    const kioskSessionId = (window as any).__pathfinderKioskSessionId as string | undefined;
+    const kioskSessionId = window.__pathfinderKioskSessionId;
 
     const enrichedProperties: Record<string, unknown> = {
       plugin_version: packageJson.version,
@@ -274,6 +301,21 @@ export function reportAppInteraction(
       // instead of on every mirrored action; RudderStack keeps it.
       const faroProperties = { ...enrichedProperties };
       delete faroProperties.experiments;
+      const privateGuide = Object.values(faroProperties).some(
+        (value) =>
+          typeof value === 'string' &&
+          (value.startsWith('backend-guide:') || value === 'app-platform' || value.includes('/interactiveguides/'))
+      );
+      if (privateGuide) {
+        for (const key of Object.keys(faroProperties)) {
+          if (
+            !['plugin_version', 'action', 'launch_source', 'content_type', 'variant'].includes(key) &&
+            !/url$/i.test(key)
+          ) {
+            delete faroProperties[key];
+          }
+        }
+      }
       // RudderStack properties are never redacted (first-party, same policy
       // as identity), but the Faro mirror is the final URL boundary for this
       // path — normalize by the `*_url` naming convention every call site
@@ -470,32 +512,22 @@ export interface JourneyContent {
 }
 
 /**
- * Calculates the completion percentage for a learning journey
+ * Extracts journey metadata properties for analytics events.
+ *
+ * `completionPercentage` is a required parameter, not computed here:
+ * `analytics.ts` is tier 1 and the shared percentage calculation
+ * (`getJourneyProgress`, `src/docs-retrieval/learning-journey-helpers.ts`)
+ * is tier 2, so a tier-1 module cannot call into it — every caller is tier 4
+ * and already has the figure from the surface it's instrumenting.
  *
  * @param content - The content object containing journey metadata
- * @returns Completion percentage (0-100) or 0 if not a learning journey
- */
-export function calculateJourneyProgress(content: JourneyContent | null | undefined): number {
-  if (!content || content.type !== 'learning-journey' || !content.metadata?.learningJourney) {
-    return 0;
-  }
-
-  const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
-
-  if (!totalMilestones || totalMilestones === 0) {
-    return 0;
-  }
-
-  return Math.round(((currentMilestone || 0) / totalMilestones) * 100);
-}
-
-/**
- * Extracts journey metadata properties for analytics events
- *
- * @param content - The content object containing journey metadata
+ * @param completionPercentage - The journey's current percentage, from the shared calculation
  * @returns Object with journey properties or empty object if not a journey
  */
-export function getJourneyProperties(content: JourneyContent | null | undefined): Record<string, number> {
+export function getJourneyProperties(
+  content: JourneyContent | null | undefined,
+  completionPercentage: number
+): Record<string, number> {
   if (!content || content.type !== 'learning-journey' || !content.metadata?.learningJourney) {
     return {};
   }
@@ -503,7 +535,7 @@ export function getJourneyProperties(content: JourneyContent | null | undefined)
   const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
 
   return {
-    completion_percentage: calculateJourneyProgress(content),
+    completion_percentage: completionPercentage,
     current_milestone: currentMilestone || 0,
     total_milestones: totalMilestones || 0,
   };
@@ -517,6 +549,7 @@ export function getJourneyProperties(content: JourneyContent | null | undefined)
  *
  * @param baseProperties - Base properties for the analytics event
  * @param content - Optional content object to extract journey data from
+ * @param completionPercentage - The journey's current percentage, from the shared calculation
  * @returns Enriched properties object with journey data if applicable
  *
  * @example
@@ -526,15 +559,16 @@ export function getJourneyProperties(content: JourneyContent | null | undefined)
  *   enrichWithJourneyContext({
  *     content_url: url,
  *     link_type: AnalyticsLinkType.ExternalBrowser,
- *   }, activeTab?.content)
+ *   }, activeTab?.content, activeTab?.content ? getJourneyProgress(activeTab.content) : 0)
  * );
  * ```
  */
 export function enrichWithJourneyContext(
   baseProperties: Record<string, string | number | boolean>,
-  content: JourneyContent | null | undefined
+  content: JourneyContent | null | undefined,
+  completionPercentage: number
 ): Record<string, string | number | boolean> {
-  const journeyProps = getJourneyProperties(content);
+  const journeyProps = getJourneyProperties(content, completionPercentage);
 
   // Only add journey properties if they exist (non-empty object)
   if (Object.keys(journeyProps).length > 0) {
@@ -559,8 +593,8 @@ export function enrichWithJourneyContext(
  */
 export function getSourceDocument(stepId?: string): { source_document: string; step_id: string } {
   try {
-    const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
-    const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
+    const tabUrl = window.__DocsPluginActiveTabUrl;
+    const contentKey = window.__DocsPluginContentKey;
     const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
 
     return {
@@ -671,8 +705,8 @@ export function buildInteractiveStepProperties(
  */
 export function getCurrentStepContext(): Record<string, number> {
   try {
-    const stepIndex = (window as any).__DocsPluginCurrentStepIndex as number | undefined;
-    const totalSteps = (window as any).__DocsPluginTotalSteps as number | undefined;
+    const stepIndex = window.__DocsPluginCurrentStepIndex;
+    const totalSteps = window.__DocsPluginTotalSteps;
 
     if (stepIndex === undefined || totalSteps === undefined) {
       return {};

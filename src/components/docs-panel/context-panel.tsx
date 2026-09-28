@@ -3,13 +3,14 @@ import { cx } from '@emotion/css';
 
 import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
 import { Icon, useStyles2, Card, Alert, Button } from '@grafana/ui';
-import { usePluginContext, IconName } from '@grafana/data';
+import { IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
+import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { HelpFooter } from '../HelpFooter';
 import { UserProfileBar } from '../UserProfileBar/UserProfileBar';
-import { locationService, config, getAppEvents } from '@grafana/runtime';
+import { locationService, getAppEvents } from '@grafana/runtime';
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
@@ -23,7 +24,8 @@ import {
   AnalyticsContentType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
+import { PLUGIN_BASE_URL } from '../../constants';
+import { usePathfinderPluginConfig } from '../../hooks';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
 import { CustomGuidesSection } from './CustomGuidesSection';
@@ -204,6 +206,7 @@ const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOp
   return {
     packageId,
     packageManifest: recommendation.manifest,
+    repository: recommendation.repository,
     resolvedMilestones: Array.isArray(recommendation.milestones) ? recommendation.milestones : undefined,
   };
 };
@@ -635,6 +638,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 openDocsPage(link.contentUrl, link.title, {
                                                   packageId: link.packageId,
                                                   packageManifest: link.manifest,
+                                                  repository: link.repository,
                                                 });
                                               }}
                                               className={styles.milestoneItem}
@@ -669,6 +673,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 openDocsPage(link.contentUrl, link.title, {
                                                   packageId: link.packageId,
                                                   packageManifest: link.manifest,
+                                                  repository: link.repository,
                                                 });
                                               }}
                                               className={styles.milestoneItem}
@@ -893,7 +898,15 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 {t('contextPanel.notYetAvailable', '(not yet available)')}
                                               </span>
                                             ) : (
-                                              <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                              typeof milestone.estimatedMinutes === 'number' && (
+                                                <span className={styles.milestoneDuration}>
+                                                  (
+                                                  {t('docsPanel.milestoneEstimatedMinutes', '{{count}} min', {
+                                                    count: milestone.estimatedMinutes,
+                                                  })}
+                                                  )
+                                                </span>
+                                              )
                                             )}
                                           </div>
                                         </div>
@@ -933,6 +946,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               openDocsPage(link.contentUrl, link.title, {
                                                 packageId: link.packageId,
                                                 packageManifest: link.manifest,
+                                                repository: link.repository,
                                               });
                                             }}
                                             className={styles.milestoneItem}
@@ -967,6 +981,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               openDocsPage(link.contentUrl, link.title, {
                                                 packageId: link.packageId,
                                                 packageManifest: link.manifest,
+                                                repository: link.repository,
                                               });
                                             }}
                                             className={styles.milestoneItem}
@@ -1076,12 +1091,13 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
 function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   // Get plugin configuration with proper defaults applied
-  const pluginContext = usePluginContext();
-  const configWithDefaults = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+  // Resolved rather than read off `plugin.meta.jsonData`: where the
+  // `PathfinderSettings` resource is authoritative, jsonData no longer receives
+  // saves, so the terms gate and the dev-mode gate would both read pre-migration
+  // values here.
+  const { config: configWithDefaults } = usePathfinderPluginConfig();
 
-  // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
-  const currentUserId = config.bootData.user?.id;
-  const devModeEnabled = isDevModeEnabled(configWithDefaults, currentUserId);
+  const devModeEnabled = isDevModeEnabled(configWithDefaults);
 
   // Use the simplified context hook
   const {
@@ -1140,6 +1156,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     <div className={styles.container} data-testid={testIds.contextPanel.container}>
       <div className={styles.content} ref={scrollContainerRef} data-testid={testIds.contextPanel.scrollContainer}>
         <div className={styles.contextSections}>
+          {/* Treatment arm of the interactive-learning banner experiment; renders null otherwise */}
+          <InteractiveLearningBanner />
+
           {/* User profile bar with learning stats and next action */}
           <UserProfileBar onOpenGuide={openLearningJourney} />
 

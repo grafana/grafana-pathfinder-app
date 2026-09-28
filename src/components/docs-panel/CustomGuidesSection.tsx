@@ -36,6 +36,9 @@ function packageInfoForPath(path: PublishedGuide, resolvedMilestones?: Milestone
     // `packageManifest.id` — thread it through, or "back to cover" breaks.
     packageManifest: { ...(path.manifest as unknown as Record<string, unknown>), id: path.id },
     resolvedMilestones,
+    // Custom guides are not the recommender, whose URL-filtered list is
+    // aligned-by-construction and so skips the alignment prompt (issue #1681).
+    launchSource: 'custom_guide',
   };
 }
 

@@ -10,6 +10,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { JsonGuide } from './types';
 import { ConfirmModal, AlertModal } from './NotificationModals';
+import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
 
 interface BackendGuide {
   metadata: {
@@ -152,7 +153,7 @@ export function GuideLibraryModal({
       id: backendGuide.spec.id,
       title: backendGuide.spec.title,
       schemaVersion: backendGuide.spec.schemaVersion || '1.0',
-      blocks: backendGuide.spec.blocks,
+      blocks: decodeAppPlatformGuideBlocks(backendGuide.spec.blocks),
     };
     onLoadGuide(guide, backendGuide.metadata.name);
     onClose();

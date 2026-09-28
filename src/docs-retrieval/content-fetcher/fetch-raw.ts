@@ -1,3 +1,6 @@
+import type { GuideDiagnostic, GuideLoadContext } from '../../types/guide-diagnostics.types';
+import { diagnoseGuideError, guideSource } from '../../lib/guide-diagnostics';
+import { fetchGuideResource } from '../../lib/telemetry/guide-load';
 // Transport core for the unified content fetcher: the raw HTTPS fetch, redirect
 // trust re-validation, the content.json → unstyled.html ladder, and the
 // structured error mapping. All network-facing, security-sensitive code lives
@@ -14,11 +17,13 @@ import {
 } from '../../security';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { isJsonContentUrl, generateInteractiveLearningVariations, getContentUrls } from './url-utils';
 
 // Internal error structure for detailed error handling
 export interface FetchError {
+  diagnostic?: GuideDiagnostic;
   message: string;
   errorType: 'not-found' | 'timeout' | 'network' | 'server-error' | 'other';
   statusCode?: number;
@@ -28,6 +33,7 @@ export interface FetchError {
  * Internal fetch result type that includes native JSON detection
  */
 export interface FetchRawResult {
+  fallback?: GuideDiagnostic;
   html: string | null;
   finalUrl?: string;
   error?: FetchError;
@@ -64,7 +70,7 @@ export function enforceHttps(url: string): boolean {
 /**
  * Generate user-friendly error messages based on error type
  */
-export function generateUserFriendlyError(error: FetchError | undefined, url: string): string {
+export function generateUserFriendlyError(error: FetchError | undefined, _url: string): string {
   if (!error) {
     return 'Failed to load content. Please try again.';
   }
@@ -78,7 +84,10 @@ export function generateUserFriendlyError(error: FetchError | undefined, url: st
       return 'Unable to connect. Please check your internet connection or try again later.';
     case 'server-error':
       return 'Server error occurred. Please try again later.';
+    case 'other':
+      return error.message || 'Failed to load content. Please try again.';
     default:
+      assertExhaustive(error.errorType);
       return error.message || 'Failed to load content. Please try again.';
   }
 }
@@ -93,12 +102,16 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 
   for (const urlVariation of urls) {
     try {
-      const response = await fetch(urlVariation, {
-        method: 'GET',
-        headers: { ...headers },
-        signal: AbortSignal.timeout(timeout),
-        redirect: 'follow',
-      });
+      const response = await fetchGuideResource(
+        urlVariation,
+        {
+          method: 'GET',
+          headers: { ...headers },
+          signal: AbortSignal.timeout(timeout),
+          redirect: 'follow',
+        },
+        options.loadContext
+      );
 
       if (response.ok) {
         const content = await response.text();
@@ -115,17 +128,44 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
               content_url: normalizeTelemetryUrl(urlVariation),
               final_url: normalizeTelemetryUrl(finalUrl),
             });
-            continue; // Try next variation
+            lastError = {
+              message: 'Untrusted redirect',
+              errorType: 'other',
+              diagnostic: { source: guideSource(urlVariation), stage: 'fetch', reason: 'blocked-url' },
+            };
+            continue;
           }
 
           // Detect if this is native JSON content
           const isNativeJson = isJsonContentUrl(finalUrl) || isJsonContentUrl(urlVariation);
-          return { html: content, finalUrl, isNativeJson };
+          return {
+            html: content,
+            finalUrl,
+            isNativeJson,
+            ...(lastError && {
+              fallback: lastError.diagnostic ?? {
+                source: guideSource(urlVariation),
+                stage: 'fetch',
+                reason: lastError.statusCode ? 'http-error' : 'not-found',
+                statusCode: lastError.statusCode,
+              },
+            }),
+          };
         }
+      }
+
+      if (response.ok) {
+        lastError = {
+          message: 'Content is empty',
+          errorType: 'other',
+          diagnostic: { source: guideSource(urlVariation), stage: 'decode', reason: 'empty-content' },
+        };
+        continue;
       }
 
       // 404 means this variation doesn't exist - try next one
       if (response.status === 404) {
+        lastError ??= { message: 'Content not found', errorType: 'not-found', statusCode: 404 };
         continue;
       }
 
@@ -137,7 +177,8 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('aborted');
+      const diagnostic = diagnoseGuideError(error, guideSource(urlVariation));
+      const isTimeout = diagnostic.reason === 'timeout';
       const isNetwork =
         errorMessage.includes('NetworkError') ||
         errorMessage.includes('Failed to fetch') ||
@@ -145,6 +186,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 
       lastError = {
         message: errorMessage,
+        diagnostic,
         errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
       };
       // Continue to next variation on network errors
@@ -172,27 +214,28 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 async function tryGrafanaDocsContentLadder(
   finalUrl: string,
   baseFetchOptions: RequestInit,
-  timeout: number
+  timeout: number,
+  context?: GuideLoadContext
 ): Promise<FetchRawResult | null> {
   const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
+  let fallback: GuideDiagnostic | undefined;
 
-  // Determine if this URL type supports content.json
-  // Learning paths and interactive learning URLs have content.json
-  // Regular docs pages only have unstyled.html
   const urlPath = new URL(finalUrl).pathname;
   const hasContentJson =
     urlPath.includes('/learning-journeys/') ||
     urlPath.includes('/learning-paths/') ||
     isInteractiveLearningUrl(finalUrl);
 
-  // Try content.json first only for URLs that support it
   if (hasContentJson && jsonUrl !== finalUrl) {
     try {
-      const jsonResponse = await fetch(jsonUrl, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
+      const jsonResponse = await fetchGuideResource(
+        jsonUrl,
+        { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) },
+        context
+      );
       if (jsonResponse.ok) {
         const jsonContent = await jsonResponse.text();
         if (jsonContent && jsonContent.trim()) {
-          // Check if server returned null as a signal to try unstyled.html
           if (jsonContent.trim() !== 'null') {
             return {
               html: jsonContent,
@@ -200,18 +243,30 @@ async function tryGrafanaDocsContentLadder(
               isNativeJson: true,
             };
           }
-          // Fall through to try the HTML fallback
+          fallback = { source: guideSource(finalUrl), stage: 'decode', reason: 'json-null' };
+        } else {
+          fallback = { source: guideSource(finalUrl), stage: 'decode', reason: 'empty-content' };
         }
+      } else {
+        fallback = {
+          source: guideSource(finalUrl),
+          stage: 'fetch',
+          reason: 'http-error',
+          statusCode: jsonResponse.status,
+        };
       }
-    } catch {
-      // JSON fetch failed - fall through to HTML fallback
+    } catch (error) {
+      fallback = diagnoseGuideError(error, guideSource(finalUrl));
     }
   }
 
-  // Fetch unstyled.html (fallback for learning journeys, primary for regular docs)
   if (htmlUrl !== finalUrl) {
     try {
-      const htmlResponse = await fetch(htmlUrl, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
+      const htmlResponse = await fetchGuideResource(
+        htmlUrl,
+        { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) },
+        context
+      );
       if (htmlResponse.ok) {
         const htmlContent = await htmlResponse.text();
         if (htmlContent && htmlContent.trim()) {
@@ -219,12 +274,34 @@ async function tryGrafanaDocsContentLadder(
             html: htmlContent,
             finalUrl: htmlResponse.url || htmlUrl,
             isNativeJson: false,
+            fallback,
           };
         }
+      }
+      if (htmlResponse.status === 404 && fallback && fallback.statusCode !== 404 && fallback.reason !== 'json-null') {
+        return {
+          html: null,
+          error: {
+            diagnostic: fallback,
+            message: 'Cannot load Grafana content. Please try again later.',
+            errorType:
+              fallback.reason === 'timeout'
+                ? 'timeout'
+                : fallback.reason === 'network-error'
+                  ? 'network'
+                  : fallback.statusCode !== undefined && fallback.statusCode >= 500
+                    ? 'server-error'
+                    : 'other',
+            statusCode: fallback.statusCode,
+          },
+        };
       }
       return {
         html: null,
         error: {
+          diagnostic: htmlResponse.ok
+            ? { source: guideSource(finalUrl), stage: 'decode', reason: 'empty-content' }
+            : { source: guideSource(finalUrl), stage: 'fetch', reason: 'http-error', statusCode: htmlResponse.status },
           message: hasContentJson
             ? `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${finalUrl}`
             : `Cannot load Grafana content. unstyled.html not found at: ${finalUrl}`,
@@ -236,6 +313,7 @@ async function tryGrafanaDocsContentLadder(
       return {
         html: null,
         error: {
+          diagnostic: diagnoseGuideError(htmlError, guideSource(finalUrl)),
           message: `Cannot load Grafana content. Content fetch failed: ${
             htmlError instanceof Error ? htmlError.message : 'Unknown error'
           }`,
@@ -273,7 +351,11 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
   let lastError: FetchError | undefined;
 
   try {
-    const response = await fetch(url, { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) });
+    const response = await fetchGuideResource(
+      url,
+      { ...baseFetchOptions, signal: AbortSignal.timeout(timeout) },
+      options.loadContext
+    );
 
     if (response.ok) {
       const html = await response.text();
@@ -296,6 +378,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
           });
           lastError = {
             message: 'Redirect target is not in trusted domain list',
+            diagnostic: { source: guideSource(url), stage: 'fetch', reason: 'blocked-url' },
             errorType: 'other',
           };
           return { html: null, error: lastError };
@@ -307,6 +390,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
         if (!enforceHttps(finalUrl)) {
           lastError = {
             message: 'Redirect to non-HTTPS URL blocked for security',
+            diagnostic: { source: guideSource(url), stage: 'fetch', reason: 'blocked-url' },
             errorType: 'other',
           };
           return { html: null, error: lastError };
@@ -318,8 +402,13 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
         // Use proper URL parsing to prevent domain hijacking attacks
         const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
-        if (shouldFetchContent) {
-          const ladderResult = await tryGrafanaDocsContentLadder(finalUrl, baseFetchOptions, timeout);
+        if (shouldFetchContent && !isJsonContentUrl(finalUrl)) {
+          const ladderResult = await tryGrafanaDocsContentLadder(
+            finalUrl,
+            baseFetchOptions,
+            timeout,
+            options.loadContext
+          );
           if (ladderResult) {
             return ladderResult;
           }
@@ -367,13 +456,18 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
                 });
                 lastError = {
                   message: 'Redirect target is not in trusted domain list',
+                  diagnostic: { source: guideSource(url), stage: 'fetch', reason: 'blocked-url' },
                   errorType: 'other',
                 };
               } else {
-                const redirectResponse = await fetch(redirectUrl.href, {
-                  ...baseFetchOptions,
-                  signal: AbortSignal.timeout(timeout),
-                });
+                const redirectResponse = await fetchGuideResource(
+                  redirectUrl.href,
+                  {
+                    ...baseFetchOptions,
+                    signal: AbortSignal.timeout(timeout),
+                  },
+                  options.loadContext
+                );
                 if (redirectResponse.ok) {
                   const html = await redirectResponse.text();
                   if (html && html.trim()) {
@@ -412,7 +506,8 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('aborted');
+    const diagnostic = diagnoseGuideError(error, guideSource(url));
+    const isTimeout = diagnostic.reason === 'timeout';
     const isNetwork =
       errorMessage.includes('NetworkError') ||
       errorMessage.includes('Failed to fetch') ||
@@ -421,6 +516,7 @@ export async function fetchRawHtml(url: string, options: ContentFetchOptions): P
 
     lastError = {
       message: errorMessage,
+      diagnostic,
       errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
     };
     logger.warn('Failed to fetch content', { error, content_url: normalizeTelemetryUrl(url) });

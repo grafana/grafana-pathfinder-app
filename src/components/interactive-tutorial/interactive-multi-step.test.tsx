@@ -134,6 +134,31 @@ function CompleteEarlyHarness({ skippable = false }: { skippable?: boolean }) {
 }
 
 describe('InteractiveMultiStep — completeEarly lifecycle', () => {
+  it('surfaces an unsupported internal action instead of failing silently', async () => {
+    render(
+      <InteractiveMultiStep
+        stepId="multi-unsupported"
+        internalActions={[{ targetAction: 'unsupported-action' } as any]}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.doItButton('multi-unsupported')));
+
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.step('multi-unsupported'))).toHaveAttribute(
+        'data-test-step-state',
+        'error'
+      )
+    );
+    expect(screen.getByTestId(testIds.interactive.errorMessage('multi-unsupported'))).toHaveTextContent(
+      'Step 1 failed'
+    );
+    expect(screen.getByTestId(testIds.interactive.errorMessage('multi-unsupported'))).toHaveTextContent(
+      'Unsupported action "unsupported-action".'
+    );
+    expect(mockExecuteInteractiveAction).not.toHaveBeenCalled();
+  });
+
   it('reports executing before the early-completion delay elapses', async () => {
     jest.useFakeTimers();
     try {
@@ -196,6 +221,30 @@ describe('InteractiveMultiStep — completeEarly lifecycle', () => {
       expect(step).toHaveAttribute('data-test-step-state', 'completed');
     });
     expect(screen.queryByTestId(testIds.interactive.errorMessage('multi-step'))).not.toBeInTheDocument();
+  });
+});
+
+describe('InteractiveMultiStep — full-screen fallback location', () => {
+  // Regression test (Cursor Bugbot, "Multi-step show omits handoff path"):
+  // the show-phase call dropped fullScreenFallbackLocation while the do-phase
+  // call right after it already threaded it through — a "Show me" click in
+  // full screen would dock with no target path once isGrafanaDrivingHandoffNeeded
+  // started applying to Show me too.
+  it('threads fullScreenFallbackLocation into both the show-phase and do-phase calls', async () => {
+    render(
+      <InteractiveMultiStep
+        stepId="multi-fallback"
+        internalActions={[{ targetAction: 'button', refTarget: '#save' }]}
+        fullScreenFallbackLocation="/connections"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.doItButton('multi-fallback')));
+
+    await waitFor(() => expect(mockExecuteInteractiveAction).toHaveBeenCalledTimes(2));
+    const [showCall, doCall] = mockExecuteInteractiveAction.mock.calls.map((call) => call[0]);
+    expect(showCall).toMatchObject({ buttonType: 'show', fullScreenFallbackLocation: '/connections' });
+    expect(doCall).toMatchObject({ buttonType: 'do', fullScreenFallbackLocation: '/connections' });
   });
 });
 

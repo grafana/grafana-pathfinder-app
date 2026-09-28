@@ -40,13 +40,14 @@ export function buildSessionExperimentsValue(entries: ExperimentEntryLike[]): st
   return serialized;
 }
 
-// Fire-and-forget, called by initFaro. The openfeature import must stay
-// dynamic: a static one cycles (openfeature → analytics → faro barrel → here)
-// and would pull the OpenFeature SDK into this chunk.
+// Fire-and-forget, called by initFaro and again on enrollment. Reads cohorts
+// through analytics' late-bound provider rather than utils/experiments, which
+// keeps the experiment modules out of this import cycle; the import must stay
+// dynamic so the OpenFeature SDK behind that provider never lands in this chunk.
 export async function stampSessionExperiments(): Promise<void> {
   try {
-    const { getActiveExperiments } = await import('../../utils/openfeature');
-    const value = buildSessionExperimentsValue(getActiveExperiments());
+    const { getBoundActiveExperiments } = await import('../analytics');
+    const value = buildSessionExperimentsValue(getBoundActiveExperiments());
     if (value !== null) {
       setFaroSessionAttributes({ experiments: value });
     }

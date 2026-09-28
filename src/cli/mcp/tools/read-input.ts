@@ -1,23 +1,17 @@
 /**
- * Shared "exactly one of {artifact} | {sessionToken}" resolver for the
- * read-only / read-then-load tool surface (P7).
+ * Shared "exactly one of {artifact} | {sessionToken}" resolver for
+ * read-only tools (inspect, validate, finalize).
  *
- * Used by `inspection-tools.ts` (inspect / validate); `finalize.ts` adopts
- * it in the next stack layer (session-mode finalize). Mutation tools use a
- * parallel resolver in `mutation-tools.ts` that also
- * threads `expectedGeneration` and the post-mutation writeback — the
- * read-side shape is simpler and worth factoring out so the two callers
- * stay in lockstep on error wire shapes.
+ * Mutation tools use a parallel path in `mutation-tools.ts` that also
+ * threads `expectedGeneration` and post-mutation writeback.
  */
 
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { enforceMcpSessionPin } from '../lib/session-pin';
 import { normalizeSessionToken } from '../lib/session-token';
 import { type AuthoringSessionStore } from '../lib/session-store';
-import { invalidSessionTokenResult, sessionNotFoundResult } from './result';
+import { invalidSessionTokenResult, sessionNotFoundResult, type ToolResult } from './result';
 import { classifyTwoModeInput } from './two-mode-input';
-
-type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
 export type ReadInputResolution =
   | {

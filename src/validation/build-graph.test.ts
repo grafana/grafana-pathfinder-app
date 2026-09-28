@@ -78,6 +78,23 @@ describe('buildGraph', () => {
     expect(welcome!.type).toBe('guide');
   });
 
+  it('should carry estimatedMinutes from a repository entry onto its graph node', () => {
+    const repoPath = writeRepository(tmpDir, 'repository.json', {
+      'prometheus-101': {
+        path: 'prometheus-101/',
+        title: 'Prometheus 101',
+        type: 'guide',
+        estimatedMinutes: 15,
+      },
+    });
+
+    const { graph, errors } = buildGraph([{ name: 'tutorials', path: repoPath }]);
+
+    expect(errors).toHaveLength(0);
+    const node = graph.nodes.find((n) => n.id === 'prometheus-101');
+    expect(node?.estimatedMinutes).toBe(15);
+  });
+
   it('should create dependency edges', () => {
     const repoPath = writeRepository(tmpDir, 'repository.json', {
       'guide-a': { path: 'a/', type: 'guide', depends: ['guide-b'] },

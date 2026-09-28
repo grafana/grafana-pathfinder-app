@@ -8,6 +8,7 @@ import {
   navmenuOpenCheck,
   getVisibleHighlightTarget,
 } from './dom-utils';
+import { INTERACTIVE_ACTION_TYPES } from '../../types/interactive.types';
 
 // Mock console methods to avoid noise in tests
 const originalConsoleWarn = console.warn;
@@ -113,30 +114,28 @@ describe('extractInteractiveDataFromElement', () => {
     });
   });
 
-  it('should handle missing attributes gracefully', () => {
+  it.each(INTERACTIVE_ACTION_TYPES)('decodes the known "%s" target action', (targetAction) => {
+    const element = document.createElement('div');
+    element.setAttribute('data-targetaction', targetAction);
+
+    expect(extractInteractiveDataFromElement(element)?.targetAction).toBe(targetAction);
+  });
+
+  it('returns null when data-targetaction is missing', () => {
     const element = document.createElement('div');
     element.textContent = 'Simple element';
 
     const result = extractInteractiveDataFromElement(element);
 
-    expect(result).toEqual({
-      refTarget: '',
-      targetAction: '',
-      targetValue: undefined,
-      requirements: undefined,
-      objectives: undefined,
-      skippable: false,
-      lazyRender: undefined,
-      scrollContainer: undefined,
-      openGuide: undefined,
-      tagName: 'div',
-      className: undefined,
-      id: undefined,
-      textContent: 'Simple element',
-      parentTagName: undefined,
-      timestamp: expect.any(Number),
-      customData: undefined,
-    });
+    expect(result).toBeNull();
+  });
+
+  it.each(['', 'unknown', 'quiz', 'sequence'])('rejects the unknown "%s" target action', (targetAction) => {
+    const element = document.createElement('div');
+    element.setAttribute('data-targetaction', targetAction);
+
+    expect(extractInteractiveDataFromElement(element)).toBeNull();
+    expect(console.warn).toHaveBeenCalledWith(`Unknown interactive action: ${targetAction}`, '');
   });
 
   it('should extract custom data attributes', () => {
@@ -148,7 +147,7 @@ describe('extractInteractiveDataFromElement', () => {
 
     const result = extractInteractiveDataFromElement(element);
 
-    expect(result.customData).toEqual({
+    expect(result?.customData).toEqual({
       'custom-attr': 'custom-value',
       'another-attr': 'another-value',
     });
@@ -517,6 +516,9 @@ describe('scrollUntilElementFound', () => {
     Object.defineProperty(scrollContainer, 'scrollTop', { value: 0, writable: true });
     Object.defineProperty(scrollContainer, 'clientHeight', { value: 500, writable: true });
     Object.defineProperty(scrollContainer, 'scrollHeight', { value: 2000, writable: true });
+    Object.defineProperty(scrollContainer, 'scrollLeft', { value: 0, writable: true });
+    Object.defineProperty(scrollContainer, 'clientWidth', { value: 500, writable: true });
+    Object.defineProperty(scrollContainer, 'scrollWidth', { value: 500, writable: true });
     scrollContainer.scrollBy = jest.fn();
 
     document.body = document.createElement('body');
@@ -562,6 +564,65 @@ describe('scrollUntilElementFound', () => {
     });
 
     expect(result).toBeNull();
+  });
+
+  it('waits and rechecks once when the container starts at both scroll boundaries', async () => {
+    Object.defineProperty(scrollContainer, 'scrollHeight', { value: 500, writable: true });
+    const target = document.createElement('button');
+    target.id = 'late-target';
+    scrollContainer.scrollBy = jest.fn(() => {
+      setTimeout(() => container.appendChild(target), 0);
+    });
+
+    const { scrollUntilElementFound } = await import('./dom-utils');
+    const result = await scrollUntilElementFound('#late-target', { waitTime: 0 });
+
+    expect(scrollContainer.scrollBy).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'smooth' });
+    expect(result).toBe(target);
+  });
+
+  it('scrolls horizontally when the target is in a virtualized trailing column', async () => {
+    Object.defineProperty(scrollContainer, 'scrollWidth', { value: 1500, writable: true });
+    const target = document.createElement('button');
+    target.id = 'horizontal-target';
+
+    scrollContainer.scrollBy = jest.fn((options?: ScrollToOptions | number) => {
+      const left = typeof options === 'object' ? (options.left ?? 0) : 0;
+      scrollContainer.scrollLeft = Math.min(scrollContainer.scrollLeft + left, 1000);
+      if (left > 0) {
+        container.appendChild(target);
+      }
+    }) as typeof scrollContainer.scrollBy;
+
+    const { scrollUntilElementFound } = await import('./dom-utils');
+    const result = await scrollUntilElementFound('#horizontal-target', { waitTime: 0 });
+
+    expect(result).toBe(target);
+    expect(scrollContainer.scrollBy).toHaveBeenCalledWith({
+      top: 400,
+      left: 400,
+      behavior: 'smooth',
+    });
+  });
+
+  it('leaves a completed axis still while continuing along the other axis', async () => {
+    Object.defineProperty(scrollContainer, 'scrollTop', { value: 1500, writable: true });
+    Object.defineProperty(scrollContainer, 'scrollHeight', { value: 2000, writable: true });
+    Object.defineProperty(scrollContainer, 'scrollWidth', { value: 1500, writable: true });
+
+    scrollContainer.scrollBy = jest.fn((options?: ScrollToOptions | number) => {
+      const left = typeof options === 'object' ? (options.left ?? 0) : 0;
+      scrollContainer.scrollLeft = Math.min(scrollContainer.scrollLeft + left, 1000);
+    }) as typeof scrollContainer.scrollBy;
+
+    const { scrollUntilElementFound } = await import('./dom-utils');
+    await scrollUntilElementFound('#non-existent', { waitTime: 0, maxScrollAttempts: 1 });
+
+    expect(scrollContainer.scrollBy).toHaveBeenCalledWith({
+      top: 0,
+      left: 400,
+      behavior: 'smooth',
+    });
   });
 });
 

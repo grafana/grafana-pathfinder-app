@@ -12,13 +12,7 @@ import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { LintBadge } from './LintBadge';
 import { BLOCK_TYPE_METADATA } from './constants';
 import type { EditorBlock, BlockType } from './types';
-import {
-  isSectionBlock,
-  isInteractiveBlock,
-  isMultistepBlock,
-  isGuidedBlock,
-  isConditionalBlock,
-} from '../../types/json-guide.types';
+import { isSectionBlock, isConditionalBlock } from '../../types/json-guide.types';
 import { getBlockPreview } from './utils';
 import { testIds } from '../../constants/testIds';
 
@@ -138,8 +132,12 @@ export function BlockItem({
     onToggleSelect?.();
   }, [onToggleSelect]);
 
-  const handleCheckboxClick = useCallback(
-    (e: React.MouseEvent) => {
+  const handleCheckboxClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+
+  const handleCheckboxChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       e.stopPropagation();
       handleToggleSelect();
     },
@@ -154,10 +152,6 @@ export function BlockItem({
     [onToggleCollapse]
   );
 
-  // Allow selection of interactive, multistep, and guided blocks (for merging)
-  const isSelectable =
-    isSelectionMode && (isInteractiveBlock(block.block) || isMultistepBlock(block.block) || isGuidedBlock(block.block));
-
   const containerClass = [
     styles.container,
     (isSection || isConditional) && styles.sectionContainer,
@@ -170,22 +164,16 @@ export function BlockItem({
 
   return (
     <div className={containerClass} data-block-card>
-      {/* Selection checkbox — only for selectable block types
-          (interactive / multistep / guided). Non-selectable blocks
-          render an empty spacer of the same width so the row
-          alignment stays consistent across the list. */}
-      {isSelectionMode &&
-        (isSelectable ? (
-          <div
-            className={styles.selectionCheckbox}
-            onClick={handleCheckboxClick}
-            title={isSelected ? 'Deselect' : 'Select'}
-          >
-            <Checkbox value={isSelected} onChange={handleToggleSelect} />
-          </div>
-        ) : (
-          <div className={styles.selectionCheckbox} aria-hidden="true" />
-        ))}
+      {/* Selection checkbox — every block can be selected for bulk actions. */}
+      {isSelectionMode && (
+        <div
+          className={styles.selectionCheckbox}
+          onClick={handleCheckboxClick}
+          title={isSelected ? 'Deselect' : 'Select'}
+        >
+          <Checkbox value={isSelected} onChange={handleCheckboxChange} />
+        </div>
+      )}
 
       {/* Drag handle - visual indicator (hidden in selection mode) */}
       {!isSelectionMode && (

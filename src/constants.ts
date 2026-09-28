@@ -67,8 +67,9 @@ export const DEFAULT_ENABLE_CODA_TERMINAL = false;
 export const DEFAULT_ENABLE_KIOSK_MODE = false;
 export const DEFAULT_KIOSK_RULES_URL = '';
 
-// AI auto-heal: default OFF — the AI write path requires explicit admin opt-in
-export const DEFAULT_ENABLE_AI_AUTO_HEAL = false;
+// AI auto-heal: default ON, but inert unless the Grafana Assistant is available —
+// the toggle is an admin kill switch, not a rollout gate
+export const DEFAULT_ENABLE_AI_AUTO_HEAL = true;
 
 // Two-tab controller: default OFF — the live-tab executor drives the user's
 // authenticated Grafana DOM, so it requires explicit admin opt-in
@@ -103,53 +104,114 @@ export const ALLOWED_GRAFANA_DOCS_HOSTNAMES = ['grafana.com', 'docs.grafana.com'
 
 // Dev mode defaults
 export const DEFAULT_DEV_MODE = false;
-export const DEFAULT_DEV_MODE_USER_IDS: number[] = [];
+export const DEFAULT_DEV_MODE_OPT_IN = false;
 
-// Configuration interface
-export interface DocsPluginConfig {
-  recommenderServiceUrl?: string;
-  tutorialUrl?: string;
+// Org overrides are sparse in storage; defaults and rollout decisions remain system-owned.
+export interface PathfinderTenantSettings {
+  recommenderServiceUrl: string;
+  tutorialUrl: string;
   // Terms and Conditions
-  acceptedTermsAndConditions?: boolean;
-  termsVersion?: string;
-  // Dev mode - SECURITY: Hybrid approach (instance-wide storage, per-user scoping)
-  // Stored in plugin jsonData (server-side, admin-only) but scoped to specific user IDs
-  devMode?: boolean; // Whether dev mode is enabled for the instance
-  devModeUserIds?: number[]; // Array of user IDs who have dev mode access (only they see dev features)
-  // Assistant Dev Mode - for testing assistant integration in OSS environments
-  enableAssistantDevMode?: boolean; // Whether to mock assistant availability for testing
+  acceptedTermsAndConditions: boolean;
+  termsVersion: string;
   // Interactive Features
-  enableAutoDetection?: boolean;
-  requirementsCheckTimeout?: number;
-  guidedStepTimeout?: number;
-  disableAutoCollapse?: boolean;
+  enableAutoDetection: boolean;
+  requirementsCheckTimeout: number;
+  guidedStepTimeout: number;
+  disableAutoCollapse: boolean;
   // Global Link Interception
-  interceptGlobalDocsLinks?: boolean;
+  interceptGlobalDocsLinks: boolean;
   // Open Panel on Launch
-  openPanelOnLaunch?: boolean;
+  openPanelOnLaunch: boolean;
   // Live Sessions (Collaborative Learning)
-  enableLiveSessions?: boolean;
-  peerjsHost?: string;
-  peerjsPort?: number;
-  peerjsKey?: string;
-  peerjsSecure?: boolean;
+  enableLiveSessions: boolean;
+  peerjsHost: string;
+  peerjsPort: number;
+  peerjsKey: string;
+  peerjsSecure: boolean;
   // Coda terminal UI. The VM backend and its credentials live in the separate
   // grafana-coda-app plugin, which owns its own settings.
-  enableCodaTerminal?: boolean;
-  // Kiosk Mode (dev feature for presenting guide catalogs)
-  enableKioskMode?: boolean;
-  kioskRulesUrl?: string;
+  enableCodaTerminal: boolean;
   // AI auto-heal
-  enableAiAutoHeal?: boolean;
+  enableAiAutoHeal: boolean;
   // Two-tab interactive controller (admin opt-in; drives the authenticated DOM)
-  enableTwoTabController?: boolean;
+  enableTwoTabController: boolean;
+  // Dev-only surfaces. `devMode` is the instance gate an admin controls; a user
+  // sees dev features only when it is true AND that user opted in (see
+  // `devModeOptIn`). Stored as `devModeEnabled` in the kind.
+  devMode: boolean;
+  // Assistant Dev Mode - for testing assistant integration in OSS environments
+  enableAssistantDevMode: boolean;
+  // Kiosk Mode (dev feature for presenting guide catalogs)
+  enableKioskMode: boolean;
+  kioskRulesUrl: string;
 }
 
-// Helper functions to get configuration values with defaults
-// Note: devModeUserIds remains as array (empty when dev mode is disabled)
-export const getConfigWithDefaults = (
-  config: DocsPluginConfig
-): Omit<Required<DocsPluginConfig>, 'devModeUserIds'> & { devModeUserIds: number[] } => ({
+/**
+ * Every tenant-owned key, in one place so the settings client and the jsonData
+ * fallback cannot drift from `PathfinderTenantSettings`. The satisfies clause
+ * rejects keys outside the tenant slice.
+ */
+export const TENANT_SETTING_KEYS = [
+  'recommenderServiceUrl',
+  'tutorialUrl',
+  'acceptedTermsAndConditions',
+  'termsVersion',
+  'enableAutoDetection',
+  'requirementsCheckTimeout',
+  'guidedStepTimeout',
+  'disableAutoCollapse',
+  'interceptGlobalDocsLinks',
+  'openPanelOnLaunch',
+  'enableLiveSessions',
+  'peerjsHost',
+  'peerjsPort',
+  'peerjsKey',
+  'peerjsSecure',
+  'enableCodaTerminal',
+  'enableAiAutoHeal',
+  'enableTwoTabController',
+  'devMode',
+  'enableAssistantDevMode',
+  'enableKioskMode',
+  'kioskRulesUrl',
+] as const satisfies ReadonlyArray<keyof PathfinderTenantSettings>;
+
+/**
+ * Inclusive bounds the `PathfinderSettings` kind enforces on its numeric fields,
+ * in lockstep with kinds/pathfindersettings.cue. The apiserver rejects an
+ * out-of-range value with a 422, and the settings client writes the whole
+ * resolved config, so one bad legacy value would block every tab's first save;
+ * `clampToKindBounds` in utils/pathfinder-settings-api.ts applies these first.
+ */
+export const TENANT_SETTING_BOUNDS = {
+  requirementsCheckTimeout: { min: 100, max: 60000 },
+  guidedStepTimeout: { min: 1000, max: 600000 },
+  peerjsPort: { min: 1, max: 65535 },
+} as const satisfies Partial<Record<keyof PathfinderTenantSettings, { min: number; max: number }>>;
+
+export interface PathfinderUserSettings {
+  devModeOptIn: boolean;
+}
+
+export interface PathfinderSystemSettings {
+  /** Provisioned by SSS; settings writes must preserve it. */
+  stackId?: string;
+}
+
+export interface PathfinderPluginConfig
+  extends Partial<PathfinderTenantSettings>, Partial<PathfinderUserSettings>, PathfinderSystemSettings {
+  /** @deprecated Read only for the one-shot migration to user-scoped local storage. */
+  devModeUserIds?: number[];
+}
+
+/** Fully-resolved configuration: every tenant and per-user field present. */
+export type ResolvedPathfinderConfig = PathfinderTenantSettings & PathfinderUserSettings;
+
+// Helper functions to get configuration values with defaults.
+// `devModeUserIds` and `stackId` are deliberately absent from the result: the
+// first is legacy-read-only (folded into devModeOptIn by the resolve layer), and
+// the second is provisioning's, not ours.
+export const getConfigWithDefaults = (config: PathfinderPluginConfig): ResolvedPathfinderConfig => ({
   recommenderServiceUrl:
     config.recommenderServiceUrl && !isKnownRecommenderUrl(config.recommenderServiceUrl)
       ? config.recommenderServiceUrl
@@ -157,9 +219,10 @@ export const getConfigWithDefaults = (
   tutorialUrl: config.tutorialUrl || DEFAULT_TUTORIAL_URL,
   acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
   termsVersion: config.termsVersion || TERMS_VERSION,
-  // Dev mode - SECURITY: Hybrid approach (stored server-side, scoped per-user)
+  // Dev mode: `devMode` is the tenant-level gate, `devModeOptIn` is this user's
+  // opt-in from per-user storage. Both must be true for dev surfaces to show.
   devMode: config.devMode ?? DEFAULT_DEV_MODE,
-  devModeUserIds: config.devModeUserIds ?? DEFAULT_DEV_MODE_USER_IDS,
+  devModeOptIn: config.devModeOptIn ?? DEFAULT_DEV_MODE_OPT_IN,
   // Assistant dev mode
   enableAssistantDevMode: config.enableAssistantDevMode ?? false,
   // Interactive Features
@@ -204,20 +267,20 @@ const getPlatformSpecificDefault = (): boolean => {
   }
 };
 
-export const isRecommenderEnabled = (pluginConfig: DocsPluginConfig): boolean => {
+export const isRecommenderEnabled = (pluginConfig: PathfinderPluginConfig): boolean => {
   return getConfigWithDefaults(pluginConfig).acceptedTermsAndConditions;
 };
 
 // Legacy exports for backward compatibility - now require config parameter
-export const getRecommenderServiceUrl = (config: DocsPluginConfig) =>
+export const getRecommenderServiceUrl = (config: PathfinderPluginConfig) =>
   getConfigWithDefaults(config).recommenderServiceUrl;
-export const getTutorialUrl = (config: DocsPluginConfig) => getConfigWithDefaults(config).tutorialUrl;
-export const getTermsAccepted = (config: DocsPluginConfig) => getConfigWithDefaults(config).acceptedTermsAndConditions;
-export const getTermsVersion = (config: DocsPluginConfig) => getConfigWithDefaults(config).termsVersion;
+export const getTutorialUrl = (config: PathfinderPluginConfig) => getConfigWithDefaults(config).tutorialUrl;
+export const getTermsAccepted = (config: PathfinderPluginConfig) =>
+  getConfigWithDefaults(config).acceptedTermsAndConditions;
+export const getTermsVersion = (config: PathfinderPluginConfig) => getConfigWithDefaults(config).termsVersion;
 
 // Get dev mode setting from config
-export const getDevMode = (config: DocsPluginConfig) => config.devMode ?? DEFAULT_DEV_MODE;
-export const getDevModeUserIds = (config: DocsPluginConfig) => config.devModeUserIds ?? DEFAULT_DEV_MODE_USER_IDS;
+export const getDevMode = (config: PathfinderPluginConfig) => config.devMode ?? DEFAULT_DEV_MODE;
 
 // Legacy exports for backward compatibility
 export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;

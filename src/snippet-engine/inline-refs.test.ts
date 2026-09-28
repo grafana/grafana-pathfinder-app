@@ -116,6 +116,7 @@ describe('inlineSnippetRefsInGuide', () => {
     const placeholder = out.blocks[0]!;
     expect(placeholder.type).toBe('markdown');
     expect((placeholder as { content: string }).content).toMatch(/missing/);
+    expect((placeholder as { content: string }).content).toContain('(not-found)');
   });
 });
 
