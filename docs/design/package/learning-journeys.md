@@ -86,6 +86,34 @@ The `milestones` field is valid when `type` is `"path"` or `"journey"`. The CLI 
 - The `milestones` array is non-empty when `type` is `"path"` or `"journey"`
 - No cycles exist in `milestones` chains (a milestone cannot transitively contain its parent)
 
+## The `tracks` field (Path Tracks RFC)
+
+A path may additionally declare `tracks`: named, independently-ordered guide sequences, one per audience or role, alongside the always-present `milestones` default (referred to in the UI as "Foundations"):
+
+```typescript
+interface Track {
+  /** Stable identifier, unique within one manifest's tracks list. */
+  trackId: string;
+  /** Human-facing name shown on the cover page's tab for this track. */
+  label: string;
+  /** This track's own complete ordered sequence of bare package IDs. */
+  guides: string[];
+}
+
+/** Additive alongside milestones. Valid only when type is "path" (narrower than milestones' path-or-journey gate). */
+tracks?: Track[];
+```
+
+**A track's `guides` is its own complete ordering, not derived from `milestones`.** Unlike a filtered or reordered view, a track may include guides `milestones` never had, omit guides `milestones` has, and interleave role-specific content anywhere in the sequence. `milestones` itself is never represented as a `tracks` entry — it remains the default sequence a reader sees when no track is selected.
+
+**This is additive only.** A manifest with no `tracks` behaves exactly as it always has: a single flat, milestones-driven module list, with no tabs. Adding `tracks` never changes the meaning or required-ness of `milestones` (Rule 1 and Rule 2 above are unaffected).
+
+The `tracks` field is valid only when `type` is `"path"` (`package.schema.ts` Rule 3) — narrower than the `"path"`-or-`"journey"` gate `milestones` uses (Rules 1/2), since a journey is a fixed reading order and tracks presenting the same content in a different order don't apply to it. A track's own `guides` list must be non-empty, the same rule `milestones` enforces. Each `trackId` must be unique within one manifest's `tracks` list, and may not be `"foundations"` — that id is reserved for the default Foundations sequence the cover page falls back to (Rule 4).
+
+**Cover-page rendering.** When a manifest declares `tracks`, the package-backed cover page (`LearningPathTableOfContents`) renders one tab per declared track, plus a "Foundations" tab for the default `milestones` sequence. Whichever tab is active reuses the same per-module row rendering as Foundations — hero card, sequential lock/unlock, and time estimates — recomputed against that tab's own guide list. Lock/unlock reuses the Foundations mechanism (`milestoneCompletionStorage`) per track, since there is no track-specific lock/unlock model.
+
+**A track is a presentation ordering, never a second completion authority** (`docs/design/COMPLETION-MODEL.md`, decision 10). The Foundations `milestones` sequence alone decides whether the path is complete; a track's own guide list is never scored for completion in its own right, however different it is from `milestones`. The per-tab progress ring shown on the active tab is real progress through that tab's own guide list (`journeyProgressFromMilestones`, the same decision-4 formula every member list already uses) — but it is not the path's completion percentage, and the two can legitimately disagree for the same completed guides, since My Learning's durable percentage stays keyed to `milestones` membership alone. The ring's accessible label names the active sequence so it reads as progress through that sequence, not path-wide completion. Per-track completion, if ever wanted, is a `completion-denominator-authority` change belonging in its own PR, not an implicit consequence of adding `tracks`.
+
 ## Directory structure
 
 A path or journey directory contains its own `manifest.json` and an optional `content.json` that serves as a cover page or introduction. Steps specific to that metapackage may be nested as child directories; shared steps live as independent top-level packages.

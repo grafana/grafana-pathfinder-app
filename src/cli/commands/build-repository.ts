@@ -198,6 +198,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
       entry.startingLocation = manifest.startingLocation;
     }
     entry.milestones = manifest.milestones;
+    entry.tracks = manifest.tracks;
     entry.depends = manifest.depends?.length ? manifest.depends : undefined;
     entry.recommends = manifest.recommends?.length ? manifest.recommends : undefined;
     entry.suggests = manifest.suggests?.length ? manifest.suggests : undefined;
