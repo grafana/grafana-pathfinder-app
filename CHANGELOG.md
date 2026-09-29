@@ -1,5 +1,49 @@
 # Changelog
 
+## 2.19.0
+
+> Deployment prerequisite: the organization opt-out requires the companion backend `pathfinderEnabled` settings schema. Verify settings-reader permissions before Cloud rollout; failed or timed-out settings reads leave Pathfinder enabled. (#2008)
+
+### Added
+
+- **Learning-path tracks**: Choose a named track alongside the default Foundations sequence on a path's cover page, with its own ordered guides and progress. Authoring, validation, repository builds, statistics, and E2E guide-chain resolution support track-specific content. (#1927)
+
+- **Organization opt-out**: Administrators can disable Pathfinder from plugin configuration and restore Grafana Cloud's classic Help menu after reload. Learning progress is preserved, and configuration remains accessible for re-enabling Pathfinder. (#2008)
+
+- **JSON-authored kiosk pages**: Build themed landing pages with hero text, launch forms, copyable commands, dividers, and guide tiles. Validated website and data source inputs can carry into a guide, while incompatible cached guides still open without transferring values. Standard tiles show saved completion percentages and a checkmark at 100%. (#1999)
+
+- **Themed kiosk banners and stack-aware commands**: Add compact Grafana-themed hero banners and use `{{grafana.stackUrl}}` in command blocks to insert the hosting HTTPS origin as a shell-quoted argument. Local and HTTP instances retain the `your-stack` placeholder. (#2007)
+
+- **Terminal steps in guide tests**: The E2E runner connects sandboxes and dispatches commands through the guide's controls, including optional Skip actions. Command completion confirms dispatch, not a successful shell exit or expected output. (#1980)
+
+- **Shared Grafana feature controls**: Use Grafana's OpenFeature providers and feature-control UI on Grafana 13.2 and later, while retaining the existing provider on older versions. (#1990)
+
+### Fixed
+
+- **Kiosk command layout and completion**: Compact command bars provide theme-aware Bash highlighting and copy feedback without shifting the layout. Guide tiles read saved completion consistently, and focus recovery handles inactive windows and controls disabled during submission. (#2000)
+
+- **Guide-specific starting locations**: Opening a guide from a custom path's member list preserves the guide's own starting location and additional fields instead of inheriting the cover's values. (#2011)
+
+- **Fresh guided sequences**: Starting or retrying a guided sequence clears credit from the previous run, including sequences opened across tabs. (#2012)
+
+- **Milestone progress without a slug**: Milestones whose URLs have no slug now use the full URL to find stored completion instead of incorrectly showing zero progress. (#1948)
+
+- **Actionable guide-test failures**: Blocked Show me and Do it controls report the underlying click failure with screenshots and DOM evidence instead of an infrastructure timeout. Genuine hard deadlines also attempt to capture evidence before closing the page. (#2010)
+
+- **Reliable kiosk navigation and keyboard focus**: Keep focus inside the kiosk after dismissing a data source dropdown, preserve drafts, and open alternative guides at the correct application route. (#1999)
+
+- **Advanced Prometheus guide**: Select the saved data source, target query A in Explore, and run each lesson's expression without changing other query rows. Corrected examples and section coordination keep later lessons from completing prematurely. (#1985)
+
+### Chore
+
+- **Consistent milestone progress**: Cover pages, milestone toolbars, and My Learning use the same local completion calculation, preserving previously recorded milestone completion through a one-time backfill. (#1925)
+
+- **Stronger completion and kiosk regression coverage**: Derive conditional-step coverage from a shared registry and pin the bundled-catalog fallback when an unconfigured kiosk's selected catalog fails. (#1881, #1998)
+
+- **Focused agent context**: Limit always-loaded instructions, document known development pitfalls, and let review tooling load individual policy sections. (#2004, #2006)
+
+- **Remove unused sidebar test identifiers**: Remove test IDs left behind by the retired minimized sidebar component. (#1995)
+
 ## 2.18.3
 
 ### Added
