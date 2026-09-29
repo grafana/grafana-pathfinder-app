@@ -1,3 +1,4 @@
+import { getGuideResponseId } from '../../lib/guide-response-id';
 import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBoundary';
 import { finishGuideLoad, pauseGuideLoad, resumeGuideLoad } from '../../lib/telemetry/guide-load';
 import { useIsAlignmentPaused } from '../../global-state/alignment-pending-context';
@@ -6,7 +7,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
 
-import { RawContent, ContentParseResult, GuideCountingSource } from '../../types/content.types';
+import { RawContent, ContentParseResult, GuideCountingSource, Milestone } from '../../types/content.types';
 import { logger } from '../../lib/logging';
 import {
   parseHTMLToComponents,
@@ -134,6 +135,10 @@ interface ContentRendererProps {
    * control itself is never conditional.
    */
   onContinueToNextMilestone?: () => void;
+  /** Forwards the cover page's own track-tab selection — see `LearningPathTableOfContents`'s prop doc. */
+  onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
+  /** Forwarded to `LearningPathTableOfContents`'s own prop of the same name — see its doc. */
+  initialActiveTrackId?: string | null;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -173,6 +178,8 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   onContentReady,
   onGuideComplete,
   onContinueToNextMilestone,
+  onActiveTrackChange,
+  initialActiveTrackId,
   className,
   containerRef,
 }: ContentRendererProps) {
@@ -464,17 +471,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processedContent, content.hashFragment]);
 
-  // Derive guide ID from content URL for response storage
-  const guideId = useMemo(() => {
-    // Use the URL path as the guide identifier, or fallback to 'default'
-    try {
-      const url = new URL(content.url, window.location.origin);
-      // Remove leading slash and use path as ID
-      return url.pathname.replace(/^\//, '').replace(/\//g, '-') || 'default';
-    } catch {
-      return content.url || 'default';
-    }
-  }, [content.url]);
+  const guideId = useMemo(() => getGuideResponseId(content.url, window.location.origin), [content.url]);
 
   // Mirror this guide for compatibility callers outside the scoped provider.
   useLayoutEffect(() => registerCompatibilityGuideId(guideId), [guideId]);
@@ -503,6 +500,9 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
         pathId={pathId}
         title={content.metadata.title}
         description={pathDescription}
+        tracks={journey.tracks}
+        onActiveTrackChange={onActiveTrackChange}
+        initialActiveTrackId={initialActiveTrackId}
       />
     ) : null;
 
@@ -1590,6 +1590,7 @@ function renderParsedElement(
           defaultValue={element.props.defaultValue}
           required={element.props.required}
           pattern={element.props.pattern}
+          format={element.props.format}
           validationMessage={sub(element.props.validationMessage)}
           requirements={element.props.requirements}
           skippable={element.props.skippable}

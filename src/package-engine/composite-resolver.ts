@@ -55,7 +55,7 @@ export class CompositePackageResolver implements PackageResolver {
     const loadContent = options?.loadContent ?? false;
     const verifyPublished = loadContent ? false : (options?.verifyPublished ?? false);
     const cacheKey = `${packageId}:${loadContent}:${verifyPublished}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = options?.bypassCache ? undefined : this.cache.get(cacheKey);
     if (cached) {
       return cached;
     }

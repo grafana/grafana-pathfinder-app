@@ -6,6 +6,7 @@
  */
 
 import type { Badge, BadgeTrigger, LearningProgress, LearningPath } from '../types/learning-paths.types';
+import { pathSequences } from './path-sequences';
 
 // ============================================================================
 // BADGE DEFINITIONS
@@ -155,18 +156,25 @@ function checkTrigger(trigger: BadgeTrigger, progress: LearningProgress, paths: 
 }
 
 /**
- * Checks if a learning path is fully completed
+ * Checks if a learning path is fully completed — best-of-sequence, matching
+ * `learning-paths.hook.ts`'s own `isPathCompleted` (COMPLETION-MODEL.md
+ * decision 4/10): any one of the path's sequences (Foundations, or a Path
+ * Tracks entry) with every one of its own guides in `completedGuides`
+ * completes the path, not every guide across every sequence.
  */
 function isPathCompleted(pathId: string, progress: LearningProgress, paths: LearningPath[]): boolean {
   const path = paths.find((p) => p.id === pathId);
   if (!path || path.guides.length === 0) {
     // URL-based paths have guides: [] in static data (fetched dynamically).
-    // [].every() returns true (vacuous truth), which would award badges immediately.
-    // Badge awarding for URL-based paths is handled in markMilestoneDone instead.
+    // [].some() returns false, so this guard is belt-and-suspenders against
+    // pathSequences ever changing that — badge awarding for URL-based paths
+    // is handled in markMilestoneDone instead.
     return false;
   }
 
-  return path.guides.every((guideId) => progress.completedGuides.includes(guideId));
+  return pathSequences(path).some((sequence) =>
+    sequence.every((guideId) => progress.completedGuides.includes(guideId))
+  );
 }
 
 /**

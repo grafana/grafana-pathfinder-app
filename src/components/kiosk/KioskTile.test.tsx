@@ -1,3 +1,7 @@
+import { launchKioskGuide } from './launch-kiosk-guide';
+import { REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
+import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
+import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { StorageKeys } from '../../lib/storage-keys';
 import React from 'react';
@@ -15,6 +19,8 @@ jest.mock('@grafana/runtime', () => ({
     getLocation: () => ({ pathname: '/dashboards', search: '?orgId=2&pathfinderKiosk=1', hash: '' }),
   },
 }));
+
+jest.mock('../../lib/storage/extension-sidebar', () => ({ isExtensionSidebarOwnedByOther: jest.fn(() => false) }));
 
 jest.mock('../../utils/dev-mode', () => ({ isDevModeEnabledGlobal: () => false }));
 
@@ -178,7 +184,7 @@ describe('KioskTile', () => {
     expect(url.searchParams.get('left')).toBe('test');
     expect(url.searchParams.get('orgId')).toBe('2');
     expect(url.searchParams.get('doc')).toBe(rule.url);
-    expect(url.searchParams.get('page')).toBe('/explore');
+    expect(url.searchParams.has('page')).toBe(false);
     expect(url.searchParams.has('panelMode')).toBe(false);
     expect(panelModeManager.getMode()).toBe('sidebar');
     expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
@@ -189,6 +195,40 @@ describe('KioskTile', () => {
     expect(url.searchParams.has('pathfinderKiosk')).toBe(false);
     expect(url.hash).toBe('#query');
     expect(onLaunch.mock.invocationCallOrder[0]).toBeLessThan(mockPush.mock.invocationCallOrder[0]!);
+  });
+
+  it.each(['floating', 'occupied-sidebar'])('preserves a prepared launch with %s', (surface) => {
+    panelModeManager.setModeTransient(surface === 'floating' ? 'floating' : 'sidebar');
+    jest.mocked(isExtensionSidebarOwnedByOther).mockReturnValue(surface === 'occupied-sidebar');
+    const prepared: PreparedGuideLaunch = {
+      url: rule.url,
+      title: rule.title,
+      type: 'docs',
+      source: 'url_param',
+      requiresGrafanaUi: true,
+      preparedContent: {
+        url: rule.url,
+        content: '{}',
+        type: 'interactive',
+        metadata: { title: rule.title },
+        lastFetched: '',
+        countingSource: { kind: 'pre-inlining', guideJson: '{}' },
+      },
+    };
+    let pending: unknown;
+    const listener = () => {
+      pending = panelModeManager.consumePendingGuide();
+    };
+    document.addEventListener(REQUEST_FLOATING_GUIDE_EVENT, listener);
+    try {
+      launchKioskGuide(rule, 'instance', jest.fn(), prepared);
+      expect(panelModeManager.getMode()).toBe('floating');
+      expect(pending).toEqual(expect.objectContaining({ url: rule.url, preparedContent: prepared.preparedContent }));
+      expect(new URL(mockPush.mock.calls[0][0], window.location.origin).searchParams.has('doc')).toBe(false);
+    } finally {
+      document.removeEventListener(REQUEST_FLOATING_GUIDE_EVENT, listener);
+      jest.mocked(isExtensionSidebarOwnedByOther).mockReturnValue(false);
+    }
   });
 
   it('keeps the current route when no page is specified and forwards learning journeys', () => {

@@ -1,3 +1,4 @@
+import { KioskCatalogSchema } from '../../types/kiosk-page.schema';
 /**
  * Schema Command
  *
@@ -42,6 +43,7 @@ interface SchemaRegistryEntry {
  * Keys are the public names used on the CLI.
  */
 export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
+  kiosk: { schema: KioskCatalogSchema, description: 'Structured kiosk catalog', schemaVersion: '1' },
   guide: {
     schema: JsonGuideSchemaStrict,
     description: 'Root JSON guide schema (strict, no extra fields)',
@@ -77,6 +79,9 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
       '"milestones" must be a non-empty array when type is "path" or "journey"',
       '"milestones" is only valid when type is "path" or "journey" — type must be "path" or "journey" when milestones is present',
       'Package IDs listed in "milestones" must not also appear in "recommends", "suggests", or "depends"',
+      '"tracks" is only valid when type is "path"',
+      'Each entry in "tracks" must declare a non-empty "guides" array',
+      'Each entry in "tracks" must have a unique trackId',
     ],
   },
   repository: {

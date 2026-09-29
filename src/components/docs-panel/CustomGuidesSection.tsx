@@ -106,6 +106,12 @@ export function CustomGuidesSection({
     const title = pathTitle(path);
     const resolvedMembers = expandedMembers[path.id];
     const packageInfo = packageInfoForPath(path, Array.isArray(resolvedMembers) ? resolvedMembers : undefined);
+    // The shallow loader merge must not replace the member's additional fields with the cover's.
+    const {
+      startingLocation: _startingLocation,
+      additionalFields: _additionalFields,
+      ...memberManifest
+    } = packageInfo.packageManifest ?? {};
 
     reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
       content_title: title,
@@ -116,7 +122,7 @@ export function CustomGuidesSection({
       interaction_location: 'custom_guides_path_members',
     });
 
-    openDocsPage(member.url, title, packageInfo);
+    openDocsPage(member.url, title, { ...packageInfo, packageManifest: memberManifest });
   };
 
   if (!isLoading && totalCount === 0) {

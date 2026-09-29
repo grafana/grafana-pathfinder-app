@@ -1,7 +1,10 @@
+import { reportKioskInteraction } from '../../lib/kiosk-analytics';
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { KioskOverlay } from './KioskOverlay';
 import { loadKioskData, DEFAULT_BANNER, type KioskData } from './kiosk-rules';
+
+jest.mock('../../lib/kiosk-analytics', () => ({ reportKioskInteraction: jest.fn() }));
 
 jest.mock('@grafana/ui', () => ({
   Icon: () => null,
@@ -13,6 +16,7 @@ jest.mock('@grafana/ui', () => ({
   useStyles2: () => ({}),
 }));
 jest.mock('./kiosk-rules', () => ({ loadKioskData: jest.fn(), DEFAULT_BANNER: 'default-banner' }));
+jest.mock('./KioskPage', () => ({ KioskPage: () => <div>Structured page</div> }));
 jest.mock('./KioskTile', () => ({ KioskTile: ({ rule }: { rule: { title: string } }) => <div>{rule.title}</div> }));
 
 const load = jest.mocked(loadKioskData);
@@ -21,7 +25,11 @@ const data = (title: string): KioskData => ({
   rules: [{ title, url: 'bundled:welcome', description: 'Learn', type: 'guide' }],
 });
 
-beforeEach(() => load.mockReset());
+beforeEach(() => {
+  load.mockReset();
+  jest.spyOn(document, 'hasFocus').mockReturnValue(true);
+});
+afterEach(() => jest.restoreAllMocks());
 
 it('sanitizes remote banners and displays fallback warnings', async () => {
   load.mockResolvedValue({
@@ -85,5 +93,93 @@ it('brands the default banner as Grafana learning material', async () => {
   render(<KioskOverlay rulesUrl="" mode="instance" onClose={jest.fn()} />);
   expect(await screen.findByRole('heading', { name: 'Learn Grafana' })).toBeInTheDocument();
   expect(screen.getByText('Grafana learning')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Exit kiosk' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Back to Grafana' })).toBeInTheDocument();
+});
+
+it('renders a structured page instead of the legacy banner and grid', async () => {
+  load.mockResolvedValue({
+    ...data('Legacy guide'),
+    banner: '<h2>Legacy banner</h2>',
+    page: {
+      version: 1,
+      header: 'minimal',
+      blocks: [{ type: 'hero', title: 'Demo' }],
+    },
+  });
+  render(<KioskOverlay rulesUrl="default" onClose={jest.fn()} />);
+  expect(await screen.findByText('Structured page')).toBeVisible();
+  expect(screen.queryByText('Legacy banner')).toBeNull();
+  expect(screen.queryByText('Legacy guide')).toBeNull();
+  expect(screen.queryByText('Interactive guides')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Back to Grafana' })).toBeVisible();
+});
+
+it.each(['button', 'escape'] as const)('reports a deliberate %s exit', async (method) => {
+  jest.mocked(reportKioskInteraction).mockClear();
+  load.mockResolvedValue(data('Guide'));
+  const onClose = jest.fn();
+  render(<KioskOverlay rulesUrl="default" mode="instance" onClose={onClose} />);
+  await screen.findByText('Guide');
+  const exit = screen.getByRole('button', { name: 'Back to Grafana' });
+  if (method === 'button') {
+    fireEvent.click(exit);
+  } else {
+    fireEvent.keyDown(exit, { key: 'Escape' });
+  }
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(reportKioskInteraction).toHaveBeenCalledTimes(1);
+  expect(reportKioskInteraction).toHaveBeenCalledWith('instance', undefined, {
+    component: 'kiosk',
+    action: 'exit',
+    method,
+  });
+});
+
+it('restores focus after a child blurs without focusing another element', async () => {
+  load.mockResolvedValue(data('A guide'));
+  const onClose = jest.fn();
+  render(<KioskOverlay rulesUrl="default" onClose={onClose} />);
+  await screen.findByText('A guide');
+  const exit = screen.getByRole('button', { name: 'Back to Grafana' });
+  exit.blur();
+  expect(document.activeElement).toBe(document.body);
+  await waitFor(() => expect(exit).toHaveFocus());
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+it('cancels pending focus restoration when the kiosk closes', async () => {
+  load.mockResolvedValue(data('A guide'));
+  const previous = document.createElement('button');
+  document.body.append(previous);
+  previous.focus();
+  const { unmount } = render(<KioskOverlay rulesUrl="default" onClose={jest.fn()} />);
+  await screen.findByText('A guide');
+  screen.getByRole('button', { name: 'Back to Grafana' }).blur();
+  unmount();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(previous).toHaveFocus();
+  previous.remove();
+});
+
+it('does not restore focus when the document loses focus', async () => {
+  load.mockResolvedValue(data('A guide'));
+  const focus = jest.spyOn(document, 'hasFocus').mockReturnValue(false);
+  render(<KioskOverlay rulesUrl="default" onClose={jest.fn()} />);
+  await screen.findByText('A guide');
+  screen.getByRole('button', { name: 'Back to Grafana' }).blur();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(document.activeElement).toBe(document.body);
+  focus.mockRestore();
+});
+
+it('focuses the dialog instead of its exit when the current control becomes disabled', async () => {
+  load.mockResolvedValue(data('A guide'));
+  const focus = jest.spyOn(document, 'hasFocus').mockReturnValue(true);
+  render(<KioskOverlay rulesUrl="default" onClose={jest.fn()} />);
+  await screen.findByText('A guide');
+  const exit = screen.getByRole('button', { name: 'Back to Grafana' });
+  exit.blur();
+  exit.setAttribute('disabled', '');
+  await waitFor(() => expect(screen.getByRole('dialog')).toHaveFocus());
+  focus.mockRestore();
 });

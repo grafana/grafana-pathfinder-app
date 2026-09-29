@@ -3,7 +3,7 @@ import { PathfinderPluginConfig, ResolvedPathfinderConfig, getConfigWithDefaults
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import pluginJson from '../plugin.json';
-import { resolveTenantSettings } from '../utils/resolve-tenant-settings';
+import { resolveTenantSettings, TenantSettingsReadError } from '../utils/resolve-tenant-settings';
 import { adoptLegacyDevModeOptIn, hasLegacyDevModeOptIn, resolveDevModeOptIn } from '../utils/dev-mode';
 
 // Re-exported so existing importers keep a stable path; `constants` owns the shape.
@@ -96,15 +96,26 @@ export function publishPathfinderPluginConfig(jsonData: PathfinderPluginConfig):
 
 let refreshInFlight: Promise<ResolvedPathfinderConfig | undefined> | null = null;
 let refreshFailed = false;
+let startupReadError: TenantSettingsReadError | undefined;
+
+export async function readPathfinderStartupPreference(): Promise<PathfinderPluginConfig | undefined> {
+  const resolved = await refreshPathfinderPluginConfig();
+  if (!resolved && startupReadError) {
+    throw startupReadError;
+  }
+  return resolved;
+}
 
 export function refreshPathfinderPluginConfig(): Promise<ResolvedPathfinderConfig | undefined> {
   if (!refreshInFlight) {
     refreshInFlight = resolvePathfinderSettings()
       .then((resolved) => {
+        startupReadError = undefined;
         refreshFailed = false;
         return publishPathfinderPluginConfig(resolved);
       })
       .catch((error) => {
+        startupReadError = error instanceof TenantSettingsReadError ? error : undefined;
         refreshInFlight = null;
         refreshFailed = true;
         logger.warn('Failed to read plugin settings; a later refresh can retry', { error });
@@ -182,6 +193,7 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
 export function __resetPathfinderPluginConfigForTests(): void {
   refreshInFlight = null;
   refreshFailed = false;
+  startupReadError = undefined;
   unresolvedState = undefined;
   delete window.__pathfinderPluginConfig;
 }

@@ -540,6 +540,7 @@ export const JsonInputBlockSchema = z
     id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
     prompt: z.string().min(1, 'Input prompt is required').describe('Prompt shown above the input'),
     inputType: z.enum(['text', 'boolean', 'datasource']).describe('Kind of input to render'),
+    format: z.literal('http-origin').optional(),
     variableName: z
       .string()
       .min(1, 'Variable name is required')
@@ -583,6 +584,9 @@ export const JsonInputBlockSchema = z
       'dataCheckBlocking',
     ] as const;
 
+    if (block.format && block.inputType !== 'text') {
+      ctx.addIssue({ code: 'custom', path: ['format'], message: 'format requires a text input' });
+    }
     if (block.inputType !== 'datasource') {
       for (const field of dataCheckFields) {
         if (block[field] !== undefined) {
@@ -1320,6 +1324,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'id',
     'prompt',
     'inputType',
+    'format',
     'variableName',
     'placeholder',
     'checkboxLabel',

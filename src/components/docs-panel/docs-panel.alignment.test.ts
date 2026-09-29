@@ -70,6 +70,8 @@ jest.mock('../../docs-retrieval', () => ({
   ContentRenderer: jest.fn(),
   getNextMilestoneUrlFromContent: jest.fn(),
   getPreviousMilestoneUrlFromContent: jest.fn(),
+  getNextMilestoneIdFromContent: jest.fn(),
+  getPreviousMilestoneIdFromContent: jest.fn(),
   getJourneyProgress: jest.fn(() => 0),
   setJourneyCompletionPercentage: jest.fn(),
   getMilestoneSlug: jest.fn(),

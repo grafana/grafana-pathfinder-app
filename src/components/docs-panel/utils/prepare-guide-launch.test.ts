@@ -164,6 +164,18 @@ describe('prepareGuideLaunch', () => {
     }
   });
 
+  it('rejects unresolved snippets when preparing an input handoff', async () => {
+    const guide: JsonGuide = { id: 'g', title: 'g', blocks: [{ type: 'markdown', content: 'Text' }] };
+    fetchResolves(guide);
+    mockInline.mockResolvedValue({ guide, unresolvedSnippetIds: ['missing-snippet'] });
+    const result = await prepareGuideLaunch('https://grafana.com/docs/x', {
+      title: 'X',
+      source: 'url_param',
+      requireResolvedSnippets: true,
+    });
+    expect(result).toMatchObject({ ok: false, errorCode: 'schema-invalid' });
+  });
+
   it('returns a failure result (no surface committed) when the fetch fails', async () => {
     mockLoad.mockResolvedValue({ content: null, error: 'not found' });
 

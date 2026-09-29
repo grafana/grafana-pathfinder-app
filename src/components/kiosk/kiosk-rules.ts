@@ -1,3 +1,4 @@
+import { KioskCatalogSchema, type KioskPage } from '../../types/kiosk-page.schema';
 import { logger } from '../../lib/logging';
 import { recordKioskCatalogLoaded, type KioskCatalogTier } from '../../lib/telemetry';
 import defaultKiosk from './default-kiosk.json';
@@ -5,6 +6,7 @@ import { parseKioskWebUrl, validateKioskOverride } from '../../security/kiosk-ur
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
 
 export interface KioskRule {
+  id?: string;
   title: string;
   url: string;
   description: string;
@@ -15,11 +17,13 @@ export interface KioskRule {
 
 export interface KioskRulesResponse {
   banner?: string;
+  page?: KioskPage;
   rules: KioskRule[];
 }
 
 export interface KioskData {
   banner: string;
+  page?: KioskPage;
   rules: KioskRule[];
 }
 
@@ -101,6 +105,9 @@ export async function fetchKioskData(
   }
 
   const data: KioskRulesResponse = await response.json();
+  if (data && Object.hasOwn(data, 'page') && !KioskCatalogSchema.safeParse(data).success) {
+    throw new CatalogError('invalid_rules');
+  }
   const rules = Array.isArray(data?.rules) ? data.rules : Array.isArray(data) ? data : [];
   const valid = rules
     .filter((rule: unknown): rule is KioskRule => {
@@ -112,12 +119,13 @@ export async function fetchKioskData(
       return true;
     })
     .map((rule) => ({ ...rule, type: rule.type || 'guide' }));
-  if (valid.length === 0) {
+  if (valid.length === 0 || (data?.page && valid.length !== rules.length)) {
     throw new CatalogError('invalid_rules');
   }
   return {
     banner: typeof data?.banner === 'string' && data.banner.trim() ? data.banner : DEFAULT_BANNER,
     rules: valid,
+    ...(data?.page && { page: data.page }),
   };
 }
 

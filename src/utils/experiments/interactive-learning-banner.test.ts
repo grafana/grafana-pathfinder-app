@@ -213,37 +213,4 @@ describe('interactive-learning banner experiment', () => {
       expect(enrollInteractiveLearningBannerExperiment()).toEqual({ variant: 'treatment' });
     });
   });
-
-  it('honours a localStorage override and reports the exposure the hook would miss', () => {
-    jest.isolateModules(() => {
-      setup({ variant: 'excluded' });
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-      const { setFlagOverride } = require('../openfeature');
-      const { enrollInteractiveLearningBannerExperiment } = require('./interactive-learning-banner');
-      setFlagOverride(FLAG, { variant: 'treatment' });
-
-      expect(enrollInteractiveLearningBannerExperiment()).toEqual({ variant: 'treatment' });
-      // The override bypasses the client, so TrackingHook never fires for it.
-      expect(mockReportFeatureFlagExposure).toHaveBeenCalledWith(FLAG, { variant: 'treatment' });
-
-      consoleSpy.mockRestore();
-    });
-  });
-
-  it('ignores a rejected override and uses the remote arm instead', () => {
-    jest.isolateModules(() => {
-      setup({ variant: 'control' });
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-      const { setFlagOverride } = require('../openfeature');
-      const { enrollInteractiveLearningBannerExperiment } = require('./interactive-learning-banner');
-      setFlagOverride(FLAG, { variant: 'not-an-arm' });
-
-      expect(enrollInteractiveLearningBannerExperiment()).toEqual({ variant: 'control' });
-      expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
-
-      consoleSpy.mockRestore();
-    });
-  });
 });

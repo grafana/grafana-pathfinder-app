@@ -1,3 +1,4 @@
+import { isSafeResponseName, MAX_INPUT_LENGTH } from './input-value';
 /**
  * User storage abstraction for the Grafana Docs Plugin
  *
@@ -850,6 +851,49 @@ export const milestoneCompletionStorage = {
   async isCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<boolean> {
     const completed = await milestoneCompletionStorage.getCompleted(journeyBaseUrl);
     return completed.has(milestoneSlug);
+  },
+
+  /**
+   * The single-milestone counterpart to `markCompleted`, for the per-milestone
+   * toolbar reset. Without this, resetting one milestone left this legacy
+   * record untouched, and `backfillLegacyMilestoneCompletion`
+   * (learning-journey-helpers.ts) — which exists precisely to carry a
+   * pre-migration completion into `interactiveCompletionStorage` — read this
+   * still-populated record on the very next render and silently rewrote the
+   * just-reset milestone back to 100%. Whole-*path* reset
+   * (`learning-paths.hook.ts`) already clears this store entirely for that
+   * reason; this only removes the one slug being reset, leaving the rest of
+   * the journey's legacy record intact.
+   *
+   * `milestoneUrls` mirrors `getCompleted`/`getCompletedSync`'s own alias
+   * matching (`getStoredMilestoneSlugs`'s `exactKeys`): a legacy record can
+   * be stored under a milestone's own URL, not only under a key that
+   * canonicalizes to the journey base.
+   */
+  async removeCompleted(journeyBaseUrl: string, milestoneSlug: string, milestoneUrls: string[] = []): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
+      const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+      const exactKeys = new Set([journeyBaseUrl, ...milestoneUrls].map((key) => key.replace(/\/+$/, '')));
+      let mutated = false;
+      for (const storedKey of Object.keys(data)) {
+        const storedSlugs = data[storedKey];
+        if (
+          storedSlugs &&
+          (getLearningJourneyBaseUrl(storedKey) === canonicalKey || exactKeys.has(storedKey.replace(/\/+$/, ''))) &&
+          storedSlugs.includes(milestoneSlug)
+        ) {
+          data[storedKey] = storedSlugs.filter((slug) => slug !== milestoneSlug);
+          mutated = true;
+        }
+      }
+      if (mutated) {
+        await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
+      }
+    } catch (error) {
+      logger.warn('Failed to remove milestone completion', { error });
+    }
   },
 
   /**
@@ -1926,6 +1970,24 @@ export const learningProgressStorage = {
  * }
  */
 export const guideResponseStorage = {
+  async mergeResponses(guideId: string, responses: Record<string, string>): Promise<void> {
+    if (
+      ['__proto__', 'prototype', 'constructor'].includes(guideId) ||
+      Object.entries(responses).some(([key, value]) => !isSafeResponseName(key) || value.length > MAX_INPUT_LENGTH)
+    ) {
+      throw new Error('Invalid guide inputs');
+    }
+    const storage = createUserStorage();
+    const all = await guideResponseStorage.getAll();
+    const previous = Object.hasOwn(all, guideId) ? all[guideId] : {};
+    await storage.setItem(StorageKeys.GUIDE_RESPONSES, { ...all, [guideId]: { ...previous, ...responses } });
+    window.dispatchEvent(
+      new CustomEvent(StorageEvents.GuideResponseChanged, {
+        detail: { guideId, variableName: '*', value: undefined },
+      })
+    );
+  },
+
   /**
    * Gets all responses with Zod validation for defense-in-depth
    */
