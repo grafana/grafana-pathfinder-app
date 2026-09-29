@@ -5,7 +5,7 @@ import { fetchPathfinderSettingsSnapshot } from './pathfinder-settings-api';
 jest.mock('./utils.plugin', () => ({ fetchPluginSettings: jest.fn() }));
 jest.mock('./pathfinder-settings-api', () => ({ fetchPathfinderSettingsSnapshot: jest.fn() }));
 
-it.each(['plugin', 'tenant'])('retains a readable false when the %s read fails', async (failed) => {
+it.each(['plugin', 'tenant'])('only retains an authoritative false when the %s read fails', async (failed) => {
   jest.mocked(fetchPluginSettings).mockImplementation(async () => {
     if (failed === 'plugin') {
       throw { status: 403 };
@@ -19,7 +19,8 @@ it.each(['plugin', 'tenant'])('retains a readable false when the %s read fails',
     return { config: { pathfinderEnabled: false }, spec: {}, resourceVersion: '1' };
   });
   await expect(resolveTenantSettings('grafana-pathfinder-app')).rejects.toMatchObject({
-    pathfinderEnabled: false,
+    pathfinderEnabled: failed === 'plugin' ? false : undefined,
+    status: 403,
   });
   await expect(resolveTenantSettings('grafana-pathfinder-app')).rejects.toBeInstanceOf(TenantSettingsReadError);
 });
@@ -33,5 +34,15 @@ it('keeps tenant precedence over legacy false when both reads succeed', async ()
     .mockResolvedValue({ config: { pathfinderEnabled: true }, spec: {}, resourceVersion: '1' });
   await expect(resolveTenantSettings('grafana-pathfinder-app')).resolves.toMatchObject({
     config: { pathfinderEnabled: true },
+  });
+});
+
+it('uses the legacy opt-out when App Platform is confirmed unavailable', async () => {
+  jest
+    .mocked(fetchPluginSettings)
+    .mockResolvedValue({ jsonData: { pathfinderEnabled: false }, enabled: true, pinned: true });
+  jest.mocked(fetchPathfinderSettingsSnapshot).mockResolvedValue(null);
+  await expect(resolveTenantSettings('grafana-pathfinder-app')).resolves.toMatchObject({
+    config: { pathfinderEnabled: false },
   });
 });

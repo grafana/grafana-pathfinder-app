@@ -96,23 +96,26 @@ export function publishPathfinderPluginConfig(jsonData: PathfinderPluginConfig):
 
 let refreshInFlight: Promise<ResolvedPathfinderConfig | undefined> | null = null;
 let refreshFailed = false;
-let readablePathfinderPreference: boolean | undefined;
+let startupReadError: TenantSettingsReadError | undefined;
 
 export async function readPathfinderStartupPreference(): Promise<PathfinderPluginConfig | undefined> {
   const resolved = await refreshPathfinderPluginConfig();
-  return resolved ?? (readablePathfinderPreference === false ? { pathfinderEnabled: false } : undefined);
+  if (!resolved && startupReadError) {
+    throw startupReadError;
+  }
+  return resolved;
 }
 
 export function refreshPathfinderPluginConfig(): Promise<ResolvedPathfinderConfig | undefined> {
   if (!refreshInFlight) {
     refreshInFlight = resolvePathfinderSettings()
       .then((resolved) => {
-        readablePathfinderPreference = resolved.pathfinderEnabled;
+        startupReadError = undefined;
         refreshFailed = false;
         return publishPathfinderPluginConfig(resolved);
       })
       .catch((error) => {
-        readablePathfinderPreference = error instanceof TenantSettingsReadError ? error.pathfinderEnabled : undefined;
+        startupReadError = error instanceof TenantSettingsReadError ? error : undefined;
         refreshInFlight = null;
         refreshFailed = true;
         logger.warn('Failed to read plugin settings; a later refresh can retry', { error });
@@ -190,7 +193,7 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
 export function __resetPathfinderPluginConfigForTests(): void {
   refreshInFlight = null;
   refreshFailed = false;
-  readablePathfinderPreference = undefined;
+  startupReadError = undefined;
   unresolvedState = undefined;
   delete window.__pathfinderPluginConfig;
 }

@@ -27,12 +27,9 @@ export async function resolveTenantSettings(pluginId: string): Promise<ResolvedT
     fetchPathfinderSettingsSnapshot(),
   ]);
   if (pluginRead.status === 'rejected' || tenantRead.status === 'rejected') {
+    // A failed tenant read cannot establish whether legacy jsonData is stale.
     const readable =
-      tenantRead.status === 'fulfilled' && tenantRead.value
-        ? tenantRead.value.config.pathfinderEnabled
-        : pluginRead.status === 'fulfilled'
-          ? pluginRead.value.jsonData.pathfinderEnabled
-          : undefined;
+      tenantRead.status === 'fulfilled' && tenantRead.value ? tenantRead.value.config.pathfinderEnabled : undefined;
     const cause =
       pluginRead.status === 'rejected'
         ? pluginRead.reason

@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { usePluginContext } from '@grafana/data';
 import { getConfigWithDefaults } from '../constants';
+import { resolvePathfinderAvailability, getPathfinderStartupDecision } from '../utils/pathfinder-enablement';
 import { initializeConfiguredSurfaces } from '../utils/configured-bootstrap';
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { fetchPluginSettings } from '../utils/utils.plugin';
@@ -489,17 +490,26 @@ describe('recovery after a failed settings read', () => {
   });
 });
 
-it.each(['plugin', 'tenant'])(
-  'uses partial opt-out from the readable store without publishing readiness when %s fails',
-  async (failed) => {
+it('honours a tenant opt-out after a plugin read failure and records the read error', async () => {
+  mockFetchPluginSettings.mockRejectedValue({ status: 403 });
+  mockFetchTenant.mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
+  expect(await resolvePathfinderAvailability(true, readPathfinderStartupPreference)).toBe('disabled');
+  expect(getPathfinderStartupDecision().outcome).toBe('read-error');
+  expect(readGlobal()).toBeUndefined();
+});
+
+it.each([403, 503])(
+  'ignores stale legacy false when the enabled tenant resource cannot be read (%s)',
+  async (status) => {
+    const storedTenant = tenantSnapshot({ pathfinderEnabled: true });
     mockFetchPluginSettings.mockResolvedValue(pluginSettings({ pathfinderEnabled: false }));
-    mockFetchTenant.mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
-    if (failed === 'plugin') {
-      mockFetchPluginSettings.mockRejectedValue({ status: 403 });
-    } else {
-      mockFetchTenant.mockRejectedValue({ status: 403 });
-    }
-    await expect(readPathfinderStartupPreference()).resolves.toEqual({ pathfinderEnabled: false });
+    mockFetchTenant.mockResolvedValue(storedTenant);
+    expect(await resolvePathfinderAvailability(true, readPathfinderStartupPreference)).toBe('enabled');
+
+    __resetPathfinderPluginConfigForTests();
+    mockFetchTenant.mockRejectedValue({ status });
+    expect(await resolvePathfinderAvailability(true, readPathfinderStartupPreference)).toBe('enabled');
+    expect(getPathfinderStartupDecision().outcome).toBe('read-error');
     expect(readGlobal()).toBeUndefined();
   }
 );

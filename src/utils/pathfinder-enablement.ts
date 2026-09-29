@@ -1,3 +1,4 @@
+import { TenantSettingsReadError } from './resolve-tenant-settings';
 import { logger } from '../lib/logging';
 import type { PathfinderPluginConfig } from '../constants';
 
@@ -42,9 +43,9 @@ export async function resolvePathfinderAvailability(
       outcome = 'read-error';
     }
     return settings?.pathfinderEnabled === false ? 'disabled' : 'enabled';
-  } catch {
+  } catch (error) {
     outcome = 'read-error';
-    return 'enabled';
+    return error instanceof TenantSettingsReadError && error.pathfinderEnabled === false ? 'disabled' : 'enabled';
   } finally {
     clearTimeout(timeout);
     startupDecision = { durationMs: performance.now() - start, outcome };
