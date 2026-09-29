@@ -18,6 +18,8 @@ export interface LocalRepositorySource {
   repository: RepositoryJson;
   loadGuideById: (id: string, entry: RepositoryEntry) => LoadedGuide | null;
   duplicateIds?: ReadonlySet<string>;
+  buildErrors?: readonly string[];
+  errorsByReference?: ReadonlyMap<string, readonly string[]>;
 }
 
 export interface LocalMetapackageOptions {
@@ -194,10 +196,14 @@ export function loadLocalRepositorySource(
   const repoBaseDir = buildFromCheckout && repositoryPath ? localRepositoryRoot(repositoryPath) : dirname(resolvedPath);
   let repository: RepositoryJson = {};
   let duplicateIds: ReadonlySet<string> | undefined;
+  let buildErrors: readonly string[] | undefined;
+  let errorsByReference: ReadonlyMap<string, readonly string[]> | undefined;
   if (buildFromCheckout) {
     const built = buildRepository(repoBaseDir, { exclude: [...LOCAL_CHECKOUT_EXCLUDES] });
     repository = built.repository;
     duplicateIds = new Set(built.duplicateIds);
+    buildErrors = built.errors;
+    errorsByReference = built.errorsByReference;
   } else if (existsSync(resolvedPath)) {
     const loaded = loadRepositoryIndex(resolvedPath);
     if (loaded.error) {
@@ -213,6 +219,8 @@ export function loadLocalRepositorySource(
   return {
     repository,
     ...(duplicateIds ? { duplicateIds } : {}),
+    ...(buildErrors ? { buildErrors } : {}),
+    ...(errorsByReference ? { errorsByReference } : {}),
     loadGuideById(id: string, entry: RepositoryEntry): LoadedGuide | null {
       const rel = entry.path || `${id}/`;
       const contentPath = rel.endsWith('.json') ? join(repoBaseDir, rel) : join(repoBaseDir, rel, 'content.json');
@@ -235,10 +243,21 @@ function assertUnambiguousLocalCloudGraph(repoSource: LocalRepositorySource, sel
   if (!selectedIds) {
     throw new Error('Selected local cloud graph package IDs are unavailable.');
   }
+  const buildErrors = new Set<string>();
   for (const id of selectedIds) {
     if (repoSource.duplicateIds?.has(id)) {
       throw new Error(`Selected local cloud graph contains duplicate package ID "${id}".`);
     }
+    const entry = repoSource.repository[id];
+    const references = [id, ...(entry?.milestones ?? []), ...(entry?.depends ?? []).flat()];
+    for (const reference of references) {
+      for (const error of repoSource.errorsByReference?.get(reference) ?? []) {
+        buildErrors.add(error);
+      }
+    }
+  }
+  if (buildErrors.size > 0) {
+    throw new Error(`Selected local cloud graph contains invalid packages:\n${[...buildErrors].join('\n')}`);
   }
 }
 
@@ -249,7 +268,8 @@ function localPackageEntry(
 ): RepositoryEntry {
   const entry = repoSource.repository[manifest.id];
   if (!entry) {
-    throw new Error(`Root package "${manifest.id}" is missing from the repository index.`);
+    const details = repoSource.buildErrors?.length ? `\n${repoSource.buildErrors.join('\n')}` : '';
+    throw new Error(`Root package "${manifest.id}" is missing from the repository index.${details}`);
   }
   if (entry.type !== manifest.type) {
     throw new Error(
@@ -333,7 +353,9 @@ export function resolveLocalCloudGuide(
     includeSelectedPackageIds: true,
   });
   if (packagePlan.errors.length > 0) {
-    throw new Error(`Failed to plan guide execution: ${packagePlan.errors.join('; ')}`);
+    throw new Error(
+      `Failed to plan guide execution: ${[...packagePlan.errors, ...(repoSource.buildErrors ?? [])].join('; ')}`
+    );
   }
   assertUnambiguousLocalCloudGraph(repoSource, packagePlan.selectedPackageIds);
   const plan = hydrateExecutionPlan(
@@ -528,7 +550,9 @@ export function resolveLocalMetapackage(options: LocalMetapackageOptions): Local
     }
     const executionPlan = hydrateExecutionPlan(packagePlan, new Map(), repoSource.repository, repoSource.loadGuideById);
     if (executionPlan.errors.length > 0) {
-      throw new Error(`Failed to plan guide execution: ${executionPlan.errors.join('; ')}`);
+      throw new Error(
+        `Failed to plan guide execution: ${[...executionPlan.errors, ...(repoSource.buildErrors ?? [])].join('; ')}`
+      );
     }
     validatePlannedGuides(executionPlan, options.verbose, selection);
     if (options.currentTier === 'cloud') {

@@ -308,7 +308,7 @@ A no-op or objective-based step can complete, or its element can detach, between
 
 Overall success requires zero mandatory failures and either at least one verified pass or zero failed steps. A run where every step is skipped cleanly succeeds; a run with no verified pass and any failed skippable step fails.
 
-Local-source cloud runs add a stricter report check: without a verified passed step, the guide receives `skipped`, not `passed`. See [local-source cloud runs](#local-source-cloud-runs).
+Local-source cloud runs add a stricter report check for interactive guides: without a verified passed step, an interactive guide receives `skipped`, not `passed`. A prose-only guide in an otherwise interactive graph can receive `passed` with zero browser steps. This includes a selected prose-only root with an interactive prerequisite. The report does not claim a verified browser step for that prose-only guide. See [local-source cloud runs](#local-source-cloud-runs).
 
 ## Artifacts and reporting
 
@@ -752,6 +752,8 @@ The report records each executed guide's identity, local content digest, and act
 
 The CLI builds an in-memory catalog from `--repository` on every run. It resolves the selected package, milestones, and prerequisites from that checkout, including renamed package directories. Missing required packages and duplicate IDs in the selected graph stop the run before leasing.
 
+Catalog build errors for selected packages, dependency alternatives, or providers of required capabilities also stop the run before leasing. The error report includes the build errors, rather than silently choosing another provider. Errors in unrelated packages do not prevent a valid selected graph from running.
+
 For these cloud runs, `--repository <index-file>` also works: its parent directory becomes the checkout root. The CLI rebuilds the catalog instead of trusting the index contents. Local-target paths and published-source runs retain their existing index behavior.
 
 Source validation rejects symbolic links, hard links, and special files before reading manifests when `--repository` is supplied. The scan includes assets but excludes the root `.git`, `.github`, `node_modules`, and `scripts` directories. It does not freeze the checkout or prevent later edits.
@@ -765,10 +767,12 @@ After provisioning, the runner checks health and manifest requirements against t
 The following cases produce skipped reports rather than an unqualified pass:
 
 - A local-tier package selected with `--tier cloud`. This skip needs neither `--repository` nor cloud credentials.
-- A selected graph with no interactive blocks. The report lists the selected root and all planned leaves as unexecuted. The runner executes a prose-only milestone in an otherwise interactive path. It reports zero browser steps for that milestone and continues to later milestones.
+- A selected graph with no interactive blocks. The report lists the selected root and all planned leaves as unexecuted.
 - A `snippet-ref` block, including nested references.
 - A navigate action with `openGuide`, or a `reftarget`/`refTarget` URL with a nonempty `doc` query value.
-- An interactive guide with no passed browser step, including guides whose steps are all skipped or not reached. A prose-only milestone has no steps to verify.
+- An interactive guide with no passed browser step, including guides whose steps are all skipped or not reached.
+
+Prose-only guides have no interactive steps to verify. In an otherwise interactive graph, a prose-only guide can pass with zero browser steps. This applies to prerequisites, milestones, and a selected prose-only root with an interactive prerequisite. A prose-only pass does not block dependent guides or later milestones.
 
 The first four checks happen before provisioning. A path report retains passed sibling results but does not claim an overall pass when another milestone skips. Exit code 0 alone does not prove execution. Consumers must inspect the report outcome and per-guide results.
 

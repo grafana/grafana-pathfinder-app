@@ -266,6 +266,73 @@ describe('local cloud package CLI preflight', () => {
     }
   );
 
+  it.each(['root', 'dependency', 'alternative provider'] as const)(
+    'reports a dropped %s build error before network or browser execution',
+    async (invalidPackage) => {
+      const packageDir = join(root, 'cloud-guide');
+      let invalidDir = packageDir;
+      let invalidId = 'cloud-guide';
+      if (invalidPackage !== 'root') {
+        invalidId = 'prerequisite';
+        invalidDir = join(root, invalidId);
+        mkdirSync(invalidDir);
+        writeFileSync(
+          join(invalidDir, 'manifest.json'),
+          JSON.stringify({
+            id: invalidId,
+            type: 'guide',
+            provides: ['dashboard-ready'],
+            testEnvironment: { tier: 'cloud' },
+          })
+        );
+        writeFileSync(
+          join(packageDir, 'manifest.json'),
+          JSON.stringify({
+            id: 'cloud-guide',
+            type: 'guide',
+            depends: [invalidPackage === 'dependency' ? invalidId : 'dashboard-ready'],
+            testEnvironment: { tier: 'cloud' },
+          })
+        );
+        if (invalidPackage === 'alternative provider') {
+          const alternativeDir = join(root, 'alternative');
+          mkdirSync(alternativeDir);
+          writeFileSync(
+            join(alternativeDir, 'manifest.json'),
+            JSON.stringify({
+              id: 'alternative',
+              type: 'guide',
+              provides: ['dashboard-ready'],
+              testEnvironment: { tier: 'cloud' },
+            })
+          );
+          writeFileSync(
+            join(alternativeDir, 'content.json'),
+            JSON.stringify({ id: 'alternative', title: 'Alternative', blocks: [] })
+          );
+        }
+      }
+      writeFileSync(
+        join(invalidDir, 'content.json'),
+        JSON.stringify({ id: 'wrong-id', title: 'Mismatched guide', blocks: [] })
+      );
+      const reportPath = join(root, 'invalid-catalog-report.json');
+
+      await expect(runE2e(cloudOptions(packageDir, reportPath))).rejects.toThrow(
+        `CLI exited with ${ExitCode.CONFIGURATION_ERROR}`
+      );
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(runPlaywrightTests).not.toHaveBeenCalled();
+      expect(runPlaywrightChain).not.toHaveBeenCalled();
+      const report = JSON.parse(readFileSync(reportPath, 'utf8')) as Report;
+      expect(report.outcome).toBe('configuration_error');
+      expect(report.errorMessage).toContain(
+        `ID mismatch: content.json has "wrong-id", manifest.json has "${invalidId}"`
+      );
+    }
+  );
+
   it.each(['content.json', 'manifest.json'] as const)(
     'rejects externally linked selected %s before reading any linked bytes',
     async (name) => {
@@ -511,6 +578,79 @@ describe('local cloud package CLI preflight', () => {
       if (repositoryInput === 'checkout directory') {
         expect(existsSync(join(root, 'repository.json'))).toBe(false);
       }
+    }
+  );
+
+  it.each([
+    { type: 'path', milestoneCount: 1, requirement: { plugins: ['required-plugin'] }, error: 'Required plugin' },
+    { type: 'path', milestoneCount: 2, requirement: { minVersion: '99.0.0' }, error: 'minVersion' },
+    { type: 'journey', milestoneCount: 1, requirement: { minVersion: '99.0.0' }, error: 'minVersion' },
+    { type: 'journey', milestoneCount: 2, requirement: { plugins: ['required-plugin'] }, error: 'Required plugin' },
+  ])(
+    'keeps the $type root identity after $error preflight failure with $milestoneCount milestones',
+    async ({ type, milestoneCount, requirement, error }) => {
+      const packageDir = join(root, 'selected-package');
+      mkdirSync(packageDir);
+      const milestones = ['cloud-guide'];
+      writeFileSync(
+        join(root, 'cloud-guide', 'manifest.json'),
+        JSON.stringify({ id: 'cloud-guide', type: 'guide', testEnvironment: { tier: 'cloud', ...requirement } })
+      );
+      if (milestoneCount === 2) {
+        const secondDir = join(root, 'second-guide');
+        mkdirSync(secondDir);
+        writeFileSync(
+          join(secondDir, 'manifest.json'),
+          JSON.stringify({ id: 'second-guide', type: 'guide', testEnvironment: { tier: 'cloud' } })
+        );
+        writeFileSync(
+          join(secondDir, 'content.json'),
+          JSON.stringify({ id: 'second-guide', title: 'Second guide', blocks: [] })
+        );
+        milestones.push('second-guide');
+      }
+      writeFileSync(
+        join(packageDir, 'manifest.json'),
+        JSON.stringify({ id: 'selected-package', type, milestones, testEnvironment: { tier: 'cloud' } })
+      );
+      writeFileSync(
+        join(packageDir, 'content.json'),
+        JSON.stringify({ id: 'selected-package', title: 'Selected package', blocks: [] })
+      );
+      const reportPath = join(root, 'selection-preflight-report.json');
+
+      await expect(runE2e(cloudOptions(packageDir, reportPath))).rejects.toThrow(
+        `CLI exited with ${ExitCode.CONFIGURATION_ERROR}`
+      );
+
+      const report = JSON.parse(readFileSync(reportPath, 'utf8')) as {
+        selection: { id: string; type: string };
+        reports: Report[];
+      };
+      expect(report.selection).toEqual({ id: 'selected-package', type });
+      expect(report.reports).toHaveLength(1);
+      expect(report.reports[0]).toMatchObject({
+        outcome: 'configuration_error',
+        errorMessage: expect.stringContaining(error),
+        guide: {
+          id: 'selected-package',
+          title: 'selected-package',
+          path: 'selected-package',
+          targetUrl: `${targetOrigin}/`,
+        },
+        steps: [],
+      });
+      expect(report.reports[0]!.guide.contentDigest).toBeUndefined();
+      expect(runPlaywrightTests).not.toHaveBeenCalled();
+      expect(runPlaywrightChain).not.toHaveBeenCalled();
+      const retireRequests = fetchSpy.mock.calls.filter(([input]) =>
+        new URL(input.toString()).pathname.endsWith('/retire')
+      );
+      expect(retireRequests).toHaveLength(1);
+      expect(JSON.parse((retireRequests[0]![1] as RequestInit).body as string)).toMatchObject({
+        outcome: 'failed',
+        used: true,
+      });
     }
   );
 
@@ -1025,6 +1165,77 @@ describe('local cloud package CLI preflight', () => {
       expect.objectContaining({ id: selectedId, reason: 'resolution_failed', failed: false }),
     ]);
     expect(report.preRunSkipped[0]?.message).toContain('no interactive blocks to test');
+  });
+
+  it('passes a prose-only root with zero steps after its interactive prerequisite passes', async () => {
+    const packageDir = join(root, 'cloud-guide');
+    const prerequisiteDir = join(root, 'prerequisite');
+    mkdirSync(prerequisiteDir);
+    writeFileSync(
+      join(prerequisiteDir, 'manifest.json'),
+      JSON.stringify({ id: 'prerequisite', type: 'guide', testEnvironment: { tier: 'cloud' } })
+    );
+    writeFileSync(
+      join(prerequisiteDir, 'content.json'),
+      JSON.stringify({
+        id: 'prerequisite',
+        title: 'Prerequisite',
+        blocks: [{ type: 'interactive', action: 'highlight', reftarget: 'body', content: 'Inspect' }],
+      })
+    );
+    writeFileSync(
+      join(packageDir, 'manifest.json'),
+      JSON.stringify({
+        id: 'cloud-guide',
+        type: 'guide',
+        depends: ['prerequisite'],
+        testEnvironment: { tier: 'cloud' },
+      })
+    );
+    writeFileSync(
+      join(packageDir, 'content.json'),
+      JSON.stringify({
+        id: 'cloud-guide',
+        title: 'Read the results',
+        blocks: [{ type: 'markdown', content: 'Read this' }],
+      })
+    );
+    jest.mocked(runPlaywrightTests).mockImplementation(async (guide) => {
+      const id = (JSON.parse(guide.content) as { id: string }).id;
+      const data = fakeGuideData(id, id === 'prerequisite');
+      return {
+        success: true,
+        exitCode: ExitCode.SUCCESS,
+        resultsData: {
+          ...data,
+          ...(id === 'cloud-guide' ? { coverage: { ...data.coverage!, rendered: 0, supported: 0 } } : {}),
+        },
+      };
+    });
+    const reportPath = join(root, 'prose-root-report.json');
+
+    await expect(runE2e(cloudOptions(packageDir, reportPath))).resolves.toMatchObject({ status: 'ok' });
+
+    const report = JSON.parse(readFileSync(reportPath, 'utf8')) as { outcome: string; reports: Report[] };
+    expect(report.outcome).toBe('passed');
+    expect(report.reports.map((item) => item.guide.id)).toEqual(['prerequisite', 'cloud-guide']);
+    expect(report.reports[0]).toMatchObject({ outcome: 'passed', summary: { passed: 1 } });
+    expect(report.reports[1]).toMatchObject({
+      outcome: 'passed',
+      steps: [],
+      coverage: { rendered: 0, supported: 0, executed: 0 },
+    });
+    expect(jest.mocked(runPlaywrightTests).mock.calls.map(([guide]) => JSON.parse(guide.content).id)).toEqual([
+      'prerequisite',
+      'cloud-guide',
+    ]);
+    expect(runPlaywrightChain).not.toHaveBeenCalled();
+    expect(fetchSpy.mock.calls.filter(([input]) => new URL(input.toString()).pathname === '/v1/leases')).toHaveLength(
+      1
+    );
+    expect(
+      fetchSpy.mock.calls.filter(([input]) => new URL(input.toString()).pathname.endsWith('/retire'))
+    ).toHaveLength(1);
   });
 
   it('skips an entirely prose-only path before leasing', async () => {

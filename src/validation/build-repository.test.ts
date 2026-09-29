@@ -50,6 +50,37 @@ describe('buildRepository', () => {
     expect(duplicateIds).toEqual([]);
   });
 
+  it.each(['mismatched ID', 'missing content', 'invalid content'] as const)(
+    'indexes build errors by declared IDs and capabilities for a package with %s',
+    (failure) => {
+      const packageDir = path.join(tmpDir, 'renamed-directory');
+      writeJson(path.join(packageDir, 'manifest.json'), {
+        id: 'manifest-id',
+        type: 'guide',
+        provides: ['dashboard-ready'],
+      });
+      if (failure === 'mismatched ID') {
+        writeJson(path.join(packageDir, 'content.json'), { id: 'content-id', title: 'Mismatched content', blocks: [] });
+      } else if (failure === 'invalid content') {
+        fs.writeFileSync(path.join(packageDir, 'content.json'), '{');
+      }
+
+      const { repository, errors, errorsByReference } = buildRepository(tmpDir);
+
+      expect(repository).toEqual({});
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain('renamed-directory:');
+      expect([...errorsByReference.keys()].sort()).toEqual(
+        failure === 'mismatched ID'
+          ? ['content-id', 'dashboard-ready', 'manifest-id']
+          : ['dashboard-ready', 'manifest-id']
+      );
+      for (const messages of errorsByReference.values()) {
+        expect(messages).toEqual(errors);
+      }
+    }
+  );
+
   it('should skip content-only directories without manifest.json', () => {
     writeJson(path.join(tmpDir, 'welcome-to-grafana', 'content.json'), {
       id: 'welcome-to-grafana',

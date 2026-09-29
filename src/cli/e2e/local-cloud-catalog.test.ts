@@ -461,6 +461,152 @@ describe('local cloud catalog from a working checkout', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it.each(['selected root', 'prerequisite'] as const)('reports the actual build error for a dropped %s', (selected) => {
+    const dir = selected === 'selected root' ? rootDir : prerequisiteDir;
+    const id = selected === 'selected root' ? 'cloud-root' : 'prerequisite';
+    writeJson(join(dir, 'content.json'), { id: 'wrong-id', title: 'Wrong ID', blocks: [] });
+
+    expect(() => resolveRoot(root)).toThrow(`ID mismatch: content.json has "wrong-id", manifest.json has "${id}"`);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it.each(['ID mismatch', 'missing content', 'invalid content'] as const)(
+    'does not replace a dependency with %s by an alternative',
+    (failure) => {
+      writeJson(join(rootDir, 'manifest.json'), {
+        id: 'cloud-root',
+        type: 'guide',
+        depends: [['prerequisite', 'alternative']],
+        testEnvironment: { tier: 'cloud' },
+      });
+      addDuplicatePackage('alternative-directory', 'alternative');
+      if (failure === 'ID mismatch') {
+        writeJson(join(prerequisiteDir, 'content.json'), { id: 'wrong-id', title: 'Wrong ID', blocks: [] });
+      } else if (failure === 'missing content') {
+        rmSync(join(prerequisiteDir, 'content.json'));
+      } else {
+        writeFileSync(join(prerequisiteDir, 'content.json'), '{');
+      }
+
+      expect(() => resolveRoot(root)).toThrow(/prerequisite: .*content.json/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  );
+
+  it('does not replace a dropped capability provider with another provider', () => {
+    writeJson(join(rootDir, 'manifest.json'), {
+      id: 'cloud-root',
+      type: 'guide',
+      depends: ['dashboard-ready'],
+      testEnvironment: { tier: 'cloud' },
+    });
+    writeJson(join(prerequisiteDir, 'manifest.json'), {
+      id: 'prerequisite',
+      type: 'guide',
+      provides: ['dashboard-ready'],
+      testEnvironment: { tier: 'cloud' },
+    });
+    writeJson(join(prerequisiteDir, 'content.json'), { id: 'wrong-id', title: 'Wrong ID', blocks: [] });
+    addDuplicatePackage('alternative-directory', 'alternative', ['dashboard-ready']);
+
+    expect(() => resolveRoot(root)).toThrow(
+      'ID mismatch: content.json has "wrong-id", manifest.json has "prerequisite"'
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it.each(['guide', 'path', 'journey'] as const)(
+    'rejects build errors in a transitive dependency alternative of a selected %s',
+    (type) => {
+      writeJson(join(rootDir, 'manifest.json'), {
+        id: 'cloud-root',
+        type,
+        ...(type === 'guide' ? { depends: ['prerequisite'] } : { milestones: ['prerequisite'] }),
+        testEnvironment: { tier: 'cloud' },
+      });
+      writeJson(join(prerequisiteDir, 'manifest.json'), {
+        id: 'prerequisite',
+        type: 'guide',
+        depends: [['broken', 'alternative']],
+        testEnvironment: { tier: 'cloud' },
+      });
+      addDuplicatePackage('alternative-directory', 'alternative');
+      addDuplicatePackage('broken-directory', 'broken');
+      writeJson(join(root, 'broken-directory', 'content.json'), { id: 'wrong-id', title: 'Wrong ID', blocks: [] });
+      const resolveSelected = () =>
+        type === 'guide'
+          ? resolveRoot(root)
+          : resolveLocalMetapackage({
+              packageDir: rootDir,
+              repositoryPath: root,
+              grafanaUrl: 'http://localhost:3000',
+              currentTier: 'cloud',
+              cloudUrl: 'https://learn.grafana.net/',
+              verbose: false,
+              cloudTargetCapabilities: { sharedStackUrls: [], isolatedStack: true },
+            });
+
+      expect(resolveSelected).toThrow('broken-directory: ID mismatch');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['content ID', 'manifest ID'] as const)(
+    'rejects a selected ID also named as the %s of a dropped package',
+    (identity) => {
+      const brokenDir = join(root, 'broken-package');
+      mkdirSync(brokenDir);
+      writeJson(join(brokenDir, 'manifest.json'), {
+        id: identity === 'manifest ID' ? 'cloud-root' : 'other-id',
+        type: 'guide',
+        testEnvironment: { tier: 'cloud' },
+      });
+      writeJson(join(brokenDir, 'content.json'), {
+        id: identity === 'content ID' ? 'cloud-root' : 'other-id',
+        title: 'Broken package',
+        blocks: [],
+      });
+
+      expect(() => resolveRoot(root)).toThrow('broken-package: ID mismatch');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['path', 'journey'] as const)('reports a dropped nested milestone build error in a selected %s', (type) => {
+    const pathDir = join(root, 'selected-path');
+    const nestedDir = join(root, 'nested-path');
+    mkdirSync(pathDir);
+    mkdirSync(nestedDir);
+    writeJson(join(pathDir, 'manifest.json'), {
+      id: 'selected-path',
+      type,
+      milestones: ['nested-path'],
+      testEnvironment: { tier: 'cloud' },
+    });
+    writeJson(join(pathDir, 'content.json'), { id: 'selected-path', title: 'Selected path', blocks: [] });
+    writeJson(join(nestedDir, 'manifest.json'), {
+      id: 'nested-path',
+      type: 'path',
+      milestones: ['prerequisite'],
+      testEnvironment: { tier: 'cloud' },
+    });
+    writeJson(join(nestedDir, 'content.json'), { id: 'nested-path', title: 'Nested path', blocks: [] });
+    writeJson(join(prerequisiteDir, 'content.json'), { id: 'wrong-id', title: 'Wrong ID', blocks: [] });
+
+    expect(() =>
+      resolveLocalMetapackage({
+        packageDir: pathDir,
+        repositoryPath: root,
+        grafanaUrl: 'http://localhost:3000',
+        currentTier: 'cloud',
+        cloudUrl: 'https://learn.grafana.net/',
+        verbose: false,
+        cloudTargetCapabilities: { sharedStackUrls: [], isolatedStack: true },
+      })
+    ).toThrow('ID mismatch: content.json has "wrong-id", manifest.json has "prerequisite"');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('ignores unrelated package build errors when the selected checkout graph is valid', () => {
     const unrelatedDir = join(root, 'unrelated-invalid-package');
     mkdirSync(unrelatedDir);

@@ -881,7 +881,7 @@ async function runChains(
             ExitCode.CONFIGURATION_ERROR,
             'CONFIGURATION_ERROR',
             selection,
-            chain.find((planned) => !planned.autoIncluded)?.guide ?? chain[0]?.guide
+            selection ? undefined : (chain.find((planned) => !planned.autoIncluded)?.guide ?? chain[0]?.guide)
           );
           throw localCloudPreflightError;
         }
@@ -1424,7 +1424,7 @@ export async function runE2e(options: E2eInput): Promise<CommandOutcome> {
 
   try {
     const inputs = await resolveRunInputs(files, options);
-    reportGuide = inputs.guides.length === 1 ? inputs.guides[0] : undefined;
+    reportGuide = !inputs.selection && inputs.guides.length === 1 ? inputs.guides[0] : undefined;
     reportSelection = inputs.selection;
 
     // Remote runs can resolve to nothing runnable (e.g. all cloud-tier guides):
