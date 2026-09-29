@@ -76,9 +76,7 @@ const flushPromises = async (): Promise<void> => {
 };
 
 const mkDeps = (overrides: Partial<Deps> = {}): Deps => ({
-  shouldMountSidebar: true,
   attemptAutoOpen: jest.fn(),
-  loadControlGroupDocPopup: jest.fn().mockResolvedValue({ showControlGroupDocPopup: jest.fn() }),
   ...overrides,
 });
 
@@ -158,20 +156,6 @@ describe('handlePathfinderDeepLink', () => {
     // so the inner `.then` callback settles before we assert.
     await flushPromises();
     expect(mockFindDocPage).toHaveBeenCalledTimes(1);
-  });
-
-  it('routes the control-group branch when sidebar is not mountable', async () => {
-    setSearch('?doc=bundled%3Afoo&source=tile_click');
-    const showControlGroupDocPopup = jest.fn();
-    const loadControlGroupDocPopup = jest.fn().mockResolvedValue({ showControlGroupDocPopup });
-    const deps = mkDeps({ shouldMountSidebar: false, loadControlGroupDocPopup });
-
-    expect(handlePathfinderDeepLink(deps)).toBe(true);
-    expect(window.location.search).toBe('');
-
-    await flushPromises();
-    expect(showControlGroupDocPopup).toHaveBeenCalledWith('tile_click');
-    expect(mockFindDocPage).not.toHaveBeenCalled();
   });
 
   it('sets floating panel mode and strips panelMode from the URL', () => {

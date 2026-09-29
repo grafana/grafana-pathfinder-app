@@ -21,6 +21,14 @@ const { isBackendApiAvailable } = require('./interactive-guides-api');
 const mockAvailable = isBackendApiAvailable as jest.MockedFunction<() => boolean>;
 
 describe('configToSpec', () => {
+  it.each([true, false])(
+    'round-trips the explicit Pathfinder preference %s without defaulting absent overrides',
+    (pathfinderEnabled) => {
+      expect(specToConfig(configToSpec({ pathfinderEnabled }))).toEqual({ pathfinderEnabled });
+      expect(configToSpec({})).not.toHaveProperty('pathfinderEnabled');
+      expect(specToConfig({})).not.toHaveProperty('pathfinderEnabled');
+    }
+  );
   it('emits every tenant-owned key it is given', () => {
     const spec = configToSpec({
       recommenderServiceUrl: 'https://recommender.grafana.com',
