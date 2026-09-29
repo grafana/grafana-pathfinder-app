@@ -20,12 +20,24 @@ import { deriveManifest } from './derive-manifest';
  * surfaces. So a key this function starts writing that is missing from this set
  * is silent data loss on every save, which is why the invariant below is a test
  * rather than a comment.
+ *
+ * `tracks` (Path Tracks RFC) is listed ahead of the deployed CRD, matching
+ * `CRD_TYPED_KEYS` in `src/cli/mcp/lib/crd-manifest.ts` and the `$typed` list
+ * in `scripts/upsert-learning-path.sh` — both already emit it as a typed key
+ * on the strength of the settled, independently-verified shape in
+ * `grafana-pathfinder-backend#93`. Until that PR merges, the deployed CRD's
+ * closed structural schema still prunes an inherited `tracks` key exactly as
+ * this file's own header describes — publishing a tracked path through
+ * either writer stores no tracks and shows a cover page with no tabs, silent
+ * except for the unsurfaced `Warning:` header. See the PR body for the
+ * required rollout order (land #93 before this risk is closed).
  */
 const CRD_MANIFEST_KEYS = new Set([
   'type',
   'repository',
   'description',
   'milestones',
+  'tracks',
   'author',
   'category',
   'depends',

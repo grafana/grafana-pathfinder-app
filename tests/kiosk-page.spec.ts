@@ -144,7 +144,10 @@ test('copy action reports success and failure without running the command', asyn
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.route(catalogUrl, (route) =>
     route.fulfill({
-      json: { ...catalog, page: { ...catalog.page, blocks: [{ type: 'command', command: 'echo kiosk-demo' }] } },
+      json: {
+        ...catalog,
+        page: { ...catalog.page, blocks: [{ type: 'command', command: 'echo {{grafana.stackUrl}}' }] },
+      },
     })
   );
   await page.goto(`/?pathfinderKiosk=1&kioskRulesUrl=${encodeURIComponent(catalogUrl)}`);
@@ -155,7 +158,7 @@ test('copy action reports success and failure without running the command', asyn
   await expect(copy).toHaveText('Copied');
   expect(await copy.boundingBox()).toEqual(before);
   await expect(page.getByTestId(testIds.kioskMode.overlay).getByRole('status')).toContainText('Copied');
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('echo kiosk-demo');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('echo your-stack');
   await page.evaluate(() => {
     navigator.clipboard.writeText = async () => {
       throw new Error('Denied');

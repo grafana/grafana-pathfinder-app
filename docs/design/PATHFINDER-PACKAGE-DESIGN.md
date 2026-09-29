@@ -260,6 +260,14 @@ interface ManifestJson {
 
   /** Ordered milestones for paths and journeys (required when type is "path" or "journey") */
   milestones?: string[];
+  /**
+   * Named, independently-ordered guide sequences alongside `milestones`
+   * (Path Tracks RFC), one per audience/role — additive, and valid only
+   * when type is "path" (RFC §6.1 — narrower than milestones' own
+   * path-or-journey gate: a journey is a fixed reading order, and tracks
+   * presenting the same content in a different order don't apply to it).
+   */
+  tracks?: Array<{ trackId: string; label: string; guides: string[] }>;
 
   // --- Metadata (flat, following Debian conventions) ---
 
@@ -324,6 +332,8 @@ interface JsonGuide {
 
   /** Ordered milestones for paths and journeys (required when type is "path" or "journey") */
   milestones?: string[];
+  /** Named, independently-ordered guide sequences alongside `milestones` (Path Tracks RFC) */
+  tracks?: Array<{ trackId: string; label: string; guides: string[] }>;
 
   // --- Metadata (flat) ---
 
@@ -478,6 +488,8 @@ The package model supports two levels of metapackage composition following the D
 - A **journey** (`type: "journey"`) is an ordered sequence of paths (or any packages) that build toward a larger learning arc (e.g., "Infrastructure mastery" composing linux-server-integration, kubernetes-integration, and alerting paths).
 
 Both are first-class packages with a `milestones` array declaring the recommended reading order. Milestones are real packages — not fragments or sub-units — enabling milestone reuse, a single identity model, and uniform tooling. The `milestones` field references bare package IDs; the CLI validates that each entry resolves to an existing package but does not enforce the type of the referenced package. The type hierarchy (guides in paths, paths in journeys) is convention, not a schema constraint. Completion is set-based (all milestones done, regardless of order), and ordering is advisory.
+
+A path may additionally declare `tracks` (Path Tracks RFC): named, independently-ordered guide sequences, one per audience or role, alongside the always-present `milestones` default ("Foundations"). Unlike `milestones`, `tracks` is not valid on a journey (RFC §6.1) — a journey is a fixed reading order, and tracks presenting the same content in a different order don't apply to it. A track's `guides` list is its own complete ordering — not a subset or reordering of `milestones` — so it may include guides `milestones` never had, omit ones it has, and interleave role-specific content anywhere in the sequence. `tracks` is additive only and never itself represents `milestones`; on the cover page, each declared track renders as its own tab.
 
 > **Full detail:** [package/learning-journeys.md](./package/learning-journeys.md)
 

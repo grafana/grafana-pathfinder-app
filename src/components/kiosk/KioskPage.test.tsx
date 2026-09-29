@@ -244,3 +244,19 @@ it('highlights Bash as inert code and supports plain text', () => {
   expect(document.querySelector('code')?.textContent).toBe('plain text');
   expect(document.querySelector('code .token')).toBeNull();
 });
+
+it('copies exactly the displayed resolved stack argument', async () => {
+  const writeText = jest.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  render(
+    <KioskPage
+      page={{ version: 1, blocks: [{ type: 'command', command: 'setup --stack {{grafana.stackUrl}}' }] }}
+      rules={[]}
+      mode="presentation"
+      onLaunch={jest.fn()}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(document.querySelector('code')?.textContent));
+  expect(document.querySelector('code')?.textContent).toBe('setup --stack your-stack');
+});

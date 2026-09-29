@@ -77,9 +77,6 @@ export class GuidedHandler {
     }
   }
 
-  resetProgress(): void {
-    this.completedSteps = [];
-  }
   async executeGuidedStep(
     action: AuthoredGuidedAction,
     stepIndex: number,
@@ -87,6 +84,10 @@ export class GuidedHandler {
     timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout,
     onActionCompleted?: () => void
   ): Promise<CompletionResult> {
+    if (stepIndex === 0) {
+      this.completedSteps = [];
+    }
+
     return withFaroUserAction(
       createInteractionName(UserInteraction.DoItButtonClick),
       {

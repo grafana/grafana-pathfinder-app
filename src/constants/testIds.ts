@@ -170,6 +170,8 @@ export const testIds = {
     terminalConnectStep: (stepId: string) => `interactive-terminal-connect-${stepId}`,
     terminalSkipButton: (stepId: string) => `interactive-terminal-skip-${stepId}`,
     terminalCopyButton: (stepId: string) => `interactive-terminal-copy-${stepId}`,
+    terminalExecButton: (stepId: string) => `interactive-terminal-exec-${stepId}`,
+    terminalConnectButton: (stepId: string) => `interactive-terminal-connect-button-${stepId}`,
     gcxMintButton: (stepId: string) => `interactive-gcx-mint-${stepId}`,
     gcxTokenInput: (stepId: string) => `interactive-gcx-token-${stepId}`,
     gcxTokenLifetime: (stepId: string) => `interactive-gcx-token-lifetime-${stepId}`,
@@ -340,6 +342,8 @@ export const testIds = {
     tableOfContents: 'learning-paths-toc',
     tableOfContentsCta: 'learning-paths-toc-cta',
     coverHero: 'learning-paths-cover-hero',
+    tracksTabs: 'learning-paths-toc-tracks-tabs',
+    tracksTab: (trackId: string) => `learning-paths-toc-track-${trackId}`,
   },
 
   // Live Session
@@ -412,12 +416,6 @@ export const testIds = {
   // Home Page
   homePage: {
     container: 'home-page-container',
-  },
-
-  // Control Group Popup
-  controlGroupPopup: {
-    container: 'control-group-popup-container',
-    dismissButton: 'control-group-popup-dismiss',
   },
 
   // Feedback Button

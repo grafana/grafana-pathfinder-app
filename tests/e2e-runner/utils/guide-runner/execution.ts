@@ -40,6 +40,7 @@ import type {
 import type { SessionValidationResult } from '../../auth/grafana-auth';
 const STEP_CLOSE_TIMEOUT_MS = 1000;
 const STEP_WORK_DRAIN_TIMEOUT_MS = 1000;
+const STEP_DEADLINE_ARTIFACT_TIMEOUT_MS = 2000;
 export { STEP_DEADLINE_CLEANUP_GRACE_MS } from './constants';
 
 // ============================================
@@ -270,6 +271,14 @@ async function executeStepCore(
       const currentUrl = page.url();
       options.onDeadline?.();
       void (async () => {
+        const deadlineArtifactResult = options.artifactsDir
+          ? await settleWithin(
+              captureFailureArtifacts(page, `${step.stepId}-deadline`, [], options.artifactsDir),
+              STEP_DEADLINE_ARTIFACT_TIMEOUT_MS
+            )
+          : undefined;
+        const deadlineArtifacts =
+          deadlineArtifactResult?.status === 'fulfilled' ? deadlineArtifactResult.value : undefined;
         await closePageWithin(page, STEP_CLOSE_TIMEOUT_MS);
         const drained = await settleWithin(work, STEP_WORK_DRAIN_TIMEOUT_MS);
         const evidence = drained.status === 'fulfilled' ? drained.value : undefined;
@@ -283,7 +292,7 @@ async function executeStepCore(
           deadlineExceeded: true,
           skippable: step.skippable,
           classification: 'infrastructure',
-          artifacts: evidence?.artifacts,
+          artifacts: deadlineArtifacts ?? evidence?.artifacts,
         });
       })();
     }, deadlineMs);
@@ -379,7 +388,7 @@ async function executeStepWork(
     const { requirements, fixResult } = await driver.checkRequirements({ page, step, timeout, verbose, artifactsDir });
 
     if (!requirements.requirementsMet && requirements.status === 'unmet') {
-      if (determineUnmetRequirementOutcome(step.skippable) === 'skip') {
+      if (determineUnmetRequirementOutcome(step.skippable && requirements.skippable) === 'skip') {
         try {
           await driver.skip(page, step.stepId);
         } catch (syncError) {
@@ -417,7 +426,7 @@ async function executeStepWork(
         currentUrl: page.url(),
         consoleErrors,
         error: errorMsg,
-        skippable: false,
+        skippable: step.skippable,
         classification: classifyError(errorMsg),
         artifacts: await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath),
       };

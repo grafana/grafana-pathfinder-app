@@ -35,6 +35,7 @@ export const KioskPageSchema = z
         z.discriminatedUnion('type', [
           z.strictObject({
             type: z.literal('hero'),
+            variant: z.enum(['standard', 'banner']).optional(),
             eyebrow: text.optional(),
             title: text,
             description: text.optional(),

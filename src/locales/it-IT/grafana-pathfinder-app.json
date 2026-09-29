@@ -59,7 +59,9 @@
     "showMoreTabs_many": "Mostra {{count}} schede in più",
     "showMoreTabs_one": "Mostra {{count}} scheda in più",
     "showMoreTabs_other": "Mostra {{count}} schede in più",
-    "switchToTab": "Passa a {{title}}"
+    "switchToTab": "Passa a {{title}}",
+    "beta": "Beta",
+    "classicHelpMenuSettings": "Classic Help menu settings"
   },
   "feedbackButton": {
     "ariaLabel": "Fornisci feedback su questo plugin",
@@ -121,5 +123,20 @@
     "streakTooltip_one": "Serie di apprendimento di {{- days}} giorno — continua così!",
     "streakTooltip_many": "Serie di apprendimento di {{- days}} giorni — continua così!",
     "streakTooltip_other": "Serie di apprendimento di {{- days}} giorni — continua così!"
+  },
+  "appConfig": {
+    "beta": "Beta",
+    "pathfinderEnabled": "Enable Pathfinder",
+    "pathfinderEnabledDescription": "Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, Pathfinder stays available.",
+    "pathfinderPreview": "Pathfinder public preview",
+    "pathfinderPreviewDescription": "Pathfinder brings contextual help and interactive guides into Grafana.",
+    "pathfinderRemotelyDisabled": "Pathfinder is disabled remotely",
+    "pathfinderRemotelyDisabledDescription": "The remote switch currently prevents Pathfinder from running. Your saved preference will apply when Pathfinder is enabled remotely again.",
+    "pathfinderRevertDescription": "Turn this off to use Grafana’s classic Help menu after users reload. Your learning progress is kept."
+  },
+  "pathfinder": {
+    "disabled": "Pathfinder is disabled",
+    "disabledDescription": "Pathfinder is turned off for this organization.",
+    "openSettings": "Open Pathfinder settings"
   }
 }

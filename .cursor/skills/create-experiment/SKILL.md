@@ -1,6 +1,6 @@
 ---
 name: create-experiment
-description: 'Set up a new A/B experiment in Grafana Pathfinder end to end — MTFF flag, variant validation, enrollment seam, exposure and behaviour analytics, QA overrides, tests, docs, and a retirement plan. Use when the user runs `/create-experiment`, asks to add or run an experiment or A/B test, add a treatment/control variant, gate a feature behind an experiment flag, or wire exposure tracking. Also use when reviewing or retiring an existing experiment.'
+description: 'Set up, review, or retire an A/B experiment in Grafana Pathfinder end to end: MTFF flag, variant validation, enrollment seam, exposure analytics, QA overrides, tests, docs, and a retirement plan. Use for `/create-experiment` or any request to add an experiment, a variant, or an experiment-gated feature.'
 ---
 
 # create-experiment — Set up a Pathfinder A/B experiment
