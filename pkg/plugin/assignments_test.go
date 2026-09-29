@@ -23,7 +23,7 @@ import (
 // path most tests exercise.
 type fakeAssignmentLister struct {
 	respond      func(token string) (*assignmentPage, error)
-	updateStatus func(ctx context.Context, namespace, name string, satisfied bool) error
+	updateStatus func(ctx context.Context, namespace, name, resourceVersion string, satisfied bool) error
 	calls        int32
 }
 
@@ -32,11 +32,11 @@ func (f *fakeAssignmentLister) ListPage(_ context.Context, _ string, token strin
 	return f.respond(token)
 }
 
-func (f *fakeAssignmentLister) UpdateStatus(ctx context.Context, namespace, name string, satisfied bool) error {
+func (f *fakeAssignmentLister) UpdateStatus(ctx context.Context, namespace, name, resourceVersion string, satisfied bool) error {
 	if f.updateStatus == nil {
 		return fmt.Errorf("fakeAssignmentLister: UpdateStatus called with no updateStatus func set")
 	}
-	return f.updateStatus(ctx, namespace, name, satisfied)
+	return f.updateStatus(ctx, namespace, name, resourceVersion, satisfied)
 }
 
 func (f *fakeAssignmentLister) callCount() int { return int(atomic.LoadInt32(&f.calls)) }

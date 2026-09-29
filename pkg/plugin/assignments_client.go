@@ -46,6 +46,7 @@ var assignmentsAggregationToggle = aggregationToggle(appPlatformGroup)
 // scalars unmarshal as "" when absent. Field names track kinds/assignment.cue.
 type assignmentSpec struct {
 	Name            string `json:"-"`
+	ResourceVersion string `json:"-"`
 	StatusSatisfied *bool  `json:"-"`
 
 	UserID       string `json:"userId"`
@@ -85,7 +86,7 @@ type assignmentLister interface {
 // assignmentStatusWriter updates status.satisfied. The LIST lister implements
 // it; a test fake that only lists does not, and the status write skips.
 type assignmentStatusWriter interface {
-	UpdateStatus(ctx context.Context, namespace, name string, satisfied bool) error
+	UpdateStatus(ctx context.Context, namespace, name, resourceVersion string, satisfied bool) error
 }
 
 // assignmentHTTPClient is the per-kind wrapper over the shared App Platform
@@ -120,6 +121,7 @@ func (c *assignmentHTTPClient) ListPage(ctx context.Context, namespace, continue
 			return nil, fmt.Errorf("assignments: decode spec: %w", err)
 		}
 		spec.Name = item.Metadata.Name
+		spec.ResourceVersion = item.Metadata.ResourceVersion
 		if len(item.Status) > 0 && string(item.Status) != "null" {
 			var status struct {
 				Satisfied *bool `json:"satisfied"`
@@ -134,13 +136,16 @@ func (c *assignmentHTTPClient) ListPage(ctx context.Context, namespace, continue
 	return &assignmentPage{Records: records, Continue: page.Metadata.Continue}, nil
 }
 
-// UpdateStatus writes one obligation's evaluated satisfaction. The completion
-// write calls this; a 403 is the caller's to log, not a failed completion.
-func (c *assignmentHTTPClient) UpdateStatus(ctx context.Context, namespace, name string, satisfied bool) error {
+// UpdateStatus writes one obligation's evaluated satisfaction. resourceVersion
+// is the one ListPage read this assignment at — required by the upstream
+// status subresource for optimistic concurrency, even on a first write. The
+// completion write calls this; a 403 is the caller's to log, not a failed
+// completion.
+func (c *assignmentHTTPClient) UpdateStatus(ctx context.Context, namespace, name, resourceVersion string, satisfied bool) error {
 	body, err := json.Marshal(map[string]any{
 		"apiVersion": assignmentsGroupVersion,
 		"kind":       "Assignment",
-		"metadata":   map[string]string{"name": name, "namespace": namespace},
+		"metadata":   map[string]string{"name": name, "namespace": namespace, "resourceVersion": resourceVersion},
 		"status":     map[string]bool{"satisfied": satisfied},
 	})
 	if err != nil {

@@ -475,7 +475,7 @@ func (a *App) syncSatisfiedAssignments(r *http.Request, userID string, just comp
 		if !listed {
 			continue
 		}
-		if err := writer.UpdateStatus(r.Context(), namespace, rec.Name, true); err != nil {
+		if err := writer.UpdateStatus(r.Context(), namespace, rec.Name, rec.ResourceVersion, true); err != nil {
 			status, _ := upstreamStatusOf(err)
 			logger.Info("assignment status write failed", "name", rec.Name, "status", status, "error", err)
 		}

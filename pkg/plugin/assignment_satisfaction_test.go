@@ -223,15 +223,17 @@ func TestWriteSatisfiedAssignments_RunsInBackgroundAndPatchesNewlySatisfied(t *t
 	path := pathWithGuides(t)
 	target := asg("user:1", path.ID, "", "onboarding", "2026-09-01T00:00:00Z")
 	target.Name = "assignment-1"
+	target.ResourceVersion = "42"
 
 	type patchCall struct {
-		name      string
-		satisfied bool
+		name            string
+		resourceVersion string
+		satisfied       bool
 	}
 	patched := make(chan patchCall, 1)
 	lister := singlePageAssignmentLister(target)
-	lister.updateStatus = func(_ context.Context, _, name string, satisfied bool) error {
-		patched <- patchCall{name: name, satisfied: satisfied}
+	lister.updateStatus = func(_ context.Context, _, name, resourceVersion string, satisfied bool) error {
+		patched <- patchCall{name: name, resourceVersion: resourceVersion, satisfied: satisfied}
 		return nil
 	}
 	withAssignmentLister(t, lister)
@@ -249,8 +251,8 @@ func TestWriteSatisfiedAssignments_RunsInBackgroundAndPatchesNewlySatisfied(t *t
 
 	select {
 	case call := <-patched:
-		if call.name != "assignment-1" || !call.satisfied {
-			t.Fatalf("UpdateStatus call = %+v, want name=assignment-1 satisfied=true", call)
+		if call.name != "assignment-1" || call.resourceVersion != "42" || !call.satisfied {
+			t.Fatalf("UpdateStatus call = %+v, want name=assignment-1 resourceVersion=42 satisfied=true", call)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("writeSatisfiedAssignments did not PATCH the newly satisfied assignment in time")

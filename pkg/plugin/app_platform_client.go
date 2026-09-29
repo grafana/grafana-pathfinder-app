@@ -73,11 +73,13 @@ type appPlatformListPage struct {
 	Items []appPlatformListItem `json:"items"`
 }
 
-// appPlatformListItem is one LIST element. metadata.name addresses the object.
+// appPlatformListItem is one LIST element. metadata.name addresses the
+// object; resourceVersion is what a subsequent status update must echo back.
 // spec and status stay raw so each kind decodes its own schema.
 type appPlatformListItem struct {
 	Metadata struct {
-		Name string `json:"name"`
+		Name            string `json:"name"`
+		ResourceVersion string `json:"resourceVersion"`
 	} `json:"metadata"`
 	Spec   json.RawMessage `json:"spec"`
 	Status json.RawMessage `json:"status"`
