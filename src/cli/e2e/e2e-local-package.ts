@@ -537,6 +537,9 @@ export function resolveLocalMetapackage(options: LocalMetapackageOptions): Local
     }
     const rootTarget = resolveTarget(rootEntry.testEnvironment ?? {}, targetOptions);
     if (!rootTarget.runnable) {
+      if (options.currentTier === 'cloud' && rootTarget.skipReason === 'skipped_no_auth') {
+        throw new Error(`Required package "${manifest.id}" cannot run: ${rootTarget.message}`);
+      }
       return rootOnlySkip(rootTarget.skipReason!, rootTarget.message ?? 'Package skipped', rootTarget.tier);
     }
 
@@ -568,6 +571,9 @@ export function resolveLocalMetapackage(options: LocalMetapackageOptions): Local
       const entry = repoSource.repository[planned.id];
       const target = resolveTarget(entry?.testEnvironment ?? {}, targetOptions);
       if (!target.runnable) {
+        if (options.currentTier === 'cloud' && target.skipReason === 'skipped_no_auth') {
+          throw new Error(`Required guide "${planned.id}" cannot run: ${target.message}`);
+        }
         preRunSkipped.push({
           guide: planned.guide.path,
           id: planned.id,

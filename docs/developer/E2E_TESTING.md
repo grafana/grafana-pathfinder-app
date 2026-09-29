@@ -758,9 +758,9 @@ For these cloud runs, `--repository <index-file>` also works: its parent directo
 
 Source validation rejects symbolic links, hard links, and special files before reading manifests when `--repository` is supplied. The scan includes assets but excludes the root `.git`, `.github`, `node_modules`, and `scripts` directories. It does not freeze the checkout or prevent later edits.
 
-Cloud execution reuses the existing pool and named-target policies. A named target still needs its matching `--cloud-instance-admin-token` binding. Existing shared-target safety refusals still apply. See [remote package-aware testing](#remote-package-aware-testing) for those policies.
+Cloud execution reuses the existing pool and named-target policies. A named target still needs its matching `--cloud-instance-admin-token` binding. Missing credentials for a selected local cloud package or its required guides produce a configuration error (exit code 2). This applies to guides, paths, and journeys. Existing shared-target safety refusals still apply. See [remote package-aware testing](#remote-package-aware-testing) for those policies.
 
-After provisioning, the runner checks health and manifest requirements against the actual target. For `minVersion`, it reads `buildInfo.version` from authenticated `/api/frontend/settings`. Missing, invalid, or insufficient versions stop execution. The runner does not substitute the version from `/api/health`. Plugin checks also use the target's runner token.
+After provisioning, the runner checks health and manifest requirements against the actual target. For `minVersion`, it reads `buildInfo.version` from authenticated `/api/frontend/settings`. Missing, invalid, or insufficient versions stop execution. The runner does not substitute the version from `/api/health`. Plugin checks also use the target's runner token. Authenticated version and plugin checks require HTTPS and refuse redirects. Token-free plugin checks still support local HTTP targets.
 
 ### Non-execution results
 

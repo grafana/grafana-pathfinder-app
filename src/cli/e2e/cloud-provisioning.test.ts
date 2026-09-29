@@ -114,6 +114,46 @@ describe('ProvisionedCloudTargets', () => {
     expect(playEnv.teardownChain).toHaveBeenCalledWith({ outcome: 'cancelled' });
   });
 
+  it.each(['shared', 'pool'] as const)(
+    'does not tear down a completed %s chain again during late interruption cleanup',
+    async (kind) => {
+      const registry = new RealCloudChainCleanupRegistry();
+      const lease = {
+        provisionChain: jest.fn(() => ({
+          kind: 'pool',
+          targetUrl: 'https://pool.grafana.net/',
+          token: 'pool-token',
+          stackSlug: 'pool',
+        })),
+        teardownChain: jest.fn(async () => []),
+      };
+      const provisioned = await provisionCloudTargetsForChain({
+        targetUrls: ['https://learn.grafana.net/'],
+        cloudAuth,
+        chain: [{ id: kind === 'pool' ? 'mutating' : 'readonly' }],
+        packageMetaById:
+          kind === 'pool'
+            ? mutatingCloudMeta()
+            : new Map([
+                ['readonly', { packageId: 'readonly', tier: 'cloud', targetUrl: 'https://learn.grafana.net/' }],
+              ]),
+        ...(kind === 'pool' ? { cloudStackPoolManager: poolManagerWithLease(lease) } : {}),
+        cloudChainCleanup: registry,
+        verbose: false,
+      });
+      const environment =
+        kind === 'pool' ? lease : (SharedCloudStackEnvironment as jest.Mock).mock.results.at(-1)!.value;
+      expect(environment.teardownChain).not.toHaveBeenCalled();
+      await expect(provisioned.teardownAll({ outcome: 'passed', used: true })).resolves.toEqual([]);
+      await expect(
+        registry.teardownAll({ outcome: 'cancelled', used: true, summary: 'Interrupted by SIGTERM' })
+      ).resolves.toEqual([]);
+      await expect(registry.teardownAll()).resolves.toEqual([]);
+      expect(environment.teardownChain).toHaveBeenCalledTimes(1);
+      expect(environment.teardownChain).toHaveBeenCalledWith({ outcome: 'passed', used: true });
+    }
+  );
+
   it('registers shared targets for interrupted-run cleanup', async () => {
     const registry = new RealCloudChainCleanupRegistry();
     await provisionCloudTargetsForChain({

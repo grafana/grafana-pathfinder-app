@@ -183,7 +183,8 @@ describe('local cloud package CLI preflight', () => {
     logSpy.mockRestore();
     errorSpy.mockRestore();
     warnSpy.mockRestore();
-    jest.clearAllMocks();
+    jest.mocked(runPlaywrightTests).mockReset();
+    jest.mocked(runPlaywrightChain).mockReset();
     if (originalFetch) {
       Object.defineProperty(global, 'fetch', { configurable: true, value: originalFetch });
     } else {
@@ -981,6 +982,29 @@ describe('local cloud package CLI preflight', () => {
       expected: 'navigate openGuide',
     },
     {
+      name: 'targetAction navigate alias',
+      block: {
+        type: 'interactive',
+        action: 'highlight',
+        targetAction: 'navigate',
+        content: 'Open guide',
+        reftarget: '/explore',
+        openGuide: 'published:guide',
+      },
+      expected: 'navigate openGuide',
+    },
+    {
+      name: 'refTarget legacy doc alias',
+      block: {
+        type: 'interactive',
+        action: 'navigate',
+        content: 'Open guide',
+        reftarget: '/explore',
+        refTarget: '/explore?doc=published:guide',
+      },
+      expected: 'navigate ?doc= link',
+    },
+    {
       name: 'nested step legacy doc link',
       block: {
         type: 'multistep',
@@ -1028,7 +1052,99 @@ describe('local cloud package CLI preflight', () => {
     expect(report.preRunSkipped[0]!.message).toContain(expected);
   });
 
-  it.each(['guide', 'path'] as const)(
+  it.each(['guide', 'path', 'journey'] as const)(
+    'rejects a selected cloud %s without credentials before network or browser execution',
+    async (type) => {
+      const packageDir = join(root, 'selected-package');
+      mkdirSync(packageDir);
+      writeFileSync(
+        join(packageDir, 'manifest.json'),
+        JSON.stringify({
+          id: 'selected-package',
+          type,
+          ...(type === 'guide' ? {} : { milestones: ['cloud-guide'] }),
+          testEnvironment: { tier: 'cloud' },
+        })
+      );
+      writeFileSync(
+        join(packageDir, 'content.json'),
+        JSON.stringify({
+          id: 'selected-package',
+          title: 'Selected package',
+          blocks: [{ type: 'interactive', action: 'highlight', reftarget: 'body', content: 'Inspect' }],
+        })
+      );
+      const reportPath = join(root, 'missing-credentials.json');
+      await expect(
+        runE2e(
+          E2eCommand.parse({
+            package: packageDir,
+            repository: root,
+            tier: 'cloud',
+            output: reportPath,
+            artifacts: join(root, 'artifacts'),
+          })
+        )
+      ).rejects.toThrow(`CLI exited with ${ExitCode.CONFIGURATION_ERROR}`);
+      const report = JSON.parse(readFileSync(reportPath, 'utf8')) as Report & {
+        reports?: Report[];
+        selection?: { id: string; type: string };
+      };
+      const failure = type === 'guide' ? report : report.reports![0]!;
+      expect(failure.outcome).toBe('configuration_error');
+      expect(failure.errorMessage).toContain('requires --cloud-instance-admin-token');
+      if (type !== 'guide') {
+        expect(report.selection).toEqual({ id: 'selected-package', type });
+        expect(failure.guide.id).toBe('selected-package');
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(runPlaywrightTests).not.toHaveBeenCalled();
+      expect(runPlaywrightChain).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['path', 'journey'] as const)(
+    'rejects a local cloud %s whose required milestone lacks named-target credentials',
+    async (type) => {
+      const packageDir = join(root, 'selected-package');
+      mkdirSync(packageDir);
+      writeFileSync(
+        join(packageDir, 'manifest.json'),
+        JSON.stringify({
+          id: 'selected-package',
+          type,
+          milestones: ['cloud-guide'],
+          testEnvironment: { tier: 'cloud' },
+        })
+      );
+      writeFileSync(
+        join(packageDir, 'content.json'),
+        JSON.stringify({ id: 'selected-package', title: 'Selected package', blocks: [] })
+      );
+      writeFileSync(
+        join(root, 'cloud-guide', 'manifest.json'),
+        JSON.stringify({
+          id: 'cloud-guide',
+          type: 'guide',
+          testEnvironment: { tier: 'cloud', instance: 'named.example' },
+        })
+      );
+      const reportPath = join(root, 'milestone-missing-credentials.json');
+      await expect(runE2e(cloudOptions(packageDir, reportPath))).rejects.toThrow(
+        `CLI exited with ${ExitCode.CONFIGURATION_ERROR}`
+      );
+      const report = JSON.parse(readFileSync(reportPath, 'utf8')) as { reports: Report[] };
+      expect(report.reports[0]).toMatchObject({
+        outcome: 'configuration_error',
+        errorMessage: expect.stringContaining('requires --cloud-instance-admin-token'),
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(runPlaywrightTests).not.toHaveBeenCalled();
+      expect(runPlaywrightChain).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['guide', 'path', 'journey'] as const)(
     'skips a local-tier %s without a repository or cloud credentials',
     async (type) => {
       const packageDir = join(root, 'cloud-guide');
@@ -1037,7 +1153,7 @@ describe('local cloud package CLI preflight', () => {
         JSON.stringify({
           id: 'local-only',
           type,
-          ...(type === 'path' ? { milestones: ['cloud-guide'] } : {}),
+          ...(type !== 'guide' ? { milestones: ['cloud-guide'] } : {}),
           testEnvironment: { tier: 'local' },
         })
       );
@@ -1056,7 +1172,7 @@ describe('local cloud package CLI preflight', () => {
       expect(exitSpy).not.toHaveBeenCalled();
       const report = JSON.parse(readFileSync(reportPath, 'utf8')) as SkipReport;
       expect(report.outcome).toBe('skipped');
-      expect(report.selection).toEqual(type === 'path' ? { id: 'local-only', type: 'path' } : undefined);
+      expect(report.selection).toEqual(type !== 'guide' ? { id: 'local-only', type } : undefined);
       expect(report.summary).toMatchObject({ totalGuides: 1, passedGuides: 0, failedGuides: 0, skippedGuides: 1 });
       expect(report.preRunSkipped).toEqual([
         expect.objectContaining({ id: 'local-only', reason: 'skipped_tier_mismatch', failed: false, tier: 'local' }),

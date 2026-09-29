@@ -1,8 +1,15 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { execFileSync } from 'child_process';
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, relative } from 'path';
 
-import { resolveLocalCloudGuide, resolveLocalMetapackage } from './e2e-local-package';
+import {
+  assertLocalCloudCheckoutSources,
+  hasInteractiveBlocks,
+  loadLocalRepositorySource,
+  resolveLocalCloudGuide,
+  resolveLocalMetapackage,
+} from './e2e-local-package';
 
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
@@ -41,6 +48,55 @@ describe('local cloud package source resolution', () => {
   });
 
   afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it.each(['relative escape', 'symlink escape'] as const)('confines loaded content after resolving a %s', (kind) => {
+    const outside = mkdtempSync(join(tmpdir(), 'pathfinder-outside-content-'));
+    try {
+      writeJson(join(outside, 'content.json'), { id: 'outside', title: 'Outside', blocks: [] });
+      symlinkSync(outside, join(root, 'linked-guide'));
+      const source = loadLocalRepositorySource(root, true, true);
+      const entry = {
+        type: 'guide' as const,
+        path: kind === 'relative escape' ? `${relative(root, outside)}/` : 'linked-guide/',
+      };
+      expect(() => source.loadGuideById('outside', entry)).toThrow('content is outside the local repository');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a selected package outside the checkout', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'pathfinder-outside-package-'));
+    try {
+      expect(() => assertLocalCloudCheckoutSources(root, outside)).toThrow('outside the local repository');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['scripts/guide', 'assets/guide', 'local-guide/assets/guide'])(
+    'rejects a selected package under %s',
+    (location) => {
+      const selected = join(root, location);
+      mkdirSync(selected, { recursive: true });
+      expect(() => assertLocalCloudCheckoutSources(root, selected)).toThrow('outside the package catalog');
+    }
+  );
+
+  (process.platform === 'win32' ? it.skip : it)('rejects a FIFO before attempting to read source files', () => {
+    execFileSync('mkfifo', [join(guideDir, 'source-pipe')]);
+    expect(() => assertLocalCloudCheckoutSources(root, guideDir)).toThrow('special file');
+  });
+
+  it.each(['whenTrue', 'whenFalse'])('finds interactive content under a conditional %s branch', (branch) => {
+    const block = { type: 'conditional', whenTrue: [], whenFalse: [] };
+    expect(hasInteractiveBlocks([block])).toBe(false);
+    expect(
+      hasInteractiveBlocks([
+        { ...block, [branch]: [{ type: 'interactive', action: 'highlight', reftarget: 'body', content: 'Inspect' }] },
+      ])
+    ).toBe(true);
+  });
 
   it('uses the local guide and prerequisite rather than published content', () => {
     writeJson(repositoryPath, {

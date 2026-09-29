@@ -250,17 +250,13 @@ interface GrafanaPlugin {
   enabled?: boolean;
 }
 
-/**
- * Fetch the list of installed Grafana plugins.
- * Returns a Set of plugin IDs for fast lookup.
- */
 async function fetchInstalledPlugins(grafanaUrl: string, token?: string): Promise<Set<string>> {
   const target = new URL(grafanaUrl);
   const pluginsUrl = new URL('/api/plugins', target);
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token) {
-    if (pluginsUrl.origin !== target.origin) {
-      throw new Error('Plugin pre-flight target does not match the credential origin.');
+    if (target.protocol !== 'https:') {
+      throw new Error('Authenticated plugin pre-flight requires an HTTPS Grafana target.');
     }
     headers.Authorization = `Bearer ${token}`;
   }

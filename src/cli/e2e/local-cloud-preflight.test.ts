@@ -129,6 +129,30 @@ describe('local cloud preflight', () => {
     ).rejects.toThrow('Grafana 10.0.0 is below the required minimum 11.0.0');
   });
 
+  it.each([undefined, '12.0.0'])('does not send credentials over HTTP with minVersion %s', async (minVersion) => {
+    writeFileSync(
+      join(packageDir, 'guide', 'manifest.json'),
+      JSON.stringify({
+        id: 'local-guide',
+        type: 'guide',
+        testEnvironment: { tier: 'cloud', plugins: ['plugin-a'], ...(minVersion ? { minVersion } : {}) },
+      })
+    );
+    await expect(
+      preflightLocalCloudGuides([
+        {
+          id: 'local-guide',
+          sourcePath: join(packageDir, 'guide', 'content.json'),
+          targetUrl: 'http://target.example/',
+          token: 'synthetic-runner-token',
+        },
+      ])
+    ).rejects.toThrow('HTTPS');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(new URL(fetchSpy.mock.calls[0]![0].toString()).pathname).toBe('/api/health');
+    expect((fetchSpy.mock.calls[0]![1] as RequestInit).headers).not.toHaveProperty('Authorization');
+  });
+
   it('rejects preflight when the target token is missing', async () => {
     await expect(
       preflightLocalCloudGuides([
