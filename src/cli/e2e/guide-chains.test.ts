@@ -39,6 +39,25 @@ describe('deriveGuideId', () => {
 });
 
 describe('planPackageExecution', () => {
+  it('exposes only selected package IDs, including metapackages, when requested', () => {
+    const repository: RepositoryJson = {
+      root: { path: 'root/', type: 'guide', depends: ['ready'] },
+      chosen: { path: 'chosen/', type: 'path', provides: ['ready'], milestones: ['leaf'] },
+      leaf: { path: 'leaf/', type: 'guide' },
+      unused: { path: 'unused/', type: 'path', provides: ['ready'], milestones: ['other'] },
+      other: { path: 'other/', type: 'guide' },
+      separate: { path: 'separate/', type: 'guide' },
+    };
+    expect(planPackageExecution({ rootIds: ['root'], repository })).not.toHaveProperty('selectedPackageIds');
+    expect(
+      planPackageExecution({ rootIds: ['root'], repository, includeSelectedPackageIds: true }).selectedPackageIds
+    ).toEqual(['chosen', 'leaf', 'root']);
+    expect(
+      planPackageExecution({ rootIds: ['root', 'separate'], repository, includeSelectedPackageIds: true })
+        .selectedPackageIds
+    ).toEqual(['chosen', 'leaf', 'root', 'separate']);
+  });
+
   it('expands path milestones in declared order without making order a hard dependency', () => {
     const repository: RepositoryJson = {
       path: { path: 'path/', type: 'path', milestones: ['first', 'second', 'third'] },
