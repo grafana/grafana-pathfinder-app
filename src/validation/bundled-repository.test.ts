@@ -71,7 +71,7 @@ describe('Bundled repository', () => {
     });
 
     it('should stamp every bundled guide with the current stats version', () => {
-      for (const [id, entry] of Object.entries(repositoryJson)) {
+      for (const entry of Object.values(repositoryJson)) {
         if (entry.stats) {
           expect(entry.stats.version).toBe(GUIDE_STATS_VERSION);
         }
