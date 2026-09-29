@@ -244,7 +244,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         element="section"
         aria-label={
           isCloud
-            ? t('appConfig.pathfinderPreview', 'Pathfinder public preview')
+            ? t('appConfig.pathfinderPreview', 'Interactive learning')
             : t('appConfig.pathfinderEnabled', 'Enable Pathfinder')
         }
         backgroundColor={isCloud ? 'secondary' : undefined}
@@ -258,7 +258,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           <>
             <Stack direction="row" alignItems="center" gap={1}>
               <Text element="h2" variant="h4">
-                {t('appConfig.pathfinderPreview', 'Pathfinder public preview')}
+                {t('appConfig.pathfinderPreview', 'Interactive learning')}
               </Text>
               <Badge color="blue" text={t('appConfig.beta', 'Beta')} />
             </Stack>
