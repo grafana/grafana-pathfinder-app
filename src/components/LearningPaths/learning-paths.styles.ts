@@ -346,15 +346,16 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     list: css({
       display: 'flex',
       flexDirection: 'column',
-      gap: theme.spacing(0.5),
+      gap: theme.spacing(1.5),
     }),
     guideItem: css({
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing(1),
-      padding: theme.spacing(1),
+      padding: theme.spacing(1.5),
       borderRadius: theme.shape.radius.default,
-      border: '1px solid transparent',
+      border: `1px solid ${theme.colors.border.weak}`,
+      backgroundColor: theme.colors.background.secondary,
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
     }),
@@ -367,6 +368,9 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     // page's shared link-handler contract) — see enableCurrentRowLink.
     guideItemCurrentClickable: css({
       cursor: 'pointer',
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+      },
     }),
     // Same accent-card idiom as getLearningPathCardStyles.card, scoped here
     // since it decorates a GuideList row, not that component's own card.
@@ -401,11 +405,7 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       backgroundColor: theme.colors.background.primary,
       color: theme.colors.text.disabled,
     }),
-    guideTitle: css({
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    }),
+    guideTitle: css({}),
     guideTextGroup: css({
       display: 'flex',
       flexDirection: 'column',
@@ -416,11 +416,6 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     guideDescription: css({
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.disabled,
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      display: '-webkit-box',
-      WebkitLineClamp: 2,
-      WebkitBoxOrient: 'vertical',
     }),
     guideMeta: css({
       display: 'flex',
