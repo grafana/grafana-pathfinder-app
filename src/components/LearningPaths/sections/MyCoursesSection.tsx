@@ -26,6 +26,7 @@ interface MyCoursesSectionProps {
   getPathProgress: (pathId: string) => number;
   onContinue: (guideId: string, pathId: string) => void;
   onReset: (pathId: string) => void;
+  onResetGuides: (pathId: string, guideIds: string[]) => Promise<void>;
   launchingPathId: string | null;
   launchDisabled: boolean;
   styles: ReturnType<typeof getMyLearningStyles>;
@@ -66,6 +67,7 @@ export function MyCoursesSection({
   getPathProgress,
   onContinue,
   onReset,
+  onResetGuides,
   launchingPathId,
   launchDisabled,
   styles,
@@ -109,9 +111,13 @@ export function MyCoursesSection({
           className={cx(styles.pathsGrid, styles.scrollRegion, hasOverflow && styles.scrollRegionFaded)}
         >
           {ordered.map((path, index) => {
-            const pathProgress = getPathProgress(path.id);
-            const isFirstInProgress = index === 0 && pathProgress > 0;
             const assignment = byTargetId.get(path.id);
+            // An assignment's own progress is guide-completion-derived
+            // (assignments-core.ts's assignmentProgress), which can differ
+            // from local path progress — local can include guides outside
+            // the assignment's target, or drift from what's on record.
+            const pathProgress = assignment ? assignment.progress : getPathProgress(path.id);
+            const isFirstInProgress = index === 0 && pathProgress > 0;
 
             return (
               <LearningPathCard
@@ -122,12 +128,18 @@ export function MyCoursesSection({
                 isCompleted={false}
                 onContinue={onContinue}
                 onReset={onReset}
+                onResetGuides={onResetGuides}
                 defaultExpanded={isFirstInProgress}
                 isLaunching={launchingPathId === path.id}
                 launchDisabled={launchDisabled}
-                assignment={
+                assignmentDetails={
                   assignment
-                    ? { assignedBy: assignment.assignedBy, dueAt: assignment.dueAt, overdue: assignment.overdue }
+                    ? {
+                        assignedBy: assignment.assignedBy,
+                        dueAt: assignment.dueAt,
+                        overdue: assignment.overdue,
+                        guides: assignment.guides,
+                      }
                     : undefined
                 }
               />

@@ -2,8 +2,10 @@ package plugin
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,6 +211,39 @@ func TestMyAssignments_EvaluatesBundledPathFromCompletions(t *testing.T) {
 	}
 	if got["not-a-bundled-path"] {
 		t.Error("an unknown path stays unmet")
+	}
+}
+
+// The public online catalogue (Discover More's own source) is the third
+// path source assignmentGuides() falls through to, once sources 1
+// (bundled/URL) and 2 (App Platform) both miss.
+func TestMyAssignments_EvaluatesOnlineCataloguePathFromCompletions(t *testing.T) {
+	resetPackageRecommendationsCache()
+	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+	withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
+		switch {
+		case strings.HasSuffix(rawURL, "repository.json"):
+			return []byte(`{"online-only-path": {"path": "online-only-path/v1", "type": "path"}}`), nil
+		case strings.HasSuffix(rawURL, "/online-only-path/v1/manifest.json"):
+			return []byte(`{"id": "online-only-path", "milestones": ["online-milestone-1"]}`), nil
+		default:
+			return nil, fmt.Errorf("unexpected URL %q", rawURL)
+		}
+	})
+
+	withAssignmentLister(t, singlePageAssignmentLister(
+		asg("user:1", "online-only-path", "", "onboarding", "2026-09-01T00:00:00Z"),
+	))
+	withLister(t, singlePageLister(
+		rec("user:1", "bundled", "online-milestone-1", "Online milestone", "interactive", "online-only-path", "objectives", "2026-09-14T15:00:00Z", 100),
+	))
+
+	_, resp := doMyAssignments(t, "user:1")
+	if len(resp.Assignments) != 1 {
+		t.Fatalf("assignments = %+v", resp.Assignments)
+	}
+	if !resp.Assignments[0].Satisfied {
+		t.Error("a completion against the online catalogue's own milestone id satisfies the assignment")
 	}
 }
 

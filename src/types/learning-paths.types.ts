@@ -191,15 +191,23 @@ export interface LearningPathCardProps {
   onContinue: (guideId: string, pathId: string) => void;
   /** Callback when user clicks to reset the path (optional) */
   onReset?: (pathId: string) => void;
+  /**
+   * Callback to reset local completion for specific guides before continuing
+   * an assignment whose own guide list disagrees with local storage
+   * (optional — only meaningful when `assignment` is present).
+   */
+  onResetGuides?: (pathId: string, guideIds: string[]) => Promise<void>;
   /** A launch from THIS card is being prepared (fetch + classify) */
   isLaunching?: boolean;
   /** Any launch is in flight — continue is disabled so clicks aren't silently dropped */
   launchDisabled?: boolean;
   /** Outstanding assignment for this path, if any. */
-  assignment?: {
+  assignmentDetails?: {
     assignedBy?: string;
     dueAt?: string;
     overdue: boolean;
+    /** Per-guide completion behind the assignment's own progress, when the server resolved one. */
+    guides?: Array<{ guideId: string; completed: boolean }>;
   };
 }
 
@@ -283,6 +291,12 @@ export interface UseLearningPathsReturn {
   markGuideCompleted: (guideId: string) => Promise<void>;
   /** Reset a path's progress (clears guides, interactive steps, keeps badges) */
   resetPath: (pathId: string) => Promise<void>;
+  /**
+   * Reset local completion for a subset of a path's guides — unlike
+   * `resetPath`, never touches the path's own cover-level record or any
+   * guide outside `guideIds`.
+   */
+  resetPathGuides: (pathId: string, guideIds: string[]) => Promise<void>;
   /** Dismiss a pending celebration */
   dismissCelebration: (badgeId: string) => Promise<void>;
   /** Current streak display info */

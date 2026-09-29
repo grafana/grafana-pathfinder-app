@@ -23,6 +23,15 @@ jest.mock('../lib/assignments-client', () => ({
   reportUnresolvedAssignmentTargets: jest.fn(),
 }));
 
+// Source 3 (online catalogue): empty by default, so an unresolved target
+// stays unresolved here the same way it did before source 3 existed —
+// individual tests override this to exercise the online-resolved path.
+const mockFetchOnlinePackageRecommendations = jest.fn();
+jest.mock('../lib/package-recommendations-client', () => ({
+  fetchOnlinePackageRecommendations: () => mockFetchOnlinePackageRecommendations(),
+  buildPackageFileUrl: (baseUrl: string, entryPath: string, fileName: string) => `${baseUrl}${entryPath}/${fileName}`,
+}));
+
 const { reportUnresolvedAssignmentTargets: mockReportUnresolvedAssignmentTargets } = jest.requireMock(
   '../lib/assignments-client'
 ) as { reportUnresolvedAssignmentTargets: jest.Mock };
@@ -43,17 +52,22 @@ function assignment(overrides: Partial<AssignmentEntry> & { targetId: string }):
 }
 
 const noProgress = () => 0;
+const mockResolveNavLinks = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockNamespace = 'stacks-123';
+  mockFetchOnlinePackageRecommendations.mockResolvedValue({ baseUrl: '', packages: [] });
+  mockResolveNavLinks.mockResolvedValue([]);
 });
 
 describe('useMyAssignments', () => {
   it('reports empty and does not fetch when no namespace is available', async () => {
     mockNamespace = undefined;
 
-    const { result } = renderHook(() => useMyAssignments({ paths: [], getPathProgress: noProgress }));
+    const { result } = renderHook(() =>
+      useMyAssignments({ paths: [], getPathProgress: noProgress, resolveNavLinks: mockResolveNavLinks })
+    );
 
     await waitFor(() => expect(result.current.hasLoaded).toBe(true));
 
@@ -70,6 +84,7 @@ describe('useMyAssignments', () => {
       useMyAssignments({
         paths: [path({ id: 'fundamentals', title: 'Grafana Fundamentals' })],
         getPathProgress: noProgress,
+        resolveNavLinks: mockResolveNavLinks,
       })
     );
 
@@ -77,6 +92,11 @@ describe('useMyAssignments', () => {
 
     expect(mockFetchMyAssignments).toHaveBeenCalledWith('stacks-123');
     expect(result.current.notDone.map((item) => item.title)).toEqual(['Grafana Fundamentals']);
+    // `items` is the unfiltered set notDone/completed are both derived from —
+    // callers that need to key off targetId regardless of satisfaction (e.g.
+    // deciding where else, outside notDone/completed, an assignment matters)
+    // use this instead of reassembling it from the two filtered lists.
+    expect(result.current.items).toHaveLength(1);
     expect(logger.warn).not.toHaveBeenCalled();
     expect(mockReportUnresolvedAssignmentTargets).not.toHaveBeenCalled();
   });
@@ -88,6 +108,7 @@ describe('useMyAssignments', () => {
       useMyAssignments({
         paths: [path({ id: 'real-path', title: 'Real Path' })],
         getPathProgress: noProgress,
+        resolveNavLinks: mockResolveNavLinks,
       })
     );
 

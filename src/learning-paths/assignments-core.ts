@@ -6,7 +6,7 @@ import type { AssignmentEntry } from '../lib/assignments-client';
 import type { LearningPath } from '../types/learning-paths.types';
 
 /** The only target type this destination resolves into a path card. */
-const PATH_ASSIGNMENT_TARGET = 'path';
+export const PATH_ASSIGNMENT_TARGET = 'path';
 
 export interface ResolvedAssignment {
   targetType: string;
@@ -19,6 +19,14 @@ export interface ResolvedAssignment {
   overdue: boolean;
   /** Wire `satisfied` from GET /assignments/my. */
   satisfied: boolean;
+  /**
+   * Per-guide completion behind `satisfied`, wire `guides` from GET
+   * /assignments/my. Absent when the target couldn't be resolved server-side
+   * (guide target, unresolved path) — `progress` falls back to local in
+   * that case, same as before this field existed.
+   */
+  guides?: AssignmentEntry['guides'];
+  /** Guide-completion-derived when `guides` is present; local path progress otherwise. */
   progress: number;
 }
 
@@ -29,7 +37,7 @@ export interface ResolvedAssignments {
 }
 
 /** Kebab/snake-case id -> Title Case, mirroring learning-paths.hook.ts's formatLegacyBadgeTitle. */
-function formatTrackLabel(trackId: string): string {
+export function formatTrackLabel(trackId: string): string {
   return trackId
     .split(/[-_]/)
     .filter(Boolean)
@@ -107,12 +115,80 @@ export function compareDueAt(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
-function isOverdue(dueAt: string | undefined, satisfied: boolean, now: number, timeZone?: string): boolean {
+export function isOverdue(dueAt: string | undefined, satisfied: boolean, now: number, timeZone?: string): boolean {
   if (!dueAt || satisfied) {
     return false;
   }
   const days = daysUntilDue(dueAt, now, timeZone);
   return days !== undefined && days < 0;
+}
+
+/**
+ * Progress against the assignment's own target guides (completion records),
+ * not the whole path's local progress — local progress can include guides
+ * outside the assignment's track, or drift from what's actually on record.
+ * Falls back to local progress when the wire didn't resolve a guide list
+ * (guide target, unresolved path) — same behavior as before `guides` existed.
+ */
+export function assignmentProgress(guides: AssignmentEntry['guides'], localProgress: number): number {
+  if (!guides || guides.length === 0) {
+    return localProgress;
+  }
+  const completed = guides.filter((guide) => guide.completed).length;
+  return Math.round((100 * completed) / guides.length);
+}
+
+/**
+ * Builds one row from a raw assignment plus its already-resolved title and
+ * progress — the part of resolution that's identical regardless of which
+ * catalogue source resolved the target. `resolveAssignments` below uses this
+ * for sources 1/2 (paths, matched synchronously); the online-catalogue
+ * adapter (source 3, resolved on demand) uses it too, so a target found late
+ * still gets the exact same due/overdue/label treatment as one found here.
+ */
+export function buildResolvedAssignment(
+  assignment: AssignmentEntry,
+  title: string,
+  progress: number,
+  now: number = Date.now(),
+  timeZone?: string
+): ResolvedAssignment {
+  const satisfied = assignment.satisfied;
+  return {
+    targetType: assignment.targetType,
+    targetId: assignment.targetId,
+    title,
+    trackLabel: assignment.trackId ? formatTrackLabel(assignment.trackId) : undefined,
+    assignedBy: assignment.assignedBy ? formatTrackLabel(assignment.assignedBy) : undefined,
+    dueAt: assignment.dueAt,
+    overdue: isOverdue(assignment.dueAt, satisfied, now, timeZone),
+    satisfied,
+    guides: assignment.guides,
+    progress,
+  };
+}
+
+// Overdue first, then soonest due date, then no-due-date, satisfied last
+// within each group — the point is to surface what needs attention. Shared
+// by resolveAssignments and the online-catalogue tier's merge, so combining
+// both sources' rows into one list sorts them identically to either alone.
+export function compareResolvedAssignments(a: ResolvedAssignment, b: ResolvedAssignment): number {
+  if (a.satisfied !== b.satisfied) {
+    return a.satisfied ? 1 : -1;
+  }
+  if (a.overdue !== b.overdue) {
+    return a.overdue ? -1 : 1;
+  }
+  if (a.dueAt && b.dueAt) {
+    return compareDueAt(a.dueAt, b.dueAt);
+  }
+  if (a.dueAt) {
+    return -1;
+  }
+  if (b.dueAt) {
+    return 1;
+  }
+  return 0;
 }
 
 /**
@@ -137,41 +213,17 @@ export function resolveAssignments(
         unresolvedTargetIds.push(assignment.targetId);
         return null;
       }
-      const satisfied = assignment.satisfied;
-      return {
-        targetType: assignment.targetType,
-        targetId: path.id,
-        title: path.title,
-        trackLabel: assignment.trackId ? formatTrackLabel(assignment.trackId) : undefined,
-        assignedBy: assignment.assignedBy ? formatTrackLabel(assignment.assignedBy) : undefined,
-        dueAt: assignment.dueAt,
-        overdue: isOverdue(assignment.dueAt, satisfied, now, timeZone),
-        satisfied,
-        progress: getPathProgress(path.id),
-      };
+      return buildResolvedAssignment(
+        assignment,
+        path.title,
+        assignmentProgress(assignment.guides, getPathProgress(path.id)),
+        now,
+        timeZone
+      );
     })
     .filter((entry): entry is ResolvedAssignment => entry !== null);
 
-  // Overdue first, then soonest due date, then no-due-date, satisfied last
-  // within each group — the point is to surface what needs attention.
-  const items = resolved.sort((a, b) => {
-    if (a.satisfied !== b.satisfied) {
-      return a.satisfied ? 1 : -1;
-    }
-    if (a.overdue !== b.overdue) {
-      return a.overdue ? -1 : 1;
-    }
-    if (a.dueAt && b.dueAt) {
-      return compareDueAt(a.dueAt, b.dueAt);
-    }
-    if (a.dueAt) {
-      return -1;
-    }
-    if (b.dueAt) {
-      return 1;
-    }
-    return 0;
-  });
+  const items = resolved.sort(compareResolvedAssignments);
 
   return { items, unresolvedTargetIds };
 }

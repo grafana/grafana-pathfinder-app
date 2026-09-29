@@ -170,10 +170,33 @@
       "omitempty": false
     },
     {
+      "field": "Guides",
+      "json": "guides",
+      "type": "[]plugin.assignmentGuideEntry",
+      "wire": "array<object>",
+      "omitempty": true
+    },
+    {
       "field": "Lifecycle",
       "json": "lifecycle",
       "type": "string",
       "wire": "string",
+      "omitempty": false
+    }
+  ],
+  "assignmentGuideEntry": [
+    {
+      "field": "GuideID",
+      "json": "guideId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Completed",
+      "json": "completed",
+      "type": "bool",
+      "wire": "boolean",
       "omitempty": false
     }
   ],

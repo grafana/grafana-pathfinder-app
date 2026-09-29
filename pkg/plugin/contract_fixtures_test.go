@@ -854,8 +854,13 @@ func doAssignmentsGolden(t *testing.T, r *http.Request, records ...assignmentSpe
 
 // One obligation of every shape the envelope can express, so the golden pins
 // which fields are genuinely optional: a bare path with no deadline (what MVP
-// actually writes), a track-qualified target with a due date, and one carrying
-// both time bounds. A second subject's record is present to pin that the
+// actually writes), a track-qualified target with a due date, one carrying
+// both time bounds, and a resolvable path with its one guide's completion on
+// record — pinning Guides' presence and shape (completed:true) alongside the
+// unresolved cases above, which omit it entirely. The false-completed shape
+// is pinned by TestMyAssignments_GuidesReflectPerGuideCompletion instead,
+// since a mixed true/false array needs a multi-guide target and the bundled
+// catalogue has none. A second subject's record is present to pin that the
 // caller filter keeps it off the wire.
 func captureMyAssignmentsDefault(t *testing.T) *httptest.ResponseRecorder {
 	freezeContractTime(t)
@@ -870,9 +875,13 @@ func captureMyAssignmentsDefault(t *testing.T) *httptest.ResponseRecorder {
 	bounded.DueAt = "2026-04-15T00:00:00Z"
 	bounded.AcceptCompletionsFrom = "2026-01-01T00:00:00Z"
 
+	path := pathWithGuides(t)
+	completed := asg("user:1", path.ID, "", "onboarding-cohort", "2026-03-26T09:00:00Z")
+	withLister(t, singlePageLister(rec("user:1", "bundled", path.Guides[0], path.Guides[0], "interactive", path.ID, "objectives", "2026-03-27T15:00:00Z", 100)))
+
 	other := asg("user:2", "alerting-essentials", "", "oncall-rotation", "2026-03-27T09:00:00Z")
 
-	return doAssignmentsGolden(t, completionRequest(t, "/assignments/my", "user:1"), bare, track, bounded, other)
+	return doAssignmentsGolden(t, completionRequest(t, "/assignments/my", "user:1"), bare, track, bounded, completed, other)
 }
 
 func captureMyAssignmentsEmpty(t *testing.T) *httptest.ResponseRecorder {

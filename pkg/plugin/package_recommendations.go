@@ -445,6 +445,62 @@ func defaultPackageRepositoryFetcher(ctx context.Context, rawURL string, maxByte
 	return body, nil
 }
 
+// resolveOnlinePackageGuides is assignment satisfaction's source 3: the
+// public package repository Discover More reads from, looked up on demand
+// rather than bulk-loaded with sources 1/2 (assignment_satisfaction.go's
+// paths()) — most assignments target sources 1/2, and eagerly enriching the
+// whole index's manifests for a lookup only a handful of assignments need
+// would mean many wasted CDN fetches.
+//
+// An assigned package has no reason to carry `targeting` (assignments are
+// pushed, not matched), so it is very often NOT among the entries
+// enrichPackagesWithManifests already fetched manifest.json for — this
+// fetches it directly in that case. milestone id extraction mirrors
+// app-platform-paths.ts / appPlatformPaths: the manifest's own `milestones`
+// list, taken as-is as guide ids.
+func (a *App) resolveOnlinePackageGuides(ctx context.Context, targetID string) (guideList, error) {
+	resp, err := a.getCachedPackageRecommendations(ctx)
+	if err != nil {
+		return guideList{}, err
+	}
+	for i := range resp.Packages {
+		entry := &resp.Packages[i]
+		if entry.ID != targetID {
+			continue
+		}
+		manifest := entry.Manifest
+		if manifest == nil {
+			manifestURL := buildPackageFileURL(resp.BaseURL, entry.Path, "manifest.json")
+			if manifestURL == "" || !isAllowedInteractiveLearningHost(manifestURL) {
+				return guideList{}, nil
+			}
+			fetch := packageRepositoryFetcherOverride
+			if fetch == nil {
+				fetch = defaultPackageRepositoryFetcher
+			}
+			body, fetchErr := fetch(ctx, manifestURL, packageManifestMaxBytes)
+			if fetchErr != nil {
+				return guideList{}, fetchErr
+			}
+			if jsonErr := json.Unmarshal(body, &manifest); jsonErr != nil {
+				return guideList{}, fmt.Errorf("parse manifest: %w", jsonErr)
+			}
+		}
+		milestones, _ := manifest["milestones"].([]interface{})
+		guides := make([]string, 0, len(milestones))
+		for _, m := range milestones {
+			if s, ok := m.(string); ok {
+				guides = append(guides, s)
+			}
+		}
+		if len(guides) == 0 {
+			return guideList{}, nil
+		}
+		return guideList{guides: guides, resolved: true}, nil
+	}
+	return guideList{}, nil
+}
+
 // resetPackageRecommendationsCache clears the cache. Test-only.
 func resetPackageRecommendationsCache() {
 	packageCacheMu.Lock()

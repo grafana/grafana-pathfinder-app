@@ -91,6 +91,16 @@ export const AssignmentCapabilityWireSchema = z.strictObject({
 });
 
 /**
+ * One guide within an assignment's target, on the wire — the per-guide
+ * detail behind `satisfied`.
+ * @coupling Go struct: assignmentGuideEntry
+ */
+export const AssignmentGuideEntryWireSchema = z.strictObject({
+  guideId: z.string(),
+  completed: z.boolean(),
+});
+
+/**
  * One assigned obligation.
  * @coupling Go struct: assignmentEntry
  */
@@ -105,6 +115,7 @@ export const AssignmentEntryWireSchema = z.strictObject({
   dueAt: z.string().optional(),
   acceptCompletionsFrom: z.string().optional(),
   satisfied: z.boolean(),
+  guides: z.array(AssignmentGuideEntryWireSchema).optional(),
   lifecycle: z.string(),
 });
 
@@ -270,6 +281,7 @@ export const GO_STRUCT_SCHEMAS = {
   myAssignmentsResponse: MyAssignmentsResponseWireSchema,
   assignmentCapability: AssignmentCapabilityWireSchema,
   assignmentEntry: AssignmentEntryWireSchema,
+  assignmentGuideEntry: AssignmentGuideEntryWireSchema,
 } as const;
 
 export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;

@@ -16,6 +16,7 @@ import { locationService, getAppEvents } from '@grafana/runtime';
 import { getStyles } from '../../styles/context-panel.styles';
 import { getSkeletonStyles } from '../../styles/skeleton.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
+import { resolvePackageNavLinks } from '../../docs-retrieval';
 import type { ResolvedNavLink } from '../../types/context.types';
 import {
   reportAppInteraction,
@@ -1221,6 +1222,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const { notDone: assignedNotDone } = useMyAssignments({
     paths,
     getPathProgress,
+    resolveNavLinks: resolvePackageNavLinks,
   });
 
   // Note: Auto-open event listener moved to CombinedPanelRenderer to avoid remounting issues

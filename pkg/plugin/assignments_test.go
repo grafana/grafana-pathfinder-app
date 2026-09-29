@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -233,6 +234,41 @@ func TestAssignmentSpec_DecodesKindTargetNotPathID(t *testing.T) {
 	}
 	if legacy.TargetType != "" || legacy.TargetID != "" {
 		t.Fatalf("legacy pathId populated the target: %+v", legacy)
+	}
+}
+
+// Guides is the per-guide detail behind Satisfied: a two-milestone path with
+// one guide completed and the other not must carry both states in the array,
+// not collapse them the way Satisfied does.
+func TestMyAssignments_GuidesReflectPerGuideCompletion(t *testing.T) {
+	path := guideEntry("fe-two-guide-path", "Two-guide path", "published", "path")
+	path.Manifest.Milestones = []string{"fe-guide-done", "fe-guide-todo"}
+	withGuideLister(t, singlePageGuideLister(
+		path,
+		guideEntry("fe-guide-done", "Module 1", "published", "guide"),
+		guideEntry("fe-guide-todo", "Module 2", "published", "guide"),
+	))
+	withAssignmentLister(t, singlePageAssignmentLister(
+		asg("user:1", "fe-two-guide-path", "", "onboarding", "2026-09-01T00:00:00Z"),
+	))
+	withLister(t, singlePageLister(
+		rec("user:1", "app-platform", "fe-guide-done", "Module 1", "interactive", "fe-two-guide-path", "objectives", "2026-09-14T15:00:00Z", 100),
+	))
+
+	_, resp := doMyAssignments(t, "user:1")
+	if len(resp.Assignments) != 1 {
+		t.Fatalf("assignments = %+v", resp.Assignments)
+	}
+	entry := resp.Assignments[0]
+	if entry.Satisfied {
+		t.Error("satisfied = true, but one of the two guides has no completion")
+	}
+	got := map[string]bool{}
+	for _, g := range entry.Guides {
+		got[g.GuideID] = g.Completed
+	}
+	if want := map[string]bool{"fe-guide-done": true, "fe-guide-todo": false}; !reflect.DeepEqual(got, want) {
+		t.Errorf("guides = %+v, want %+v", got, want)
 	}
 }
 

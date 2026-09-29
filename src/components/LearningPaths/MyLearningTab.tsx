@@ -24,6 +24,7 @@ import {
   BADGES,
   getPathsData,
   type DiscoverMoreItem,
+  type ResolvedAssignment,
 } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -92,25 +93,81 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     isPathCompleted,
     getGuideUrlForPath,
     resetPath,
+    resetPathGuides,
     streakInfo,
     isLoading,
   } = useLearningPaths();
 
-  const { notDone: assignedNotDone } = useMyAssignments({
+  const {
+    notDone: assignedNotDone,
+    items: assignedItems,
+    onlinePaths,
+  } = useMyAssignments({
     paths,
     getPathProgress,
+    resolveNavLinks: resolvePackageNavLinks,
   });
 
+  // Assignments whose target isn't in `paths` at all (the online catalogue,
+  // source 3) — resolved on demand by useMyAssignments, so getPathGuides/
+  // getPathProgress below have no idea they exist. Only ever populated for
+  // an assigned target, never a bulk merge, so there's no risk of these
+  // flooding My Courses the way merging the whole online catalogue would.
+  const onlineAssignedPaths = useMemo(() => Array.from(onlinePaths.values()).map((entry) => entry.path), [onlinePaths]);
+  const getPathGuidesWithOnline = useCallback(
+    (pathId: string) => onlinePaths.get(pathId)?.guides ?? getPathGuides(pathId),
+    [onlinePaths, getPathGuides]
+  );
+
+  // An unsatisfied assignment (wire `satisfied`, from completion records —
+  // not local storage) always keeps a path in My Courses, even once local
+  // progress says 100%: local progress can drift from what's actually on
+  // record server-side, and a still-outstanding obligation has to stay
+  // visible regardless. `items` arrives sorted most-urgent-first
+  // (resolveAssignments); two active rules can target the same path, so this
+  // map is first-wins, same as MyCoursesSection's own byTargetId — the most
+  // urgent duplicate governs instead of whichever one a last-wins map
+  // happened to see last.
+  const assignmentByTargetId = useMemo(() => {
+    const map = new Map<string, ResolvedAssignment>();
+    for (const a of assignedItems) {
+      if (!map.has(a.targetId)) {
+        map.set(a.targetId, a);
+      }
+    }
+    return map;
+  }, [assignedItems]);
+
+  // An online-catalogue path only ever exists here because it's assigned
+  // (see onlineAssignedPaths above), so its own wire `satisfied`/`progress`
+  // — not getPathProgress/isPathCompleted, which have no record of it — is
+  // what decides whether it's still in progress or has moved to Completed.
   const inProgress = useMemo(() => {
-    return paths
-      .filter((path) => getPathProgress(path.id) < 100)
-      .sort((a, b) => getPathProgress(b.id) - getPathProgress(a.id));
-  }, [paths, getPathProgress]);
+    const local = paths.filter((path) => {
+      const assignment = assignmentByTargetId.get(path.id);
+      const hasOutstandingAssignment = Boolean(assignment && !assignment.satisfied);
+      return hasOutstandingAssignment || getPathProgress(path.id) < 100;
+    });
+    const online = onlineAssignedPaths.filter((path) => !assignmentByTargetId.get(path.id)?.satisfied);
+    return [...local, ...online].sort(
+      (a, b) =>
+        (assignmentByTargetId.get(b.id)?.progress ?? getPathProgress(b.id)) -
+        (assignmentByTargetId.get(a.id)?.progress ?? getPathProgress(a.id))
+    );
+  }, [paths, onlineAssignedPaths, getPathProgress, assignmentByTargetId]);
 
   const privatePaths = useMemo(() => inProgress.filter((path) => path.isPrivate), [inProgress]);
   const courses = useMemo(() => inProgress.filter((path) => !path.isPrivate), [inProgress]);
 
-  const completedPaths = useMemo(() => paths.filter((path) => isPathCompleted(path.id)), [paths, isPathCompleted]);
+  // Local-progress-driven, same as before assignments existed — an
+  // outstanding assignment surfaces in My Courses above instead of being
+  // hidden from Completed here. Online-catalogue paths use their own wire
+  // `satisfied`, same reasoning as inProgress above.
+  const completedPaths = useMemo(() => {
+    const local = paths.filter((path) => isPathCompleted(path.id));
+    const online = onlineAssignedPaths.filter((path) => assignmentByTargetId.get(path.id)?.satisfied);
+    return [...local, ...online];
+  }, [paths, onlineAssignedPaths, isPathCompleted, assignmentByTargetId]);
 
   const excludeTitles = useMemo(
     () => new Set([...inProgress, ...completedPaths].map((path) => path.title)),
@@ -234,9 +291,15 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     [performLaunch, getGuideUrlForPath]
   );
 
+  // paths plus the online-catalogue paths useMyAssignments resolved on
+  // demand (source 3) — a card rendered from courses (see courses above) can
+  // come from either, and handleOpenGuide below needs to find its path
+  // regardless of which one produced it.
+  const allPaths = useMemo(() => [...paths, ...onlineAssignedPaths], [paths, onlineAssignedPaths]);
+
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
-      const parentPath = paths.find((p) => p.id === pathId);
+      const parentPath = allPaths.find((p) => p.id === pathId);
 
       // Manifest-backed (package) paths — App Platform and public/CDN course
       // packages alike — always land on their own cover page from My Learning,
@@ -313,7 +376,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
       void launch(guideUrl, title, pathId, packageInfo);
     },
-    [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
+    [launch, allPaths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
   );
 
   const handleDiscoverStart = useCallback(
@@ -458,10 +521,11 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           <MyCoursesSection
             courses={courses}
             assignments={assignedNotDone}
-            getPathGuides={getPathGuides}
+            getPathGuides={getPathGuidesWithOnline}
             getPathProgress={getPathProgress}
             onContinue={handleOpenGuide}
             onReset={resetPath}
+            onResetGuides={resetPathGuides}
             launchingPathId={launchingId}
             launchDisabled={launchingId !== null}
             styles={styles}

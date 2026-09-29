@@ -846,3 +846,129 @@ func TestGetCachedPackageRecommendations_WaiterRespectsContextCancellation(t *te
 		t.Errorf("err = %v, want context.Canceled", err)
 	}
 }
+
+// TestResolveOnlinePackageGuides covers assignment satisfaction's source 3:
+// resolving an assigned online-catalogue package's guide list, on demand,
+// separately from the bulk targeting-gated enrichment above.
+func TestResolveOnlinePackageGuides(t *testing.T) {
+	repoBody := []byte(`{
+		"assigned-targeted": {"path": "assigned-targeted/v1", "type": "path",
+			"targeting": {"match": {"urlPrefix": "/x"}}},
+		"assigned-untargeted": {"path": "assigned-untargeted/v1", "type": "path"},
+		"no-milestones": {"path": "no-milestones/v1", "type": "path"}
+	}`)
+	targetedManifest := []byte(`{"id": "assigned-targeted", "milestones": ["m1", "m2"]}`)
+	untargetedManifest := []byte(`{"id": "assigned-untargeted", "milestones": ["m3"]}`)
+	emptyManifest := []byte(`{"id": "no-milestones", "milestones": []}`)
+
+	newFetcher := func(onDemand map[string]int) packageRepositoryFetcher {
+		return func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
+			switch {
+			case strings.HasSuffix(rawURL, "repository.json"):
+				return repoBody, nil
+			case strings.HasSuffix(rawURL, "/assigned-targeted/v1/manifest.json"):
+				onDemand["assigned-targeted"]++
+				return targetedManifest, nil
+			case strings.HasSuffix(rawURL, "/assigned-untargeted/v1/manifest.json"):
+				onDemand["assigned-untargeted"]++
+				return untargetedManifest, nil
+			case strings.HasSuffix(rawURL, "/no-milestones/v1/manifest.json"):
+				onDemand["no-milestones"]++
+				return emptyManifest, nil
+			default:
+				return nil, fmt.Errorf("unexpected URL %q", rawURL)
+			}
+		}
+	}
+
+	t.Run("already enriched by bulk targeting fetch, no on-demand call", func(t *testing.T) {
+		resetPackageRecommendationsCache()
+		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+		onDemand := map[string]int{}
+		withFetcherOverride(t, newFetcher(onDemand))
+		app := newTestApp(t)
+
+		// Prime the cache the same way handlePackageRecommendations does —
+		// this is what enriches "assigned-targeted" (it has targeting).
+		if _, err := app.getCachedPackageRecommendations(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		onDemand["assigned-targeted"] = 0 // reset: only count calls made by resolveOnlinePackageGuides itself
+
+		got, err := app.resolveOnlinePackageGuides(context.Background(), "assigned-targeted")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.resolved || len(got.guides) != 2 || got.guides[0] != "m1" || got.guides[1] != "m2" {
+			t.Fatalf("got = %+v", got)
+		}
+		if onDemand["assigned-targeted"] != 0 {
+			t.Errorf("resolveOnlinePackageGuides re-fetched a manifest the bulk enrichment already inlined")
+		}
+	})
+
+	t.Run("not enriched by bulk fetch, resolves via on-demand fetch", func(t *testing.T) {
+		resetPackageRecommendationsCache()
+		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+		onDemand := map[string]int{}
+		withFetcherOverride(t, newFetcher(onDemand))
+		app := newTestApp(t)
+
+		got, err := app.resolveOnlinePackageGuides(context.Background(), "assigned-untargeted")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.resolved || len(got.guides) != 1 || got.guides[0] != "m3" {
+			t.Fatalf("got = %+v", got)
+		}
+		if onDemand["assigned-untargeted"] != 1 {
+			t.Errorf("on-demand fetch count = %d, want 1", onDemand["assigned-untargeted"])
+		}
+	})
+
+	t.Run("unknown target id resolves as unmet, not an error", func(t *testing.T) {
+		resetPackageRecommendationsCache()
+		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+		withFetcherOverride(t, newFetcher(map[string]int{}))
+		app := newTestApp(t)
+
+		got, err := app.resolveOnlinePackageGuides(context.Background(), "does-not-exist")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.resolved {
+			t.Errorf("got = %+v, want unresolved", got)
+		}
+	})
+
+	t.Run("empty milestones resolves as unmet", func(t *testing.T) {
+		resetPackageRecommendationsCache()
+		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+		withFetcherOverride(t, newFetcher(map[string]int{}))
+		app := newTestApp(t)
+
+		got, err := app.resolveOnlinePackageGuides(context.Background(), "no-milestones")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.resolved {
+			t.Errorf("got = %+v, want unresolved", got)
+		}
+	})
+
+	t.Run("on-demand manifest fetch failure surfaces as an error", func(t *testing.T) {
+		resetPackageRecommendationsCache()
+		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+		withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
+			if strings.HasSuffix(rawURL, "repository.json") {
+				return repoBody, nil
+			}
+			return nil, errors.New("manifest unavailable")
+		})
+		app := newTestApp(t)
+
+		if _, err := app.resolveOnlinePackageGuides(context.Background(), "assigned-untargeted"); err == nil {
+			t.Error("expected a manifest fetch failure to surface as an error")
+		}
+	})
+}

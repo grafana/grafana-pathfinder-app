@@ -178,6 +178,7 @@ func resolveGuidesFromPathIndex(ctx context.Context, pathURL string) ([]string, 
 type obligationEvaluator struct {
 	ctx        context.Context
 	logger     log.Logger
+	app        *App
 	guides     []customGuideRepositoryEntry
 	guidesOK   bool
 	guideLists map[string]guideList
@@ -216,23 +217,50 @@ type guideList struct {
 	resolved bool
 }
 
-// met is the satisfaction predicate: every guide assignmentGuides resolved
-// for asg needs one completion row on or after acceptCompletionsFrom, if set.
-func (e *obligationEvaluator) met(asg assignmentSpec, completions []completionRecordSpec) bool {
+// assignmentGuideEntry is one guide within an assignment's target, on the
+// wire — the per-guide detail met() collapses to a single bool. Surfaced so
+// a caller can show progress against the assignment's own target guides
+// instead of the user's whole local progress (PATH_ASSIGNMENTS.md §7.4).
+type assignmentGuideEntry struct {
+	GuideID   string `json:"guideId"`
+	Completed bool   `json:"completed"`
+}
+
+// satisfiedFromGuides is guideProgress collapsed to the single satisfaction
+// bool: resolved (non-empty) and every guide done.
+func satisfiedFromGuides(guides []assignmentGuideEntry) bool {
+	if len(guides) == 0 {
+		return false
+	}
+	for _, g := range guides {
+		if !g.Completed {
+			return false
+		}
+	}
+	return true
+}
+
+// guideProgress is the per-guide detail behind met(): same target
+// resolution and accept-time rule, one entry per guide instead of a
+// collapsed bool. nil means the target could not be resolved at all (guide
+// target, unresolved path, unparseable acceptCompletionsFrom) — distinct
+// from a resolved target whose guides are simply incomplete.
+func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []completionRecordSpec) []assignmentGuideEntry {
 	res := e.assignmentGuides(asg)
 	if !res.resolved || len(res.guides) == 0 {
-		return false
+		return nil
 	}
 	var accept time.Time
 	hasAccept := false
 	if asg.AcceptCompletionsFrom != "" {
 		parsed, ok := parseCompletionTime(asg.AcceptCompletionsFrom)
 		if !ok {
-			return false
+			return nil
 		}
 		accept, hasAccept = parsed, true
 	}
-	for _, guideID := range res.guides {
+	entries := make([]assignmentGuideEntry, len(res.guides))
+	for i, guideID := range res.guides {
 		done := false
 		for _, rec := range completions {
 			if rec.GuideID != guideID {
@@ -248,11 +276,15 @@ func (e *obligationEvaluator) met(asg assignmentSpec, completions []completionRe
 			done = true
 			break
 		}
-		if !done {
-			return false
-		}
+		entries[i] = assignmentGuideEntry{GuideID: guideID, Completed: done}
 	}
-	return true
+	return entries
+}
+
+// met is the satisfaction predicate: every guide assignmentGuides resolved
+// for asg needs one completion row on or after acceptCompletionsFrom, if set.
+func (e *obligationEvaluator) met(asg assignmentSpec, completions []completionRecordSpec) bool {
+	return satisfiedFromGuides(e.guideProgress(asg, completions))
 }
 
 // assignmentGuides is the guides an assignment requires, walking the same
@@ -296,6 +328,20 @@ func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) (res guideLis
 		}
 		return guideList{guides: guides, resolved: true}
 	}
+
+	// Source 3: the public online catalogue Discover More reads from — not
+	// part of paths() above (see resolveOnlinePackageGuides for why it's
+	// looked up on demand instead of bulk-merged with sources 1/2).
+	if e.app != nil {
+		online, err := e.app.resolveOnlinePackageGuides(e.ctx, asg.TargetID)
+		if err != nil {
+			e.logger.Info("online package index unavailable", "targetId", asg.TargetID, "error", err)
+			return guideList{}
+		}
+		if online.resolved {
+			return online
+		}
+	}
 	return guideList{}
 }
 
@@ -306,6 +352,7 @@ func (a *App) newObligationEvaluator(r *http.Request) *obligationEvaluator {
 	ev := &obligationEvaluator{
 		ctx:    r.Context(),
 		logger: a.ctxLogger(r.Context()),
+		app:    a,
 	}
 	lister, namespace, available, _ := a.resolveCustomGuideBackend(r)
 	if !available {
@@ -354,26 +401,35 @@ func (a *App) callerCompletionRecords(r *http.Request, userID string) ([]complet
 	return out, true
 }
 
+// assignmentObligationResult is satisfactionFunc's per-assignment answer: the
+// collapsed bool shapeAssignments has always served, plus the per-guide
+// detail behind it.
+type assignmentObligationResult struct {
+	satisfied bool
+	guides    []assignmentGuideEntry
+}
+
 // satisfactionFunc is the adapter handleMyAssignments calls: builds one
 // evaluator and one completion list for this request, then returns a closure
 // so the GET handler applies satisfaction per assignment without knowing how
 // any of it is resolved.
-func (a *App) satisfactionFunc(r *http.Request, userID string) func(assignmentSpec) bool {
+func (a *App) satisfactionFunc(r *http.Request, userID string) func(assignmentSpec) assignmentObligationResult {
 	logger := a.ctxLogger(r.Context())
 	completions, ok := a.callerCompletionRecords(r, userID)
 	var ev *obligationEvaluator
 	if ok {
 		ev = a.newObligationEvaluator(r)
 	}
-	return func(rec assignmentSpec) bool {
+	return func(rec assignmentSpec) assignmentObligationResult {
 		if rec.TargetType == assignmentTargetGuide {
 			logger.Error("assignment guide target is not evaluated", "targetType", rec.TargetType, "targetId", rec.TargetID)
-			return false
+			return assignmentObligationResult{}
 		}
 		if ev == nil {
-			return false
+			return assignmentObligationResult{}
 		}
-		return ev.met(rec, completions)
+		guides := ev.guideProgress(rec, completions)
+		return assignmentObligationResult{satisfied: satisfiedFromGuides(guides), guides: guides}
 	}
 }
 

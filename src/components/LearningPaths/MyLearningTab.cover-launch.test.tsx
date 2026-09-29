@@ -51,7 +51,15 @@ jest.mock('../../learning-paths', () => ({
     streakInfo: { days: 0 },
     isLoading: false,
   }),
-  useMyAssignments: () => ({ notDone: [], completed: [], isLoading: false, hasLoaded: true, refresh: jest.fn() }),
+  useMyAssignments: () => ({
+    items: [],
+    notDone: [],
+    completed: [],
+    onlinePaths: new Map(),
+    isLoading: false,
+    hasLoaded: true,
+    refresh: jest.fn(),
+  }),
   daysUntilDue: jest.requireActual('../../learning-paths/useMyAssignments').daysUntilDue,
   compareDueAt: jest.requireActual('../../learning-paths/assignments-core').compareDueAt,
 }));

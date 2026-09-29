@@ -95,8 +95,14 @@ type assignmentEntry struct {
 	DueAt                 string `json:"dueAt,omitempty"`
 	AcceptCompletionsFrom string `json:"acceptCompletionsFrom,omitempty"`
 
-	Satisfied bool   `json:"satisfied"`
-	Lifecycle string `json:"lifecycle"`
+	Satisfied bool `json:"satisfied"`
+	// Guides is the per-guide completion detail behind Satisfied, so a
+	// caller can show progress against this assignment's own target guides
+	// rather than the user's whole local progress. Absent when the target
+	// couldn't be resolved (guide target, unresolved path) — distinct from a
+	// resolved target whose guides are simply incomplete.
+	Guides    []assignmentGuideEntry `json:"guides,omitempty"`
+	Lifecycle string                 `json:"lifecycle"`
 }
 
 // myAssignmentsResponse is the GET /assignments/my envelope. `assignments`
@@ -199,12 +205,13 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 // drain has already filtered records to the caller (drainAssignments); target
 // type is not a filter here either. Two rules for the same target stay two
 // records — collapsing them would discard a deadline.
-func shapeAssignments(records []assignmentSpec, satisfied func(assignmentSpec) bool) []assignmentEntry {
+func shapeAssignments(records []assignmentSpec, evaluate func(assignmentSpec) assignmentObligationResult) []assignmentEntry {
 	entries := []assignmentEntry{}
 	for _, rec := range records {
 		if rec.Lifecycle != assignmentLifecycleActive {
 			continue
 		}
+		result := evaluate(rec)
 		entries = append(entries, assignmentEntry{
 			TargetType:            rec.TargetType,
 			TargetID:              rec.TargetID,
@@ -215,7 +222,8 @@ func shapeAssignments(records []assignmentSpec, satisfied func(assignmentSpec) b
 			AssignedAt:            rec.AssignedAt,
 			DueAt:                 rec.DueAt,
 			AcceptCompletionsFrom: rec.AcceptCompletionsFrom,
-			Satisfied:             satisfied(rec),
+			Satisfied:             result.satisfied,
+			Guides:                result.guides,
 			Lifecycle:             rec.Lifecycle,
 		})
 	}

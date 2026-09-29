@@ -70,6 +70,19 @@ function invalidateEmittedCompletionsForPathMembers(memberIds: readonly string[]
   }
 }
 
+/**
+ * Id-scheme and content keys for a set of bundled/App-Platform member ids —
+ * shared by resetPath's whole-path sweep (called with `path.guides`) and
+ * resetPathGuides' targeted one (called with a subset). Member keys only;
+ * a whole-path sweep adds the path's own id-scheme/content keys separately.
+ */
+function memberKeysFor(guideIds: readonly string[]): { rawSchemeKeys: string[]; contentKeys: string[] } {
+  return {
+    rawSchemeKeys: guideIds.flatMap((guideId) => pathMemberIdSchemeKeys(guideId)),
+    contentKeys: guideIds.flatMap((guideId) => pathMemberContentKeys({ id: guideId })),
+  };
+}
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -593,14 +606,9 @@ export function useLearningPaths(): UseLearningPathsReturn {
         // reads under. Milestone and journey records are keyed by the raw
         // launch URL, the interactive namespaces by its sanitized content key.
         const rawPathSchemeKeys = pathMemberIdSchemeKeys(path.id);
-        const rawSchemeKeys = [
-          ...rawPathSchemeKeys,
-          ...path.guides.flatMap((guideId) => pathMemberIdSchemeKeys(guideId)),
-        ];
-        const contentKeys = [
-          ...pathMemberContentKeys({ id: path.id }),
-          ...path.guides.flatMap((guideId) => pathMemberContentKeys({ id: guideId })),
-        ];
+        const memberKeys = memberKeysFor(path.guides);
+        const rawSchemeKeys = [...rawPathSchemeKeys, ...memberKeys.rawSchemeKeys];
+        const contentKeys = [...pathMemberContentKeys({ id: path.id }), ...memberKeys.contentKeys];
 
         for (const pathKey of rawPathSchemeKeys) {
           await milestoneCompletionStorage.clear(pathKey);
@@ -636,6 +644,75 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [paths, loadProgress]
   );
 
+  // Reset local completion for specific guides only — the assignment-mismatch
+  // case, where local storage says a guide is done but the assignment's own
+  // guide list disagrees. Unlike resetPath, never touches the path's own
+  // cover-level record or any guide outside guideIds.
+  const resetPathGuides = useCallback(
+    async (pathId: string, guideIds: string[]): Promise<void> => {
+      const path = paths.find((p) => p.id === pathId);
+      if (!path || guideIds.length === 0) {
+        return;
+      }
+
+      if (path.url) {
+        // Each target's own resolved milestone URL, when known — the same
+        // per-guide identity resetGuideProgress.ts uses for the milestone
+        // toolbar's single-guide reset, rather than the whole-prefix sweep
+        // resetPath uses for a full-path reset.
+        const targets = guideIds.map((guideId) => ({ guideId, url: resolveGuideMetadata(guideId, pathId).url }));
+        const contentKeys = targets.flatMap(({ url }) => (url ? [url] : []));
+
+        await Promise.all(
+          targets.map(({ guideId, url }) =>
+            milestoneCompletionStorage.removeCompleted(path.url!, guideId, url ? [url] : [])
+          )
+        );
+
+        await clearInteractiveProgressForContentKeys(contentKeys);
+        await interactiveCompletionStorage.clearMany(contentKeys);
+        await journeyCompletionStorage.clearMany(contentKeys);
+        await guideCompletionMarkStorage.clearMany(contentKeys);
+        contentKeys.forEach((key) => evictContentCache(key));
+      } else {
+        // Same per-guide id schemes resetPath's else-branch reads, but the
+        // path's own id-scheme keys are treated as candidate journey bases
+        // for `guideIds` rather than cleared outright — a bundled/App
+        // Platform path can itself be the "journey" a member's milestone
+        // slug is checked off against (COMPLETION-MODEL.md decision 9).
+        const rawPathSchemeKeys = pathMemberIdSchemeKeys(path.id);
+        const { rawSchemeKeys, contentKeys } = memberKeysFor(guideIds);
+
+        await Promise.all(
+          rawPathSchemeKeys.flatMap((pathKey) =>
+            guideIds.map((guideId) =>
+              milestoneCompletionStorage.removeCompleted(pathKey, guideId, [...pathMemberContentKeys({ id: guideId })])
+            )
+          )
+        );
+
+        await clearInteractiveProgressForContentKeys(contentKeys);
+        await interactiveCompletionStorage.clearMany(contentKeys);
+        await journeyCompletionStorage.clearMany(rawSchemeKeys);
+        await guideCompletionMarkStorage.clearMany(contentKeys);
+
+        contentKeys.forEach((key) => evictContentCache(key));
+      }
+
+      await learningProgressStorage.removeCompletedGuides(guideIds);
+      invalidateEmittedCompletionsForPathMembers(guideIds);
+
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
+          detail: { contentKey: '*', pathId },
+        })
+      );
+
+      await loadProgress({ current: true });
+    },
+    [paths, loadProgress, resolveGuideMetadata]
+  );
+
   return {
     paths,
     allBadges: BADGES,
@@ -647,6 +724,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
     getGuideUrlForPath,
     markGuideCompleted,
     resetPath,
+    resetPathGuides,
     dismissCelebration,
     streakInfo,
     isLoading,

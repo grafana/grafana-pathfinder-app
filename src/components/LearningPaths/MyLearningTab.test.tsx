@@ -12,7 +12,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
 import { recordGuideRender } from '../../lib/telemetry/facade';
 import { MyLearningTab } from './MyLearningTab';
@@ -79,6 +79,14 @@ jest.mock('@grafana/i18n', () => ({
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: (_target, prop) => String(prop) }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+  ConfirmModal: ({ isOpen, body, confirmText, dismissText, onConfirm, onDismiss }: any) =>
+    isOpen ? (
+      <div role="dialog">
+        {body}
+        <button onClick={onConfirm}>{confirmText}</button>
+        <button onClick={onDismiss}>{dismissText}</button>
+      </div>
+    ) : null,
 }));
 
 // Mutable so individual tests can shape the paths and URL resolution the
@@ -91,6 +99,7 @@ const mockGetPathGuides = jest.fn();
 const mockGetPathProgress = jest.fn();
 const mockIsPathCompleted = jest.fn();
 const mockGetGuideUrlForPath = jest.fn();
+const mockResetPathGuides = jest.fn();
 let mockDiscoverItems: Array<{
   id: string;
   title: string;
@@ -100,7 +109,7 @@ let mockDiscoverItems: Array<{
   manifest?: Record<string, unknown>;
 }> = [];
 let mockDiscoverExcludeTitles: Set<string> | undefined;
-let mockAssignments: Array<{
+type MockAssignment = {
   targetType: string;
   targetId: string;
   title: string;
@@ -109,7 +118,13 @@ let mockAssignments: Array<{
   overdue: boolean;
   satisfied: boolean;
   progress: number;
-}> = [];
+  guides?: Array<{ guideId: string; completed: boolean }>;
+};
+let mockAssignments: MockAssignment[] = [];
+let mockAssignedCompleted: MockAssignment[] = [];
+// Assignments resolved via the online catalogue (source 3) rather than
+// `mockPaths` — empty by default, same as no assignment resolving that way.
+let mockOnlinePaths: Map<string, { path: any; guides: any[] }> = new Map();
 
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
@@ -127,12 +142,15 @@ jest.mock('../../learning-paths', () => ({
     isPathCompleted: mockIsPathCompleted,
     getGuideUrlForPath: mockGetGuideUrlForPath,
     resetPath: jest.fn(),
+    resetPathGuides: mockResetPathGuides,
     streakInfo: { days: 0 },
     isLoading: false,
   }),
   useMyAssignments: () => ({
+    items: [...mockAssignments, ...mockAssignedCompleted],
     notDone: mockAssignments,
-    completed: [],
+    completed: mockAssignedCompleted,
+    onlinePaths: mockOnlinePaths,
     isLoading: false,
     hasLoaded: true,
     refresh: jest.fn(),
@@ -209,6 +227,7 @@ beforeEach(() => {
   mockDiscoverItems = [];
   mockDiscoverExcludeTitles = undefined;
   mockAssignments = [];
+  mockAssignedCompleted = [];
   mockGetPathGuides.mockImplementation((id: string) =>
     id === 'path-done'
       ? [{ id: 'guide-2', title: 'Guide two', completed: true, isCurrent: false }]
@@ -221,6 +240,7 @@ beforeEach(() => {
   );
   mockIsPathCompleted.mockImplementation((id: string) => id === 'path-done');
   mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/learning-paths/path-1/guide-1/');
+  mockResetPathGuides.mockResolvedValue(undefined);
   resolvePackageNavLinksMock.mockResolvedValue([]);
 });
 
@@ -375,6 +395,138 @@ describe('MyLearningTab launch flow', () => {
     expect(mockDiscoverExcludeTitles).toEqual(
       new Set(['New path', 'Barely started', 'Started path', 'Almost done', 'Done path'])
     );
+  });
+
+  it('keeps an unsatisfied assigned path in My Courses even at 100% local progress, alongside Completed', () => {
+    // Local progress can drift from what's actually on record server-side
+    // (a queued-but-unsent write, a stale cache write, etc.) — an outstanding
+    // assignment has to stay visible in My Courses regardless of that drift.
+    // Completed is untouched: it's still purely local-progress-driven, so the
+    // same path also keeps showing there.
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-done',
+        title: 'Done path',
+        overdue: false,
+        satisfied: false,
+        progress: 100,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
+    const completed = screen.getByTestId(testIds.learningPaths.completedSection);
+    expect(myCourses).toHaveTextContent('Done path');
+    expect(completed).toHaveTextContent('Done path');
+  });
+
+  it("sources a card's guide breakout and progress from the assignment's own guides, not local completion", async () => {
+    // Local says guide-1 is the only one done; the assignment's own guide
+    // list (completion records) says the opposite — guide-1 outstanding,
+    // guide-2 done. The card must reflect the assignment's view once one
+    // resolved, not the pre-override local one. path-new (not URL-based) so
+    // Continue resolves a per-guide title, unlike path-1's cover-page launch.
+    mockGetPathGuides.mockImplementation((id: string) =>
+      id === 'path-new'
+        ? [
+            { id: 'guide-1', title: 'Guide one', completed: true, isCurrent: false },
+            { id: 'guide-2', title: 'Guide two', completed: false, isCurrent: true },
+          ]
+        : []
+    );
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-new',
+        title: 'New path',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+        guides: [
+          { guideId: 'guide-1', completed: false },
+          { guideId: 'guide-2', completed: true },
+        ],
+      },
+    ];
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const card = screen.getByTestId(testIds.learningPaths.card('path-new'));
+    expect(card).toHaveTextContent('1/2 guides');
+    // guide-1 is locally done but the assignment says otherwise — Continue
+    // must warn before it resets local progress on it, not launch straight
+    // away.
+    fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-new')));
+    expect(prepareMock).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Guide one');
+
+    fireEvent.click(within(dialog).getByText('Reset and continue'));
+    await waitFor(() => expect(mockResetPathGuides).toHaveBeenCalledWith('path-new', ['guide-1']));
+    // guide-2 (assignment-completed) is no longer "current"; guide-1
+    // (assignment-outstanding, just reset) is — Continue opens the outstanding one.
+    await waitFor(() =>
+      expect(prepareMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ title: 'Guide one' }))
+    );
+  });
+
+  it('cancels the assignment reset dialog without launching or resetting anything', () => {
+    mockGetPathGuides.mockImplementation((id: string) =>
+      id === 'path-new'
+        ? [
+            { id: 'guide-1', title: 'Guide one', completed: true, isCurrent: false },
+            { id: 'guide-2', title: 'Guide two', completed: false, isCurrent: true },
+          ]
+        : []
+    );
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-new',
+        title: 'New path',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+        guides: [
+          { guideId: 'guide-1', completed: false },
+          { guideId: 'guide-2', completed: true },
+        ],
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const card = screen.getByTestId(testIds.learningPaths.card('path-new'));
+    fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-new')));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByText('Cancel'));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockResetPathGuides).not.toHaveBeenCalled();
+    expect(prepareMock).not.toHaveBeenCalled();
+  });
+
+  it('leaves a satisfied assignment out of My Courses once local progress also says done', () => {
+    mockAssignedCompleted = [
+      {
+        targetType: 'path',
+        targetId: 'path-done',
+        title: 'Done path',
+        overdue: false,
+        satisfied: true,
+        progress: 100,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
+    const completed = screen.getByTestId(testIds.learningPaths.completedSection);
+    expect(myCourses).not.toHaveTextContent('Done path');
+    expect(completed).toHaveTextContent('Done path');
   });
 
   it('renders the stable My Learning section landmarks', () => {

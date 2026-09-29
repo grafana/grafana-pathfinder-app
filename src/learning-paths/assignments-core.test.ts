@@ -114,6 +114,35 @@ describe('resolveAssignments', () => {
     expect(result.notDone).toHaveLength(0);
   });
 
+  it('derives progress from the wire guide list instead of local progress when one resolved', () => {
+    const result = resolve({
+      entries: [
+        assignment({
+          targetId: 'p1',
+          guides: [
+            { guideId: 'g1', completed: true },
+            { guideId: 'g2', completed: false },
+          ],
+        }),
+      ],
+      paths: [path({ id: 'p1', title: 'P1' })],
+      getPathProgress: () => 100,
+    });
+
+    expect(result.notDone[0]!.progress).toBe(50);
+  });
+
+  it('falls back to local progress when the wire resolved no guide list', () => {
+    const result = resolve({
+      entries: [assignment({ targetId: 'p1' })],
+      paths: [path({ id: 'p1', title: 'P1' })],
+      getPathProgress: () => 42,
+    });
+
+    expect(result.notDone[0]!.progress).toBe(42);
+    expect(result.notDone[0]!.guides).toBeUndefined();
+  });
+
   it('keeps two records for one path, and a wire false stays notDone', () => {
     const result = resolve({
       entries: [
