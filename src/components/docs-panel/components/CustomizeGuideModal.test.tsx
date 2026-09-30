@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { InlineAssistantOptions } from '@grafana/assistant';
+import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import { CustomizeGuideModal } from './CustomizeGuideModal';
 import { useAssistantGeneration, createGuideMetadataTool } from '../../../integrations/assistant-integration';
 
@@ -9,6 +10,11 @@ jest.mock('../../../integrations/assistant-integration', () => ({
   getGuideCustomizationContext: jest.fn(() => ({ grafanaVersion: '13.2.2' })),
   createGuideUiTool: jest.fn(() => ({ name: 'inspect_pathfinder_ui' })),
   createGuideMetadataTool: jest.fn(() => ({ name: 'fetch_datasource_metadata' })),
+}));
+
+jest.mock('../../../lib/analytics', () => ({
+  ...jest.requireActual('../../../lib/analytics'),
+  reportAppInteraction: jest.fn(),
 }));
 
 const guide = {
@@ -57,6 +63,7 @@ const submit = async () => {
 it('sends the full guide only on submission and hands validated output to the editor', async () => {
   const { onReview } = renderModal();
   expect(generate).not.toHaveBeenCalled();
+  expect(reportAppInteraction).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: 'Customize and open editor' })).toBeDisabled();
   await submit();
   expect(JSON.parse(options.prompt).guide).toEqual(guide);
@@ -69,6 +76,10 @@ it('sends the full guide only on submission and hands validated output to the ed
   const revised = { ...guide, title: 'Our customized guide' };
   await act(async () => options.onComplete?.(JSON.stringify(revised)));
   expect(onReview).toHaveBeenCalledWith(revised);
+  expect(jest.mocked(reportAppInteraction).mock.calls).toEqual([
+    [UserInteraction.AssistantCustomizeClick, { source: 'private-guide' }],
+    [UserInteraction.AssistantCustomizeSuccess, { source: 'private-guide' }],
+  ]);
 });
 
 it('retains the answers and existing draft when validation fails, and allows retry', async () => {
@@ -82,6 +93,10 @@ it('retains the answers and existing draft when validation fails, and allows ret
   expect(screen.getByRole('status')).toHaveTextContent('Repairing the generated guide');
   await act(async () => options.onComplete?.('still invalid'));
   expect(onReview).not.toHaveBeenCalled();
+  expect(jest.mocked(reportAppInteraction).mock.calls).toEqual([
+    [UserInteraction.AssistantCustomizeClick, { source: 'private-guide' }],
+    [UserInteraction.AssistantCustomizeError, { source: 'private-guide' }],
+  ]);
   expect(screen.getByRole('alert')).toHaveTextContent('The response is incomplete or is not valid JSON');
   expect(screen.getByLabelText(/What should they learn/)).toHaveValue('Use our team conventions');
   fireEvent.click(screen.getByRole('button', { name: 'Customize and open editor' }));

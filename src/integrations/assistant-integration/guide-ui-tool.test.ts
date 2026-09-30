@@ -107,3 +107,25 @@ it('bounds inspection input and calls and respects cancellation', async () => {
   expect(await tool.invoke({}, options)).toContain('cancelled');
   expect(onInspect).toHaveBeenCalledTimes(4);
 });
+
+it.each([
+  'body:contains("private")',
+  ':text("private")',
+  'body:has(input)',
+  ':nth-match(input, 1)',
+  'input[value^="private"]',
+  'a[href*="private"]',
+  '[data-secret="private"]',
+  'input[VALUE="private"]',
+  String.raw`input[v\61lue="private"]`,
+  String.raw`body:con\74ains("private")`,
+])('rejects content probes before inspecting the DOM: %s', async (selector) => {
+  const query = jest.spyOn(document, 'querySelectorAll');
+  const onInspect = jest.fn();
+  await expect(createGuideUiTool(onInspect, () => true).invoke({ selectors: [selector] }, options)).rejects.toThrow(
+    /structural/
+  );
+  expect(inspectGuideSelectors([selector])[0]?.status).toBe('unsupported-selector');
+  expect(query).not.toHaveBeenCalled();
+  expect(onInspect).not.toHaveBeenCalled();
+});

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Field, Modal, TextArea } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import type { JsonGuide } from '../../../types/json-guide.types';
+import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import {
   useAssistantGeneration,
   getGuideCustomizationContext,
@@ -90,6 +91,9 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         resolveResponse = resolve;
         rejectResponse = reject;
       });
+      if (!repairing) {
+        reportAppInteraction(UserInteraction.AssistantCustomizeClick, { source: 'private-guide' });
+      }
       let characters = 0;
       const [, text] = await Promise.all([
         generate({
@@ -161,9 +165,11 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         setPhase('Checking the generated guide…');
         customized = parseCustomizedGuide(response, guide, sourceUrl);
       }
+      reportAppInteraction(UserInteraction.AssistantCustomizeSuccess, { source: 'private-guide' });
       onReview(customized);
     } catch (e) {
       if (isCurrent()) {
+        reportAppInteraction(UserInteraction.AssistantCustomizeError, { source: 'private-guide' });
         setError(
           e instanceof GuideCustomizationError
             ? `${e.message} Your draft is unchanged. Try again.`

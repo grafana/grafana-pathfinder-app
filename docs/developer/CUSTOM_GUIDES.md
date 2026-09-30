@@ -45,6 +45,8 @@ Learning journeys and paths, including their cover pages and milestones, cannot 
 
 When Grafana Assistant is available, admins can also select **Customize with Assistant**. Describe the audience, what readers should learn or do, and any environment details to include. Assistant receives the full guide, with shared snippets expanded, and these answers. Select **Customize and open editor** to generate the copy, then review and edit it before saving or publishing. An existing editor draft is only replaced after confirmation; cancelling or a generation error leaves it intact.
 
+Customization also sends the available data-source inventory (names, types and UIDs) and Grafana context to Assistant. Its tools can return live Prometheus, Loki and Tempo metadata, including label values, and the current page path, including a dashboard UID or slug. UI inspection returns match counts for structural selectors and Grafana registry tokens; it rejects raw attribute selectors, pseudo-selectors and escapes. Consider these data transfers when deciding what to include in a customization request. Usage telemetry records the attempt, success or failure with the fixed source `private-guide`; it does not include your answers, guide content, data-source metadata or generated output.
+
 The modal shows generation progress and elapsed time. If the response fails guide validation, Assistant makes one repair attempt using the validation errors. If it still fails, the modal shows the validation details and keeps your answers for another attempt.
 
 ### Undo, preview, and progress

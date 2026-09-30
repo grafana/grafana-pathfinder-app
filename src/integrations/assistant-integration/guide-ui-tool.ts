@@ -8,8 +8,16 @@ const MODE = '{grafana:components.DataSource.Prometheus.queryEditor.editorToggle
 const CODE = `${MODE} {grafana:components.RadioButton.option:code} + label`;
 const QUERY = '{grafana:components.QueryField.container}';
 
+function isStructuralSelector(selector: string): boolean {
+  const structural = selector.replace(/\{grafana:[A-Za-z0-9_.]+(?::[A-Za-z0-9_-]+)?\}/g, '');
+  return /^[A-Za-z0-9_ .#>+~,*-]*$/.test(structural);
+}
+
 export function inspectGuideSelectors(selectors: string[]) {
   return selectors.map((selector) => {
+    if (!isStructuralSelector(selector)) {
+      return { selector, status: 'unsupported-selector', visibleMatches: 0 };
+    }
     let resolutionError = false;
     const resolved = resolveSelectorForVersion(selector, config.buildInfo.version || 'latest', () => {
       resolutionError = true;
@@ -79,7 +87,7 @@ export function createGuideUiTool(onInspect: () => void, isActive: () => boolean
     {
       name: 'inspect_pathfinder_ui',
       description:
-        'Check proposed Pathfinder selectors against the visible Grafana page and get the Prometheus Code-to-Monaco insertion sequence. Read-only: never navigates, clicks, reads field values, executes queries, or saves resources. Call when adapting interactive query steps. Missing or ambiguous matches are not verified.',
+        'Check structural Pathfinder selectors against the visible Grafana page and get the Prometheus Code-to-Monaco insertion sequence. Use Grafana registry tokens or simple tag, ID and class selectors with combinators. Raw attribute selectors, pseudo-selectors and escapes are rejected. Read-only: never navigates, clicks, reads field values, executes queries, or saves resources. Missing or ambiguous matches are not verified.',
       inputSchema: {
         type: 'object',
         properties: { selectors: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 500 } } },
@@ -96,6 +104,9 @@ export function createGuideUiTool(onInspect: () => void, isActive: () => boolean
           selectors.some((value) => typeof value !== 'string' || value.length > 500)
         ) {
           throw new Error('Provide at most eight selectors, each at most 500 characters.');
+        }
+        if (selectors.some((selector) => !isStructuralSelector(selector))) {
+          throw new Error('Only structural selectors and Grafana registry tokens are supported.');
         }
         return { selectors: selectors as string[] };
       },
