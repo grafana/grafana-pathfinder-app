@@ -5,7 +5,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { IconButton, Dropdown, Menu, Tooltip } from '@grafana/ui';
+import { css } from '@emotion/css';
+import { IconButton, Dropdown, Menu, Tooltip, Badge } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import {
@@ -15,12 +16,23 @@ import {
   tabTypeToContentType,
 } from '../../../lib/analytics';
 import { PLUGIN_BASE_URL } from '../../../constants';
+import { currentPlatform } from '../../../lib/platform';
 import { testIds } from '../../../constants/testIds';
 import { clearExtensionSidebarDocked } from '../../../lib/storage/extension-sidebar';
 import { isNonContentTab } from '../utils';
 import { ConfirmModal } from '../../block-editor/NotificationModals';
 import { usePrivateGuideCopy } from '../hooks/usePrivateGuideCopy';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
+
+const previewMenuItemClass = css({
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+});
+
+function PreviewBadge() {
+  return <Badge color="blue" text={t('docsPanel.beta', 'Beta')} />;
+}
 
 export interface TabBarActionsProps {
   /** CSS class name for the container */
@@ -39,9 +51,7 @@ export interface TabBarActionsProps {
   onOpenDevToolsTab?: () => void;
 }
 
-/**
- * Renders the tab bar action buttons: My learning, overflow menu, and close.
- */
+/** Renders My learning, the overflow menu, and close actions. */
 export const TabBarActions: React.FC<TabBarActionsProps> = ({
   className,
   activeTab,
@@ -203,6 +213,18 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
             )}
             {isDevMode && onOpenDevToolsTab && (
               <Menu.Item label={t('docsPanel.devTools', 'Dev tools')} icon="bug" onClick={handleDevToolsClick} />
+            )}
+            {canAccessPluginSettings && currentPlatform() === 'cloud' && (
+              <>
+                <Menu.Divider />
+                <Menu.Item
+                  label={t('docsPanel.classicHelpMenuSettings', 'Classic Help menu settings')}
+                  icon="history"
+                  className={previewMenuItemClass}
+                  component={PreviewBadge}
+                  onClick={handleSettingsClick}
+                />
+              </>
             )}
           </Menu>
         }

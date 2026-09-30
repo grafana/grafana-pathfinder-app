@@ -254,17 +254,29 @@ finding a wall of 0%-or-100% guides in the warehouse is looking at intended
 behaviour, not a bug — and the honest reading of that wall is an authoring
 problem, not an arithmetic one.
 
-### Decision 4 — path progress is the mean of its milestones' percentages
+### Decision 4 — path progress is the best of its sequences' mean member percentages
 
-**Decision.** A path's percentage is the arithmetic mean of its milestones'
-percentages. Milestones are weighted equally regardless of length. See the
-[worked example](#worked-example--path-progress).
+**Decision.** A path's percentage is the arithmetic mean of a sequence's
+members' percentages, members weighted equally regardless of length (see the
+[worked example](#worked-example--path-progress)), computed once per
+sequence a path declares — the Foundations `milestones` list, plus each Path
+Tracks entry's own `guides` list as its own separate sequence (decision 10) —
+and the path's displayed percentage and completion are the BEST (highest)
+result across every sequence. A path with no `tracks` has exactly one
+sequence, so this is unchanged from the pre-tracks formula. A track hitting
+100% completes the path even if Foundations or another track has not,
+because the reader's real progress is whichever sequence they are actually
+furthest through, never a blend across sequences they may not be taking.
 
-**Why.** It is the only aggregation that needs nothing a path does not already
-have. Milestones are fetched one at a time; a path's step or block denominator is
-not knowable when the path opens without either declaring it in the manifest or
-fetching every milestone up front. Averaging percentages sidesteps the question:
-each milestone knows its own denominator, and only the percentage bubbles up.
+**Why.** The per-sequence mean is the only aggregation that needs nothing a
+path does not already have. Milestones are fetched one at a time; a path's
+step or block denominator is not knowable when the path opens without either
+declaring it in the manifest or fetching every milestone up front. Averaging
+percentages sidesteps the question: each milestone knows its own denominator,
+and only the percentage bubbles up. Taking the best across sequences rather
+than blending them follows from decision 10: a track is a different way
+through the same path, not a second path with its own denominator to
+reconcile against Foundations'.
 
 **The consequence worth recording.** **No path-wide step total or block total
 ever needs pre-calculating.** That is not a minor simplification — it deletes a
@@ -516,6 +528,57 @@ exclusion, not an edge case.
 missing key, which collapses the distinction the decision rests on. The join
 reads the whole record and tests for the key.
 
+### Decision 10 — a Path Tracks track is a presentation ordering, scored the same way Foundations is
+
+**Decision.** A `tracks` entry (Path Tracks RFC) is a named,
+independently-ordered **presentation** view over some subset, superset, or
+reordering of a path's guides. It is not a second path with its own
+persisted percentage, badge, or "N of M" count (see "What we are not doing
+here" below) — but decision 4's best-of-sequence formula scores it on equal
+footing with the Foundations `milestones` sequence: My Learning's path-wide
+percentage and completion for a path are the best result across Foundations
+and every track, never Foundations alone and never a blend of all of them.
+
+**Why.** A track's `guides` list can name a strict subset of `milestones`, a
+strict superset, or a partial overlap with role-specific guides
+interleaved anywhere (`package.types.ts`'s `ManifestTrack` doc comment) — it
+is not a reordering of the same member set, which is exactly why blending
+Foundations and every track into one flattened mean (the pre-decision-4-update
+behavior) was wrong: a learner nearly finished with a 10-guide Seller track
+would see that work diluted by two untouched tracks and an unstarted
+Foundations sequence, and "complete" would require finishing every guide in
+every track rather than any one real way through the path. Scoring each
+sequence separately and taking the best fixes that without inventing a
+second completion authority: a learner who finishes a 3-guide Seller track
+containing 1 guide `milestones` never had really is done with the path by
+any sequence that matters to them, and the path should say so.
+
+**What this means for the cover page's per-tab progress ring.**
+`LearningPathTableOfContents.tsx` computes `journeyProgressFromMilestones`
+against whichever sequence's own tab is active — Foundations' `milestones` or
+a track's own `guides` — exactly as decision 4's per-sequence mean already
+does. That number and My Learning's path-wide percentage can still diverge:
+the ring shows progress through the active tab specifically, while My
+Learning shows the best sequence regardless of which tab is active (finishing
+a track while looking at Foundations' tab still completes the path). They
+converge exactly when the active tab happens to be the best-scoring sequence.
+The ring's accessible label names the active sequence
+(`{{percent}}% through {{sequence}}`) so it never reads as a path-wide claim.
+
+`app-platform-paths.ts` builds `LearningPath.guides` from
+`getManifestMemberIds` (milestones plus every track-only guide, published
+members only) so `resetPath` can clear track-only completions; `learning-paths.hook.ts`'s
+`calculatePathRollup` splits that same set back into its Foundations and
+per-track sequences (intersected against `path.guides`, so an unpublished
+member still drops out) before scoring each one and taking the best.
+
+**What we are not doing here.** A track earning its own DURABLE, independently
+persisted percentage, badge, or "N of M" count outside of this best-of-sequence
+comparison — e.g. a badge for finishing the Seller track specifically — is a
+`completion-denominator-authority` change and belongs in its own PR against
+`src/lib/guide-stats` and `path-member-join.ts`. This decision only says which
+of a path's existing sequences its one path-wide percentage/completion follows.
+
 ## The alternative considered and rejected
 
 One position argued against the path-level half of this model. It was overridden,
@@ -738,6 +801,14 @@ This document does not close, edit, or comment on that PR. Whether it is closed 
 updated is Jay's call.
 
 ## Rolling this back
+
+**A journey partially completed under decision 6's migration needs its
+in-flight milestones re-marked after a revert.** Milestone completion moved
+from `milestoneCompletionStorage`'s click-based record to a percentage in
+`interactiveCompletionStorage`; a milestone finished only after the cutover
+has no equivalent entry in the old store, so reverting mid-journey would
+make that work invisible to the pre-migration model until the reader marks
+those milestones again.
 
 The Mark complete control writes two things: the mark itself, in the per-guide
 `guide-complete-mark-*` namespace this model introduced, and a 100 in

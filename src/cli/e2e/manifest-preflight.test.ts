@@ -225,6 +225,36 @@ describe('checkPlugins', () => {
     expect(results[0]!.status).toBe('skip');
   });
 
+  it('refuses to send a bearer token to an HTTP plugin endpoint', async () => {
+    global.fetch = jest.fn();
+    const results = await checkPlugins({ plugins: ['plugin-a'] }, 'http://target.example/', 'synthetic-token');
+    expect(results).toEqual([{ status: 'fail', check: 'plugins', message: expect.stringContaining('HTTPS') }]);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('sends the bearer token to an HTTPS plugin endpoint without following redirects', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => [{ id: 'plugin-a' }] });
+    const results = await checkPlugins({ plugins: ['plugin-a'] }, 'https://target.example/', 'synthetic-token');
+    expect(results).toEqual([{ status: 'pass', check: 'plugin:plugin-a' }]);
+    expect(global.fetch).toHaveBeenCalledWith(
+      new URL('https://target.example/api/plugins'),
+      expect.objectContaining({
+        headers: { Accept: 'application/json', Authorization: 'Bearer synthetic-token' },
+        redirect: 'error',
+      })
+    );
+  });
+
+  it('keeps token-free plugin checks available over local HTTP', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => [{ id: 'plugin-a' }] });
+    const results = await checkPlugins({ plugins: ['plugin-a'] }, 'http://localhost:3000/');
+    expect(results).toEqual([{ status: 'pass', check: 'plugin:plugin-a' }]);
+    expect(global.fetch).toHaveBeenCalledWith(
+      new URL('http://localhost:3000/api/plugins'),
+      expect.objectContaining({ headers: { Accept: 'application/json' }, redirect: 'follow' })
+    );
+  });
+
   it('skips when plugins array is empty', async () => {
     const results = await checkPlugins({ plugins: [] }, 'http://localhost:3000');
     expect(results).toHaveLength(1);

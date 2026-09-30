@@ -20,6 +20,7 @@
  * @coupling Client: fetchCustomGuideRepository in lib/custom-guide-repository-client.ts
  */
 import { fetchCustomGuideRepository } from '../lib/custom-guide-repository-client';
+import { getManifestMemberIds } from '../types/package.types';
 import type { LearningPath, GuideMetadataEntry } from '../types/learning-paths.types';
 
 export interface AppPlatformPathsResult {
@@ -71,7 +72,7 @@ export async function fetchAppPlatformLearningPaths(namespace: string): Promise<
       // in a published path's manifest must not leak into My Learning (it has no
       // guideMetadata entry, so it would render titled by its raw id and inflate
       // the denominator). Matches the resolver's published-only gate.
-      guides: (entry.manifest?.milestones ?? []).filter((id) => Object.hasOwn(guideMetadata, id)),
+      guides: getManifestMemberIds(entry.manifest).filter((id) => Object.hasOwn(guideMetadata, id)),
       badgeId: '',
       isPrivate: true,
       // Carried so the My Learning launch can render members with milestone

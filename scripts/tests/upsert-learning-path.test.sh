@@ -275,6 +275,93 @@ else
   nope "milestone-before-cover ordering" "order: $(write_order)"
 fi
 
+# A guide named only by a track (never by milestones) must still be
+# uploaded, or App Platform's cover tabs resolve it as locked/missing even
+# though the reference exists. `m-a` is deliberately listed in both
+# `milestones` and the track (RFC-allowed overlap) to prove it uploads once,
+# not twice.
+TRACKED=$(path_pkg tracked)
+mkpkg "${TRACKED}/only" t-only guide null "$blocks"
+printf '{"id":"lp","type":"path","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":["m-a","t-only"]}]}' \
+  >"${TRACKED}/manifest.json"
+
+MODE=empty run --package "$TRACKED"
+expect_code "a track-only guide (not in milestones) uploads too" 0
+expect_out "and reports the track-only guide in the count" "4 created, 0 updated, 0 failed"
+if [[ "$(write_order)" == "m-a m-b t-only lp " ]]; then
+  ok "track-only guide uploads after milestones, before the cover page, deduplicated against the overlapping milestone"
+else
+  nope "track-guide upload ordering" "order: $(write_order)"
+fi
+
+# The real PUT body shape, not just the write count/order above: tracks is a
+# typed key (build_manifest's own $typed list), so it must land at
+# spec.manifest.tracks verbatim and never also leak into additionalFields.
+COVER_BODY=$(printf '%s\n' "$RUN_LOG" | sed -n 's/^BODY\t//p' | jq -c 'select(.metadata.name == "lp")')
+if [[ "$(echo "$COVER_BODY" | jq -c '.spec.manifest.tracks')" == '[{"trackId":"builder","label":"Builder","guides":["m-a","t-only"]}]' ]]; then
+  ok "the cover's spec.manifest.tracks matches the authored array"
+else
+  nope "spec.manifest.tracks mismatch" "$(echo "$COVER_BODY" | jq '.spec.manifest.tracks')"
+fi
+if [[ "$(echo "$COVER_BODY" | jq -r '(.spec.manifest.additionalFields // {}) | has("tracks")')" == "false" ]]; then
+  ok "additionalFields carries no tracks key"
+else
+  nope "additionalFields unexpectedly carries a tracks key" "$(echo "$COVER_BODY" | jq '.spec.manifest.additionalFields')"
+fi
+
+# RFC §6.1 scopes tracks to paths only. This script calls no Zod
+# validation, so build_manifest's own $isPath gate would otherwise just
+# silently drop tracks from a journey's spec.manifest rather than rejecting
+# the upload — hiding a real authoring mistake. It must fail loudly instead,
+# before any write.
+JOURNEY_TRACKED=$(path_pkg journey-tracked)
+printf '{"id":"lp","type":"journey","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":["m-a","m-b"]}]}' \
+  >"${JOURNEY_TRACKED}/manifest.json"
+
+MODE=empty run --package "$JOURNEY_TRACKED"
+expect_code "a journey with tracks is rejected outright, not silently uploaded without them" 1
+expect_out "and explains why" "scopes tracks to path manifests only"
+if [[ "$(writes)" == "0" ]]; then
+  ok "the rejected journey-with-tracks package writes nothing at all"
+else
+  nope "a rejected package should write nothing" "$RUN_LOG"
+fi
+
+# A track's own `guides` list must be non-empty, the same constraint
+# ManifestJsonSchema enforces — without this check, an empty list here
+# would publish a track tab with nothing in it, silently.
+EMPTY_TRACK_PKG=$(path_pkg empty-track)
+printf '{"id":"lp","type":"path","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":[]}]}' \
+  >"${EMPTY_TRACK_PKG}/manifest.json"
+
+MODE=empty run --package "$EMPTY_TRACK_PKG"
+expect_code "a track with an empty guides list is rejected outright" 1
+expect_out "and names the empty track" "\"builder\""
+expect_out "and explains why" "empty guides list"
+
+# Regression: package.schema.ts's superRefine Rule 4 rejects a reserved or
+# duplicate trackId via the app's Zod schema, but this script doesn't call
+# that schema. Without an equivalent check, a manifest with a reserved or
+# duplicate trackId publishes successfully, and getManifestTracks silently
+# drops the offending track at read time — a tab the author believes is live
+# simply never renders.
+RESERVED_TRACK_PKG=$(path_pkg reserved-track)
+printf '{"id":"lp","type":"path","milestones":["m-a","m-b"],"tracks":[{"trackId":"foundations","label":"Foundations again","guides":["m-a"]}]}' \
+  >"${RESERVED_TRACK_PKG}/manifest.json"
+
+MODE=empty run --package "$RESERVED_TRACK_PKG"
+expect_code "a track using the reserved foundations trackId is rejected outright" 1
+expect_out "and explains why" "reserved for the default Foundations sequence"
+
+DUPLICATE_TRACK_PKG=$(path_pkg duplicate-track)
+printf '{"id":"lp","type":"path","milestones":["m-a","m-b"],"tracks":[{"trackId":"builder","label":"Builder","guides":["m-a"]},{"trackId":"builder","label":"Builder again","guides":["m-b"]}]}' \
+  >"${DUPLICATE_TRACK_PKG}/manifest.json"
+
+MODE=empty run --package "$DUPLICATE_TRACK_PKG"
+expect_code "a manifest with a duplicate trackId is rejected outright" 1
+expect_out "and names the duplicate" "\"builder\""
+expect_out "and explains why" "unique trackId"
+
 MODE=existing_ours run --package "$PKG"
 expect_code "re-running an already-uploaded package succeeds" 0
 expect_out "and reports updates rather than creates" "0 created, 3 updated"

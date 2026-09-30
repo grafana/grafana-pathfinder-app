@@ -6,6 +6,7 @@ import {
   recordContentFetchFallback,
   recordCustomGuideCatalogueUnavailable,
   recordSettingsStoreResolved,
+  recordStartupSettings,
   recordPanelReady,
   recordRecommenderFallback,
   recordRecommenderRequest,
@@ -150,4 +151,13 @@ it('records the served kiosk tier and degradation without catalog content', () =
     tier: 'bundled',
     degraded: true,
   });
+});
+
+it('records bounded startup settings latency and fail-open outcome without identities', () => {
+  recordStartupSettings(3000, 'timeout');
+  expect(pushFaroMeasurement).toHaveBeenCalledWith(
+    'pathfinder_startup_settings',
+    { startup_settings_ms: 3000 },
+    { outcome: 'timeout' }
+  );
 });

@@ -24,11 +24,7 @@ import {
 } from './pathfinder-search-params';
 
 export interface DeepLinkHandlerDeps {
-  /** Whether the sidebar surface is mounted for this user/variant. */
-  shouldMountSidebar: boolean;
-  /** Schedule an `open-extension-sidebar` event after the given delay. */
   attemptAutoOpen: (delay?: number) => void;
-  loadControlGroupDocPopup: () => Promise<{ showControlGroupDocPopup: (source: string) => void }>;
 }
 
 // Dedup gate — prevents re-processing the same URL from multiple listener transports.
@@ -111,16 +107,6 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     // panelMode-only / kiosk-only links, or a full-screen-route doc owned by
     // FullScreenPanel: nothing more to dispatch here.
     return panelModeParam !== undefined || kioskSessionParam !== undefined;
-  }
-
-  // Control group: sidebar is dismounted; show the fallback popup instead.
-  if (!deps.shouldMountSidebar) {
-    rewriteCurrentUrl(stripPathfinderParams);
-    deps
-      .loadControlGroupDocPopup()
-      .then(({ showControlGroupDocPopup }) => showControlGroupDocPopup(docOpenSource))
-      .catch((err) => logger.error('[Pathfinder] Failed to load control group popup', { error: err }));
-    return true;
   }
 
   // Capture before the async import so listener re-fires don't mutate these.

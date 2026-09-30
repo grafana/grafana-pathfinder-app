@@ -57,7 +57,11 @@ type customGuideManifest struct {
 	Repository  string   `json:"repository,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Milestones  []string `json:"milestones,omitempty"`
-	Category    string   `json:"category,omitempty"`
+	// Tracks mirrors #Track in pathfinder-backend's #Manifest (Path Tracks
+	// RFC): named, independently-ordered guide sequences alongside the
+	// always-present Milestones default. Additive — Milestones is unaffected.
+	Tracks   []customGuideManifestTrack `json:"tracks,omitempty"`
+	Category string                     `json:"category,omitempty"`
 	// An alias, not a defined type: the wire contract inventory renders this
 	// field as an anonymous struct, and naming it would move its entry.
 	Author  *customGuideManifestAuthor `json:"author,omitempty"`
@@ -73,6 +77,16 @@ type customGuideManifest struct {
 type customGuideManifestAuthor = struct {
 	Name string `json:"name,omitempty"`
 	Team string `json:"team,omitempty"`
+}
+
+// customGuideManifestTrack mirrors #Track: { trackId, label, guides } — all
+// three required by the CUE definition, so no omitempty here. An alias, not a
+// defined type, for the same reason as customGuideManifestAuthor: the wire
+// contract inventory renders this field as an anonymous struct.
+type customGuideManifestTrack = struct {
+	TrackID string   `json:"trackId"`
+	Label   string   `json:"label"`
+	Guides  []string `json:"guides"`
 }
 
 // UnmarshalJSON decodes each fallible composite field on its own, through a
@@ -93,6 +107,7 @@ func (m *customGuideManifest) UnmarshalJSON(data []byte) error {
 		Description string          `json:"description"`
 		Category    string          `json:"category"`
 		Milestones  json.RawMessage `json:"milestones"`
+		Tracks      json.RawMessage `json:"tracks"`
 		Author      json.RawMessage `json:"author"`
 		Depends     json.RawMessage `json:"depends"`
 		Stats       json.RawMessage `json:"stats"`
@@ -111,6 +126,10 @@ func (m *customGuideManifest) UnmarshalJSON(data []byte) error {
 	var milestones []string
 	if decodeManifestField(probe.Milestones, &milestones, &errs) {
 		m.Milestones = milestones
+	}
+	var tracks []customGuideManifestTrack
+	if decodeManifestField(probe.Tracks, &tracks, &errs) {
+		m.Tracks = tracks
 	}
 	var author customGuideManifestAuthor
 	if decodeManifestField(probe.Author, &author, &errs) {

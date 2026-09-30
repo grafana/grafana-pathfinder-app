@@ -123,6 +123,7 @@ export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
     targetValue: props.targetValue,
     targetState: props.targetState,
     targetComment: props.targetComment,
+    openGuide: props.openGuide,
     requirements: props.requirements,
     postVerify: props.postVerify,
     skippable: props.skippable,
@@ -159,6 +160,7 @@ export const INTERACTIVE_MULTISTEP_SCHEMA: StepTypeSchema = {
     skippable: props.skippable,
     isMultiStep: true,
     isGuided: false,
+    fullScreenFallbackLocation: props.fullScreenFallbackLocation,
   }),
   // Multi-step has the same enhanced surface as a plain step.
   toEnhancedProps: INTERACTIVE_STEP_SCHEMA.toEnhancedProps,
@@ -180,6 +182,7 @@ export const INTERACTIVE_GUIDED_SCHEMA: StepTypeSchema = {
     skippable: props.skippable,
     isMultiStep: false,
     isGuided: true,
+    fullScreenFallbackLocation: props.fullScreenFallbackLocation,
   }),
   toEnhancedProps: INTERACTIVE_STEP_SCHEMA.toEnhancedProps,
 };
@@ -267,6 +270,7 @@ export const CODE_BLOCK_STEP_SCHEMA: StepTypeSchema = {
     skippable: props.skippable,
     isMultiStep: true,
     isGuided: false,
+    fullScreenFallbackLocation: props.fullScreenFallbackLocation,
   }),
   // CodeBlock has isCurrentlyExecuting (like a plain step) but no
   // onStepReset (like a quiz). Distinct shape — keep it explicit.

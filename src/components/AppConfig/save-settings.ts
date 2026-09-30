@@ -1,5 +1,9 @@
 import { PathfinderTenantSettings, TENANT_SETTING_KEYS } from '../../constants';
-import { clampToKindBounds, savePathfinderSettings } from '../../utils/pathfinder-settings-api';
+import {
+  clampToKindBounds,
+  savePathfinderSettings,
+  fetchPathfinderSettingsSnapshot,
+} from '../../utils/pathfinder-settings-api';
 import { resolveTenantSettings } from '../../utils/resolve-tenant-settings';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 
@@ -17,6 +21,12 @@ export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettin
 
   // Persist explicit overrides only; runtime defaults and feature flags have their own owners.
   if (await savePathfinderSettings(next, tenant)) {
+    if (changes.pathfinderEnabled !== undefined) {
+      const saved = await fetchPathfinderSettingsSnapshot();
+      if (saved?.config.pathfinderEnabled !== changes.pathfinderEnabled) {
+        throw new Error('Pathfinder preference was not retained. Verify the backend schema is deployed and try again.');
+      }
+    }
     return;
   }
 
