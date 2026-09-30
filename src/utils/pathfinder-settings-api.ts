@@ -1,6 +1,6 @@
 import { reportProxyFailure } from '../lib/proxy-diagnostics';
 import { config, getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+import { defer, lastValueFrom, retry, throwError, timer } from 'rxjs';
 
 import {
   PLUGIN_BACKEND_URL,
@@ -44,6 +44,8 @@ export interface PathfinderSettingsSnapshot {
 const UNAVAILABLE_STATUSES = new Set([404, 405, 501]);
 const RETRYABLE_UPDATE_STATUSES = new Set([404, 405, 500, 501, 502, 503, 504]);
 const UPDATE_RETRY_DELAYS_MS = [250, 750];
+const RETRYABLE_READ_STATUSES = new Set([500, 502, 503, 504]);
+const READ_RETRY_DELAYS_MS = [500, 1500];
 
 function statusOf(err: unknown): number | undefined {
   const e = err as { status?: number; statusCode?: number; data?: { statusCode?: number } };
@@ -111,11 +113,34 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
 
   try {
     const response = await lastValueFrom(
-      getBackendSrv().fetch<PathfinderSettingsResource>({
-        url: `${PLUGIN_BACKEND_URL}/pathfinder-settings`,
-        method: 'GET',
-        showErrorAlert: false,
-      })
+      defer(() =>
+        getBackendSrv().fetch<PathfinderSettingsResource>({
+          url: `${PLUGIN_BACKEND_URL}/pathfinder-settings`,
+          method: 'GET',
+          showErrorAlert: false,
+        })
+      ).pipe(
+        retry({
+          count: READ_RETRY_DELAYS_MS.length,
+          delay: (err: unknown, attempt) => {
+            const status = statusOf(err);
+            const delay = READ_RETRY_DELAYS_MS[attempt - 1];
+            const upstreamStatus = (err as { data?: { diagnostics?: { upstreamStatus?: number } } })?.data?.diagnostics
+              ?.upstreamStatus;
+            // The proxy maps upstream 401 to 502 to avoid expiring the Grafana session.
+            if (
+              delay === undefined ||
+              !status ||
+              !RETRYABLE_READ_STATUSES.has(status) ||
+              upstreamStatus === 401 ||
+              upstreamStatus === 403
+            ) {
+              return throwError(() => err);
+            }
+            return timer(delay);
+          },
+        })
+      )
     );
 
     const spec = response.data?.spec;

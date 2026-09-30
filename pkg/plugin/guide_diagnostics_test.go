@@ -87,6 +87,7 @@ func TestAppPlatformDiagnosticPreservesFailureStage(t *testing.T) {
 		{&tokenExchangeError{err: context.DeadlineExceeded}, "token-exchange", "token-exchange-failed", 0},
 		{context.DeadlineExceeded, "app-platform", "timeout", 0},
 		{context.Canceled, "app-platform", "cancelled", 0},
+		{&appPlatformUpstreamError{status: 401, msg: "private body"}, "app-platform", "authentication-failed", 401},
 		{&appPlatformUpstreamError{status: 403, msg: "private body"}, "app-platform", "authorization-denied", 403},
 		{&appPlatformUpstreamError{status: 429}, "app-platform", "http-error", 429},
 		{&appPlatformUpstreamError{status: 503}, "app-platform", "http-error", 503},

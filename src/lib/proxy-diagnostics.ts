@@ -4,6 +4,7 @@ import { httpStatus } from './guide-diagnostics';
 
 const REASONS = new Set([
   'http-error',
+  'authentication-failed',
   'authorization-denied',
   'identity-unavailable',
   'proxy-unavailable',
