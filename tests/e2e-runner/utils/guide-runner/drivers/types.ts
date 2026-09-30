@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import type { StepTypeKind } from '../../../../../src/components/interactive-tutorial/step-type-registry';
-import type { TestableStep } from '../types';
+import type { FixResult, RequirementResult, TestableStep } from '../types';
 
 export interface StepDriverInspection {
   skippable: boolean;
@@ -29,6 +29,12 @@ export interface StepDriverExecutionResult {
 export interface StepDriver {
   kind: StepTypeKind;
   supported: boolean;
+  root(page: Page, stepId: string): Locator;
+  detachmentCompletes: boolean;
+  checkRequirements(context: StepDriverExecutionContext): Promise<{
+    requirements: RequirementResult;
+    fixResult?: FixResult;
+  }>;
   inspect(page: Page, root: Locator, stepId: string): Promise<StepDriverInspection>;
   timeout(step: TestableStep): number;
   completionState(page: Page, stepId: string): Promise<boolean>;

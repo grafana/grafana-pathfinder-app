@@ -73,7 +73,9 @@
     "showMoreTabs_one": "Show {{count}} more tab",
     "showMoreTabs_other": "Show {{count}} more tabs",
     "switchToTab": "Switch to {{title}}",
-    "wordmark": "Interactive Learning"
+    "wordmark": "Interactive Learning",
+    "beta": "Beta",
+    "classicHelpMenuSettings": "Classic Help menu settings"
   },
   "guideVersionNotice": {
     "body": "This guide is written for Grafana {{required}} or later, and this instance runs {{current}}. Some steps might not match what you see.",
@@ -170,5 +172,20 @@
       "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
       "toggleViewMode": "Toggle view mode"
     }
+  },
+  "appConfig": {
+    "beta": "Beta",
+    "pathfinderEnabled": "Enable Pathfinder",
+    "pathfinderEnabledDescription": "Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, Pathfinder stays available.",
+    "pathfinderPreview": "Interactive learning",
+    "pathfinderPreviewDescription": "Pathfinder brings contextual help and interactive guides into Grafana.",
+    "pathfinderRemotelyDisabled": "Pathfinder is disabled remotely",
+    "pathfinderRemotelyDisabledDescription": "The remote switch currently prevents Pathfinder from running. Your saved preference will apply when Pathfinder is enabled remotely again.",
+    "pathfinderRevertDescription": "Turn this off to use Grafana’s classic Help menu after users reload. Your learning progress is kept."
+  },
+  "pathfinder": {
+    "disabled": "Pathfinder is disabled",
+    "disabledDescription": "Pathfinder is turned off for this organization.",
+    "openSettings": "Open Pathfinder settings"
   }
 }

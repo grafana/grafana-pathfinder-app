@@ -112,6 +112,190 @@ function childSectionNamespace(block: CountableBlock, jsonPath: string): Contain
   return { id: undefined, indexDerived: true };
 }
 
+/**
+ * Collect step IDs for blocks inside conditional branches and map them to the
+ * conditional's own position. This lets branch-child completion evidence credit
+ * the conditional without putting those branch blocks in the denominator.
+ *
+ * Recursively handles:
+ * - Transparent containers (section, assistant, collapsible): descend into their
+ *   blocks array with the container's runtime ID as the new parentSectionId.
+ * - Nested conditionals: descend into their whenTrue/whenFalse branches with new
+ *   synthetic parent IDs, still mapping to the OUTER conditional's position.
+ * - Opaque types (multistep, guided, snippet-ref): collect their step ID as a
+ *   single entry without descending.
+ */
+function collectBranchChildStepIds(
+  block: CountableBlock,
+  blockJsonPath: string,
+  conditionalPosition: number,
+  resolveStepId: (block: CountableBlock, context: BlockStepIdContext) => string | undefined,
+  jsonPathShifted: boolean
+): Map<string, number> {
+  const result = new Map<string, number>();
+
+  // Skip entirely if the conditional's path was shifted by a snippet-ref.
+  if (jsonPathShifted) {
+    return result;
+  }
+
+  const branches: Array<{ children: readonly CountableBlock[] | undefined; branchId: string; branchKey: string }> = [
+    { children: block.whenTrue, branchId: `conditional-true:${blockJsonPath}`, branchKey: 'whenTrue' },
+    { children: block.whenFalse, branchId: `conditional-false:${blockJsonPath}`, branchKey: 'whenFalse' },
+  ];
+
+  for (const { children, branchId, branchKey } of branches) {
+    if (!Array.isArray(children)) {
+      continue;
+    }
+
+    // Track snippet-ref siblings within this branch.
+    let sawSnippetRefInBranch = false;
+
+    for (let index = 0; index < children.length; index++) {
+      const child = children[index];
+      if (!child || typeof child.type !== 'string') {
+        continue;
+      }
+
+      // After a snippet-ref in this branch, stop collecting step IDs.
+      if (sawSnippetRefInBranch) {
+        break;
+      }
+
+      const childJsonPath = `${blockJsonPath}.${branchKey}[${index}]`;
+
+      // Handle transparent containers: recurse into their children.
+      if (TRANSPARENT_CONTAINERS.has(child.type)) {
+        const namespace = childSectionNamespace(child, childJsonPath);
+        if (namespace.id !== undefined) {
+          const childAliases = collectBranchChildrenRecursive(
+            child.blocks,
+            childJsonPath,
+            namespace.id,
+            conditionalPosition,
+            resolveStepId,
+            false // Inside a branch, we don't propagate jsonPathShifted further into containers
+          );
+          for (const [stepId, pos] of childAliases) {
+            if (!result.has(stepId)) {
+              result.set(stepId, pos);
+            }
+          }
+        }
+        continue;
+      }
+
+      // Handle nested conditionals: recurse into their branches.
+      if (child.type === 'conditional') {
+        const nestedAliases = collectBranchChildStepIds(
+          child,
+          childJsonPath,
+          conditionalPosition, // Still map to the OUTER conditional's position
+          resolveStepId,
+          false
+        );
+        for (const [stepId, pos] of nestedAliases) {
+          if (!result.has(stepId)) {
+            result.set(stepId, pos);
+          }
+        }
+        continue;
+      }
+
+      // For opaque types (multistep, guided) and plain blocks, resolve their step ID.
+      const stepId = resolveStepId(child, { parentSectionId: branchId, index });
+      if (stepId && !result.has(stepId)) {
+        result.set(stepId, conditionalPosition);
+      }
+
+      if (child.type === 'snippet-ref') {
+        sawSnippetRefInBranch = true;
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Recursively collect step IDs from children inside a transparent container
+ * that's inside a conditional branch.
+ */
+function collectBranchChildrenRecursive(
+  children: readonly CountableBlock[] | undefined,
+  parentJsonPath: string,
+  parentSectionId: string,
+  conditionalPosition: number,
+  resolveStepId: (block: CountableBlock, context: BlockStepIdContext) => string | undefined,
+  sawSnippetRefInParent: boolean
+): Map<string, number> {
+  const result = new Map<string, number>();
+
+  if (!Array.isArray(children)) {
+    return result;
+  }
+
+  let sawSnippetRef = sawSnippetRefInParent;
+
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
+    if (!child || typeof child.type !== 'string') {
+      continue;
+    }
+
+    if (sawSnippetRef) {
+      break;
+    }
+
+    const childJsonPath = `${parentJsonPath}.blocks[${index}]`;
+
+    // Handle transparent containers: recurse further.
+    if (TRANSPARENT_CONTAINERS.has(child.type)) {
+      const namespace = childSectionNamespace(child, childJsonPath);
+      if (namespace.id !== undefined) {
+        const childAliases = collectBranchChildrenRecursive(
+          child.blocks,
+          childJsonPath,
+          namespace.id,
+          conditionalPosition,
+          resolveStepId,
+          sawSnippetRef
+        );
+        for (const [stepId, pos] of childAliases) {
+          if (!result.has(stepId)) {
+            result.set(stepId, pos);
+          }
+        }
+      }
+      continue;
+    }
+
+    // Handle nested conditionals: recurse into their branches.
+    if (child.type === 'conditional') {
+      const nestedAliases = collectBranchChildStepIds(child, childJsonPath, conditionalPosition, resolveStepId, false);
+      for (const [stepId, pos] of nestedAliases) {
+        if (!result.has(stepId)) {
+          result.set(stepId, pos);
+        }
+      }
+      continue;
+    }
+
+    // For opaque types and plain blocks, resolve their step ID.
+    const stepId = resolveStepId(child, { parentSectionId, index });
+    if (stepId && !result.has(stepId)) {
+      result.set(stepId, conditionalPosition);
+    }
+
+    if (child.type === 'snippet-ref') {
+      sawSnippetRef = true;
+    }
+  }
+
+  return result;
+}
+
 /** Where a block sits, in the namespace the parser keys derived step ids under. */
 export interface BlockStepIdContext {
   /** Owning section, conditional branch, or synthetic standalone parent. */
@@ -193,6 +377,16 @@ export interface GuideBlockIndex {
    * monotonic so it could never be corrected downward.
    */
   containerEndPositions: ReadonlyMap<string, number>;
+  /**
+   * Position by runtime step id for blocks inside conditional branches.
+   * Maps branch child step ids to the position of their parent conditional.
+   * Empty when no resolver was supplied.
+   *
+   * Unlike {@link positionsByStepId}, these entries don't represent counted
+   * blocks — they're aliases that let a branch child completion credit the
+   * conditional's position.
+   */
+  branchChildPositions: ReadonlyMap<string, number>;
   /** Transparent `section` containers encountered. Not part of the denominator. */
   sectionCount: number;
   /** Counted blocks that can emit completion evidence. */
@@ -220,6 +414,7 @@ export function computeGuideBlockIndex(
   const positionsById = new Map<string, number>();
   const positionsByStepId = new Map<string, number>();
   const containerEndPositions = new Map<string, number>();
+  const branchChildPositions = new Map<string, number>();
   let sectionCount = 0;
   let completableBlockCount = 0;
   let finalCompletablePosition = 0;
@@ -309,6 +504,22 @@ export function computeGuideBlockIndex(
         completableBlockCount++;
         finalCompletablePosition = position;
       }
+      // Collect branch child step IDs for conditionals.
+      if (block.type === 'conditional' && resolveStepId) {
+        const childJsonPathShifted = jsonPathShifted || sawSnippetRefSibling;
+        const branchAliases = collectBranchChildStepIds(
+          block,
+          blockJsonPath,
+          position,
+          resolveStepId,
+          childJsonPathShifted
+        );
+        for (const [stepId, aliasPosition] of branchAliases) {
+          if (!branchChildPositions.has(stepId)) {
+            branchChildPositions.set(stepId, aliasPosition);
+          }
+        }
+      }
       if (block.type === 'snippet-ref') {
         sawSnippetRefSibling = true;
       }
@@ -323,6 +534,7 @@ export function computeGuideBlockIndex(
     positionsById,
     positionsByStepId,
     containerEndPositions,
+    branchChildPositions,
     sectionCount,
     completableBlockCount,
     finalCompletablePosition,

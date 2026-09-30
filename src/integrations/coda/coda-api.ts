@@ -13,8 +13,12 @@
  * directly from `@grafana/coda-client` rather than through this adapter.
  */
 
+import { config, getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
+
 import {
   CodaClient,
+  codaWorkspaceUrl as clientWorkspaceUrl,
   CodaError,
   toCodaError,
   isNotReady,
@@ -24,6 +28,7 @@ import {
   CODA_PLUGIN_ID,
   V1_DEFAULTS,
   isCodaUsable,
+  codaSupports,
   codaSessionEligibility,
   type CatalogueItem,
   type CodaErrorCode,
@@ -46,6 +51,7 @@ export {
   CODA_PLUGIN_ID,
   V1_DEFAULTS,
   isCodaUsable,
+  codaSupports,
   codaSessionEligibility,
 };
 export type { CatalogueItem, CodaErrorCode, CodaCapabilities, CodaSessionRole, GcxCredential, MintTokenOptions };
@@ -125,9 +131,6 @@ export function codaErrorCodeMessage(code: CodaErrorCode | undefined, fallback: 
     case 'role_forbidden':
       return codaRoleForbiddenMessage();
     case 'vm_quota_exceeded':
-      // Deliberately does not say "close another terminal": CodaSession.close()
-      // releases the terminal but leaves the VM holding its quota slot, so only
-      // expiry or an operator-side delete frees one.
       return 'You already have the maximum number of sandbox VMs. Wait for one to expire before starting another.';
     case 'rate_limited':
       return 'Too many sandbox requests. Wait a moment and try again.';
@@ -142,6 +145,25 @@ export function codaErrorCodeMessage(code: CodaErrorCode | undefined, fallback: 
     case 'coda_unavailable':
     case 'upstream_failed':
       return 'The sandbox service could not be reached. Wait a moment and try again.';
+    case 'file_permission_denied':
+    case 'file_not_found':
+    case 'file_conflict':
+    case 'file_too_large':
+    case 'directory_too_large':
+    case 'file_unsupported':
+    case 'file_metadata_unsupported':
+    case 'file_operation_failed':
+    case 'workspace_unavailable':
+    case 'file_timeout':
+    case 'too_many_sessions':
+    case 'host_identity_unverified':
+    case 'vm_expired':
+    case 'vm_failed':
+    case 'instance_disposing':
+    case 'stream_stalled':
+    case 'protocol_mismatch':
+    case 'mint_account_role_mismatch':
+    case 'recovery_exhausted':
     case undefined:
     case 'invalid_request':
     case 'invalid_ready_file':
@@ -162,6 +184,7 @@ export function codaErrorCodeMessage(code: CodaErrorCode | undefined, fallback: 
     case 'exec_failed':
       return fallback;
     default:
+      // The SDK also accepts unknown strings for additive backend error codes.
       return fallback;
   }
 }
@@ -184,6 +207,10 @@ export function listVMs(): Promise<VM[]> {
   return client.listVMs();
 }
 
+export function deleteVM(vmId: string) {
+  return client.deleteVM(vmId, true);
+}
+
 export function deleteSession(sessionId: string) {
   return client.deleteSession(sessionId);
 }
@@ -203,3 +230,52 @@ export function execInSession(sessionId: string, req: ExecRequest) {
 export function provisionGcx(sessionId: string, options: MintTokenOptions & { token?: string } = {}) {
   return provisionGcxCredential(client, sessionId, options);
 }
+
+export function codaWorkspaceUrl(vmId: string, path?: string, line?: number): string {
+  const url = new URL(clientWorkspaceUrl(vmId, path, line), window.location.origin);
+  url.pathname = `${config.appSubUrl ?? ''}/a/${CODA_PLUGIN_ID}/ide`;
+  return `${url.pathname}${url.search}`;
+}
+
+// Additive wire types keep this PR compatible with the currently published SDK.
+export interface SandboxLifetime {
+  extensionMinutes: number;
+  extensionsUsed: number;
+  extensionsRemaining: number;
+  eligibleAt: string | null;
+  maxExpiresAt: string | null;
+  canExtend: boolean;
+  unavailableReason: string | null;
+}
+export type LifetimeVM = VM & { lifetime?: SandboxLifetime };
+export const lifetimeClient = {
+  getVM: async (vmId: string): Promise<LifetimeVM> => {
+    const response = await lastValueFrom(
+      getBackendSrv().fetch<LifetimeVM>({
+        method: 'GET',
+        url: `/api/plugins/grafana-coda-app/resources/v1/vms/${encodeURIComponent(vmId)}`,
+        showErrorAlert: false,
+      })
+    );
+    return response.data;
+  },
+  extendVM: async (
+    vmId: string,
+    requestKey: string,
+    expiresAt: string
+  ): Promise<Pick<LifetimeVM, 'id' | 'expiresAt' | 'lifetime'>> => {
+    try {
+      const response = await lastValueFrom(
+        getBackendSrv().fetch<Pick<LifetimeVM, 'id' | 'expiresAt' | 'lifetime'>>({
+          method: 'POST',
+          url: `/api/plugins/grafana-coda-app/resources/v1/vms/${encodeURIComponent(vmId)}/extend`,
+          data: { requestKey, expiresAt },
+          showErrorAlert: false,
+        })
+      );
+      return response.data;
+    } catch (err) {
+      throw toCodaError(err);
+    }
+  },
+};

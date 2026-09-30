@@ -76,9 +76,7 @@ const flushPromises = async (): Promise<void> => {
 };
 
 const mkDeps = (overrides: Partial<Deps> = {}): Deps => ({
-  shouldMountSidebar: true,
   attemptAutoOpen: jest.fn(),
-  loadControlGroupDocPopup: jest.fn().mockResolvedValue({ showControlGroupDocPopup: jest.fn() }),
   ...overrides,
 });
 
@@ -114,6 +112,17 @@ describe('handlePathfinderDeepLink', () => {
     mockGetHistoryImpl = () => ({ listen: mockHistoryListen });
   });
 
+  it('keeps the route selected by kiosk without a page query that conflicts with app routing', async () => {
+    setPathname('/a/grafana-synthetic-monitoring-app/home');
+    setSearch('?doc=bundled%3Afoo&kiosk_session=test');
+    mockFindDocPage.mockReturnValue({ type: 'docs-page', url: 'bundled:foo', title: 'Foo', targetPage: '/explore' });
+    const deps = mkDeps();
+    handlePathfinderDeepLink(deps);
+    await flushPromises();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).toHaveBeenCalled();
+  });
+
   it('returns false and does no work when no Pathfinder params are present', () => {
     setSearch('?keep=this');
     const deps = mkDeps();
@@ -147,20 +156,6 @@ describe('handlePathfinderDeepLink', () => {
     // so the inner `.then` callback settles before we assert.
     await flushPromises();
     expect(mockFindDocPage).toHaveBeenCalledTimes(1);
-  });
-
-  it('routes the control-group branch when sidebar is not mountable', async () => {
-    setSearch('?doc=bundled%3Afoo&source=tile_click');
-    const showControlGroupDocPopup = jest.fn();
-    const loadControlGroupDocPopup = jest.fn().mockResolvedValue({ showControlGroupDocPopup });
-    const deps = mkDeps({ shouldMountSidebar: false, loadControlGroupDocPopup });
-
-    expect(handlePathfinderDeepLink(deps)).toBe(true);
-    expect(window.location.search).toBe('');
-
-    await flushPromises();
-    expect(showControlGroupDocPopup).toHaveBeenCalledWith('tile_click');
-    expect(mockFindDocPage).not.toHaveBeenCalled();
   });
 
   it('sets floating panel mode and strips panelMode from the URL', () => {
@@ -219,6 +214,30 @@ describe('handlePathfinderDeepLink', () => {
     expect(mockSetPendingOpenSource).not.toHaveBeenCalled();
     expect(deps.attemptAutoOpen).not.toHaveBeenCalled();
     expect(window.location.search).toBe('?doc=bundled%3Awelcome-to-grafana&type=docs');
+  });
+
+  it('preserves the destination query when Grafana is served from a subpath', async () => {
+    setPathname('/grafana/dashboards', '/dashboards');
+    setSearch('?doc=bundled:welcome-to-grafana&page=/dashboards&query=kiosk');
+    handlePathfinderDeepLink(mkDeps());
+    await flushPromises();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe('/grafana/dashboards');
+    expect(window.location.search).toBe('?query=kiosk');
+  });
+
+  it('honors an explicit sidebar request for same-tab kiosk guide launches', () => {
+    setSearch('?panelMode=sidebar');
+    handlePathfinderDeepLink(mkDeps());
+    expect(mockSetModePersisted).toHaveBeenCalledWith('sidebar');
+    expect(window.location.search).toBe('');
+  });
+
+  it('leaves kiosk launch links to the kiosk handler even when panelMode is supplied', () => {
+    const deps = mkDeps();
+    setSearch('?pathfinderKiosk=1&panelMode=fullscreen');
+    expect(handlePathfinderDeepLink(deps)).toBe(false);
+    expect(window.location.search).toBe('?pathfinderKiosk=1&panelMode=fullscreen');
   });
 
   it('still captures kiosk_session on the full-screen route while leaving ?doc= for FullScreenPanel', async () => {

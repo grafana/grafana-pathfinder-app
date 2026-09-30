@@ -1,3 +1,4 @@
+import { readProxyDiagnostics, reportProxyFailure, reportProxyResponse } from './proxy-diagnostics';
 /**
  * Client for the /custom-guide-repository backend proxy — a slim,
  * denormalized catalogue of the caller's private InteractiveGuide packages
@@ -17,7 +18,7 @@ import { isBackendApiAvailable } from '../utils/fetchBackendGuides';
 import { logger } from './logging';
 import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
 import { PackageTypeSchema } from '../types/package.schema';
-import type { Author, PackageType } from '../types/package.types';
+import type { Author, ManifestTrack, PackageType } from '../types/package.types';
 
 /**
  * `type` is optional because the Go proxy forwards the stored string verbatim
@@ -29,6 +30,7 @@ export interface CustomGuideManifest {
   repository?: string;
   description?: string;
   milestones?: string[];
+  tracks?: ManifestTrack[];
   category?: string;
   author?: Author;
 }
@@ -103,8 +105,12 @@ function classifyRequestFailure(err: unknown): string {
 }
 
 function reportCatalogueFetchFailure(err: unknown): void {
+  reportProxyFailure(err);
   try {
-    const reason = classifyRequestFailure(err);
+    const diagnostic = readProxyDiagnostics((err as { data?: { diagnostics?: unknown } })?.data?.diagnostics);
+    const reason = diagnostic?.upstreamStatus
+      ? `upstream-${diagnostic.upstreamStatus}`
+      : (diagnostic?.reason ?? classifyRequestFailure(err));
     // The log context bridges to Faro too (logging.ts sanitizes it, it does not
     // strip it), so it carries the same bounded token — never `err.message`.
     logger.warn('[custom-guides] catalogue fetch failed', { reason });
@@ -160,6 +166,7 @@ async function requestCatalogue(): Promise<CatalogueResult> {
     undefined,
     { showErrorAlert: false, showSuccessAlert: false }
   );
+  reportProxyResponse(response);
   if (!response?.capability?.available) {
     // Surface WHY the catalogue is empty — otherwise a degraded capability (e.g.
     // obo-unavailable) presents as "no guides" with nothing in the console, which

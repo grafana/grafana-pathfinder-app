@@ -18,6 +18,7 @@ import {
   unwrapEnvelope,
   wrapEnvelope,
 } from './user-storage';
+import { StorageEvents } from './event-names';
 import { StorageKeys, buildVersionedSectionStorageKey } from './storage-keys';
 
 // Mock `@grafana/runtime` so the quota-toast helper can publish through a
@@ -190,6 +191,57 @@ describe('milestoneCompletionStorage', () => {
 
     await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set());
     await expect(milestoneCompletionStorage.getCompleted('backend-guide:fe-alerting-path')).resolves.toEqual(new Set());
+    expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
+  });
+
+  // The per-milestone toolbar reset needs to remove exactly ONE slug from a
+  // journey's legacy record — `clear` above drops the whole journey, which
+  // would silently un-reset every OTHER milestone in the same journey.
+  it('removeCompleted removes only the named slug, across canonical and legacy URL variants, leaving siblings intact', async () => {
+    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'install-alloy');
+    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/view-data/content.json`, 'view-data');
+
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy');
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['view-data']));
+    const stored = JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}');
+    expect(stored[journeyUrl]).toEqual(['view-data']);
+    expect(stored[`${journeyUrl}/`]).toEqual(['view-data']);
+    expect(stored[`${journeyUrl}/view-data/content.json`]).toEqual(['view-data']);
+  });
+
+  // getCompleted/getCompletedSync also treat a milestone's own URL as an
+  // exact alias for its journey's record (getStoredMilestoneSlugs'
+  // exactKeys), so a pre-migration write under that URL — rather than under
+  // any key that canonicalizes to the journey base — must be reachable by
+  // removeCompleted too, or the read path keeps reporting the reset
+  // milestone as complete.
+  it('removeCompleted also removes a legacy record stored under the milestone URL itself, given as an alias', async () => {
+    const milestoneUrl = `${journeyUrl}/install-alloy/content.json`;
+    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'view-data');
+    const existing = JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}');
+    localStorage.setItem(
+      StorageKeys.MILESTONE_COMPLETION,
+      JSON.stringify({ ...existing, [milestoneUrl]: ['install-alloy'] })
+    );
+
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy', [milestoneUrl]);
+
+    const stored = JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}');
+    expect(stored[milestoneUrl]).toEqual([]);
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['view-data']));
+  });
+
+  it('removeCompleted is a no-op when the slug was never marked complete', async () => {
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'install-alloy');
+
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'never-completed');
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['install-alloy']));
+  });
+
+  it('removeCompleted is a no-op when the journey has no record at all', async () => {
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy');
     expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
   });
 
@@ -1049,5 +1101,51 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
       setGlobalStorage(createLocalStorage());
       jest.useRealTimers();
     }
+  });
+});
+
+describe('kiosk response persistence', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setGlobalStorage(createLocalStorage());
+  });
+  it('announces merged responses with the guide-scoped wildcard event', async () => {
+    const listener = jest.fn();
+    window.addEventListener(StorageEvents.GuideResponseChanged, listener);
+    try {
+      await guideResponseStorage.mergeResponses('first', { appUrl: 'https://example.com' });
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener.mock.calls[0][0].detail).toEqual({ guideId: 'first', variableName: '*', value: undefined });
+    } finally {
+      window.removeEventListener(StorageEvents.GuideResponseChanged, listener);
+    }
+  });
+  it('merges submitted keys, survives a storage reload and isolates guides', async () => {
+    await guideResponseStorage.setResponse('first', 'other', 'preserved');
+    await guideResponseStorage.mergeResponses('second', { appUrl: 'https://second.example' });
+    await guideResponseStorage.mergeResponses('first', { appUrl: 'https://old.example' });
+    await guideResponseStorage.mergeResponses('first', { appUrl: 'https://new.example' });
+    setGlobalStorage(createLocalStorage());
+    expect(await guideResponseStorage.getForGuide('first')).toEqual({
+      other: 'preserved',
+      appUrl: 'https://new.example',
+    });
+    expect(await guideResponseStorage.getForGuide('second')).toEqual({ appUrl: 'https://second.example' });
+  });
+  it('reports storage failures instead of claiming success', async () => {
+    setGlobalStorage({
+      ...createLocalStorage(),
+      setItem: async () => {
+        throw new Error('Unavailable');
+      },
+    });
+    await expect(guideResponseStorage.mergeResponses('first', { appUrl: 'https://example.com' })).rejects.toThrow(
+      'Unavailable'
+    );
+  });
+  it('rejects prototype keys', async () => {
+    await expect(guideResponseStorage.mergeResponses('first', JSON.parse('{"__proto__":"x"}'))).rejects.toThrow(
+      'Invalid'
+    );
   });
 });

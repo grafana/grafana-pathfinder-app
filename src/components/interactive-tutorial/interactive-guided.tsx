@@ -380,7 +380,6 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         // own, so there's no race left for a mounted-check to guard against.
         setIsExecuting(true);
         setExecutionError(null);
-        guidedHandler.resetProgress();
         setCurrentStepIndex(0);
         setFailedStepIndex(-1);
         setCurrentStepStatus('waiting');

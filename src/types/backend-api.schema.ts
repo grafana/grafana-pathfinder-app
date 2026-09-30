@@ -22,6 +22,19 @@ import { GuideStatsSummarySchema } from './guide-stats.schema';
 /** Any JSON value. Mirrors Go `json.RawMessage` / `interface{}` passthrough. */
 export const JsonValueSchema = z.json();
 
+export const GuideProxyDiagnosticWireSchema = z.strictObject({
+  stage: z.string().optional(),
+  resource: z.string().optional(),
+  operation: z.string().optional(),
+  outcome: z.enum(['ok', 'error', 'degraded']),
+  reason: z.string().optional(),
+  upstreamStatus: z.number().int().min(100).max(599).optional(),
+  cache: z.enum(['hit', 'shared', 'refresh', 'stale']).optional(),
+  cacheAgeMs: z.number().int().nonnegative(),
+  manifestFailures: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  budgetExhausted: z.boolean().optional(),
+});
+
 // ============ /completion-records/capability ============
 
 /**
@@ -29,6 +42,7 @@ export const JsonValueSchema = z.json();
  * @coupling Go struct: completionCapability
  */
 export const CompletionCapabilityWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   available: z.boolean(),
   reason: z.string().optional(),
 });
@@ -58,6 +72,7 @@ export const CollatedCompletionWireSchema = z.strictObject({
  * @coupling Go struct: myCompletionsResponse
  */
 export const MyCompletionsResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   capability: CompletionCapabilityWireSchema,
   userId: z.string().optional(),
   completions: z.array(CollatedCompletionWireSchema),
@@ -76,6 +91,13 @@ export const CustomGuideCapabilityWireSchema = z.strictObject({
 export const CustomGuideAuthorWireSchema = z.strictObject({
   name: z.string().optional(),
   team: z.string().optional(),
+});
+
+/** @coupling Go struct: customGuideManifest.tracks */
+export const CustomGuideTrackWireSchema = z.strictObject({
+  trackId: z.string(),
+  label: z.string(),
+  guides: z.array(z.string()),
 });
 
 /**
@@ -119,6 +141,7 @@ export const CustomGuideManifestWireSchema = z.strictObject({
   repository: z.string().optional(),
   description: z.string().optional(),
   milestones: z.array(z.string()).optional(),
+  tracks: z.array(CustomGuideTrackWireSchema).optional(),
   category: z.string().optional(),
   author: CustomGuideAuthorWireSchema.optional(),
   depends: z.array(JsonValueSchema).optional(),
@@ -140,6 +163,7 @@ export const CustomGuideRepositoryEntryWireSchema = z.strictObject({
  * @coupling Go struct: customGuideRepositoryResponse
  */
 export const CustomGuideRepositoryResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   capability: CustomGuideCapabilityWireSchema,
   guides: z.array(CustomGuideRepositoryEntryWireSchema),
   asOf: z.string().optional(),
@@ -170,6 +194,7 @@ export const PackageEntryWireSchema = z.strictObject({
 
 /** @coupling Go struct: PackageRecommendationsResponse */
 export const PackageRecommendationsResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   baseUrl: z.string(),
   packages: z.array(PackageEntryWireSchema),
 });
@@ -183,6 +208,7 @@ export const PackageRecommendationsResponseWireSchema = z.strictObject({
  * struct — or a stale schema — fails.
  */
 export const GO_STRUCT_SCHEMAS = {
+  guideProxyDiagnostic: GuideProxyDiagnosticWireSchema,
   PackageRecommendationsResponse: PackageRecommendationsResponseWireSchema,
   PackageEntry: PackageEntryWireSchema,
   PackageTargeting: PackageTargetingWireSchema,
@@ -192,6 +218,7 @@ export const GO_STRUCT_SCHEMAS = {
   customGuideManifest: CustomGuideManifestWireSchema,
   customGuideStats: CustomGuideStatsWireSchema,
   'customGuideManifest.author': CustomGuideAuthorWireSchema,
+  'customGuideManifest.tracks': CustomGuideTrackWireSchema,
   myCompletionsResponse: MyCompletionsResponseWireSchema,
   completionCapability: CompletionCapabilityWireSchema,
   collatedCompletion: CollatedCompletionWireSchema,

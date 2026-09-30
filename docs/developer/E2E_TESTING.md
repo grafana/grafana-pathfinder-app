@@ -15,7 +15,8 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 ## Source map for agents
 
 - `src/cli/commands/e2e.ts` — options, input resolution, dependency planning, pre-flight orchestration, environment routing, and Playwright invocation selection.
-- `src/cli/e2e/e2e-local-package.ts` — local path/journey manifest validation, repository loading, milestone expansion, target gating, and guide hydration.
+- `src/cli/e2e/e2e-local-package.ts` — local package validation, checkout catalogs, source checks, milestone expansion, target gating, and guide hydration.
+- `src/cli/e2e/local-cloud-preflight.ts` — health, version, and plugin checks against the provisioned target for local cloud packages.
 - `src/cli/e2e/e2e-runner-contract.ts` — environment variables and the validated shared-chain file contract.
 - `src/cli/e2e/e2e-package.ts` — remote package and repository resolution, content fetch, schema validation, side-effect classification, and pre-run skip reasons.
 - `src/cli/e2e/guide-chains.ts` — pure package graph planning across hard dependencies, capabilities, and recursive milestones, followed by leaf-guide hydration.
@@ -73,6 +74,7 @@ npx pathfinder-cli e2e [options] [files...]
 | `--clean`                                  | Run against an isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`). Resets between dependency chains and tears down at the end. | `false`                           |
 | `--clean-ready-timeout-ms <ms>`            | How long to wait for the isolated Grafana to become healthy after a `--clean` reset                                                                      | `120000`                          |
 | `--package <dirOrId>`                      | Test a local or remote guide, path, or journey package. Local paths/journeys also require `--repository` so milestone IDs resolve.                       | None                              |
+| `--repository <path>`                      | Repository index file, or checkout directory for an explicit local cloud package. Directory input builds an in-memory index.                             | Bundled index                     |
 | `--tier <tier>`                            | Current environment tier (`local` or `cloud`); `cloud` guides are skipped on a `local` environment                                                       | `local`                           |
 | `--remote`                                 | Resolve and test every package from the CDN repository index                                                                                             | `false`                           |
 | `--repo-url <url>`                         | CDN base URL for `--remote`                                                                                                                              | Public package repository         |
@@ -91,7 +93,7 @@ The CLI accepts these input formats:
 1. **File paths**: `npx pathfinder-cli e2e ./my-guide.json ./another.json`
 2. **Bundled flag**: `npx pathfinder-cli e2e --bundled` (tests all guides in `src/bundled-interactives/`)
 3. **Bundled by name**: `npx pathfinder-cli e2e bundled:welcome-to-grafana`
-4. **Local package directory**: `npx pathfinder-cli e2e --package ./my-package/` (reads `content.json` + `manifest.json`; add `--repository <path>` for a path or journey)
+4. **Local package directory**: `node dist/cli/cli/index.js e2e --package ./my-package/` (reads `content.json` + `manifest.json`; use `--repository <index-file>` for a local-target path or journey, or `--repository <checkout-directory>` for an explicit cloud-tier package)
 5. **Remote package ID**: `npx pathfinder-cli e2e --package alerting-101` (guides, paths, and journeys resolve via the recommender; see [Remote package-aware testing](#remote-package-aware-testing))
 6. **Remote repository**: `npx pathfinder-cli e2e --remote` (every package in the CDN index)
 
@@ -160,8 +162,8 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - For each step:
      - Check if pre-completed (objectives already met)
      - Handle requirements (Fix buttons with retry)
-     - Click "Do it" button
-     - Wait for completion indicator
+     - Operate the driver's action control: Do it, Show me, codeblock Insert, terminal Connect, or terminal Exec
+     - Wait for the driver's completion signal
    - Session validated before each shared milestone and every 5 steps
 
 5. **Reporting**
@@ -175,12 +177,50 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
 
 To support a registered kind that is currently reported as unsupported:
 
-1. Implement the `StepDriver` contract from `drivers/types.ts`. Its methods own DOM inspection, timeout calculation, completion checks, skip synchronization, and execution for that kind.
+1. Implement the `StepDriver` contract from `drivers/types.ts`. Its methods own root lookup, DOM inspection, requirements handling, timeout calculation, completion checks, skip synchronization, and execution. Set `detachmentCompletes` explicitly. Codeblocks require an attached completed root, while existing drivers retain their legacy detachment behavior.
 2. Put behavior shared with existing drivers in `drivers/shared.ts`. Keep specialized behavior in a focused driver module, as `drivers/guided.ts` does.
 3. Replace the kind's `unsupportedDriver(...)` entry in `drivers/registry.ts` with a supported driver. Do not add kind-specific branches to `discovery.ts` or `execution.ts`.
 4. Update `drivers/registry.test.ts` and add focused discovery and execution tests. If the change affects unsupported-only handling or externally reported fields, also update `run-guide.test.ts`, reporter/result tests, and the report schema as required.
 
 When introducing a product step kind rather than enabling an existing one, first add it to `STEP_TYPE_KIND_KEYS`, emit the tracked root attributes, and update the contract tests and [E2E testing contract](./E2E_TESTING_CONTRACT.md). The registry test requires every tracked kind to have exactly one registry entry, supported or unsupported.
+
+### Codeblock steps
+
+The runner supports the tracked `codeblock` kind through `drivers/codeblock.ts`. It clicks the product's Insert control and waits for explicit completion. Show me and Copy are not insertion fallbacks.
+
+The driver includes codeblocks in document order, so a successful insertion can unlock the next sequential step. Pre-completed blocks do not insert again. Requirements, insertion errors, disabled controls, and missing completion produce bounded results. A blocked optional block can use the product's Skip control.
+
+Codeblock errors and skippability use the [codeblock testing contract](./E2E_TESTING_CONTRACT.md#codeblock-runner-contract). Older installed plugins can lack the newer error and skippability attributes. Successful insertion still works on tracked roots, but errors can fall back to timeouts and optionality can depend on visible Skip controls.
+
+Run the browser regressions without Grafana authentication:
+
+```bash
+npm run e2e -- --config tests/e2e-runner/playwright.config.ts codeblock-driver.spec.ts --project chromium --no-deps
+```
+
+These tests use a DOM fixture, not a real Monaco editor. They cover discovery, insertion ordering, the next-step gate, insertion errors, disabled Insert controls, and root detachment. Component contract tests cover the product's Insert and Skip controls and their state transitions.
+
+### Terminal steps
+
+The runner supports `terminal-connect` and `terminal` through `drivers/terminal.ts`. Both require the [terminal DOM contract](./E2E_TESTING_CONTRACT.md#terminal-runner-contract) from the installed Pathfinder build.
+
+A connection step clicks its own Connect control and waits for a connected, completed root. An existing default connection uses Continue. An explicit VM request with an existing connection fails before Continue, because the product does not prove that the current VM matches. This also applies when an earlier step in the same run opened the connection. Disconnecting before the run does not enable later steps to switch VMs.
+
+A command step connects through its own control if necessary, then clicks Exec once. It never substitutes Copy. Completion means the product sent the command, not that the shell finished or returned exit code zero. The driver does not parse terminal output, append shell markers, or resend commands after errors.
+
+Connection steps allow 240 seconds for provisioning. Command steps allow 270 seconds, including connection. Root detachment, connection errors, dispatch errors, and missing completion do not count as success.
+
+Missing Coda or insufficient permissions produce unmet prerequisites. Mandatory steps fail and stop the guide under the existing result contract. Optional command steps can skip only through an available product Skip control, with explicit completion afterward.
+
+Connection steps with `gcx: true` fail as unmet prerequisites in this first implementation. The runner does not mint credentials, paste tokens, or click Continue without gcx. Challenge blocks remain unsupported.
+
+Run the browser fixtures without Coda or Grafana authentication:
+
+```bash
+npm run e2e -- --config tests/e2e-runner/playwright.config.ts terminal-driver.spec.ts --project chromium --no-deps
+```
+
+These fixtures do not provision VMs or send real commands. A live smoke test needs an enabled, registered Coda plugin and a disposable sandbox. Verify the authored command output separately from the runner verdict.
 
 ### Shared path and journey sessions
 
@@ -295,6 +335,8 @@ Skipping a step is a two-part handshake, not just a runner-side decision. The ru
 A no-op or objective-based step can complete, or its element can detach, between discovery and this point in execution, before the runner even scrolls to it. The runner rechecks for this right before scrolling and records `PASSED`, the same outcome it records when it observes a step completing via objectives right before clicking "Do it". This keeps one DOM state, attached and `completed`, mapped to one outcome, no matter which check in the runner happens to observe it first.
 
 Overall success requires zero mandatory failures and either at least one verified pass or zero failed steps. A run where every step is skipped cleanly succeeds; a run with no verified pass and any failed skippable step fails.
+
+Local-source cloud runs add a stricter report check for interactive guides: without a verified passed step, an interactive guide receives `skipped`, not `passed`. A prose-only guide in an otherwise interactive graph can receive `passed` with zero browser steps. This includes a selected prose-only root with an interactive prerequisite. The report does not claim a verified browser step for that prose-only guide. See [local-source cloud runs](#local-source-cloud-runs).
 
 ## Artifacts and reporting
 
@@ -458,7 +500,7 @@ npx pathfinder-cli e2e bundled:e2e-framework-test
 
 ## Dependency-aware ordering
 
-Before running, the CLI builds an execution plan from a `repository.json` index (the bundled `src/bundled-interactives/repository.json` by default, or `--repository <path>`). Guides linked by a hard `depends` prerequisite are run in dependency order and grouped into **chains**; unrelated guides form independent single-guide chains.
+Before running, the CLI builds an execution plan from a `repository.json` index (the bundled `src/bundled-interactives/repository.json` by default, or `--repository <path>`). Local-source cloud runs instead build their catalog from the explicit checkout directory, without using a committed index. Guides linked by a hard `depends` prerequisite are run in dependency order and grouped into **chains**; unrelated guides form independent single-guide chains.
 
 - **Auto-included prerequisites**: if you test a guide whose prerequisite is not in the selection (for example `bundled:loki-grafana-101` alone), the missing prerequisite (`prometheus-grafana-101`) is pulled in from the repository and run first.
 - **Virtual capabilities**: a `depends` target may be a capability name; it resolves to whichever guide `provides` it.
@@ -702,6 +744,75 @@ Use the verifier to run the shared path and the isolated negative case:
 GRAFANA_URL=http://localhost:3000 \
   bash tests/e2e-runner/fixtures/shared-session-path/verify.sh
 ```
+
+## Local-source cloud runs
+
+The runner can test unpublished guides, prerequisites, paths, and journeys from a local checkout against Grafana Cloud. Uncommitted content is supported. No commit, PR, coordinator, generated `repository.json`, or CDN publication is required.
+
+### Run a local package against a leased stack
+
+1. Build the CLI with `npm run build:cli`.
+2. Set `POOL_MANAGER_TOKEN` through your approved credential source, outside the guide checkout.
+3. Select a package whose manifest declares `testEnvironment.tier: "cloud"`.
+4. Replace the checkout, package, manager URL, and pool ID in this command.
+5. Run the command against an approved disposable pool.
+
+The token flag takes an environment variable name, not the token value. The pool ID must already exist on the platform.
+
+```bash
+TUTORIALS_CHECKOUT=/path/to/interactive-tutorials
+node dist/cli/cli/index.js e2e \
+  --package "$TUTORIALS_CHECKOUT/your-cloud-guide" \
+  --repository "$TUTORIALS_CHECKOUT" \
+  --tier cloud \
+  --cloud-stack-pool-manager-url https://pool-manager.example.com \
+  --cloud-stack-pool-manager-token POOL_MANAGER_TOKEN \
+  --cloud-stack-pool-id approved-disposable-pool \
+  --output ./artifacts/local-cloud-report.json \
+  --artifacts ./artifacts/local-cloud
+```
+
+The runner uses the Pathfinder version already installed on the target. This command does not deploy local plugin changes.
+
+The report records each executed guide's identity, local content digest, and actual target URL. Failure artifacts use the directory from `--artifacts`. The runner retires leased stacks during cleanup. A retirement failure appears in `cleanupWarnings`.
+
+### Source and target selection
+
+The CLI builds an in-memory catalog from `--repository` on every run. It resolves the selected package, milestones, and prerequisites from that checkout, including renamed package directories. Missing required packages and duplicate IDs in the selected graph stop the run before leasing.
+
+Catalog build errors for selected packages, dependency alternatives, or providers of required capabilities also stop the run before leasing. The error report includes the build errors, rather than silently choosing another provider. Errors in unrelated packages do not prevent a valid selected graph from running.
+
+For these cloud runs, `--repository <index-file>` also works: its parent directory becomes the checkout root. The CLI rebuilds the catalog instead of trusting the index contents. Local-target paths and published-source runs retain their existing index behavior.
+
+Source validation rejects symbolic links, hard links, and special files before reading manifests when `--repository` is supplied. The scan includes assets but excludes the root `.git`, `.github`, `node_modules`, and `scripts` directories. It does not freeze the checkout or prevent later edits.
+
+Cloud execution reuses the existing pool and named-target policies. A named target still needs its matching `--cloud-instance-admin-token` binding. Missing credentials for a selected local cloud package or its required guides produce a configuration error (exit code 2). This applies to guides, paths, and journeys. Existing shared-target safety refusals still apply. See [remote package-aware testing](#remote-package-aware-testing) for those policies.
+
+After provisioning, the runner checks health and manifest requirements against the actual target. For `minVersion`, it reads `buildInfo.version` from authenticated `/api/frontend/settings`. Missing, invalid, or insufficient versions stop execution. The runner does not substitute the version from `/api/health`. Plugin checks also use the target's runner token. Authenticated version and plugin checks require HTTPS and refuse redirects. Token-free plugin checks still support local HTTP targets.
+
+### Non-execution results
+
+The following cases produce skipped reports rather than an unqualified pass:
+
+- A local-tier package selected with `--tier cloud`. This skip needs neither `--repository` nor cloud credentials.
+- A selected graph with no interactive blocks. The report lists the selected root and all planned leaves as unexecuted.
+- A `snippet-ref` block, including nested references.
+- A navigate action with `openGuide`, or a `reftarget`/`refTarget` URL with a nonempty `doc` query value.
+- An interactive guide with no passed browser step, including guides whose steps are all skipped or not reached.
+
+Prose-only guides have no interactive steps to verify. In an otherwise interactive graph, a prose-only guide can pass with zero browser steps. This applies to prerequisites, milestones, and a selected prose-only root with an interactive prerequisite. A prose-only pass does not block dependent guides or later milestones.
+
+The first four checks happen before provisioning. A path report retains passed sibling results but does not claim an overall pass when another milestone skips. Exit code 0 alone does not prove execution. Consumers must inspect the report outcome and per-guide results.
+
+### Trust and isolation limits
+
+This capability is for trusted local checkouts. It does not provide safe PR archive extraction, an immutable snapshot, or a worker download-digest check. An automated worker must establish those boundaries before passing source to the CLI.
+
+Source checks do not pin every guide-owned URL. Markdown links, arbitrary URL-valued fields, and navigation targets without a `doc` query remain outside these checks. The browser is not network-isolated.
+
+Untrusted PR execution requires a separate security review and approval. These local-source checks do not establish a sandbox or complete source isolation.
+
+A trusted live fixture ran an uncommitted prerequisite and reached an intentional browser failure in the selected guide. Its report contained both local digests and a failure screenshot, and the lease retired. That feasibility result is not acceptance evidence for an untrusted PR service.
 
 ## Remote package-aware testing
 

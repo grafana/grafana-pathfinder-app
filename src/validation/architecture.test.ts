@@ -332,11 +332,6 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1923',
   },
   {
-    violation: 'components/SkeletonLoader/skeleton.styles.ts',
-    reason: 'Superseded duplicate — SkeletonLoader.tsx imports the newer styles/skeleton.styles.ts instead.',
-    tracking: '#1923',
-  },
-  {
     violation: 'components/UserProfileBar/index.ts',
     reason: 'Barrel with no importer — the sole consumer deep-imports UserProfileBar/UserProfileBar directly.',
     tracking: '#1923',
@@ -367,18 +362,8 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1923',
   },
   {
-    violation: 'components/docs-panel/MinimizedSidebarIcon.tsx',
-    reason: 'Dead component — only self-references remain anywhere in src/ (also named in a developer README).',
-    tracking: '#1923',
-  },
-  {
     violation: 'components/docs-panel/types.ts',
     reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
-    tracking: '#1923',
-  },
-  {
-    violation: 'constants/selectors.ts',
-    reason: 'No code importer anywhere in src/ — referenced only in two developer READMEs.',
     tracking: '#1923',
   },
   {

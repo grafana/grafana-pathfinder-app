@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { getConfigWithDefaults } from '../../constants';
-import { usePathfinderPluginConfig, refreshPathfinderPluginConfig } from '../../hooks';
+import { usePathfinderPluginConfig } from '../../hooks';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import MemoizedContextPanel from './ContextPanel';
 
 jest.mock('../../hooks', () => ({
   usePathfinderPluginConfig: jest.fn(),
-  refreshPathfinderPluginConfig: jest.fn(),
 }));
 jest.mock('../OpenFeatureProvider', () => ({
   PathfinderFeatureProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -53,11 +52,20 @@ it('waits for authoritative settings and preserves the scene and open content on
   expect(sync).toHaveBeenLastCalledWith(hydrated);
 });
 
-it('offers retry after a failed read without constructing a scene from defaults', () => {
+it('keeps browsing available during a settings failure and preserves content after recovery', () => {
   hook.mockReturnValue({ config: getConfigWithDefaults({}), isResolved: false, hasError: true });
-  render(<MemoizedContextPanel />);
-  expect(screen.getByText('Could not load Pathfinder settings')).toBeInTheDocument();
-  expect(construct).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-  expect(refreshPathfinderPluginConfig).toHaveBeenCalledTimes(1);
+  const { rerender } = render(<MemoizedContextPanel />);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  expect(construct).toHaveBeenCalledWith(getConfigWithDefaults({}));
+  fireEvent.change(screen.getByLabelText('Open tab content'), { target: { value: 'unsaved content' } });
+
+  const recovered = getConfigWithDefaults({ enableLiveSessions: true });
+  hook.mockReturnValue({ config: recovered, isResolved: true });
+  rerender(<MemoizedContextPanel />);
+
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(construct).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText('Open tab content')).toHaveValue('unsaved content');
+  expect(sync).toHaveBeenLastCalledWith(recovered);
 });

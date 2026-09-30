@@ -222,15 +222,20 @@ interface GrafanaPlugin {
   enabled?: boolean;
 }
 
-/**
- * Fetch the list of installed Grafana plugins.
- * Returns a Set of plugin IDs for fast lookup.
- */
-async function fetchInstalledPlugins(grafanaUrl: string): Promise<Set<string>> {
-  const pluginsUrl = new URL('/api/plugins', grafanaUrl).toString();
+async function fetchInstalledPlugins(grafanaUrl: string, token?: string): Promise<Set<string>> {
+  const target = new URL(grafanaUrl);
+  const pluginsUrl = new URL('/api/plugins', target);
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (token) {
+    if (target.protocol !== 'https:') {
+      throw new Error('Authenticated plugin pre-flight requires an HTTPS Grafana target.');
+    }
+    headers.Authorization = `Bearer ${token}`;
+  }
   const response = await fetch(pluginsUrl, {
     method: 'GET',
-    headers: { Accept: 'application/json' },
+    headers,
+    redirect: token ? 'error' : 'follow',
     signal: AbortSignal.timeout(15000),
   });
 
@@ -248,7 +253,11 @@ async function fetchInstalledPlugins(grafanaUrl: string): Promise<Set<string>> {
  * @param testEnvironment - The testEnvironment block from manifest.json
  * @param grafanaUrl - The Grafana base URL
  */
-export async function checkPlugins(testEnvironment: TestEnvironment, grafanaUrl: string): Promise<PreflightResult[]> {
+export async function checkPlugins(
+  testEnvironment: TestEnvironment,
+  grafanaUrl: string,
+  token?: string
+): Promise<PreflightResult[]> {
   const { plugins } = testEnvironment;
 
   if (!plugins || plugins.length === 0) {
@@ -257,7 +266,7 @@ export async function checkPlugins(testEnvironment: TestEnvironment, grafanaUrl:
 
   let installed: Set<string>;
   try {
-    installed = await fetchInstalledPlugins(grafanaUrl);
+    installed = await fetchInstalledPlugins(grafanaUrl, token);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error fetching plugin list';
     // Return a single fail for the fetch error rather than one per plugin
@@ -314,6 +323,7 @@ export function loadManifestFromDir(packageDir: string): ManifestJson | null {
 export interface ManifestPreflightOptions {
   grafanaUrl: string;
   currentTier: CurrentTier;
+  token?: string;
   /** Pre-fetched Grafana version from a prior health check. When provided,
    *  `checkMinVersion` skips its own `/api/health` fetch. */
   grafanaVersion?: string;
@@ -357,7 +367,7 @@ export async function runManifestPreflight(
   results.push(versionResult);
 
   // 3. Plugin checks
-  const pluginResults = await checkPlugins(testEnvironment, options.grafanaUrl);
+  const pluginResults = await checkPlugins(testEnvironment, options.grafanaUrl, options.token);
   results.push(...pluginResults);
 
   const hasFail = results.some((r) => r.status === 'fail');

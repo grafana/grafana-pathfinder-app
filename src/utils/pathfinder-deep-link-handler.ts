@@ -24,11 +24,7 @@ import {
 } from './pathfinder-search-params';
 
 export interface DeepLinkHandlerDeps {
-  /** Whether the sidebar surface is mounted for this user/variant. */
-  shouldMountSidebar: boolean;
-  /** Schedule an `open-extension-sidebar` event after the given delay. */
   attemptAutoOpen: (delay?: number) => void;
-  loadControlGroupDocPopup: () => Promise<{ showControlGroupDocPopup: (source: string) => void }>;
 }
 
 // Dedup gate — prevents re-processing the same URL from multiple listener transports.
@@ -61,6 +57,9 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
 
   const deepLink = parsePathfinderDeepLink(search);
   const { doc: docsParam, page: pageParam, source: sourceParam, type: typeParam } = deepLink;
+  if (deepLink.pathfinderKiosk && !docsParam && !deepLink.controller) {
+    return false;
+  }
   const kioskSessionParam = deepLink.kioskSession;
   const panelModeParam = deepLink.panelMode;
 
@@ -81,7 +80,10 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     window.__pathfinderKioskSessionId = kioskSessionParam;
   }
 
-  if (panelModeParam === 'floating') {
+  if (panelModeParam === 'sidebar') {
+    panelModeManager.setModePersisted('sidebar');
+    rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
+  } else if (panelModeParam === 'floating') {
     panelModeManager.setModePersisted('floating');
     rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
   } else if (panelModeParam === 'fullscreen') {
@@ -107,16 +109,6 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     return panelModeParam !== undefined || kioskSessionParam !== undefined;
   }
 
-  // Control group: sidebar is dismounted; show the fallback popup instead.
-  if (!deps.shouldMountSidebar) {
-    rewriteCurrentUrl(stripPathfinderParams);
-    deps
-      .loadControlGroupDocPopup()
-      .then(({ showControlGroupDocPopup }) => showControlGroupDocPopup(docOpenSource))
-      .catch((err) => logger.error('[Pathfinder] Failed to load control group popup', { error: err }));
-    return true;
-  }
-
   // Capture before the async import so listener re-fires don't mutate these.
   const ctx = {
     docsParam,
@@ -130,7 +122,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       const docsPage = findDocPage(ctx.docsParam);
 
       // SECURITY: page only processed when doc is also present (not a general redirector).
-      const rawRedirectTarget = ctx.pageParam || docsPage?.targetPage;
+      const rawRedirectTarget = ctx.pageParam || (kioskSessionParam ? undefined : docsPage?.targetPage);
       const redirectTarget = rawRedirectTarget ? validateRedirectPath(rawRedirectTarget) : null;
 
       if (!docsPage) {
@@ -145,7 +137,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
         return;
       }
 
-      const needsRedirect = redirectTarget && redirectTarget !== window.location.pathname;
+      const needsRedirect = redirectTarget && redirectTarget !== locationService.getLocation().pathname;
       const currentMode = panelModeManager.getMode();
       const isFloatingMode = currentMode === 'floating';
       const isFullScreenMode = currentMode === 'fullscreen';

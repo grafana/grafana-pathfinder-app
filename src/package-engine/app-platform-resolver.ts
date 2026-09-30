@@ -1,3 +1,7 @@
+import { reportProxyFailure } from '../lib/proxy-diagnostics';
+import type { GuideDiagnostic, GuideLoadContext } from '../types/guide-diagnostics.types';
+import { diagnoseGuideError } from '../lib/guide-diagnostics';
+import { observeGuideRequest, finishGuideLoad } from '../lib/telemetry/guide-load';
 /**
  * App Platform Package Resolver
  *
@@ -12,7 +16,7 @@
  * resolutions from here (see CompositePackageResolver's repository check).
  *
  * @coupling Types: PackageResolver, PackageResolution in package.types.ts
- * @coupling API: GET /apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{ns}/interactiveguides/{name}
+ * @coupling API: GET /api/plugins/grafana-pathfinder-app/resources/custom-guide?name={name}
  *   — group/version/availability come from utils/interactive-guides-api.ts (GAP).
  * @coupling Catalogue/listing needs (Custom Guides, My Learning) go through the
  *   separate /custom-guide-repository backend proxy instead of this resolver —
@@ -22,7 +26,7 @@
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
-import { isBackendApiAvailable, itemUrl } from '../utils/interactive-guides-api';
+import { isBackendApiAvailable, guideReadUrl } from '../utils/interactive-guides-api';
 import { logger } from '../lib/logging';
 
 import { ManifestJsonObjectSchema } from '../types/package.schema';
@@ -59,9 +63,10 @@ interface InteractiveGuideResource {
 function decline(
   id: string,
   code: PackageResolutionFailure['error']['code'],
-  message: string
+  message: string,
+  diagnostic?: GuideDiagnostic
 ): PackageResolutionFailure {
-  return { ok: false, id, error: { code, message } };
+  return { ok: false, id, error: { code, message, diagnostic } };
 }
 
 // A failure from an ACTUAL upstream attempt (not-found, not-published,
@@ -73,9 +78,10 @@ function decline(
 function attemptedFailure(
   id: string,
   code: PackageResolutionFailure['error']['code'],
-  message: string
+  message: string,
+  diagnostic?: GuideDiagnostic
 ): PackageResolutionFailure {
-  return { ok: false, id, error: { code, message }, repository: APP_PLATFORM_REPOSITORY };
+  return { ok: false, id, error: { code, message, diagnostic }, repository: APP_PLATFORM_REPOSITORY };
 }
 
 type ProbeResult = { ok: true; resource: InteractiveGuideResource } | { ok: false; failure: PackageResolutionFailure };
@@ -85,21 +91,22 @@ type ProbeResult = { ok: true; resource: InteractiveGuideResource } | { ok: fals
  * the content-loading paths below. Shared so the URL-only path (when asked to
  * verify) and the metadata/content paths enforce identical rules.
  */
-async function probePublishedGuide(namespace: string, packageId: string): Promise<ProbeResult> {
+async function probePublishedGuide(packageId: string, context?: GuideLoadContext): Promise<ProbeResult> {
   try {
-    // SECURITY: itemUrl encodes both namespace and packageId to prevent path
-    // traversal (F3) — mirrors fetchBackendInteractive in
-    // docs-retrieval/content-fetcher/backend-guide.ts.
-    const url = itemUrl(namespace, packageId);
-    const response = await lastValueFrom(
-      getBackendSrv().fetch<InteractiveGuideResource>({ url, method: 'GET', showErrorAlert: false })
+    const url = guideReadUrl(packageId);
+    const response = await observeGuideRequest(url, 'content', context, () =>
+      lastValueFrom(getBackendSrv().fetch<InteractiveGuideResource>({ url, method: 'GET', showErrorAlert: false }))
     );
     const resource = response.data;
 
     if (!resource?.spec) {
       return {
         ok: false,
-        failure: attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" has no spec`),
+        failure: attemptedFailure(packageId, 'not-found', 'App platform guide has no spec', {
+          source: 'app-platform',
+          stage: 'validate',
+          reason: 'missing-fields',
+        }),
       };
     }
 
@@ -110,17 +117,27 @@ async function probePublishedGuide(namespace: string, packageId: string): Promis
     if (resource.spec.status !== 'published') {
       return {
         ok: false,
-        failure: attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" is not published`),
+        failure: attemptedFailure(packageId, 'not-found', 'App platform guide is not published', {
+          source: 'app-platform',
+          stage: 'resolve',
+          reason: 'not-published',
+        }),
       };
     }
 
     return { ok: true, resource };
   } catch (err) {
+    reportProxyFailure(err);
     const status = (err as { status?: number })?.status;
     if (status === 404) {
       return {
         ok: false,
-        failure: attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" not found`),
+        failure: attemptedFailure(
+          packageId,
+          'not-found',
+          'App platform guide not found',
+          diagnoseGuideError(err, 'app-platform', 'resolve')
+        ),
       };
     }
     // 403 stays distinct from not-found. Folding it in would conceal nothing —
@@ -134,12 +151,21 @@ async function probePublishedGuide(namespace: string, packageId: string): Promis
         failure: attemptedFailure(
           packageId,
           'permission-denied',
-          `No permission to read app platform guide "${packageId}"`
+          'No permission to read app platform guide',
+          diagnoseGuideError(err, 'app-platform', 'resolve')
         ),
       };
     }
     const message = err instanceof Error ? err.message : 'app platform fetch failed';
-    return { ok: false, failure: attemptedFailure(packageId, 'network-error', message) };
+    return {
+      ok: false,
+      failure: attemptedFailure(
+        packageId,
+        'network-error',
+        message,
+        diagnoseGuideError(err, 'app-platform', 'resolve')
+      ),
+    };
   }
 }
 
@@ -185,7 +211,11 @@ async function probePublishedGuide(namespace: string, packageId: string): Promis
  * Same reasoning as forcing `repository` above — a schema default must not
  * masquerade as authored data.
  */
-function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']): ManifestJson {
+function buildManifest(
+  packageId: string,
+  spec: InteractiveGuideResource['spec'],
+  context?: GuideLoadContext
+): ManifestJson {
   if (spec?.manifest) {
     const isPathOrJourney = spec.manifest.type === 'path' || spec.manifest.type === 'journey';
     const resolvedId = isPathOrJourney ? packageId : spec.id || packageId;
@@ -215,9 +245,14 @@ function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']
     // A malformed persisted manifest silently falls through to the inferred guide
     // shape below — so a path would render as a plain guide with no milestone
     // chrome and no trace. Log it.
+    finishGuideLoad(context, 'degraded', {
+      source: 'app-platform',
+      stage: 'validate',
+      reason: 'schema-invalid',
+      validationCount: parsed.error.issues.length,
+    });
     logger.warn('[app-platform-resolver] spec.manifest failed schema validation; inferring a guide manifest', {
-      packageId,
-      issues: parsed.error.issues.map((i) => i.message).join('; '),
+      validation_count: parsed.error.issues.length,
     });
   }
 
@@ -235,14 +270,22 @@ export class AppPlatformPackageResolver implements PackageResolver {
   async resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
     const namespace = config.namespace;
     if (!namespace) {
-      return decline(packageId, 'not-found', 'No namespace available to resolve app-platform package');
+      return decline(packageId, 'not-found', 'No namespace available to resolve app-platform package', {
+        source: 'app-platform',
+        stage: 'resolve',
+        reason: 'namespace-unavailable',
+      });
     }
 
     // GAP gate: when the aggregation toggle is off the interactiveguides API
     // isn't served here, so decline (composite resolver falls through) rather
     // than issue a doomed request.
     if (!isBackendApiAvailable()) {
-      return decline(packageId, 'not-found', 'App Platform backend is not available on this instance');
+      return decline(packageId, 'not-found', 'App Platform backend is not available on this instance', {
+        source: 'app-platform',
+        stage: 'resolve',
+        reason: 'backend-unavailable',
+      });
     }
 
     // Scheme is internal to the package-engine/docs-retrieval loader pipeline,
@@ -269,7 +312,8 @@ export class AppPlatformPackageResolver implements PackageResolver {
       if (!options?.verifyPublished) {
         return resolution;
       }
-      const probe = await probePublishedGuide(namespace, packageId);
+      const probe = await probePublishedGuide(packageId, options?.loadContext);
+
       if (!probe.ok) {
         return probe.failure;
       }
@@ -281,21 +325,22 @@ export class AppPlatformPackageResolver implements PackageResolver {
 
     const metadataOnly = options.loadContent === 'metadata-only';
 
-    const probe = await probePublishedGuide(namespace, packageId);
+    const probe = await probePublishedGuide(packageId, options?.loadContext);
+
     if (!probe.ok) {
       return probe.failure;
     }
     const resource = probe.resource;
 
-    resolution.manifest = buildManifest(packageId, resource.spec);
+    resolution.manifest = buildManifest(packageId, resource.spec, options?.loadContext);
 
     if (!metadataOnly) {
       if (!resource.spec?.blocks || !resource.spec.title) {
-        return attemptedFailure(
-          packageId,
-          'validation-error',
-          `App platform guide "${packageId}" is missing required fields`
-        );
+        return attemptedFailure(packageId, 'validation-error', 'App platform guide is missing required fields', {
+          source: 'app-platform',
+          stage: 'validate',
+          reason: 'missing-fields',
+        });
       }
       const content: ContentJson = {
         id: resource.spec.id || resource.metadata?.name || packageId,

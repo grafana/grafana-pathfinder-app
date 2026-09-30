@@ -131,7 +131,7 @@ export function discoverPackages(root: string, excludePaths: string[] = []): str
 }
 
 interface PackageReadResult {
-  id: string;
+  id: string | null;
   dirName: string;
   entry: RepositoryEntry;
   warnings: string[];
@@ -139,9 +139,6 @@ interface PackageReadResult {
   info: string[];
 }
 
-/**
- * Read a single package directory and produce a repository entry.
- */
 function readPackage(root: string, packageDir: string): PackageReadResult {
   const relativeDir = path.relative(root, packageDir).split(path.sep).join('/');
   const dirName = relativeDir || path.basename(packageDir);
@@ -160,7 +157,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
         ? `content.json validation failed: ${contentRead.issues?.map((i) => i.message).join('; ')}`
         : contentRead.message;
     errors.push(msg);
-    return { id: dirName, dirName, entry: fallbackEntry, warnings, errors, info };
+    return { id: null, dirName, entry: fallbackEntry, warnings, errors, info };
   }
 
   const content = contentRead.data;
@@ -198,6 +195,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
       entry.startingLocation = manifest.startingLocation;
     }
     entry.milestones = manifest.milestones;
+    entry.tracks = manifest.tracks;
     entry.depends = manifest.depends?.length ? manifest.depends : undefined;
     entry.recommends = manifest.recommends?.length ? manifest.recommends : undefined;
     entry.suggests = manifest.suggests?.length ? manifest.suggests : undefined;
@@ -229,11 +227,6 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
   return { id, dirName, entry, warnings, errors, info };
 }
 
-/**
- * Build a repository.json from a package tree root.
- * @param root - Absolute path to the package tree root
- * @param options.exclude - Optional list of paths to exclude (relative to root or absolute); excluded trees are not descended into
- */
 export function buildRepository(
   root: string,
   options?: { exclude?: string[] }
@@ -242,10 +235,14 @@ export function buildRepository(
   warnings: string[];
   errors: string[];
   info: string[];
+  duplicateIds: readonly string[];
+  errorsByReference: ReadonlyMap<string, readonly string[]>;
 } {
   const warnings: string[] = [];
   const errors: string[] = [];
   const info: string[] = [];
+  const duplicateIds = new Set<string>();
+  const errorsByReference = new Map<string, string[]>();
   const repository: RepositoryJson = {};
 
   const absoluteExcludes =
@@ -254,7 +251,7 @@ export function buildRepository(
 
   if (packageDirs.length === 0) {
     warnings.push(`No package directories with manifest.json found under ${root}`);
-    return { repository, warnings, errors, info };
+    return { repository, warnings, errors, info, duplicateIds: [], errorsByReference };
   }
 
   for (const packageDir of packageDirs) {
@@ -270,9 +267,21 @@ export function buildRepository(
       info.push(`${result.dirName}: ${i}`);
     }
 
-    if (result.errors.length === 0) {
+    if (result.errors.length > 0) {
+      const manifest = readJsonFile(path.join(packageDir, 'manifest.json'), ManifestJsonObjectSchema);
+      // Retain rejected IDs and capabilities so local resolution cannot silently replace them.
+      const references = new Set([
+        ...(result.id === null ? [] : [result.id]),
+        ...(manifest.ok ? [manifest.data.id, ...(manifest.data.provides ?? [])] : []),
+      ]);
+      const packageErrors = result.errors.map((error) => `${result.dirName}: ${error}`);
+      for (const reference of references) {
+        errorsByReference.set(reference, [...(errorsByReference.get(reference) ?? []), ...packageErrors]);
+      }
+    } else if (result.id !== null) {
       if (repository[result.id] !== undefined) {
         errors.push(`Duplicate package ID "${result.id}" in ${result.dirName}`);
+        duplicateIds.add(result.id);
       } else {
         repository[result.id] = result.entry;
       }
@@ -285,7 +294,7 @@ export function buildRepository(
     errors.push(`Generated repository.json is invalid: ${messages}`);
   }
 
-  return { repository, warnings, errors, info };
+  return { repository, warnings, errors, info, duplicateIds: [...duplicateIds].sort(), errorsByReference };
 }
 
 export const BuildRepositoryCommand = z.object({

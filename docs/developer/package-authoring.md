@@ -63,7 +63,8 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `id`                | `string`                             | **Yes**                       | —                         | Bare package identifier — must match `content.json`                                                                            |
 | `type`              | `"guide"` \| `"path"` \| `"journey"` | **Yes**                       | —                         | Package type                                                                                                                   |
 | `repository`        | `string`                             | No                            | `"interactive-tutorials"` | Provenance — which repository this package belongs to                                                                          |
-| `milestones`        | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages                                                                                             |
+| `milestones`        | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages — the always-present default sequence ("Foundations")                                       |
+| `tracks`            | `Track[]`                            | No — `path` only              | —                         | Named, independently-ordered guide sequences alongside `milestones` (see [tracks](#tracks))                                    |
 | `description`       | `string`                             | Recommended                   | —                         | Full description for display and search                                                                                        |
 | `language`          | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                                                                                  |
 | `category`          | `string`                             | Recommended                   | —                         | Content category for taxonomy (e.g., `"data-sources"`, `"dashboards"`)                                                         |
@@ -79,24 +80,6 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `testEnvironment`   | `TestEnvironment`                    | Recommended                   | `{ tier: "cloud" }`       | Test infrastructure requirements (see [testEnvironment](#testenvironment))                                                     |
 | `minGrafanaVersion` | `string` (semver)                    | No                            | —                         | Lowest Grafana this guide is written for — the docs panel warns readers below it (see [minGrafanaVersion](#mingrafanaversion)) |
 
-### minGrafanaVersion
-
-The lowest Grafana release a guide is written for. When the running instance is below it, the docs panel shows a warning at the top of the guide naming both versions. It is warn-only: the steps stay live, because the reader may still get value from part of the guide and nothing here can know which part.
-
-```json
-{
-  "minGrafanaVersion": "13.2.0"
-}
-```
-
-Declare one when a guide targets UI that older releases do not have — most often a `grafana:` selector path added in a recent release, which resolves on an old stack to a value that stack never renders, leaving `exists-reftarget` permanently unmet. `docs/developer/interactive-examples/selectors-reference.md` covers that failure in detail.
-
-**Not the same field as `testEnvironment.minVersion`.** That one routes E2E runs and fails a test; this one informs a reader. A guide may be tested only on latest and still work several releases back. When `testEnvironment.minVersion` is absent, the preflight falls back to `minGrafanaVersion` — so declaring only this field is the common case, and declaring both is for guides whose test rig needs something newer than their readers do.
-
-The warning reports `guide_version_unsupported_shown` when its notice mounts on the active content surface. It is deduplicated per guide base URL and normalized required/running version pair for the app load, so milestone navigation, reloads, progress resets, and sidebar/floating handoffs do not count again. A background load does not report an impression.
-
-One transport gap to know: a custom guide served through the App Platform catalogue proxy loses the field, because the proxy's shaped response declares no `additionalFields`. The same guide opened standalone or by share link keeps it. See [EXTERNAL_API.md](./EXTERNAL_API.md#specmanifest).
-
 ### Extension fields
 
 Any top-level key not listed above is extension metadata. It survives validation unchanged and `pathfinder-cli build-repository` forwards it verbatim into that package's entry in `repository.json`, so adding one costs no CLI change. Two names are refused with a warning because the build computes them itself: `path` (from the package directory) and `title` (from `content.json`). `__proto__` is refused as well, though a JSON `__proto__` key is already dropped during parsing. Named manifest fields are never forwarded generically, so `id`, `schemaVersion`, `repository`, and `language` still do not appear in a repository entry.
@@ -110,6 +93,22 @@ A stamped manifest carries a top-level `stats` key, which reaches `repository.js
 ### Package IDs must not collide across repositories
 
 A bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The resolver tries repositories in order (bundled → recommender or CDN → App Platform) and the first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. Only published App Platform guides participate in bare-ID resolution; direct `backend-guide:` loading also serves drafts so authors can use preview links and restore an open tab. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.
+
+---
+
+## Tracks
+
+`tracks` (Path Tracks RFC) declares named, independently-ordered guide sequences for one path, one per audience or role — additive alongside the always-present `milestones` default ("Foundations"). Each entry is:
+
+```jsonc
+{ "trackId": "builder", "label": "Builder", "guides": ["welcome-to-grafana", "builder-advanced-panels"] }
+```
+
+- `trackId` (`string`, required) — a stable identifier, unique within one manifest's `tracks` list. Cannot be `"foundations"` — that id is reserved for the default sequence's cover-page tab.
+- `label` (`string`, required) — the human-facing name shown on the cover page's tab for this track.
+- `guides` (`string[]`, required, non-empty) — the track's own complete ordered sequence of bare package IDs. **Not** a subset or reordering of `milestones`: a track may include guides `milestones` never had, omit guides `milestones` has, and interleave role-specific content anywhere in the sequence.
+
+`milestones` is never itself represented as a `tracks` entry, and `tracks` is valid only when `type` is `path` — narrower than the `path`-or-`journey` gate `milestones` uses, since a journey is a fixed reading order and tracks presenting the same content in a different order don't apply to it. On the cover page, each declared track gets its own tab alongside Foundations; when a manifest declares no `tracks`, the cover page renders exactly as it did before — a single flat list, no tabs.
 
 ---
 

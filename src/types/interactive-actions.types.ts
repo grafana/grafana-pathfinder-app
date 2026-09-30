@@ -41,6 +41,7 @@ export interface InternalAction {
   targetState?: boolean | string;
   requirements?: ConditionInput;
   targetComment?: string; // Optional comment to display during this step
+  openGuide?: string; // Guide to open in sidebar after navigation
 }
 
 /**

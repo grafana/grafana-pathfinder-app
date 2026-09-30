@@ -30,7 +30,6 @@ jest.mock('../../lib/faro', () => ({
 jest.mock('../../interactive-engine/action-handlers', () => {
   const makeHandler = () => ({ execute: jest.fn().mockResolvedValue(undefined) });
   const makeGuided = () => ({
-    resetProgress: jest.fn(),
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
   });
   return {
@@ -341,6 +340,42 @@ describe('installLiveTabExecutor', () => {
         expect.objectContaining({ kind: 'step-complete', stepId: 'g1', runId: 'run-g1', ok: true })
       )
     );
+    uninstall();
+  });
+
+  it('starts successive guided runs on the same handler at step zero', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    const internalActions = [
+      { targetAction: 'highlight', refTarget: '#a' },
+      { targetAction: 'button', refTarget: '#b' },
+    ];
+    const executeGuidedStep = (GuidedHandler as jest.Mock).mock.results[0]?.value.executeGuidedStep as jest.Mock;
+
+    for (const runId of ['run-A', 'run-B']) {
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'step-command',
+        phase: 'do',
+        stepId: 'guided-restart',
+        runId,
+        action: { targetAction: 'guided', refTarget: '', internalActions },
+      });
+      await waitFor(() =>
+        expect(transport.postedMessages).toContainEqual(
+          expect.objectContaining({ kind: 'step-complete', stepId: 'guided-restart', runId, ok: true })
+        )
+      );
+    }
+
+    expect(GuidedHandler).toHaveBeenCalledTimes(1);
+    expect(executeGuidedStep).toHaveBeenCalledTimes(4);
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(1, internalActions[0], 0, 2);
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(2, internalActions[1], 1, 2);
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(3, internalActions[0], 0, 2);
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(4, internalActions[1], 1, 2);
     uninstall();
   });
 

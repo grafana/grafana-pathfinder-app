@@ -1,0 +1,88 @@
+{
+  "rules": [
+    {
+      "title": "Set up both",
+      "url": "https://interactive-learning.grafana.net/packages/dem-get-started/content.json",
+      "description": "Enter your app's URL, start a Synthetic Monitoring uptime check on it, and get the Frontend Observability snippet for the same origin. Requires Editor access.",
+      "type": "interactive",
+      "page": "/a/grafana-synthetic-monitoring-app/home",
+      "id": "combined"
+    },
+    {
+      "title": "Synthetic Monitoring only",
+      "url": "https://interactive-learning.grafana.net/packages/get-started-first-check/content.json",
+      "description": "Create a ping check, pick probe locations, and read uptime, reachability, and latency on its dashboard. Requires Editor access.",
+      "type": "interactive",
+      "page": "/a/grafana-synthetic-monitoring-app/home",
+      "id": "synthetic"
+    },
+    {
+      "title": "Frontend Observability only",
+      "url": "https://interactive-learning.grafana.net/packages/welcome-frontend-observability/content.json",
+      "description": "Create a Frontend Observability application and get the Faro Web SDK snippet that sends real user data.",
+      "type": "interactive",
+      "page": "/a/grafana-kowalski-app",
+      "id": "frontend"
+    }
+  ],
+  "page": {
+    "version": 1,
+    "width": "wide",
+    "spacing": "spacious",
+    "header": "minimal",
+    "blocks": [
+      {
+        "type": "hero",
+        "eyebrow": "Digital Experience Monitoring",
+        "title": "See how real users experience your app",
+        "description": "From the outside in — uptime, speed, from anywhere — to the inside out — real sessions, real errors. One guided setup covers both.",
+        "alignment": "center"
+      },
+      {
+        "type": "launch-form",
+        "ruleId": "combined",
+        "label": "Start guided setup",
+        "inputs": [
+          {
+            "inputType": "text",
+            "format": "http-origin",
+            "variableName": "appUrl",
+            "prompt": "Your website",
+            "placeholder": "https://yourcompany.com",
+            "required": true
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "content": "Create an uptime check and prepare the Frontend Observability snippet for the same website.",
+        "alignment": "center",
+        "secondary": true
+      },
+      {
+        "type": "divider",
+        "label": "Prefer to set them up separately?"
+      },
+      {
+        "type": "guide-links",
+        "layout": "cards",
+        "links": [
+          {
+            "ruleId": "synthetic",
+            "label": "Synthetic Monitoring only"
+          },
+          {
+            "ruleId": "frontend",
+            "label": "Frontend Observability only"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "content": "Either way, you can add the other later.",
+        "alignment": "center",
+        "secondary": true
+      }
+    ]
+  }
+}

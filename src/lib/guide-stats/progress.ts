@@ -98,8 +98,16 @@ function evidencedPosition(index: GuideBlockIndex, signal: CompletionEvidence): 
   if (signal.kind === 'mark-section-complete') {
     return index.containerEndPositions.get(signal.blockId) ?? 0;
   }
-  // Step id first: the runtime dispatches "Do it" under the parser's stepId,
-  // and only a handful of blocks in the library carry an author id for
-  // `positionsById` to match on.
-  return index.positionsByStepId.get(signal.blockId) ?? index.positionsById.get(signal.blockId) ?? 0;
+  // Branch child positions are checked first to intercept step IDs from blocks
+  // inside conditional branches, aliasing them to their parent conditional's
+  // position. The runtime dispatches "Do it" under the parser's stepId; step
+  // IDs for counted blocks are checked next, and only a handful of blocks in
+  // the library carry an author id for `positionsById` to match on as a final
+  // fallback.
+  return (
+    index.branchChildPositions.get(signal.blockId) ??
+    index.positionsByStepId.get(signal.blockId) ??
+    index.positionsById.get(signal.blockId) ??
+    0
+  );
 }

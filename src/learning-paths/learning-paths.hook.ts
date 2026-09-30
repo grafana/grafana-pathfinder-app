@@ -32,6 +32,7 @@ import {
   milestoneCompletionStorage,
   guideCompletionMarkStorage,
 } from '../lib/user-storage';
+import { isKeyUnderPrefix } from '../lib/storage/key-utils';
 import { evictContentCache } from '../global-state/completion-store';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../global-state/progress-events';
 import {
@@ -44,6 +45,7 @@ import { meanOfMemberPercentages, type MemberRollupProgress } from '../lib/guide
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
+import { pathSequences } from './path-sequences';
 import { fetchPathGuides, type FetchedPathGuides } from './fetch-path-guides';
 import { fetchAppPlatformLearningPaths, type AppPlatformPathsResult } from './app-platform-paths';
 import { markGuideCompleted as coordinatorMarkGuideCompleted } from './badge-coordinator';
@@ -96,7 +98,7 @@ function formatLegacyBadgeTitle(badgeId: string): string {
 }
 
 /**
- * A path's rollup: the mean of its members' percentages
+ * One sequence's rollup: the mean of its members' percentages
  * (docs/design/COMPLETION-MODEL.md, decision 4), joined to each member's
  * persisted percentage by content key (decision 9). Equal weight per
  * member, regardless of length.
@@ -111,12 +113,13 @@ function formatLegacyBadgeTitle(badgeId: string): string {
  * and correct, since that is the scheme it was published under. Only a
  * bundled member arrives without one and falls back to the id schemes.
  */
-function calculatePathRollup(
+function calculateSequenceRollup(
+  guideIds: readonly string[],
   path: LearningPath,
   completedGuides: readonly string[],
   resolveMemberUrl: (guideId: string, pathId: string) => string | undefined
 ): MemberRollupProgress {
-  const members: PathMember[] = path.guides.map((id) => {
+  const members: PathMember[] = guideIds.map((id) => {
     const url = resolveMemberUrl(id, path.id);
     return url ? { id, url } : { id };
   });
@@ -129,6 +132,27 @@ function calculatePathRollup(
     persistedPercentages: interactiveCompletionStorage.peekAll(),
   });
   return meanOfMemberPercentages(resolvedPercentages);
+}
+
+/**
+ * A path's rollup for My Learning: the BEST of its sequences' own rollups
+ * (Foundations, plus each track), not a blended average across every guide
+ * in every track — a track hitting 100% moves the path to Completed even
+ * if Foundations or another track isn't done. `meanOfMemberPercentages`
+ * reserves `percent: 100` for `complete`, so the sequence with the highest
+ * percent is always also the one driving `complete` correctly (a complete
+ * sequence's 100 beats any incomplete sequence's capped-at-99).
+ */
+function calculatePathRollup(
+  path: LearningPath,
+  completedGuides: readonly string[],
+  resolveMemberUrl: (guideId: string, pathId: string) => string | undefined
+): MemberRollupProgress {
+  const sequences = pathSequences(path);
+  return sequences.reduce<MemberRollupProgress>((best, guideIds) => {
+    const rollup = calculateSequenceRollup(guideIds, path, completedGuides, resolveMemberUrl);
+    return rollup.percent > best.percent ? rollup : best;
+  }, meanOfMemberPercentages([]));
 }
 
 /**
@@ -422,6 +446,10 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
         return {
           id: guideId,
+          // Always the real id here (never a React-key-only fallback), so
+          // safe to forward as the click-target id too — see PathGuide's own
+          // doc comment on why the two fields exist separately.
+          guideId,
           title: metadata.title,
           completed,
           isCurrent,
@@ -535,8 +563,11 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
         // Milestone content keys aren't stored anywhere, so recover them by prefix.
         const normalizedUrl = path.url.replace(/\/+$/, '');
-        const milestoneKeys = Object.keys(completions).filter((key) => key.startsWith(normalizedUrl));
-        const journeyKeys = [path.url, ...Object.keys(journeyCompletions).filter((k) => k.startsWith(normalizedUrl))];
+        const milestoneKeys = Object.keys(completions).filter((key) => isKeyUnderPrefix(key, normalizedUrl));
+        const journeyKeys = [
+          path.url,
+          ...Object.keys(journeyCompletions).filter((k) => isKeyUnderPrefix(k, normalizedUrl)),
+        ];
 
         await clearInteractiveProgressForContentKeys(milestoneKeys);
         await interactiveCompletionStorage.clearMany(milestoneKeys);

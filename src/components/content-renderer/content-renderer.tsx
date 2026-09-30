@@ -1,9 +1,13 @@
+import { getGuideResponseId } from '../../lib/guide-response-id';
+import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBoundary';
+import { finishGuideLoad, pauseGuideLoad, resumeGuideLoad } from '../../lib/telemetry/guide-load';
+import { useIsAlignmentPaused } from '../../global-state/alignment-pending-context';
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
 
-import { RawContent, ContentParseResult, GuideCountingSource } from '../../types/content.types';
+import { RawContent, ContentParseResult, GuideCountingSource, Milestone } from '../../types/content.types';
 import { logger } from '../../lib/logging';
 import {
   parseHTMLToComponents,
@@ -25,7 +29,7 @@ import {
   isJourneyCoverPage,
   getCurrentMilestone,
 } from '../../docs-retrieval';
-import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
+import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
 import {
   InteractiveSection,
@@ -113,10 +117,10 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
         targetElement!.classList.remove('fragment-highlight');
       }, 3000);
     } else {
-      logger.warn(`Fragment element not found: #${fragment}`);
+      logger.warn('Fragment element not found');
     }
-  } catch (error) {
-    logger.warn(`Error scrolling to fragment #${fragment}`, { error });
+  } catch {
+    logger.warn('Error scrolling to fragment');
   }
 }
 
@@ -131,6 +135,10 @@ interface ContentRendererProps {
    * control itself is never conditional.
    */
   onContinueToNextMilestone?: () => void;
+  /** Forwards the cover page's own track-tab selection — see `LearningPathTableOfContents`'s prop doc. */
+  onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
+  /** Forwarded to `LearningPathTableOfContents`'s own prop of the same name — see its doc. */
+  initialActiveTrackId?: string | null;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -145,11 +153,33 @@ const selectionStyle = css`
 
 // Memoize ContentRenderer to prevent re-renders when parent re-renders
 // but content prop hasn't changed
-export const ContentRenderer = React.memo(function ContentRenderer({
+export const ContentRenderer = React.memo(function ContentRenderer(props: ContentRendererProps) {
+  const context = props.content.loadContext;
+  const paused = useIsAlignmentPaused();
+  useEffect(() => {
+    if (paused) {
+      pauseGuideLoad(context, true);
+    } else {
+      resumeGuideLoad(context);
+    }
+    return () => pauseGuideLoad(context);
+  }, [context, paused]);
+  return (
+    <GuideRenderBoundary key={context?.loadId ?? props.content.url} context={context}>
+      <GuideLoadTelemetryContext.Provider value={context}>
+        <ContentRendererInner {...props} />
+      </GuideLoadTelemetryContext.Provider>
+    </GuideRenderBoundary>
+  );
+});
+
+const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
   onGuideComplete,
   onContinueToNextMilestone,
+  onActiveTrackChange,
+  initialActiveTrackId,
   className,
   containerRef,
 }: ContentRendererProps) {
@@ -441,25 +471,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processedContent, content.hashFragment]);
 
-  useEffect(() => {
-    if (onContentReady) {
-      const timer = setTimeout(onContentReady, 50);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [processedContent, onContentReady]);
-
-  // Derive guide ID from content URL for response storage
-  const guideId = useMemo(() => {
-    // Use the URL path as the guide identifier, or fallback to 'default'
-    try {
-      const url = new URL(content.url, window.location.origin);
-      // Remove leading slash and use path as ID
-      return url.pathname.replace(/^\//, '').replace(/\//g, '-') || 'default';
-    } catch {
-      return content.url || 'default';
-    }
-  }, [content.url]);
+  const guideId = useMemo(() => getGuideResponseId(content.url, window.location.origin), [content.url]);
 
   // Mirror this guide for compatibility callers outside the scoped provider.
   useLayoutEffect(() => registerCompatibilityGuideId(guideId), [guideId]);
@@ -488,6 +500,9 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         pathId={pathId}
         title={content.metadata.title}
         description={pathDescription}
+        tracks={journey.tracks}
+        onActiveTrackChange={onActiveTrackChange}
+        initialActiveTrackId={initialActiveTrackId}
       />
     ) : null;
 
@@ -681,8 +696,11 @@ function ContentProcessor({
   baseUrl,
   responses,
   fullScreenFallbackLocation,
+  onReady,
 }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const loadContext = React.useContext(GuideLoadTelemetryContext);
+  const alignmentPaused = useIsAlignmentPaused();
 
   // Reset interactive counters only when content changes (not on every render)
   // This must run BEFORE parsing to ensure clean state for section registration
@@ -795,7 +813,7 @@ function ContentProcessor({
       logger.warn(
         '[ContentRenderer] Expanded guide carries no usable pre-inlining tree; no canonical index published',
         {
-          content_key: contentKey,
+          reason: 'counting-source-unavailable',
         }
       );
       return;
@@ -829,7 +847,11 @@ function ContentProcessor({
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.
   const overlayKey = `${html}\x00${baseUrl}`;
-  const [snippetOverlay, setSnippetOverlay] = useState<{ key: string; result: ContentParseResult } | null>(null);
+  const [snippetOverlay, setSnippetOverlay] = useState<{
+    key: string;
+    result: ContentParseResult;
+    degraded: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!guideWithSnippetRefs) {
@@ -837,20 +859,52 @@ function ContentProcessor({
     }
     let cancelled = false;
     (async () => {
-      const resolved = await inlineSnippetRefsInGuide(guideWithSnippetRefs);
+      const resolved = await inlineSnippetRefsInGuideWithStatus(guideWithSnippetRefs);
       if (cancelled) {
         return;
       }
-      setSnippetOverlay({ key: overlayKey, result: parseJsonGuide(resolved, baseUrl) });
-    })();
+      setSnippetOverlay({
+        key: overlayKey,
+        result: parseJsonGuide(resolved.guide, baseUrl),
+        degraded: resolved.unresolvedSnippetIds.length > 0,
+      });
+    })().catch(() => {
+      if (!cancelled) {
+        setSnippetOverlay({ key: overlayKey, result: baseParseResult, degraded: true });
+      }
+    });
     return () => {
       cancelled = true;
     };
-  }, [guideWithSnippetRefs, baseUrl, overlayKey]);
+  }, [guideWithSnippetRefs, baseUrl, overlayKey, baseParseResult]);
 
   const overlayMatchesCurrent = snippetOverlay?.key === overlayKey;
-  const parseResult = overlayMatchesCurrent && snippetOverlay ? snippetOverlay.result : baseParseResult;
+  const currentSnippetOverlay = overlayMatchesCurrent ? snippetOverlay : null;
+  const parseResult = currentSnippetOverlay?.result ?? baseParseResult;
   const isResolvingSnippets = guideWithSnippetRefs !== null && !overlayMatchesCurrent;
+
+  const readyReported = useRef<string | null>(null);
+  useEffect(() => {
+    if (isResolvingSnippets || alignmentPaused || readyReported.current === overlayKey) {
+      return;
+    }
+    readyReported.current = overlayKey;
+    const source = loadContext?.source ?? 'other';
+    if (!parseResult.isValid || !parseResult.data) {
+      finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'parse-error' });
+    } else if (parseResult.data.elements.length === 0) {
+      finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'empty-content' });
+    } else {
+      if (parseResult.warnings.length > 0 && !currentSnippetOverlay?.degraded) {
+        finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'parse-error' });
+      }
+      if (currentSnippetOverlay?.degraded) {
+        finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'snippet-unavailable' });
+      }
+      finishGuideLoad(loadContext, 'rendered');
+      onReady?.();
+    }
+  }, [parseResult, isResolvingSnippets, alignmentPaused, overlayKey, loadContext, onReady, currentSnippetOverlay]);
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {
@@ -934,7 +988,7 @@ function ContentProcessor({
 
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
-    logger.error('Content parsing failed', { errors: parseResult.errors });
+    // Parser details can contain private guide content; only the typed outcome is reported.
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -1369,6 +1423,9 @@ function renderParsedElement(
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           postVerify={element.props.postVerify}
+          formHint={element.props.formHint}
+          validateInput={element.props.validateInput}
+          openGuide={element.props.openGuide}
           title={sub(element.props.title)}
           lazyRender={element.props.lazyRender}
           scrollContainer={element.props.scrollContainer}
@@ -1536,6 +1593,7 @@ function renderParsedElement(
           defaultValue={element.props.defaultValue}
           required={element.props.required}
           pattern={element.props.pattern}
+          format={element.props.format}
           validationMessage={sub(element.props.validationMessage)}
           requirements={element.props.requirements}
           skippable={element.props.skippable}
@@ -1754,7 +1812,7 @@ function renderParsedElement(
 
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
-        logger.error('Invalid element type for parsed element', { element });
+        logger.error('Invalid element type for parsed element');
         throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
 

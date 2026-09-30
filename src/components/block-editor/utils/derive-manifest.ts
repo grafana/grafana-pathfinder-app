@@ -13,11 +13,11 @@
  * can compute from content it owns, and passes everything else through
  * untouched.
  *
- * **The CRD accepts eight keys and silently prunes the rest.** `#Manifest` in
+ * **The CRD accepts nine keys and silently prunes the rest.** `#Manifest` in
  * grafana-pathfinder-backend's `kinds/interactiveguide.cue` declares `type`,
- * `repository`, `description`, `milestones`, `author`, `category`, `depends`
- * and `additionalFields`. An undeclared key is dropped with a 201 and a
- * `Warning:` header `getBackendSrv()` never surfaces — so `stats` and
+ * `repository`, `description`, `milestones`, `tracks`, `author`, `category`,
+ * `depends` and `additionalFields`. An undeclared key is dropped with a 201
+ * and a `Warning:` header `getBackendSrv()` never surfaces — so `stats` and
  * `startingLocation` go under `additionalFields`, matching what
  * `scripts/upsert-learning-path.sh` already does and what
  * `docs/design/CONCERN_DETAILS.md` records as the two-location contract.

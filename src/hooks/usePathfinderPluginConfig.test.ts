@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { usePluginContext } from '@grafana/data';
 import { getConfigWithDefaults } from '../constants';
+import { resolvePathfinderAvailability, getPathfinderStartupDecision } from '../utils/pathfinder-enablement';
 import { initializeConfiguredSurfaces } from '../utils/configured-bootstrap';
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { fetchPluginSettings } from '../utils/utils.plugin';
@@ -10,6 +11,7 @@ import {
   __resetPathfinderPluginConfigForTests,
   publishPathfinderPluginConfig,
   refreshPathfinderPluginConfig,
+  readPathfinderStartupPreference,
   usePathfinderPluginConfig,
   waitForPathfinderPluginConfig,
 } from './usePathfinderPluginConfig';
@@ -407,6 +409,36 @@ describe('getConfigWithDefaults idempotence', () => {
 });
 
 describe('recovery after a failed settings read', () => {
+  it('keeps the fallback available during retries without publishing defaults as authoritative', async () => {
+    mockFetchTenant.mockRejectedValueOnce(new Error('token exchange failed'));
+    const { result } = renderHook(() => usePathfinderPluginConfig());
+    await waitFor(() => expect(result.current.hasError).toBe(true));
+
+    let recover!: (value: ReturnType<typeof tenantSnapshot>) => void;
+    mockFetchTenant.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          recover = resolve;
+        })
+    );
+    let retry!: ReturnType<typeof refreshPathfinderPluginConfig>;
+    act(() => {
+      retry = refreshPathfinderPluginConfig();
+    });
+
+    expect(result.current.hasError).toBe(true);
+    expect(result.current.isResolved).toBe(false);
+    expect(readGlobal()).toBeUndefined();
+
+    await act(async () => {
+      recover(tenantSnapshot({ enableLiveSessions: true }));
+      await retry;
+    });
+    expect(result.current.hasError).toBeUndefined();
+    expect(result.current.isResolved).toBe(true);
+    expect(result.current.config.enableLiveSessions).toBe(true);
+  });
+
   it('retries on a later mount, sharing that retry across concurrent callers', async () => {
     mockFetchPluginSettings.mockRejectedValueOnce(new Error('temporary outage'));
     const first = renderHook(() => usePathfinderPluginConfig());
@@ -457,3 +489,27 @@ describe('recovery after a failed settings read', () => {
     expect(await waitForPathfinderPluginConfig()).toBe(readGlobal());
   });
 });
+
+it('honours a tenant opt-out after a plugin read failure and records the read error', async () => {
+  mockFetchPluginSettings.mockRejectedValue({ status: 403 });
+  mockFetchTenant.mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
+  expect(await resolvePathfinderAvailability(true, readPathfinderStartupPreference)).toBe('disabled');
+  expect(getPathfinderStartupDecision().outcome).toBe('read-error');
+  expect(readGlobal()).toBeUndefined();
+});
+
+it.each([403, 503])(
+  'ignores stale legacy false when the enabled tenant resource cannot be read (%s)',
+  async (status) => {
+    const storedTenant = tenantSnapshot({ pathfinderEnabled: true });
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ pathfinderEnabled: false }));
+    mockFetchTenant.mockResolvedValue(storedTenant);
+    expect(await resolvePathfinderAvailability(true, readPathfinderStartupPreference)).toBe('enabled');
+
+    __resetPathfinderPluginConfigForTests();
+    mockFetchTenant.mockRejectedValue({ status });
+    expect(await resolvePathfinderAvailability(true, readPathfinderStartupPreference)).toBe('enabled');
+    expect(getPathfinderStartupDecision().outcome).toBe('read-error');
+    expect(readGlobal()).toBeUndefined();
+  }
+);
