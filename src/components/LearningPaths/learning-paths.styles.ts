@@ -391,6 +391,7 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
+      alignSelf: 'center',
       borderRadius: theme.shape.radius.default,
     }),
     guideIconBadgeCurrent: css({
@@ -426,6 +427,7 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     }),
     guideUpNext: css({
       flexShrink: 0,
+      alignSelf: 'center',
       whiteSpace: 'nowrap',
       fontSize: theme.typography.bodySmall.fontSize,
       color: colors.pathAccent,
