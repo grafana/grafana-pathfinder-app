@@ -14,7 +14,16 @@ See the [complete DEM catalog](../examples/kiosk/dem.json) and [generated JSON S
 | `spacing` | `normal`, `spacious`  | `normal`   |
 | `header`  | `standard`, `minimal` | `standard` |
 
-The exit control is always available. Forms stack on narrow screens.
+The exit control is always available and defaults to “Skip this and show all options”. Set the top-level `exitButtonLabel` in either a legacy or structured catalog to override its visible text and accessible name:
+
+```json
+{
+  "exitButtonLabel": "Explore all options",
+  "rules": [{ "title": "Welcome", "url": "bundled:welcome", "description": "Learn Grafana" }]
+}
+```
+
+The label is plain text, trimmed, and limited to 1–200 characters. Empty, whitespace-only, or invalid labels reject the catalog and use the existing fallback flow. Omitting the field keeps the default label. Forms stack on narrow screens.
 
 ## Blocks
 

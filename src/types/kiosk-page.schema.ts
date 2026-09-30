@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const text = z.string().min(1).max(4096);
+export const KioskExitButtonLabelSchema = z.string().trim().min(1).max(200);
 const name = z
   .string()
   .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/)
@@ -81,6 +82,7 @@ export type KioskPageBlock = KioskPage['blocks'][number];
 export const KioskCatalogSchema = z
   .strictObject({
     banner: z.string().optional(),
+    exitButtonLabel: KioskExitButtonLabelSchema.optional(),
     page: KioskPageSchema,
     rules: z
       .array(

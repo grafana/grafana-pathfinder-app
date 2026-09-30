@@ -66,7 +66,7 @@ for (const theme of ['light', 'dark']) {
     await installFixtures(page);
     await page.goto(`/?pathfinderKiosk=1&kioskRulesUrl=${encodeURIComponent(catalogUrl)}&theme=${theme}`);
     await expect(page.getByRole('heading', { name: 'See how real users experience your app' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Back to Grafana' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Skip this and show all options' })).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.getByLabel('Your website')).toBeFocused();
     await page.getByLabel('Your website').fill('https://example.com/private?token=secret');
