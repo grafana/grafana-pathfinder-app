@@ -454,6 +454,21 @@ describe('LearningJourneyMilestoneToolbar', () => {
       renderToolbar({ activeTab: tab });
       expect(screen.getByText('Milestone 2 of 2')).toBeInTheDocument();
     });
+
+    it('fires the real analytics payload (not just the label) when Next is clicked on a track-only guide', () => {
+      renderToolbar({ activeTab: makeTrackOnlyTab() });
+      fireEvent.click(screen.getByLabelText('Next milestone'));
+
+      expect(reportAppInteractionMock).toHaveBeenCalledWith('milestone_arrow_interaction_click', {
+        content_title: 'Track guide',
+        content_url: 'https://grafana.com/docs/learning-paths/foo/builder/t1',
+        current_milestone: 2,
+        total_milestones: 2,
+        direction: 'forward',
+        interaction_location: 'milestone_progress_bar',
+        completion_percentage: 0,
+      });
+    });
   });
 
   it('uses the surface-specific analytics interaction_location for the Open button', () => {
