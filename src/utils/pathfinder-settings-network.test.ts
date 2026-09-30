@@ -43,20 +43,78 @@ it.each([404, 405, 501])('permits legacy fallback when the API is absent (%i)', 
   expect(await fetchPathfinderSettingsSnapshot()).toBeNull();
 });
 
-it.each([400, 401, 403, 500, 503])(
-  'does not mutate either store after an authoritative read fails (%i)',
-  async (status) => {
+it.each([400, 401, 403])('does not mutate either store after an authoritative read fails (%i)', async (status) => {
+  fetchMock.mockImplementation(({ url }: { url: string }) =>
+    url.endsWith('/settings')
+      ? of({ data: { jsonData: { stackId: '123' }, enabled: true, pinned: true } })
+      : error(status)
+  );
+  await expect(
+    saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { tutorialUrl: 'new' } })
+  ).rejects.toMatchObject({ status });
+  expect(fetchMock.mock.calls.every(([request]) => request.method === 'GET')).toBe(true);
+});
+
+describe('settings read recovery', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it.each([500, 502, 503, 504])('recovers a transient failure (%i) with the authoritative snapshot', async (status) => {
+    fetchMock
+      .mockReturnValueOnce(error(status))
+      .mockReturnValueOnce(of({ data: { metadata: { resourceVersion: '42' }, spec: base.spec } }));
+    const read = fetchPathfinderSettingsSnapshot();
+    await jest.advanceTimersByTimeAsync(499);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    await expect(read).resolves.toEqual(base);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([500, 502, 503, 504])('bounds persistent failures without mutating either store (%i)', async (status) => {
     fetchMock.mockImplementation(({ url }: { url: string }) =>
       url.endsWith('/settings')
         ? of({ data: { jsonData: { stackId: '123' }, enabled: true, pinned: true } })
         : error(status)
     );
-    await expect(
+    const rejected = expect(
       saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { tutorialUrl: 'new' } })
     ).rejects.toMatchObject({ status });
+    await jest.advanceTimersByTimeAsync(1999);
+    expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(2);
+    await jest.advanceTimersByTimeAsync(1);
+    await rejected;
+    expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(3);
     expect(fetchMock.mock.calls.every(([request]) => request.method === 'GET')).toBe(true);
-  }
-);
+  });
+
+  it.each([401, 403])(
+    'does not retry an upstream authentication or permission rejection hidden by a 502 (%i)',
+    async (upstreamStatus) => {
+      fetchMock.mockReturnValueOnce(throwError(() => ({ status: 502, data: { diagnostics: { upstreamStatus } } })));
+      await expect(fetchPathfinderSettingsSnapshot()).rejects.toMatchObject({ status: 502 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('accepts an absent singleton after the API becomes ready', async () => {
+    fetchMock
+      .mockReturnValueOnce(error(503))
+      .mockReturnValueOnce(throwError(() => ({ status: 404, data: { error: 'settings-upstream-unavailable' } })));
+    const read = fetchPathfinderSettingsSnapshot();
+    await jest.runAllTimersAsync();
+    await expect(read).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops retrying when a transient error becomes a permission denial', async () => {
+    fetchMock.mockReturnValueOnce(error(503)).mockReturnValueOnce(error(403));
+    const rejected = expect(fetchPathfinderSettingsSnapshot()).rejects.toMatchObject({ status: 403 });
+    await jest.runAllTimersAsync();
+    await rejected;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
 
 it('propagates network errors', async () => {
   fetchMock.mockReturnValueOnce(throwError(() => new Error('offline')));
