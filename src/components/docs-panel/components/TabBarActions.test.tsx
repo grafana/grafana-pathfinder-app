@@ -395,6 +395,40 @@ describe('TabBarActions', () => {
   });
 });
 
+describe('Edit as private guide menu', () => {
+  const content = {
+    url: 'https://grafana.com/guide/content.json',
+    type: 'interactive',
+    metadata: { title: 'Guide' },
+    content: '{}',
+    isNativeJson: true,
+  };
+
+  it.each([
+    ['Admin', false, true],
+    ['Editor', false, false],
+    ['Viewer', false, false],
+    ['Viewer', true, true],
+  ])('checks role %s and server admin %s', (orgRole, isGrafanaAdmin, visible) => {
+    mockConfig.bootData.user = { orgRole, isGrafanaAdmin };
+    render(<TabBarActions activeTab={makeTab({ content })} onOpenEditorTab={jest.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    expect(Boolean(screen.queryByText('Edit as private guide'))).toBe(visible);
+  });
+
+  it('does not offer copying a path even when its active content is JSON', () => {
+    mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
+    render(
+      <TabBarActions
+        activeTab={makeTab({ content, packageInfo: { packageManifest: { type: 'path' } } })}
+        onOpenEditorTab={jest.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.queryByText('Edit as private guide')).not.toBeInTheDocument();
+  });
+});
+
 it('keeps Settings but hides the classic Help menu action for OSS admins', () => {
   jest.mocked(currentPlatform).mockReturnValue('oss');
   mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };

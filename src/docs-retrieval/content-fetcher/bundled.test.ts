@@ -61,6 +61,7 @@ describe('fetchBundledInteractive — indexed path (index.json lookup + title fr
 
     expect(result.content).not.toBeNull();
     expect(result.content!.type).toBe('interactive');
+    expect(result.content!.isNativeJson).toBe(true);
     expect(result.content!.metadata.title).toBe('Welcome to Grafana');
     expect(JSON.parse(result.content!.content).id).toBe('welcome-to-grafana');
   });
