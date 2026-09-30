@@ -157,3 +157,43 @@ it('checks admin access again before committing a confirmed replacement', async 
   expect(open).not.toHaveBeenCalled();
   expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBe('existing');
 });
+
+it('allows retry after leaving and returning while preparation is in flight', async () => {
+  let resolve!: (value: typeof guide) => void;
+  jest.mocked(preparePrivateGuideCopy).mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done;
+    })
+  );
+  const open = jest.fn();
+  const { result, rerender } = renderHook(({ active }) => usePrivateGuideCopy(active, open), {
+    initialProps: { active: tab },
+  });
+  let preparing!: Promise<void>;
+  await act(async () => {
+    preparing = result.current.prepare();
+  });
+  rerender({ active: { ...tab, id: 'another' } });
+  rerender({ active: tab });
+  expect(result.current.isPreparing).toBe(false);
+  await act(() => result.current.prepare());
+  expect(open).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    resolve(guide);
+    await preparing;
+  });
+  expect(open).toHaveBeenCalledTimes(1);
+});
+
+it('confirms the prepared snapshot while the same tab is refreshing', async () => {
+  localStorage.setItem(StorageKeys.BLOCK_EDITOR_STATE, 'existing');
+  const open = jest.fn();
+  const { result, rerender } = renderHook(({ active }) => usePrivateGuideCopy(active, open), {
+    initialProps: { active: tab },
+  });
+  await act(() => result.current.prepare());
+  rerender({ active: { ...tab, isLoading: true, content: null } });
+  act(() => result.current.confirm());
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).guide).toEqual(guide);
+});

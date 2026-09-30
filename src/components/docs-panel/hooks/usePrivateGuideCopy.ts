@@ -15,6 +15,10 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
   } | null>(null);
   const lifecycle = useRef({ active: true, busy: false });
 
+  if (operation && operation.tabId !== tabId) {
+    setOperation(null);
+  }
+
   useEffect(() => {
     const current = { active: true, busy: false };
     lifecycle.current = current;
@@ -29,7 +33,7 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
   };
 
   const openCopy = (guide: JsonGuide) => {
-    if (!canCopyPublicGuide(tab, currentUserIsAdmin()) || !openEditor) {
+    if (!currentUserIsAdmin() || !openEditor) {
       setOperation(null);
       return;
     }
