@@ -9,6 +9,9 @@ import { TabBarActions } from './TabBarActions';
 import { currentPlatform } from '../../../lib/platform';
 import { testIds } from '../../../constants/testIds';
 import { PLUGIN_BASE_URL } from '../../../constants';
+import { useIsAssistantAvailable } from '../../../integrations/assistant-integration';
+
+jest.mock('../../../integrations/assistant-integration', () => ({ useIsAssistantAvailable: jest.fn(() => false) }));
 
 // Mock @grafana/runtime - all mock values defined inline for hoisting compatibility
 jest.mock('../../../lib/platform', () => ({ currentPlatform: jest.fn(() => 'cloud') }));
@@ -410,13 +413,25 @@ describe('Edit as private guide menu', () => {
     ['Viewer', false, false],
     ['Viewer', true, true],
   ])('checks role %s and server admin %s', (orgRole, isGrafanaAdmin, visible) => {
+    jest.mocked(useIsAssistantAvailable).mockReturnValue(true);
     mockConfig.bootData.user = { orgRole, isGrafanaAdmin };
     render(<TabBarActions activeTab={makeTab({ content })} onOpenEditorTab={jest.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'More options' }));
     expect(Boolean(screen.queryByText('Edit as private guide'))).toBe(visible);
+    expect(Boolean(screen.queryByText('Customize with Assistant'))).toBe(visible);
+  });
+
+  it('hides customization when Assistant is unavailable', () => {
+    jest.mocked(useIsAssistantAvailable).mockReturnValue(false);
+    mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
+    render(<TabBarActions activeTab={makeTab({ content })} onOpenEditorTab={jest.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.queryByText('Customize with Assistant')).not.toBeInTheDocument();
+    expect(screen.getByText('Edit as private guide')).toBeInTheDocument();
   });
 
   it('does not offer copying a path even when its active content is JSON', () => {
+    jest.mocked(useIsAssistantAvailable).mockReturnValue(true);
     mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
     render(
       <TabBarActions
@@ -426,6 +441,7 @@ describe('Edit as private guide menu', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'More options' }));
     expect(screen.queryByText('Edit as private guide')).not.toBeInTheDocument();
+    expect(screen.queryByText('Customize with Assistant')).not.toBeInTheDocument();
   });
 });
 

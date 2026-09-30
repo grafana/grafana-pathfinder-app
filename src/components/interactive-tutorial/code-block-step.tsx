@@ -185,7 +185,7 @@ export const CodeBlockStep = forwardRef<
       objectives: objectives || '',
       hints,
       targetAction: 'noop',
-      refTarget: '',
+      refTarget,
       stepId: renderedStepId,
       isEligibleForChecking,
       skippable,

@@ -12,6 +12,7 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
     tabId: string;
     isPreparing: boolean;
     pending: JsonGuide | null;
+    customization?: JsonGuide;
   } | null>(null);
   const lifecycle = useRef({ active: true, busy: false });
 
@@ -42,7 +43,23 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
     openEditor();
   };
 
-  const prepare = async () => {
+  const reviewCopy = (guide: JsonGuide) => {
+    if (!tab || !currentUserIsAdmin()) {
+      return;
+    }
+    if (hasEditorDraft()) {
+      setOperation((value) => ({
+        tabId: tab.id,
+        isPreparing: false,
+        pending: guide,
+        customization: value?.customization,
+      }));
+    } else {
+      openCopy(guide);
+    }
+  };
+
+  const prepare = async (customize = false) => {
     if (lifecycle.current.busy || !canCopyPublicGuide(tab, currentUserIsAdmin()) || !tab || !openEditor) {
       return;
     }
@@ -55,10 +72,10 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
       if (!current.active || !currentUserIsAdmin()) {
         return;
       }
-      if (hasEditorDraft()) {
-        setOperation({ tabId: tab.id, isPreparing: false, pending: guide });
+      if (customize) {
+        setOperation({ tabId: tab.id, isPreparing: false, pending: null, customization: guide });
       } else {
-        openCopy(guide);
+        reviewCopy(guide);
       }
     } catch (error) {
       if (current.active) {
@@ -76,8 +93,11 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
     available: Boolean(openEditor) && canCopyPublicGuide(tab, currentUserIsAdmin()),
     isPreparing: operation?.tabId === tabId && operation?.isPreparing === true,
     needsConfirmation: Boolean(pending),
+    customization: operation?.tabId === tabId ? operation?.customization : undefined,
+    reviewCopy,
     prepare,
     cancel: () => setOperation(null),
+    cancelConfirmation: () => setOperation((value) => (value?.customization ? { ...value, pending: null } : null)),
     confirm: () => {
       if (pending) {
         try {
