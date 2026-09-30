@@ -21,6 +21,10 @@ Both are Grafana-internal signals; neither is customer-visible. Every RudderStac
 - **Bridge** (`bridge.ts`) — entry-eager modules (`analytics.ts`, `logging.ts`) reach Faro through a late-bound bridge so the SDK stays out of `module.js` (enforced by `entry-bundle-boundary.test.ts`).
 - **Session replay** (`replay.ts` + `replay-scrub.ts`) — a masked rrweb recorder behind `pathfinder.session-replay`. Not part of the `instrumentations` array: it is added via `faro.instrumentations.add()` the first time Pathfinder is opened, because starting at page load would put rrweb's opening full-DOM snapshot on the wrong side of the activity gate and leave a stream of mutations with nothing to apply them to. Both the module and the instrumentation package are dynamically imported, so nothing loads when the flag is off.
 
+Browser errors use `error` and `unhandledrejection` event listeners without replacing or calling Grafana's global handlers. Ambient errors require an actual Pathfinder asset path or webpack source namespace; a plugin name in a dashboard query or Faro SDK wrapper alone is insufficient. Explicitly reported errors remain visible, including ResizeObserver errors attributable to Pathfinder.
+
+Telemetry and completion-hook chunk imports retry `ChunkLoadError` failures up to three times, after 1, 5, and 30 seconds. An `online` event advances a pending retry. Other failures are not retried. Telemetry loading runs independently of plugin registration. While the completion hook loads, the recorder buffers up to 100 completions in memory for the current user and organization, then replays them into the durable queue. Reset discards buffered facts; a reload before the hook accepts them loses this temporary buffer.
+
 ## What a new feature gets for free
 
 Four channels; three cost nothing beyond conventions the repo already follows:

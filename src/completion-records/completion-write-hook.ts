@@ -1,6 +1,6 @@
 import { logger } from '../lib/logging';
 
-import { onCompletionRecorded } from './completion-recorder';
+import { discardPendingCompletions, onCompletionRecorded } from './completion-recorder';
 import {
   currentCompletionPlatform,
   postCompletionRecord,
@@ -229,13 +229,12 @@ export function armCompletionWriteHook(overrides?: Partial<WriteHookDeps>): void
  * queue draining durable records for the guides the user just cleared.
  */
 export function discardQueuedCompletionWrites(): void {
+  discardPendingCompletions();
   if (controller) {
     controller.discardQueued();
     return;
   }
-  // Not armed on this surface (anonymous, or reset reached before init's dynamic
-  // import resolved). Clear the persisted queue directly so a reset still drops
-  // what an earlier load or another tab left behind.
+  // Reset can precede the async write-hook initialization.
   const ownerKey = defaultDeps.ownerKey();
   if (ownerKey) {
     defaultDeps.storage(ownerKey).clear();

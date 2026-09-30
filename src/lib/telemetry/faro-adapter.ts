@@ -24,6 +24,7 @@ import type { SessionReplayController } from './replay';
 import { stampSessionExperiments } from './session';
 import { registerTelemetryBridge } from './bridge';
 import { normalizeTelemetryUrl } from './url';
+import { retryChunkImport } from '../retry-chunk-import';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const APP_NAME = packageJson.name;
@@ -31,7 +32,7 @@ const APP_VERSION = packageJson.version;
 const GLOBAL_OBJECT_KEY = 'grafanaPathfinderApp';
 
 let faroInstance: Faro | null = null;
-let initStarted = false;
+let initialization: Promise<void> | undefined;
 
 export function guardTelemetry(fn: () => void): void {
   try {
@@ -46,33 +47,32 @@ export interface InitFaroOptions {
   sessionReplaySamplingRate?: number;
 }
 
-export async function initFaro(options?: InitFaroOptions): Promise<void> {
-  if (initStarted) {
-    return;
-  }
-  initStarted = true;
+export function initFaro(options?: InitFaroOptions): Promise<void> {
+  initialization ??= initializeFaroInstance(options).catch((error: unknown) => {
+    if (!faroInstance) {
+      initialization = undefined;
+    }
+    throw error;
+  });
+  return initialization;
+}
 
+async function initializeFaroInstance(options?: InitFaroOptions): Promise<void> {
   const resolved = resolveFaroEnvironment();
   if (!resolved) {
     return;
   }
   const { environment } = resolved;
 
-  const {
-    initializeFaro,
-    ErrorsInstrumentation,
-    SessionInstrumentation,
-    ViewInstrumentation,
-    PerformanceInstrumentation,
-  } = await import('@grafana/faro-web-sdk');
+  const { initializeFaro, SessionInstrumentation, ViewInstrumentation, PerformanceInstrumentation } =
+    await retryChunkImport(() => import('@grafana/faro-web-sdk'));
+  const { PathfinderErrorsInstrumentation } = await retryChunkImport(() => import('./browser-errors'));
 
   faroInstance = initializeFaro({
     url: COLLECTOR_URL,
     requestCompression: true,
     globalObjectKey: GLOBAL_OBJECT_KEY,
-    // Isolate from Grafana core's own Faro instance and other app plugins' —
-    // without this, initializing here would clobber the global object Grafana
-    // core attaches its own Faro instance to.
+    // Grafana core owns the global Faro instance.
     isolate: true,
     ignoreUrls: [buildResourceIgnorePattern(TRACKED_RESOURCE_HOSTNAMES)],
     app: {
@@ -81,31 +81,20 @@ export async function initFaro(options?: InitFaroOptions): Promise<void> {
       environment,
     },
     instrumentations: [
-      new ErrorsInstrumentation(),
+      new PathfinderErrorsInstrumentation(),
       new SessionInstrumentation(),
       new ViewInstrumentation(),
-      // Only fetch/xhr resources are tracked by default (config.trackResources
-      // is left unset) — not every image/script/CSS on the page. Filtered
-      // further in beforeSend down to docs/recommender hosts specifically.
       new PerformanceInstrumentation(),
     ],
     sessionTracking: {
       enabled: true,
-      // Faro's persistent-session localStorage key is a fixed SDK constant
-      // (`com.grafana.faro.session`) that `isolate` does not namespace, and
-      // Grafana core's Faro uses it too — persistent:true would resume core's
-      // session, inherit its sampling decision, and could contaminate core's
-      // RUM sampling in return. Volatile sessions live in sessionStorage,
-      // which core doesn't touch.
+      // Persistent Faro sessions share Grafana core's key even with isolate enabled.
       persistent: false,
       session: {
         attributes: {
           grafana_version: config.buildInfo.version,
           edition: config.buildInfo.edition ?? '',
           language: config.bootData?.user?.language ?? '',
-          // Stack hostname (slug.grafana.net on Cloud) so sessions are
-          // attributable to an instance; the recommender payload sends the
-          // same hostname unhashed as `source`.
           instance: window.location.hostname,
         },
       },
@@ -122,10 +111,7 @@ export async function initFaro(options?: InitFaroOptions): Promise<void> {
   void stampFaroUser();
   void stampSessionExperiments();
 
-  // Subscribing here, before React mounts anything, guarantees this listener
-  // sees every future reportPathfinderSurface call — including the one that
-  // flips passesActivityGate open — so the session attribute is never stale
-  // when a payload first clears the gate.
+  // Stamp both an already-open surface and future transitions after delayed initialization.
   const stampSurface = () => {
     markPathfinderActive();
     setFaroSessionAttributes({ surface: getPathfinderSurface() });

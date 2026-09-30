@@ -3,9 +3,10 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { runInNewContext } from 'vm';
 import * as ts from 'typescript';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { getConfigWithDefaults } from '../constants';
 import { resolvePathfinderAvailability } from './pathfinder-enablement';
+import { retryChunkImport } from '../lib/retry-chunk-import';
 
 // Wrap the compiled entrypoint to execute its top-level awaits under Jest's CommonJS runtime.
 const compiled = ts.transpileModule(readFileSync(join(__dirname, '../module.tsx'), 'utf8'), {
@@ -24,7 +25,8 @@ async function boot(
   read?: Promise<ReturnType<typeof getConfigWithDefaults>>,
   dockedPlugin = 'grafana-pathfinder-app',
   surfaceReported?: boolean,
-  panelMode = 'floating'
+  panelMode = 'floating',
+  failedImports: Record<string, number> = {}
 ) {
   const settings = readFailed ? undefined : getConfigWithDefaults({ pathfinderEnabled: tenant });
   const root = { component: undefined as React.ComponentType | undefined };
@@ -61,6 +63,7 @@ async function boot(
     '@grafana/ui': { LoadingPlaceholder: () => null },
     '@grafana/i18n': { initPluginTranslations: async () => {} },
     './lib/analytics': { reportAppInteraction: jest.fn(), UserInteraction: {}, bindExperimentsProvider: jest.fn() },
+    './lib/retry-chunk-import': { retryChunkImport },
     './lib/logging': { logger: { exception: jest.fn(), error: jest.fn(), warn: jest.fn() } },
     './plugin.json': { id: 'grafana-pathfinder-app' },
     './utils/configured-bootstrap': effects,
@@ -121,6 +124,11 @@ async function boot(
     },
   };
   const requireModule = jest.fn((name: string) => {
+    const remainingFailures = failedImports[name] ?? 0;
+    if (remainingFailures > 0) {
+      failedImports[name] = remainingFailures - 1;
+      throw Object.assign(new Error('Loading chunk failed'), { name: 'ChunkLoadError' });
+    }
     if (!(name in modules)) {
       throw new Error(`Unexpected import: ${name}`);
     }
@@ -225,6 +233,7 @@ it('waits for a reported mount before recording startup telemetry for a restored
   const { effects } = await boot(true, true, false, undefined, 'grafana-pathfinder-app', false);
   await Promise.resolve();
   expect(effects.recordStartupSettings).not.toHaveBeenCalled();
+  await waitFor(() => expect(effects.onPathfinderSurfaceChange).toHaveBeenCalled());
   const onSurface = effects.onPathfinderSurfaceChange.mock.calls[0][0];
   onSurface('closed');
   expect(effects.recordStartupSettings).not.toHaveBeenCalled();
@@ -236,7 +245,7 @@ it('waits for a reported mount before recording startup telemetry for a restored
 it('records immediately when the surface has already reported its mount', async () => {
   const { effects } = await boot(true, true, false, undefined, 'grafana-pathfinder-app', true);
   await Promise.resolve();
-  expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved');
+  await waitFor(() => expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved'));
   expect(effects.onPathfinderSurfaceChange).not.toHaveBeenCalled();
 });
 
@@ -244,4 +253,44 @@ it('restores a legacy title-only dock when enabled in sidebar mode', async () =>
   const { effects } = await boot(true, true, false, undefined, '', undefined, 'sidebar');
   expect(effects.setPendingOpenSource).toHaveBeenCalledWith('browser_restore', 'restore');
   expect(effects.clearExtensionSidebarDocked).not.toHaveBeenCalled();
+});
+
+it('registers the plugin while Faro chunks retry and later recovers telemetry', async () => {
+  jest.useFakeTimers();
+  try {
+    const { plugin, effects } = await boot(true, true, false, undefined, 'grafana-pathfinder-app', true, 'floating', {
+      './lib/faro': 1,
+    });
+    expect(plugin.setRootPage).toHaveBeenCalled();
+    expect(effects.recordStartupSettings).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved');
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('recovers the completion subscriber without delaying synchronous navigation setup', async () => {
+  jest.useFakeTimers();
+  try {
+    const { plugin, effects } = await boot(
+      true,
+      true,
+      false,
+      undefined,
+      'grafana-pathfinder-app',
+      undefined,
+      'floating',
+      {
+        './completion-records/completion-write-hook': 1,
+      }
+    );
+    plugin.init();
+    expect(effects.installDeepLinkNavListener).toHaveBeenCalled();
+    expect(effects.armCompletionWriteHook).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(effects.armCompletionWriteHook).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
 });
