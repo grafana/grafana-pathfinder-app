@@ -109,7 +109,7 @@ export function LearningPathTableOfContents({
   // the progress ring's accessible label. A track is a presentation
   // ordering only (COMPLETION-MODEL.md), so its ring must read as "progress
   // through this track," never as path-wide completion.
-  const activeSequenceLabel = activeTrack?.label ?? t('coverPage.foundationsTab', 'Foundations');
+  const activeSequenceLabel = activeTrack?.label ?? t('coverPage.foundationsTab', 'Fundamentals');
 
   // The segments below read each milestone's percentage out of storage, so the
   // store's announcement is what keeps them from painting a stale fill —
@@ -220,7 +220,7 @@ export function LearningPathTableOfContents({
       {hasTracks && (
         <TabsBar className={styles.tracksTabs} data-testid={testIds.learningPaths.tracksTabs}>
           <Tab
-            label={t('coverPage.foundationsTab', 'Foundations')}
+            label={t('coverPage.foundationsTab', 'Fundamentals')}
             active={activeTabId === FOUNDATIONS_TAB_ID}
             onChangeTab={() => setActiveTabId(FOUNDATIONS_TAB_ID)}
             data-testid={testIds.learningPaths.tracksTab(FOUNDATIONS_TAB_ID)}

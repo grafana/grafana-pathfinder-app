@@ -33,7 +33,8 @@
     "totalHours_one": "~{{count}} hr",
     "totalHours_other": "~{{count}} hr",
     "upNext": "Up next",
-    "locked": "Locked"
+    "locked": "Locked",
+    "foundationsTab": "Fundamentals"
   },
   "docsPanel": {
     "closeTab": "Close {{title}}",
