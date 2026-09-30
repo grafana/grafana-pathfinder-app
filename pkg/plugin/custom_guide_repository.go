@@ -8,9 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
 // Granular unavailability reasons, split out of the shared
@@ -251,21 +249,9 @@ func drainCustomGuides(ctx context.Context, namespace string, lister customGuide
 // never from a query parameter. Config resolution runs before the test-only
 // lister override so the structural-unavailability branch stays testable.
 func (a *App) resolveCustomGuideBackend(r *http.Request) (lister customGuideLister, namespace string, available bool, reason string) {
-	namespace = backend.PluginConfigFromContext(r.Context()).Namespace
-
-	cfg := config.GrafanaConfigFromContext(r.Context())
-	if cfg == nil {
-		return nil, namespace, false, reasonGrafanaConfigUnavailable
-	}
-	if !cfg.FeatureToggles().IsEnabled(customGuideAggregationToggle) {
-		return nil, namespace, false, reasonFeatureToggleDisabled
-	}
-	if namespace == "" {
-		return nil, namespace, false, reasonNamespaceUnavailable
-	}
-	appURL, err := cfg.AppURL()
-	if err != nil || appURL == "" {
-		return nil, namespace, false, reasonAppURLUnavailable
+	appURL, namespace, idToken, reason := resolveAppPlatformConfig(r, customGuideAggregationToggle)
+	if reason != "" {
+		return nil, namespace, false, reason
 	}
 
 	if customGuideListerOverride != nil {
@@ -279,6 +265,5 @@ func (a *App) resolveCustomGuideBackend(r *http.Request) (lister customGuideList
 		return nil, namespace, false, reasonOBOUnavailable
 	}
 
-	idToken := r.Header.Get(backend.GrafanaUserSignInTokenHeaderName)
 	return newCustomGuideHTTPClient(appURL, a.oboExchanger, idToken, a.ctxLogger(r.Context())), namespace, true, ""
 }

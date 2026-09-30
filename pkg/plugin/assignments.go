@@ -9,9 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
 // GET /assignments/my serves the signed-in user's assignments. Identity is
@@ -216,21 +214,9 @@ func drainAssignments(ctx context.Context, namespace, userID string, lister assi
 // reachable (toggle, app URL, namespace, credential) and returns a lister. The
 // namespace comes from the trusted plugin context, never a query parameter.
 func (a *App) resolveAssignmentBackend(r *http.Request) (lister assignmentLister, namespace string, available bool, reason string) {
-	namespace = backend.PluginConfigFromContext(r.Context()).Namespace
-
-	cfg := config.GrafanaConfigFromContext(r.Context())
-	if cfg == nil {
-		return nil, namespace, false, reasonGrafanaConfigUnavailable
-	}
-	if !cfg.FeatureToggles().IsEnabled(assignmentsAggregationToggle) {
-		return nil, namespace, false, reasonFeatureToggleDisabled
-	}
-	if namespace == "" {
-		return nil, namespace, false, reasonNamespaceUnavailable
-	}
-	appURL, err := cfg.AppURL()
-	if err != nil || appURL == "" {
-		return nil, namespace, false, reasonAppURLUnavailable
+	appURL, namespace, idToken, reason := resolveAppPlatformConfig(r, assignmentsAggregationToggle)
+	if reason != "" {
+		return nil, namespace, false, reason
 	}
 
 	if assignmentListerOverride != nil {
@@ -241,7 +227,6 @@ func (a *App) resolveAssignmentBackend(r *http.Request) (lister assignmentLister
 		return nil, namespace, false, reasonOBOUnavailable
 	}
 
-	idToken := r.Header.Get(backend.GrafanaUserSignInTokenHeaderName)
 	return newAssignmentHTTPClient(appURL, a.oboExchanger, idToken, a.ctxLogger(r.Context())), namespace, true, ""
 }
 

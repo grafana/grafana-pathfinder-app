@@ -15,7 +15,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/grafana/grafana-plugin-sdk-go/config"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
@@ -260,53 +262,15 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 	}
 
 	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource)
-
-	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
-	defer cancel()
-
-	accessToken, err := mintAccessToken(reqCtx, c.minter, namespace, c.idToken)
-	if err != nil {
-		return fmt.Errorf("app platform create: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(obj))
-	if err != nil {
-		return fmt.Errorf("app platform create: build request: %w", err)
-	}
-	req.Header.Set(auth.AccessTokenHeader, accessToken)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("app platform create: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	createDiagOnce.Do(func() {
-		c.logger.Info("app platform proxy: first upstream create",
-			"resource", resource,
-			"status", resp.StatusCode,
-			"idTokenPresent", c.idToken != "",
-			"outboundCredential", auth.AccessTokenHeader+"=<obo-access-token>")
+	return c.sendObject(ctx, http.MethodPost, endpoint, namespace, resource, "create", obj, maxBytes, func(status int) {
+		createDiagOnce.Do(func() {
+			c.logger.Info("app platform proxy: first upstream create",
+				"resource", resource,
+				"status", status,
+				"idTokenPresent", c.idToken != "",
+				"outboundCredential", auth.AccessTokenHeader+"=<obo-access-token>")
+		})
 	})
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return &appPlatformUpstreamError{
-			status:     resp.StatusCode,
-			retryAfter: resp.Header.Get("Retry-After"),
-			msg:        fmt.Sprintf("app platform create %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(body))),
-		}
-	}
-
-	// 200/201 means the record is already durable upstream and the body is unused,
-	// so a body read error or an over-cap body must NEVER become a retryable
-	// failure: the write has already committed, and surfacing an error would mask a
-	// durable success as failed. Drain best-effort up to the cap (bounding bytes
-	// transferred) so the connection can be reused, and swallow any error.
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBytes))
-	return nil
 }
 
 // updateStatus PUTs a kind's status subresource. The body is the status
@@ -317,17 +281,23 @@ func (c *appPlatformListClient) updateStatus(ctx context.Context, groupVersion, 
 		return fmt.Errorf("app platform status: empty name")
 	}
 	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource) + "/" + url.PathEscape(name) + "/status"
+	return c.sendObject(ctx, http.MethodPut, endpoint, namespace, resource, "status", obj, maxBytes, nil)
+}
 
+// sendObject sends a JSON object and returns nil on 200/201. A non-2xx becomes an
+// appPlatformUpstreamError carrying the status and Retry-After.
+func (c *appPlatformListClient) sendObject(ctx context.Context, method, endpoint, namespace, resource, op string, obj []byte, maxBytes int64, onResponse func(status int)) error {
 	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 
 	accessToken, err := mintAccessToken(reqCtx, c.minter, namespace, c.idToken)
 	if err != nil {
-		return fmt.Errorf("app platform status: %w", err)
+		return fmt.Errorf("app platform %s: %w", op, err)
 	}
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPut, endpoint, bytes.NewReader(obj))
+
+	req, err := http.NewRequestWithContext(reqCtx, method, endpoint, bytes.NewReader(obj))
 	if err != nil {
-		return fmt.Errorf("app platform status: build request: %w", err)
+		return fmt.Errorf("app platform %s: build request: %w", op, err)
 	}
 	req.Header.Set(auth.AccessTokenHeader, accessToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -335,19 +305,51 @@ func (c *appPlatformListClient) updateStatus(ctx context.Context, groupVersion, 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("app platform status: %w", err)
+		return fmt.Errorf("app platform %s: %w", op, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	if onResponse != nil {
+		onResponse(resp.StatusCode)
+	}
+
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return &appPlatformUpstreamError{
 			status:     resp.StatusCode,
 			retryAfter: resp.Header.Get("Retry-After"),
-			msg:        fmt.Sprintf("app platform status %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(body))),
+			msg:        fmt.Sprintf("app platform %s %s: status %d: %s", op, resource, resp.StatusCode, strings.TrimSpace(string(body))),
 		}
 	}
+
+	// 200/201 means the record is already durable upstream and the body is unused,
+	// so a body read error or an over-cap body must NEVER become a retryable
+	// failure: surfacing an error would mask a durable success as failed. Drain
+	// best-effort up to the cap so the connection can be reused.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBytes))
 	return nil
+}
+
+// resolveAppPlatformConfig is the structural "is the aggregated API reachable here" gate
+// shared by the custom-guide and assignment proxies. reason is "" when available.
+func resolveAppPlatformConfig(r *http.Request, toggle string) (appURL, namespace, idToken, reason string) {
+	namespace = backend.PluginConfigFromContext(r.Context()).Namespace
+
+	cfg := config.GrafanaConfigFromContext(r.Context())
+	if cfg == nil {
+		return "", namespace, "", reasonGrafanaConfigUnavailable
+	}
+	if !cfg.FeatureToggles().IsEnabled(toggle) {
+		return "", namespace, "", reasonFeatureToggleDisabled
+	}
+	if namespace == "" {
+		return "", namespace, "", reasonNamespaceUnavailable
+	}
+	appURL, err := cfg.AppURL()
+	if err != nil || appURL == "" {
+		return "", namespace, "", reasonAppURLUnavailable
+	}
+	return appURL, namespace, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), ""
 }
 
 // appPlatformUpstreamError carries the upstream HTTP status so error handling
