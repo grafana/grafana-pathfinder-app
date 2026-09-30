@@ -295,6 +295,7 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
           targetValue,
           targetState,
           targetComment,
+          openGuide,
           buttonType = 'do',
           fullScreenFallbackLocation,
         } = request;
@@ -307,6 +308,7 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
           targetValue: targetValue,
           targetState: targetState,
           targetComment: targetComment,
+          openGuide,
           requirements: undefined,
           tagName: 'button', // Simulated for React components
           textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,

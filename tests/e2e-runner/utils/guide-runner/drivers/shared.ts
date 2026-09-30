@@ -138,7 +138,7 @@ export async function waitForCompletion(
 export async function startStepAction(
   context: StepDriverExecutionContext
 ): Promise<{ outcome: 'started'; action: StepAction } | { outcome: 'completed' | 'no-control' }> {
-  const { page, step, verbose } = context;
+  const { page, step, timeout, verbose } = context;
   const discoveredAction = selectStepAction(step);
   let action = await currentStepAction(page, step.stepId);
   if (!action) {
@@ -153,7 +153,7 @@ export async function startStepAction(
 
   await expect(stepActionButton(page, step.stepId, action)).toBeEnabled({ timeout: BUTTON_ENABLE_TIMEOUT_MS });
   await dismissBadgeCelebrations(page);
-  await stepActionButton(page, step.stepId, action).click();
+  await stepActionButton(page, step.stepId, action).click({ timeout });
   if (verbose) {
     console.log(`   → Clicked "${action === 'do-it' ? 'Do it' : 'Show me'}" for step ${step.stepId}`);
   }

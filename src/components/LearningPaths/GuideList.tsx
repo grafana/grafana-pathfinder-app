@@ -60,6 +60,11 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
               ? {
                   'data-journey-start': 'true',
                   'data-milestone-url': guide.url,
+                  // guide.id (below `key=`) is a React-key-only fallback for
+                  // some producers when there's no real manifest id — never
+                  // forward it as the click-target id (same guard the cover
+                  // page's CTA already applies to Milestone.id directly).
+                  ...(guide.guideId != null && { 'data-milestone-id': guide.guideId }),
                   'data-interaction-location': 'module_row_click',
                   role: 'button',
                   tabIndex: 0,

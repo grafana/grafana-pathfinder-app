@@ -276,7 +276,8 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
     !KNOWN_TARGET_ACTIONS.has(action.targetAction) ||
     !isOptionalTargetState(action.targetState) ||
     (action.lazyRender !== undefined && typeof action.lazyRender !== 'boolean') ||
-    !isOptionalString(action.scrollContainer)
+    !isOptionalString(action.scrollContainer) ||
+    !isOptionalString(action.openGuide)
   ) {
     return false;
   }
@@ -297,7 +298,8 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
           isOptionalString(sub.targetComment) &&
           isOptionalTargetState(sub.targetState) &&
           (sub.lazyRender === undefined || typeof sub.lazyRender === 'boolean') &&
-          isOptionalString(sub.scrollContainer)
+          isOptionalString(sub.scrollContainer) &&
+          isOptionalString(sub.openGuide)
       )
     );
   }

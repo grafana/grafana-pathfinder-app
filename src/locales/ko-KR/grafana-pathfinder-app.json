@@ -73,7 +73,8 @@
     "showMoreTabs_one": "탭 {{count}}개 더 보기",
     "showMoreTabs_other": "탭 {{count}}개 더 보기",
     "switchToTab": "{{title}}(으)로 전환",
-    "wordmark": "대화형 학습"
+    "beta": "Beta",
+    "classicHelpMenuSettings": "Classic Help menu settings"
   },
   "feedbackButton": {
     "ariaLabel": "이 플러그인에 대한 피드백 보내기",
@@ -166,5 +167,20 @@
     "streakTooltip": "{{- days}}일 연속 학습 중 — 계속 이어가세요!",
     "streakTooltip_one": "{{- days}}일 연속 학습 중 — 계속 이어가세요!",
     "streakTooltip_other": "{{- days}}일 연속 학습 중 — 계속 이어가세요!"
+  },
+  "appConfig": {
+    "beta": "Beta",
+    "pathfinderEnabled": "Enable Pathfinder",
+    "pathfinderEnabledDescription": "Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, Pathfinder stays available.",
+    "pathfinderPreview": "Interactive learning",
+    "pathfinderPreviewDescription": "Pathfinder brings contextual help and interactive guides into Grafana.",
+    "pathfinderRemotelyDisabled": "Pathfinder is disabled remotely",
+    "pathfinderRemotelyDisabledDescription": "The remote switch currently prevents Pathfinder from running. Your saved preference will apply when Pathfinder is enabled remotely again.",
+    "pathfinderRevertDescription": "Turn this off to use Grafana’s classic Help menu after users reload. Your learning progress is kept."
+  },
+  "pathfinder": {
+    "disabled": "Pathfinder is disabled",
+    "disabledDescription": "Pathfinder is turned off for this organization.",
+    "openSettings": "Open Pathfinder settings"
   }
 }

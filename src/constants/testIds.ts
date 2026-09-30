@@ -342,6 +342,8 @@ export const testIds = {
     tableOfContents: 'learning-paths-toc',
     tableOfContentsCta: 'learning-paths-toc-cta',
     coverHero: 'learning-paths-cover-hero',
+    tracksTabs: 'learning-paths-toc-tracks-tabs',
+    tracksTab: (trackId: string) => `learning-paths-toc-track-${trackId}`,
   },
 
   // Live Session
@@ -414,12 +416,6 @@ export const testIds = {
   // Home Page
   homePage: {
     container: 'home-page-container',
-  },
-
-  // Control Group Popup
-  controlGroupPopup: {
-    container: 'control-group-popup-container',
-    dismissButton: 'control-group-popup-dismiss',
   },
 
   // Feedback Button

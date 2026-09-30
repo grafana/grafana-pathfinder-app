@@ -23,8 +23,17 @@ export class ProvisionedCloudTargets {
   private readonly targets = new Map<string, TrackedCloudTarget>();
   private readonly guideTargets = new Map<string, TrackedCloudTarget>();
 
-  add(target: ProvisionedCloudTarget, env: CloudChainTeardownTarget): void {
-    this.targets.set(new URL(target.targetUrl).origin, { env, target });
+  add(
+    target: ProvisionedCloudTarget,
+    env: CloudChainTeardownTarget,
+    cleanupRegistry?: CloudChainCleanupRegistry
+  ): void {
+    this.targets.set(new URL(target.targetUrl).origin, {
+      env,
+      target,
+      ...(cleanupRegistry ? { cleanupRegistry } : {}),
+    });
+    cleanupRegistry?.track(env);
   }
   addForGuides(
     guideIds: string[],
@@ -74,8 +83,12 @@ export class ProvisionedCloudTargets {
         }
       }
     }
-    for (const { env } of this.targets.values()) {
-      warnings.push(...((await env.teardownChain(context)) ?? []));
+    for (const { env, cleanupRegistry } of this.targets.values()) {
+      try {
+        warnings.push(...((await env.teardownChain(context)) ?? []));
+      } finally {
+        cleanupRegistry?.untrack(env);
+      }
     }
     return warnings;
   }
@@ -171,7 +184,17 @@ export async function provisionCloudTargetsForChain(options: {
       }
       console.log(`\n🔑 Provisioning a service account for ${new URL(targetUrl).origin}...`);
       const env = new SharedCloudStackEnvironment(adminToken, targetUrl, options.verbose);
-      provisionedTargets.add(await env.provisionChain(), env);
+      options.cloudChainCleanup?.track(env);
+      try {
+        provisionedTargets.add(await env.provisionChain(), env, options.cloudChainCleanup);
+      } catch (err) {
+        try {
+          await env.teardownChain();
+        } finally {
+          options.cloudChainCleanup?.untrack(env);
+        }
+        throw err;
+      }
     }
     return provisionedTargets;
   } catch (err) {

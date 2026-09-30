@@ -77,6 +77,7 @@ export type InteractiveActionRequest = Pick<InteractiveElementData, 'targetActio
       | 'targetValue'
       | 'targetState'
       | 'targetComment'
+      | 'openGuide'
       | 'fullScreenFallbackLocation'
       | 'signal'
       | 'lazyRender'

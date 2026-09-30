@@ -1,155 +1,92 @@
 ---
-title: Architecture
+title: Interactive learning architecture
 menuTitle: Architecture
-description: Understand how the Interactive learning plugin operates and how it communicates with the Recommender service and the Pathfinder backend.
-weight: 1
+description: Understand where Interactive learning gets guides, how actions run in Grafana, what contextual data recommendations use, and how guides and progress are stored.
+weight: 40
+review_date: 2026-09-30
 ---
 
 # Interactive learning architecture
 
-Interactive learning is an app plugin built on the Grafana plugin SDK. Its primary mount point is the Grafana **extension sidebar** — the same surface used by Grafana Assistant — which lets the plugin operate alongside any part of the Grafana UI.
+Interactive learning, also called Pathfinder, displays documentation and guides alongside your work in Grafana. This page explains its content sources, permissions, and storage so you can decide how to use it in your organization.
 
-The plugin is composed of a React + TypeScript frontend and a Go backend. The frontend handles all UI, recommendation rendering, and step execution; the backend handles network proxying and custom-guide storage. Sandbox VMs and terminal sessions come from a separate, optional Coda app plugin.
+## Where content comes from
 
-## High-level subsystems
+| Content source                 | What it provides                                                                         | Availability                                                                                                        |
+| ------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Bundled content                | Guides included with the plugin.                                                         | Available without the recommendation service. Individual guide assets or steps can still need a network connection. |
+| Grafana's public guide catalog | Additional guides, learning paths, and journeys from Grafana's content delivery network. | Requires access to the content service.                                                                             |
+| Context-aware recommendations  | Suggestions based on the Grafana page and features you are using.                        | Enabled by default in Grafana Cloud; requires administrator opt-in on self-managed Grafana.                         |
+| Custom guides                  | Content your organization's authors save and publish.                                    | Requires the Pathfinder storage service and appropriate permissions.                                                |
+| Grafana documentation          | Reference documentation and tutorials opened in the panel.                               | Requires access to the documentation site.                                                                          |
 
-Interactive learning has six subsystems that work together:
+Turning off recommendations stops requests to the recommendation service. It does not turn off Interactive learning or all network requests: an online browser can still load the public catalog, guides, and documentation. If the recommendation service is unavailable, Pathfinder uses available fallback content.
 
-| Subsystem                        | Responsibility                                                                                                                                                                                  |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Context engine**               | Detects what the user is doing in Grafana — current path, dashboard, data sources, search params, role — and produces a context object.                                                         |
-| **Recommendation pipeline**      | Sends context to the recommender, applies fallbacks (bundled / packaged guides), deduplicates, and renders the recommendations panel.                                                           |
-| **Documentation renderer**       | Fetches and renders guide content as a React component tree (not an iframe), with progressive lazy-loading and variable substitution.                                                           |
-| **Interactive engine**           | Executes step actions (highlight, click, form fill, navigate, hover, popout, multistep, guided), checks requirements, and tracks completion.                                                    |
-| **Block editor / custom guides** | Lets editors and admins author their own guides and persist them to the Pathfinder backend as Kubernetes-style custom resources.                                                                |
-| **Live sessions and Coda**       | Optional features — peer-to-peer collaborative guide presentations (Live sessions) and ephemeral sandbox VMs accessible through an in-panel terminal (Coda, provided by a separate app plugin). |
+For the controls, refer to [Administrator reference](../administrators-reference/).
 
-![Interactive learning architecture](/media/docs/pathfinder/architecture.png)
+## How interactive actions work
 
-## Context engine
+Guides render inside Grafana and interact with the page you are viewing. They can include explanations, images, code, questions, interactive steps, and hands-on challenges.
 
-The context engine continuously observes Grafana state and produces a `ContextData` object. The following table outlines the data points it collects.
+- **Show me** highlights the relevant part of the interface.
+- **Do it** performs the described action, such as clicking a button, filling a field, or navigating.
+- **Guided steps** wait for you to perform actions yourself.
+- **Challenges and quizzes** let you practice and check your understanding.
 
-{{< fixed-table >}}
+Actions use your existing Grafana session and permissions. A guide does not grant access to a data source, dashboard, or administrative action that you cannot otherwise use. Review steps before running them: actions can change resources in your Grafana instance.
 
-| Metric                | Example                                                | Description                                                                             | Sent to Recommender   |
-| --------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------- | --------------------- |
-| **currentPath**       | `/explore`                                             | Current URL pathname from the Grafana location service                                  | Yes (as `path`)       |
-| **currentUrl**        | `/explore?left={"datasource":"prometheus"}`            | Full URL including pathname, search params, and hash                                    | No                    |
-| **pathSegments**      | `['d', 'abc123', 'my-dashboard']`                      | URL path split into segments for entity / action detection                              | No                    |
-| **dataSources**       | `[{id: 1, name: 'Prometheus', type: 'prometheus'}]`    | Configured data sources from the Grafana API                                            | Yes (types only)      |
-| **dashboardInfo**     | `{id: 5, title: 'My Dashboard', uid: 'abc123'}`        | Dashboard metadata when viewing a dashboard                                             | No                    |
-| **tags**              | `['dashboard:edit', 'selected-datasource:prometheus']` | Contextual tags derived from path, actions, data sources, and user interactions         | Yes                   |
-| **visualizationType** | `timeseries`, `gauge`, `table`                         | Detected panel / visualization type from EchoSrv events when creating or editing panels | No (included in tags) |
-| **grafanaVersion**    | `11.3.0`                                               | Current Grafana version from build info                                                 | No                    |
-| **timestamp**         | `2026-04-27T10:30:00.000Z`                             | ISO timestamp when context was retrieved                                                | No                    |
-| **searchParams**      | `{editPanel: '2', tab: 'queries'}`                     | URL query parameters as key-value pairs                                                 | No                    |
-| **user_id**           | `a1b2c3...` (hashed)                                   | Hashed user identifier for Cloud users, generic `oss-user` for OSS                      | Yes                   |
-| **user_email**        | `d4e5f6...` (hashed)                                   | Hashed user email for Cloud users, generic `oss-user@example.com` for OSS               | Yes                   |
-| **user_role**         | `Admin`, `Editor`, `Viewer`                            | The user's organization role from Grafana                                               | Yes                   |
-| **platform**          | `cloud` or `oss`                                       | Whether running on Grafana Cloud or self-hosted OSS                                     | Yes                   |
-| **source**            | `instance123.grafana.net` or `oss-source`              | Cloud instance hostname or generic OSS identifier                                       | Yes                   |
+A step can check prerequisites such as the current page, a required data source, or a visible control. If a prerequisite is missing, the guide explains what is needed. Some failures offer **Fix this** to help recover. Where enabled and available, Grafana Assistant can suggest a repair for a missing target; accepting a suggestion changes the current session's guide, not the published source.
 
-{{< /fixed-table >}}
+## What recommendation requests contain
 
-Hashing of `user_id` and `user_email` happens client-side before the request leaves the browser. The plugin never sends raw user identifiers to the recommender.
+The recommendation service receives a selected set of context, rather than the complete page or dashboard:
 
-## Recommendation pipeline
+| Context                                        | Purpose                                                                                           |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Current page path and contextual tags          | Identify the Grafana feature and activity.                                                        |
+| Data source types                              | Suggest relevant data source content.                                                             |
+| Grafana role, platform, and interface language | Select suitable recommendations.                                                                  |
+| User identifier and email                      | Use hashed values in Grafana Cloud and generic values on self-managed Grafana.                    |
+| Instance source                                | Identify the Grafana Cloud hostname; self-managed instances generally use a generic source value. |
 
-The recommendation pipeline produces the cards you see in the docs panel. It uses a multi-source strategy:
+Dashboard metadata is processed locally and is not included as dashboard content in the recommendation request. The request sends data source types, not data source credentials or query results.
 
-1. **Recommender service** — A REST API hosted by Grafana Labs that pattern-matches on the context object and returns recommendations.
-2. **Bundled guides** — Guides packaged into the plugin bundle (in `src/bundled-interactives/`). Used as a fallback when the recommender is unreachable, and also for guides that should always be available.
-3. **Custom guides** — Guides published by editors and admins through the [block editor](../block-editor/), stored in the Pathfinder backend.
-4. **Package resolver** — A composite resolver that turns recommendations into renderable guides by fetching each one from its canonical source (CDN, bundled, or backend) and applying any local user state.
+The [Terms and conditions](../terms-and-conditions/) page reproduces the recommendation data usage notice shown in Grafana. An administrator can stop context-aware requests on the **Recommendations** tab.
 
-The recommender service URL auto-selects based on the Grafana instance hostname (production, ops, or development) — administrators can override this in plugin settings if needed. The recommender service is **disabled by default** for OSS Grafana instances; admins can enable it from the plugin configuration page.
+## Where custom guides are stored
 
-{{< admonition type="note" >}}
-The recommender service is enabled by default on Grafana Cloud. On OSS, an administrator must enable it under **Plugin configuration > Recommendations**. For more information, refer to the [Administrators reference](../administrators-reference/).
-{{< /admonition >}}
+The block editor keeps a working copy in the browser. Saving a draft or publishing a guide writes to a separate Pathfinder storage service through Grafana. The plugin's backend forwards these requests; installing the plugin alone does not provide that storage service.
 
-## Documentation renderer
+| Guide state        | Who can use it                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Local working copy | The author in that browser. Export a copy to protect against cleared browser storage.                         |
+| Saved draft        | Authors with the required access can load it from the guide library. It is absent from the published catalog. |
+| Published guide    | Users in the same Grafana organization can open it from the custom guide catalog.                             |
 
-Pathfinder fetches guide content as JSON and renders it through a React component tree — never an iframe. This lets the rendered guide use the same Grafana theme, components, and styles as the rest of the UI, and it makes images, videos, code blocks, and interactive controls feel native.
+Custom guides are scoped to their Grafana organization. Publishing a guide does not publish it on Grafana's public documentation site or copy it to other stacks. To move a guide, export it and import it on the destination instance.
 
-The renderer is **block-based** — every guide is a list of typed blocks (markdown, image, video, section, conditional, interactive, multistep, guided, quiz, input, code-block, grot-guide, and others). Each block type maps to a specific React component. Variable substitution (`{{variableName}}`) and conditional branches (`has-datasource:prometheus`, `is-admin`, `var-policyAccepted:true`) are evaluated at render time, so the same guide can render different content for different users.
+For procedures and storage limitations, refer to the [Block editor guide](../block-editor/).
 
-Long guides use **progressive scroll discovery**: blocks reveal themselves and re-resolve their selectors as the reader scrolls into them, so a guide can target elements inside virtualized containers (for example, long dashboard lists) without having to keep them all mounted.
+## Learning progress and display preferences
 
-## Interactive engine
+Pathfinder tracks step progress, guide completion, and learning-path milestones. **My learning** brings together learning paths, completed content, and earned badges. Paths can offer alternative tracks and a sequence of milestones.
 
-The interactive engine powers the **Show me** and **Do it** buttons inside guides. It supports several action types:
+Browser storage retains working state such as open tabs and in-progress steps. Some learning state also uses Grafana user storage, and installations with the completion service can save completion records on the server. Do not assume that every in-progress step or local draft follows you to another browser. Clearing browser storage can remove local state.
 
-| Action      | What it does                                                                                  |
-| ----------- | --------------------------------------------------------------------------------------------- |
-| `highlight` | Highlights an element by CSS selector and (on Do) clicks it.                                  |
-| `button`    | Finds and (on Do) clicks a button by visible text.                                            |
-| `formfill`  | Sets the value of an input, textarea (including Monaco), select, or ARIA combobox.            |
-| `navigate`  | Routes to a Grafana page or opens an external URL in a new tab. Internal paths are validated. |
-| `hover`     | Dispatches mouse events to reveal hover-only UI (menus, row action buttons).                  |
-| `noop`      | Informational step with no action.                                                            |
-| `popout`    | Toggles the docs panel between docked (sidebar) and floating window modes.                    |
+Closing the sidebar does not reset learning progress. The **Enable Pathfinder** administrator setting also preserves existing progress when disabled. Use the guide's reset control when you want to repeat it from the beginning.
 
-Steps can be grouped into:
+Guides can appear in the sidebar, a floating panel, or full screen. The optional **Open in interactive window** feature uses a paired browser tab to control the original Grafana tab. It requires administrator enablement and explicit pairing.
 
-- **Sections** — A linear sequence with a single Do section button.
-- **Multistep blocks** — A sequence that runs all actions automatically when Do it is clicked.
-- **Guided blocks** — A sequence the user performs themselves; the engine highlights each step and waits for the user to act.
-- **Conditional blocks** — Two branches of content rendered based on a runtime condition (data source presence, user role, variable values).
+## Optional services
 
-Each step can declare **requirements** that must be met before it can run — for example `navmenu-open`, `is-admin`, `has-datasource:prometheus`, or `on-page:/dashboards`. The requirements manager checks them, and where it can, offers a Fix button that performs the prerequisite for the user.
+### Sandbox terminals
 
-### Selector resilience
+Some guides use a temporary sandbox instead of your own infrastructure. Sandbox terminals require the separate Coda app plugin and its service configuration. Interactive learning provides the guide and terminal interface; Coda provides the sandbox. The terminal shows its remaining lifetime. Availability, templates, and permitted user roles depend on the instance configuration.
 
-Targeting elements in a constantly-evolving UI like Grafana is hard, so the interactive engine ships with a **selector resilience pipeline** that escalates strategies until it finds a match:
+### Live sessions
 
-1. **Native CSS** — `querySelector` against the user-provided selector.
-2. **Enhanced selectors** — `:contains()`, `:has()`, `:nth-match()`, and the custom `panel:` domain prefix.
-3. **`:text()` exact match** — for short button labels (under 20 characters), eliminating false positives that substring matches would produce.
-4. **`data-testid` prefix matching** — when the exact ID isn't found but a unique prefix exists.
-5. **Retry with backoff** — exponential backoff (200 ms / 600 ms / 1.8 s) gives lazy-loaded UI time to mount.
+Experimental live sessions let a presenter share guide actions with attendees. They require a signalling service to connect participants' browsers. Each attendee's guide actions run with that attendee's Grafana permissions.
 
-Each resolution also returns a **confidence score** that the block editor surfaces as a Selector Health badge (green / yellow / red), so guide authors can spot fragile selectors before publishing.
+### Grafana Assistant
 
-## Block editor and custom guides
-
-The [block editor](../block-editor/) lets editors and admins compose guides without writing any JSON. Guides flow through three states:
-
-| State     | Storage                                                                                       |
-| --------- | --------------------------------------------------------------------------------------------- |
-| Not saved | Browser localStorage only.                                                                    |
-| Draft     | Saved to the Pathfinder backend; visible only in the editor's library, not in the docs panel. |
-| Published | Saved to the Pathfinder backend; visible to all users of the Grafana instance.                |
-
-The backend stores guides as `InteractiveGuide` custom resources in the `pathfinderbackend.ext.grafana.app/v1alpha1` API group. The backend is shipped as part of the plugin's Go server — there is no external service to deploy. Custom guides are scoped to the Grafana stack they are published on; they are not shared between stacks.
-
-The block editor can also import and export the underlying JSON, which is useful for bringing a guide from a development stack to production, or for review through a GitHub pull request.
-
-## The floating panel
-
-The Pathfinder docs panel can render in two modes:
-
-- **Docked** — the default; lives in the Grafana extension sidebar.
-- **Floating** — a free-floating, resizable, draggable window that you can position anywhere on screen and minimize to a small pill.
-
-Switching modes is a user action (the **Pop out** button at the top of the panel) but can also be driven by a guide step (the `popout` action). Geometry, minimized state, and dock target are persisted per-instance, so the panel returns to where you last left it.
-
-## Tracking user progress
-
-Pathfinder uses two storage tiers for progress:
-
-- **localStorage** for unauthenticated state — open tabs, in-flight progress, last-visited milestone, custom-guide drafts in progress, recently-used VM options.
-- **Grafana user-storage** (server-side) for state that needs to follow the user across browsers — completed milestones, badges, streaks, and per-instance auto-open flags.
-
-State that lives in both is reconciled by timestamp on read — the most recent value wins. This means progress made in one browser shows up in another after a refresh.
-
-Tabs and the per-tab guide progression persist across sessions until the user explicitly closes a tab.
-
-## Live sessions (experimental)
-
-Live sessions enable a presenter to broadcast their **Show me** and **Do it** actions to attendees over a peer-to-peer WebRTC connection. The plugin uses a small PeerJS signalling server to bootstrap the connection; once peers are connected, all guide data flows directly between browsers without round-tripping through any server. Presenters authenticate with an ECDSA P-256 key pair to prevent peer ID impersonation on the signalling layer.
-
-## Coda terminal (optional)
-
-When enabled, Coda gives a guide direct access to a 30-minute sandbox VM through a terminal panel inside the docs panel. VM provisioning, SSH key management, and the WebSocket-to-SSH relay are handled by a **separate Coda app plugin**, which must be installed and registered alongside Interactive learning; the browser never sees the credentials. Interactive learning contributes the terminal panel and the guide block types, and hides them when the Coda app plugin is unavailable. Guide authors can drop a `terminal-connect` block into a guide to provision a specific VM template (generic Linux, sample-app, or Alloy scenario) and a `terminal` block to run commands in the resulting session.
+Some guides offer customization or repair through Grafana Assistant. These controls depend on Assistant availability and the applicable settings. Reading guides and using their standard interactive actions does not require Assistant.

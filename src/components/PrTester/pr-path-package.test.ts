@@ -134,6 +134,12 @@ describe('buildPathPackageInfo', () => {
       `${RAW_BASE}/guide-two/content.json`,
     ]);
     expect(milestones[0]?.title).toBe('Guide One');
+    // Without Milestone.id set to the real manifest guide id,
+    // LearningPathTableOfContents falls back to the React-key-only ordinal,
+    // which GuideList/CTA then send as fetchPackageContent's
+    // explicitGuideId — a real manifest id would never match that ordinal,
+    // misclassifying the click as the cover page.
+    expect(milestones.map((m) => m.id)).toEqual(['guide-one', 'guide-two']);
     expect(result.preview.map((p) => p.source)).toEqual(['pr', 'pr']);
   });
 

@@ -15,6 +15,10 @@
  * @see tests/e2e-runner/utils/guide-runner/execution.ts
  */
 
+import { rmSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 jest.mock('@playwright/test', () => {
   return {
     Page: jest.fn(),
@@ -213,6 +217,48 @@ describe('hard step deadline', () => {
     expect(onDeadline).toHaveBeenCalledTimes(1);
     expect(page.close).toHaveBeenCalledWith({ runBeforeUnload: false });
     expect(page.off).toHaveBeenCalledWith('console', expect.any(Function));
+  });
+
+  it('captures failure artifacts before closing a page that exceeds its deadline', async () => {
+    jest.useFakeTimers();
+    const artifactsDir = mkdtempSync(join(tmpdir(), 'pathfinder-deadline-artifacts-'));
+    const page = createDeadlinePage() as Page & {
+      screenshot: jest.Mock;
+      content: jest.Mock;
+    };
+    page.screenshot = jest.fn().mockResolvedValue(undefined);
+    page.content = jest.fn().mockResolvedValue('<html><body>blocked step</body></html>');
+
+    try {
+      const result = executeStep(page, createTestableStep(), {
+        timeout: 50,
+        deadlineMs: 100,
+        artifactsDir,
+      });
+
+      await jest.advanceTimersByTimeAsync(100);
+
+      await expect(result).resolves.toMatchObject({
+        deadlineExceeded: true,
+        artifacts: {
+          screenshot: join(artifactsDir, 'test-step-1-deadline-failure.png'),
+          dom: join(artifactsDir, 'test-step-1-deadline-dom.html'),
+        },
+      });
+      expect(page.screenshot).toHaveBeenCalledWith({
+        path: join(artifactsDir, 'test-step-1-deadline-failure.png'),
+        fullPage: false,
+      });
+      expect(page.content).toHaveBeenCalled();
+      expect(page.screenshot.mock.invocationCallOrder[0]).toBeLessThan(
+        (page.close as jest.Mock).mock.invocationCallOrder[0]
+      );
+      expect(page.content.mock.invocationCallOrder[0]).toBeLessThan(
+        (page.close as jest.Mock).mock.invocationCallOrder[0]
+      );
+    } finally {
+      rmSync(artifactsDir, { recursive: true, force: true });
+    }
   });
 
   it('stops the guide as infrastructure when a skippable step exceeds its deadline', async () => {

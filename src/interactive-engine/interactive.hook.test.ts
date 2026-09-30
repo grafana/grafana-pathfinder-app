@@ -20,18 +20,6 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
-const mockGetMode = jest.fn(() => 'sidebar');
-const mockRequestSidebarHandoffAndWait = jest.fn().mockResolvedValue(undefined);
-jest.mock('../global-state/panel-mode', () => {
-  const { GRAFANA_DRIVING_ACTIONS } = jest.requireActual('../constants/interactive-actions');
-  return {
-    panelModeManager: { getMode: () => mockGetMode() },
-    requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
-    isGrafanaDrivingHandoffNeeded: (targetAction: string) =>
-      mockGetMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction),
-  };
-});
-
 // Mock requirements checker
 jest.mock('../requirements-manager', () => {
   const checkRequirements = jest.fn();
@@ -770,95 +758,12 @@ describe('useInteractiveElements', () => {
       });
     });
   });
-
-  describe('Full-screen sidebar handoff gate', () => {
-    beforeEach(() => {
-      mockGetMode.mockReturnValue('sidebar');
-    });
-
-    it('hands off before executing a Grafana-driving "Do it" action while in full screen', async () => {
-      mockGetMode.mockReturnValue('fullscreen');
-      const { ButtonHandler } = require('./action-handlers');
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      await act(async () => {
-        await result.current.executeInteractiveAction({
-          targetAction: 'button',
-          refTarget: 'test-target',
-          buttonType: 'do',
-          fullScreenFallbackLocation: '/connections',
-        });
-      });
-
-      expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
-      const buttonHandlerInstance = ButtonHandler.mock.results[0]!.value;
-      const elementData = buttonHandlerInstance.execute.mock.calls[0]![0];
-      expect(elementData.targetAction).toBe('button');
-    });
-
-    it('does not hand off for a Grafana-driving action outside full screen', async () => {
-      mockGetMode.mockReturnValue('sidebar');
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      await act(async () => {
-        await result.current.executeInteractiveAction({
-          targetAction: 'button',
-          refTarget: 'test-target',
-          buttonType: 'do',
-        });
-      });
-
-      expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
-    });
-
-    it('hands off for "Show me" too — neither button type has anything to preview or act on without it', async () => {
-      mockGetMode.mockReturnValue('fullscreen');
-      const { ButtonHandler } = require('./action-handlers');
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      await act(async () => {
-        await result.current.executeInteractiveAction({
-          targetAction: 'button',
-          refTarget: 'test-target',
-          buttonType: 'show',
-          fullScreenFallbackLocation: '/connections',
-        });
-      });
-
-      expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
-      const buttonHandlerInstance = ButtonHandler.mock.results[0]!.value;
-      const elementData = buttonHandlerInstance.execute.mock.calls[0]![0];
-      expect(elementData.targetAction).toBe('button');
-    });
-
-    it('reports "error" (not "ok") when the handler reports a missing target', async () => {
-      mockGetMode.mockReturnValue('fullscreen');
-      const { ButtonHandler } = require('./action-handlers');
-      ButtonHandler.mockImplementationOnce(() => ({
-        execute: jest.fn().mockImplementation(async () => {
-          return { outcome: 'error', reason: 'target_missing' };
-        }),
-      }));
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      let outcome: unknown;
-      await act(async () => {
-        outcome = await result.current.executeInteractiveAction({
-          targetAction: 'button',
-          refTarget: 'test-target',
-          buttonType: 'do',
-        });
-      });
-
-      expect(outcome).toBe('error');
-    });
-  });
 });
 
 describe('interactive run ownership', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetMode.mockReturnValue('sidebar');
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'sidebar');
   });
   it('aborts a pending action when its host unmounts and refuses a concurrent start', async () => {
     const { ButtonHandler } = require('./action-handlers');
@@ -879,22 +784,6 @@ describe('interactive run ownership', () => {
     expect(signal.aborted).toBe(true);
     finish();
     expect(await first).toBe('error');
-  });
-
-  it('keeps a sidebar handoff alive when docking unmounts its original host', async () => {
-    mockGetMode.mockReturnValue('fullscreen');
-    let dock!: () => void;
-    mockRequestSidebarHandoffAndWait.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          dock = resolve;
-        })
-    );
-    const { result, unmount } = renderHook(() => useInteractiveElements());
-    const pending = result.current.executeInteractiveAction({ targetAction: 'button' });
-    unmount();
-    dock();
-    expect(await pending).toBe('ok');
   });
 
   it.each(['ok', 'error'] as const)('passes through a navigate %s result', async (outcome) => {
