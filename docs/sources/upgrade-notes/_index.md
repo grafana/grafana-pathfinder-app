@@ -1,37 +1,56 @@
 ---
 title: Upgrade notes
 menuTitle: Upgrade notes
-description: Important information about upgrading Interactive learning, including breaking changes and migration guides.
-weight: 100
+description: Review changes that affect learners and administrators when upgrading Interactive learning, including completion tracking, organization controls, and sandbox migration.
+weight: 60
+review_date: 2026-09-30
 ---
 
 # Upgrade notes
 
 This section contains the headline changes for each Interactive learning release, including breaking changes and migration steps. For the full per-release detail, see the project [CHANGELOG](https://github.com/grafana/grafana-pathfinder-app/blob/main/CHANGELOG.md).
 
-## Version 3.0: Unfinished guides restart from the beginning
+## Version 2.19: Organization controls and learning tracks
+
+Administrators can disable Interactive learning for their organization from the plugin configuration page. In Grafana Cloud, this restores the classic **Help** menu after a page reload. Learning progress is preserved, and administrators can re-enable Interactive learning from the same configuration page. Follow [Disable Interactive learning](../administrators-reference/#disable-interactive-learning-in-grafana-cloud) for the procedure.
+
+The organization setting must save successfully and load when users reload Grafana. If settings cannot be read, Interactive learning can remain enabled. Administrators should reload and verify the result after saving.
+
+Learning paths can also offer named tracks alongside the **Foundations** sequence. Choose a track on the path's cover page to follow its guides and track your progress. Kiosk pages can now include launch forms and copyable commands alongside guide tiles.
+
+No learner action is required to migrate existing content.
+
+## Version 2.18.3: Shareable learning kiosks
+
+Learning catalogs can be opened from a shareable kiosk URL without changing the instance-wide kiosk setting. Guides open on the current Grafana instance, and the kiosk includes an exit control. Opening a kiosk guide preserves the user's saved panel preferences.
+
+No migration is required.
+
+## Version 2.18: Progress and completion
 
 **One-time effect for anyone with a guide in progress.** Completed guides, badges, streaks, and finished milestones are unaffected.
 
 ### What changed
 
-Step-by-step progress inside a guide was saved under a name that did not mark where one guide's name ended, so a guide whose name begins another's — **Welcome to Grafana** and **Welcome to Grafana Cloud**, for example — could count the other guide's steps toward its own percent complete. Progress is now saved under a name that marks the boundary, so one guide can never count another guide's steps.
+Every guide now offers **Mark complete**, including guides that contain only reading material. In a learning path, **Mark complete and continue** completes the current milestone and opens the next one. Progress reflects completed work; moving to another milestone alone no longer earns completion credit. Previously awarded navigation progress can decrease.
 
-Progress saved before the upgrade does not identify which guide it belongs to, so moving it to the new format would risk attaching it to the wrong guide permanently. It is discarded instead, the first time you open Grafana after upgrading.
+Unfinished guides restart at the beginning once after this upgrade. The new storage format keeps similarly named guides from sharing step progress. Older in-progress step data cannot be assigned safely to a guide and is discarded.
 
-The effect is that a guide you started and did not finish opens at its first step again. A guide's percent complete in the guide list can also keep its previous value until you open that guide, and updates when you do.
+A guide's percentage in the guide list can retain its previous value until you reopen it. Completed guides, badges, streaks, and finished milestones are retained.
 
 ### Action required
 
 None.
 
-## Version 3.0: Coda sandbox terminal moves to its own plugin
+## Version 2.16: Private learning paths and the Coda plugin
 
-**Breaking change for anyone using the Coda terminal.** If you have never enabled it, nothing changes for you.
+Version 2.16 adds stack-private guide packages and learning paths. Published content appears under **Custom guides**, and private paths have their own section in **My learning**. These features require the Pathfinder App Platform service on your stack.
+
+**The Coda terminal migration is a breaking change for existing sandbox users.** It does not affect guides that do not use a sandbox.
 
 ### What changed
 
-The sandbox VM and terminal backend has moved out of Interactive learning into a separate app plugin, **`grafana-coda-app`**. Interactive learning keeps the terminal panel and the guide block types (`terminal`, `terminal-connect`, `challenge`) and now talks to that plugin over a documented, versioned API.
+The sandbox VM and terminal backend has moved out of Interactive learning into a separate app plugin, `grafana-coda-app`. Interactive learning keeps the terminal panel and the guide block types (`terminal`, `terminal-connect`, `challenge`) and now talks to that plugin over a documented, versioned API.
 
 This makes the sandbox terminal usable by any Grafana plugin rather than only Interactive learning, and reduces Interactive learning's own backend to a single purpose.
 
@@ -39,158 +58,36 @@ This makes the sandbox terminal usable by any Grafana plugin rather than only In
 
 If you use the Coda terminal:
 
-1. Install and enable the **Coda** app plugin (`grafana-coda-app`).
-2. Set it up by following its own [operator guide](https://github.com/grafana/grafana-coda-app/blob/main/docs/OPERATORS.md), which is the authority on the Coda side and covers the two Grafana settings the plugin cannot register without, the session role floor, enrollment, and verification.
-3. Leave **Enable Coda terminal** switched on in Interactive learning's settings. That is the only Coda setting Interactive learning still owns.
+1. Ask your sandbox administrator to install and enable the **Coda** app plugin (`grafana-coda-app`) and configure its service connection. Availability depends on your deployment.
+1. Ask the administrator to register it for your Grafana instance and verify access for your learners.
+1. Leave **Enable Coda terminal** switched on in Interactive learning's settings.
 
-Three things catch people migrating an already-working terminal. All three are Coda-side, and the operator guide covers each in full — they are named here because the previous version of this note got them wrong.
+When migrating an existing installation:
 
-**You need a new enrollment key, and saving is the whole registration.** Grafana stores encrypted plugin settings per plugin and never exposes their values back, so the existing refresh token cannot be migrated — by Interactive learning or by anyone else. Ask your Coda administrator for a key issued for this Grafana instance. On the Coda plugin's **Configuration** tab, fill in the API URL, relay URL and enrollment key and select **Save settings**. Saving redeems the key; there is no button to press afterwards.
-
-**Do not press `Register now` during setup.** It always forces re-registration, so pressing it after a successful save re-submits a key that has just been spent. Coda answers `401` and you are told your key was rejected moments after it worked. Your stack is not broken by this — the plugin only replaces its stored credential on success, and a redemption Coda refuses revokes nothing — but the diagnosis is a false alarm that has cost people a replacement key. `Register now` is a recovery control, not a setup step.
-
-**Check the session role floor if your learners are Viewers.** The Coda plugin requires a Grafana basic role of Editor or above to start a sandbox, set by its `minimumSessionRole` setting and defaulting to Editor. Interactive learning's embedded backend had no role check at all, so this is a behaviour change introduced by the move: a stack whose learners sign in as Viewers can complete every step above and still get `403 role_forbidden` on every sandbox. There is no control for it on the configuration page — see the operator guide for the two routes that work. On **Coda plugin 1.1.1 and earlier**, set it after your last configuration-page save: those versions sent only the settings the page owned, so every save erased `minimumSessionRole` and silently returned the floor to Editor. Coda plugin 1.2.0 and later echo back the keys the page does not own, so the order no longer matters.
+- Obtain a new enrollment key from your Coda administrator. Grafana stores encrypted settings separately for each plugin, so the existing refresh token cannot be transferred from Interactive learning.
+- Have your sandbox administrator register the plugin. Saving its configuration redeems the enrollment key; **Register now** is a recovery action, not a required second setup step.
+- Verify the minimum session role if learners use the Viewer role. The separate Coda plugin defaults to requiring Editor or above to start a sandbox. Ask your sandbox administrator to configure access for your learners.
 
 Until the Coda app plugin is installed and registered, Interactive learning hides the terminal panel and the terminal block types. Guides containing those blocks still load; the affected steps report that the sandbox is unavailable rather than failing. Interactive learning's configuration page names whichever step is still outstanding.
 
 Interactive learning no longer reads `codaApiUrl`, `codaRelayUrl`, `codaRegistered`, or the enrollment key and refresh token it used to store — all five moved to the Coda app plugin. `enableCodaTerminal` stays, and still controls whether Interactive learning shows terminal UI at all.
 
-Note that "no longer read" is not "deleted". Values already in Interactive learning's plugin settings stay there, and nothing in the plugin clears them: Grafana never exposes an encrypted setting's value back, so there is no supported way to read one in order to blank it. That retention is also what makes a downgrade work, so it is deliberate rather than an oversight. Two consequences worth knowing:
-
-- The old refresh token may still be live Coda-side. Whether it is, and whether redeeming a new enrollment key invalidates it, is a question for your Coda administrator — nothing in Interactive learning can answer it. If you want the old credential revoked, ask for that explicitly.
-- Once you no longer need the downgrade path, an administrator can clear the leftovers by deleting Interactive learning's plugin settings through the Grafana API. There is no button for it on the configuration page.
-
-## Version 2.9: Floating panel and popout step
-
-**Released April 2026.**
-
-### What changed
-
-- **Floating panel mode** — Users can pop the docs panel out of the sidebar into a free-floating, resizable, draggable window. Click the **Pop out** button at the top of the panel to detach, drag it anywhere, resize from any edge, or minimize to a pill. Click again or drag back to the right edge to dock it.
-- **Popout step type** — Guide authors can now build a `popout` action into a guide step so the panel automatically docks or undocks at the right moment. Useful when a guide step needs the right sidebar for something else (for example, Grafana Assistant). Configured from the block editor with a single dropdown (`floating` or `sidebar`).
-
-### Action required
-
-None — both features ship enabled and require no configuration.
-
-## Version 2.8: Block editor available without dev mode
-
-**Released April 2026.**
-
-### What changed
-
-- **Block editor moved out of dev mode** — Editors and admins can now access the block editor through a dedicated **Editor** tab in the docs panel, without enabling dev mode. The Editor tab is permission-gated and only appears for users with editor or admin role.
-- **Combobox formfill fix** — Form-fill steps that target a Grafana combobox now open the dropdown before entering tokens, fixing intermittent step-completion failures.
-- **Kiosk session ID tracking** — Kiosk mode now emits session IDs for analytics.
-
-### Action required
-
-If your team has documentation referencing "enable dev mode to access the block editor," update it — dev mode is no longer required.
-
-## Version 2.7: Package engine integration
-
-**Released March 2026.**
-
-### What changed
-
-- **Package engine integration** — The full package pipeline (composite resolver, package-aware fetching, milestone resolution) is wired into the recommendation panel. Recommendations from the recommender are resolved through this pipeline, falling back to bundled and CDN-served packages as needed.
-- **Package completion tracking** — Per-package completion state and navigation links between related packages are persisted across sessions and surfaced in the docs panel.
-- **Package pill icon** — Recommendations backed by a package now show a distinct pill icon, so users can tell at a glance whether a card is a single guide or a learning path.
-- **Recommender URL auto-selection** — The plugin now picks the right recommender API URL automatically based on the Grafana instance's hostname (production / ops / development). Administrators can still override the URL in plugin settings.
-
-### Action required
-
-If you author **path** or **journey** packages, the manifest field that lists child guides is `milestones`.
-
-## Version 2.6: Kiosk mode without dev mode
-
-**Released March 2026.**
-
-### What changed
-
-- **Kiosk mode no longer requires dev mode** — Administrators can enable kiosk mode through the `enableKioskMode` toggle in plugin settings. The kiosk button appears in the sidebar header for all users on instances where it's enabled.
-- **Open guide after navigate step** — A `navigate` step can now open a guide in the sidebar after the SPA navigation completes (using a new `openGuide` field). Backward-compatible: existing `?doc=` query parameters in target URLs are detected automatically.
-- **Selector picker scoping fixes** — The element picker no longer picks form controls outside the immediate hover area, preventing surprising selector results when authoring guides with the block editor.
-- **Plugin settings data-loss fix** — Saving any single configuration tab no longer wipes settings from other tabs. This was a Cloud-deployment regression triggered by version updates.
-
-### Action required
-
-If you previously enabled kiosk mode through dev mode, you can now enable it directly from the plugin settings page. The settings UI exposes the `enableKioskMode` toggle in the **Interactive Features** tab.
-
-## Version 2.5: Selector resilience engine
-
-**Released February 2026.**
-
-### What changed
-
-- **Selector resilience engine** — Single-pass selector resolution has been replaced with a multi-strategy pipeline:
-  - `resolveWithRetry()` exponential backoff (200 ms / 600 ms / 1.8 s).
-  - `:text()` exact match for short button labels (under 20 characters), eliminating false positives.
-  - `data-testid` prefix matching when exact match fails (uniqueness-guarded).
-  - `panel:` domain selector prefix to resolve Grafana panels by title.
-  - Unified resolver with confidence scoring.
-- **Selector Health badge** — An inline indicator (green / yellow / red dot, stability score, match count) on every selector field in the block editor.
-- **Test selector button** — Evaluates the selector against the live DOM and flash-highlights the matched elements with numbered overlays.
-- **Shift+Click hover capture** — Hold Shift during recording to capture a hover step without clicking through.
-- **Alt+Click form capture** — Hold Alt during recording to force-capture any element as a form-fill, with the typed value picked up on blur.
-- **Auto-populate requirements** — Recorded steps auto-populate `exists-reftarget` and `navmenu-open` requirements when relevant.
-
-### Action required
-
-None — existing guides benefit from the resilient resolver without any changes. If you authored guides relying on substring matches for short button labels, you may notice fewer false positives.
-
-## Version 2.4: Kiosk mode and Coda Alloy scenarios
-
-**Released January–February 2026.**
-
-### What changed
-
-- **Kiosk mode** — A full-screen overlay that presents interactive guide tiles over Grafana, configured through the **Interactive Features** tab. Initially gated behind dev mode, then opened up in v2.6.
-- **Custom guide deep links** — `?doc=api:<resourceName>` opens a custom guide stored as a backend resource.
-- **Navigate handler path validation** — Internal navigation paths are validated against denied routes (`/logout`, `/profile/password`, `/admin/*`, `/api/*`). Admin users can still navigate to admin-only paths since RBAC is enforced server-side.
-- **Alloy scenario VM template** — `vm-aws-alloy-scenario` template for the Coda terminal, with animated progress bar during provisioning, quota cleanup, and persistent VM options for auto-reconnect on refresh.
-
-### Action required
-
-None — these features ship enabled and require no configuration. The navigate path validation is a defense-in-depth measure and does not affect well-formed guides.
+Old Coda settings can remain in Interactive learning after migration. If you need the old credential revoked, ask your Coda administrator; migrating the terminal does not confirm revocation. Keep any required downgrade path in mind before removing old settings.
 
 ## Earlier upgrades
 
-For releases before v2.4, see the [CHANGELOG](https://github.com/grafana/grafana-pathfinder-app/blob/main/CHANGELOG.md). Notable earlier highlights:
+Earlier releases introduced the floating panel, the block editor without dev mode, and kiosk configuration. Use the current [getting-started guide](../getting-started/) and [block editor guide](../block-editor/) for today's controls.
 
-- **v2.3.6** — `pathfinder.enabled` global kill-switch feature flag for Cloud-wide rollout control. Workshop ECDSA P-256 presenter authentication for Live sessions.
-- **v2.3.0** — `terminal-connect` block type for guides; block editor lifecycle redesigned around a single smart primary button (Save as draft → Update draft → Publish → Update).
-- **v2.2.1** — Draft and publish lifecycle for library guides in the block editor.
-- **v2.2.0** — `code-block` block type with syntax highlighting, copy-to-clipboard, and step completion.
+If your authoring instructions still require dev mode to open the block editor, update them to use **More options** > **Create guide**. Users need the Editor or Admin role; dev mode is not required.
+
+For individual changes before version 2.16, refer to the [changelog](https://github.com/grafana/grafana-pathfinder-app/blob/main/CHANGELOG.md).
 
 ## Version 1.1.83: New content delivery infrastructure
 
-{{< admonition type="warning" >}}
-**Breaking change:** You must upgrade to version 1.1.83 or later to continue loading interactive guides.
-{{< /admonition >}}
+Interactive guides moved from GitHub raw URLs to Grafana's content delivery network at `interactive-learning.grafana.net`. Install a current, compatible plugin version to keep loading guides.
 
-Starting with version 1.1.83, interactive guides are served from a dedicated content delivery network (CDN) instead of GitHub raw URLs:
+After upgrading and restarting Grafana, open Interactive learning and check that guides load. If your network restricts outbound connections, allow access to the guide content service.
 
-| Environment | Domain                                 |
-| ----------- | -------------------------------------- |
-| Production  | `interactive-learning.grafana.net`     |
-| Development | `interactive-learning.grafana-dev.net` |
-| Operations  | `interactive-learning.grafana-ops.net` |
+## Get help after upgrading
 
-### Why
-
-- **Improved reliability** — Dedicated infrastructure for serving interactive content.
-- **Better performance** — Optimized CDN delivery for faster content loading.
-- **Simplified architecture** — No backend proxy routes for content fetching.
-
-### Migration steps
-
-1. Update the Interactive learning plugin to version 1.1.83 or later.
-2. Restart your Grafana instance.
-3. Verify guides load correctly by opening the Interactive learning sidebar.
-
-For content creators: no changes required to your content. The CDN serves the same JSON format used previously. GitHub raw URLs (`raw.githubusercontent.com`) are still supported in dev mode for testing.
-
-### Getting help
-
-If you encounter issues after upgrading, verify you're on 1.1.83 or later, check the browser console for specific errors, and report issues on the [GitHub repository](https://github.com/grafana/grafana-pathfinder-app/issues).
+If guides fail to load, confirm the installed plugin version and whether the instance can reach the content service. Report the guide name, failing step, and plugin version through **More options** > **Give feedback**, or open an issue in the [GitHub repository](https://github.com/grafana/grafana-pathfinder-app/issues).

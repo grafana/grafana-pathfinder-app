@@ -106,9 +106,6 @@ export enum UserInteraction {
   FullScreenExit = 'full_screen_exit',
   FullScreenCopyLink = 'full_screen_copy_link',
 
-  // Access Control
-  NoAccess = 'no_access',
-
   // Kiosk Mode
   KioskDemoStarted = 'kiosk_demo_started',
   KioskInteraction = 'kiosk_interaction',

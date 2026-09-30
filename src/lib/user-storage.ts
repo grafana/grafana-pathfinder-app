@@ -854,6 +854,49 @@ export const milestoneCompletionStorage = {
   },
 
   /**
+   * The single-milestone counterpart to `markCompleted`, for the per-milestone
+   * toolbar reset. Without this, resetting one milestone left this legacy
+   * record untouched, and `backfillLegacyMilestoneCompletion`
+   * (learning-journey-helpers.ts) — which exists precisely to carry a
+   * pre-migration completion into `interactiveCompletionStorage` — read this
+   * still-populated record on the very next render and silently rewrote the
+   * just-reset milestone back to 100%. Whole-*path* reset
+   * (`learning-paths.hook.ts`) already clears this store entirely for that
+   * reason; this only removes the one slug being reset, leaving the rest of
+   * the journey's legacy record intact.
+   *
+   * `milestoneUrls` mirrors `getCompleted`/`getCompletedSync`'s own alias
+   * matching (`getStoredMilestoneSlugs`'s `exactKeys`): a legacy record can
+   * be stored under a milestone's own URL, not only under a key that
+   * canonicalizes to the journey base.
+   */
+  async removeCompleted(journeyBaseUrl: string, milestoneSlug: string, milestoneUrls: string[] = []): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
+      const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+      const exactKeys = new Set([journeyBaseUrl, ...milestoneUrls].map((key) => key.replace(/\/+$/, '')));
+      let mutated = false;
+      for (const storedKey of Object.keys(data)) {
+        const storedSlugs = data[storedKey];
+        if (
+          storedSlugs &&
+          (getLearningJourneyBaseUrl(storedKey) === canonicalKey || exactKeys.has(storedKey.replace(/\/+$/, ''))) &&
+          storedSlugs.includes(milestoneSlug)
+        ) {
+          data[storedKey] = storedSlugs.filter((slug) => slug !== milestoneSlug);
+          mutated = true;
+        }
+      }
+      if (mutated) {
+        await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
+      }
+    } catch (error) {
+      logger.warn('Failed to remove milestone completion', { error });
+    }
+  },
+
+  /**
    * Synchronous read, for the journey progress rollup (`getJourneyProgress`
    * is called synchronously from several render paths). Mirrors
    * `guideCompletionMarkStorage.isMarked`: the hybrid storage writes through

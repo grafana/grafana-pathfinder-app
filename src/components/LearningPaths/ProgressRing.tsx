@@ -22,6 +22,7 @@ export function ProgressRing({
   strokeWidth = 4,
   isCompleted = false,
   showPercentage = true,
+  ariaLabel,
 }: ProgressRingProps) {
   const styles = useStyles2(getProgressRingStyles);
   const colors = useStyles2(getColorPalette);
@@ -52,7 +53,11 @@ export function ProgressRing({
   const strokeColor = isCompleted ? `url(#${completedGradientId})` : `url(#${gradientId})`;
 
   return (
-    <div className={cx(styles.container, isCompleted && styles.completed)} style={{ width: size, height: size }}>
+    <div
+      className={cx(styles.container, isCompleted && styles.completed)}
+      style={{ width: size, height: size }}
+      {...(ariaLabel != null && { role: 'img', 'aria-label': ariaLabel })}
+    >
       <svg className={styles.svg} width={size} height={size}>
         {/* Gradient definitions */}
         <defs>

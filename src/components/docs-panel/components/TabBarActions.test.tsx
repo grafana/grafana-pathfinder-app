@@ -6,6 +6,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TabBarActions } from './TabBarActions';
+import { currentPlatform } from '../../../lib/platform';
 import { testIds } from '../../../constants/testIds';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { useIsAssistantAvailable } from '../../../integrations/assistant-integration';
@@ -13,6 +14,7 @@ import { useIsAssistantAvailable } from '../../../integrations/assistant-integra
 jest.mock('../../../integrations/assistant-integration', () => ({ useIsAssistantAvailable: jest.fn(() => false) }));
 
 // Mock @grafana/runtime - all mock values defined inline for hoisting compatibility
+jest.mock('../../../lib/platform', () => ({ currentPlatform: jest.fn(() => 'cloud') }));
 jest.mock('@grafana/runtime', () => {
   const mockPublish = jest.fn();
   const mockPush = jest.fn();
@@ -79,6 +81,7 @@ function makeTab(overrides: Record<string, unknown> = {}): any {
 describe('TabBarActions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(currentPlatform).mockReturnValue('cloud');
   });
 
   describe('rendering', () => {
@@ -160,6 +163,24 @@ describe('TabBarActions', () => {
   });
 
   describe('Settings menu item permissions', () => {
+    it.each([
+      ['Admin', false, true],
+      ['Viewer', true, true],
+      ['Editor', false, false],
+      ['Viewer', false, false],
+    ])('shows public preview opt-out for %s, Grafana admin %s: %s', (orgRole, isGrafanaAdmin, visible) => {
+      mockConfig.bootData.user = { orgRole, isGrafanaAdmin };
+      render(<TabBarActions />);
+      fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+      const item = screen.queryByRole('menuitem', { name: 'Classic Help menu settings Beta' });
+      if (visible) {
+        expect(item).toBeInTheDocument();
+        fireEvent.click(item!);
+        expect(mockPush).toHaveBeenCalledWith('/plugins/grafana-pathfinder-app?page=configuration');
+      } else {
+        expect(item).not.toBeInTheDocument();
+      }
+    });
     beforeEach(() => {
       // Reset mock config to Admin for each test
       mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
@@ -327,16 +348,13 @@ describe('TabBarActions', () => {
       expect(screen.queryByRole('menuitem', { name: /dev tools/i })).not.toBeInTheDocument();
     });
 
-    it('is last in the menu and focuses the tab on click', () => {
+    it('focuses the dev tools tab on click', () => {
       const onOpenDevToolsTab = jest.fn();
       const { reportAppInteraction } = require('../../../lib/analytics');
       render(<TabBarActions isDevMode onOpenDevToolsTab={onOpenDevToolsTab} />);
       openMenu();
 
-      const items = screen.getAllByRole('menuitem');
-      expect(items[items.length - 1]).toHaveAccessibleName(/dev tools/i);
-
-      fireEvent.click(items[items.length - 1]!);
+      fireEvent.click(screen.getByRole('menuitem', { name: /dev tools/i }));
       expect(onOpenDevToolsTab).toHaveBeenCalledTimes(1);
       expect(reportAppInteraction).toHaveBeenCalledWith(
         'docs_panel_interaction',
@@ -425,4 +443,13 @@ describe('Edit as private guide menu', () => {
     expect(screen.queryByText('Edit as private guide')).not.toBeInTheDocument();
     expect(screen.queryByText('Customize with Assistant')).not.toBeInTheDocument();
   });
+});
+
+it('keeps Settings but hides the classic Help menu action for OSS admins', () => {
+  jest.mocked(currentPlatform).mockReturnValue('oss');
+  mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
+  render(<TabBarActions />);
+  fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+  expect(screen.getByRole('menuitem', { name: 'Settings' })).toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: 'Classic Help menu settings Beta' })).not.toBeInTheDocument();
 });

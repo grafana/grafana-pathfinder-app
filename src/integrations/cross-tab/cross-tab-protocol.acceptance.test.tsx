@@ -63,7 +63,6 @@ jest.mock('../../requirements-manager', () => {
 jest.mock('../../interactive-engine/action-handlers', () => {
   const makeHandler = () => ({ execute: jest.fn().mockResolvedValue(undefined) });
   const makeGuided = () => ({
-    resetProgress: jest.fn(),
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
   });
   return {

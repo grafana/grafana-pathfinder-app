@@ -157,6 +157,13 @@ export function recordSandboxUnavailable(reason: SandboxUnavailableReason, block
 export type SettingsStoreOutcome =
   'resource' | 'not-created' | 'kind-not-served' | 'api-unavailable' | 'empty-spec' | 'forbidden' | 'read-error';
 
+export function recordStartupSettings(
+  durationMs: number,
+  outcome: 'resolved' | 'read-error' | 'timeout' | 'remote-disabled'
+): void {
+  pushFaroMeasurement(TELEMETRY_MEASUREMENTS.startupSettings, { startup_settings_ms: durationMs }, { outcome });
+}
+
 export function recordSettingsStoreResolved(outcome: SettingsStoreOutcome): void {
   pushFaroEvent(TELEMETRY_EVENTS.settingsStoreResolved, { outcome });
 }

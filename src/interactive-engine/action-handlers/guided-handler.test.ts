@@ -84,7 +84,7 @@ describe('GuidedHandler', () => {
     });
   });
 
-  describe('resetProgress', () => {
+  describe('sequence progress', () => {
     const runTwoStepSequence = async (labelPrefix: string) => {
       for (const stepIndex of [0, 1]) {
         await guidedHandler.executeGuidedStep(
@@ -101,9 +101,9 @@ describe('GuidedHandler', () => {
       }
     };
 
-    const firstPaintOf = (labelPrefix: string) =>
+    const paintOf = (labelPrefix: string, stepIndex: number) =>
       (mockNavigationManager.highlightWithComment as jest.Mock).mock.calls.find((call) =>
-        String(call[1]).includes(`${labelPrefix} step 0`)
+        String(call[1]).includes(`${labelPrefix} step ${stepIndex}`)
       )?.[3];
 
     beforeEach(() => {
@@ -113,23 +113,54 @@ describe('GuidedHandler', () => {
       mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
     });
 
-    it('clears prior-run credit so a restarted sequence paints from zero', async () => {
-      await runTwoStepSequence('run A');
-      expect(firstPaintOf('run A')).toMatchObject({ current: 0, completedSteps: [] });
-
-      guidedHandler.resetProgress();
-      await runTwoStepSequence('run B');
-
-      expect(firstPaintOf('run B')).toMatchObject({ current: 0, total: 2, completedSteps: [], progress: 'performed' });
+    afterEach(() => {
+      document.querySelectorAll('.interactive-comment-box').forEach((element) => element.remove());
     });
 
-    it('carries stale credit into a second sequence when it is not called', async () => {
+    it('retains completed-step credit within a sequence', async () => {
+      await runTwoStepSequence('run A');
+
+      expect(paintOf('run A', 0)).toEqual({ current: 0, total: 2, completedSteps: [], progress: 'performed' });
+      expect(paintOf('run A', 1)).toEqual({ current: 1, total: 2, completedSteps: [0], progress: 'performed' });
+    });
+
+    it('starts a second sequence from zero without a caller resetting progress', async () => {
       await runTwoStepSequence('run A');
       await runTwoStepSequence('run B');
 
-      // Guard: this is the state resetProgress exists to prevent - a full bar
-      // beside a "Step 1 of 2" badge. interactive-guided.tsx calls it at run start.
-      expect(firstPaintOf('run B')).toMatchObject({ current: 0, completedSteps: [0, 1] });
+      expect(paintOf('run A', 1)).toMatchObject({ completedSteps: [0] });
+      expect(paintOf('run B', 0)).toEqual({ current: 0, total: 2, completedSteps: [], progress: 'performed' });
+      expect(paintOf('run B', 1)).toEqual({ current: 1, total: 2, completedSteps: [0], progress: 'performed' });
+    });
+
+    it('clears prior-run credit before painting a noop first step', async () => {
+      await runTwoStepSequence('run A');
+
+      const noopStep = guidedHandler.executeGuidedStep(
+        { targetAction: 'noop', targetComment: 'run B step 0' },
+        0,
+        2,
+        1000
+      );
+      const commentBox = document.querySelector('.interactive-comment-box[data-noop="true"]');
+
+      expect(commentBox).not.toBeNull();
+      expect(commentBox!.querySelectorAll('.interactive-comment-step-item')).toHaveLength(2);
+      expect(commentBox!.querySelector('.interactive-comment-step-item')).toHaveClass(
+        'interactive-comment-step-current'
+      );
+      expect(commentBox!.querySelectorAll('.interactive-comment-step-completed')).toHaveLength(0);
+
+      document.dispatchEvent(new CustomEvent('guided-noop-continue', { detail: { stepIndex: 0 } }));
+      await expect(noopStep).resolves.toBe('completed');
+      await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: 'run B step 1' },
+        1,
+        2,
+        5
+      );
+
+      expect(paintOf('run B', 1)).toEqual({ current: 1, total: 2, completedSteps: [0], progress: 'performed' });
     });
   });
 
