@@ -1,4 +1,4 @@
-import { KioskCatalogSchema, type KioskPage } from '../../types/kiosk-page.schema';
+import { KioskCatalogSchema, KioskExitButtonLabelSchema, type KioskPage } from '../../types/kiosk-page.schema';
 import { logger } from '../../lib/logging';
 import { recordKioskCatalogLoaded, type KioskCatalogTier } from '../../lib/telemetry';
 import defaultKiosk from './default-kiosk.json';
@@ -17,12 +17,14 @@ export interface KioskRule {
 
 export interface KioskRulesResponse {
   banner?: string;
+  exitButtonLabel?: string;
   page?: KioskPage;
   rules: KioskRule[];
 }
 
 export interface KioskData {
   banner: string;
+  exitButtonLabel?: string;
   page?: KioskPage;
   rules: KioskRule[];
 }
@@ -105,6 +107,10 @@ export async function fetchKioskData(
   }
 
   const data: KioskRulesResponse = await response.json();
+  const exitButtonLabel = KioskExitButtonLabelSchema.optional().safeParse(data?.exitButtonLabel);
+  if (!exitButtonLabel.success) {
+    throw new CatalogError('invalid_rules');
+  }
   if (data && Object.hasOwn(data, 'page') && !KioskCatalogSchema.safeParse(data).success) {
     throw new CatalogError('invalid_rules');
   }
@@ -125,6 +131,7 @@ export async function fetchKioskData(
   return {
     banner: typeof data?.banner === 'string' && data.banner.trim() ? data.banner : DEFAULT_BANNER,
     rules: valid,
+    ...(exitButtonLabel.data !== undefined && { exitButtonLabel: exitButtonLabel.data }),
     ...(data?.page && { page: data.page }),
   };
 }

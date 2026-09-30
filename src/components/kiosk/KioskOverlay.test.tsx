@@ -93,7 +93,19 @@ it('brands the default banner as Grafana learning material', async () => {
   render(<KioskOverlay rulesUrl="" mode="instance" onClose={jest.fn()} />);
   expect(await screen.findByRole('heading', { name: 'Learn Grafana' })).toBeInTheDocument();
   expect(screen.getByText('Grafana learning')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Back to Grafana' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Skip this and show all options' })).toBeInTheDocument();
+});
+
+it('uses the catalog exit label as plain text and preserves the exit action', async () => {
+  const label = '<b>Explore all options</b>';
+  load.mockResolvedValue({ ...data('A guide'), exitButtonLabel: label });
+  const onClose = jest.fn();
+  render(<KioskOverlay rulesUrl="default" onClose={onClose} />);
+  const exit = await screen.findByRole('button', { name: label });
+  expect(exit).toHaveTextContent(label);
+  expect(exit.querySelector('b')).toBeNull();
+  fireEvent.click(exit);
+  expect(onClose).toHaveBeenCalledTimes(1);
 });
 
 it('renders a structured page instead of the legacy banner and grid', async () => {
@@ -111,7 +123,7 @@ it('renders a structured page instead of the legacy banner and grid', async () =
   expect(screen.queryByText('Legacy banner')).toBeNull();
   expect(screen.queryByText('Legacy guide')).toBeNull();
   expect(screen.queryByText('Interactive guides')).toBeNull();
-  expect(screen.getByRole('button', { name: 'Back to Grafana' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Skip this and show all options' })).toBeVisible();
 });
 
 it.each(['button', 'escape'] as const)('reports a deliberate %s exit', async (method) => {
@@ -120,7 +132,7 @@ it.each(['button', 'escape'] as const)('reports a deliberate %s exit', async (me
   const onClose = jest.fn();
   render(<KioskOverlay rulesUrl="default" mode="instance" onClose={onClose} />);
   await screen.findByText('Guide');
-  const exit = screen.getByRole('button', { name: 'Back to Grafana' });
+  const exit = screen.getByRole('button', { name: 'Skip this and show all options' });
   if (method === 'button') {
     fireEvent.click(exit);
   } else {
@@ -140,7 +152,7 @@ it('restores focus after a child blurs without focusing another element', async 
   const onClose = jest.fn();
   render(<KioskOverlay rulesUrl="default" onClose={onClose} />);
   await screen.findByText('A guide');
-  const exit = screen.getByRole('button', { name: 'Back to Grafana' });
+  const exit = screen.getByRole('button', { name: 'Skip this and show all options' });
   exit.blur();
   expect(document.activeElement).toBe(document.body);
   await waitFor(() => expect(exit).toHaveFocus());
@@ -154,7 +166,7 @@ it('cancels pending focus restoration when the kiosk closes', async () => {
   previous.focus();
   const { unmount } = render(<KioskOverlay rulesUrl="default" onClose={jest.fn()} />);
   await screen.findByText('A guide');
-  screen.getByRole('button', { name: 'Back to Grafana' }).blur();
+  screen.getByRole('button', { name: 'Skip this and show all options' }).blur();
   unmount();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(previous).toHaveFocus();
@@ -166,7 +178,7 @@ it('does not restore focus when the document loses focus', async () => {
   const focus = jest.spyOn(document, 'hasFocus').mockReturnValue(false);
   render(<KioskOverlay rulesUrl="default" onClose={jest.fn()} />);
   await screen.findByText('A guide');
-  screen.getByRole('button', { name: 'Back to Grafana' }).blur();
+  screen.getByRole('button', { name: 'Skip this and show all options' }).blur();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(document.activeElement).toBe(document.body);
   focus.mockRestore();
@@ -177,7 +189,7 @@ it('focuses the dialog instead of its exit when the current control becomes disa
   const focus = jest.spyOn(document, 'hasFocus').mockReturnValue(true);
   render(<KioskOverlay rulesUrl="default" onClose={jest.fn()} />);
   await screen.findByText('A guide');
-  const exit = screen.getByRole('button', { name: 'Back to Grafana' });
+  const exit = screen.getByRole('button', { name: 'Skip this and show all options' });
   exit.blur();
   exit.setAttribute('disabled', '');
   await waitFor(() => expect(screen.getByRole('dialog')).toHaveFocus());

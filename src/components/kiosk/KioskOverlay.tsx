@@ -43,6 +43,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
   const page = current?.page;
   const banner = current?.banner ?? '';
   const warning = current?.warning;
+  const exitButtonLabel = current?.exitButtonLabel ?? 'Skip this and show all options';
 
   const sanitizedBanner = useMemo(() => {
     if (!banner || banner === DEFAULT_BANNER) {
@@ -186,10 +187,10 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
             icon="arrow-left"
             className={styles.closeButton}
             onClick={() => handleExit('button')}
-            aria-label="Back to Grafana"
+            aria-label={exitButtonLabel}
             data-testid={testIds.kioskMode.closeButton}
           >
-            Back to Grafana
+            {exitButtonLabel}
           </Button>
         </div>
 
