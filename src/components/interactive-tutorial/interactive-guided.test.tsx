@@ -9,6 +9,7 @@
  */
 
 import React from 'react';
+import { waitForReactUpdates } from '../../lib/async-utils';
 import { GuidedHandler as RealGuidedHandler } from '../../interactive-engine/action-handlers/guided-handler';
 import { querySelectorAllEnhanced } from '../../lib/dom';
 import { acquireGuidedRun } from '../../global-state/guided-run';
@@ -704,6 +705,42 @@ describe('InteractiveGuided — current action recovery', () => {
       expect(mockExecuteGuidedStep.mock.calls.map((call) => call[1])).toEqual([0, 1, 1]);
     }
   );
+  it('keeps the failed substep visible while retry waits for the execution render', async () => {
+    mockExecuteGuidedStep
+      .mockResolvedValueOnce('completed')
+      .mockResolvedValueOnce('error')
+      .mockResolvedValueOnce('completed');
+    const { container } = render(
+      <InteractiveGuided
+        stepId="retry-visible"
+        internalActions={[
+          { targetAction: 'noop', targetComment: 'First instruction' },
+          { targetAction: 'noop', targetComment: 'Second instruction' },
+        ]}
+      />
+    );
+    const step = screen.getByTestId(testIds.interactive.step('retry-visible'));
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'error'));
+    let finishRender!: () => void;
+    jest.mocked(waitForReactUpdates).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRender = resolve;
+        })
+    );
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('retry-visible')));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'executing'));
+    expect(step).toHaveAttribute('data-test-substep-index', '1');
+    expect(screen.getByText('Step 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Second instruction')).toBeInTheDocument();
+    expect(container.querySelector('.interactive-guided-progress-fill')).toHaveStyle({ width: '50%' });
+    expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(2);
+    await act(async () => finishRender());
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'completed'));
+    expect(mockExecuteGuidedStep.mock.calls.map((call) => call[1])).toEqual([0, 1, 1]);
+  });
+
   it('restarts from step zero after cancellation', async () => {
     mockExecuteGuidedStep
       .mockResolvedValueOnce('completed')

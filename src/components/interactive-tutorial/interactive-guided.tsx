@@ -401,7 +401,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           run.signal.throwIfAborted();
           setIsExecuting(true);
           setExecutionError(null);
-          setCurrentStepIndex(0);
+          setCurrentStepIndex(startIndex);
           setFailedStepIndex(-1);
           setCurrentStepStatus('waiting');
           setWasCancelled(false);
