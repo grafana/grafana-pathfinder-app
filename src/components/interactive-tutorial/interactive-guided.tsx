@@ -835,7 +835,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="primary"
-                className="interactive-guided-start-btn"
+                className="interactive-guide-button-sm interactive-guided-start-btn"
                 data-testid={testIds.interactive.doItButton(renderedStepId)}
                 title={
                   hints || `Guide you through ${internalActions.length} step${internalActions.length > 1 ? 's' : ''}`
@@ -860,7 +860,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   disabled={disabled || isAnyActionRunning}
                   size="sm"
                   variant="secondary"
-                  className="interactive-guided-skip-btn"
+                  className="interactive-guide-button-sm interactive-guided-skip-btn"
                   data-testid={testIds.interactive.skipButton(renderedStepId)}
                 >
                   Skip
@@ -892,7 +892,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         {(uiState === STEP_STATES.REQUIREMENTS_UNMET || (uiState === 'checking' && checker.explanation)) &&
           checker.explanation && (
             <div className={`interactive-guided-requirements${checker.isChecking ? ' rechecking' : ''}`}>
-              <div className="interactive-guided-requirement-box">
+              <div className="interactive-feedback-box interactive-feedback-box--neutral interactive-guided-requirement-box">
                 <span className="interactive-guided-requirement-icon">👣</span>
                 <span id={`requirement-explanation-${renderedStepId}`} className="interactive-guided-requirement-text">
                   {checker.explanation}
@@ -987,7 +987,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               disabled={disabled}
               size="sm"
               variant="secondary"
-              className="interactive-guided-cancel-btn"
+              className="interactive-guide-button-sm interactive-guided-cancel-btn"
               title="Cancel guided tour"
             >
               Cancel tour
@@ -1000,7 +1000,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         ═══════════════════════════════════════════════════════════════════ */}
         {uiState === 'error' && (
           <div className="interactive-guided-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
-            <div className="interactive-guided-error-box">
+            <div className="interactive-feedback-box interactive-feedback-box--warning interactive-guided-error-box">
               <span className="interactive-guided-error-icon">✕</span>
               <div className="interactive-guided-error-content">
                 <span className="interactive-guided-error-title">Step {failedStepIndex + 1} didn&apos;t complete</span>
@@ -1015,7 +1015,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 onClick={handleRetry}
                 size="sm"
                 variant="primary"
-                className="interactive-guided-retry-btn"
+                className="interactive-guide-button-sm interactive-guided-retry-btn"
                 data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
               >
                 ↻ Try again
@@ -1042,7 +1042,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   onClick={handleSkipStep}
                   size="sm"
                   variant="secondary"
-                  className="interactive-guided-skip-btn"
+                  className="interactive-guide-button-sm interactive-guided-skip-btn"
                   data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
                 >
                   Skip this step
@@ -1057,7 +1057,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         ═══════════════════════════════════════════════════════════════════ */}
         {uiState === 'cancelled' && (
           <div className="interactive-guided-cancelled" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
-            <div className="interactive-guided-cancelled-box">
+            <div className="interactive-feedback-box interactive-feedback-box--muted interactive-guided-cancelled-box">
               <span className="interactive-guided-cancelled-text">Tour cancelled</span>
             </div>
             <div className="interactive-guided-cancelled-actions">
@@ -1065,7 +1065,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 onClick={handleRetry}
                 size="sm"
                 variant="primary"
-                className="interactive-guided-restart-btn"
+                className="interactive-guide-button-sm interactive-guided-restart-btn"
                 data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
               >
                 ↻ Restart tour
@@ -1075,7 +1075,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   onClick={handleSkipStep}
                   size="sm"
                   variant="secondary"
-                  className="interactive-guided-skip-btn"
+                  className="interactive-guide-button-sm interactive-guided-skip-btn"
                   data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
                 >
                   Skip entirely
@@ -1106,6 +1106,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               disabled={disabled || isAnyActionRunning}
               data-testid={testIds.interactive.redoButton(renderedStepId)}
               title="Redo this guided tour"
+              className="interactive-guide-button-sm"
             >
               ↻ Redo
             </Button>

@@ -313,8 +313,9 @@ describe('Composite resolver fallthrough', () => {
     // The real bundled resolver against the actual bundled repository.json.
     // alerting-101 is not bundled — confirmed: bundled packages are:
     // block-editor-tutorial, e2e-framework-test, first-dashboard, first-dashboard-cloud,
-    // json-guide-demo, loki-grafana-101, prometheus-advanced-queries, prometheus-grafana-101,
-    // welcome-to-grafana, welcome-to-grafana-cloud
+    // interactive-style-validation, json-guide-demo, loki-grafana-101,
+    // prometheus-advanced-queries, prometheus-grafana-101, welcome-to-grafana,
+    // welcome-to-grafana-cloud
     const bundledResolver = createBundledResolver();
 
     // Mock the recommender fetch for the fallthrough case

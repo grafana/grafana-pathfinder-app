@@ -1115,7 +1115,7 @@ export const InteractiveStep = forwardRef<
                   disabled={disabled || isAnyActionRunning || (checker.isChecking && !lazyScrollAvailable)}
                   size="sm"
                   variant="secondary"
-                  className="interactive-step-show-btn"
+                  className="interactive-guide-button-sm interactive-step-show-btn"
                   data-testid={testIds.interactive.showMeButton(renderedStepId)}
                   title={hints || `${showMeText ? `${showMeText}:` : 'Show me:'} ${getActionDescription()}`}
                 >
@@ -1133,7 +1133,7 @@ export const InteractiveStep = forwardRef<
                 }
                 size="sm"
                 variant="primary"
-                className="interactive-step-do-btn"
+                className="interactive-guide-button-sm interactive-step-do-btn"
                 data-testid={testIds.interactive.doItButton(renderedStepId)}
                 title={
                   hints ||
@@ -1179,7 +1179,7 @@ export const InteractiveStep = forwardRef<
                 disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="secondary"
-                className="interactive-step-skip-btn"
+                className="interactive-guide-button-sm interactive-step-skip-btn"
                 data-testid={testIds.interactive.skipButton(renderedStepId)}
                 title="Skip this step without executing"
               >
@@ -1213,6 +1213,7 @@ export const InteractiveStep = forwardRef<
                     ? 'Redo this step (try again)'
                     : 'Redo this step (execute again)'
                 }
+                className="interactive-guide-button-sm"
               >
                 ↻ Redo
               </Button>
@@ -1223,7 +1224,7 @@ export const InteractiveStep = forwardRef<
         {/* Post-verify failure message */}
         {!isCompletedWithObjectives && !checker.isChecking && postVerifyError && (
           <div
-            className="interactive-step-execution-error"
+            className="interactive-feedback-box interactive-feedback-box--warning interactive-step-execution-error"
             data-testid={testIds.interactive.errorMessage(renderedStepId)}
           >
             {postVerifyError}
@@ -1232,7 +1233,10 @@ export const InteractiveStep = forwardRef<
 
         {/* Lazy scroll failure message with retry */}
         {!isCompletedWithObjectives && lazyScrollError && (
-          <div className="interactive-step-lazy-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
+          <div
+            className="interactive-feedback-box interactive-feedback-box--neutral interactive-step-lazy-error"
+            data-testid={testIds.interactive.errorMessage(renderedStepId)}
+          >
             <span className="interactive-lazy-error-text">{lazyScrollError}</span>
             <button
               className="interactive-lazy-retry-btn"
@@ -1264,7 +1268,7 @@ export const InteractiveStep = forwardRef<
             {/* Checking indicator - shown while debouncing/validating */}
             {formValidation.isChecking && (
               <div
-                className="interactive-step-form-checking"
+                className="interactive-feedback-box interactive-feedback-box--neutral interactive-step-form-checking"
                 data-testid={testIds.interactive.formChecking(renderedStepId)}
               >
                 <span className="interactive-form-spinner">⟳</span>
@@ -1275,7 +1279,7 @@ export const InteractiveStep = forwardRef<
             {/* Validation warning - shown when regex pattern doesn't match */}
             {formValidation.isInvalid && formValidation.hint && (
               <div
-                className="interactive-step-form-hint-warning"
+                className="interactive-feedback-box interactive-feedback-box--warning interactive-step-form-hint-warning"
                 data-testid={testIds.interactive.formHintWarning(renderedStepId)}
               >
                 <span className="interactive-form-warning-icon">⚠</span>
@@ -1292,7 +1296,7 @@ export const InteractiveStep = forwardRef<
           !isCompletedWithObjectives &&
           explanationText && (
             <div
-              className={`interactive-step-requirement-explanation${checker.isChecking ? ' rechecking' : ''}`}
+              className={`interactive-feedback-box interactive-feedback-box--neutral interactive-step-requirement-explanation${checker.isChecking ? ' rechecking' : ''}`}
               data-testid={testIds.interactive.requirementCheck(renderedStepId)}
             >
               <span id={`requirement-explanation-${renderedStepId}`}>{explanationText}</span>

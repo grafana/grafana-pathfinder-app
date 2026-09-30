@@ -826,7 +826,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="primary"
-                className="interactive-guided-start-btn"
+                className="interactive-guide-button-sm interactive-guided-start-btn"
                 data-testid={testIds.interactive.doItButton(renderedStepId)}
                 title={getButtonTitle()}
               >
@@ -849,7 +849,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   disabled={disabled || isAnyActionRunning}
                   size="sm"
                   variant="secondary"
-                  className="interactive-guided-skip-btn"
+                  className="interactive-guide-button-sm interactive-guided-skip-btn"
                   data-testid={testIds.interactive.skipButton(renderedStepId)}
                 >
                   Skip
@@ -898,7 +898,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               disabled={disabled}
               size="sm"
               variant="secondary"
-              className="interactive-guided-cancel-btn"
+              className="interactive-guide-button-sm interactive-guided-cancel-btn"
               title="Cancel execution"
             >
               Cancel
@@ -927,6 +927,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               disabled={disabled || isAnyActionRunning}
               data-testid={testIds.interactive.redoButton(renderedStepId)}
               title="Redo this multi-step"
+              className="interactive-guide-button-sm"
             >
               ↻ Redo
             </Button>
@@ -938,7 +939,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         ═══════════════════════════════════════════════════════════════════ */}
         {uiState === STEP_STATES.REQUIREMENTS_UNMET && checker.explanation && (
           <div
-            className="interactive-step-requirement-explanation"
+            className="interactive-feedback-box interactive-feedback-box--neutral interactive-step-requirement-explanation"
             data-testid={testIds.interactive.requirementCheck(renderedStepId)}
           >
             {checker.explanation}
@@ -950,7 +951,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         ═══════════════════════════════════════════════════════════════════ */}
         {uiState === STEP_STATES.ERROR && executionError && (
           <div className="interactive-guided-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
-            <div className="interactive-guided-error-box">
+            <div className="interactive-feedback-box interactive-feedback-box--warning interactive-guided-error-box">
               <span className="interactive-guided-error-icon">!</span>
               <div className="interactive-guided-error-content">
                 <span className="interactive-guided-error-title">Step {failedStepIndex + 1} failed</span>
@@ -970,7 +971,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 }}
                 size="sm"
                 variant="primary"
-                className="interactive-guided-retry-btn"
+                className="interactive-guide-button-sm interactive-guided-retry-btn"
                 data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
               >
                 ↻ Try again
@@ -1012,7 +1013,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   }}
                   size="sm"
                   variant="secondary"
-                  className="interactive-guided-skip-btn"
+                  className="interactive-guide-button-sm interactive-guided-skip-btn"
                   data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
                 >
                   Skip this step

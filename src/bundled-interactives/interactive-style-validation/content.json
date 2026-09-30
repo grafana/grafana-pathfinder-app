@@ -1,0 +1,844 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "interactive-style-validation",
+  "title": "Interactive style validation",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "This local-only guide exercises every selector changed in `interactive.styles.ts`, including the shared `.interactive-feedback-box` variants (`--neutral` / `--warning` / `--info` / `--success` / `--muted`). Styles apply on ContentRenderer mounts only (sidebar, floating, fullscreen, guide-reader, editor preview).\n\nUse **Reset guide** between passes. §1–3 layout. §4–5 requirement neutrals. §6 executing. §7 error/cancel (warning + muted). §8 mark-complete. §9 forced failures. **§10 feedback-box spray** — quiz / code / terminal / challenge emitters for every semantic variant."
+    },
+    {
+      "type": "section",
+      "id": "terminal-state-cards",
+      "title": "1. Active, completed, and skipped cards",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Exercise the state-dependent card padding, counter position, action spacing, and section completion treatment."
+        },
+        {
+          "type": "interactive",
+          "id": "visual-complete-step",
+          "action": "highlight",
+          "reftarget": "[data-step-id='visual-complete-step']",
+          "requirements": ["exists-reftarget"],
+          "content": "**Active → completed.** Before clicking, verify the content and Show me / Do it buttons share a compact vertical rhythm. Click **Do it** to produce the green completed bubble and confirm equal internal padding on all four sides.",
+          "tooltip": "This step targets its own card so it can complete without changing Grafana."
+        },
+        {
+          "type": "interactive",
+          "id": "visual-skipped-step",
+          "action": "highlight",
+          "reftarget": "#pathfinder-style-validation-intentionally-missing",
+          "requirements": ["exists-reftarget"],
+          "skippable": true,
+          "content": "**Requirement → skipped.** First compare the compact requirement box and its buttons. Then click **Skip** and verify the blue skipped bubble uses the same internal padding and number alignment as the completed bubble.",
+          "hint": "The target is intentionally absent so the requirement and Skip states remain available."
+        },
+        {
+          "type": "interactive",
+          "id": "visual-final-step",
+          "action": "highlight",
+          "reftarget": "[data-step-id='visual-final-step']",
+          "requirements": ["exists-reftarget"],
+          "content": "**Section completion.** Click **Do it**, then compare the completed section's outer padding, step gaps, number positions, and action row with its incomplete state.",
+          "tooltip": "Completing this step finishes the section."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "mixed-numbered-content",
+      "title": "2. Numbering and mixed content",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Compare numbered plain content with every major self-padded or flush interactive card."
+        },
+        {
+          "type": "markdown",
+          "content": "**Plain markdown, short.** Its number and text should use balanced left/right padding and the same inter-item gap as cards."
+        },
+        {
+          "type": "markdown",
+          "content": "**Plain markdown, wrapping.** This deliberately longer sentence should wrap early enough to make asymmetric horizontal padding obvious; the text column should remain visually centered within the section."
+        },
+        {
+          "type": "image",
+          "src": "https://grafana.com/static/assets/img/grafana_logo.svg",
+          "alt": "Unnumbered media between numbered steps",
+          "width": 120
+        },
+        {
+          "type": "markdown",
+          "content": "**After unnumbered media.** Numbering must continue (this is the next number after the wrapping markdown, skipping the image)."
+        },
+        {
+          "type": "interactive",
+          "id": "mixed-noop",
+          "action": "noop",
+          "content": "**Noop / informational.** No action buttons — the action row must collapse via `:has()` rather than leaving empty vertical space."
+        },
+        {
+          "type": "interactive",
+          "id": "mixed-show-only",
+          "action": "highlight",
+          "reftarget": "[data-step-id='mixed-show-only']",
+          "doIt": false,
+          "content": "**Show-only.** Only **Show me** — confirm the shared action-button padding still applies when Do it is hidden."
+        },
+        {
+          "type": "interactive",
+          "id": "mixed-interactive",
+          "action": "highlight",
+          "reftarget": "[data-step-id='mixed-interactive']",
+          "content": "**Interactive step.** This is the flush, incomplete `.interactive-step` case."
+        },
+        {
+          "type": "multistep",
+          "id": "mixed-multistep",
+          "content": "**Multistep inside a section.** Number + Start/Skip padding; complete it to inspect the completed badge padding inside a numbered card.",
+          "skippable": true,
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "[data-step-id='mixed-multistep']",
+              "tooltip": "Self-target multistep."
+            }
+          ]
+        },
+        {
+          "type": "guided",
+          "id": "mixed-guided",
+          "content": "**Guided inside a section.** Number + idle Start/Skip; optionally run to inspect executing / completed chrome on a numbered card.",
+          "skippable": true,
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "[data-step-id='mixed-guided']",
+              "description": "Self-target guided substep."
+            }
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "mixed-quiz",
+          "question": "Does the number align with this quiz card's internally padded first line?",
+          "shuffle": false,
+          "completionMode": "correct-only",
+          "choices": [
+            {
+              "id": "yes",
+              "text": "Yes — number, question, and right edge look balanced",
+              "correct": true
+            },
+            {
+              "id": "no",
+              "text": "No — keep this state visible while inspecting"
+            }
+          ]
+        },
+        {
+          "type": "input",
+          "id": "mixed-input",
+          "prompt": "Input card: verify the number follows the card's top and left inset.",
+          "inputType": "text",
+          "variableName": "styleValidationInput",
+          "placeholder": "Type anything to inspect the active state",
+          "required": false
+        },
+        {
+          "type": "interactive",
+          "id": "mixed-formfill",
+          "action": "formfill",
+          "reftarget": "input[placeholder*='Search'], input[aria-label*='Search']",
+          "targetvalue": "^style-validation-ok$",
+          "validateInput": true,
+          "formHint": "Type exactly style-validation-ok. Wrong input should show `.interactive-step-form-hint-warning` with the step gap — no double top margin.",
+          "requirements": ["exists-reftarget"],
+          "skippable": true,
+          "content": "**Formfill validation chrome.** Needs a Search input on the page. Type anything else first to surface the form-hint warning; the checking indicator may flash during debounce.",
+          "hint": "If Search is not on this page, Skip — then use a Grafana page that has a search field and Reset this guide section."
+        },
+        {
+          "type": "code-block",
+          "id": "mixed-code",
+          "reftarget": "#pathfinder-style-validation-code-target",
+          "language": "javascript",
+          "code": "const spacing = 'visually balanced';",
+          "content": "Code block: inspect card width, number position, and action-button padding.",
+          "skippable": true
+        },
+        {
+          "type": "terminal",
+          "id": "mixed-terminal",
+          "command": "printf 'style validation only\\n'",
+          "content": "Terminal block: inspect number position and ensure Copy/Exec controls were not unintentionally restyled.",
+          "skippable": true
+        },
+        {
+          "type": "terminal-connect",
+          "id": "mixed-terminal-connect",
+          "content": "Terminal-connect block: inspect spacing only; do not start a VM for this visual pass.",
+          "buttonText": "Try in terminal (visual only)"
+        },
+        {
+          "type": "challenge",
+          "id": "mixed-challenge",
+          "mode": "standard",
+          "title": "Standard challenge card",
+          "brief": "Click **Check my work** (fails) then **Show a hint** — inspect failed-check warning blob and left-accent hint padding.",
+          "successCriteria": "on-page:/pathfinder-style-validation-never",
+          "failureMessage": "Expected failure for visual validation.",
+          "hintLevels": [
+            {
+              "text": "A short first hint for spacing."
+            },
+            {
+              "text": "A longer second hint that wraps and exposes horizontal alignment."
+            }
+          ]
+        },
+        {
+          "type": "grot-guide",
+          "id": "mixed-grot-guide",
+          "welcome": {
+            "title": "Decision-tree card",
+            "body": "Inspect the number and balanced card padding, then move through one screen.",
+            "ctas": [
+              {
+                "text": "Open question",
+                "screenId": "style-question"
+              }
+            ]
+          },
+          "screens": [
+            {
+              "type": "question",
+              "id": "style-question",
+              "title": "Does this screen remain aligned?",
+              "options": [
+                {
+                  "text": "Yes",
+                  "screenId": "style-result"
+                },
+                {
+                  "text": "Needs inspection",
+                  "screenId": "style-result"
+                }
+              ]
+            },
+            {
+              "type": "result",
+              "id": "style-result",
+              "title": "Result screen",
+              "body": "Verify the result preserves the same outer geometry."
+            }
+          ]
+        },
+        {
+          "type": "conditional",
+          "id": "mixed-conditional",
+          "conditions": ["is-admin"],
+          "whenTrue": [
+            {
+              "type": "markdown",
+              "content": "**Conditional (admin true branch).** Unnumbered wrapper — confirm the counter did not increment for the conditional itself, and sibling spacing still uses the section gap."
+            }
+          ],
+          "whenFalse": [
+            {
+              "type": "markdown",
+              "content": "**Conditional (non-admin false branch).** Unnumbered wrapper — same spacing check as the admin branch."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## 3. Standalone interactives (no section)\n\nThese blocks mount at guide root — no numbers, no section gap, and component-owned margins stay intact. Compare consecutive `.interactive-step` cards: they must keep vertical separation. Also complete and skip the first two to verify terminal-state padding outside a section.\n\nAlso include a **noop** and **show-only** card here so the empty-actions `:has()` rule and single-button padding are checked outside a section."
+    },
+    {
+      "type": "interactive",
+      "id": "standalone-noop",
+      "action": "noop",
+      "content": "**Standalone noop.** No buttons; action chrome must not reserve vertical space."
+    },
+    {
+      "type": "interactive",
+      "id": "standalone-show-only",
+      "action": "highlight",
+      "reftarget": "[data-step-id='standalone-show-only']",
+      "doIt": false,
+      "content": "**Standalone show-only.** Single Show me button with shared horizontal padding."
+    },
+    {
+      "type": "interactive",
+      "id": "standalone-complete-step",
+      "action": "highlight",
+      "reftarget": "[data-step-id='standalone-complete-step']",
+      "requirements": ["exists-reftarget"],
+      "content": "**Standalone interactive → completed.** Confirm Show me / Do it spacing, then **Do it**. The completed bubble must self-pad without a section wrapper.",
+      "tooltip": "Standalone completed card padding."
+    },
+    {
+      "type": "interactive",
+      "id": "standalone-skipped-step",
+      "action": "highlight",
+      "reftarget": "#pathfinder-style-validation-missing-standalone-skip",
+      "requirements": ["exists-reftarget"],
+      "skippable": true,
+      "content": "**Standalone interactive → skipped.** Confirm the requirement box, then **Skip**. The skipped bubble must match the completed card's internal padding and keep separation from neighbors.",
+      "hint": "Intentionally missing so Skip stays available."
+    },
+    {
+      "type": "interactive",
+      "id": "standalone-active-step",
+      "action": "highlight",
+      "reftarget": "[data-step-id='standalone-active-step']",
+      "content": "**Standalone interactive, still active.** Leave this incomplete so you can compare flush active cards against the completed and skipped bubbles above."
+    },
+    {
+      "type": "multistep",
+      "id": "standalone-multistep",
+      "content": "**Standalone multistep.** Verify its outer margin against neighboring interactive cards and that Start / Skip padding matches the shared action-button rule.",
+      "skippable": true,
+      "steps": [
+        {
+          "action": "highlight",
+          "reftarget": "[data-step-id='standalone-multistep']",
+          "tooltip": "Self-target so this can complete without Grafana chrome."
+        }
+      ]
+    },
+    {
+      "type": "guided",
+      "id": "standalone-guided",
+      "content": "**Standalone guided.** Idle Start / Skip spacing, then optionally Start to inspect executing / completed chrome outside a section.",
+      "skippable": true,
+      "steps": [
+        {
+          "action": "highlight",
+          "reftarget": "[data-step-id='standalone-guided']",
+          "description": "Self-target guided substep."
+        }
+      ]
+    },
+    {
+      "type": "quiz",
+      "id": "standalone-quiz",
+      "question": "Standalone quiz: does this card keep its own outer margin and look balanced against the interactive cards above?",
+      "shuffle": false,
+      "completionMode": "correct-only",
+      "choices": [
+        {
+          "id": "yes",
+          "text": "Yes — spacing looks intentional",
+          "correct": true
+        },
+        {
+          "id": "no",
+          "text": "No — leave this open while inspecting"
+        }
+      ]
+    },
+    {
+      "type": "input",
+      "id": "standalone-input",
+      "prompt": "Standalone input: verify its component-owned margin still separates it from neighbors.",
+      "inputType": "text",
+      "variableName": "styleValidationStandaloneInput",
+      "placeholder": "Type anything",
+      "required": false
+    },
+    {
+      "type": "code-block",
+      "id": "standalone-code",
+      "reftarget": "#pathfinder-style-validation-standalone-code-target",
+      "language": "javascript",
+      "code": "const standalone = true;",
+      "content": "Standalone code-block: confirm Copy / Insert controls and outer spacing.",
+      "skippable": true
+    },
+    {
+      "type": "terminal",
+      "id": "standalone-terminal",
+      "command": "printf 'standalone terminal\\n'",
+      "content": "Standalone terminal: Copy / Exec should keep their own padding; card spacing should not collapse.",
+      "skippable": true
+    },
+    {
+      "type": "terminal-connect",
+      "id": "standalone-terminal-connect",
+      "content": "Standalone terminal-connect: spacing only — do not start a VM.",
+      "buttonText": "Try in terminal (visual only)"
+    },
+    {
+      "type": "challenge",
+      "id": "standalone-challenge",
+      "mode": "standard",
+      "title": "Standalone challenge",
+      "brief": "Confirm this self-padded card keeps its outer margin outside a section. The success check intentionally fails.",
+      "successCriteria": "on-page:/pathfinder-style-validation-never",
+      "failureMessage": "Expected failure for visual validation.",
+      "hintLevels": [
+        {
+          "text": "Standalone challenge hint for spacing."
+        }
+      ]
+    },
+    {
+      "type": "grot-guide",
+      "id": "standalone-grot-guide",
+      "welcome": {
+        "title": "Standalone decision-tree",
+        "body": "Outside a section there is no step number — just verify the card's own margin and padding.",
+        "ctas": [
+          {
+            "text": "Open question",
+            "screenId": "standalone-style-question"
+          }
+        ]
+      },
+      "screens": [
+        {
+          "type": "question",
+          "id": "standalone-style-question",
+          "title": "Still spaced correctly?",
+          "options": [
+            {
+              "text": "Yes",
+              "screenId": "standalone-style-result"
+            },
+            {
+              "text": "Needs inspection",
+              "screenId": "standalone-style-result"
+            }
+          ]
+        },
+        {
+          "type": "result",
+          "id": "standalone-style-result",
+          "title": "Result",
+          "body": "Outer geometry should still look intentional."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## 4. Requirement-box palette (also standalone)\n\nThese intentionally fail their requirements at guide root. Each should render `.interactive-feedback-box.interactive-feedback-box--neutral` (shared **4px 12px** padding) even though internal layouts and controls differ. See §10 for warning / info / success / muted emitters."
+    },
+    {
+      "type": "interactive",
+      "id": "requirement-regular",
+      "action": "highlight",
+      "reftarget": "#pathfinder-style-validation-missing-regular",
+      "requirements": ["exists-reftarget"],
+      "skippable": true,
+      "content": "**Regular step requirement.** Contains explanation, spinner when checking, and retry/skip controls inside the box.",
+      "hint": "Intentionally missing regular-step target."
+    },
+    {
+      "type": "multistep",
+      "id": "requirement-multistep",
+      "content": "**Multistep requirement.** This variant contains explanation text without the regular step's full control body.",
+      "requirements": ["on-page:/pathfinder-style-validation-never"],
+      "skippable": true,
+      "steps": [
+        {
+          "action": "highlight",
+          "reftarget": "#pathfinder-style-validation-missing-multistep"
+        }
+      ]
+    },
+    {
+      "type": "guided",
+      "id": "requirement-guided",
+      "content": "**Guided requirement.** Its explanation and spinner are inside the box while fix controls render below it.",
+      "requirements": ["on-page:/pathfinder-style-validation-never"],
+      "skippable": true,
+      "steps": [
+        {
+          "action": "highlight",
+          "reftarget": "#pathfinder-style-validation-missing-guided",
+          "description": "Intentionally unavailable guided target."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "requirement-section",
+      "title": "5. Section-level requirement",
+      "requirements": ["on-page:/pathfinder-style-validation-never"],
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "This content remains gated; inspect the lock banner above it."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "executing-states",
+      "title": "6. Executing and section runner",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Click **Do Section** (or each step's **Do it**) and inspect `.interactive-step.executing` border/glow, internal card gap, Cancel in `.interactive-guided-executing`, and action-button padding before completion. After the section finishes it auto-collapses — expand or use Reset to inspect `.interactive-section-actions.collapsed`."
+        },
+        {
+          "type": "interactive",
+          "id": "exec-step-a",
+          "action": "highlight",
+          "reftarget": "[data-step-id='exec-step-a']",
+          "requirements": ["exists-reftarget"],
+          "content": "Step A — complete first; watch executing chrome mid-run."
+        },
+        {
+          "type": "interactive",
+          "id": "exec-step-b",
+          "action": "highlight",
+          "reftarget": "[data-step-id='exec-step-b']",
+          "requirements": ["exists-reftarget"],
+          "content": "Step B — second runner step; same executing + Cancel pass."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## 7. Guided / multistep error and cancel\n\nStart each block, then cancel mid-run or let the second substep fail (missing target). Inspect `.interactive-guided-cancelled-actions`, `.interactive-guided-error-actions`, Retry/Skip/AI padding, and the completed Redo row after a successful path."
+    },
+    {
+      "type": "guided",
+      "id": "guided-error-cancel",
+      "content": "**Guided error + cancel.** Start the tour, cancel on the first substep (or continue into the failing second). Restart into the failing target to expose error-actions padding.",
+      "skippable": true,
+      "steps": [
+        {
+          "action": "highlight",
+          "reftarget": "[data-step-id='guided-error-cancel']",
+          "description": "Self-target (succeeds) — cancel here or continue."
+        },
+        {
+          "action": "highlight",
+          "reftarget": "#pathfinder-style-validation-guided-fail",
+          "description": "Intentionally missing — triggers error actions row."
+        }
+      ]
+    },
+    {
+      "type": "multistep",
+      "id": "multistep-error",
+      "content": "**Multistep error.** Run steps; the second substep fails so you can inspect error-actions and Redo padding.",
+      "skippable": true,
+      "steps": [
+        {
+          "action": "highlight",
+          "reftarget": "[data-step-id='multistep-error']"
+        },
+        {
+          "action": "highlight",
+          "reftarget": "#pathfinder-style-validation-multistep-fail"
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "passive-ack-section",
+      "title": "8. Mark section complete",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "No interactive children — only **Mark section as complete** in `.interactive-section-actions`. After acknowledging, inspect collapsed Reset padding if the section auto-collapses."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "forced-failures",
+      "title": "9. Forced failures and stalls",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "These omit blocking `exists-reftarget` (or use a verify that can never pass) so **Do it** / **Start** stays clickable and the failure chrome appears on purpose. Use **Skip** / **Reset** between attempts."
+        },
+        {
+          "type": "interactive",
+          "id": "force-missing-do",
+          "action": "highlight",
+          "reftarget": "#pathfinder-style-validation-do-missing",
+          "skippable": true,
+          "content": "**Immediate miss.** No requirements — click **Do it** (or Show me). Expect `.interactive-step-lazy-error` with “Element not found…” plus Retry.",
+          "hint": "Target is intentionally absent so Do it fails immediately."
+        },
+        {
+          "type": "interactive",
+          "id": "force-lazy-stall",
+          "action": "highlight",
+          "reftarget": "#pathfinder-style-validation-lazy-never",
+          "lazyRender": true,
+          "scrollContainer": "[data-pathfinder-content]",
+          "skippable": true,
+          "content": "**Lazy-scroll stall then fail.** Click **Do it** — progressive scroll hunts inside the guide content, then lands on the same lazy-error chrome (“Element not found after scrolling…”).",
+          "hint": "lazyRender is on; the target never exists."
+        },
+        {
+          "type": "interactive",
+          "id": "force-postverify-fail",
+          "action": "highlight",
+          "reftarget": "[data-step-id='force-postverify-fail']",
+          "requirements": ["exists-reftarget"],
+          "verify": "on-page:/pathfinder-style-validation-verify-never",
+          "skippable": true,
+          "content": "**Post-verify fail.** Highlight succeeds on this card, then `verify` fails → `.interactive-step-execution-error` (not the lazy-error row).",
+          "hint": "verify points at a URL that will never match."
+        },
+        {
+          "type": "input",
+          "id": "force-formfill-source",
+          "prompt": "Formfill target — type here (anything except the expected pattern).",
+          "inputType": "text",
+          "variableName": "styleValidationFailInput",
+          "placeholder": "Type anything except the expected pattern",
+          "required": false
+        },
+        {
+          "type": "interactive",
+          "id": "force-formfill-hint",
+          "action": "formfill",
+          "reftarget": "[data-testid='interactive-input-styleValidationFailInput']",
+          "targetvalue": "^style-validation-ok$",
+          "validateInput": true,
+          "formHint": "Must match ^style-validation-ok$ — wrong text shows `.interactive-step-form-hint-warning`; typing flashes `.interactive-step-form-checking`.",
+          "requirements": ["exists-reftarget"],
+          "skippable": true,
+          "content": "**Formfill checking + hint.** Type in the input above (not the expected value). Watch the debounce “Checking contents…” row, then the warning — both should sit in the step gap with no extra top margin.",
+          "hint": "Targets the input block above via data-testid."
+        },
+        {
+          "type": "guided",
+          "id": "guided-immediate-fail",
+          "content": "**Guided immediate fail.** Start — first substep target is missing → `.interactive-guided-error-actions` without needing to cancel first.",
+          "skippable": true,
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "#pathfinder-style-validation-guided-immediate-fail",
+              "description": "Missing from the start."
+            }
+          ]
+        },
+        {
+          "type": "multistep",
+          "id": "multistep-immediate-fail",
+          "content": "**Multistep immediate fail.** Run — first substep missing → error-actions padding.",
+          "skippable": true,
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "#pathfinder-style-validation-multistep-immediate-fail"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "feedback-box-spray",
+      "title": "10. Feedback-box spray (every semantic variant)",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Every compact status blob should use `.interactive-feedback-box` + a variant (`--neutral` / `--warning` / `--info` / `--success` / `--muted`) with shared **4px 12px** padding. Component-local classes only add layout or intentional accents (e.g. challenge hint left bar). Work top-to-bottom; leave the gate step incomplete until you have inspected the sequential quiz block."
+        },
+        {
+          "type": "markdown",
+          "content": "### Neutral (already covered above too)\n§4–5 + regular/multistep/guided requirement boxes. Below: code + terminal **warning** requirement shells (same padding as neutral, warning palette)."
+        },
+        {
+          "type": "code-block",
+          "id": "feedback-code-requirement",
+          "reftarget": "#pathfinder-style-validation-code-feedback-never",
+          "language": "javascript",
+          "code": "// Intentionally gated — inspect requirementMessage chrome",
+          "content": "**Code-block requirement (warning).** Inspect `.interactive-feedback-box--warning` on the code card's requirement row.",
+          "requirements": ["on-page:/pathfinder-style-validation-never"],
+          "skippable": true,
+          "hint": "Requirements never pass so the warning blob stays visible."
+        },
+        {
+          "type": "terminal",
+          "id": "feedback-terminal-requirement",
+          "command": "printf 'gated terminal\\n'",
+          "content": "**Terminal requirement (warning).** Same warning feedback shell as the code block — padding must match.",
+          "requirements": ["on-page:/pathfinder-style-validation-never"],
+          "skippable": true,
+          "hint": "Requirements never pass."
+        },
+        {
+          "type": "markdown",
+          "content": "### Warning — Complete previous step + Skip\nLeave the gate incomplete. Every block below should show **Complete previous step** with **Skip** inside the same feedback blob (or the step requirement row). Shared **4px 12px** padding."
+        },
+        {
+          "type": "interactive",
+          "id": "feedback-sequential-gate",
+          "action": "highlight",
+          "reftarget": "[data-step-id='feedback-sequential-gate']",
+          "requirements": ["exists-reftarget"],
+          "content": "**Sequential gate — leave incomplete.** Blocks every skippable sibling below."
+        },
+        {
+          "type": "interactive",
+          "id": "feedback-step-complete-previous-skip",
+          "action": "highlight",
+          "reftarget": "[data-step-id='feedback-step-complete-previous-skip']",
+          "requirements": ["exists-reftarget"],
+          "skippable": true,
+          "content": "**Step: Complete previous step + Skip.** Footprints requirement blob (`--neutral`) must include the Skip control in `.interactive-step-requirement-buttons`."
+        },
+        {
+          "type": "quiz",
+          "id": "feedback-quiz-blocked",
+          "question": "**Quiz: Complete previous step + Skip.** Yellow blocked blob (`--warning`) must include Skip inside the same row.",
+          "shuffle": false,
+          "completionMode": "correct-only",
+          "skippable": true,
+          "choices": [
+            {
+              "id": "ok",
+              "text": "Padding matches other warning blobs",
+              "correct": true
+            },
+            {
+              "id": "no",
+              "text": "Still inspecting"
+            }
+          ]
+        },
+        {
+          "type": "code-block",
+          "id": "feedback-code-complete-previous",
+          "reftarget": "#pathfinder-style-validation-code-sequential-never",
+          "language": "javascript",
+          "code": "// Gated by previous step — Skip stays in the warning blob",
+          "content": "**Code-block: Complete previous step + Skip.** Warning blob with inline Skip.",
+          "skippable": true
+        },
+        {
+          "type": "terminal",
+          "id": "feedback-terminal-complete-previous",
+          "command": "printf 'gated by previous\\n'",
+          "content": "**Terminal: Complete previous step + Skip.** Same warning blob + inline Skip.",
+          "skippable": true
+        },
+        {
+          "type": "markdown",
+          "content": "### Warning — quiz hint; challenge failed-check\nAfter inspecting sequential blocks above, you may complete or Skip the gate and continue."
+        },
+        {
+          "type": "quiz",
+          "id": "feedback-quiz-hint-success",
+          "question": "**Quiz hint → success.** First pick the wrong answer to show the warning hint blob, then pick the correct answer for the success blob (`--success`).",
+          "shuffle": false,
+          "completionMode": "correct-only",
+          "choices": [
+            {
+              "id": "wrong",
+              "text": "Wrong — shows warning hint blob",
+              "hint": "This is `.interactive-feedback-box--warning` on the quiz hint row. Now pick the correct choice."
+            },
+            {
+              "id": "right",
+              "text": "Correct — shows success blob",
+              "correct": true
+            }
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "feedback-quiz-revealed",
+          "question": "**Quiz revealed (info).** Pick the wrong answer once — max-attempts is 1, so the info revealed blob appears.",
+          "shuffle": false,
+          "completionMode": "max-attempts",
+          "maxAttempts": 1,
+          "choices": [
+            {
+              "id": "wrong",
+              "text": "Wrong — exhausts the single attempt",
+              "hint": "Transient wrong-answer hint before reveal."
+            },
+            {
+              "id": "right",
+              "text": "Correct (you can ignore this for the reveal path)",
+              "correct": true
+            }
+          ]
+        },
+        {
+          "type": "quiz",
+          "id": "feedback-quiz-requirement",
+          "question": "**Quiz requirement-gated (warning).** Requirements never pass — inspect the blocked message with Skip inside the blob.",
+          "shuffle": false,
+          "completionMode": "correct-only",
+          "requirements": ["on-page:/pathfinder-style-validation-never"],
+          "skippable": true,
+          "choices": [
+            {
+              "id": "a",
+              "text": "Cannot answer while gated",
+              "correct": true
+            },
+            {
+              "id": "b",
+              "text": "Still inspecting the blocked blob"
+            }
+          ]
+        },
+        {
+          "type": "challenge",
+          "id": "feedback-challenge",
+          "mode": "standard",
+          "title": "Challenge failed-check + hints",
+          "brief": "Click **Check my work** for the warning failed-check blob. Click **Show a hint** (twice) for left-accent hint prose that still uses shared feedback padding — not `--info` fill.",
+          "successCriteria": "on-page:/pathfinder-style-validation-never",
+          "failureMessage": "Expected failed-check — inspect `.interactive-feedback-box--warning` padding.",
+          "hintLevels": [
+            {
+              "text": "First hint: shared padding, primary background, left info accent only."
+            },
+            {
+              "text": "Second hint wraps longer so horizontal padding and the left bar stay visible."
+            }
+          ]
+        },
+        {
+          "type": "markdown",
+          "content": "### Muted / warning from guided (cross-check §7 & §9)\n- **Muted:** cancel a guided tour mid-run → Tour cancelled (`--muted`).\n- **Warning compound:** guided/multistep error box with title + detail.\n- **Neutral:** requirement boxes in §4–5; sequential Complete previous step above.\n- **Form checking + hint:** §9 formfill against the in-guide input.\n- **Execution / lazy errors:** §9 immediate miss, lazy stall, post-verify.\n\n### Info — alignment banner (environment)\n`.interactive-section-alignment-banner` (`--info` + left accent) only appears when an implied-0th-step alignment prompt is active. If you can trigger alignment on this Grafana build, inspect that banner's padding against quiz revealed above; otherwise treat quiz revealed as the primary `--info` sample."
+        },
+        {
+          "type": "guided",
+          "id": "feedback-guided-cancel-muted",
+          "content": "**Guided cancel → muted.** Start, then **Cancel** immediately to land on Tour cancelled (`--muted`). Restart into the missing target for the warning error box.",
+          "skippable": true,
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "[data-step-id='feedback-guided-cancel-muted']",
+              "description": "Cancel here for muted cancelled blob."
+            },
+            {
+              "action": "highlight",
+              "reftarget": "#pathfinder-style-validation-feedback-guided-fail",
+              "description": "Missing — warning error box after restart."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Surface pass\n\nAfter the sidebar, repeat at minimum in **floating**, **fullscreen**, and **editor preview**. Focus on §3 (standalone), §6–9 (executing / error-cancel / forced failures), and **§10 feedback-box spray** (every `--neutral` / `--warning` / `--info` / `--success` / `--muted` sample). Check narrow + wide widths, light + dark, and confirm non-guide UI (copy buttons, quiz choices, terminal controls, native links) kept original padding."
+    }
+  ]
+}

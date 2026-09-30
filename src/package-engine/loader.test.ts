@@ -136,6 +136,7 @@ describe('content-manifest consistency', () => {
     'block-editor-tutorial',
     'json-guide-demo',
     'e2e-framework-test',
+    'interactive-style-validation',
   ];
 
   it.each(BUNDLED_PACKAGES)('content and manifest should both load for %s', (pkg) => {

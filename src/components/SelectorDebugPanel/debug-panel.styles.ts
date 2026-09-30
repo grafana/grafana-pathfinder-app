@@ -52,4 +52,11 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.background.primary,
     borderTop: `1px solid ${theme.colors.border.weak}`,
   }),
+
+  helpText: css({
+    margin: `0 0 ${theme.spacing(1.5)}`,
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.bodySmall.fontSize,
+    lineHeight: theme.typography.bodySmall.lineHeight,
+  }),
 });

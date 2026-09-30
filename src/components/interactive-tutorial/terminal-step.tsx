@@ -95,13 +95,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
   }),
   requirementMessage: css({
-    padding: theme.spacing(1),
     marginBottom: theme.spacing(1),
-    backgroundColor: theme.colors.warning.transparent,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.warning.border}`,
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    flexWrap: 'wrap',
   }),
   copyFeedback: css({
     fontSize: theme.typography.bodySmall.fontSize,
@@ -339,7 +337,10 @@ export const TerminalStep = forwardRef<
         </div>
 
         {!isEnabled && !isCompleted && checker.explanation && (
-          <div className={styles.requirementMessage} data-testid={testIds.interactive.requirementCheck(renderedStepId)}>
+          <div
+            className={`${styles.requirementMessage} interactive-feedback-box interactive-feedback-box--warning`}
+            data-testid={testIds.interactive.requirementCheck(renderedStepId)}
+          >
             {checker.explanation}
             {skippable && isEligibleForChecking && checker.canSkip && (
               <Button
