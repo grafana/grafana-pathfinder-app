@@ -1,433 +1,705 @@
 {
   "schemaVersion": "1.0.0",
   "id": "prometheus-advanced-queries",
-  "title": "Advanced Prometheus Queries",
+  "title": "Advanced Prometheus queries",
   "blocks": [
     {
       "type": "markdown",
-      "content": "## Prerequisites\n\nThis tutorial builds on [Prometheus + Grafana 101](bundled:prometheus-grafana-101). You should have:\n\n- Completed the Prometheus + Grafana 101 tutorial\n- A working Prometheus data source configured\n- Basic understanding of PromQL syntax\n- Familiarity with the Explore tab\n\n**Assistant Customization:** This tutorial uses queries you can customize with Grafana Assistant to match your specific datasources and metrics!"
+      "content": "Practice advanced PromQL in Explore: aggregate and join series, compare time windows, analyze distributions, and evaluate recording-rule and alert expressions. Work through one lesson at a time.\n\nYou need a working Prometheus data source and basic PromQL knowledge; [Prometheus + Grafana 101](bundled:prometheus-grafana-101) covers the basics. Use one Explore pane with query **A** expanded. These steps replace query A, so preserve any query you want to keep first.\n\n**Customize for your data:** after choosing a source, use **Customize with Assistant** on each query to adapt metrics and labels before **Do it**. Review the suggestion, insert it, then run it. **Revert to original** restores the example. If Assistant is unavailable, edit the example yourself. Example metrics are not guaranteed to exist on your source.\n\nUse a recent time range. Historical comparisons need older samples. If you see **No data**, check metric names, labels, and history; do not treat an empty result as proof that the system is healthy."
     },
     {
-      "type": "markdown",
-      "content": "# Advanced Prometheus Queries\n\nWelcome to advanced PromQL! In this guide, we'll explore powerful query patterns that help you extract deeper insights from your metrics. Each query example can be customized using Grafana Assistant to work with your specific environment."
+      "type": "input",
+      "id": "prometheus-source",
+      "prompt": "Choose the Prometheus data source to use in Explore.",
+      "inputType": "datasource",
+      "variableName": "prometheusSource",
+      "datasourceFilter": "prometheus",
+      "required": true
     },
     {
-      "type": "markdown",
-      "assistantEnabled": true,
-      "assistantId": "intro-text",
-      "assistantType": "text",
-      "content": "**Your Environment:** This tutorial assumes you're monitoring a typical web application with HTTP request metrics, CPU/memory gauges, and garbage collection histograms. The example queries use metrics like `prometheus_http_requests_total`, `process_cpu_seconds_total`, and `go_gc_duration_seconds` which are available on most Prometheus servers."
-    },
-    {
-      "type": "markdown",
-      "content": "## Section 1: Advanced Aggregations and Grouping\n\nMaster the art of aggregating metrics across multiple dimensions and time ranges."
-    },
-    {
-      "type": "multistep",
-      "content": "Select your **Prometheus** data source from the picker.",
-      "requirements": ["on-page:/explore", "has-datasource:prometheus"],
-      "steps": [
+      "type": "section",
+      "id": "prepare-explore",
+      "title": "Prepare Explore",
+      "blocks": [
         {
-          "action": "highlight",
-          "reftarget": "grafana:components.DataSourcePicker.inputV2",
-          "requirements": ["exists-reftarget"]
+          "type": "interactive",
+          "id": "choose-prometheus",
+          "action": "formfill",
+          "reftarget": "{grafana:components.DataSourcePicker.inputV2}",
+          "targetvalue": "{{prometheusSource}}",
+          "content": "Select **{{prometheusSource}}** in Explore.",
+          "requirements": [
+            "on-page:/explore",
+            "has-datasource:prometheus",
+            "var-prometheusSource:*",
+            "exists-reftarget"
+          ],
+          "doIt": true,
+          "tooltip": "Use the Prometheus source you chose above."
         },
         {
+          "type": "interactive",
+          "id": "code-mode",
           "action": "highlight",
-          "reftarget": "div[data-testid=\"data-source-card\"]:has(small:contains(\"Prometheus\")) button:nth-match(1)",
-          "requirements": ["exists-reftarget"],
-          "tooltip": "This tutorial uses Prometheus as the data source. If you completed the Prometheus + Grafana 101 tutorial, you should already have a Prometheus datasource configured. If not, you can select any available Prometheus datasource in your instance."
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.DataSource.Prometheus.queryEditor.editorToggle} label[title='Code']",
+          "requirements": ["on-page:/explore", "exists-reftarget"],
+          "doIt": true,
+          "tooltip": "Code mode lets you enter a PromQL expression directly.",
+          "content": "Switch query **A** to **Code** mode to enter PromQL directly."
         }
       ]
     },
     {
-      "type": "interactive",
-      "action": "highlight",
-      "reftarget": "div[data-testid=\"QueryEditorModeToggle\"] label[for^=\"option-code-radiogroup\"]",
-      "requirements": ["exists-reftarget"],
-      "content": "Make sure you're in **Code** mode to write PromQL queries directly."
+      "type": "markdown",
+      "content": "Start with a counter. Apply `rate()` before aggregating so counter resets are handled for each series."
+    },
+    {
+      "type": "section",
+      "id": "lesson-aggregation-queries",
+      "title": "Group by several labels",
+      "requirements": ["section-completed:prepare-explore"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-aggregation-queries",
+          "assistantEnabled": true,
+          "assistantId": "aggregation-queries",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ sum by (job, instance, handler) (rate(prometheus_http_requests_total[5m]))",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:prepare-explore"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nsum by (job, instance, handler) (rate(prometheus_http_requests_total[5m]))\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-aggregation-queries",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:prepare-explore"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect requests per second for each job, instance, and handler. `by` keeps only the labels you name."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "### Multi-Dimensional Grouping\n\nGroup metrics by multiple labels to create detailed breakdowns:"
+      "content": "Rank the aggregated request rates with `topk`."
     },
     {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "aggregation-queries",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total[5m])) by (job, instance, handler)",
-      "requirements": ["exists-reftarget"],
-      "content": "Try this multi-dimensional grouping query:\n\n```promql\nsum(rate(prometheus_http_requests_total[5m])) by (job, instance, handler)\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This query calculates the request rate per second, grouped by job, instance, and handler (endpoint). The `rate()` function handles counter resets, and `sum()` aggregates across other labels."
-    },
-    {
-      "type": "markdown",
-      "content": "### Top-K Results\n\nFind the highest or lowest values using `topk()` and `bottomk()`:"
-    },
-    {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "topk-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ topk(5, sum(rate(prometheus_http_requests_total[5m])) by (handler))",
-      "requirements": ["exists-reftarget"],
-      "content": "Find the top 5 endpoints by request rate:\n\n```promql\ntopk(5, sum(rate(prometheus_http_requests_total[5m])) by (handler))\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This identifies the 5 handlers (API endpoints) receiving the most requests. Perfect for finding hotspots in your Prometheus server."
-    },
-    {
-      "type": "markdown",
-      "content": "### Without and By - Advanced Label Selection\n\nUse `without` to exclude specific labels from grouping:"
-    },
-    {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "without-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total[5m])) without (instance)",
-      "requirements": ["exists-reftarget"],
-      "content": "Aggregate across instances using `without`:\n\n```promql\nsum(rate(prometheus_http_requests_total[5m])) without (instance)\n```"
+      "type": "section",
+      "id": "lesson-topk",
+      "title": "Find the busiest handlers",
+      "requirements": ["section-completed:lesson-aggregation-queries"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-topk-query",
+          "assistantEnabled": true,
+          "assistantId": "topk-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ topk(5, sum by (handler) (rate(prometheus_http_requests_total[5m])))",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-aggregation-queries"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\ntopk(5, sum by (handler) (rate(prometheus_http_requests_total[5m])))\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-topk-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-aggregation-queries"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect up to five handlers at each evaluation time. A range graph can show more than five distinct handlers as the ranking changes."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "This aggregates across all instances, keeping only job and other labels. Useful when you care about service-level metrics but not individual instances."
+      "content": "Compare `without` with `by`: exclude selected labels instead of naming every label to keep."
+    },
+    {
+      "type": "section",
+      "id": "lesson-without",
+      "title": "Aggregate without a label",
+      "requirements": ["section-completed:lesson-topk"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-without-query",
+          "assistantEnabled": true,
+          "assistantId": "without-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ sum without (instance) (rate(prometheus_http_requests_total[5m]))",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-topk"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nsum without (instance) (rate(prometheus_http_requests_total[5m]))\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-without-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-topk"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nThe instance label disappears, but every other label remains. Different status codes or handlers still produce separate series."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "## Section 2: Label Matching and Filtering\n\nLearn powerful techniques for filtering and matching metrics based on labels."
+      "content": "Use `=~` to include label values and `!~` to exclude them. Prometheus matches the whole label value."
+    },
+    {
+      "type": "section",
+      "id": "lesson-regex",
+      "title": "Filter with regular expressions",
+      "requirements": ["section-completed:lesson-without"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-regex-query",
+          "assistantEnabled": true,
+          "assistantId": "regex-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ prometheus_http_requests_total{code=~\"5..\", handler!~\"/|/-/.*\"}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-without"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nprometheus_http_requests_total{code=~\"5..\", handler!~\"/|/-/.*\"}\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-regex-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-without"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect counters for 5xx responses outside the root and health endpoints. No matching series can mean no such errors were recorded; it does not prove the metric exists."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "### Regular Expression Matching\n\nUse regex to match multiple label values:"
+      "content": "Enrich a rate with build metadata from the same monitored target. Ask Assistant to preserve a unique right-hand series for each matching label set."
     },
     {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "regex-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ prometheus_http_requests_total{code=~\"5..\", handler!~\"/|/-/.*\"}",
-      "requirements": ["exists-reftarget"],
-      "content": "Filter using regex patterns:\n\n```promql\nprometheus_http_requests_total{code=~\"5..\", handler!~\"/|/-/.*\"}\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This matches all 5xx status codes (`=~`) and excludes root and health check handlers (`!~`). The `=~` operator allows regex patterns for flexible label matching."
-    },
-    {
-      "type": "markdown",
-      "content": "### Label Joins with On and Ignoring\n\nCombine metrics from different time series:"
-    },
-    {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "join-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ rate(prometheus_http_requests_total[5m]) * on(instance) group_left(version) alloy_build_info",
-      "requirements": ["exists-reftarget"],
-      "content": "Join metrics using label matching:\n\n```promql\nrate(prometheus_http_requests_total[5m]) * on(instance) group_left(version) alloy_build_info\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This enriches request rate data with version information from Alloy build info. The `on(instance)` clause specifies the matching label, and `group_left` brings labels from the right side."
-    },
-    {
-      "type": "markdown",
-      "content": "## Section 3: Time-Based Analysis\n\nUnlock the power of time-based calculations and comparisons."
+      "type": "section",
+      "id": "lesson-join",
+      "title": "Join matching series",
+      "requirements": ["section-completed:lesson-regex"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-join-query",
+          "assistantEnabled": true,
+          "assistantId": "join-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ rate(prometheus_http_requests_total[5m]) * on (job, instance) group_left (version) prometheus_build_info",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-regex"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nrate(prometheus_http_requests_total[5m]) * on (job, instance) group_left (version) prometheus_build_info\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-join-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-regex"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nThe result retains request labels and gains `version`. The build-info value is 1, so the rate is unchanged. Missing matches drop out; multiple right-hand matches cause a cardinality error. Include cluster or namespace in `on` when job and instance are not unique."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "### Over-Time Aggregations\n\nCalculate statistics over a time range:"
+      "content": "A subquery evaluates an expression repeatedly: `[1h:1m]` samples the five-minute CPU rate once a minute over an hour."
     },
     {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "overtime-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ max_over_time(rate(process_cpu_seconds_total[5m])[1h:1m])",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate maximum CPU rate over time:\n\n```promql\nmax_over_time(rate(process_cpu_seconds_total[5m])[1h:1m])\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This finds the maximum CPU rate in the last hour for each process. Other functions: `min_over_time`, `avg_over_time`, `stddev_over_time`."
-    },
-    {
-      "type": "markdown",
-      "content": "### Derivatives and Rates\n\nCalculate change rates for gauges and counters:"
-    },
-    {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "deriv-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ deriv(process_resident_memory_bytes[5m])",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate derivative for gauge metrics:\n\n```promql\nderiv(process_resident_memory_bytes[5m])\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "The `deriv()` function calculates how fast a gauge is changing per second. Unlike `rate()`, this works for gauges that can go up or down (like memory usage)."
-    },
-    {
-      "type": "markdown",
-      "content": "### Offset Modifier\n\nCompare current values with past values:"
-    },
-    {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "offset-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ (rate(prometheus_http_requests_total[5m]) - rate(prometheus_http_requests_total[5m] offset 1h)) / rate(prometheus_http_requests_total[5m] offset 1h) * 100",
-      "requirements": ["exists-reftarget"],
-      "content": "Compare current vs 1 hour ago:\n\n```promql\n(rate(prometheus_http_requests_total[5m]) - rate(prometheus_http_requests_total[5m] offset 1h)) / rate(prometheus_http_requests_total[5m] offset 1h) * 100\n```"
+      "type": "section",
+      "id": "lesson-overtime",
+      "title": "Find a historical peak",
+      "requirements": ["section-completed:lesson-join"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-overtime-query",
+          "assistantEnabled": true,
+          "assistantId": "overtime-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ max_over_time(rate(process_cpu_seconds_total[5m])[1h:1m])",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-join"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nmax_over_time(rate(process_cpu_seconds_total[5m])[1h:1m])\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-overtime-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-join"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect the largest sampled CPU rate for each process, measured in CPU-seconds per second. It is not a percentage. Recent processes have a shorter available history."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "This calculates the percentage change in request rate compared to 1 hour ago. The `offset` modifier shifts the time window backward."
+      "content": "Gauges can rise and fall. Use `deriv` to fit a trend rather than treating decreases as counter resets."
+    },
+    {
+      "type": "section",
+      "id": "lesson-deriv",
+      "title": "Measure a gauge trend",
+      "requirements": ["section-completed:lesson-overtime"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-deriv-query",
+          "assistantEnabled": true,
+          "assistantId": "deriv-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ deriv(process_resident_memory_bytes[5m])",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-overtime"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nderiv(process_resident_memory_bytes[5m])\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-deriv-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-overtime"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect a slope in bytes per second: positive means rising memory, negative means falling memory. At least two samples are needed."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "## Section 4: Arithmetic and Binary Operations\n\nCombine metrics using mathematical operations."
+      "content": "Use `offset` to compare matching series at different times. This example excludes zero historical rates before dividing."
+    },
+    {
+      "type": "section",
+      "id": "lesson-offset",
+      "title": "Compare with an hour ago",
+      "requirements": ["section-completed:lesson-deriv"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-offset-query",
+          "assistantEnabled": true,
+          "assistantId": "offset-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ 100 * (rate(prometheus_http_requests_total[5m]) - rate(prometheus_http_requests_total[5m] offset 1h)) / (rate(prometheus_http_requests_total[5m] offset 1h) > 0)",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-deriv"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\n100 * (rate(prometheus_http_requests_total[5m]) - rate(prometheus_http_requests_total[5m] offset 1h)) / (rate(prometheus_http_requests_total[5m] offset 1h) > 0)\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-offset-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-deriv"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nPositive values mean an increase and negative values a decrease. Missing historical samples or a zero baseline produce no result, not a zero-percent change."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "### Error Rate Calculation\n\nCalculate the percentage of failed requests:"
+      "content": "Aggregate both sides to the same labels before division. Define which response codes count as failures for your service."
     },
     {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "error-rate-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total{code=~\"5..\"}[5m])) by (job) / sum(rate(prometheus_http_requests_total[5m])) by (job) * 100",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate error rate percentage:\n\n```promql\nsum(rate(prometheus_http_requests_total{code=~\"5..\"}[5m])) by (job) / sum(rate(prometheus_http_requests_total[5m])) by (job) * 100\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This divides error requests by total requests and multiplies by 100 to get a percentage. Perfect for SLO tracking."
-    },
-    {
-      "type": "markdown",
-      "content": "### Resource Utilization Ratios\n\nCalculate utilization as a percentage:"
-    },
-    {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "utilization-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ (process_resident_memory_bytes / process_virtual_memory_max_bytes) * 100",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate memory utilization percentage:\n\n```promql\n(process_resident_memory_bytes / process_virtual_memory_max_bytes) * 100\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This calculates process memory utilization percentage. The formula: (resident/max) * 100 shows how much of the available memory is in use."
-    },
-    {
-      "type": "markdown",
-      "content": "## Section 5: Histogram and Summary Metrics\n\nWork with distribution metrics for advanced percentile analysis."
+      "type": "section",
+      "id": "lesson-error-rate",
+      "title": "Calculate an error percentage",
+      "requirements": ["section-completed:lesson-offset"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-error-rate-query",
+          "assistantEnabled": true,
+          "assistantId": "error-rate-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ 100 * sum by (job) (rate(prometheus_http_requests_total{code=~\"5..\"}[5m])) / (sum by (job) (rate(prometheus_http_requests_total[5m])) > 0)",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-offset"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\n100 * sum by (job) (rate(prometheus_http_requests_total{code=~\"5..\"}[5m])) / (sum by (job) (rate(prometheus_http_requests_total[5m])) > 0)\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-error-rate-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-offset"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect the percentage of requests returning 5xx for each job with traffic. A missing error series is not automatically zero; verify instrumentation before adding a zero fallback. Zero-traffic jobs are excluded."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "### Quantile Calculation\n\nCalculate the 95th percentile from a histogram:"
+      "content": "Use compatible gauges with the same labels and units. This example uses Node Exporter host memory, not a process virtual-address limit."
     },
     {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "quantile-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ histogram_quantile(0.95, sum(rate(go_gc_duration_seconds_bucket[5m])) by (le, job))",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate 95th percentile GC duration:\n\n```promql\nhistogram_quantile(0.95, sum(rate(go_gc_duration_seconds_bucket[5m])) by (le, job))\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This calculates the 95th percentile of garbage collection duration. The `le` label (less than or equal) is required for histogram buckets."
-    },
-    {
-      "type": "markdown",
-      "content": "### Histogram Average\n\nCalculate the average from histogram buckets:"
-    },
-    {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "histogram-avg-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ sum(rate(go_gc_duration_seconds_sum[5m])) / sum(rate(go_gc_duration_seconds_count[5m]))",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate average from histogram:\n\n```promql\nsum(rate(go_gc_duration_seconds_sum[5m])) / sum(rate(go_gc_duration_seconds_count[5m]))\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "Histograms expose `_sum` (total duration) and `_count` (number of observations). Dividing them gives the average GC duration."
-    },
-    {
-      "type": "markdown",
-      "content": "## Section 6: Predictive and Statistical Functions\n\nUse statistical functions for forecasting and anomaly detection."
+      "type": "section",
+      "id": "lesson-utilization",
+      "title": "Calculate host memory utilization",
+      "requirements": ["section-completed:lesson-error-rate"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-utilization-query",
+          "assistantEnabled": true,
+          "assistantId": "utilization-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ 100 * (1 - node_memory_MemAvailable_bytes / (node_memory_MemTotal_bytes > 0))",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-error-rate"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\n100 * (1 - node_memory_MemAvailable_bytes / (node_memory_MemTotal_bytes > 0))\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-utilization-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-error-rate"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect the percentage of host memory that is not available. Assistant can adapt this to another genuine used/capacity pair. Check label matching and capacity meaning before interpreting a ratio."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "### Linear Prediction\n\nPredict future values based on past trends:"
+      "content": "Use a classic request-duration histogram for a p95 estimate. Keep `le` when aggregating its buckets."
     },
     {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "predict-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ predict_linear(process_resident_memory_bytes[1h], 4 * 3600)",
-      "requirements": ["exists-reftarget"],
-      "content": "Predict memory usage 4 hours ahead:\n\n```promql\npredict_linear(process_resident_memory_bytes[1h], 4 * 3600)\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This predicts resident memory usage 4 hours from now based on the last hour's trend. Useful for capacity planning and memory leak detection alerts."
-    },
-    {
-      "type": "markdown",
-      "content": "### Standard Deviation\n\nDetect anomalies using standard deviation:"
-    },
-    {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "anomaly-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ abs(rate(prometheus_http_requests_total[5m]) - avg_over_time(rate(prometheus_http_requests_total[5m])[1h:5m])) > (2 * stddev_over_time(rate(prometheus_http_requests_total[5m])[1h:5m]))",
-      "requirements": ["exists-reftarget"],
-      "content": "Detect anomalies with standard deviation:\n\n```promql\nabs(rate(prometheus_http_requests_total[5m]) - avg_over_time(rate(prometheus_http_requests_total[5m])[1h:5m])) > (2 * stddev_over_time(rate(prometheus_http_requests_total[5m])[1h:5m]))\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This detects when the current rate is more than 2 standard deviations from the 1-hour average. Classic anomaly detection pattern."
-    },
-    {
-      "type": "markdown",
-      "content": "## Section 7: Subqueries and Complex Aggregations\n\nMaster subqueries for advanced time-series analysis."
+      "type": "section",
+      "id": "lesson-quantile",
+      "title": "Estimate a histogram percentile",
+      "requirements": ["section-completed:lesson-utilization"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-quantile-query",
+          "assistantEnabled": true,
+          "assistantId": "quantile-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ histogram_quantile(0.95, sum by (le, job) (rate(prometheus_http_request_duration_seconds_bucket[5m])))",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-utilization"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nhistogram_quantile(0.95, sum by (le, job) (rate(prometheus_http_request_duration_seconds_bucket[5m])))\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-quantile-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-utilization"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect estimated p95 request duration in seconds per job. A summary such as `go_gc_duration_seconds` does not imply `_bucket` series exist. Native histograms use a different form without `le`; ask Assistant to match the metric type."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "### Rolling Average\n\nCalculate a moving average using subqueries:"
+      "content": "Divide the rate of total observed duration by the rate of observations. Aggregate both sides using the same labels."
     },
     {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "rolling-avg-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ avg_over_time(rate(prometheus_http_requests_total[5m])[30m:1m])",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate 30-minute rolling average:\n\n```promql\navg_over_time(rate(prometheus_http_requests_total[5m])[30m:1m])\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This calculates a 30-minute rolling average of the 5-minute rate. The syntax `[30m:1m]` means \"evaluate over 30 minutes with 1-minute resolution\"."
-    },
-    {
-      "type": "markdown",
-      "content": "## Section 8: Recording Rules Patterns\n\nLearn patterns commonly used in recording rules for pre-computation."
-    },
-    {
-      "type": "markdown",
-      "content": "### SLI Calculation\n\nCalculate Service Level Indicators:"
-    },
-    {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "sli-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total{code=~\"2..\"}[5m])) / sum(rate(prometheus_http_requests_total[5m]))",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate success rate SLI:\n\n```promql\nsum(rate(prometheus_http_requests_total{code=~\"2..\"}[5m])) / sum(rate(prometheus_http_requests_total[5m]))\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "This calculates the success rate (SLI) as successful requests divided by total requests. Perfect for recording rules."
+      "type": "section",
+      "id": "lesson-histogram-avg",
+      "title": "Calculate a distribution mean",
+      "requirements": ["section-completed:lesson-quantile"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-histogram-avg-query",
+          "assistantEnabled": true,
+          "assistantId": "histogram-avg-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ sum by (job) (rate(prometheus_http_request_duration_seconds_sum[5m])) / (sum by (job) (rate(prometheus_http_request_duration_seconds_count[5m])) > 0)",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-quantile"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nsum by (job) (rate(prometheus_http_request_duration_seconds_sum[5m])) / (sum by (job) (rate(prometheus_http_request_duration_seconds_count[5m])) > 0)\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-histogram-avg-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-quantile"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect mean request duration in seconds. This uses `_sum` and `_count`, not bucket boundaries, and also works for summaries of nonnegative observations. Zero-observation jobs are excluded; do not average precomputed summary quantiles."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "## Section 9: Alert Query Patterns\n\nQueries designed for effective alerting rules."
+      "content": "Project a gauge four hours ahead using a linear fit over the last hour."
+    },
+    {
+      "type": "section",
+      "id": "lesson-predict",
+      "title": "Project a gauge trend",
+      "requirements": ["section-completed:lesson-histogram-avg"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-predict-query",
+          "assistantEnabled": true,
+          "assistantId": "predict-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ predict_linear(process_resident_memory_bytes[1h], 4 * 3600)",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-histogram-avg"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\npredict_linear(process_resident_memory_bytes[1h], 4 * 3600)\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-predict-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-histogram-avg"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect predicted bytes, not certainty or time until exhaustion. Restarts, cycles, and workload changes can invalidate the trend; negative predictions are mathematically possible."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "### Absent Metric Alert\n\nDetect when metrics stop being reported:"
+      "content": "Compare the current rate with a rolling mean and standard deviation. This comparison filters series; it does not return a 0/1 score."
     },
     {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "absent-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ absent(up{job=\"prometheus\"})",
-      "requirements": ["exists-reftarget"],
-      "content": "Detect missing metrics:\n\n```promql\nabsent(up{job=\"prometheus\"})\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "The `absent()` function returns 1 if no time series match the selector. Critical for detecting monitoring gaps."
-    },
-    {
-      "type": "markdown",
-      "content": "## Section 10: Performance Optimization Patterns\n\nWrite efficient queries that scale with your data volume."
-    },
-    {
-      "type": "markdown",
-      "content": "### Limit Time Range\n\nUse appropriate time ranges for your metrics:"
-    },
-    {
-      "type": "interactive",
-      "assistantEnabled": true,
-      "assistantId": "efficient-query",
-      "assistantType": "query",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ rate(prometheus_http_requests_total[2m])",
-      "requirements": ["exists-reftarget"],
-      "content": "Use efficient time ranges:\n\n```promql\nrate(prometheus_http_requests_total[2m])\n```"
-    },
-    {
-      "type": "markdown",
-      "content": "For high-frequency metrics (scraped every 10-15s), a 2-5 minute window is sufficient. Longer windows add computation cost."
+      "type": "section",
+      "id": "lesson-anomaly",
+      "title": "Compare a rate with its baseline",
+      "requirements": ["section-completed:lesson-predict"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-anomaly-query",
+          "assistantEnabled": true,
+          "assistantId": "anomaly-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ abs(rate(prometheus_http_requests_total[5m]) - avg_over_time(rate(prometheus_http_requests_total[5m])[1h:5m])) > (2 * stddev_over_time(rate(prometheus_http_requests_total[5m])[1h:5m]))",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-predict"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nabs(rate(prometheus_http_requests_total[5m]) - avg_over_time(rate(prometheus_http_requests_total[5m])[1h:5m])) > (2 * stddev_over_time(rate(prometheus_http_requests_total[5m])[1h:5m]))\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-anomaly-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-predict"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nOnly series exceeding the threshold remain, carrying their absolute deviation. An empty result can be expected. Two standard deviations is a heuristic, not a guaranteed anomaly detector; seasonality and sparse traffic matter."
+        }
+      ]
     },
     {
       "type": "markdown",
-      "content": "## Congratulations!\n\nYou've mastered advanced PromQL! You now know:\n\n- Multi-dimensional aggregation with `by`, `without`, `topk`\n- Advanced label matching with regex (`=~`, `!~`)\n- Label joins using `on`, `ignoring`, and `group_left/right`\n- Time-based analysis with `offset`, `over_time` functions\n- Binary operations for error rates and utilization calculations\n- Histogram analysis with `histogram_quantile`\n- Predictive functions: `predict_linear`, `holt_winters`\n- Subqueries for rolling aggregations\n- Recording rule and alert patterns\n- Performance optimization techniques\n\n**Pro Tip:** Use the Grafana Assistant to customize any of these queries for your specific metrics, datasources, and use cases. Just hover over any query and click \"Customize with Assistant\"!\n\n**Next Steps:**\n\n- Apply these patterns to your own metrics\n- Create recording rules for frequently used queries\n- Build comprehensive dashboards using these advanced patterns\n- Set up SLO-based alerting using burn rate calculations\n- Explore [all PromQL functions](https://prometheus.io/docs/prometheus/latest/querying/functions/) in the official docs"
+      "content": "Evaluate the five-minute rate once per minute, then average those samples across 30 minutes."
+    },
+    {
+      "type": "section",
+      "id": "lesson-rolling-avg",
+      "title": "Smooth a rate with a subquery",
+      "requirements": ["section-completed:lesson-anomaly"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-rolling-avg-query",
+          "assistantEnabled": true,
+          "assistantId": "rolling-avg-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ avg_over_time(rate(prometheus_http_requests_total[5m])[30m:1m])",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-anomaly"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\navg_over_time(rate(prometheus_http_requests_total[5m])[30m:1m])\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-rolling-avg-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-anomaly"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect a smoother rate in requests per second. Smaller subquery steps increase work; choose a resolution that answers your question."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "A recording rule stores an expression for reuse. Here, success means a 2xx response; adapt that definition to your service before using it as an SLI."
+    },
+    {
+      "type": "section",
+      "id": "lesson-sli",
+      "title": "Explore a recording-rule expression",
+      "requirements": ["section-completed:lesson-rolling-avg"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-sli-query",
+          "assistantEnabled": true,
+          "assistantId": "sli-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ sum by (job) (rate(prometheus_http_requests_total{code=~\"2..\"}[5m])) / (sum by (job) (rate(prometheus_http_requests_total[5m])) > 0)",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-rolling-avg"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nsum by (job) (rate(prometheus_http_requests_total{code=~\"2..\"}[5m])) / (sum by (job) (rate(prometheus_http_requests_total[5m])) > 0)\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-sli-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-rolling-avg"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect a success ratio from 0 to 1 where successful-request series and traffic exist. Missing series need investigation. This only evaluates the expression in Explore; it does not create a recording rule or an SLO."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "Detect a missing series using a job you actually expect to be scraped. Customize the job before interpreting this result."
+    },
+    {
+      "type": "section",
+      "id": "lesson-absent",
+      "title": "Explore a missing-metric alert expression",
+      "requirements": ["section-completed:lesson-sli"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-absent-query",
+          "assistantEnabled": true,
+          "assistantId": "absent-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ absent(up{job=\"prometheus\"})",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-sli"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nabsent(up{job=\"prometheus\"})\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-absent-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-sli"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nA value of 1 means no matching series exists; an empty result means at least one exists, even if its `up` value is 0. Use `up == 0` for failed scrapes. This does not create an alert; a real rule also needs an evaluation and pending-period policy."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "Grafana expands `$__rate_interval` using the query interval and configured scrape interval. It helps avoid windows too short to calculate a rate reliably."
+    },
+    {
+      "type": "section",
+      "id": "lesson-efficient",
+      "title": "Choose an appropriate rate window",
+      "requirements": ["section-completed:lesson-absent"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "enter-efficient-query",
+          "assistantEnabled": true,
+          "assistantId": "efficient-query",
+          "assistantType": "query",
+          "action": "formfill",
+          "reftarget": "{grafana:components.QueryEditorRows.rows}:has({grafana:components.QueryEditorRow.title:A}) {grafana:components.QueryField.container} textarea",
+          "targetvalue": "@@CLEAR@@ rate(prometheus_http_requests_total[$__rate_interval])",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-absent"],
+          "doIt": true,
+          "tooltip": "This is query A. Inserting a lesson replaces its current expression.",
+          "content": "Customize this example for your data, then replace query **A**:\n\n```promql\nrate(prometheus_http_requests_total[$__rate_interval])\n```"
+        },
+        {
+          "type": "interactive",
+          "id": "run-efficient-query",
+          "action": "highlight",
+          "reftarget": "{grafana:components.RefreshPicker.runButtonV2}",
+          "requirements": ["on-page:/explore", "exists-reftarget", "section-completed:lesson-absent"],
+          "doIt": true,
+          "tooltip": "Run the expression, then compare the result with the lesson.",
+          "content": "Run the query and inspect the result.\n\nExpect requests per second with a window that adapts to the time range. Keep scrape settings accurate, narrow label selectors, and limit unnecessary series. Reuse expensive frequent expressions through recording rules after validating them."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "You have practiced aggregation, label filtering and joins, time comparisons, ratios, distributions, gauge trends, subqueries, and expressions suitable for recording and alerting rules.\n\nChoose a pattern that answers a real question about your service. Check its metric types, units, labels, and missing-data behavior before reusing it in a dashboard or rule. See the [PromQL functions](https://prometheus.io/docs/prometheus/latest/querying/functions/) and [vector matching](https://prometheus.io/docs/prometheus/latest/querying/operators/#vector-matching) references for details."
     }
   ]
 }

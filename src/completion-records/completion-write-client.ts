@@ -1,3 +1,4 @@
+import { reportProxyFailure } from '../lib/proxy-diagnostics';
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom, timeout, TimeoutError } from 'rxjs';
 
@@ -98,6 +99,7 @@ export async function postCompletionRecord(body: CompletionWriteBody, idempotenc
     );
     return { kind: 'created' };
   } catch (err) {
+    reportProxyFailure(err);
     // A timeout is a network-class transient: the request may still land, and
     // the idempotency key makes a later retry safe.
     if (err instanceof TimeoutError) {

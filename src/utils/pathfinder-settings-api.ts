@@ -1,3 +1,4 @@
+import { reportProxyFailure } from '../lib/proxy-diagnostics';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
@@ -138,11 +139,12 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
       recordSettingsStoreResolved(status === 404 ? 'not-created' : 'kind-not-served');
       return null;
     }
+    reportProxyFailure(err);
     if (status === 403) {
       recordSettingsStoreResolved('forbidden');
     } else {
       recordSettingsStoreResolved('read-error');
-      logger.warn('Failed to read Pathfinder settings resource', { error: err });
+      logger.warn('Failed to read Pathfinder settings resource', { reason: 'read-error', status });
     }
     throw err;
   }

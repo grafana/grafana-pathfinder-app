@@ -99,6 +99,54 @@ it('ignores an in-flight copy after switching tabs', async () => {
   expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBeNull();
 });
 
+it('keeps preparing through a same-ID refresh and prevents duplicate preparation', async () => {
+  let resolve!: (value: typeof guide) => void;
+  jest.mocked(preparePrivateGuideCopy).mockReturnValue(
+    new Promise((done) => {
+      resolve = done;
+    })
+  );
+  const open = jest.fn();
+  const { result, rerender } = renderHook(({ active }) => usePrivateGuideCopy(active, open), {
+    initialProps: { active: tab },
+  });
+  let preparing!: Promise<void>;
+  await act(async () => {
+    preparing = result.current.prepare();
+  });
+  rerender({ active: { ...tab, isLoading: true } });
+  expect(result.current.isPreparing).toBe(true);
+  rerender({ active: { ...tab, content: { ...tab.content!, lastFetched: 'refreshed' } } });
+  await act(() => result.current.prepare());
+  expect(preparePrivateGuideCopy).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    resolve(guide);
+    await preparing;
+  });
+  expect(result.current.isPreparing).toBe(false);
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).guide).toEqual(guide);
+});
+
+it('keeps replacement confirmation through a same-ID refresh', async () => {
+  const original = JSON.stringify({ guide: { id: 'existing', title: 'Existing', blocks: [] } });
+  localStorage.setItem(StorageKeys.BLOCK_EDITOR_STATE, original);
+  const open = jest.fn();
+  const { result, rerender } = renderHook(({ active }) => usePrivateGuideCopy(active, open), {
+    initialProps: { active: tab },
+  });
+  await act(() => result.current.prepare());
+  rerender({ active: { ...tab, isLoading: true } });
+  expect(result.current.needsConfirmation).toBe(true);
+  rerender({ active: { ...tab, content: { ...tab.content!, lastFetched: 'refreshed' } } });
+  expect(result.current.needsConfirmation).toBe(true);
+  expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBe(original);
+  act(() => result.current.confirm());
+  expect(result.current.needsConfirmation).toBe(false);
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).guide).toEqual(guide);
+});
+
 it('checks admin access again before committing a confirmed replacement', async () => {
   localStorage.setItem(StorageKeys.BLOCK_EDITOR_STATE, 'existing');
   const open = jest.fn();
@@ -137,4 +185,44 @@ it('can cancel customization without touching the existing draft', async () => {
   expect(result.current.customization).toBeUndefined();
   expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBe('existing');
   expect(open).not.toHaveBeenCalled();
+});
+
+it('allows retry after leaving and returning while preparation is in flight', async () => {
+  let resolve!: (value: typeof guide) => void;
+  jest.mocked(preparePrivateGuideCopy).mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done;
+    })
+  );
+  const open = jest.fn();
+  const { result, rerender } = renderHook(({ active }) => usePrivateGuideCopy(active, open), {
+    initialProps: { active: tab },
+  });
+  let preparing!: Promise<void>;
+  await act(async () => {
+    preparing = result.current.prepare();
+  });
+  rerender({ active: { ...tab, id: 'another' } });
+  rerender({ active: tab });
+  expect(result.current.isPreparing).toBe(false);
+  await act(() => result.current.prepare());
+  expect(open).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    resolve(guide);
+    await preparing;
+  });
+  expect(open).toHaveBeenCalledTimes(1);
+});
+
+it('confirms the prepared snapshot while the same tab is refreshing', async () => {
+  localStorage.setItem(StorageKeys.BLOCK_EDITOR_STATE, 'existing');
+  const open = jest.fn();
+  const { result, rerender } = renderHook(({ active }) => usePrivateGuideCopy(active, open), {
+    initialProps: { active: tab },
+  });
+  await act(() => result.current.prepare());
+  rerender({ active: { ...tab, isLoading: true, content: null } });
+  act(() => result.current.confirm());
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).guide).toEqual(guide);
 });

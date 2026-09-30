@@ -53,7 +53,7 @@ export function preserveGuideUrls(guide: JsonGuide, baseUrl: string): JsonGuide 
           if (key === 'src' || key === 'poster' || key === 'href') {
             return [key, resolve(child, key !== 'href')];
           }
-          if (['content', 'question', 'prompt', 'body', 'text', 'hint'].includes(key)) {
+          if (['content', 'question', 'prompt', 'body', 'text', 'hint', 'brief'].includes(key)) {
             const html = record.type === 'html' ? child : renderMarkdown(child);
             return [key, rewriteHtml(html) ?? child];
           }

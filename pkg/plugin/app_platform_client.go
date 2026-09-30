@@ -167,7 +167,8 @@ var createDiagOnce sync.Once
 // listPage fetches one page of a namespace LIST. The body is bounded by
 // maxBytes; upstream HTTP failures carry the status for retryability and scope
 // classification, and a mint failure carries errAccessTokenMintFailed instead.
-func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64) (*appPlatformListPage, error) {
+func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64) (page *appPlatformListPage, err error) {
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "list", err) }()
 	if namespace == "" {
 		return nil, fmt.Errorf("app platform list: empty namespace")
 	}
@@ -223,7 +224,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 		return nil, fmt.Errorf("app platform list: read body: %w", err)
 	}
 	if int64(len(body)) > maxBytes {
-		return nil, fmt.Errorf("app platform list: page response exceeded %d bytes", maxBytes)
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform list: page response exceeded %d bytes", maxBytes)}
 	}
 
 	var list struct {
@@ -235,7 +236,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("app platform list: decode: %w", err)
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform list: decode: %w", err)}
 	}
 
 	specs := make([]json.RawMessage, 0, len(list.Items))
@@ -250,7 +251,8 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 // appPlatformUpstreamError carrying the upstream status (and Retry-After, when
 // present) so the caller can classify transient/terminal/identity-scoped and
 // echo the upstream backpressure hint.
-func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) error {
+func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) (err error) {
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "create", err) }()
 	if namespace == "" {
 		return fmt.Errorf("app platform create: empty namespace")
 	}

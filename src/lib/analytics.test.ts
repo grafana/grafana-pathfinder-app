@@ -30,6 +30,20 @@ const mockReportInteraction = reportInteraction as jest.Mock;
 const mockPushFaroUserAction = pushFaroUserAction as jest.Mock;
 
 describe('reportAppInteraction', () => {
+  it('removes private guide identifiers and authored metadata from the Faro mirror', () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'open',
+      guide_url: 'backend-guide:private-resource',
+      guide_title: 'Private title',
+      guide_id: 'private-resource',
+      content: 'Private guide content',
+    });
+    const payload = mockPushFaroUserAction.mock.calls.at(-1)![1];
+    expect(payload.guide_url).toMatch(/^private-guide:/);
+    expect(payload.action).toBe('open');
+    expect(JSON.stringify(payload)).not.toContain('private-resource');
+    expect(JSON.stringify(payload)).not.toContain('Private');
+  });
   beforeEach(() => {
     jest.clearAllMocks();
     delete (window as any).__pathfinderKioskSessionId;

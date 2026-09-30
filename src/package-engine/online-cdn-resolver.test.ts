@@ -76,6 +76,7 @@ describe('OnlineCdnPackageResolver', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe('not-found');
+      expect(result.error.diagnostic).toEqual({ source: 'cdn', stage: 'resolve', reason: 'not-found' });
     }
   });
 
