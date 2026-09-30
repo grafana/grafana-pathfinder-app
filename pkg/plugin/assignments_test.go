@@ -78,8 +78,13 @@ func doMyAssignments(t *testing.T, sub string) (*httptest.ResponseRecorder, myAs
 
 func doMyAssignmentsReq(t *testing.T, r *http.Request) (*httptest.ResponseRecorder, myAssignmentsResponse) {
 	t.Helper()
+	return doMyAssignmentsWith(t, newTestApp(t), r)
+}
+
+func doMyAssignmentsWith(t *testing.T, app *App, r *http.Request) (*httptest.ResponseRecorder, myAssignmentsResponse) {
+	t.Helper()
 	rr := httptest.NewRecorder()
-	newTestApp(t).handleMyAssignments(rr, r)
+	app.handleMyAssignments(rr, r)
 
 	var resp myAssignmentsResponse
 	if rr.Code == http.StatusOK {

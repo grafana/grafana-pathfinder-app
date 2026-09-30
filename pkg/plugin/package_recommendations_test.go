@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
 // stubFetcher returns a packageRepositoryFetcher backed by a counter, so
@@ -876,12 +878,16 @@ func TestOnlinePathGuides(t *testing.T) {
 		"assigned-targeted": {"path": "assigned-targeted/v1", "type": "path",
 			"targeting": {"match": {"urlPrefix": "/x"}}},
 		"assigned-untargeted": {"path": "assigned-untargeted/v1", "type": "path"},
-		"no-milestones": {"path": "no-milestones/v1", "type": "path"}
+		"no-milestones": {"path": "no-milestones/v1", "type": "path"},
+		"tracked": {"path": "tracked/v1", "type": "path"},
+		"tracked-journey": {"path": "tracked-journey/v1", "type": "journey"}
 	}`
 	manifests := map[string]string{
 		"assigned-targeted":   `{"id": "assigned-targeted", "milestones": ["m1", "m2"]}`,
 		"assigned-untargeted": `{"id": "assigned-untargeted", "milestones": ["m3"]}`,
 		"no-milestones":       `{"id": "no-milestones", "milestones": []}`,
+		"tracked":             `{"id": "tracked", "type": "path", "milestones": ["m1"], "tracks": [{"trackId": "ops", "label": "Ops", "guides": ["m4", "m1"]}, {"trackId": "empty", "label": "Empty", "guides": []}]}`,
+		"tracked-journey":     `{"id": "tracked-journey", "type": "journey", "milestones": ["m1"], "tracks": [{"trackId": "ops", "label": "Ops", "guides": ["m4"]}]}`,
 	}
 
 	// setup installs a fetcher serving the repo and manifests and returns the
@@ -912,6 +918,7 @@ func TestOnlinePathGuides(t *testing.T) {
 	cases := []struct {
 		name        string
 		target      string
+		track       string
 		prime       bool
 		manifestErr error
 		wantGuides  []string
@@ -922,6 +929,10 @@ func TestOnlinePathGuides(t *testing.T) {
 		{name: "enriched manifest is reused without refetch", target: "assigned-targeted", prime: true, wantGuides: []string{"m1", "m2"}, wantFound: true},
 		{name: "unenriched manifest is fetched on demand once", target: "assigned-untargeted", wantGuides: []string{"m3"}, wantFound: true, wantFetches: 1},
 		{name: "unknown target is not found", target: "does-not-exist"},
+		{name: "track guides are read in declared order", target: "tracked", track: "ops", wantGuides: []string{"m4", "m1"}, wantFound: true, wantFetches: 1},
+		{name: "track without guides is found with none", target: "tracked", track: "empty", wantFound: true, wantFetches: 1},
+		{name: "unknown track is found with no guides", target: "tracked", track: "missing", wantFound: true, wantFetches: 1},
+		{name: "journey declares no tracks", target: "tracked-journey", track: "ops", wantFound: true, wantFetches: 1},
 		{name: "empty milestones is found with no guides", target: "no-milestones", wantFound: true, wantFetches: 1},
 		{name: "manifest fetch failure is an error", target: "assigned-untargeted", manifestErr: errors.New("manifest unavailable"), wantFound: true, wantErr: true, wantFetches: 1},
 	}
@@ -935,7 +946,7 @@ func TestOnlinePathGuides(t *testing.T) {
 				fetches[tc.target] = 0
 			}
 
-			guides, found, err := app.onlinePathGuides(context.Background(), tc.target)
+			guides, found, err := app.onlinePathGuides(log.DefaultLogger)(context.Background(), tc.target, tc.track)
 
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)

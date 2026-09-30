@@ -51,7 +51,7 @@ func newTestEvaluator(sources ...pathGuideSource) *obligationEvaluator {
 }
 
 func TestGuideProgress_GuideAndPath(t *testing.T) {
-	ev := newTestEvaluator(bundledPathGuides)
+	ev := newTestEvaluator(bundledPathGuides(log.DefaultLogger))
 	path := pathWithGuides(t)
 	done := completionsFor(path, "2026-09-14T15:00:00Z")
 
@@ -79,7 +79,7 @@ func TestGuideProgress_GuideAndPath(t *testing.T) {
 }
 
 func TestGuideProgress_AcceptCompletionsFrom(t *testing.T) {
-	ev := newTestEvaluator(bundledPathGuides)
+	ev := newTestEvaluator(bundledPathGuides(log.DefaultLogger))
 	var path bundledPath
 	for _, candidate := range activeCatalogue(t) {
 		if len(candidate.Guides) == 1 {
@@ -125,7 +125,7 @@ func TestBundledPathGuides_FallsBackToPathIndex(t *testing.T) {
 	}
 	t.Cleanup(func() { pathIndexFetch = prev })
 
-	guides, found, err := bundledPathGuides(context.Background(), "linux-server-integration")
+	guides, found, err := bundledPathGuides(log.DefaultLogger)(context.Background(), "linux-server-integration", "")
 	if err != nil || !found || len(guides) != 1 || guides[0] != "select-platform" {
 		t.Fatalf("guides = %v, found = %v, err = %v", guides, found, err)
 	}
@@ -163,11 +163,29 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 			guideEntry("fe-guide-todo", "Module 2", "published", "guide"),
 		))
 	}
+	trackedPath := func(t *testing.T) {
+		path := guideEntry("fe-tracked-path", "Tracked path", "published", "path")
+		path.Manifest.Milestones = []string{"fe-found-1", "fe-found-2"}
+		path.Manifest.Tracks = []customGuideManifestTrack{{TrackID: "ops", Label: "Ops", Guides: []string{"fe-ops-1", "fe-found-2", "fe-ops-only"}}}
+		withGuideLister(t, singlePageGuideLister(
+			path,
+			guideEntry("fe-found-1", "Foundations 1", "published", "guide"),
+			guideEntry("fe-found-2", "Foundations 2", "published", "guide"),
+			guideEntry("fe-ops-1", "Ops 1", "published", "guide"),
+			guideEntry("fe-ops-only", "Ops only", "published", "guide"),
+		))
+	}
+	appPlatformRec := func(guideID string) completionRecordSpec {
+		return rec("user:1", "app-platform", guideID, guideID, "interactive", "fe-tracked-path", "objectives", "2026-09-14T15:00:00Z", 100)
+	}
 	cases := []struct {
 		name          string
+		track         string
 		setup         func(t *testing.T) (targetID string, completions []completionRecordSpec)
 		wantSatisfied bool
 		wantGuides    map[string]bool
+		wantGuideIDs  []string
+		wantWarn      bool
 	}{
 		{
 			name: "bundled path satisfied",
@@ -229,6 +247,77 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 			wantSatisfied: true,
 		},
 		{
+			name:  "track satisfied while Foundations is incomplete",
+			track: "ops",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				trackedPath(t)
+				return "fe-tracked-path", []completionRecordSpec{appPlatformRec("fe-ops-1"), appPlatformRec("fe-found-2"), appPlatformRec("fe-ops-only")}
+			},
+			wantSatisfied: true,
+			wantGuideIDs:  []string{"fe-ops-1", "fe-found-2", "fe-ops-only"},
+		},
+		{
+			name:  "track guide missing from milestones is required",
+			track: "ops",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				trackedPath(t)
+				return "fe-tracked-path", []completionRecordSpec{appPlatformRec("fe-ops-1"), appPlatformRec("fe-found-2")}
+			},
+			wantGuides: map[string]bool{"fe-ops-1": true, "fe-found-2": true, "fe-ops-only": false},
+		},
+		{
+			name: "assignment without a track stays on Foundations",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				trackedPath(t)
+				return "fe-tracked-path", []completionRecordSpec{appPlatformRec("fe-found-1"), appPlatformRec("fe-found-2")}
+			},
+			wantSatisfied: true,
+			wantGuideIDs:  []string{"fe-found-1", "fe-found-2"},
+		},
+		{
+			name:  "unknown track is unresolved",
+			track: "missing",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				trackedPath(t)
+				return "fe-tracked-path", []completionRecordSpec{appPlatformRec("fe-found-1"), appPlatformRec("fe-found-2")}
+			},
+			wantWarn: true,
+		},
+		{
+			name:  "bundled path has no tracks",
+			track: "ops",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				path := pathWithGuides(t)
+				return path.ID, completionsFor(path, "2026-09-14T15:00:00Z")
+			},
+			wantWarn: true,
+		},
+		{
+			name:  "online catalogue track satisfied from translated slugs",
+			track: "ops",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
+					switch {
+					case strings.HasSuffix(rawURL, "repository.json"):
+						return []byte(`{
+							"online-tracked-path": {"path": "online-tracked-path/v1", "type": "path"},
+							"online-track-guide": {"path": "guides/online-track-slug", "type": "guide"}
+						}`), nil
+					case strings.HasSuffix(rawURL, "/online-tracked-path/v1/manifest.json"):
+						return []byte(`{"id": "online-tracked-path", "type": "path", "milestones": ["online-milestone-1"],
+							"tracks": [{"trackId": "ops", "label": "Ops", "guides": ["online-track-guide"]}]}`), nil
+					default:
+						return nil, fmt.Errorf("unexpected URL %q", rawURL)
+					}
+				})
+				return "online-tracked-path", []completionRecordSpec{
+					rec("user:1", "bundled", "online-track-slug", "Online track guide", "interactive", "online-tracked-path", "objectives", "2026-09-14T15:00:00Z", 100),
+				}
+			},
+			wantSatisfied: true,
+			wantGuideIDs:  []string{"online-track-slug"},
+		},
+		{
 			name: "no completion list is unmet",
 			setup: func(t *testing.T) (string, []completionRecordSpec) {
 				return pathWithGuides(t).ID, nil
@@ -243,12 +332,15 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 				return nil, errors.New("package index unavailable")
 			})
 			target, completions := tc.setup(t)
-			withAssignmentLister(t, singlePageAssignmentLister(asg("user:1", target, "", "onboarding", "2026-09-01T00:00:00Z")))
+			withAssignmentLister(t, singlePageAssignmentLister(asg("user:1", target, tc.track, "onboarding", "2026-09-01T00:00:00Z")))
 			if completions != nil {
 				withLister(t, singlePageLister(completions...))
 			}
+			logger := newCapturingLogger()
+			app := newTestApp(t)
+			app.logger = logger
 
-			_, resp := doMyAssignments(t, "user:1")
+			_, resp := doMyAssignmentsWith(t, app, completionRequest(t, "/assignments/my", "user:1"))
 
 			if len(resp.Assignments) != 1 {
 				t.Fatalf("assignments = %+v", resp.Assignments)
@@ -256,6 +348,21 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 			entry := resp.Assignments[0]
 			if entry.Satisfied != tc.wantSatisfied {
 				t.Errorf("satisfied = %v, want %v", entry.Satisfied, tc.wantSatisfied)
+			}
+			if got := logger.warnedWith("assignment track not found"); got != tc.wantWarn {
+				t.Errorf("track-not-found warning = %v, want %v", got, tc.wantWarn)
+			}
+			if tc.wantWarn && len(entry.Guides) != 0 {
+				t.Errorf("guides = %+v, want none", entry.Guides)
+			}
+			if tc.wantGuideIDs != nil {
+				ids := make([]string, len(entry.Guides))
+				for i, g := range entry.Guides {
+					ids[i] = g.GuideID
+				}
+				if !reflect.DeepEqual(ids, tc.wantGuideIDs) {
+					t.Errorf("guide ids = %v, want %v", ids, tc.wantGuideIDs)
+				}
 			}
 			if tc.wantGuides != nil {
 				got := map[string]bool{}
@@ -368,5 +475,34 @@ func TestSyncSatisfiedAssignments_Skips(t *testing.T) {
 				t.Errorf("UpdateStatus calls = %d, want 0", n)
 			}
 		})
+	}
+}
+
+func TestSyncSatisfiedAssignments_TrackCompletionPatchesStatus(t *testing.T) {
+	path := guideEntry("fe-tracked-path", "Tracked path", "published", "path")
+	path.Manifest.Tracks = []customGuideManifestTrack{{TrackID: "ops", Label: "Ops", Guides: []string{"fe-ops-1", "fe-ops-2"}}}
+	withGuideLister(t, singlePageGuideLister(
+		path,
+		guideEntry("fe-ops-1", "Ops 1", "published", "guide"),
+		guideEntry("fe-ops-2", "Ops 2", "published", "guide"),
+	))
+	target := asg("user:1", "fe-tracked-path", "ops", "onboarding", "2026-09-01T00:00:00Z")
+	target.Name = "assignment-1"
+	var updates int32
+	lister := singlePageAssignmentLister(target)
+	lister.updateStatus = func(context.Context, string, string, string, bool) error {
+		atomic.AddInt32(&updates, 1)
+		return nil
+	}
+	withAssignmentLister(t, lister)
+	first := rec("user:1", "app-platform", "fe-ops-1", "Ops 1", "interactive", "fe-tracked-path", "objectives", "2026-09-14T15:00:00Z", 100)
+	last := rec("user:1", "app-platform", "fe-ops-2", "Ops 2", "interactive", "fe-tracked-path", "objectives", "2026-09-14T16:00:00Z", 100)
+	withLister(t, singlePageLister(first))
+
+	r := completionRequest(t, "/completion-records", "user:1")
+	newTestApp(t).syncSatisfiedAssignments(r, "user:1", last, log.DefaultLogger)
+
+	if n := atomic.LoadInt32(&updates); n != 1 {
+		t.Errorf("UpdateStatus calls = %d, want 1", n)
 	}
 }

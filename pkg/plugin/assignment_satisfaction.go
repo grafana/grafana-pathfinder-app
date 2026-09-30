@@ -80,8 +80,8 @@ func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []co
 }
 
 // assignmentGuides is the guides an assignment requires, nil when unresolved.
-// Guide targets and tracks stay unresolved: grading a whole path would mark a
-// narrower obligation done.
+// Guide targets stay unresolved: grading a whole path would mark a narrower
+// obligation done. A track assignment is graded against that track's guides.
 func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) []string {
 	if e.resolved == nil {
 		e.resolved = map[string][]string{}
@@ -100,11 +100,11 @@ func (e *obligationEvaluator) resolveGuides(asg assignmentSpec) []string {
 		e.logger.Error("assignment guide target is not evaluated", "targetType", asg.TargetType, "targetId", asg.TargetID)
 		return nil
 	}
-	if asg.TargetType != assignmentTargetPath || asg.TrackID != "" || asg.TargetID == "" {
+	if asg.TargetType != assignmentTargetPath || asg.TargetID == "" {
 		return nil
 	}
 	for _, source := range e.sources {
-		guides, found, err := source(e.ctx, asg.TargetID)
+		guides, found, err := source(e.ctx, asg.TargetID, asg.TrackID)
 		if err != nil {
 			e.logger.Info("path guides unavailable", "targetId", asg.TargetID, "error", err)
 			return nil
@@ -123,7 +123,7 @@ func (a *App) newObligationEvaluator(r *http.Request) *obligationEvaluator {
 		ctx:    r.Context(),
 		logger: a.ctxLogger(r.Context()),
 	}
-	ev.sources = append(ev.sources, bundledPathGuides)
+	ev.sources = append(ev.sources, bundledPathGuides(ev.logger))
 	if lister, namespace, available, _ := a.resolveCustomGuideBackend(r); available {
 		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), customGuideAggregateDeadline)
 		entries, _, err := drainCustomGuides(fetchCtx, namespace, lister, ev.logger)
@@ -131,10 +131,10 @@ func (a *App) newObligationEvaluator(r *http.Request) *obligationEvaluator {
 		if err != nil {
 			ev.logger.Info("custom guide catalogue unavailable for assignment evaluation", "error", err)
 		} else {
-			ev.sources = append(ev.sources, customPathGuides(entries))
+			ev.sources = append(ev.sources, customPathGuides(entries, ev.logger))
 		}
 	}
-	ev.sources = append(ev.sources, a.onlinePathGuides)
+	ev.sources = append(ev.sources, a.onlinePathGuides(ev.logger))
 	return ev
 }
 
