@@ -321,7 +321,13 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       opacity: 0,
     }),
     expandableOpen: css({
-      maxHeight: 500,
+      // A fixed value is required for the max-height transition above to
+      // animate, so this can't just be 'none' — 1200 comfortably fits every
+      // real path's guide count today, and overflowY covers any path whose
+      // guides (now taller, with unbounded-length descriptions) exceed it,
+      // so content is always reachable instead of silently clipped.
+      maxHeight: 1200,
+      overflowY: 'auto',
       opacity: 1,
     }),
     description: css({
@@ -346,15 +352,16 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     list: css({
       display: 'flex',
       flexDirection: 'column',
-      gap: theme.spacing(0.5),
+      gap: theme.spacing(1.5),
     }),
     guideItem: css({
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing(1),
-      padding: theme.spacing(1),
+      padding: theme.spacing(1.5),
       borderRadius: theme.shape.radius.default,
-      border: '1px solid transparent',
+      border: `1px solid ${theme.colors.border.weak}`,
+      backgroundColor: theme.colors.background.secondary,
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
     }),
@@ -373,12 +380,17 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     guideItemCurrentCard: css({
       background: `linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.secondary} 100%)`,
       borderColor: colors.pathAccentMedium,
+      // guideItemCurrentClickable is always applied alongside this (both
+      // gate on the same guide.isCurrent && enableCurrentRowLink check), so
+      // the hover needs to sit on top of this opaque gradient as its own
+      // image layer — an action.hover backgroundColor would be painted
+      // underneath the gradient and stay invisible across most of the row.
+      '&:hover': {
+        backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover}), linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      },
     }),
     guideItemLocked: css({
       color: theme.colors.text.disabled,
-    }),
-    guideItemWithDescription: css({
-      alignItems: 'flex-start',
     }),
     guideIconBadge: css({
       width: 32,
@@ -387,6 +399,7 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
+      alignSelf: 'center',
       borderRadius: theme.shape.radius.default,
     }),
     guideIconBadgeCurrent: css({
@@ -401,11 +414,6 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       backgroundColor: theme.colors.background.primary,
       color: theme.colors.text.disabled,
     }),
-    guideTitle: css({
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    }),
     guideTextGroup: css({
       display: 'flex',
       flexDirection: 'column',
@@ -416,11 +424,6 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     guideDescription: css({
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.disabled,
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      display: '-webkit-box',
-      WebkitLineClamp: 2,
-      WebkitBoxOrient: 'vertical',
     }),
     guideMeta: css({
       display: 'flex',
@@ -431,6 +434,7 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     }),
     guideUpNext: css({
       flexShrink: 0,
+      alignSelf: 'center',
       whiteSpace: 'nowrap',
       fontSize: theme.typography.bodySmall.fontSize,
       color: colors.pathAccent,
