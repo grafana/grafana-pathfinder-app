@@ -642,7 +642,7 @@ zero, and prose-only guides (the 308 population) that stay at 0% in aggregate
 despite being read.
 
 **Evidence source:** the `markCompleteClicked` event from decision 7 against the
-completion event, in RudderStack — see `docs/developer/TELEMETRY.md` for the
+`guide_completed` event, in RudderStack — see `docs/developer/TELEMETRY.md` for the
 policy and privacy constraints on what may be joined. The durable completion
 records written through the App Platform proxy are the second read, and the one
 that matters for KPIs.

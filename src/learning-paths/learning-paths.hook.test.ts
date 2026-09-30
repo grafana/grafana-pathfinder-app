@@ -80,6 +80,12 @@ jest.mock('../lib/user-storage', () => ({
     clear: (dedupeKey: string) => mockCompletionEmittedClear(dedupeKey),
     clearAll: jest.fn().mockResolvedValue(undefined),
   },
+  completionReportedStorage: {
+    isEmitted: jest.fn().mockReturnValue(false),
+    markEmitted: jest.fn().mockResolvedValue(undefined),
+    clear: jest.fn().mockResolvedValue(undefined),
+    clearAll: jest.fn().mockResolvedValue(undefined),
+  },
 }));
 
 jest.mock('./badge-coordinator', () => ({

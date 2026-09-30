@@ -1562,8 +1562,8 @@ export const guideCompletionMarkStorage = {
 };
 
 /**
- * Durable half of `completion-records/completion-recorder.ts`'s exactly-once
- * guard. Keyed by the recorder's own `kind:guideSource:guideId` dedupe
+ * Durable half of each of `completion-records/completion-recorder.ts`'s
+ * once-guards. Keyed by the recorder's own `kind:guideSource:guideId` dedupe
  * string — not a content key — via the same versioned-key builder, so the
  * guard survives a page reload rather than resetting with the module's
  * in-memory `Set`. A reset invalidates the specific keys for the guide being
@@ -1581,56 +1581,60 @@ export const guideCompletionMarkStorage = {
  * value. `createLocalStorage()`'s `removeItem` is a plain
  * `localStorage.removeItem` — an actual delete, no tombstone.
  */
-function completionEmittedKey(dedupeKey: string): string {
-  return buildVersionedContentStorageKey(StorageKeys.COMPLETION_EMITTED_PREFIX, dedupeKey);
+function createCompletionGuardStorage(prefix: string) {
+  const guardKey = (dedupeKey: string) => buildVersionedContentStorageKey(prefix, dedupeKey);
+  const guard = {
+    /** Synchronous read — the recorder's dedupe check runs outside React render, but must stay non-blocking. */
+    isEmitted(dedupeKey: string): boolean {
+      try {
+        return localStorage.getItem(guardKey(dedupeKey)) === 'true';
+      } catch {
+        return false;
+      }
+    },
+
+    async markEmitted(dedupeKey: string): Promise<void> {
+      try {
+        const storage = createLocalStorage();
+        await storage.setItem(guardKey(dedupeKey), true);
+      } catch (error) {
+        logger.warn('Failed to persist completion dedupe key', { error });
+      }
+    },
+
+    async clear(dedupeKey: string): Promise<void> {
+      // isEmitted is a synchronous, unconditional check, so skip the write
+      // entirely when there is nothing to clear — a reset over a set of
+      // members it does not know completed any of would otherwise still issue
+      // one localStorage removeItem per combination that never occurred.
+      if (!guard.isEmitted(dedupeKey)) {
+        return;
+      }
+      try {
+        localStorage.removeItem(guardKey(dedupeKey));
+      } catch (error) {
+        logger.warn('Failed to clear completion dedupe key', { error });
+      }
+    },
+
+    async clearAll(): Promise<void> {
+      try {
+        // A plain localStorage-backed key: an actual delete, no tombstone
+        // companion to sweep afterwards.
+        for (const key of collectKeysByPrefix(localStorage, prefix)) {
+          localStorage.removeItem(key);
+        }
+      } catch (error) {
+        logger.warn('Failed to clear completion dedupe keys', { error });
+      }
+    },
+  };
+  return guard;
 }
 
-export const completionEmittedStorage = {
-  /** Synchronous read — the recorder's dedupe check runs outside React render, but must stay non-blocking. */
-  isEmitted(dedupeKey: string): boolean {
-    try {
-      return localStorage.getItem(completionEmittedKey(dedupeKey)) === 'true';
-    } catch {
-      return false;
-    }
-  },
+export const completionEmittedStorage = createCompletionGuardStorage(StorageKeys.COMPLETION_EMITTED_PREFIX);
 
-  async markEmitted(dedupeKey: string): Promise<void> {
-    try {
-      const storage = createLocalStorage();
-      await storage.setItem(completionEmittedKey(dedupeKey), true);
-    } catch (error) {
-      logger.warn('Failed to persist completion dedupe key', { error });
-    }
-  },
-
-  async clear(dedupeKey: string): Promise<void> {
-    // isEmitted is a synchronous, unconditional check, so skip the write
-    // entirely when there is nothing to clear — a reset over a set of
-    // members it does not know completed any of would otherwise still issue
-    // one localStorage removeItem per combination that never occurred.
-    if (!completionEmittedStorage.isEmitted(dedupeKey)) {
-      return;
-    }
-    try {
-      localStorage.removeItem(completionEmittedKey(dedupeKey));
-    } catch (error) {
-      logger.warn('Failed to clear completion dedupe key', { error });
-    }
-  },
-
-  async clearAll(): Promise<void> {
-    try {
-      // A plain localStorage-backed key: an actual delete, no tombstone
-      // companion to sweep afterwards.
-      for (const key of collectKeysByPrefix(localStorage, StorageKeys.COMPLETION_EMITTED_PREFIX)) {
-        localStorage.removeItem(key);
-      }
-    } catch (error) {
-      logger.warn('Failed to clear completion dedupe keys', { error });
-    }
-  },
-};
+export const completionReportedStorage = createCompletionGuardStorage(StorageKeys.COMPLETION_REPORTED_PREFIX);
 
 /**
  * Full screen mode state storage operations

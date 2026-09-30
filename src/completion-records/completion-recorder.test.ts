@@ -11,7 +11,10 @@
  *   - the guard is durable across a reload (a fresh in-memory Set), and
  *     `invalidateEmittedCompletion`/`invalidateAllEmittedCompletions` are the
  *     only way to lift it — the reset-then-re-mark and duplicate-write fixes
+ *   - the Track 1 analytics event fires once per terminal completion on its
+ *     own guard, independent of durable acceptance
  */
+import { reportCompletionAnalytics } from './completion-analytics';
 import {
   recordGuideCompletion,
   recordJourneyCompletion,
@@ -22,22 +25,31 @@ import {
 } from './completion-recorder';
 import type { CompletionFact, CompletionListener, GuideCompletionFact, JourneyCompletionFact } from './types';
 
-const persistedEmitted = new Map<string, true>();
+jest.mock('./completion-analytics', () => ({ reportCompletionAnalytics: jest.fn() }));
 
-jest.mock('../lib/user-storage', () => ({
-  completionEmittedStorage: {
-    isEmitted: (key: string) => persistedEmitted.has(key),
+const reportAnalytics = jest.mocked(reportCompletionAnalytics);
+
+const persistedEmitted = new Map<string, true>();
+const persistedReported = new Map<string, true>();
+
+jest.mock('../lib/user-storage', () => {
+  const guardStorage = (store: () => Map<string, true>) => ({
+    isEmitted: (key: string) => store().has(key),
     markEmitted: async (key: string) => {
-      persistedEmitted.set(key, true);
+      store().set(key, true);
     },
     clear: async (key: string) => {
-      persistedEmitted.delete(key);
+      store().delete(key);
     },
     clearAll: async () => {
-      persistedEmitted.clear();
+      store().clear();
     },
-  },
-}));
+  });
+  return {
+    completionEmittedStorage: guardStorage(() => persistedEmitted),
+    completionReportedStorage: guardStorage(() => persistedReported),
+  };
+});
 
 function guideFact(overrides: Partial<GuideCompletionFact> = {}): GuideCompletionFact {
   return {
@@ -72,6 +84,8 @@ function acceptInto(sink: CompletionFact[]): CompletionListener {
 beforeEach(() => {
   __resetRecorderForTests();
   persistedEmitted.clear();
+  persistedReported.clear();
+  reportAnalytics.mockClear();
 });
 
 describe('completion recorder — emitter seam', () => {
@@ -349,5 +363,70 @@ describe('completion recorder — resilience', () => {
 
     expect(() => recordGuideCompletion(guideFact())).not.toThrow();
     expect(seen).toHaveLength(1);
+  });
+});
+
+describe('completion recorder — Track 1 analytics event', () => {
+  it('reports once per terminal completion alongside the durable write', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact({ guideId: 'track1' }));
+    recordGuideCompletion(guideFact({ guideId: 'track1' }));
+
+    expect(seen).toHaveLength(1);
+    expect(reportAnalytics).toHaveBeenCalledTimes(1);
+    expect(reportAnalytics).toHaveBeenCalledWith(expect.objectContaining({ kind: 'guide', guideId: 'track1' }));
+  });
+
+  it('reports once when nothing durably accepts, even across a reload', () => {
+    onCompletionRecorded(() => false);
+
+    recordGuideCompletion(guideFact({ guideId: 'unowned' }));
+    recordGuideCompletion(guideFact({ guideId: 'unowned' }));
+    __resetRecorderForTests();
+    recordGuideCompletion(guideFact({ guideId: 'unowned' }));
+
+    expect(reportAnalytics).toHaveBeenCalledTimes(1);
+    expect(persistedEmitted.has('guide:bundled:unowned')).toBe(false);
+  });
+
+  it('does not stop a later subscriber from durably recording the completion', () => {
+    recordGuideCompletion(guideFact({ guideId: 'late-arm' }));
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact({ guideId: 'late-arm' }));
+
+    expect(seen).toHaveLength(1);
+    expect(persistedEmitted.has('guide:bundled:late-arm')).toBe(true);
+    expect(reportAnalytics).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report an identity durably recorded before the event existed', () => {
+    persistedEmitted.set('guide:bundled:recorded-before-upgrade', true);
+
+    recordGuideCompletion(guideFact({ guideId: 'recorded-before-upgrade' }));
+
+    expect(reportAnalytics).not.toHaveBeenCalled();
+  });
+
+  it('reports again after each kind of reset', () => {
+    onCompletionRecorded(acceptInto([]));
+
+    recordGuideCompletion(guideFact({ guideId: 'again' }));
+    invalidateEmittedCompletion('bundled', 'again');
+    recordGuideCompletion(guideFact({ guideId: 'again' }));
+    invalidateAllEmittedCompletions();
+    recordGuideCompletion(guideFact({ guideId: 'again' }));
+
+    expect(reportAnalytics).toHaveBeenCalledTimes(3);
+  });
+
+  it('reports a guide and a journey with the same identity separately', () => {
+    recordGuideCompletion(guideFact({ guideId: 'x' }));
+    recordJourneyCompletion(journeyFact({ guideId: 'x' }));
+
+    expect(reportAnalytics.mock.calls.map(([fact]) => fact.kind)).toEqual(['guide', 'journey']);
   });
 });

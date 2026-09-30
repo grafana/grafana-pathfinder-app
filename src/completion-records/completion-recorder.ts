@@ -1,5 +1,6 @@
 import { logger } from '../lib/logging';
-import { completionEmittedStorage } from '../lib/user-storage';
+import { completionEmittedStorage, completionReportedStorage } from '../lib/user-storage';
+import { reportCompletionAnalytics } from './completion-analytics';
 import { bundledGuideIdReadVariants } from './completion-identity';
 
 import type {
@@ -25,8 +26,28 @@ const listeners = new Set<CompletionListener>();
 // — see `record` below.
 const emitted = new Set<string>();
 
+// Separate from `emitted`: the analytics event neither waits on nor stands in for durable acceptance.
+const reported = new Set<string>();
+
 function dedupeKey(kind: CompletionKind, guideSource: string, guideId: string): string {
   return `${kind}:${guideSource}:${guideId}`;
+}
+
+function reportOnce(fact: CompletionFact, key: string, variants: readonly string[]): void {
+  try {
+    const alreadyReported = variants.some((id) => {
+      const variantKey = dedupeKey(fact.kind, fact.guideSource, id);
+      return reported.has(variantKey) || completionReportedStorage.isEmitted(variantKey);
+    });
+    if (alreadyReported) {
+      return;
+    }
+    reported.add(key);
+    void completionReportedStorage.markEmitted(key);
+    reportCompletionAnalytics(fact);
+  } catch (error) {
+    logger.warn('Failed to report completion analytics', { error });
+  }
 }
 
 /** `true` when at least one listener durably accepted the fact. */
@@ -79,6 +100,7 @@ function record(fact: CompletionFact): void {
       emitted.add(key);
       return;
     }
+    reportOnce(fact, key, variants);
     // Set the guard only once someone durably accepted the fact. Between the
     // two risks here: a duplicate is recoverable — the record is true, and
     // downstream dedup can collapse it — while a lost completion is not,
@@ -126,7 +148,9 @@ export function invalidateEmittedCompletion(guideSource: string, guideId: string
     for (const id of variants) {
       const key = dedupeKey(kind, guideSource, id);
       emitted.delete(key);
+      reported.delete(key);
       void completionEmittedStorage.clear(key);
+      void completionReportedStorage.clear(key);
     }
   }
 }
@@ -134,16 +158,19 @@ export function invalidateEmittedCompletion(guideSource: string, guideId: string
 /** Lifts the guard for every guide identity. Backs "Reset all learning progress". */
 export function invalidateAllEmittedCompletions(): void {
   emitted.clear();
+  reported.clear();
   void completionEmittedStorage.clearAll();
+  void completionReportedStorage.clearAll();
 }
 
 /**
- * Test-only reset of the in-memory dedupe guard and subscriber set so suites
- * can exercise the exactly-once contract deterministically. Does not touch
- * `completionEmittedStorage` — tests that need the persisted half cleared use
+ * Test-only reset of the in-memory dedupe guards and subscriber set so suites
+ * can exercise the exactly-once contract deterministically. Does not touch the
+ * persisted guards — tests that need the persisted halves cleared use
  * `invalidateEmittedCompletion`/`invalidateAllEmittedCompletions` directly.
  */
 export function __resetRecorderForTests(): void {
   emitted.clear();
+  reported.clear();
   listeners.clear();
 }
