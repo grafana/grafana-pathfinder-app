@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- **"Interactive Learning" wordmark in the docs panel tab bar**: Removed the wordmark and its adjacent divider from the recommendations rail, added in #1447. It read as unpolished branding rather than useful chrome; the recommendations icon button next to it is unaffected.
+
 ## 2.19.0
 
 > Deployment prerequisite: the organization opt-out requires the companion backend `pathfinderEnabled` settings schema. Verify settings-reader permissions before Cloud rollout; failed or timed-out settings reads leave Pathfinder enabled. (#2008)

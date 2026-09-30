@@ -172,6 +172,7 @@ function loadBundledIndexed(url: string, id: string): ContentFetchResult {
       type: 'interactive',
       url,
       lastFetched: new Date().toISOString(),
+      isNativeJson: true,
     };
     return { content: rawContent };
   } catch (error) {

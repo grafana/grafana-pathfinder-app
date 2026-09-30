@@ -1,7 +1,7 @@
 /**
- * Tab bar surface for the docs panel: Interactive Learning wordmark,
- * recommendations home icon, divider, guide-tab list with close buttons,
- * overflow chevron and dropdown, and the trailing TabBarActions slot.
+ * Tab bar surface for the docs panel: recommendations home icon, divider,
+ * guide-tab list with close buttons, overflow chevron and dropdown, and the
+ * trailing TabBarActions slot.
  *
  * Extracted verbatim from `docs-panel.tsx`. Every `data-testid` is preserved
  * unchanged — `docs-panel.contract.test.tsx`'s testId exhaustiveness check
@@ -97,10 +97,6 @@ export function DocsPanelTabBar({
   return (
     <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
       <div className={styles.recommendationsTab}>
-        <div className={styles.wordmarkGroup}>
-          <span className={styles.wordmark}>{t('docsPanel.wordmark', 'Interactive Learning')}</span>
-          <div className={styles.tabDivider} aria-hidden="true" />
-        </div>
         <button
           className={`${styles.iconTab} ${activeTab?.type === 'recommendations' ? styles.iconTabActive : ''}`}
           onClick={() => onSetActiveTab(RECOMMENDATIONS_TAB_ID)}
