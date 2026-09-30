@@ -48,7 +48,12 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
       return;
     }
     if (hasEditorDraft()) {
-      setOperation({ tabId: tab.id, isPreparing: false, pending: guide });
+      setOperation((value) => ({
+        tabId: tab.id,
+        isPreparing: false,
+        pending: guide,
+        customization: value?.customization,
+      }));
     } else {
       openCopy(guide);
     }
@@ -92,6 +97,7 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
     reviewCopy,
     prepare,
     cancel: () => setOperation(null),
+    cancelConfirmation: () => setOperation((value) => (value?.customization ? { ...value, pending: null } : null)),
     confirm: () => {
       if (pending) {
         try {

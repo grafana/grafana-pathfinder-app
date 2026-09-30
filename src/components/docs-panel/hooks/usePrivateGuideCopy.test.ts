@@ -169,8 +169,13 @@ it('prepares customization without changing the draft and confirms replacement a
   const customized = { ...guide, title: 'Customized' };
   act(() => result.current.reviewCopy(customized));
   expect(result.current.needsConfirmation).toBe(true);
-  expect(result.current.customization).toBeUndefined();
+  expect(result.current.customization).toEqual(guide);
   expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBe('existing');
+  act(() => result.current.cancelConfirmation());
+  expect(result.current.needsConfirmation).toBe(false);
+  expect(result.current.customization).toEqual(guide);
+  expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBe('existing');
+  act(() => result.current.reviewCopy(customized));
   act(() => result.current.confirm());
   expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).guide).toEqual(customized);
   expect(open).toHaveBeenCalledTimes(1);

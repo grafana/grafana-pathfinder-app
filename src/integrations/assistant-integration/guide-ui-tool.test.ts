@@ -109,6 +109,10 @@ it('bounds inspection input and calls and respects cancellation', async () => {
 });
 
 it.each([
+  '{grafana:components.VizLegend.seriesName:prod-db-01}',
+  '{grafana:components.VizLegend.seriesName:prod-db-02}',
+  '{grafana:components.TemplateVariableEditor.submenuItemValueDropDownValueLinkTexts:acme-corp}',
+  '{grafana:components.RadioButton.option:private}',
   'body:contains("private")',
   ':text("private")',
   'body:has(input)',

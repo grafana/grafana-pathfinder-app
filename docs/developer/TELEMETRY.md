@@ -180,3 +180,9 @@ first Pathfinder surface open, preserving the activity boundary. This measures
 opened sessions, not all Grafana page loads; it cannot establish fleet-wide
 opt-out coverage. The local startup diagnostic also reports duration and outcome
 without settings, user IDs, or stack IDs.
+
+## Assistant customization
+
+`assistant_customize_click`, `assistant_customize_success` and `assistant_customize_error` cover both inline block customization and whole-guide customization. Whole-guide runs carry the fixed `source: private-guide` attribute; filter by this attribute when measuring them separately from inline block runs. Inline block events retain their existing `source_document`, `step_id`, `assistant_id`, `assistant_type` and `content_key` attributes.
+
+Whole-guide clicks are recorded before context collection and prompt serialization, so local validation failures have a matching attempt. Success means a generated guide passed validation and was offered for editor review; it does not mean the user saved or published it. A repair attempt belongs to the original click. These events contain no answers, guide content, data-source metadata or generated output.

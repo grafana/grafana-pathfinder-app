@@ -156,6 +156,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
         <CustomizeGuideModal
           key={privateCopy.customization.id}
           guide={privateCopy.customization}
+          isOpen={!privateCopy.needsConfirmation}
           sourceUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
           onReview={privateCopy.reviewCopy}
           onDismiss={privateCopy.cancel}
@@ -171,7 +172,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
         confirmText={t('docsPanel.replaceDraft', 'Replace draft')}
         cancelText={t('docsPanel.cancelCopy', 'Cancel')}
         onConfirm={privateCopy.confirm}
-        onCancel={privateCopy.cancel}
+        onCancel={privateCopy.cancelConfirmation}
       />
       <IconButton
         name="book-open"

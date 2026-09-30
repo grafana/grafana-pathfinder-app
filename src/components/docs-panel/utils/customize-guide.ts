@@ -1,3 +1,4 @@
+import { isInteractiveBlockType } from '../../../types/json-guide-classification';
 import type { JsonBlock, JsonGuide } from '../../../types/json-guide.types';
 import { validateGuide } from '../../../validation';
 import { preserveGuideUrls } from '../../block-editor/utils/preserve-guide-urls';
@@ -147,9 +148,7 @@ function flattenBlocks(blocks: JsonBlock[]): JsonBlock[] {
 }
 
 function hasInteraction(blocks: JsonBlock[]): boolean {
-  return flattenBlocks(blocks).some((block) =>
-    ['interactive', 'multistep', 'guided', 'code-block'].includes(block.type)
-  );
+  return flattenBlocks(blocks).some((block) => isInteractiveBlockType(block.type));
 }
 
 function validateRetainedInteractions(source: JsonGuide, result: JsonGuide): void {
@@ -180,7 +179,8 @@ export function parseCustomizedGuide(response: string, source: JsonGuide, source
     candidate && typeof candidate === 'object' && !Array.isArray(candidate)
       ? { ...candidate, id: source.id }
       : candidate;
-  const result = validateGuide(input, { allowDuplicateHeading: true });
+  const allowDuplicateHeading = validateGuide(source).errors.some((error) => error.code === 'duplicate_heading');
+  const result = validateGuide(input, { allowDuplicateHeading });
   if (!result.isValid || !result.guide) {
     const details = result.errors
       .slice(0, 3)

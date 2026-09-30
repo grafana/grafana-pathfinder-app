@@ -207,6 +207,10 @@ it('preserves the draft and avoids generation when the request exceeds the conte
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('too large'));
   expect(generate).not.toHaveBeenCalled();
   expect(onReview).not.toHaveBeenCalled();
+  expect(jest.mocked(reportAppInteraction).mock.calls).toEqual([
+    [UserInteraction.AssistantCustomizeClick, { source: 'private-guide' }],
+    [UserInteraction.AssistantCustomizeError, { source: 'private-guide' }],
+  ]);
 });
 
 it('keeps generation alive when the hook returns a new cancel callback on each render', async () => {
@@ -229,7 +233,7 @@ it('keeps generation alive when the hook returns a new cancel callback on each r
   callbacks.forEach((callback) => expect(callback).not.toHaveBeenCalled());
   await act(async () => options.onComplete?.(JSON.stringify(guide)));
   expect(onReview).toHaveBeenCalledWith(guide);
-  expect(screen.getByRole('button', { name: 'Customize and open editor' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Review customized guide' })).toBeEnabled();
   const latest = callbacks.at(-1)!;
   unmount();
   expect(latest).toHaveBeenCalledTimes(1);
@@ -265,4 +269,32 @@ it.each(['prompt echo', 'unsupported URL'])('repairs %s and preserves details wh
   expect(screen.getByRole('alert')).toHaveTextContent(message);
   expect(screen.getByRole('alert')).toHaveTextContent('Your draft is unchanged');
   expect(onReview).not.toHaveBeenCalled();
+});
+
+it('retains answers and generated output for another editor review without regeneration', async () => {
+  const { onReview } = renderModal();
+  await submit();
+  const customized = { ...guide, title: 'Customized' };
+  await act(async () => options.onComplete?.(JSON.stringify(customized)));
+  expect(screen.getByLabelText(/What should they learn/)).toHaveValue('Use our team conventions');
+  fireEvent.click(screen.getByRole('button', { name: 'Review customized guide' }));
+  expect(onReview).toHaveBeenCalledTimes(2);
+  expect(onReview).toHaveBeenLastCalledWith(customized);
+  expect(generate).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText(/What should they learn/), { target: { value: 'Use Loki' } });
+  expect(screen.getByRole('button', { name: 'Customize and open editor' })).toBeEnabled();
+});
+
+it('keeps answers and generated output while hidden for replacement confirmation', async () => {
+  const { onReview, onDismiss, rerender } = renderModal();
+  await submit();
+  await act(async () => options.onComplete?.(JSON.stringify(guide)));
+  const props = { guide, sourceUrl: 'https://grafana.com/example/content.json', onReview, onDismiss };
+  rerender(<CustomizeGuideModal {...props} isOpen={false} />);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  rerender(<CustomizeGuideModal {...props} isOpen />);
+  expect(screen.getByLabelText(/What should they learn/)).toHaveValue('Use our team conventions');
+  fireEvent.click(screen.getByRole('button', { name: 'Review customized guide' }));
+  expect(generate).toHaveBeenCalledTimes(1);
+  expect(onReview).toHaveBeenCalledTimes(2);
 });

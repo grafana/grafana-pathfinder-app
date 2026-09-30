@@ -20,12 +20,13 @@ import {
 
 interface Props {
   guide: JsonGuide;
+  isOpen?: boolean;
   sourceUrl: string;
   onReview: (guide: JsonGuide) => void;
   onDismiss: () => void;
 }
 
-export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: Props) {
+export function CustomizeGuideModal({ guide, isOpen = true, sourceUrl, onReview, onDismiss }: Props) {
   const { generate, cancel, isAssistantAvailable, isCheckingAssistantAvailability, getDatasourceContext } =
     useAssistantGeneration({
       contentKey: guide.id,
@@ -35,7 +36,8 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
   const [outcome, setOutcome] = useState('');
   const [environment, setEnvironment] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [phase, setPhase] = useState('Waiting for Assistant…');
+  const [phase, setPhase] = useState(t('docsPanel.customizeGuideWaiting', 'Waiting for Assistant…'));
+  const [generatedGuide, setGeneratedGuide] = useState<JsonGuide>();
   const [received, setReceived] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string>();
@@ -76,11 +78,13 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
     request.current.active = false;
     const current = { active: true, busy: true };
     request.current = current;
+    reportAppInteraction(UserInteraction.AssistantCustomizeClick, { source: 'private-guide' });
+    setGeneratedGuide(undefined);
     setIsGenerating(true);
     setError(undefined);
     setElapsed(0);
     setReceived(0);
-    setPhase('Reading available data sources…');
+    setPhase(t('docsPanel.customizeGuideReadingDataSources', 'Reading available data sources…'));
     const answers = { audience, outcome, environment };
     const isCurrent = () => current.active && current.busy;
     let metadataTools: InlineToolRunnable[] = [];
@@ -91,9 +95,6 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         resolveResponse = resolve;
         rejectResponse = reject;
       });
-      if (!repairing) {
-        reportAppInteraction(UserInteraction.AssistantCustomizeClick, { source: 'private-guide' });
-      }
       let characters = 0;
       const [, text] = await Promise.all([
         generate({
@@ -105,7 +106,11 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
             if (isCurrent()) {
               characters += delta.length;
               setReceived(characters);
-              setPhase(repairing ? 'Repairing the generated guide…' : 'Receiving the customized guide…');
+              setPhase(
+                repairing
+                  ? t('docsPanel.customizeGuideRepairing', 'Repairing the generated guide…')
+                  : t('docsPanel.customizeGuideReceiving', 'Receiving the customized guide…')
+              );
             }
           },
           onComplete: resolveResponse,
@@ -124,20 +129,20 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
       metadataTools = [
         createGuideUiTool(() => {
           if (isCurrent()) {
-            setPhase('Checking current page controls…');
+            setPhase(t('docsPanel.customizeGuideCheckingControls', 'Checking current page controls…'));
           }
         }, isCurrent),
         createGuideMetadataTool(
           dataSources,
           () => {
             if (isCurrent()) {
-              setPhase('Reading data source metadata…');
+              setPhase(t('docsPanel.customizeGuideReadingMetadata', 'Reading data source metadata…'));
             }
           },
           isCurrent
         ),
       ];
-      setPhase('Waiting for Assistant…');
+      setPhase(t('docsPanel.customizeGuideWaiting', 'Waiting for Assistant…'));
       let response = await generateResponse(
         buildGuideCustomizationPrompt(guide, answers, dataSources, grafanaContext),
         false
@@ -145,7 +150,7 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
       if (!isCurrent()) {
         return;
       }
-      setPhase('Checking the generated guide…');
+      setPhase(t('docsPanel.customizeGuideCheckingResult', 'Checking the generated guide…'));
       let customized: JsonGuide;
       try {
         customized = parseCustomizedGuide(response, guide, sourceUrl);
@@ -153,7 +158,7 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         if (!(e instanceof GuideCustomizationError)) {
           throw e;
         }
-        setPhase('Repairing the generated guide…');
+        setPhase(t('docsPanel.customizeGuideRepairing', 'Repairing the generated guide…'));
         setReceived(0);
         response = await generateResponse(
           buildGuideRepairPrompt(guide, answers, response, e.details, dataSources, grafanaContext),
@@ -162,17 +167,20 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         if (!isCurrent()) {
           return;
         }
-        setPhase('Checking the generated guide…');
+        setPhase(t('docsPanel.customizeGuideCheckingResult', 'Checking the generated guide…'));
         customized = parseCustomizedGuide(response, guide, sourceUrl);
       }
       reportAppInteraction(UserInteraction.AssistantCustomizeSuccess, { source: 'private-guide' });
+      setGeneratedGuide(customized);
       onReview(customized);
     } catch (e) {
       if (isCurrent()) {
         reportAppInteraction(UserInteraction.AssistantCustomizeError, { source: 'private-guide' });
         setError(
           e instanceof GuideCustomizationError
-            ? `${e.message} Your draft is unchanged. Try again.`
+            ? t('docsPanel.customizeGuideInvalid', '{{message}} Your draft is unchanged. Try again.', {
+                message: e.message,
+              })
             : t(
                 'docsPanel.customizeGuideFailed',
                 'Assistant could not customize this guide. Your draft is unchanged. Try again.'
@@ -188,7 +196,7 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
   };
 
   return (
-    <Modal title={t('docsPanel.customizeGuideTitle', 'Customize with Assistant')} isOpen onDismiss={dismiss}>
+    <Modal title={t('docsPanel.customizeGuideTitle', 'Customize with Assistant')} isOpen={isOpen} onDismiss={dismiss}>
       <p>
         {t(
           'docsPanel.customizeGuideDescription',
@@ -199,8 +207,14 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         <TextArea
           id="customize-guide-audience"
           value={audience}
-          onChange={(event) => setAudience(event.currentTarget.value)}
-          placeholder="For example, application developers new to Grafana"
+          onChange={(event) => {
+            setAudience(event.currentTarget.value);
+            setGeneratedGuide(undefined);
+          }}
+          placeholder={t(
+            'docsPanel.customizeGuideAudiencePlaceholder',
+            'For example, application developers new to Grafana'
+          )}
           disabled={isGenerating}
           rows={2}
         />
@@ -213,8 +227,14 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         <TextArea
           id="customize-guide-outcome"
           value={outcome}
-          onChange={(event) => setOutcome(event.currentTarget.value)}
-          placeholder="Describe the changes you want, or the outcome readers should reach"
+          onChange={(event) => {
+            setOutcome(event.currentTarget.value);
+            setGeneratedGuide(undefined);
+          }}
+          placeholder={t(
+            'docsPanel.customizeGuideOutcomePlaceholder',
+            'Describe the changes you want, or the outcome readers should reach'
+          )}
           disabled={isGenerating}
           rows={3}
         />
@@ -226,8 +246,14 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         <TextArea
           id="customize-guide-environment"
           value={environment}
-          onChange={(event) => setEnvironment(event.currentTarget.value)}
-          placeholder="For example, data sources, team conventions, steps to skip, or details to keep"
+          onChange={(event) => {
+            setEnvironment(event.currentTarget.value);
+            setGeneratedGuide(undefined);
+          }}
+          placeholder={t(
+            'docsPanel.customizeGuideEnvironmentPlaceholder',
+            'For example, data sources, team conventions, steps to skip, or details to keep'
+          )}
           disabled={isGenerating}
           rows={3}
         />
@@ -237,9 +263,16 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
           <div role="status" aria-live="polite">
             {phase}
           </div>
-          <progress aria-label="Assistant progress" style={{ width: '100%' }} />
+          <progress
+            aria-label={t('docsPanel.customizeGuideProgress', 'Assistant progress')}
+            style={{ width: '100%' }}
+          />
           <p>
-            {elapsed}s elapsed{received > 0 ? ` · ${received.toLocaleString()} characters received` : ''}
+            {t('docsPanel.customizeGuideElapsed', '{{seconds}}s elapsed', { seconds: elapsed })}
+            {received > 0 &&
+              t('docsPanel.customizeGuideReceived', ' · {{characters}} characters received', {
+                characters: received.toLocaleString(),
+              })}
           </p>
         </div>
       )}
@@ -257,10 +290,15 @@ export function CustomizeGuideModal({ guide, sourceUrl, onReview, onDismiss }: P
         <Button variant="secondary" onClick={dismiss}>
           {t('docsPanel.cancelCopy', 'Cancel')}
         </Button>
-        <Button disabled={!isAssistantAvailable || isGenerating || !outcome.trim()} onClick={() => void customize()}>
+        <Button
+          disabled={!isAssistantAvailable || isGenerating || !outcome.trim()}
+          onClick={() => (generatedGuide ? onReview(generatedGuide) : void customize())}
+        >
           {isGenerating
             ? t('docsPanel.customizingGuide', 'Customizing…')
-            : t('docsPanel.customizeGuideSubmit', 'Customize and open editor')}
+            : generatedGuide
+              ? t('docsPanel.customizeGuideReview', 'Review customized guide')
+              : t('docsPanel.customizeGuideSubmit', 'Customize and open editor')}
         </Button>
       </Modal.ButtonRow>
     </Modal>

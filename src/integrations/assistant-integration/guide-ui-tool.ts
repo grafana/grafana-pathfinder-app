@@ -9,7 +9,9 @@ const CODE = `${MODE} {grafana:components.RadioButton.option:code} + label`;
 const QUERY = '{grafana:components.QueryField.container}';
 
 function isStructuralSelector(selector: string): boolean {
-  const structural = selector.replace(/\{grafana:[A-Za-z0-9_.]+(?::[A-Za-z0-9_-]+)?\}/g, '');
+  const structural = selector.replace(/\{grafana:([A-Za-z0-9_.]+)(?::([A-Za-z0-9_-]+))?\}/g, (token, path, argument) =>
+    argument === undefined || (path === 'components.RadioButton.option' && argument === 'code') ? '' : token
+  );
   return /^[A-Za-z0-9_ .#>+~,*-]*$/.test(structural);
 }
 
@@ -87,7 +89,7 @@ export function createGuideUiTool(onInspect: () => void, isActive: () => boolean
     {
       name: 'inspect_pathfinder_ui',
       description:
-        'Check structural Pathfinder selectors against the visible Grafana page and get the Prometheus Code-to-Monaco insertion sequence. Use Grafana registry tokens or simple tag, ID and class selectors with combinators. Raw attribute selectors, pseudo-selectors and escapes are rejected. Read-only: never navigates, clicks, reads field values, executes queries, or saves resources. Missing or ambiguous matches are not verified.',
+        'Check structural Pathfinder selectors against the visible Grafana page and get the Prometheus Code-to-Monaco insertion sequence. Use Grafana registry tokens or simple tag, ID and class selectors with combinators. Raw attribute selectors, pseudo-selectors, escapes and registry arguments other than the fixed Code radio option are rejected. Read-only: never navigates, clicks, reads field values, executes queries, or saves resources. Missing or ambiguous matches are not verified.',
       inputSchema: {
         type: 'object',
         properties: { selectors: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 500 } } },

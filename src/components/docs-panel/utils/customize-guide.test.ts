@@ -1,4 +1,4 @@
-import type { JsonGuide } from '../../../types/json-guide.types';
+import type { JsonBlock, JsonGuide } from '../../../types/json-guide.types';
 import {
   buildGuideCustomizationPrompt,
   buildGuideRepairPrompt,
@@ -216,4 +216,37 @@ it('reports unsupported generated URLs as repairable validation errors', () => {
   const generated = { ...source, blocks: [{ type: 'markdown', content: '[Download](ftp://example.com/file.txt)' }] };
   expect(() => parseCustomizedGuide(JSON.stringify(generated), source, url)).toThrow(GuideCustomizationError);
   expect(() => parseCustomizedGuide(JSON.stringify(generated), source, url)).toThrow(/unsupported media or link URL/);
+});
+
+it.each([
+  { type: 'quiz', question: 'Which source?', choices: [{ id: 'a', text: 'Prometheus', correct: true }] },
+  { type: 'input', prompt: 'Enter a name', inputType: 'text', variableName: 'sourceName' },
+  { type: 'terminal', command: 'pwd', content: 'Check your directory' },
+  { type: 'terminal-connect', content: 'Connect to your environment' },
+  {
+    type: 'grot-guide',
+    welcome: { title: 'Choose a path', body: 'Start here', ctas: [{ text: 'Start', screenId: 'done' }] },
+    screens: [{ type: 'result', id: 'done', title: 'Next step', body: 'Explore Grafana' }],
+  },
+  { type: 'challenge', title: 'Create a dashboard', brief: 'Create a dashboard', successCriteria: 'has-dashboard' },
+] satisfies JsonBlock[])('rejects retained sections that lose a $type interaction', (block) => {
+  const original: JsonGuide = {
+    ...source,
+    blocks: [{ type: 'section', id: 'setup', title: 'Setup', blocks: [block] }],
+  };
+  const generated: JsonGuide = {
+    ...source,
+    blocks: [{ type: 'section', id: 'setup', title: 'Setup', blocks: source.blocks }],
+  };
+  expect(() => parseCustomizedGuide(JSON.stringify(generated), original, url)).toThrow(/lost its interactive steps/);
+});
+
+it('repairs newly introduced duplicate title headings', () => {
+  const generated = { ...source, title: 'Our guide', blocks: [{ type: 'markdown', content: '# Our guide' }] };
+  expect(() => parseCustomizedGuide(JSON.stringify(generated), source, url)).toThrow(/heading/i);
+});
+
+it('tolerates duplicate title headings already present in the source', () => {
+  const original: JsonGuide = { ...source, blocks: [{ type: 'markdown', content: '# Original (copy)' }] };
+  expect(parseCustomizedGuide(JSON.stringify(original), original, url)).toEqual(original);
 });
