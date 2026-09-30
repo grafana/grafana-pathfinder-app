@@ -75,15 +75,12 @@ async function renderAndResetPath(pathId: string = PATH_ID): Promise<void> {
   unmount();
 }
 
-async function renderAndResetPathGuides(pathId: string, guideIds: string[]): Promise<void> {
+async function renderAndResetPathGuides(pathId: string, guides: Array<{ id: string; url?: string }>): Promise<void> {
   const { result, unmount } = renderHook(() => useLearningPaths());
-  await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain(pathId));
-  // Unlike resetPath, resetPathGuides resolves each target's own URL through
-  // dynamicGuideData — wait for that fetch to land, or a URL-based guide's
-  // key can't be formed yet.
+  await waitFor(() => expect(result.current.paths.length).toBeGreaterThan(0));
   await waitFor(() => expect(result.current.isDynamicLoading).toBe(false));
   await act(async () => {
-    await result.current.resetPathGuides(pathId, guideIds);
+    await result.current.resetPathGuides(pathId, guides);
   });
   unmount();
 }
@@ -374,128 +371,97 @@ describe('resetPath — URL-based journey path', () => {
   });
 });
 
-// resetPathGuides is the assignment-mismatch case: local storage says a guide
-// is done but the assignment's own guide list disagrees. Unlike resetPath,
-// it must never touch a sibling guide or the path's own cover-level record.
-describe('resetPathGuides — App Platform path (no url)', () => {
-  it('clears only the targeted guide from the milestone checklist, sparing its siblings', async () => {
+describe('resetPathGuides', () => {
+  it('App Platform path clears only the targeted guides across stores and leaves the cover-level record', async () => {
     await seedCompletedCourse();
-
-    await renderAndResetPathGuides(PATH_ID, [GUIDES[0]!]);
-
-    await expect(milestoneCompletionStorage.getCompleted(PATH_KEY)).resolves.toEqual(new Set(GUIDES.slice(1)));
-  });
-
-  it('leaves the path cover-level journey completion untouched', async () => {
-    await seedCompletedCourse();
-
-    await renderAndResetPathGuides(PATH_ID, [GUIDES[0]!]);
-
-    await expect(journeyCompletionStorage.get(PATH_KEY)).resolves.toBe(100);
-  });
-
-  it('clears only the targeted guide member keys, sparing sibling guides and unrelated content', async () => {
     for (const key of [...MEMBER_KEYS, SENTINEL_KEY]) {
       await journeyCompletionStorage.set(key, 100);
       await interactiveCompletionStorage.set(key, 100);
+      await guideCompletionMarkStorage.set(key, true);
     }
+    await learningProgressStorage.update({ completedGuides: GUIDES });
+
+    await renderAndResetPathGuides(PATH_ID, [{ id: GUIDES[0]! }]);
 
     const targetKeys = [`bundled:${GUIDES[0]}`, `backend-guide:${GUIDES[0]}`];
     const siblingKeys = MEMBER_KEYS.filter((key) => !targetKeys.includes(key));
-
-    await renderAndResetPathGuides(PATH_ID, [GUIDES[0]!]);
-
+    await expect(milestoneCompletionStorage.getCompleted(PATH_KEY)).resolves.toEqual(new Set(GUIDES.slice(1)));
+    await expect(journeyCompletionStorage.get(PATH_KEY)).resolves.toBe(100);
     const [journeys, interactives] = await Promise.all([
       journeyCompletionStorage.getAll(),
       interactiveCompletionStorage.getAll(),
     ]);
-    expect(targetKeys.filter((key) => key in journeys)).toEqual([]);
-    expect(targetKeys.filter((key) => key in interactives)).toEqual([]);
+    expect(targetKeys.filter((key) => key in journeys || key in interactives)).toEqual([]);
+    for (const key of targetKeys) {
+      await expect(guideCompletionMarkStorage.get(key)).resolves.toBeNull();
+    }
     for (const key of [...siblingKeys, SENTINEL_KEY]) {
       expect(journeys[key]).toBe(100);
       expect(interactives[key]).toBe(100);
+      await expect(guideCompletionMarkStorage.get(key)).resolves.toBe(true);
     }
-  });
-
-  it('clears only the targeted guide completion mark, sparing sibling guides', async () => {
-    for (const key of MEMBER_KEYS) {
-      await guideCompletionMarkStorage.set(key, true);
-    }
-
-    await renderAndResetPathGuides(PATH_ID, [GUIDES[0]!]);
-
-    await expect(guideCompletionMarkStorage.get(`bundled:${GUIDES[0]}`)).resolves.toBeNull();
-    await expect(guideCompletionMarkStorage.get(`backend-guide:${GUIDES[0]}`)).resolves.toBeNull();
-    for (const guideId of GUIDES.slice(1)) {
-      await expect(guideCompletionMarkStorage.get(`bundled:${guideId}`)).resolves.toBe(true);
-      await expect(guideCompletionMarkStorage.get(`backend-guide:${guideId}`)).resolves.toBe(true);
-    }
-  });
-
-  it('removes only the targeted guide from completedGuides', async () => {
-    await seedCompletedCourse();
-    // completedGuides is the local-progress list resetPathGuides also has to
-    // trim — otherwise getPathProgress would still count the reset guide.
-    await learningProgressStorage.update({ completedGuides: GUIDES });
-
-    await renderAndResetPathGuides(PATH_ID, [GUIDES[0]!]);
-
     const progress = await learningProgressStorage.get();
     expect(progress.completedGuides).not.toContain(GUIDES[0]);
     expect(progress.completedGuides).toEqual(expect.arrayContaining(GUIDES.slice(1)));
   });
-});
 
-describe('resetPathGuides — URL-based journey path', () => {
-  const URL_PATH_ID = 'alerting-journey';
-  const PATH_URL = 'https://grafana.com/docs/learning-journeys/alerting/';
-  const MILESTONE_SLUGS = ['collect-logs', 'define-rules', 'route-alerts'];
-  const MILESTONE_URLS = MILESTONE_SLUGS.map((slug) => `${PATH_URL}${slug}/`);
+  describe('URL-based journey path', () => {
+    const URL_PATH_ID = 'alerting-journey';
+    const PATH_URL = 'https://grafana.com/docs/learning-journeys/alerting/';
+    const MILESTONE_SLUGS = ['collect-logs', 'define-rules', 'route-alerts'];
+    const MILESTONE_URLS = MILESTONE_SLUGS.map((slug) => `${PATH_URL}${slug}/`);
 
-  beforeEach(() => {
-    mockBundledPaths.current = [
-      {
-        id: URL_PATH_ID,
-        title: 'Alerting journey',
-        description: '',
+    it('clears only the targeted milestone and not the path base URL', async () => {
+      mockBundledPaths.current = [
+        {
+          id: URL_PATH_ID,
+          title: 'Alerting journey',
+          description: '',
+          guides: MILESTONE_SLUGS,
+          badgeId: '',
+          url: PATH_URL,
+        },
+      ];
+      mockFetchPathGuides.mockResolvedValue({
         guides: MILESTONE_SLUGS,
-        badgeId: '',
-        url: PATH_URL,
-      },
-    ];
-    // Unlike resetPath (a whole-prefix sweep), resetPathGuides needs each
-    // target's own resolved milestone URL to scope the sweep to it alone.
-    mockFetchPathGuides.mockResolvedValue({
-      guides: MILESTONE_SLUGS,
-      guideMetadata: Object.fromEntries(
-        MILESTONE_SLUGS.map((slug, i) => [slug, { title: slug, estimatedMinutes: 5, url: MILESTONE_URLS[i] }])
-      ),
+        guideMetadata: Object.fromEntries(
+          MILESTONE_SLUGS.map((slug, i) => [slug, { title: slug, estimatedMinutes: 5, url: MILESTONE_URLS[i] }])
+        ),
+      });
+      for (const slug of MILESTONE_SLUGS) {
+        await milestoneCompletionStorage.markCompleted(PATH_URL, slug);
+      }
+      for (const url of [PATH_URL, ...MILESTONE_URLS]) {
+        await interactiveCompletionStorage.set(url, 100);
+        await journeyCompletionStorage.set(url, 100);
+      }
+
+      await renderAndResetPathGuides(URL_PATH_ID, [{ id: MILESTONE_SLUGS[0]! }]);
+
+      await expect(milestoneCompletionStorage.getCompleted(PATH_URL)).resolves.toEqual(
+        new Set(MILESTONE_SLUGS.slice(1))
+      );
+      await expect(interactiveCompletionStorage.get(MILESTONE_URLS[0]!)).resolves.toBe(0);
+      await expect(journeyCompletionStorage.get(MILESTONE_URLS[0]!)).resolves.toBe(0);
+      for (const url of [PATH_URL, ...MILESTONE_URLS.slice(1)]) {
+        await expect(interactiveCompletionStorage.get(url)).resolves.toBe(100);
+        await expect(journeyCompletionStorage.get(url)).resolves.toBe(100);
+      }
     });
   });
 
-  it('clears only the targeted milestone from the checklist, sparing its siblings', async () => {
-    for (const slug of MILESTONE_SLUGS) {
-      await milestoneCompletionStorage.markCompleted(PATH_URL, slug);
-    }
-
-    await renderAndResetPathGuides(URL_PATH_ID, [MILESTONE_SLUGS[0]!]);
-
-    await expect(milestoneCompletionStorage.getCompleted(PATH_URL)).resolves.toEqual(new Set(MILESTONE_SLUGS.slice(1)));
-  });
-
-  it('clears only the targeted milestone key, sparing sibling milestones and the path base URL', async () => {
-    for (const url of [PATH_URL, ...MILESTONE_URLS]) {
-      await interactiveCompletionStorage.set(url, 100);
+  it('a target not in paths clears only the given guide URLs', async () => {
+    const urls = ['https://cdn.example/g1/content.json', 'https://cdn.example/g2/content.json'];
+    for (const url of urls) {
       await journeyCompletionStorage.set(url, 100);
+      await interactiveCompletionStorage.set(url, 100);
     }
 
-    await renderAndResetPathGuides(URL_PATH_ID, [MILESTONE_SLUGS[0]!]);
+    await renderAndResetPathGuides('online-path', [{ id: 'g1', url: urls[0] }]);
 
-    await expect(interactiveCompletionStorage.get(MILESTONE_URLS[0]!)).resolves.toBe(0);
-    await expect(journeyCompletionStorage.get(MILESTONE_URLS[0]!)).resolves.toBe(0);
-    for (const url of [PATH_URL, ...MILESTONE_URLS.slice(1)]) {
-      await expect(interactiveCompletionStorage.get(url)).resolves.toBe(100);
-      await expect(journeyCompletionStorage.get(url)).resolves.toBe(100);
-    }
+    await expect(journeyCompletionStorage.get(urls[0]!)).resolves.toBe(0);
+    await expect(interactiveCompletionStorage.get(urls[0]!)).resolves.toBe(0);
+    await expect(journeyCompletionStorage.get(urls[1]!)).resolves.toBe(100);
+    await expect(interactiveCompletionStorage.get(urls[1]!)).resolves.toBe(100);
   });
 });

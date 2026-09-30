@@ -616,7 +616,6 @@ describe('RecommendationsSection', () => {
 
 describe('suggested path assignment badges', () => {
   const assignment = (overrides: Partial<ResolvedAssignment> = {}): ResolvedAssignment => ({
-    targetType: 'path',
     targetId: 'getting-started',
     title: 'Getting started with Grafana',
     overdue: false,

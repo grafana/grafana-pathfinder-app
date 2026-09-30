@@ -1,8 +1,4 @@
-/**
- * Resolution rules for the online-catalogue assignment card (source 3),
- * exercised directly against a mocked package index — mirrors
- * assignments-core.test.ts's fixture style.
- */
+/** Resolution rules for the online-catalogue assignment card, run against a mocked package index. */
 import type { AssignmentEntry } from '../lib/assignments-client';
 import type { OnlinePackageEntry } from '../lib/package-recommendations-client';
 import type { ResolvedNavLink } from '../types/context.types';
@@ -60,56 +56,17 @@ beforeEach(() => {
 });
 
 describe('resolveOnlineAssignmentCard', () => {
-  it("translates each milestone id to its sibling entry's URL slug, matching completions by that slug", async () => {
+  it("translates each milestone id to its sibling entry's URL slug", async () => {
     const manifest = { milestones: ['postgresql-data-source-prepare', 'postgresql-data-source-end'] };
     const resolveNavLinks = jest.fn().mockResolvedValue([navLinkFor(manifest)]);
-    const entry = assignment({
-      targetId: 'postgresql-data-source-lj',
-      satisfied: true,
-      guides: [
-        { guideId: 'prepare-configuration', completed: true },
-        { guideId: 'end-journey', completed: true },
-      ],
-    });
+    const entry = assignment({ targetId: 'postgresql-data-source-lj' });
 
     const card = await resolveOnlineAssignmentCard(entry, resolveNavLinks);
 
     expect(card).toBeDefined();
     expect(card!.guides.map((g) => g.guideId)).toEqual(['prepare-configuration', 'end-journey']);
-    expect(card!.guides.every((g) => g.completed)).toBe(true);
+    expect(card!.guides.every((g) => !g.completed && !g.isCurrent)).toBe(true);
     expect(card!.path.guides).toEqual(['prepare-configuration', 'end-journey']);
-  });
-
-  it('reports a guide as incomplete when completions are keyed by the untranslated canonical id', async () => {
-    const manifest = { milestones: ['postgresql-data-source-prepare'] };
-    const resolveNavLinks = jest.fn().mockResolvedValue([navLinkFor(manifest)]);
-    // Simulates the pre-fix wire shape: guideId is the canonical id, not the
-    // real slug the milestone was actually completed under.
-    const entry = assignment({
-      targetId: 'postgresql-data-source-lj',
-      guides: [{ guideId: 'postgresql-data-source-prepare', completed: true }],
-    });
-
-    const card = await resolveOnlineAssignmentCard(entry, resolveNavLinks);
-
-    expect(card!.guides[0]!.guideId).toBe('prepare-configuration');
-    expect(card!.guides[0]!.completed).toBe(false);
-  });
-
-  it('marks the first incomplete guide current, in manifest order', async () => {
-    const manifest = { milestones: ['postgresql-data-source-prepare', 'postgresql-data-source-end'] };
-    const resolveNavLinks = jest.fn().mockResolvedValue([navLinkFor(manifest)]);
-    const entry = assignment({
-      targetId: 'postgresql-data-source-lj',
-      guides: [{ guideId: 'prepare-configuration', completed: true }],
-    });
-
-    const card = await resolveOnlineAssignmentCard(entry, resolveNavLinks);
-
-    expect(card!.guides.map((g) => ({ id: g.guideId, isCurrent: g.isCurrent }))).toEqual([
-      { id: 'prepare-configuration', isCurrent: false },
-      { id: 'end-journey', isCurrent: true },
-    ]);
   });
 
   it('falls back to the canonical id when a milestone has no sibling index entry', async () => {

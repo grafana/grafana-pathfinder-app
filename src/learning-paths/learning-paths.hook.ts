@@ -49,6 +49,7 @@ import { pathSequences } from './path-sequences';
 import { fetchPathGuides, type FetchedPathGuides } from './fetch-path-guides';
 import { fetchAppPlatformLearningPaths, type AppPlatformPathsResult } from './app-platform-paths';
 import { markGuideCompleted as coordinatorMarkGuideCompleted } from './badge-coordinator';
+import { markCurrentGuide } from './mark-current-guide';
 
 const EMPTY_APP_PLATFORM_RESULT: AppPlatformPathsResult = { paths: [], guideMetadata: Object.create(null) };
 
@@ -203,14 +204,9 @@ async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Pr
 
 /**
  * Clears every local storage namespace a milestone's own resolved content-key
- * URL may be recorded under, given explicit `{guideId, url}` pairs rather than
- * a known path. Shared by resetPathGuides' URL-based branch (which
- * additionally sweeps the legacy `milestoneCompletionStorage` under the
- * path's own base URL — this helper does not, since its other caller,
- * resetOnlinePathGuides, has no such base URL to sweep) and resetOnlinePathGuides
- * itself.
+ * URL may be recorded under. Does not sweep the legacy `milestoneCompletionStorage`.
  */
-async function clearGuideUrlContentKeys(targets: ReadonlyArray<{ guideId: string; url?: string }>): Promise<void> {
+async function clearGuideUrlContentKeys(targets: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>): Promise<void> {
   const contentKeys = targets.flatMap(({ url }) => (url ? [url] : []));
 
   await clearInteractiveProgressForContentKeys(contentKeys);
@@ -462,32 +458,24 @@ export function useLearningPaths(): UseLearningPathsReturn {
         return [];
       }
 
-      let foundCurrent = false;
+      return markCurrentGuide(
+        path.guides.map((guideId) => {
+          // Scope metadata to this path so two paths sharing a guide slug do
+          // not bleed URLs/titles across each other.
+          const metadata = resolveGuideMetadata(guideId, pathId);
 
-      return path.guides.map((guideId) => {
-        const completed = progress.completedGuides.includes(guideId);
-        const isCurrent = !completed && !foundCurrent;
-
-        if (isCurrent) {
-          foundCurrent = true;
-        }
-
-        // Scope metadata to this path so two paths sharing a guide slug do
-        // not bleed URLs/titles across each other.
-        const metadata = resolveGuideMetadata(guideId, pathId);
-
-        return {
-          id: guideId,
-          // Always the real id here (never a React-key-only fallback), so
-          // safe to forward as the click-target id too — see PathGuide's own
-          // doc comment on why the two fields exist separately.
-          guideId,
-          title: metadata.title,
-          completed,
-          isCurrent,
-          url: metadata.url,
-        };
-      });
+          return {
+            id: guideId,
+            // Always the real id here (never a React-key-only fallback), so
+            // safe to forward as the click-target id too — see PathGuide's own
+            // doc comment on why the two fields exist separately.
+            guideId,
+            title: metadata.title,
+            completed: progress.completedGuides.includes(guideId),
+            url: metadata.url,
+          };
+        })
+      );
     },
     [paths, progress.completedGuides, resolveGuideMetadata]
   );
@@ -663,37 +651,28 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [paths, loadProgress]
   );
 
-  // Reset local completion for specific guides only — the assignment-mismatch
-  // case, where local storage says a guide is done but the assignment's own
-  // guide list disagrees. Unlike resetPath, never touches the path's own
-  // cover-level record or any guide outside guideIds.
   const resetPathGuides = useCallback(
-    async (pathId: string, guideIds: string[]): Promise<void> => {
-      const path = paths.find((p) => p.id === pathId);
-      if (!path || guideIds.length === 0) {
+    async (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>): Promise<void> => {
+      if (guides.length === 0) {
         return;
       }
+      const guideIds = guides.map((guide) => guide.id);
+      const path = paths.find((p) => p.id === pathId);
 
-      if (path.url) {
-        // Each target's own resolved milestone URL, when known — the same
-        // per-guide identity resetGuideProgress.ts uses for the milestone
-        // toolbar's single-guide reset, rather than the whole-prefix sweep
-        // resetPath uses for a full-path reset.
-        const targets = guideIds.map((guideId) => ({ guideId, url: resolveGuideMetadata(guideId, pathId).url }));
+      if (path?.url) {
+        const targets = guides.map((guide) => ({
+          id: guide.id,
+          url: guide.url ?? resolveGuideMetadata(guide.id, pathId).url,
+        }));
 
         await Promise.all(
-          targets.map(({ guideId, url }) =>
-            milestoneCompletionStorage.removeCompleted(path.url!, guideId, url ? [url] : [])
-          )
+          targets.map(({ id, url }) => milestoneCompletionStorage.removeCompleted(path.url!, id, url ? [url] : []))
         );
 
         await clearGuideUrlContentKeys(targets);
-      } else {
-        // Same per-guide id schemes resetPath's else-branch reads, but the
-        // path's own id-scheme keys are treated as candidate journey bases
-        // for `guideIds` rather than cleared outright — a bundled/App
-        // Platform path can itself be the "journey" a member's milestone
-        // slug is checked off against (COMPLETION-MODEL.md decision 9).
+      } else if (path) {
+        // The path's own id-scheme keys are candidate journey bases for the
+        // members' milestone slugs (COMPLETION-MODEL.md decision 9).
         const rawPathSchemeKeys = pathMemberIdSchemeKeys(path.id);
         const { rawSchemeKeys, contentKeys } = memberKeysFor(guideIds);
 
@@ -711,6 +690,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
         await guideCompletionMarkStorage.clearMany(contentKeys);
 
         contentKeys.forEach((key) => evictContentCache(key));
+      } else {
+        await clearGuideUrlContentKeys(guides);
       }
 
       await learningProgressStorage.removeCompletedGuides(guideIds);
@@ -727,36 +708,6 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [paths, loadProgress, resolveGuideMetadata]
   );
 
-  // Same assignment-mismatch reset as resetPathGuides, for guides this hook
-  // has no path entry for at all — source-3 (online-catalogue) assignment
-  // targets, resolved by online-assignment-paths.ts rather than this hook's
-  // own `paths`. The caller already has each guide's own resolved content
-  // URL (resolveOnlineAssignmentCard stamps one on every guide), so there's
-  // no path lookup to do and no legacy `milestoneCompletionStorage` sweep —
-  // that store predates package-based paths and never held a record for one.
-  const resetOnlinePathGuides = useCallback(
-    async (pathId: string, guides: ReadonlyArray<{ guideId: string; url?: string }>): Promise<void> => {
-      if (guides.length === 0) {
-        return;
-      }
-
-      await clearGuideUrlContentKeys(guides.map(({ guideId, url }) => ({ guideId, url })));
-
-      const guideIds = guides.map((g) => g.guideId);
-      await learningProgressStorage.removeCompletedGuides(guideIds);
-      invalidateEmittedCompletionsForPathMembers(guideIds);
-
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
-          detail: { contentKey: '*', pathId },
-        })
-      );
-
-      await loadProgress({ current: true });
-    },
-    [loadProgress]
-  );
-
   return {
     paths,
     allBadges: BADGES,
@@ -769,7 +720,6 @@ export function useLearningPaths(): UseLearningPathsReturn {
     markGuideCompleted,
     resetPath,
     resetPathGuides,
-    resetOnlinePathGuides,
     dismissCelebration,
     streakInfo,
     isLoading,

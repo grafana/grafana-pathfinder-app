@@ -1,8 +1,7 @@
 /**
- * Fetches the caller's assignments once on mount. Namespace-gated and
- * best-effort empty on failure, the same shape as usePublishedGuides.
- *
- * Resolution lives in assignments-core.ts. Returns `notDone` and `completed`.
+ * Fetches the caller's assignments on mount and after each published
+ * completion, and owns the path state derived from them. Best-effort empty
+ * on failure.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { config } from '@grafana/runtime';
@@ -11,56 +10,39 @@ import { onCompletionPublished } from '../completion-records/completion-write-ho
 import { fetchMyAssignments, type AssignmentEntry } from '../lib/assignments-client';
 import { recordAssignmentTargetsUnresolved } from '../lib/telemetry/facade';
 import { logger } from '../lib/logging';
-import type { LearningPath, PathGuide } from '../types/learning-paths.types';
-import {
-  compareResolvedAssignments,
-  PATH_ASSIGNMENT_TARGET,
-  resolveAssignments,
-  type ResolvedAssignment,
-} from './assignments-core';
+import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
+import { compareResolvedAssignments, PATH_ASSIGNMENT_TARGET, resolveAssignments } from './assignments-core';
+import { markCurrentGuide } from './mark-current-guide';
 import {
   resolveOnlineAssignmentCard,
   type OnlineAssignmentCard,
   type PackageNavLinkResolver,
 } from './online-assignment-paths';
 
-export { daysUntilDue, compareDueAt, type ResolvedAssignment } from './assignments-core';
-
 interface UseMyAssignmentsOptions {
   /** The caller's learning-paths catalogue — resolution drops targets not found here. */
   paths: readonly LearningPath[];
   getPathProgress: (pathId: string) => number;
-  /** Resolves a target not in `paths` against the online catalogue (source 3) — see online-assignment-paths.ts for why this is injected. */
+  getPathGuides: (pathId: string) => PathGuide[];
+  completedGuides: readonly string[];
   resolveNavLinks: PackageNavLinkResolver;
-}
-
-/** A path/guides bundle for an assignment resolved via the online catalogue (source 3), not `paths`. */
-export interface OnlineAssignmentPath {
-  path: LearningPath;
-  guides: PathGuide[];
 }
 
 interface UseMyAssignmentsResult {
   /** Every resolved assignment, satisfied or not — sorted most-urgent-first. */
   items: ResolvedAssignment[];
   notDone: ResolvedAssignment[];
-  completed: ResolvedAssignment[];
-  /**
-   * Path/guides for assignments resolved via the online catalogue rather
-   * than `paths` — keyed by targetId, since `getPathGuides`/`getPathProgress`
-   * have no idea these exist. Empty until the async resolve settles.
-   */
-  onlinePaths: Map<string, OnlineAssignmentPath>;
-  isLoading: boolean;
-  hasLoaded: boolean;
-  refresh: () => Promise<void>;
+  /** First-wins over `items`, so the most urgent duplicate governs. */
+  assignmentByTargetId: Map<string, ResolvedAssignment>;
+  /** Paths for online-catalogue targets, absent from `paths`. */
+  onlinePaths: LearningPath[];
+  /** Online targets get local completion overlaid; everything else defers to the passed-in getter. */
+  getPathGuides: (pathId: string) => PathGuide[];
 }
 
 export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignmentsResult {
-  const { paths, getPathProgress, resolveNavLinks } = options;
+  const { paths, getPathProgress, getPathGuides, completedGuides, resolveNavLinks } = options;
   const [rawAssignments, setRawAssignments] = useState<AssignmentEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasLoaded, setHasLoaded] = useState(false);
   const namespace = config.namespace;
   const isMountedRef = useRef(true);
 
@@ -68,25 +50,13 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     if (!namespace) {
       if (isMountedRef.current) {
         setRawAssignments([]);
-        setHasLoaded(true);
       }
       return;
     }
 
+    const fetched = await fetchMyAssignments(namespace);
     if (isMountedRef.current) {
-      setIsLoading(true);
-    }
-
-    try {
-      const fetched = await fetchMyAssignments(namespace);
-      if (isMountedRef.current) {
-        setRawAssignments(fetched);
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-        setHasLoaded(true);
-      }
+      setRawAssignments(fetched);
     }
   }, [namespace]);
 
@@ -115,12 +85,8 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   );
   const unresolvedKey = resolved.unresolvedTargetIds.join('\n');
 
-  // Source 3: paths' unresolvedTargetIds tried the bundled/App Platform
-  // catalogue and came up empty — resolved separately, on demand, against
-  // the online catalogue (assignment_satisfaction.go's assignmentGuides does
-  // the same three-tier fallback server-side). §12.13 left hide-vs-error
-  // open. Hiding stays; only what's still unresolved after this tier warns —
-  // targetIds stay off the warn itself, that context bridges to Faro.
+  // Targets missing from `paths` are retried against the online catalogue; only
+  // those still unresolved warn, and targetIds stay off the warn (they bridge to Faro).
   const [onlineCards, setOnlineCards] = useState<OnlineAssignmentCard[]>([]);
   useEffect(() => {
     const unresolvedIds = unresolvedKey ? unresolvedKey.split('\n') : [];
@@ -154,13 +120,23 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   }, [unresolvedKey, rawAssignments, resolveNavLinks]);
 
   const onlinePaths = useMemo(() => {
-    const map = new Map<string, OnlineAssignmentPath>();
+    const byId = new Map<string, OnlineAssignmentCard['path']>();
     for (const card of onlineCards) {
-      if (!map.has(card.path.id)) {
-        map.set(card.path.id, { path: card.path, guides: card.guides });
+      if (!byId.has(card.path.id)) {
+        byId.set(card.path.id, card.path);
       }
     }
-    return map;
+    return [...byId.values()];
+  }, [onlineCards]);
+
+  const onlineGuidesById = useMemo(() => {
+    const byId = new Map<string, PathGuide[]>();
+    for (const card of onlineCards) {
+      if (!byId.has(card.path.id)) {
+        byId.set(card.path.id, card.guides);
+      }
+    }
+    return byId;
   }, [onlineCards]);
 
   const items = useMemo(
@@ -168,9 +144,30 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     [resolved.items, onlineCards]
   );
 
-  // items is already sorted; filtering preserves that order.
   const notDone = useMemo(() => items.filter((a) => !a.satisfied), [items]);
-  const completed = useMemo(() => items.filter((a) => a.satisfied), [items]);
 
-  return { items, notDone, completed, onlinePaths, isLoading, hasLoaded, refresh };
+  const assignmentByTargetId = useMemo(() => {
+    const map = new Map<string, ResolvedAssignment>();
+    for (const assignment of items) {
+      if (!map.has(assignment.targetId)) {
+        map.set(assignment.targetId, assignment);
+      }
+    }
+    return map;
+  }, [items]);
+
+  // Wire completion can drift from local storage; overlaying local completion keeps the
+  // card's mismatch detection meaningful.
+  const getPathGuidesWithOnline = useCallback(
+    (pathId: string): PathGuide[] => {
+      const online = onlineGuidesById.get(pathId);
+      if (!online) {
+        return getPathGuides(pathId);
+      }
+      return markCurrentGuide(online.map((guide) => ({ ...guide, completed: completedGuides.includes(guide.id) })));
+    },
+    [onlineGuidesById, getPathGuides, completedGuides]
+  );
+
+  return { items, notDone, assignmentByTargetId, onlinePaths, getPathGuides: getPathGuidesWithOnline };
 }

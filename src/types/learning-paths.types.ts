@@ -5,6 +5,8 @@
  * progress tracking, and badges.
  */
 
+import type { AssignmentEntryWire } from './backend-api.schema';
+
 // ============================================================================
 // LEARNING PATH TYPES
 // ============================================================================
@@ -175,6 +177,20 @@ export const DEFAULT_LEARNING_PROGRESS: LearningProgress = {
 // COMPONENT PROP TYPES
 // ============================================================================
 
+/** One assignment resolved against a catalogue path. `progress` is guide-completion-derived when `guides` is present, local path progress otherwise. */
+export interface ResolvedAssignment {
+  targetId: string;
+  title: string;
+  assignedBy?: string;
+  dueAt?: string;
+  /** True when `dueAt` is in the past and the obligation isn't satisfied. */
+  overdue: boolean;
+  /** Wire `satisfied` from GET /assignments/my. */
+  satisfied: boolean;
+  guides?: AssignmentEntryWire['guides'];
+  progress: number;
+}
+
 /**
  * Props for the LearningPathCard component
  */
@@ -196,19 +212,13 @@ export interface LearningPathCardProps {
    * an assignment whose own guide list disagrees with local storage
    * (optional — only meaningful when `assignment` is present).
    */
-  onResetGuides?: (pathId: string, guideIds: string[]) => Promise<void>;
+  onResetGuides?: (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>) => Promise<void>;
   /** A launch from THIS card is being prepared (fetch + classify) */
   isLaunching?: boolean;
   /** Any launch is in flight — continue is disabled so clicks aren't silently dropped */
   launchDisabled?: boolean;
   /** Outstanding assignment for this path, if any. */
-  assignmentDetails?: {
-    assignedBy?: string;
-    dueAt?: string;
-    overdue: boolean;
-    /** Per-guide completion behind the assignment's own progress, when the server resolved one. */
-    guides?: Array<{ guideId: string; completed: boolean }>;
-  };
+  assignment?: ResolvedAssignment;
 }
 
 /**
@@ -291,18 +301,8 @@ export interface UseLearningPathsReturn {
   markGuideCompleted: (guideId: string) => Promise<void>;
   /** Reset a path's progress (clears guides, interactive steps, keeps badges) */
   resetPath: (pathId: string) => Promise<void>;
-  /**
-   * Reset local completion for a subset of a path's guides — unlike
-   * `resetPath`, never touches the path's own cover-level record or any
-   * guide outside `guideIds`.
-   */
-  resetPathGuides: (pathId: string, guideIds: string[]) => Promise<void>;
-  /**
-   * Same reset as `resetPathGuides`, for guides with no entry in `paths` at
-   * all — online-catalogue (source 3) assignment targets, which carry their
-   * own resolved content URL rather than one this hook can look up.
-   */
-  resetOnlinePathGuides: (pathId: string, guides: ReadonlyArray<{ guideId: string; url?: string }>) => Promise<void>;
+  /** Clears local completion for the given guides only; never touches the path's cover-level record. */
+  resetPathGuides: (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>) => Promise<void>;
   /** Dismiss a pending celebration */
   dismissCelebration: (badgeId: string) => Promise<void>;
   /** Current streak display info */

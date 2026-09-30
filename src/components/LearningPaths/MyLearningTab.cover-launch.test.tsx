@@ -52,17 +52,16 @@ jest.mock('../../learning-paths', () => ({
     streakInfo: { days: 0 },
     isLoading: false,
   }),
-  useMyAssignments: () => ({
+  useMyAssignments: ({ getPathGuides }: { getPathGuides: unknown }) => ({
     items: [],
     notDone: [],
-    completed: [],
-    onlinePaths: new Map(),
-    isLoading: false,
-    hasLoaded: true,
-    refresh: jest.fn(),
+    assignmentByTargetId: new Map(),
+    onlinePaths: [],
+    getPathGuides,
   }),
-  daysUntilDue: jest.requireActual('../../learning-paths/useMyAssignments').daysUntilDue,
-  compareDueAt: jest.requireActual('../../learning-paths/assignments-core').compareDueAt,
+  daysUntilDue: jest.requireActual('../../learning-paths/assignments-core').daysUntilDue,
+  compareResolvedAssignments: jest.requireActual('../../learning-paths/assignments-core').compareResolvedAssignments,
+  markCurrentGuide: jest.requireActual('../../learning-paths/mark-current-guide').markCurrentGuide,
 }));
 
 jest.mock('../SkeletonLoader', () => ({ SkeletonLoader: () => null }));

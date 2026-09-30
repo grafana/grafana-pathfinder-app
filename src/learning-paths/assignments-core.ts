@@ -3,32 +3,10 @@
  * useMyAssignments.ts owns the fetch. Satisfaction is the wire boolean.
  */
 import type { AssignmentEntry } from '../lib/assignments-client';
-import type { LearningPath } from '../types/learning-paths.types';
+import type { LearningPath, ResolvedAssignment } from '../types/learning-paths.types';
 
 /** The only target type this destination resolves into a path card. */
 export const PATH_ASSIGNMENT_TARGET = 'path';
-
-export interface ResolvedAssignment {
-  targetType: string;
-  targetId: string;
-  title: string;
-  trackLabel?: string;
-  assignedBy?: string;
-  dueAt?: string;
-  /** True when `dueAt` is in the past and the obligation isn't satisfied. */
-  overdue: boolean;
-  /** Wire `satisfied` from GET /assignments/my. */
-  satisfied: boolean;
-  /**
-   * Per-guide completion behind `satisfied`, wire `guides` from GET
-   * /assignments/my. Absent when the target couldn't be resolved server-side
-   * (guide target, unresolved path) — `progress` falls back to local in
-   * that case, same as before this field existed.
-   */
-  guides?: AssignmentEntry['guides'];
-  /** Guide-completion-derived when `guides` is present; local path progress otherwise. */
-  progress: number;
-}
 
 export interface ResolvedAssignments {
   items: ResolvedAssignment[];
@@ -36,9 +14,9 @@ export interface ResolvedAssignments {
   unresolvedTargetIds: string[];
 }
 
-/** Kebab/snake-case id -> Title Case, mirroring learning-paths.hook.ts's formatLegacyBadgeTitle. */
-export function formatTrackLabel(trackId: string): string {
-  return trackId
+/** Kebab/snake-case id -> Title Case. */
+export function formatTrackLabel(id: string): string {
+  return id
     .split(/[-_]/)
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -95,9 +73,7 @@ export function daysUntilDue(dueAt: string, now: number = Date.now(), timeZone?:
 // precision, so lexical comparison can misorder them (e.g. `+02:00` vs `Z`).
 // Compare the parsed instants instead; an unparseable value sorts after every
 // parseable one, and two unparseable values fall back to `localeCompare` as a
-// tiebreak rather than reporting them equal. Exported so every place that
-// orders by dueAt shares this one comparison instead of each writing its own
-// (MyCoursesSection.tsx's course-card ordering is the other consumer).
+// tiebreak rather than reporting them equal.
 export function compareDueAt(a: string, b: string): number {
   const aMs = Date.parse(a);
   const bMs = Date.parse(b);
@@ -127,8 +103,7 @@ export function isOverdue(dueAt: string | undefined, satisfied: boolean, now: nu
  * Progress against the assignment's own target guides (completion records),
  * not the whole path's local progress — local progress can include guides
  * outside the assignment's track, or drift from what's actually on record.
- * Falls back to local progress when the wire didn't resolve a guide list
- * (guide target, unresolved path) — same behavior as before `guides` existed.
+ * Falls back to local progress when the wire didn't resolve a guide list.
  */
 export function assignmentProgress(guides: AssignmentEntry['guides'], localProgress: number): number {
   if (!guides || guides.length === 0) {
@@ -138,14 +113,7 @@ export function assignmentProgress(guides: AssignmentEntry['guides'], localProgr
   return Math.round((100 * completed) / guides.length);
 }
 
-/**
- * Builds one row from a raw assignment plus its already-resolved title and
- * progress — the part of resolution that's identical regardless of which
- * catalogue source resolved the target. `resolveAssignments` below uses this
- * for sources 1/2 (paths, matched synchronously); the online-catalogue
- * adapter (source 3, resolved on demand) uses it too, so a target found late
- * still gets the exact same due/overdue/label treatment as one found here.
- */
+/** Builds one row from a raw assignment plus its resolved title and progress, shared by every catalogue source. */
 export function buildResolvedAssignment(
   assignment: AssignmentEntry,
   title: string,
@@ -155,10 +123,8 @@ export function buildResolvedAssignment(
 ): ResolvedAssignment {
   const satisfied = assignment.satisfied;
   return {
-    targetType: assignment.targetType,
     targetId: assignment.targetId,
     title,
-    trackLabel: assignment.trackId ? formatTrackLabel(assignment.trackId) : undefined,
     assignedBy: assignment.assignedBy ? formatTrackLabel(assignment.assignedBy) : undefined,
     dueAt: assignment.dueAt,
     overdue: isOverdue(assignment.dueAt, satisfied, now, timeZone),
@@ -168,10 +134,7 @@ export function buildResolvedAssignment(
   };
 }
 
-// Overdue first, then soonest due date, then no-due-date, satisfied last
-// within each group — the point is to surface what needs attention. Shared
-// by resolveAssignments and the online-catalogue tier's merge, so combining
-// both sources' rows into one list sorts them identically to either alone.
+// Unsatisfied first, then overdue, then soonest due date, then no-due-date.
 export function compareResolvedAssignments(a: ResolvedAssignment, b: ResolvedAssignment): number {
   if (a.satisfied !== b.satisfied) {
     return a.satisfied ? 1 : -1;

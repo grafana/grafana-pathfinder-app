@@ -26,9 +26,7 @@ jest.mock('../lib/telemetry/facade', () => ({
   recordAssignmentTargetsUnresolved: jest.fn(),
 }));
 
-// Source 3 (online catalogue): empty by default, so an unresolved target
-// stays unresolved here the same way it did before source 3 existed —
-// individual tests override this to exercise the online-resolved path.
+// Empty by default so an unresolved target stays unresolved; tests override it for the online path.
 const mockFetchOnlinePackageRecommendations = jest.fn();
 jest.mock('../lib/package-recommendations-client', () => ({
   fetchOnlinePackageRecommendations: () => mockFetchOnlinePackageRecommendations(),
@@ -54,8 +52,15 @@ function assignment(overrides: Partial<AssignmentEntry> & { targetId: string }):
   return { targetType: 'path', satisfied: false, lifecycle: 'active', ...overrides };
 }
 
-const noProgress = () => 0;
 const mockResolveNavLinks = jest.fn();
+const noProgress = () => 0;
+const noGuides = () => [];
+const baseOptions = {
+  getPathProgress: noProgress,
+  getPathGuides: noGuides,
+  completedGuides: [] as string[],
+  resolveNavLinks: mockResolveNavLinks,
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -68,14 +73,11 @@ describe('useMyAssignments', () => {
   it('reports empty and does not fetch when no namespace is available', async () => {
     mockNamespace = undefined;
 
-    const { result } = renderHook(() =>
-      useMyAssignments({ paths: [], getPathProgress: noProgress, resolveNavLinks: mockResolveNavLinks })
-    );
+    const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
 
-    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+    await waitFor(() => expect(result.current.items).toEqual([]));
 
     expect(result.current.notDone).toEqual([]);
-    expect(result.current.completed).toEqual([]);
     expect(mockFetchMyAssignments).not.toHaveBeenCalled();
     expect(logger.warn).not.toHaveBeenCalled();
   });
@@ -85,21 +87,16 @@ describe('useMyAssignments', () => {
 
     const { result } = renderHook(() =>
       useMyAssignments({
+        ...baseOptions,
         paths: [path({ id: 'fundamentals', title: 'Grafana Fundamentals' })],
-        getPathProgress: noProgress,
-        resolveNavLinks: mockResolveNavLinks,
       })
     );
 
-    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
 
     expect(mockFetchMyAssignments).toHaveBeenCalledWith('stacks-123');
     expect(result.current.notDone.map((item) => item.title)).toEqual(['Grafana Fundamentals']);
-    // `items` is the unfiltered set notDone/completed are both derived from —
-    // callers that need to key off targetId regardless of satisfaction (e.g.
-    // deciding where else, outside notDone/completed, an assignment matters)
-    // use this instead of reassembling it from the two filtered lists.
-    expect(result.current.items).toHaveLength(1);
+    expect(result.current.assignmentByTargetId.get('fundamentals')?.title).toBe('Grafana Fundamentals');
     expect(logger.warn).not.toHaveBeenCalled();
     expect(mockReportUnresolvedAssignmentTargets).not.toHaveBeenCalled();
   });
@@ -109,13 +106,11 @@ describe('useMyAssignments', () => {
 
     const { result } = renderHook(() =>
       useMyAssignments({
+        ...baseOptions,
         paths: [path({ id: 'real-path', title: 'Real Path' })],
-        getPathProgress: noProgress,
-        resolveNavLinks: mockResolveNavLinks,
       })
     );
 
-    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
     await waitFor(() => expect(logger.warn).toHaveBeenCalled());
 
     expect(result.current.notDone).toEqual([]);
@@ -126,5 +121,29 @@ describe('useMyAssignments', () => {
     expect(logger.debug).toHaveBeenCalledWith('[assignments] unresolvable target', { targetIds: 'ghost-path' });
     expect(JSON.stringify((logger.warn as jest.Mock).mock.calls)).not.toContain('ghost-path');
     expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledWith(1);
+  });
+
+  it("reflects local completion in an online target's guides", async () => {
+    mockFetchMyAssignments.mockResolvedValue([assignment({ targetId: 'online-path' })]);
+    mockFetchOnlinePackageRecommendations.mockResolvedValue({
+      baseUrl: 'https://cdn.example/',
+      packages: [
+        { id: 'online-path', type: 'path', title: 'Online path', path: 'online-path' },
+        { id: 'g1', type: 'guide', title: 'Guide one', path: 'g1' },
+        { id: 'g2', type: 'guide', title: 'Guide two', path: 'g2' },
+      ],
+    });
+    mockResolveNavLinks.mockResolvedValue([
+      { title: 'Online path', manifest: { id: 'online-path', type: 'path', milestones: ['g1', 'g2'] } },
+    ]);
+
+    const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [], completedGuides: ['g1'] }));
+
+    await waitFor(() => expect(result.current.onlinePaths).toHaveLength(1));
+
+    expect(result.current.getPathGuides('online-path').map((g) => [g.id, g.completed, g.isCurrent])).toEqual([
+      ['g1', true, false],
+      ['g2', false, true],
+    ]);
   });
 });

@@ -4,8 +4,8 @@
  * satisfaction boolean, overdue, and sort order.
  */
 import type { AssignmentEntry } from '../lib/assignments-client';
-import type { LearningPath } from '../types/learning-paths.types';
-import { daysUntilDue, resolveAssignments, type ResolvedAssignment } from './assignments-core';
+import type { LearningPath, ResolvedAssignment } from '../types/learning-paths.types';
+import { daysUntilDue, resolveAssignments } from './assignments-core';
 
 function path(overrides: Partial<LearningPath> & { id: string; title: string }): LearningPath {
   return { description: '', guides: [], badgeId: '', ...overrides };
@@ -61,7 +61,6 @@ describe('resolveAssignments', () => {
     });
 
     expect(result.notDone.map((item) => item.targetId)).toEqual(['fundamentals']);
-    expect(result.notDone[0]!.targetType).toBe('path');
     expect(result.unresolvedTargetIds).toEqual([]);
   });
 
@@ -76,32 +75,13 @@ describe('resolveAssignments', () => {
     expect(result.unresolvedTargetIds).toEqual([]);
   });
 
-  it('formats assignedBy the same way as a track label', () => {
+  it('formats assignedBy into a display label', () => {
     const result = resolve({
       entries: [assignment({ targetId: 'fundamentals', assignedBy: 'l-and-d' })],
       paths: [path({ id: 'fundamentals', title: 'Grafana Fundamentals' })],
     });
 
     expect(result.notDone[0]!.assignedBy).toBe('L And D');
-  });
-
-  it('formats a kebab-case trackId into a display label without altering targetId', () => {
-    const result = resolve({
-      entries: [assignment({ targetId: 'fundamentals', trackId: 'seller-track' })],
-      paths: [path({ id: 'fundamentals', title: 'Grafana Fundamentals' })],
-    });
-
-    expect(result.notDone[0]!.trackLabel).toBe('Seller Track');
-    expect(result.notDone[0]!.targetId).toBe('fundamentals');
-  });
-
-  it('formats a snake_case trackId into a display label', () => {
-    const result = resolve({
-      entries: [assignment({ targetId: 'fundamentals', trackId: 'seller_track' })],
-      paths: [path({ id: 'fundamentals', title: 'Grafana Fundamentals' })],
-    });
-
-    expect(result.notDone[0]!.trackLabel).toBe('Seller Track');
   });
 
   it('puts a wire-satisfied assignment in completed, not notDone', () => {
@@ -157,44 +137,22 @@ describe('resolveAssignments', () => {
     expect(result.notDone[0]!.dueAt).toBe('2026-12-31T00:00:00Z');
   });
 
-  it('flags overdue when dueAt is in the past and not satisfied', () => {
+  const todayDueAt = (now: Date) =>
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T00:00:00Z`;
+
+  it.each([
+    ['is in the past and not satisfied', '2026-01-01T00:00:00Z', false, true],
+    ['is in the past but satisfied', '2026-01-01T00:00:00Z', true, false],
+    ['is the due calendar day for a midnight-UTC timestamp', todayDueAt(new Date()), false, false],
+    ['is in the future', '2026-12-01T00:00:00Z', false, false],
+  ])('overdue when dueAt %s', (_label, dueAt, satisfied, expected) => {
     const result = resolve({
-      entries: [assignment({ targetId: 'p1', dueAt: '2026-01-01T00:00:00Z' })],
+      entries: [assignment({ targetId: 'p1', dueAt, satisfied })],
       paths: [path({ id: 'p1', title: 'P1' })],
+      now: dueAt === todayDueAt(new Date()) ? Date.now() : NOW,
     });
 
-    expect(result.notDone[0]!.overdue).toBe(true);
-  });
-
-  it('does not flag overdue when satisfied, even past due', () => {
-    const result = resolve({
-      entries: [assignment({ targetId: 'p1', dueAt: '2026-01-01T00:00:00Z', satisfied: true })],
-      paths: [path({ id: 'p1', title: 'P1' })],
-    });
-
-    expect(result.completed[0]!.overdue).toBe(false);
-  });
-
-  it('does not flag overdue on the due calendar day for a midnight-UTC timestamp', () => {
-    const now = new Date();
-    const dueAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T00:00:00Z`;
-
-    const result = resolve({
-      entries: [assignment({ targetId: 'p1', dueAt })],
-      paths: [path({ id: 'p1', title: 'P1' })],
-      now: now.getTime(),
-    });
-
-    expect(result.notDone[0]!.overdue).toBe(false);
-  });
-
-  it('does not flag overdue when dueAt is in the future', () => {
-    const result = resolve({
-      entries: [assignment({ targetId: 'p1', dueAt: '2026-12-01T00:00:00Z' })],
-      paths: [path({ id: 'p1', title: 'P1' })],
-    });
-
-    expect(result.notDone[0]!.overdue).toBe(false);
+    expect([...result.notDone, ...result.completed][0]!.overdue).toBe(expected);
   });
 
   it('sorts notDone overdue first, then soonest due date, then no-due-date', () => {

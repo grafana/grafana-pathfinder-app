@@ -60,4 +60,7 @@ registerGuideCompletionBridge({
   findPathByUrl: findPathByUrlImpl,
 });
 // Path Assignments
-export { useMyAssignments, daysUntilDue, compareDueAt, type ResolvedAssignment } from './useMyAssignments';
+export { useMyAssignments } from './useMyAssignments';
+export { daysUntilDue, compareDueAt, compareResolvedAssignments } from './assignments-core';
+export type { ResolvedAssignment } from '../types/learning-paths.types';
+export { markCurrentGuide } from './mark-current-guide';
