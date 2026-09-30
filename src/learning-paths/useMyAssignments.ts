@@ -11,7 +11,12 @@ import { fetchMyAssignments, type AssignmentEntry } from '../lib/assignments-cli
 import { recordAssignmentTargetsUnresolved } from '../lib/telemetry/facade';
 import { logger } from '../lib/logging';
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
-import { compareResolvedAssignments, PATH_ASSIGNMENT_TARGET, resolveAssignments } from './assignments-core';
+import {
+  compareResolvedAssignments,
+  findAssignedTrack,
+  PATH_ASSIGNMENT_TARGET,
+  resolveAssignments,
+} from './assignments-core';
 import { markCurrentGuide } from './mark-current-guide';
 import {
   resolveOnlineAssignmentCard,
@@ -129,11 +134,11 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     return [...byId.values()];
   }, [onlineCards]);
 
-  const onlineGuidesById = useMemo(() => {
-    const byId = new Map<string, PathGuide[]>();
+  const onlineCardsById = useMemo(() => {
+    const byId = new Map<string, OnlineAssignmentCard>();
     for (const card of onlineCards) {
       if (!byId.has(card.path.id)) {
-        byId.set(card.path.id, card.guides);
+        byId.set(card.path.id, card);
       }
     }
     return byId;
@@ -156,17 +161,26 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     return map;
   }, [items]);
 
+  const pathsById = useMemo(() => new Map(paths.map((path) => [path.id, path])), [paths]);
+
   // Wire completion can drift from local storage; overlaying local completion keeps the
   // card's mismatch detection meaningful.
   const getPathGuidesWithOnline = useCallback(
     (pathId: string): PathGuide[] => {
-      const online = onlineGuidesById.get(pathId);
-      if (!online) {
-        return getPathGuides(pathId);
+      const onlineCard = onlineCardsById.get(pathId);
+      const baseGuides = onlineCard
+        ? onlineCard.guides.map((guide) => ({ ...guide, completed: completedGuides.includes(guide.id) }))
+        : getPathGuides(pathId);
+      const trackId = assignmentByTargetId.get(pathId)?.trackId;
+      const path = pathsById.get(pathId);
+      const trackGuideIds = onlineCard?.trackGuideIds ?? (path && findAssignedTrack(path, trackId))?.guides;
+      if (!trackGuideIds) {
+        return onlineCard ? markCurrentGuide(baseGuides) : baseGuides;
       }
-      return markCurrentGuide(online.map((guide) => ({ ...guide, completed: completedGuides.includes(guide.id) })));
+      const guideById = new Map(baseGuides.map((guide) => [guide.id, guide]));
+      return markCurrentGuide(trackGuideIds.flatMap((guideId) => guideById.get(guideId) ?? []));
     },
-    [onlineGuidesById, getPathGuides, completedGuides]
+    [onlineCardsById, getPathGuides, completedGuides, pathsById, assignmentByTargetId]
   );
 
   return { items, notDone, assignmentByTargetId, onlinePaths, getPathGuides: getPathGuidesWithOnline };

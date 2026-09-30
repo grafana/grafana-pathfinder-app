@@ -181,6 +181,9 @@ export const DEFAULT_LEARNING_PROGRESS: LearningProgress = {
 export interface ResolvedAssignment {
   targetId: string;
   title: string;
+  /** The manifest track this assignment targets; unset for a Foundations assignment or a track the manifest does not declare. */
+  trackId?: string;
+  trackLabel?: string;
   assignedBy?: string;
   dueAt?: string;
   /** True when `dueAt` is in the past and the obligation isn't satisfied. */

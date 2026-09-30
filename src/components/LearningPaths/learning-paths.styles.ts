@@ -394,6 +394,10 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
     }),
+    trackHighlight: css({
+      color: theme.colors.text.primary,
+      fontWeight: theme.typography.fontWeightMedium,
+    }),
     description: css({
       margin: 0,
       padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1)}`,

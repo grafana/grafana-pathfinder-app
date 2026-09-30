@@ -113,6 +113,8 @@ type MockAssignment = {
   targetType: string;
   targetId: string;
   title: string;
+  trackId?: string;
+  trackLabel?: string;
   assignedBy?: string;
   dueAt?: string;
   overdue: boolean;
@@ -536,6 +538,60 @@ describe('MyLearningTab launch flow', () => {
     expect(screen.getByTestId(testIds.learningPaths.badgesSection)).toBeInTheDocument();
     expect(screen.getByTestId(testIds.learningPaths.discoverMoreSection)).toBeInTheDocument();
     expect(screen.getByTestId(testIds.learningPaths.completedSection)).toBeInTheDocument();
+  });
+
+  it('shows the assigned track, counts guides over it, and launches the cover on that track', async () => {
+    mockPaths = [
+      {
+        id: 'path-track',
+        title: 'Track path',
+        guides: ['g-foundation', 'g-ops-1', 'g-ops-2'],
+        manifest: { type: 'path', milestones: ['g-foundation'] },
+      },
+    ];
+    mockGetPathGuides.mockImplementation((id: string) =>
+      id === 'path-track'
+        ? [
+            { id: 'g-ops-1', title: 'Ops one', completed: true, isCurrent: false },
+            { id: 'g-ops-2', title: 'Ops two', completed: false, isCurrent: true },
+          ]
+        : []
+    );
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-track',
+        title: 'Track path',
+        trackId: 'ops',
+        trackLabel: 'Ops engineers',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+        guides: [
+          { guideId: 'g-ops-1', completed: true },
+          { guideId: 'g-ops-2', completed: false },
+        ],
+      },
+    ];
+    resolvePackageNavLinksMock.mockResolvedValue([
+      { packageId: 'path-track', title: 'Track path', contentUrl: 'backend-guide:path-track' },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const card = screen.getByTestId(testIds.learningPaths.card('path-track'));
+    expect(card).toHaveTextContent('1/2 guides');
+    expect(card.querySelector('.expandable')).toHaveTextContent('Track Ops engineers');
+
+    fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-track')));
+
+    await waitFor(() =>
+      expect(prepareMock).toHaveBeenCalledWith(
+        'backend-guide:path-track',
+        expect.objectContaining({ packageInfo: expect.objectContaining({ packageId: 'path-track', trackId: 'ops' }) })
+      )
+    );
   });
 
   it('puts the due badge on the header meta and assigned-by in the expanded details', () => {

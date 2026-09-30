@@ -11,12 +11,14 @@ import { getManifestMemberIds } from '../types/package.types';
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
 import type { ResolvedNavLink } from '../types/context.types';
 import type { AssignmentEntry } from '../lib/assignments-client';
-import { assignmentProgress, buildResolvedAssignment } from './assignments-core';
+import { assignmentProgress, buildResolvedAssignment, findAssignedTrack } from './assignments-core';
 
 export interface OnlineAssignmentCard {
   resolved: ResolvedAssignment;
   path: LearningPath;
   guides: PathGuide[];
+  /** The assigned track's guide ids, slug-translated like `guides`, in track order; unset without a track. */
+  trackGuideIds?: string[];
 }
 
 /** Resolves bare package ids into nav-link metadata via the composite package resolver. */
@@ -53,7 +55,8 @@ export async function resolveOnlineAssignmentCard(
 
   // Milestone completion is keyed by the page's URL slug, not the canonical manifest id.
   // Mirrors resolveMilestoneGuideID in the backend.
-  const guideIds = manifestMembers.map((member) => getMilestoneSlug(member.path) || member.id);
+  const toGuideId = (member: (typeof manifestMembers)[number]) => getMilestoneSlug(member.path) || member.id;
+  const guideIds = manifestMembers.map(toGuideId);
 
   const guides: PathGuide[] = manifestMembers.map((member, index) => {
     const guideId = guideIds[index]!;
@@ -80,7 +83,13 @@ export async function resolveOnlineAssignmentCard(
   };
 
   const progress = assignmentProgress(assignment.guides, 0);
-  const resolved = buildResolvedAssignment(assignment, path.title, progress, now, timeZone);
+  const resolved = buildResolvedAssignment(assignment, path, progress, now, timeZone);
 
-  return { resolved, path, guides };
+  const track = findAssignedTrack(path, resolved.trackId);
+  const trackGuideIds = track?.guides.flatMap((id) => {
+    const member = entryById.get(id);
+    return member ? [toGuideId(member)] : [];
+  });
+
+  return { resolved, path, guides, trackGuideIds };
 }

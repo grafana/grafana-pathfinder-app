@@ -3,6 +3,7 @@
  * useMyAssignments.ts owns the fetch. Satisfaction is the wire boolean.
  */
 import type { AssignmentEntry } from '../lib/assignments-client';
+import { getManifestTracks, type ManifestTrack } from '../types/package.types';
 import type { LearningPath, ResolvedAssignment } from '../types/learning-paths.types';
 
 /** The only target type this destination resolves into a path card. */
@@ -21,6 +22,17 @@ export function formatTrackLabel(id: string): string {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+/** The manifest track an assignment targets, or undefined when it names none the path's manifest declares. */
+export function findAssignedTrack(
+  path: Pick<LearningPath, 'manifest'>,
+  trackId: string | undefined
+): ManifestTrack | undefined {
+  if (!trackId || path.manifest?.type !== 'path') {
+    return undefined;
+  }
+  return getManifestTracks(path.manifest).find((track) => track.trackId === trackId);
 }
 
 const DAY_MS = 86_400_000;
@@ -142,18 +154,21 @@ export function assignmentProgress(guides: AssignmentEntry['guides'], localProgr
   return Math.round((100 * completed) / guides.length);
 }
 
-/** Builds one row from a raw assignment plus its resolved title and progress, shared by every catalogue source. */
+/** Builds one row from a raw assignment plus its resolved path and progress, shared by every catalogue source. */
 export function buildResolvedAssignment(
   assignment: AssignmentEntry,
-  title: string,
+  path: Pick<LearningPath, 'title' | 'manifest'>,
   progress: number,
   now: number = Date.now(),
   timeZone?: string
 ): ResolvedAssignment {
   const satisfied = assignment.satisfied;
+  const track = findAssignedTrack(path, assignment.trackId);
   return {
     targetId: assignment.targetId,
-    title,
+    title: path.title,
+    trackId: track?.trackId,
+    trackLabel: track?.label,
     assignedBy: assignment.assignedBy ? formatTrackLabel(assignment.assignedBy) : undefined,
     dueAt: assignment.dueAt,
     overdue: isOverdue(assignment.dueAt, satisfied, now, timeZone),
@@ -207,7 +222,7 @@ export function resolveAssignments(
       }
       return buildResolvedAssignment(
         assignment,
-        path.title,
+        path,
         assignmentProgress(assignment.guides, getPathProgress(path.id)),
         now,
         timeZone

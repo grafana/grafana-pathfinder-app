@@ -146,4 +146,30 @@ describe('useMyAssignments', () => {
       ['g2', false, true],
     ]);
   });
+
+  it("returns a track assignment's guides in track order with the first incomplete current", async () => {
+    mockFetchMyAssignments.mockResolvedValue([assignment({ targetId: 'p', trackId: 'ops' })]);
+    const guide = (id: string, completed = false) => ({ id, title: id, completed, isCurrent: false });
+    const manifest = {
+      id: 'p',
+      type: 'path',
+      milestones: ['g1'],
+      tracks: [{ trackId: 'ops', label: 'Ops', guides: ['g3', 'missing', 'g2'] }],
+    } as LearningPath['manifest'];
+
+    const { result } = renderHook(() =>
+      useMyAssignments({
+        ...baseOptions,
+        paths: [path({ id: 'p', title: 'P', manifest })],
+        getPathGuides: () => [guide('g1'), guide('g2'), guide('g3', true)],
+      })
+    );
+
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+    expect(result.current.getPathGuides('p').map(({ id, isCurrent }) => ({ id, isCurrent }))).toEqual([
+      { id: 'g3', isCurrent: false },
+      { id: 'g2', isCurrent: true },
+    ]);
+  });
 });

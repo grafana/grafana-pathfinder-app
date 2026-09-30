@@ -464,4 +464,20 @@ describe('CombinedLearningJourneyPanel.openDocsPage — prepared (one-fetch) lau
     expect(tab.isLoading).toBe(false);
     expect(tab.error).toBeNull();
   });
+
+  it('opens a path cover on the assigned track when packageInfo carries a trackId', async () => {
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(true);
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [], activeTabId: 'recommendations' });
+
+    const tabId = await panel.openDocsPage('bundled:prepared', 'Prepared', {
+      source: 'home_page',
+      preparedContent,
+      packageInfo: { packageId: 'path-1', packageManifest: { type: 'path', id: 'path-1' }, trackId: 'ops' },
+    });
+    await flush();
+
+    const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
+    expect(tab).toMatchObject({ activeTrackId: 'ops', activeTrackPathId: 'path-1' });
+  });
 });

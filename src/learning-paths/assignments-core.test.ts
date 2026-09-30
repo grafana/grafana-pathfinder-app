@@ -5,7 +5,7 @@
  */
 import type { AssignmentEntry } from '../lib/assignments-client';
 import type { LearningPath, ResolvedAssignment } from '../types/learning-paths.types';
-import { daysUntilDue, getDueStatus, resolveAssignments } from './assignments-core';
+import { daysUntilDue, findAssignedTrack, getDueStatus, resolveAssignments } from './assignments-core';
 
 function path(overrides: Partial<LearningPath> & { id: string; title: string }): LearningPath {
   return { description: '', guides: [], badgeId: '', ...overrides };
@@ -39,7 +39,33 @@ function resolve(options: {
   };
 }
 
+const TRACKS = [{ trackId: 'ops', label: 'Ops engineers', guides: ['g-ops'] }];
+const pathManifest = { id: 'p', type: 'path', milestones: ['g1'], tracks: TRACKS } as LearningPath['manifest'];
+
+describe('findAssignedTrack', () => {
+  it.each([
+    ['no trackId', pathManifest, undefined, undefined],
+    ['a declared track', pathManifest, 'ops', TRACKS[0]],
+    ['a track the manifest does not declare', pathManifest, 'ghost', undefined],
+    ['a journey manifest', { ...pathManifest, type: 'journey' } as LearningPath['manifest'], 'ops', undefined],
+    ['no manifest', undefined, 'ops', undefined],
+  ])('resolves %s', (_name, manifest, trackId, expected) => {
+    expect(findAssignedTrack({ manifest }, trackId)).toEqual(expected);
+  });
+});
+
 describe('resolveAssignments', () => {
+  it('sets the track only when the manifest declares it', () => {
+    const result = resolve({
+      entries: [assignment({ targetId: 'p', trackId: 'ops' }), assignment({ targetId: 'p', trackId: 'ghost' })],
+      paths: [path({ id: 'p', title: 'P', manifest: pathManifest })],
+    });
+
+    const tracks = result.notDone.map(({ trackId, trackLabel }) => ({ trackId, trackLabel }));
+    expect(tracks).toContainEqual({ trackId: 'ops', trackLabel: 'Ops engineers' });
+    expect(tracks).toContainEqual({ trackId: undefined, trackLabel: undefined });
+  });
+
   it('reports assignments whose path is not in the catalogue instead of rendering them', () => {
     const result = resolve({
       entries: [assignment({ targetId: 'ghost-path' })],

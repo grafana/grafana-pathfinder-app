@@ -210,6 +210,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         const packageInfo: PackageOpenInfo = {
           packageId: path.id,
           packageManifest: { ...path.manifest, id: path.id },
+          trackId: assignmentByTargetId.get(path.id)?.trackId,
         };
         const [navLink] = await resolvePackageNavLinks([path.id]);
         if (!mountedRef.current) {
@@ -250,7 +251,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         }
       }
     },
-    [performLaunch, getGuideUrlForPath]
+    [performLaunch, getGuideUrlForPath, assignmentByTargetId]
   );
 
   const allPaths = useMemo(() => [...paths, ...onlinePaths], [paths, onlinePaths]);

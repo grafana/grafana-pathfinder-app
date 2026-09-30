@@ -233,6 +233,15 @@ export function LearningPathCard({
                 ) : null}
               </span>
             </div>
+            {assignment.trackLabel && (
+              <div className={styles.expandMetaRow}>
+                <Icon name="layer-group" size="sm" />
+                <span>
+                  {t('myLearning.assignedTrack', 'Track')}{' '}
+                  <strong className={styles.trackHighlight}>{assignment.trackLabel}</strong>
+                </span>
+              </div>
+            )}
             {dueStatus && (
               <div className={styles.expandMetaRow}>
                 <Icon name="clock-nine" size="sm" />

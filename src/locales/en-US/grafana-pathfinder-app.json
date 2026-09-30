@@ -93,6 +93,7 @@
   "myLearning": {
     "assignedBadge": "Assigned",
     "assignedBy": "Assigned by",
+    "assignedTrack": "Track",
     "badges": "Badges",
     "badgesDescription": "Earn badges by completing paths and maintaining streaks",
     "badgesEarned": "Badges earned",

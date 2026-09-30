@@ -405,6 +405,44 @@ describe('resetPathGuides', () => {
     expect(progress.completedGuides).toEqual(expect.arrayContaining(GUIDES.slice(1)));
   });
 
+  it('App Platform path clears a track-only guide that is not a milestone', async () => {
+    const trackOnly = 'fe-alerting-track-only';
+    mockFetchAppPlatformLearningPaths.mockResolvedValue({
+      paths: [
+        {
+          id: PATH_ID,
+          title: 'Alerting enablement',
+          description: '',
+          guides: [...GUIDES, trackOnly],
+          badgeId: '',
+          manifest: {
+            id: PATH_ID,
+            type: 'path',
+            repository: 'app-platform',
+            milestones: GUIDES,
+            tracks: [{ trackId: 'ops', label: 'Ops', guides: [GUIDES[0], trackOnly] }],
+          },
+        },
+      ],
+      guideMetadata: {},
+    });
+    const trackKeys = [`bundled:${trackOnly}`, `backend-guide:${trackOnly}`];
+    await milestoneCompletionStorage.markCompleted(PATH_KEY, trackOnly);
+    for (const key of trackKeys) {
+      await journeyCompletionStorage.set(key, 100);
+      await guideCompletionMarkStorage.set(key, true);
+    }
+
+    await renderAndResetPathGuides(PATH_ID, [{ id: trackOnly }]);
+
+    await expect(milestoneCompletionStorage.getCompleted(PATH_KEY)).resolves.toEqual(new Set());
+    const journeys = await journeyCompletionStorage.getAll();
+    for (const key of trackKeys) {
+      expect(key in journeys).toBe(false);
+      await expect(guideCompletionMarkStorage.get(key)).resolves.toBeNull();
+    }
+  });
+
   describe('URL-based journey path', () => {
     const URL_PATH_ID = 'alerting-journey';
     const PATH_URL = 'https://grafana.com/docs/learning-journeys/alerting/';
@@ -463,5 +501,17 @@ describe('resetPathGuides', () => {
     await expect(interactiveCompletionStorage.get(urls[0]!)).resolves.toBe(0);
     await expect(journeyCompletionStorage.get(urls[1]!)).resolves.toBe(100);
     await expect(interactiveCompletionStorage.get(urls[1]!)).resolves.toBe(100);
+  });
+
+  it('an online-catalogue track guide is cleared by its own url, leaving the other track guide', async () => {
+    const urls = ['https://cdn.example/t1/content.json', 'https://cdn.example/t2/content.json'];
+    for (const url of urls) {
+      await journeyCompletionStorage.set(url, 100);
+    }
+
+    await renderAndResetPathGuides('online-path', [{ id: 't2', url: urls[1] }]);
+
+    await expect(journeyCompletionStorage.get(urls[1]!)).resolves.toBe(0);
+    await expect(journeyCompletionStorage.get(urls[0]!)).resolves.toBe(100);
   });
 });

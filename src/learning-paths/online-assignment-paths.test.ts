@@ -101,4 +101,24 @@ describe('resolveOnlineAssignmentCard', () => {
 
     expect(card).toBeUndefined();
   });
+
+  it('keeps a track guide whose slug differs from its manifest id, in track order', async () => {
+    const manifest = {
+      type: 'path',
+      milestones: ['postgresql-data-source-prepare'],
+      tracks: [
+        { trackId: 'ops', label: 'Ops', guides: ['postgresql-data-source-end', 'postgresql-data-source-prepare'] },
+      ],
+    };
+    const resolveNavLinks = jest.fn().mockResolvedValue([navLinkFor(manifest)]);
+
+    const card = await resolveOnlineAssignmentCard(
+      assignment({ targetId: 'postgresql-data-source-lj', trackId: 'ops' }),
+      resolveNavLinks
+    );
+
+    expect(card?.resolved.trackId).toBe('ops');
+    expect(card?.trackGuideIds).toEqual(['end-journey', 'prepare-configuration']);
+    expect(card?.guides.map((guide) => guide.id)).toEqual(expect.arrayContaining(card!.trackGuideIds!));
+  });
 });
