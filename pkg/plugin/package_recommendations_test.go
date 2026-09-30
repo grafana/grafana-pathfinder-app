@@ -846,7 +846,6 @@ func TestGetCachedPackageRecommendations_WaiterRespectsContextCancellation(t *te
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 
 	release := make(chan struct{})
-	t.Cleanup(func() { close(release) })
 	started := make(chan struct{})
 	var once sync.Once
 	withFetcherOverride(t, func(ctx context.Context, rawURL string, maxBytes int64) ([]byte, error) {
@@ -857,7 +856,15 @@ func TestGetCachedPackageRecommendations_WaiterRespectsContextCancellation(t *te
 
 	app := newTestApp(t)
 
+	// The refresh writes the shared cache when it finishes, so the test must
+	// not return before it does or it lands in the next test's cache.
+	refreshed := make(chan struct{})
+	t.Cleanup(func() {
+		close(release)
+		<-refreshed
+	})
 	go func() {
+		defer close(refreshed)
 		_, _ = app.getCachedPackageRecommendations(context.Background())
 	}()
 	<-started
