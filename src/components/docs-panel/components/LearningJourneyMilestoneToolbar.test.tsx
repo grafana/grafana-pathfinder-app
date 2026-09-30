@@ -40,9 +40,21 @@ jest.mock('../../../lib/analytics', () => ({
   },
 }));
 
+// `resolveActiveMilestoneToolbarContext` comes from `active-milestone-sequence.ts`,
+// not `learning-journey-helpers.ts` — the latter pulls in `../lib/user-storage`
+// (and so `@grafana/runtime`), which breaks under this suite's `@grafana/ui` mock
+// below. `percentagesToProgress` is reassembled from the same pure primitive
+// (`meanOfMemberPercentages`) for the same reason.
 jest.mock('../../../docs-retrieval', () => ({
-  getJourneyProgress: () => 0,
   journeyMilestonePercentages: (...args: unknown[]) => journeyMilestonePercentagesMock(...args),
+  percentagesToProgress: (percentages: Array<{ percent?: number }>) =>
+    jest
+      .requireActual('../../../lib/guide-stats')
+      .meanOfMemberPercentages(
+        percentages.flatMap(({ percent }: { percent?: number }) => (percent === undefined ? [] : [percent]))
+      ).percent,
+  resolveActiveMilestoneToolbarContext: jest.requireActual('../../../docs-retrieval/active-milestone-sequence')
+    .resolveActiveMilestoneToolbarContext,
   getMilestoneSlug: jest.requireActual('../../../lib/learning-journey-url').getMilestoneSlug,
   markMilestoneDone: (...args: unknown[]) => markMilestoneDoneMock(...args),
 }));
@@ -365,6 +377,82 @@ describe('LearningJourneyMilestoneToolbar', () => {
         'https://grafana.com/docs/learning-journeys/foo-canonical',
         expect.arrayContaining([expect.objectContaining({ number: 1 })])
       );
+    });
+  });
+
+  // A guide reached only through a Path Tracks track (present in a manifest
+  // `tracks[].guides` entry but not in the path's base `milestones`) carries
+  // no `learningJourney` at all (COMPLETION-MODEL.md decision 10) — the
+  // toolbar must still render, scoped to the track's own sequence via
+  // `activeTab.activeTrackId`/`activeTrackMilestones`, not the base one.
+  describe('track-only and dual-membership guides', () => {
+    function makeTrackOnlyTab(overrides: Partial<LearningJourneyTab> = {}): LearningJourneyTab {
+      return {
+        id: 'tab-track',
+        title: 'Track guide',
+        baseUrl: 'https://grafana.com/docs/learning-paths/foo/builder/t1',
+        currentUrl: 'https://grafana.com/docs/learning-paths/foo/builder/t1',
+        type: 'learning-journey',
+        isLoading: false,
+        error: null,
+        activeTrackId: 'builder',
+        activeTrackMilestones: [
+          { number: 1, title: 't1', url: 'https://grafana.com/docs/learning-paths/foo/builder/t1', isActive: true },
+          { number: 2, title: 't2', url: 'https://grafana.com/docs/learning-paths/foo/builder/t2', isActive: false },
+        ],
+        content: {
+          type: 'learning-journey',
+          url: 'https://grafana.com/docs/learning-paths/foo/builder/t1',
+          content: '<div />',
+          metadata: {
+            title: 'Demo',
+            trackMemberBaseUrl: 'https://grafana.com/docs/learning-paths/foo',
+          },
+        } as any,
+        ...overrides,
+      };
+    }
+
+    it('renders the toolbar for a track-only guide, scoped to the track sequence', () => {
+      renderToolbar({ activeTab: makeTrackOnlyTab() });
+      expect(screen.getByText('Milestone 1 of 2')).toBeInTheDocument();
+    });
+
+    it('keys the progress calculation off trackMemberBaseUrl for a track-only guide', () => {
+      renderToolbar({ activeTab: makeTrackOnlyTab() });
+      expect(journeyMilestonePercentagesMock).toHaveBeenCalledWith(
+        'https://grafana.com/docs/learning-paths/foo',
+        expect.arrayContaining([expect.objectContaining({ number: 1 })])
+      );
+    });
+
+    it('returns null when a guide has neither learningJourney nor a track/trackMemberBaseUrl identity', () => {
+      const orphanTab = makeTrackOnlyTab({
+        activeTrackId: undefined,
+        activeTrackMilestones: undefined,
+        content: {
+          type: 'learning-journey',
+          url: 'https://grafana.com/docs/learning-paths/foo/orphan',
+          content: '<div />',
+          metadata: { title: 'Demo' },
+        } as any,
+      });
+      const { container } = renderToolbar({ activeTab: orphanTab });
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('scopes to the active track (not the base sequence) when a guide belongs to both', () => {
+      const tab = makeJourneyTab({
+        activeTrackId: 'builder',
+        activeTrackMilestones: [
+          { number: 1, title: 'b1', url: 'https://grafana.com/docs/learning-journeys/other', isActive: false },
+          { number: 2, title: 'b2', url: 'https://grafana.com/docs/learning-journeys/foo/m1', isActive: true },
+        ],
+      });
+      // The base learningJourney fixture (makeJourneyTab) says this guide is
+      // milestone 1 of 3 in Foundations — the track view must win instead.
+      renderToolbar({ activeTab: tab });
+      expect(screen.getByText('Milestone 2 of 2')).toBeInTheDocument();
     });
   });
 
