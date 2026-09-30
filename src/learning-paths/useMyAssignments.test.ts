@@ -20,7 +20,10 @@ jest.mock('@grafana/runtime', () => ({
 const mockFetchMyAssignments = jest.fn();
 jest.mock('../lib/assignments-client', () => ({
   fetchMyAssignments: (namespace: string) => mockFetchMyAssignments(namespace),
-  reportUnresolvedAssignmentTargets: jest.fn(),
+}));
+
+jest.mock('../lib/telemetry/facade', () => ({
+  recordAssignmentTargetsUnresolved: jest.fn(),
 }));
 
 // Source 3 (online catalogue): empty by default, so an unresolved target
@@ -32,9 +35,9 @@ jest.mock('../lib/package-recommendations-client', () => ({
   buildPackageFileUrl: (baseUrl: string, entryPath: string, fileName: string) => `${baseUrl}${entryPath}/${fileName}`,
 }));
 
-const { reportUnresolvedAssignmentTargets: mockReportUnresolvedAssignmentTargets } = jest.requireMock(
-  '../lib/assignments-client'
-) as { reportUnresolvedAssignmentTargets: jest.Mock };
+const { recordAssignmentTargetsUnresolved: mockReportUnresolvedAssignmentTargets } = jest.requireMock(
+  '../lib/telemetry/facade'
+) as { recordAssignmentTargetsUnresolved: jest.Mock };
 
 jest.mock('../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },

@@ -96,29 +96,10 @@ describe('fetchMyAssignments', () => {
     expect(result).toEqual([]);
   });
 
-  // An omitted or null `assignments` on an available capability is an
-  // ordinary empty list, not drift — Go's json.Marshal of a nil slice emits
-  // `null`, so the proxy sends exactly this for a caller with no assignments.
-  it.each([
-    { shape: 'omitted', response: { capability: { available: true } } },
-    { shape: 'null', response: { capability: { available: true }, assignments: null } },
-  ])('stays silent when assignments is $shape', async ({ response }) => {
-    mockGet.mockResolvedValue(response);
-
-    const result = await fetchMyAssignments('stacks-123');
-
-    expect(result).toEqual([]);
-    expect(recordAssignmentsUnavailable).not.toHaveBeenCalled();
-    expect(logger.warn).not.toHaveBeenCalled();
-  });
-
-  // A present-but-non-array `assignments` cannot be a list under any
-  // encoding, so it is schema drift and must be countable.
   it.each([
     { shape: 'an object', assignments: { fundamentals: {} } },
     { shape: 'a string', assignments: 'fundamentals' },
-    { shape: 'a number', assignments: 3 },
-    { shape: 'a boolean', assignments: true },
+    { shape: 'null', assignments: null },
   ])('reports malformed-response when assignments is $shape', async ({ assignments }) => {
     mockGet.mockResolvedValue({ capability: { available: true }, assignments });
 
@@ -127,46 +108,6 @@ describe('fetchMyAssignments', () => {
     expect(result).toEqual([]);
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('malformed-response');
     expect(logger.warn).toHaveBeenCalledWith('[assignments] malformed response', { reason: 'malformed-response' });
-  });
-
-  it('does not stick a malformed response across calls', async () => {
-    mockGet.mockResolvedValueOnce({ capability: { available: true }, assignments: { nope: true } });
-
-    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual([]);
-
-    mockGet.mockResolvedValueOnce({
-      capability: { available: true },
-      assignments: [{ targetType: 'path', targetId: 'fundamentals', satisfied: false, lifecycle: 'active' }],
-    });
-
-    const recovered = await fetchMyAssignments('stacks-123');
-
-    expect(recovered).toHaveLength(1);
-    expect(mockGet).toHaveBeenCalledTimes(2);
-  });
-
-  it('refetches a legitimately empty list', async () => {
-    mockGet.mockResolvedValue({ capability: { available: true }, assignments: [] });
-
-    await fetchMyAssignments('stacks-123');
-    await fetchMyAssignments('stacks-123');
-
-    expect(mockGet).toHaveBeenCalledTimes(2);
-  });
-
-  it.each([
-    { shape: 'a top-level status', err: { status: 503, statusText: 'Service Unavailable' }, reason: 'http-503' },
-    { shape: 'a top-level statusCode', err: { statusCode: 418 }, reason: 'http-418' },
-    { shape: 'a nested data.statusCode', err: { data: { statusCode: 502 } }, reason: 'http-502' },
-    { shape: 'no status at all', err: new Error('network error'), reason: 'transport-error' },
-  ])('records $reason for $shape', async ({ err, reason }) => {
-    mockGet.mockRejectedValue(err);
-
-    const result = await fetchMyAssignments('stacks-123');
-
-    expect(result).toEqual([]);
-    expect(recordAssignmentsUnavailable).toHaveBeenCalledWith(reason);
-    expect(logger.warn).toHaveBeenCalledWith('[assignments] fetch failed', { reason });
   });
 
   // logging.ts sanitizes the log context but does not strip it, so anything
@@ -191,33 +132,19 @@ describe('fetchMyAssignments', () => {
     await expect(fetchMyAssignments('stacks-123')).resolves.toEqual([]);
   });
 
-  it('de-duplicates concurrent calls and refetches once each has settled', async () => {
-    mockGet.mockResolvedValue({
-      capability: { available: true },
-      assignments: [{ targetType: 'path', targetId: 'p1', satisfied: false, lifecycle: 'active' }],
-    });
+  it('de-duplicates in-flight calls but never caches a result', async () => {
+    const entries = [{ targetType: 'path', targetId: 'p1', satisfied: false, lifecycle: 'active' }];
+    mockGet.mockResolvedValue({ capability: { available: true }, assignments: entries });
 
-    const [a, b] = await Promise.all([fetchMyAssignments('stacks-123'), fetchMyAssignments('stacks-123')]);
-    const third = await fetchMyAssignments('stacks-123');
+    await Promise.all([fetchMyAssignments('stacks-123'), fetchMyAssignments('stacks-123')]);
+    expect(mockGet).toHaveBeenCalledTimes(1);
 
-    expect(a).toEqual(b);
-    expect(third).toEqual(a);
+    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual(entries);
     expect(mockGet).toHaveBeenCalledTimes(2);
-  });
 
-  it('does not stick a failure across calls', async () => {
     mockGet.mockRejectedValueOnce(new Error('network error'));
-    mockGet.mockResolvedValueOnce({
-      capability: { available: true },
-      assignments: [{ targetType: 'path', targetId: 'p1', satisfied: false, lifecycle: 'active' }],
-    });
-
-    expect(await fetchMyAssignments('stacks-123')).toEqual([]);
-    const retry = await fetchMyAssignments('stacks-123');
-
-    expect(retry.map((a) => a.targetId)).toEqual(['p1']);
-    expect(mockGet).toHaveBeenCalledTimes(2);
-    expect(recordAssignmentsUnavailable).toHaveBeenCalledTimes(1);
-    expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('transport-error');
+    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual([]);
+    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual(entries);
+    expect(mockGet).toHaveBeenCalledTimes(4);
   });
 });

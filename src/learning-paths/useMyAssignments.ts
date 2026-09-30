@@ -8,7 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { config } from '@grafana/runtime';
 
 import { onCompletionPublished } from '../completion-records/completion-write-hook';
-import { fetchMyAssignments, reportUnresolvedAssignmentTargets, type AssignmentEntry } from '../lib/assignments-client';
+import { fetchMyAssignments, type AssignmentEntry } from '../lib/assignments-client';
+import { recordAssignmentTargetsUnresolved } from '../lib/telemetry/facade';
 import { logger } from '../lib/logging';
 import type { LearningPath, PathGuide } from '../types/learning-paths.types';
 import {
@@ -144,7 +145,7 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
           count: stillUnresolved.length,
         });
         logger.debug('[assignments] unresolvable target', { targetIds: stillUnresolved.join('\n') });
-        reportUnresolvedAssignmentTargets(stillUnresolved.length);
+        recordAssignmentTargetsUnresolved(stillUnresolved.length);
       }
     })();
     return () => {
