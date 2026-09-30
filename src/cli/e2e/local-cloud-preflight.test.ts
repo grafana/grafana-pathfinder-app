@@ -103,6 +103,45 @@ describe('local cloud preflight', () => {
     expect((fetchSpy.mock.calls[0]![1] as RequestInit).headers).not.toHaveProperty('Authorization');
   });
 
+  it.each([
+    ['13.2.0', '10.0.0', true],
+    ['12.0.0', '14.0.0', false],
+  ])('checks a runtime-only floor against authenticated version %s', async (version, healthVersion, canRun) => {
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL) =>
+      new URL(input.toString()).pathname === '/api/health'
+        ? jsonResponse({ database: 'ok', version: healthVersion })
+        : jsonResponse({ buildInfo: { version } })
+    );
+    writeFileSync(
+      join(packageDir, 'guide', 'manifest.json'),
+      JSON.stringify({
+        id: 'local-guide',
+        type: 'guide',
+        minGrafanaVersion: '13.2.0',
+        testEnvironment: { tier: 'cloud' },
+      })
+    );
+    const preflight = preflightLocalCloudGuides([
+      {
+        id: 'local-guide',
+        sourcePath: join(packageDir, 'guide', 'content.json'),
+        targetUrl: 'https://leased-stack.example/',
+        token: 'synthetic-runner-token',
+      },
+    ]);
+    if (canRun) {
+      await expect(preflight).resolves.toBeUndefined();
+    } else {
+      await expect(preflight).rejects.toThrow('Grafana 12.0.0 is below the required minimum 13.2.0');
+    }
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(new URL(fetchSpy.mock.calls[1]![0].toString()).pathname).toBe('/api/frontend/settings');
+    expect(fetchSpy.mock.calls[1]![1]).toMatchObject({
+      headers: { Authorization: 'Bearer synthetic-runner-token' },
+      redirect: 'error',
+    });
+  });
+
   it('fails when the authenticated frontend version is below the minimum', async () => {
     fetchSpy.mockImplementation(async (input: RequestInfo | URL) =>
       new URL(input.toString()).pathname === '/api/health'

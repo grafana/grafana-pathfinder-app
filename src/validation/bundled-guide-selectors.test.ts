@@ -15,11 +15,10 @@ import * as path from 'path';
 
 import { versionedComponents, versionedPages } from '@grafana/e2e-selectors';
 
-import { compareVersions, parseVersion } from '../cli/e2e/manifest-preflight';
+import { compareVersions, parseVersion, type Version } from '../lib/guide-version';
 import { discoverBundledGuideFiles } from '../cli/utils/file-loader';
 import { resolveSelectorForVersion } from '../lib/dom/selector-resolver-core';
 
-type Version = [number, number, number];
 type SelectorNode = Record<string, unknown>;
 
 const BUNDLED_DIR = path.resolve(__dirname, '../bundled-interactives');

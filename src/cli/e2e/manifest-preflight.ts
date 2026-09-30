@@ -12,6 +12,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
+import { compareVersions, parseVersion } from '../../lib/guide-version';
 import { ManifestJsonSchema } from '../../types/package.schema';
 import type { ManifestJson, TestEnvironment } from '../../types/package.types';
 import { preserveAuthoredStartingLocation } from './starting-location';
@@ -118,35 +119,6 @@ export function checkTier(testEnvironment: TestEnvironment, currentTier: Current
 interface GrafanaHealthResponse {
   version?: string;
   database?: string;
-}
-
-/**
- * Parse a semver-like version string into [major, minor, patch] numbers.
- * Returns null for strings that don't match the expected pattern.
- *
- * Handles Grafana's version format which may include pre-release identifiers
- * like "12.2.0-pre" or "12.2.0+security-01" — those are ignored for comparison.
- */
-export function parseVersion(version: string): [number, number, number] | null {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
-  if (!match) {
-    return null;
-  }
-  return [parseInt(match[1]!, 10), parseInt(match[2]!, 10), parseInt(match[3]!, 10)];
-}
-
-/**
- * Compare two parsed version tuples.
- * Returns negative if a < b, 0 if equal, positive if a > b.
- */
-export function compareVersions(a: [number, number, number], b: [number, number, number]): number {
-  for (let i = 0; i < 3; i++) {
-    const diff = a[i]! - b[i]!;
-    if (diff !== 0) {
-      return diff;
-    }
-  }
-  return 0;
 }
 
 /**
@@ -357,6 +329,10 @@ export interface ManifestPreflightOptions {
   grafanaVersion?: string;
 }
 
+export function resolveManifestMinVersion(manifest: ManifestJson): string | undefined {
+  return manifest.testEnvironment?.minVersion ?? manifest.minGrafanaVersion;
+}
+
 /**
  * Run all manifest pre-flight checks and return an aggregated outcome.
  *
@@ -372,7 +348,11 @@ export async function runManifestPreflight(
   manifest: ManifestJson,
   options: ManifestPreflightOptions
 ): Promise<PreflightOutcome> {
-  const testEnvironment = manifest.testEnvironment ?? {};
+  const declared = manifest.testEnvironment ?? {};
+  const testEnvironment: TestEnvironment = {
+    ...declared,
+    minVersion: resolveManifestMinVersion(manifest),
+  };
   const results: PreflightResult[] = [];
 
   // 1. Tier check (fast, no network)

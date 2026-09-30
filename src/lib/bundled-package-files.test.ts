@@ -1,12 +1,12 @@
 /**
- * Package Loader Tests (Layer 2)
+ * Bundled package file reader tests
  *
  * Tests content loading from bundled sources. Uses the actual bundled
  * content for happy-path tests and verifies error handling for missing
  * or invalid content.
  */
 
-import { loadBundledContent, loadBundledManifest } from './loader';
+import { loadBundledContent, loadBundledManifest } from './bundled-package-files';
 
 // ============ loadBundledContent ============
 
