@@ -202,8 +202,21 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       // recommendation cards and context read, and the reader's statement that
       // they finished belongs there too. See COMPLETION-MODEL.md, "Rolling this
       // back".
-      void interactiveCompletionStorage.set(contentKey, 100);
-      dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+      //
+      // Awaited before dispatching, unlike the mark above: a listener woken by
+      // dispatchProgress reads this value back out of storage, so the write
+      // must land before the event fires or it can read the stale percentage.
+      // Run as a detached async task rather than making handleClick itself
+      // async, so the write does not delay the celebration setup below —
+      // a reader who navigates away mid-write still completed the guide.
+      void (async () => {
+        try {
+          await interactiveCompletionStorage.set(contentKey, 100);
+        } catch (error) {
+          logger.warn('Failed to persist guide completion percentage', { error });
+        }
+        dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+      })();
     }
 
     // Reduced motion means no dwell either — continuing is the reader's

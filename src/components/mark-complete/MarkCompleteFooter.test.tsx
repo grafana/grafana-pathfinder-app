@@ -170,6 +170,34 @@ describe('MarkCompleteFooter', () => {
     expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
   });
 
+  it('does not dispatch progress until the completion percentage write has landed', async () => {
+    let resolveWrite: () => void = () => undefined;
+    setCompletionPercentage.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveWrite = resolve;
+      })
+    );
+
+    render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
+    await clickWhenReady();
+
+    // The write has been issued, but a listener woken by dispatchProgress
+    // must not be able to read this value before it has actually landed.
+    expect(setCompletionPercentage).toHaveBeenCalledWith('guide-key', 100);
+    expect(dispatchProgress).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveWrite();
+    });
+
+    expect(dispatchProgress).toHaveBeenCalledWith({
+      kind: 'guide',
+      contentKey: 'guide-key',
+      percentage: 100,
+      hasProgress: true,
+    });
+  });
+
   it('announces reaching complete exactly once, and keeps focus rather than dropping it to the body', async () => {
     render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
 
