@@ -298,3 +298,33 @@ it('keeps answers and generated output while hidden for replacement confirmation
   expect(generate).toHaveBeenCalledTimes(1);
   expect(onReview).toHaveBeenCalledTimes(2);
 });
+
+it('reviews a generated copy after Assistant becomes unavailable', async () => {
+  const { onReview, onDismiss, rerender } = renderModal();
+  await submit();
+  await act(async () => options.onComplete?.(JSON.stringify(guide)));
+  jest.mocked(useAssistantGeneration).mockReturnValue({
+    generate,
+    cancel,
+    isAssistantAvailable: false,
+    isCheckingAssistantAvailability: false,
+    getDatasourceContext,
+  } as unknown as ReturnType<typeof useAssistantGeneration>);
+  rerender(
+    <CustomizeGuideModal
+      guide={guide}
+      sourceUrl="https://grafana.com/example/content.json"
+      onReview={onReview}
+      onDismiss={onDismiss}
+    />
+  );
+  const review = screen.getByRole('button', { name: 'Review customized guide' });
+  expect(review).toBeEnabled();
+  expect(screen.queryByText('Assistant is unavailable. Try again later.')).not.toBeInTheDocument();
+  fireEvent.click(review);
+  expect(onReview).toHaveBeenCalledTimes(2);
+  expect(generate).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText(/What should they learn/), { target: { value: 'Use Loki' } });
+  expect(screen.getByRole('button', { name: 'Customize and open editor' })).toBeDisabled();
+  expect(screen.getByText('Assistant is unavailable. Try again later.')).toBeInTheDocument();
+});

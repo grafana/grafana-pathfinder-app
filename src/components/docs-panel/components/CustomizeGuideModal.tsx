@@ -277,10 +277,10 @@ export function CustomizeGuideModal({ guide, isOpen = true, sourceUrl, onReview,
         </div>
       )}
       {error && <Alert title={error} severity="error" />}
-      {isCheckingAssistantAvailability && (
+      {!generatedGuide && isCheckingAssistantAvailability && (
         <div role="status">{t('docsPanel.checkingAssistantAvailability', 'Checking Assistant availability…')}</div>
       )}
-      {!isCheckingAssistantAvailability && !isAssistantAvailable && (
+      {!generatedGuide && !isCheckingAssistantAvailability && !isAssistantAvailable && (
         <Alert
           title={t('docsPanel.customizeGuideUnavailable', 'Assistant is unavailable. Try again later.')}
           severity="info"
@@ -291,7 +291,7 @@ export function CustomizeGuideModal({ guide, isOpen = true, sourceUrl, onReview,
           {t('docsPanel.cancelCopy', 'Cancel')}
         </Button>
         <Button
-          disabled={!isAssistantAvailable || isGenerating || !outcome.trim()}
+          disabled={isGenerating || (!generatedGuide && (!isAssistantAvailable || !outcome.trim()))}
           onClick={() => (generatedGuide ? onReview(generatedGuide) : void customize())}
         >
           {isGenerating
