@@ -321,7 +321,13 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       opacity: 0,
     }),
     expandableOpen: css({
-      maxHeight: 500,
+      // A fixed value is required for the max-height transition above to
+      // animate, so this can't just be 'none' — 1200 comfortably fits every
+      // real path's guide count today, and overflowY covers any path whose
+      // guides (now taller, with unbounded-length descriptions) exceed it,
+      // so content is always reachable instead of silently clipped.
+      maxHeight: 1200,
+      overflowY: 'auto',
       opacity: 1,
     }),
     description: css({
@@ -368,21 +374,23 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     // page's shared link-handler contract) — see enableCurrentRowLink.
     guideItemCurrentClickable: css({
       cursor: 'pointer',
-      '&:hover': {
-        backgroundColor: theme.colors.action.hover,
-      },
     }),
     // Same accent-card idiom as getLearningPathCardStyles.card, scoped here
     // since it decorates a GuideList row, not that component's own card.
     guideItemCurrentCard: css({
       background: `linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.secondary} 100%)`,
       borderColor: colors.pathAccentMedium,
+      // guideItemCurrentClickable is always applied alongside this (both
+      // gate on the same guide.isCurrent && enableCurrentRowLink check), so
+      // the hover needs to sit on top of this opaque gradient as its own
+      // image layer — an action.hover backgroundColor would be painted
+      // underneath the gradient and stay invisible across most of the row.
+      '&:hover': {
+        backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover}), linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      },
     }),
     guideItemLocked: css({
       color: theme.colors.text.disabled,
-    }),
-    guideItemWithDescription: css({
-      alignItems: 'flex-start',
     }),
     guideIconBadge: css({
       width: 32,
@@ -406,7 +414,6 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       backgroundColor: theme.colors.background.primary,
       color: theme.colors.text.disabled,
     }),
-    guideTitle: css({}),
     guideTextGroup: css({
       display: 'flex',
       flexDirection: 'column',
