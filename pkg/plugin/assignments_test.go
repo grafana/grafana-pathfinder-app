@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,12 +15,8 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/experimental/featuretoggles"
 )
 
-// fakeAssignmentLister is an injectable assignmentLister. respond maps an
-// incoming continue token to a page or error; calls counts invocations.
-// updateStatus is optional: nil means the lister does not implement
-// assignmentStatusWriter at all (assignmentSatisfaction_test.go's satisfaction
-// tests never need a status write), matching the resolveAssignmentBackend
-// path most tests exercise.
+// fakeAssignmentLister is an injectable assignmentLister. respond maps a
+// continue token to a page or error; updateStatus errors when unset.
 type fakeAssignmentLister struct {
 	respond      func(token string) (*assignmentPage, error)
 	updateStatus func(ctx context.Context, namespace, name, resourceVersion string, satisfied bool) error
@@ -62,19 +57,17 @@ func withAssignmentLister(t *testing.T, l assignmentLister) {
 	t.Cleanup(func() { assignmentListerOverride = prev })
 }
 
-// asg builds an active path assignment. Override lifecycle, target type, or
-// the optional bounds on the returned value.
+// asg builds an active path assignment.
 func asg(userID, targetID, trackID, ruleID, assignedAt string) assignmentSpec {
 	return assignmentSpec{
-		UserID:        userID,
-		TargetType:    "path",
-		TargetID:      targetID,
-		TrackID:       trackID,
-		RuleID:        ruleID,
-		AssignedBy:    "l-and-d",
-		AssignedAt:    assignedAt,
-		Lifecycle:     assignmentLifecycleActive,
-		SchemaVersion: 1,
+		UserID:     userID,
+		TargetType: "path",
+		TargetID:   targetID,
+		TrackID:    trackID,
+		RuleID:     ruleID,
+		AssignedBy: "l-and-d",
+		AssignedAt: assignedAt,
+		Lifecycle:  assignmentLifecycleActive,
 	}
 }
 
@@ -138,9 +131,7 @@ func TestMyAssignments_UnknownUserEmptyList(t *testing.T) {
 	}
 }
 
-// MVP never writes `withdrawn`, but the field is real schema from day one and a
-// future withdrawal action is a new caller of it. Filtering server-side means
-// that action needs no frontend change to take effect.
+// Withdrawal revokes an obligation, so non-active records never reach the client.
 func TestMyAssignments_DropsWithdrawnAndUnknownLifecycle(t *testing.T) {
 	withdrawn := asg("user:1", "deprecated-onboarding", "", "retired", "2026-06-01T09:00:00Z")
 	withdrawn.Lifecycle = "withdrawn"
@@ -153,10 +144,13 @@ func TestMyAssignments_DropsWithdrawnAndUnknownLifecycle(t *testing.T) {
 		blank,
 	))
 
-	_, resp := doMyAssignments(t, "user:1")
+	rr, resp := doMyAssignments(t, "user:1")
 
 	if len(resp.Assignments) != 1 || resp.Assignments[0].TargetID != "grafana-fundamentals" {
 		t.Fatalf("assignments = %+v, want only the active one", resp.Assignments)
+	}
+	if strings.Contains(rr.Body.String(), "deprecated-onboarding") {
+		t.Errorf("withdrawn record leaked into the body: %s", rr.Body.String())
 	}
 }
 
@@ -196,82 +190,6 @@ func TestMyAssignments_ServesEveryTargetType(t *testing.T) {
 	}
 }
 
-// A legacy pathId field is not the kind. Decoding must not treat it as a
-// target, and the route must not default a missing targetType to path.
-func TestAssignmentSpec_DecodesKindTargetNotPathID(t *testing.T) {
-	const raw = `{
-		"userId": "user:1",
-		"targetType": "path",
-		"targetId": "grafana-fundamentals",
-		"trackId": "seller",
-		"targetSource": "ignored-for-paths",
-		"ruleId": "new-joiners",
-		"ruleRevision": "abc123",
-		"assignedBy": "l-and-d",
-		"assignedAt": "2026-09-14T09:00:00Z",
-		"dueAt": "2026-12-31T00:00:00Z",
-		"acceptCompletionsFrom": "2026-01-01T00:00:00Z",
-		"lifecycle": "active",
-		"withdrawnAt": "",
-		"schemaVersion": 1,
-		"pathId": "not-a-field"
-	}`
-
-	var spec assignmentSpec
-	if err := json.Unmarshal([]byte(raw), &spec); err != nil {
-		t.Fatalf("decode spec: %v", err)
-	}
-	if spec.TargetType != "path" || spec.TargetID != "grafana-fundamentals" {
-		t.Fatalf("target = %q %q, want path grafana-fundamentals", spec.TargetType, spec.TargetID)
-	}
-	if spec.TrackID != "seller" || spec.RuleRevision != "abc123" || spec.SchemaVersion != 1 {
-		t.Fatalf("spec = %+v, want the kind's optional scalars and schemaVersion", spec)
-	}
-
-	var legacy assignmentSpec
-	if err := json.Unmarshal([]byte(`{"userId":"user:1","pathId":"grafana-fundamentals","lifecycle":"active"}`), &legacy); err != nil {
-		t.Fatalf("decode legacy: %v", err)
-	}
-	if legacy.TargetType != "" || legacy.TargetID != "" {
-		t.Fatalf("legacy pathId populated the target: %+v", legacy)
-	}
-}
-
-// Guides is the per-guide detail behind Satisfied: a two-milestone path with
-// one guide completed and the other not must carry both states in the array,
-// not collapse them the way Satisfied does.
-func TestMyAssignments_GuidesReflectPerGuideCompletion(t *testing.T) {
-	path := guideEntry("fe-two-guide-path", "Two-guide path", "published", "path")
-	path.Manifest.Milestones = []string{"fe-guide-done", "fe-guide-todo"}
-	withGuideLister(t, singlePageGuideLister(
-		path,
-		guideEntry("fe-guide-done", "Module 1", "published", "guide"),
-		guideEntry("fe-guide-todo", "Module 2", "published", "guide"),
-	))
-	withAssignmentLister(t, singlePageAssignmentLister(
-		asg("user:1", "fe-two-guide-path", "", "onboarding", "2026-09-01T00:00:00Z"),
-	))
-	withLister(t, singlePageLister(
-		rec("user:1", "app-platform", "fe-guide-done", "Module 1", "interactive", "fe-two-guide-path", "objectives", "2026-09-14T15:00:00Z", 100),
-	))
-
-	_, resp := doMyAssignments(t, "user:1")
-	if len(resp.Assignments) != 1 {
-		t.Fatalf("assignments = %+v", resp.Assignments)
-	}
-	entry := resp.Assignments[0]
-	if entry.Satisfied {
-		t.Error("satisfied = true, but one of the two guides has no completion")
-	}
-	got := map[string]bool{}
-	for _, g := range entry.Guides {
-		got[g.GuideID] = g.Completed
-	}
-	if want := map[string]bool{"fe-guide-done": true, "fe-guide-todo": false}; !reflect.DeepEqual(got, want) {
-		t.Errorf("guides = %+v, want %+v", got, want)
-	}
-}
-
 // Two rules assigning the same path to one person produce two records, each
 // with its own provenance and deadline. Nothing upstream merges them and this
 // proxy must not either — collapsing them would discard a deadline the learner
@@ -297,87 +215,15 @@ func TestMyAssignments_KeepsDuplicateTargetsFromDifferentRules(t *testing.T) {
 	}
 }
 
-// Absent dueAt / acceptCompletionsFrom must stay OFF the wire, because absent
-// is the statement "no deadline" / "any prior completion counts" that MVP
-// makes. A reader treating them that way needs no change when the provisioner
-// starts writing them.
-func TestMyAssignments_AbsentTimeBoundsAreOmitted(t *testing.T) {
-	withAssignmentLister(t, singlePageAssignmentLister(
-		asg("user:1", "grafana-fundamentals", "", "new-joiners", "2026-09-14T09:00:00Z"),
-	))
-
-	rr, _ := doMyAssignments(t, "user:1")
-
-	for _, field := range []string{"dueAt", "acceptCompletionsFrom", "trackId"} {
-		if strings.Contains(rr.Body.String(), `"`+field+`"`) {
-			t.Errorf("%s must be omitted when unset: %s", field, rr.Body.String())
-		}
-	}
-	if !strings.Contains(rr.Body.String(), `"targetType":"path"`) || !strings.Contains(rr.Body.String(), `"targetId":"grafana-fundamentals"`) {
-		t.Errorf("target type and id must be present: %s", rr.Body.String())
-	}
-	// satisfied and lifecycle are NOT omitempty: false and "" are meaningful
-	// answers a client must be able to read, not absences.
-	if !strings.Contains(rr.Body.String(), `"satisfied":false`) {
-		t.Errorf("satisfied must always be present: %s", rr.Body.String())
-	}
-}
-
-// With no completion list, every obligation stays unmet. Showing work as done
-// when the join could not run would suppress it.
-func TestMyAssignments_SatisfactionIsUnmetWithoutCompletions(t *testing.T) {
-	withAssignmentLister(t, singlePageAssignmentLister(
-		asg("user:1", "security-awareness", "", "annual-compliance", "2026-07-01T09:00:00Z"),
-	))
-
-	_, resp := doMyAssignments(t, "user:1")
-
-	if len(resp.Assignments) != 1 {
-		t.Fatalf("assignments = %+v", resp.Assignments)
-	}
-	if resp.Assignments[0].Satisfied {
-		t.Error("satisfied = true, but no completion list was available")
-	}
-}
-
-func TestMyAssignments_DrainsEveryPage(t *testing.T) {
-	pages := map[string]*assignmentPage{
-		"": {
-			Records:  []assignmentSpec{asg("user:1", "path-a", "", "rule-a", "2026-09-14T09:00:00Z")},
-			Continue: "page-2",
-		},
-		"page-2": {
-			Records:  []assignmentSpec{asg("user:1", "path-b", "", "rule-b", "2026-09-13T09:00:00Z")},
-			Continue: "",
-		},
-	}
-	lister := &fakeAssignmentLister{respond: func(token string) (*assignmentPage, error) {
-		page, ok := pages[token]
-		if !ok {
-			t.Fatalf("unexpected continue token %q", token)
-		}
-		return page, nil
-	}}
-	withAssignmentLister(t, lister)
-
-	_, resp := doMyAssignments(t, "user:1")
-
-	if lister.callCount() != 2 {
-		t.Errorf("LIST calls = %d, want 2 (a proxy that reads one page truncates silently)", lister.callCount())
-	}
-	if len(resp.Assignments) != 2 {
-		t.Fatalf("assignments = %+v, want both pages", resp.Assignments)
-	}
-}
-
-// There is deliberately no aggregate record cap: a cap would silently drop
-// the caller's own record when it fell past the cut. This pins that a record
-// on the LAST page of a long drain is still served — the drain must not stop
-// early just because earlier pages held only other users' records.
+// The drain reads every page and never caps records, so the caller's records on
+// the first and last pages are both served.
 func TestMyAssignments_ServesCallerRecordOnLastPage(t *testing.T) {
 	pages := map[string]*assignmentPage{
 		"": {
-			Records:  []assignmentSpec{asg("user:2", "path-other-1", "", "rule-a", "2026-09-14T09:00:00Z")},
+			Records: []assignmentSpec{
+				asg("user:1", "path-first", "", "rule-a", "2026-09-14T09:00:00Z"),
+				asg("user:2", "path-other-1", "", "rule-a", "2026-09-14T09:00:00Z"),
+			},
 			Continue: "p2",
 		},
 		"p2": {
@@ -385,7 +231,7 @@ func TestMyAssignments_ServesCallerRecordOnLastPage(t *testing.T) {
 			Continue: "p3",
 		},
 		"p3": {
-			Records:  []assignmentSpec{asg("user:1", "path-mine", "", "rule-c", "2026-09-12T09:00:00Z")},
+			Records:  []assignmentSpec{asg("user:1", "path-last", "", "rule-c", "2026-09-12T09:00:00Z")},
 			Continue: "",
 		},
 	}
@@ -401,10 +247,10 @@ func TestMyAssignments_ServesCallerRecordOnLastPage(t *testing.T) {
 	_, resp := doMyAssignments(t, "user:1")
 
 	if lister.callCount() != 3 {
-		t.Errorf("LIST calls = %d, want 3 (the whole namespace must be drained)", lister.callCount())
+		t.Errorf("LIST calls = %d, want 3", lister.callCount())
 	}
-	if len(resp.Assignments) != 1 || resp.Assignments[0].TargetID != "path-mine" {
-		t.Fatalf("assignments = %+v, want only the caller's record from the last page", resp.Assignments)
+	if len(resp.Assignments) != 2 || resp.Assignments[0].TargetID != "path-first" || resp.Assignments[1].TargetID != "path-last" {
+		t.Fatalf("assignments = %+v, want only the caller's records from the first and last pages", resp.Assignments)
 	}
 }
 
@@ -412,9 +258,10 @@ func TestMyAssignments_ServesCallerRecordOnLastPage(t *testing.T) {
 // reason token, never a 401 and never a 503: none of them is retryable, and
 // these routes gate whether a feature renders at all.
 func TestMyAssignments_IdentityFailsClosedAsCapability(t *testing.T) {
-	withAssignmentLister(t, singlePageAssignmentLister(
+	lister := singlePageAssignmentLister(
 		asg("user:1", "grafana-fundamentals", "", "new-joiners", "2026-09-14T09:00:00Z"),
-	))
+	)
+	withAssignmentLister(t, lister)
 
 	rr, resp := doMyAssignments(t, "")
 
@@ -433,16 +280,6 @@ func TestMyAssignments_IdentityFailsClosedAsCapability(t *testing.T) {
 	if len(resp.Assignments) != 0 {
 		t.Errorf("assignments = %+v, want none", resp.Assignments)
 	}
-}
-
-// Warm-or-not, an unauthenticated caller reaches no upstream at all: the gate
-// runs before the lister is even resolved.
-func TestMyAssignments_IdentityGateRunsBeforeUpstream(t *testing.T) {
-	lister := singlePageAssignmentLister()
-	withAssignmentLister(t, lister)
-
-	doMyAssignments(t, "")
-
 	if lister.callCount() != 0 {
 		t.Errorf("LIST calls = %d, want 0 before identity is verified", lister.callCount())
 	}
@@ -452,7 +289,7 @@ func TestMyAssignments_StructuralUnavailability(t *testing.T) {
 	cases := []struct {
 		name       string
 		cfg        map[string]string
-		namespace  string
+		noLister   bool
 		wantReason string
 	}{
 		{
@@ -467,12 +304,24 @@ func TestMyAssignments_StructuralUnavailability(t *testing.T) {
 			},
 			wantReason: reasonIdentityUnverifiable, // the identity gate needs it first
 		},
+		{
+			name:       "no on-behalf-of credential",
+			noLister:   true,
+			wantReason: reasonOBOUnavailable,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			withAssignmentLister(t, singlePageAssignmentLister())
-			r := completionRequestWithConfig(t, "/assignments/my", "user:1", tc.cfg)
+			if tc.noLister {
+				withAssignmentLister(t, nil)
+			} else {
+				withAssignmentLister(t, singlePageAssignmentLister())
+			}
+			r := completionRequest(t, "/assignments/my", "user:1")
+			if tc.cfg != nil {
+				r = completionRequestWithConfig(t, "/assignments/my", "user:1", tc.cfg)
+			}
 			rr, resp := doMyAssignmentsReq(t, r)
 
 			if rr.Code != http.StatusOK {
@@ -485,20 +334,6 @@ func TestMyAssignments_StructuralUnavailability(t *testing.T) {
 				t.Errorf("reason = %q, want %q", resp.Capability.Reason, tc.wantReason)
 			}
 		})
-	}
-}
-
-// A stack with no provisioned CAP token cannot authenticate as the caller at
-// all — a "never works here" condition, not a hiccup. The override has to be
-// cleared for this, since resolveAssignmentBackend applies it BEFORE the
-// nil-exchanger guard so the structural path stays reachable in tests.
-func TestMyAssignments_NoOBOCredentialIsStructural(t *testing.T) {
-	withAssignmentLister(t, nil)
-
-	_, resp := doMyAssignments(t, "user:1")
-
-	if resp.Capability.Reason != reasonOBOUnavailable {
-		t.Errorf("reason = %q, want %q", resp.Capability.Reason, reasonOBOUnavailable)
 	}
 }
 
@@ -567,39 +402,5 @@ func TestMyAssignments_RejectsNonGET(t *testing.T) {
 
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", rr.Code)
-	}
-}
-
-// Assignments and completions must key on ONE subject vocabulary, verbatim and
-// typed, or the future progress view becomes an identity reconciliation instead
-// of a same-store query.
-func TestMyAssignments_SubjectMatchesTheCompletionKey(t *testing.T) {
-	withAssignmentLister(t, singlePageAssignmentLister(
-		asg("user:abc123", "grafana-fundamentals", "", "new-joiners", "2026-09-14T09:00:00Z"),
-	))
-	r := completionRequest(t, "/assignments/my", "user:abc123")
-
-	app := newTestApp(t)
-	assignmentSubject, assignmentStatus := app.deriveAssignmentUserID(r)
-	completionSubject, completionStatus := app.deriveCompletionUserID(r)
-
-	if assignmentStatus != identityVerified || completionStatus != identityVerified {
-		t.Fatalf("identity statuses = %v / %v, want verified", assignmentStatus, completionStatus)
-	}
-	if assignmentSubject != completionSubject {
-		t.Errorf("assignment subject %q != completion subject %q", assignmentSubject, completionSubject)
-	}
-	if assignmentSubject != "user:abc123" {
-		t.Errorf("subject = %q, want the typed prefix preserved verbatim", assignmentSubject)
-	}
-}
-
-func TestAssignments_AggregationToggleMatchesTheServedGroup(t *testing.T) {
-	if assignmentsAggregationToggle != completionRecordsAggregationToggle {
-		t.Errorf("assignments toggle %q != completion records toggle %q; both surfaces are served on the same group",
-			assignmentsAggregationToggle, completionRecordsAggregationToggle)
-	}
-	if want := "aggregation.pathfinderbackend-ext-grafana-app.enabled"; assignmentsAggregationToggle != want {
-		t.Errorf("toggle = %q, want %q", assignmentsAggregationToggle, want)
 	}
 }

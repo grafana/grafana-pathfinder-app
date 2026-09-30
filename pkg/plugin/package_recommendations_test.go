@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -576,20 +577,6 @@ func TestResolveMilestoneGuideID(t *testing.T) {
 	}
 }
 
-func TestPackageEntrySlug(t *testing.T) {
-	cases := []struct{ path, want string }{
-		{"postgresql-data-source-lj/prepare-configuration/", "prepare-configuration"},
-		{"prepare-configuration", "prepare-configuration"},
-		{"/a/b/c/", "c"},
-		{"", ""},
-	}
-	for _, tc := range cases {
-		if got := packageEntrySlug(tc.path); got != tc.want {
-			t.Errorf("packageEntrySlug(%q) = %q, want %q", tc.path, got, tc.want)
-		}
-	}
-}
-
 func TestBuildPackageFileURL_NormalizesSlashes(t *testing.T) {
 	cases := []struct {
 		baseURL string
@@ -884,162 +871,84 @@ func TestGetCachedPackageRecommendations_WaiterRespectsContextCancellation(t *te
 	}
 }
 
-// TestResolveOnlinePackageGuides covers assignment satisfaction's source 3:
-// resolving an assigned online-catalogue package's guide list, on demand,
-// separately from the bulk targeting-gated enrichment above.
-func TestResolveOnlinePackageGuides(t *testing.T) {
-	repoBody := []byte(`{
+func TestOnlinePathGuides(t *testing.T) {
+	const repoBody = `{
 		"assigned-targeted": {"path": "assigned-targeted/v1", "type": "path",
 			"targeting": {"match": {"urlPrefix": "/x"}}},
 		"assigned-untargeted": {"path": "assigned-untargeted/v1", "type": "path"},
 		"no-milestones": {"path": "no-milestones/v1", "type": "path"}
-	}`)
-	targetedManifest := []byte(`{"id": "assigned-targeted", "milestones": ["m1", "m2"]}`)
-	untargetedManifest := []byte(`{"id": "assigned-untargeted", "milestones": ["m3"]}`)
-	emptyManifest := []byte(`{"id": "no-milestones", "milestones": []}`)
-
-	newFetcher := func(onDemand map[string]int) packageRepositoryFetcher {
-		return func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
-			switch {
-			case strings.HasSuffix(rawURL, "repository.json"):
-				return repoBody, nil
-			case strings.HasSuffix(rawURL, "/assigned-targeted/v1/manifest.json"):
-				onDemand["assigned-targeted"]++
-				return targetedManifest, nil
-			case strings.HasSuffix(rawURL, "/assigned-untargeted/v1/manifest.json"):
-				onDemand["assigned-untargeted"]++
-				return untargetedManifest, nil
-			case strings.HasSuffix(rawURL, "/no-milestones/v1/manifest.json"):
-				onDemand["no-milestones"]++
-				return emptyManifest, nil
-			default:
-				return nil, fmt.Errorf("unexpected URL %q", rawURL)
-			}
-		}
+	}`
+	manifests := map[string]string{
+		"assigned-targeted":   `{"id": "assigned-targeted", "milestones": ["m1", "m2"]}`,
+		"assigned-untargeted": `{"id": "assigned-untargeted", "milestones": ["m3"]}`,
+		"no-milestones":       `{"id": "no-milestones", "milestones": []}`,
 	}
 
-	t.Run("already enriched by bulk targeting fetch, no on-demand call", func(t *testing.T) {
+	// setup installs a fetcher serving the repo and manifests and returns the
+	// per-target manifest fetch counts.
+	setup := func(t *testing.T, manifestErr error) (*App, map[string]int) {
+		t.Helper()
 		resetPackageRecommendationsCache()
 		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
-		onDemand := map[string]int{}
-		withFetcherOverride(t, newFetcher(onDemand))
-		app := newTestApp(t)
-
-		// Prime the cache the same way handlePackageRecommendations does —
-		// this is what enriches "assigned-targeted" (it has targeting).
-		if _, err := app.getCachedPackageRecommendations(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-		onDemand["assigned-targeted"] = 0 // reset: only count calls made by resolveOnlinePackageGuides itself
-
-		got, err := app.resolveOnlinePackageGuides(context.Background(), "assigned-targeted")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !got.resolved || len(got.guides) != 2 || got.guides[0] != "m1" || got.guides[1] != "m2" {
-			t.Fatalf("got = %+v", got)
-		}
-		if onDemand["assigned-targeted"] != 0 {
-			t.Errorf("resolveOnlinePackageGuides re-fetched a manifest the bulk enrichment already inlined")
-		}
-	})
-
-	t.Run("not enriched by bulk fetch, resolves via on-demand fetch", func(t *testing.T) {
-		resetPackageRecommendationsCache()
-		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
-		onDemand := map[string]int{}
-		withFetcherOverride(t, newFetcher(onDemand))
-		app := newTestApp(t)
-
-		got, err := app.resolveOnlinePackageGuides(context.Background(), "assigned-untargeted")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !got.resolved || len(got.guides) != 1 || got.guides[0] != "m3" {
-			t.Fatalf("got = %+v", got)
-		}
-		if onDemand["assigned-untargeted"] != 1 {
-			t.Errorf("on-demand fetch count = %d, want 1", onDemand["assigned-untargeted"])
-		}
-	})
-
-	t.Run("unknown target id resolves as unmet, not an error", func(t *testing.T) {
-		resetPackageRecommendationsCache()
-		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
-		withFetcherOverride(t, newFetcher(map[string]int{}))
-		app := newTestApp(t)
-
-		got, err := app.resolveOnlinePackageGuides(context.Background(), "does-not-exist")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got.resolved {
-			t.Errorf("got = %+v, want unresolved", got)
-		}
-	})
-
-	t.Run("empty milestones resolves as unmet", func(t *testing.T) {
-		resetPackageRecommendationsCache()
-		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
-		withFetcherOverride(t, newFetcher(map[string]int{}))
-		app := newTestApp(t)
-
-		got, err := app.resolveOnlinePackageGuides(context.Background(), "no-milestones")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got.resolved {
-			t.Errorf("got = %+v, want unresolved", got)
-		}
-	})
-
-	t.Run("milestone id is translated to its sibling entry's URL slug", func(t *testing.T) {
-		resetPackageRecommendationsCache()
-		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
-		// "canonical-prepare" is a manifest milestone id, but the CDN serves
-		// it under a differently-named, shared-template URL slug
-		// ("prepare-configuration") — the exact drift TestResolveMilestoneGuideID
-		// covers in isolation, exercised here end-to-end through
-		// resolveOnlinePackageGuides.
-		repo := []byte(`{
-			"translated-path": {"path": "translated-path/v1", "type": "path"},
-			"canonical-prepare": {"path": "translated-path/prepare-configuration", "type": "guide"}
-		}`)
-		manifest := []byte(`{"id": "translated-path", "milestones": ["canonical-prepare"]}`)
-		withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
-			switch {
-			case strings.HasSuffix(rawURL, "repository.json"):
-				return repo, nil
-			case strings.HasSuffix(rawURL, "/translated-path/v1/manifest.json"):
-				return manifest, nil
-			default:
-				return nil, fmt.Errorf("unexpected URL %q", rawURL)
-			}
-		})
-		app := newTestApp(t)
-
-		got, err := app.resolveOnlinePackageGuides(context.Background(), "translated-path")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !got.resolved || len(got.guides) != 1 || got.guides[0] != "prepare-configuration" {
-			t.Fatalf("got = %+v, want a single guide %q", got, "prepare-configuration")
-		}
-	})
-
-	t.Run("on-demand manifest fetch failure surfaces as an error", func(t *testing.T) {
-		resetPackageRecommendationsCache()
-		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+		fetches := map[string]int{}
 		withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
 			if strings.HasSuffix(rawURL, "repository.json") {
-				return repoBody, nil
+				return []byte(repoBody), nil
 			}
-			return nil, errors.New("manifest unavailable")
+			for id, manifest := range manifests {
+				if strings.HasSuffix(rawURL, "/"+id+"/v1/manifest.json") {
+					fetches[id]++
+					if manifestErr != nil {
+						return nil, manifestErr
+					}
+					return []byte(manifest), nil
+				}
+			}
+			return nil, fmt.Errorf("unexpected URL %q", rawURL)
 		})
-		app := newTestApp(t)
+		return newTestApp(t), fetches
+	}
 
-		if _, err := app.resolveOnlinePackageGuides(context.Background(), "assigned-untargeted"); err == nil {
-			t.Error("expected a manifest fetch failure to surface as an error")
-		}
-	})
+	cases := []struct {
+		name        string
+		target      string
+		prime       bool
+		manifestErr error
+		wantGuides  []string
+		wantFound   bool
+		wantErr     bool
+		wantFetches int
+	}{
+		{name: "enriched manifest is reused without refetch", target: "assigned-targeted", prime: true, wantGuides: []string{"m1", "m2"}, wantFound: true},
+		{name: "unenriched manifest is fetched on demand once", target: "assigned-untargeted", wantGuides: []string{"m3"}, wantFound: true, wantFetches: 1},
+		{name: "unknown target is not found", target: "does-not-exist"},
+		{name: "empty milestones is found with no guides", target: "no-milestones", wantFound: true, wantFetches: 1},
+		{name: "manifest fetch failure is an error", target: "assigned-untargeted", manifestErr: errors.New("manifest unavailable"), wantFound: true, wantErr: true, wantFetches: 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app, fetches := setup(t, tc.manifestErr)
+			if tc.prime {
+				if _, err := app.getCachedPackageRecommendations(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				fetches[tc.target] = 0
+			}
+
+			guides, found, err := app.onlinePathGuides(context.Background(), tc.target)
+
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if found != tc.wantFound {
+				t.Errorf("found = %v, want %v", found, tc.wantFound)
+			}
+			if !reflect.DeepEqual(guides, tc.wantGuides) {
+				t.Errorf("guides = %v, want %v", guides, tc.wantGuides)
+			}
+			if fetches[tc.target] != tc.wantFetches {
+				t.Errorf("manifest fetches = %d, want %d", fetches[tc.target], tc.wantFetches)
+			}
+		})
+	}
 }

@@ -14,43 +14,16 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
-// Path Assignments read proxy (docs/design/BACKEND_PROXY_PATTERN.md;
-// pathfinder-rfcs rfc/PATH_ASSIGNMENTS.md §6.4, §7.4).
-//
-// "My Paths" needs the obligations assigned to the signed-in user. This route
-// is the only assignment read surface MVP ships: authenticated, identity
-// derived server-side from the forwarded ID-token `sub`, returning the caller's
-// slice only. The public recommender stays out of the assignment path entirely
-// (§2.3) — nothing here reaches it.
-//
-// DELIBERATE DEVIATION from the pattern's cache-centric §4/§5: this proxy does
-// NOT cache across requests and does NOT single-flight across callers, matching
-// custom_guide_repository.go rather than completion_records.go. Two reasons,
-// and the second is the one that decides it:
-//
-//   - The pattern's own §4 requires per-user data to use an identity-
-//     partitioned cache, which is what completion_records.go builds. That is
-//     sound but not free, and nothing needs it yet — "My Paths" is read on
-//     panel open, at the same cadence as the catalogue this mirrors.
-//   - §7.4 requires satisfaction to be evaluated as the route serves, so a
-//     learner sees their own completion reflected immediately. A cached
-//     envelope would sit over that join and reintroduce the staleness the
-//     requirement exists to forbid. The join reads raw completion rows, not
-//     the collated completion index.
-//
-// If load ever justifies caching, the safe reintroduction is a per-identity
-// partitioned cache of the raw LIST beneath a live join — a deliberate future
-// change. With no warm data to serve, §5's stale-serve and negative-cache
-// cooldown do not apply.
+// GET /assignments/my serves the signed-in user's assignments. Identity is
+// derived server-side from the forwarded ID token. The route is deliberately
+// uncached because satisfaction is evaluated live against raw completions.
 
 const (
 	// assignmentRetryAfterSeconds is the Retry-After hint on a transient 503.
 	assignmentRetryAfterSeconds = 30
 
-	// assignmentAggregateDeadline bounds a whole multi-page drain. The drain is
-	// detached from the request (context.WithoutCancel) so a canceled request
-	// does not abort a fetch partway; the deadline ensures detached never means
-	// unkillable.
+	// assignmentAggregateDeadline bounds a whole multi-page drain, which runs on
+	// a detached context.
 	assignmentAggregateDeadline = 60 * time.Second
 )
 
@@ -65,23 +38,17 @@ const (
 	assignmentTargetGuide = "guide"
 )
 
-// assignmentListerOverride injects a fake lister in tests. nil selects the real
-// per-request HTTP client. Config resolution (feature toggle, app URL,
-// namespace) is checked BEFORE this override so the structural-unavailability
-// path stays testable.
+// assignmentListerOverride injects a fake lister in tests; config resolution
+// runs before it.
 var assignmentListerOverride assignmentLister
 
 // assignmentCapability is the availability signal "My Paths" gates on.
-// `available` is read-derived: identity presence plus read-path reachability
-// of the assignments API on this stack.
 type assignmentCapability struct {
 	Available bool   `json:"available"`
 	Reason    string `json:"reason,omitempty"`
 }
 
-// assignmentEntry is one obligation on the wire. The target is
-// (targetType, targetId); this route does not filter on targetType.
-// Optional omitempty scalars are absent, not empty, when unset.
+// assignmentEntry is one obligation on the wire.
 type assignmentEntry struct {
 	TargetType   string `json:"targetType"`
 	TargetID     string `json:"targetId"`
@@ -96,33 +63,18 @@ type assignmentEntry struct {
 	AcceptCompletionsFrom string `json:"acceptCompletionsFrom,omitempty"`
 
 	Satisfied bool `json:"satisfied"`
-	// Guides is the per-guide completion detail behind Satisfied, so a
-	// caller can show progress against this assignment's own target guides
-	// rather than the user's whole local progress. Absent when the target
-	// couldn't be resolved (guide target, unresolved path) — distinct from a
-	// resolved target whose guides are simply incomplete.
+	// Guides is absent when the target could not be resolved.
 	Guides    []assignmentGuideEntry `json:"guides,omitempty"`
 	Lifecycle string                 `json:"lifecycle"`
 }
 
-// myAssignmentsResponse is the GET /assignments/my envelope. `assignments`
-// is always a non-nil slice, so an empty list serializes as `[]` rather than
-// as capability.available=false.
+// myAssignmentsResponse is the GET /assignments/my envelope; assignments is
+// never nil.
 type myAssignmentsResponse struct {
 	Capability  assignmentCapability `json:"capability"`
 	UserID      string               `json:"userId,omitempty"`
 	Assignments []assignmentEntry    `json:"assignments"`
 	AsOf        string               `json:"asOf,omitempty"`
-}
-
-// deriveAssignmentUserID is the identity contract for this route: the caller's
-// VERIFIED ID-token `sub` claim VERBATIM, typed prefix included. It is the same
-// helper the completion routes join on (deriveCompletionUserID), which is the
-// whole point of putting assignments on these rails — obligation and fulfilment
-// key on one subject, so the future progress view is a same-store query rather
-// than an identity reconciliation (§2.2).
-func (a *App) deriveAssignmentUserID(r *http.Request) (string, identityStatus) {
-	return a.subjectFromIDToken(r)
 }
 
 // handleMyAssignments serves GET /assignments/my.
@@ -132,86 +84,58 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Identity gate first: no data is served to an unauthenticated caller.
-	// Every identity failure on a GET read is a soft-200 capability envelope
-	// (not 401, not 503), because none of them is retryable and the reason
-	// token says which one it was (BACKEND_PROXY_PATTERN.md §3, §7).
-	userID, status := a.deriveAssignmentUserID(r)
+	// Assignments and completions key on the same subject.
+	userID, status := a.deriveCompletionUserID(r)
 	if status != identityVerified {
-		a.writeMyAssignments(w, myAssignmentsResponse{
-			Capability:  assignmentCapability{Available: false, Reason: status.capabilityReason()},
-			Assignments: []assignmentEntry{},
-		})
+		a.writeAssignmentsCapability(w, status.capabilityReason())
 		return
 	}
 
 	lister, namespace, available, reason := a.resolveAssignmentBackend(r)
 	if !available {
-		a.writeMyAssignments(w, myAssignmentsResponse{
-			Capability:  assignmentCapability{Available: false, Reason: reason},
-			Assignments: []assignmentEntry{},
-		})
+		a.writeAssignmentsCapability(w, reason)
 		return
 	}
 
-	// Detach the drain from the caller's cancellation, bounded by the aggregate
-	// deadline. Per-request, never shared: this fetch rides this caller's
-	// identity and is handed to no other caller.
+	// Detached from request cancellation, bounded by a deadline.
 	logger := a.ctxLogger(r.Context())
 	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), assignmentAggregateDeadline)
-	records, namespaceRecords, pages, err := drainAssignments(fetchCtx, namespace, userID, lister, logger)
+	records, err := drainAssignments(fetchCtx, namespace, userID, lister, logger)
 	cancel()
 
 	if err != nil {
 		if isTerminalUpstreamError(err) {
-			// "Never works here" — includes identity-scoped 401/403 for this
-			// caller's token, and the 404 an unregistered Assignment kind
-			// returns today. Surface the upstream status in the reason
-			// (e.g. "upstream-404") so the cause is diagnosable from the
-			// envelope without backend log access.
+			// Terminal: surface the upstream status (e.g. "upstream-404") in the reason.
 			reason := reasonBackendUnavailable
 			var upErr *appPlatformUpstreamError
 			if errors.As(err, &upErr) {
 				reason = fmt.Sprintf("upstream-%d", upErr.status)
 			}
 			logger.Info("assignments unavailable (terminal)", "namespace", namespace, "error", err)
-			a.writeMyAssignments(w, myAssignmentsResponse{
-				Capability:  assignmentCapability{Available: false, Reason: reason},
-				Assignments: []assignmentEntry{},
-			})
+			a.writeAssignmentsCapability(w, reason)
 			return
 		}
-		// Transient: signal a hiccup rather than darkening the feature. Info
-		// (not Debug) so a wrong CAP token or unreachable auth-api — which
-		// would 503 this route indefinitely — is diagnosable without raising
-		// the log level.
 		logger.Info("assignments unavailable (transient)", "namespace", namespace, "error", err)
 		a.writeAssignmentsUnavailable(w)
 		return
 	}
 
 	entries := shapeAssignments(records, a.satisfactionFunc(r, userID))
-	logger.Debug("assignments served",
-		"namespace", namespace, "pages", pages, "namespaceRecords", namespaceRecords, "callerAssignments", len(entries))
-	a.writeMyAssignments(w, myAssignmentsResponse{
+	logger.Debug("assignments served", "namespace", namespace, "callerAssignments", len(entries))
+	a.writeJSON(w, myAssignmentsResponse{
 		Capability:  assignmentCapability{Available: true},
 		UserID:      userID,
 		Assignments: entries,
 		AsOf:        timeNow().UTC().Format(time.RFC3339),
-	})
+	}, http.StatusOK)
 }
 
-// shapeAssignments keeps the caller's active obligations, newest first. The
-// drain has already filtered records to the caller (drainAssignments); target
-// type is not a filter here either. Two rules for the same target stay two
-// records — collapsing them would discard a deadline.
-func shapeAssignments(records []assignmentSpec, evaluate func(assignmentSpec) assignmentObligationResult) []assignmentEntry {
+// shapeAssignments orders the caller's obligations newest first. Two rules for
+// the same target stay two records so no deadline is discarded.
+func shapeAssignments(records []assignmentSpec, progress func(assignmentSpec) []assignmentGuideEntry) []assignmentEntry {
 	entries := []assignmentEntry{}
 	for _, rec := range records {
-		if rec.Lifecycle != assignmentLifecycleActive {
-			continue
-		}
-		result := evaluate(rec)
+		guides := progress(rec)
 		entries = append(entries, assignmentEntry{
 			TargetType:            rec.TargetType,
 			TargetID:              rec.TargetID,
@@ -222,8 +146,8 @@ func shapeAssignments(records []assignmentSpec, evaluate func(assignmentSpec) as
 			AssignedAt:            rec.AssignedAt,
 			DueAt:                 rec.DueAt,
 			AcceptCompletionsFrom: rec.AcceptCompletionsFrom,
-			Satisfied:             result.satisfied,
-			Guides:                result.guides,
+			Satisfied:             satisfiedFromGuides(guides),
+			Guides:                guides,
 			Lifecycle:             rec.Lifecycle,
 		})
 	}
@@ -260,53 +184,37 @@ func sortAssignments(entries []assignmentEntry) {
 	})
 }
 
-// drainAssignments drains the namespace LIST across pages and returns the
-// caller's own records: per-page size is bounded by assignmentListMaxBytes
-// (assignments_client.go) and the whole drain by assignmentAggregateDeadline;
-// there is deliberately no record cap, because a cap would silently drop the
-// caller's own record when it fell past the cut. App Platform could filter
-// upstream instead if kinds/assignment.cue declared spec.userId as a
-// selectable field; it does not today.
-func drainAssignments(ctx context.Context, namespace, userID string, lister assignmentLister, logger log.Logger) (records []assignmentSpec, namespaceRecords int, pages int, err error) {
+// drainAssignments drains the namespace LIST and returns the caller's active
+// records. There is deliberately no record cap: it would silently drop the
+// caller's record past the cut.
+func drainAssignments(ctx context.Context, namespace, userID string, lister assignmentLister, logger log.Logger) ([]assignmentSpec, error) {
+	records := []assignmentSpec{}
 	continueToken := ""
 	for {
 		page, err := lister.ListPage(ctx, namespace, continueToken)
 		if err != nil {
-			return nil, namespaceRecords, pages, err
+			return nil, err
 		}
-		pages++
-		namespaceRecords += len(page.Records)
 
-		// TRUST BOUNDARY. page.Records is every user's assignments in the
-		// namespace: Kubernetes RBAC is namespace-scoped, so the LIST cannot be
-		// narrowed to the caller upstream. Filter each page to the caller here,
-		// before anything else touches it. No log, metric, or return value may
-		// carry an unfiltered page; only counts leave this loop.
+		// Trust boundary: the LIST is namespace-scoped and carries every user's
+		// records, so filter each page to the caller before anything else sees it.
+		// Withdrawal revokes an obligation, so only active records are served.
 		for _, rec := range page.Records {
-			if rec.UserID == userID {
+			if rec.UserID == userID && rec.Lifecycle == assignmentLifecycleActive {
 				records = append(records, rec)
 			}
 		}
 
 		if page.Continue == "" {
-			break
+			return records, nil
 		}
 		continueToken = page.Continue
 	}
-	if records == nil {
-		records = []assignmentSpec{}
-	}
-	return records, namespaceRecords, pages, nil
 }
 
-// resolveAssignmentBackend determines whether the aggregated CRUD API is
-// structurally reachable for this request and returns a lister to use.
-// "Structurally unavailable" (feature toggle off, no app URL, no namespace, no
-// provisioned on-behalf-of credential) is a "never works here" condition
-// surfaced as capability=false, distinct from a transient LIST failure. The
-// namespace comes from the trusted plugin context, never from a query
-// parameter. Config resolution runs before the test-only lister override so the
-// structural-unavailability branch stays testable.
+// resolveAssignmentBackend reports whether the aggregated API is structurally
+// reachable (toggle, app URL, namespace, credential) and returns a lister. The
+// namespace comes from the trusted plugin context, never a query parameter.
 func (a *App) resolveAssignmentBackend(r *http.Request) (lister assignmentLister, namespace string, available bool, reason string) {
 	namespace = backend.PluginConfigFromContext(r.Context()).Namespace
 
@@ -329,9 +237,6 @@ func (a *App) resolveAssignmentBackend(r *http.Request) (lister assignmentLister
 		return assignmentListerOverride, namespace, true, ""
 	}
 
-	// No provisioned CAP token means there is no way to authenticate as the
-	// caller against the aggregated API — a "never works here" condition
-	// rather than a transient one.
 	if a.oboExchanger == nil {
 		return nil, namespace, false, reasonOBOUnavailable
 	}
@@ -340,13 +245,14 @@ func (a *App) resolveAssignmentBackend(r *http.Request) (lister assignmentLister
 	return newAssignmentHTTPClient(appURL, a.oboExchanger, idToken, a.ctxLogger(r.Context())), namespace, true, ""
 }
 
-func (a *App) writeMyAssignments(w http.ResponseWriter, resp myAssignmentsResponse) {
-	a.writeJSON(w, resp, http.StatusOK)
+func (a *App) writeAssignmentsCapability(w http.ResponseWriter, reason string) {
+	a.writeJSON(w, myAssignmentsResponse{
+		Capability:  assignmentCapability{Available: false, Reason: reason},
+		Assignments: []assignmentEntry{},
+	}, http.StatusOK)
 }
 
-// writeAssignmentsUnavailable serves BACKEND_PROXY_PATTERN.md §7's transient
-// hiccup — 503 plus a Retry-After hint, never a capability envelope — so every
-// retryable failure on this route answers in one shape.
+// writeAssignmentsUnavailable serves a transient failure as 503 with Retry-After.
 func (a *App) writeAssignmentsUnavailable(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", strconv.Itoa(assignmentRetryAfterSeconds))
 	a.writeError(w, "assignments-unavailable", http.StatusServiceUnavailable)

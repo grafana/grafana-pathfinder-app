@@ -97,11 +97,8 @@ func doWrite(t *testing.T, app *App, r *http.Request) *httptest.ResponseRecorder
 		app = newTestApp(t)
 	}
 
-	// A successful write's writeSatisfiedAssignments (assignment_satisfaction.go)
-	// runs in the background in production. Here, run it inline instead, so
-	// there is no goroutine that can outlive this call and still be reading a
-	// package-level test seam (assignmentListerOverride, completionListerOverride,
-	// ...) once whatever test runs next starts reassigning it.
+	// Run the background assignment status write inline so no goroutine outlives
+	// the test and races the next test's package-level seams.
 	prevDispatch := assignmentStatusDispatchOverride
 	assignmentStatusDispatchOverride = func(run func()) { run() }
 	defer func() { assignmentStatusDispatchOverride = prevDispatch }()

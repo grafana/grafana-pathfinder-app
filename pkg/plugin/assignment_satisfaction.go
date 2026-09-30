@@ -2,232 +2,24 @@ package plugin
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
-	"net/url"
-	"strings"
-	"sync"
+	"slices"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-
-	"github.com/grafana/grafana-pathfinder-app/src/learning-paths"
 )
 
-// Obligation evaluation for GET /assignments/my (PATH_ASSIGNMENTS.md §6.12,
-// §7.4): does the caller's completion set satisfy an assignment's target?
-// One completion row has to meet a guide on its own; collateByUser keeps
-// latestCompletedAt and maxCompletionPercent from different rows, so this
-// join reads the raw specs instead. Two consumers share this evaluation:
-// satisfactionFunc (the live GET) and writeSatisfiedAssignments (the §6.12
-// status cache, written from the completion write path).
+// Obligation evaluation for GET /assignments/my and the completion-time status
+// write. One completion row must meet a guide on its own, so this reads raw
+// completion specs rather than the collated index.
 
-const pathIndexTimeout = 10 * time.Second
-
-// A path's guides come from two sources, merged in the same order
-// learning-paths.hook.ts merges them: the bundled catalogue (source 1) and
-// the namespace's published custom paths/journeys (source 2, appPlatformPaths).
-// Source 1 has an accessory: a bundled entry with no inline guides points at a docs index.json instead
-// (resolveGuidesFromPathIndex fetches it lazily, still under source 1).
-
-type bundledPath struct {
-	ID     string   `json:"id"`
-	URL    string   `json:"url"`
-	Guides []string `json:"guides"`
-}
-
-type bundledCatalogue struct {
-	Paths []bundledPath `json:"paths"`
-}
-
-var (
-	catalogueOnce sync.Once
-	catalogue     []bundledPath
-	catalogueErr  error
-
-	// pathIndexFetch is overridden in tests
-	pathIndexFetch = resolveGuidesFromPathIndex
-)
-
-// loadLocalCatalogue is source 1: the embedded paths-cloud.json, decoded once
-// per process.
-func loadLocalCatalogue() ([]bundledPath, error) {
-	catalogueOnce.Do(func() {
-		var file bundledCatalogue
-		if catalogueErr = json.Unmarshal(learningpaths.PathsCloudJSON, &file); catalogueErr == nil {
-			catalogue = file.Paths
-		}
-	})
-	return catalogue, catalogueErr
-}
-
-// appPlatformPaths is source 2: the namespace's published custom paths and
-// journeys, normalized into bundledPath so paths() can merge them with
-// source 1 in one lookup. Keeps only milestones that are themselves
-// published, matching the guide list gate in app-platform-paths.ts.
-func appPlatformPaths(entries []customGuideRepositoryEntry) []bundledPath {
-	published := map[string]struct{}{}
-	for i := range entries {
-		if entries[i].Status == "published" {
-			published[entries[i].ID] = struct{}{}
-		}
-	}
-	var paths []bundledPath
-	for i := range entries {
-		entry := &entries[i]
-		if entry.Status != "published" || entry.Manifest == nil {
-			continue
-		}
-		if entry.Manifest.Type != "path" && entry.Manifest.Type != "journey" {
-			continue
-		}
-		ids := make([]string, 0, len(entry.Manifest.Milestones))
-		for _, milestone := range entry.Manifest.Milestones {
-			if _, ok := published[milestone]; ok {
-				ids = append(ids, milestone)
-			}
-		}
-		paths = append(paths, bundledPath{ID: entry.ID, Guides: ids})
-	}
-	return paths
-}
-
-var pathIndexClient = &http.Client{
-	Timeout: pathIndexTimeout,
-	CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	},
-}
-
-// resolveGuidesFromPathIndex is source 1's accessory, fetched lazily for a
-// bundled entry that has a URL instead of inline guides — never called for
-// an App Platform entry (source 2), which always resolves from its manifest
-// directly. This is a public docs site's index.json (Hugo/Jekyll page
-// listing), not App Platform. Reads it the way fetch-path-guides.ts does:
-// skip params.grafana.skip, guide id is the permalink slug.
-func resolveGuidesFromPathIndex(ctx context.Context, pathURL string) ([]string, error) {
-	if !strings.HasSuffix(pathURL, "/") {
-		pathURL += "/"
-	}
-	endpoint, err := url.Parse(pathURL)
-	if err != nil {
-		return nil, err
-	}
-	if endpoint.Scheme != "https" || endpoint.Host == "" {
-		return nil, fmt.Errorf("path index url must be https")
-	}
-	endpoint.Path += "index.json"
-	endpoint.RawQuery = ""
-	endpoint.Fragment = ""
-
-	reqCtx, cancel := context.WithTimeout(ctx, pathIndexTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := pathIndexClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return nil, err
-	}
-
-	var items []struct {
-		Relpermalink string `json:"relpermalink"`
-		Params       struct {
-			Grafana struct {
-				Skip bool `json:"skip"`
-			} `json:"grafana"`
-		} `json:"params"`
-	}
-	if err := json.Unmarshal(body, &items); err != nil {
-		return nil, err
-	}
-	ids := make([]string, 0, len(items))
-	for _, item := range items {
-		if item.Params.Grafana.Skip {
-			continue
-		}
-		slug := strings.TrimRight(item.Relpermalink, "/")
-		if i := strings.LastIndex(slug, "/"); i >= 0 {
-			slug = slug[i+1:]
-		}
-		if slug == "" {
-			continue
-		}
-		ids = append(ids, slug)
-	}
-	return ids, nil
-}
-
-// obligationEvaluator resolves an assignment target to the guides that must
-// be complete (assignmentGuides, via paths()), then tests the caller's raw
-// completion rows against that set (met). One evaluator serves one request,
-// reused across every assignment in it so source 2's LIST and each target's
-// resolved guide list are each fetched at most once. The kind also allows a
-// guide target; MVP does not evaluate one.
-type obligationEvaluator struct {
-	ctx        context.Context
-	logger     log.Logger
-	app        *App
-	guides     []customGuideRepositoryEntry
-	guidesOK   bool
-	guideLists map[string]guideList
-
-	pathsLoaded bool
-	pathsCache  []bundledPath
-}
-
-// paths is the merged catalogue assignmentGuides resolves a target against:
-// source 1 (local, bundled) then source 2 (remote App Platform, already
-// drained by newObligationEvaluator) appended after it. Computed once per
-// evaluator. Source 1's docs-index accessory stays out of this merge — it's
-// per-path and fetched lazily, only for the one bundled entry an assignment
-// actually targets.
-func (e *obligationEvaluator) paths() []bundledPath {
-	if e.pathsLoaded {
-		return e.pathsCache
-	}
-	e.pathsLoaded = true
-	paths, err := loadLocalCatalogue()
-	if err != nil {
-		e.logger.Info("bundled path catalogue unavailable", "error", err)
-		paths = nil
-	}
-	if e.guidesOK {
-		paths = append(paths, appPlatformPaths(e.guides)...)
-	}
-	e.pathsCache = paths
-	return paths
-}
-
-// guideList is the guides one assignment requires. resolved is false when
-// that list could not be determined; met treats that as unmet.
-type guideList struct {
-	guides   []string
-	resolved bool
-}
-
-// assignmentGuideEntry is one guide within an assignment's target, on the
-// wire — the per-guide detail met() collapses to a single bool. Surfaced so
-// a caller can show progress against the assignment's own target guides
-// instead of the user's whole local progress (PATH_ASSIGNMENTS.md §7.4).
+// assignmentGuideEntry is one guide within an assignment's target, on the wire.
 type assignmentGuideEntry struct {
 	GuideID   string `json:"guideId"`
 	Completed bool   `json:"completed"`
 }
 
-// satisfiedFromGuides is guideProgress collapsed to the single satisfaction
-// bool: resolved (non-empty) and every guide done.
+// satisfiedFromGuides is true when the target resolved and every guide is done.
 func satisfiedFromGuides(guides []assignmentGuideEntry) bool {
 	if len(guides) == 0 {
 		return false
@@ -240,14 +32,20 @@ func satisfiedFromGuides(guides []assignmentGuideEntry) bool {
 	return true
 }
 
-// guideProgress is the per-guide detail behind met(): same target
-// resolution and accept-time rule, one entry per guide instead of a
-// collapsed bool. nil means the target could not be resolved at all (guide
-// target, unresolved path, unparseable acceptCompletionsFrom) — distinct
-// from a resolved target whose guides are simply incomplete.
+// obligationEvaluator serves one request: each target's guide list is resolved
+// at most once across all assignments.
+type obligationEvaluator struct {
+	ctx      context.Context
+	logger   log.Logger
+	sources  []pathGuideSource
+	resolved map[string][]string
+}
+
+// guideProgress is one entry per guide the assignment requires. nil means the
+// target could not be resolved, distinct from a resolved target that is incomplete.
 func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []completionRecordSpec) []assignmentGuideEntry {
-	res := e.assignmentGuides(asg)
-	if !res.resolved || len(res.guides) == 0 {
+	guideIDs := e.assignmentGuides(asg)
+	if len(guideIDs) == 0 {
 		return nil
 	}
 	var accept time.Time
@@ -259,8 +57,8 @@ func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []co
 		}
 		accept, hasAccept = parsed, true
 	}
-	entries := make([]assignmentGuideEntry, len(res.guides))
-	for i, guideID := range res.guides {
+	entries := make([]assignmentGuideEntry, len(guideIDs))
+	for i, guideID := range guideIDs {
 		done := false
 		for _, rec := range completions {
 			if rec.GuideID != guideID {
@@ -281,101 +79,68 @@ func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []co
 	return entries
 }
 
-// met is the satisfaction predicate: every guide assignmentGuides resolved
-// for asg needs one completion row on or after acceptCompletionsFrom, if set.
-func (e *obligationEvaluator) met(asg assignmentSpec, completions []completionRecordSpec) bool {
-	return satisfiedFromGuides(e.guideProgress(asg, completions))
-}
-
-// assignmentGuides is the guides an assignment requires, walking the same
-// two sources the client merges. A guide target is logged and left
-// unresolved; MVP evaluates paths only. A track also stays unresolved: this
-// process has no track manifest, and grading the whole path would mark a
-// narrower obligation done. One evaluation reuses the first result for the
-// same target.
-func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) (res guideList) {
-	if e.guideLists == nil {
-		e.guideLists = map[string]guideList{}
+// assignmentGuides is the guides an assignment requires, nil when unresolved.
+// Guide targets and tracks stay unresolved: grading a whole path would mark a
+// narrower obligation done.
+func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) []string {
+	if e.resolved == nil {
+		e.resolved = map[string][]string{}
 	}
 	key := asg.TargetType + "\x00" + asg.TargetID + "\x00" + asg.TrackID + "\x00" + asg.TargetSource
-	if cached, ok := e.guideLists[key]; ok {
+	if cached, ok := e.resolved[key]; ok {
 		return cached
 	}
-	defer func() { e.guideLists[key] = res }()
-
-	if asg.TargetType == assignmentTargetGuide {
-		e.logger.Error("assignment guide target is not evaluated", "targetType", asg.TargetType, "targetId", asg.TargetID)
-		return guideList{}
-	}
-	if asg.TargetType != assignmentTargetPath || asg.TrackID != "" || asg.TargetID == "" {
-		return guideList{}
-	}
-
-	for _, path := range e.paths() {
-		if path.ID != asg.TargetID || (len(path.Guides) == 0 && path.URL == "") {
-			continue
-		}
-		if len(path.Guides) > 0 {
-			return guideList{guides: path.Guides, resolved: true}
-		}
-		guides, err := pathIndexFetch(e.ctx, path.URL)
-		if err != nil {
-			e.logger.Info("path index unavailable", "targetId", asg.TargetID, "error", err)
-			return guideList{}
-		}
-		if len(guides) == 0 {
-			return guideList{}
-		}
-		return guideList{guides: guides, resolved: true}
-	}
-
-	// Source 3: the public online catalogue Discover More reads from — not
-	// part of paths() above (see resolveOnlinePackageGuides for why it's
-	// looked up on demand instead of bulk-merged with sources 1/2).
-	if e.app != nil {
-		online, err := e.app.resolveOnlinePackageGuides(e.ctx, asg.TargetID)
-		if err != nil {
-			e.logger.Info("online package index unavailable", "targetId", asg.TargetID, "error", err)
-			return guideList{}
-		}
-		if online.resolved {
-			return online
-		}
-	}
-	return guideList{}
+	guides := e.resolveGuides(asg)
+	e.resolved[key] = guides
+	return guides
 }
 
-// newObligationEvaluator builds one evaluator per request, draining source 2
-// (the custom-guide catalogue) up front so it's fetched once regardless of
-// how many assignments get evaluated against it.
+func (e *obligationEvaluator) resolveGuides(asg assignmentSpec) []string {
+	if asg.TargetType == assignmentTargetGuide {
+		e.logger.Error("assignment guide target is not evaluated", "targetType", asg.TargetType, "targetId", asg.TargetID)
+		return nil
+	}
+	if asg.TargetType != assignmentTargetPath || asg.TrackID != "" || asg.TargetID == "" {
+		return nil
+	}
+	for _, source := range e.sources {
+		guides, found, err := source(e.ctx, asg.TargetID)
+		if err != nil {
+			e.logger.Info("path guides unavailable", "targetId", asg.TargetID, "error", err)
+			return nil
+		}
+		if found {
+			return guides
+		}
+	}
+	return nil
+}
+
+// newObligationEvaluator builds one evaluator per request, draining the
+// custom-guide catalogue once up front.
 func (a *App) newObligationEvaluator(r *http.Request) *obligationEvaluator {
 	ev := &obligationEvaluator{
 		ctx:    r.Context(),
 		logger: a.ctxLogger(r.Context()),
-		app:    a,
 	}
-	lister, namespace, available, _ := a.resolveCustomGuideBackend(r)
-	if !available {
-		return ev
+	ev.sources = append(ev.sources, bundledPathGuides)
+	if lister, namespace, available, _ := a.resolveCustomGuideBackend(r); available {
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), customGuideAggregateDeadline)
+		entries, _, err := drainCustomGuides(fetchCtx, namespace, lister, ev.logger)
+		cancel()
+		if err != nil {
+			ev.logger.Info("custom guide catalogue unavailable for assignment evaluation", "error", err)
+		} else {
+			ev.sources = append(ev.sources, customPathGuides(entries))
+		}
 	}
-	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), customGuideAggregateDeadline)
-	entries, _, err := drainCustomGuides(fetchCtx, namespace, lister, ev.logger)
-	cancel()
-	if err != nil {
-		ev.logger.Info("custom guide catalogue unavailable for assignment evaluation", "error", err)
-		return ev
-	}
-	ev.guides = entries
-	ev.guidesOK = true
+	ev.sources = append(ev.sources, a.onlinePathGuides)
 	return ev
 }
 
-// callerCompletionRecords is the caller's raw completion rows, via the same
-// drain completion_records.go's cache uses, but skipping that cache's
-// collation — met needs one row satisfying a whole criterion, and collation
-// can merge latestCompletedAt/maxCompletionPercent from different rows. ok is
-// false when the list could not be read; the caller then reports every
-// obligation unmet rather than failing the assignment response.
+// callerCompletionRecords is the caller's raw completion rows, skipping the
+// collation the completion cache applies. ok is false when the list could not
+// be read; callers then report every obligation unmet.
 func (a *App) callerCompletionRecords(r *http.Request, userID string) ([]completionRecordSpec, bool) {
 	lister, namespace, available, _ := a.resolveCompletionBackend(r)
 	if !available {
@@ -389,9 +154,7 @@ func (a *App) callerCompletionRecords(r *http.Request, userID string) ([]complet
 		logger.Info("completion records unavailable for assignment evaluation", "error", err)
 		return nil, false
 	}
-	// `records` is every user's completion rows in the namespace. Filter to the
-	// caller before anything else touches it; nothing unfiltered leaves this
-	// function.
+	// Trust boundary: records holds every user's rows; filter to the caller here.
 	out := make([]completionRecordSpec, 0, len(records))
 	for _, rec := range records {
 		if rec.UserID == userID {
@@ -401,68 +164,29 @@ func (a *App) callerCompletionRecords(r *http.Request, userID string) ([]complet
 	return out, true
 }
 
-// assignmentObligationResult is satisfactionFunc's per-assignment answer: the
-// collapsed bool shapeAssignments has always served, plus the per-guide
-// detail behind it.
-type assignmentObligationResult struct {
-	satisfied bool
-	guides    []assignmentGuideEntry
-}
-
-// satisfactionFunc is the adapter handleMyAssignments calls: builds one
-// evaluator and one completion list for this request, then returns a closure
-// so the GET handler applies satisfaction per assignment without knowing how
-// any of it is resolved.
-func (a *App) satisfactionFunc(r *http.Request, userID string) func(assignmentSpec) assignmentObligationResult {
-	logger := a.ctxLogger(r.Context())
+// satisfactionFunc returns the per-assignment guide progress for this request;
+// nil when completions are unavailable.
+func (a *App) satisfactionFunc(r *http.Request, userID string) func(assignmentSpec) []assignmentGuideEntry {
 	completions, ok := a.callerCompletionRecords(r, userID)
-	var ev *obligationEvaluator
-	if ok {
-		ev = a.newObligationEvaluator(r)
+	if !ok {
+		return func(assignmentSpec) []assignmentGuideEntry { return nil }
 	}
-	return func(rec assignmentSpec) assignmentObligationResult {
-		if rec.TargetType == assignmentTargetGuide {
-			logger.Error("assignment guide target is not evaluated", "targetType", rec.TargetType, "targetId", rec.TargetID)
-			return assignmentObligationResult{}
-		}
-		if ev == nil {
-			return assignmentObligationResult{}
-		}
-		guides := ev.guideProgress(rec, completions)
-		return assignmentObligationResult{satisfied: satisfiedFromGuides(guides), guides: guides}
+	ev := a.newObligationEvaluator(r)
+	return func(rec assignmentSpec) []assignmentGuideEntry {
+		return ev.guideProgress(rec, completions)
 	}
 }
 
-// assignmentStatusDispatchOverride replaces how writeSatisfiedAssignments runs
-// its background work in tests: nil selects the real fire-and-forget
-// goroutine; a test sets it to run inline instead. Mirrors this file's other
-// test seams (assignmentListerOverride, completionListerOverride, ...) --
-// substitution, the same as those, not a new kind of hook. Without it, a
-// test's leaked goroutine could still be reading a package-level test seam
-// when a later test reassigns it, since those seams have no synchronization
-// of their own; running inline in tests means there is no goroutine to leak.
-// Only completion_records_write_test.go's doWrite needs to set this: it's the
-// one place a test can reach writeSatisfiedAssignments at all, since
-// handleCreateCompletionRecord is its only caller.
+// assignmentStatusDispatchOverride lets tests run writeSatisfiedAssignments'
+// background work inline so no goroutine outlives the test.
 var assignmentStatusDispatchOverride func(run func())
 
-// writeSatisfiedAssignments is the other consumer of assignmentGuides/met:
-// re-evaluates every active, not-yet-satisfied assignment for this user and
-// PATCHes status.satisfied on the ones the new completion newly meets
-// (PATH_ASSIGNMENTS.md §6.12's status cache, for consumers that LIST the kind
-// and can't join live the way GET /assignments/my does). That route is the
-// only thing this app's own UI reads for satisfaction, and it never reads
-// status.satisfied — it always re-evaluates live — so this sync is a
-// convenience for an outside consumer, not something the completion write's
-// own correctness depends on. It runs in the background: nothing here sits
-// on the completion write's response path, and a failure or panic here must
-// never surface as a failed completion write.
+// writeSatisfiedAssignments PATCHes status.satisfied on the caller's active
+// assignments that a new completion newly meets, for consumers that LIST the
+// kind. It runs in the background and must never fail the completion write.
 func (a *App) writeSatisfiedAssignments(r *http.Request, userID string, just completionRecordSpec) {
 	logger := a.ctxLogger(r.Context())
-	// Detach for the life of this background run, not just one call: every
-	// downstream r.Context() read below (including the raw one UpdateStatus
-	// used to take directly) would otherwise be canceled the instant this
-	// handler returns and the response is already on the wire.
+	// Detached: the request context is canceled once the response is written.
 	bgReq := r.WithContext(context.WithoutCancel(r.Context()))
 	run := func() {
 		defer func() {
@@ -485,14 +209,10 @@ func (a *App) syncSatisfiedAssignments(r *http.Request, userID string, just comp
 		return
 	}
 	fetchCtx, cancel := context.WithTimeout(r.Context(), assignmentAggregateDeadline)
-	records, _, _, err := drainAssignments(fetchCtx, namespace, userID, lister, logger)
+	records, err := drainAssignments(fetchCtx, namespace, userID, lister, logger)
 	cancel()
 	if err != nil {
 		logger.Info("assignment status write skipped", "error", err)
-		return
-	}
-	writer, ok := lister.(assignmentStatusWriter)
-	if !ok {
 		return
 	}
 	completions, listOK := a.callerCompletionRecords(r, userID)
@@ -511,27 +231,14 @@ func (a *App) syncSatisfiedAssignments(r *http.Request, userID string, just comp
 	}
 	ev := a.newObligationEvaluator(r)
 	for _, rec := range records {
-		if rec.Lifecycle != assignmentLifecycleActive || rec.Name == "" {
+		if rec.Name == "" || (rec.StatusSatisfied != nil && *rec.StatusSatisfied) {
 			continue
 		}
-		if rec.StatusSatisfied != nil && *rec.StatusSatisfied {
+		guides := ev.guideProgress(rec, completions)
+		if !satisfiedFromGuides(guides) || !slices.ContainsFunc(guides, func(g assignmentGuideEntry) bool { return g.GuideID == just.GuideID }) {
 			continue
 		}
-		res := ev.assignmentGuides(rec)
-		if !res.resolved || !ev.met(rec, completions) {
-			continue
-		}
-		listed := false
-		for _, guideID := range res.guides {
-			if guideID == just.GuideID {
-				listed = true
-				break
-			}
-		}
-		if !listed {
-			continue
-		}
-		if err := writer.UpdateStatus(r.Context(), namespace, rec.Name, rec.ResourceVersion, true); err != nil {
+		if err := lister.UpdateStatus(r.Context(), namespace, rec.Name, rec.ResourceVersion, true); err != nil {
 			status, _ := upstreamStatusOf(err)
 			logger.Info("assignment status write failed", "name", rec.Name, "status", status, "error", err)
 		}

@@ -852,16 +852,8 @@ func doAssignmentsGolden(t *testing.T, r *http.Request, records ...assignmentSpe
 	return rr
 }
 
-// One obligation of every shape the envelope can express, so the golden pins
-// which fields are genuinely optional: a bare path with no deadline (what MVP
-// actually writes), a track-qualified target with a due date, one carrying
-// both time bounds, and a resolvable path with its one guide's completion on
-// record — pinning Guides' presence and shape (completed:true) alongside the
-// unresolved cases above, which omit it entirely. The false-completed shape
-// is pinned by TestMyAssignments_GuidesReflectPerGuideCompletion instead,
-// since a mixed true/false array needs a multi-guide target and the bundled
-// catalogue has none. A second subject's record is present to pin that the
-// caller filter keeps it off the wire.
+// One obligation of each shape the envelope can express, plus a second
+// subject's record that the caller filter must keep off the wire.
 func captureMyAssignmentsDefault(t *testing.T) *httptest.ResponseRecorder {
 	freezeContractTime(t)
 

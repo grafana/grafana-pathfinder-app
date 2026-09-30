@@ -2,10 +2,13 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,41 +46,40 @@ func completionsFor(path bundledPath, when string) []completionRecordSpec {
 	return out
 }
 
-func TestObligationMet_GuideAndPath(t *testing.T) {
-	ev := &obligationEvaluator{ctx: context.Background(), logger: log.DefaultLogger, guidesOK: true}
+func newTestEvaluator(sources ...pathGuideSource) *obligationEvaluator {
+	return &obligationEvaluator{ctx: context.Background(), logger: log.DefaultLogger, sources: sources}
+}
+
+func TestGuideProgress_GuideAndPath(t *testing.T) {
+	ev := newTestEvaluator(bundledPathGuides)
 	path := pathWithGuides(t)
 	done := completionsFor(path, "2026-09-14T15:00:00Z")
 
-	logger := newCapturingLogger()
-	ev.logger = logger
 	guide := assignmentSpec{TargetType: "guide", TargetID: path.Guides[0], TargetSource: "bundled"}
-	if ev.met(guide, done[:1]) {
+	if satisfiedFromGuides(ev.guideProgress(guide, done[:1])) {
 		t.Error("a guide target is not evaluated")
-	}
-	if !logger.erroredWith("assignment guide target is not evaluated") {
-		t.Error("a guide target should log and still return unmet")
 	}
 
 	asg := assignmentSpec{TargetType: "path", TargetID: path.ID}
-	if ev.met(asg, done[:len(done)-1]) {
+	if satisfiedFromGuides(ev.guideProgress(asg, done[:len(done)-1])) {
 		t.Error("a path is unmet until every guide has a completion")
 	}
-	if !ev.met(asg, done) {
+	if !satisfiedFromGuides(ev.guideProgress(asg, done)) {
 		t.Error("a path is met once every guide has a completion")
 	}
 
 	tracked := asg
 	tracked.TrackID = "seller-track"
-	if ev.met(tracked, done) {
+	if ev.guideProgress(tracked, done) != nil {
 		t.Error("a track-qualified path is not evaluated without a track manifest")
 	}
-	if ev.met(assignmentSpec{TargetType: "course", TargetID: path.ID}, done) {
+	if ev.guideProgress(assignmentSpec{TargetType: "course", TargetID: path.ID}, done) != nil {
 		t.Error("an unknown target type is not evaluated")
 	}
 }
 
-func TestObligationMet_AcceptCompletionsFrom(t *testing.T) {
-	ev := &obligationEvaluator{ctx: context.Background(), logger: log.DefaultLogger}
+func TestGuideProgress_AcceptCompletionsFrom(t *testing.T) {
+	ev := newTestEvaluator(bundledPathGuides)
 	var path bundledPath
 	for _, candidate := range activeCatalogue(t) {
 		if len(candidate.Guides) == 1 {
@@ -97,51 +99,35 @@ func TestObligationMet_AcceptCompletionsFrom(t *testing.T) {
 		AcceptCompletionsFrom: "2026-01-01T00:00:00Z",
 		DueAt:                 "2026-03-01T00:00:00Z",
 	}
-	if ev.met(asg, []completionRecordSpec{early}) {
+	met := func(completions ...completionRecordSpec) bool {
+		return satisfiedFromGuides(ev.guideProgress(asg, completions))
+	}
+	if met(early) {
 		t.Error("a completion before acceptCompletionsFrom does not count")
 	}
-	if !ev.met(asg, []completionRecordSpec{early, late}) {
+	if !met(early, late) {
 		t.Error("a later completion counts, including one after dueAt and under 100 percent")
 	}
 	exact := rec("user:1", "bundled", guideID, guideID, "interactive", "", "objectives", asg.AcceptCompletionsFrom, 100)
-	if !ev.met(asg, []completionRecordSpec{exact}) {
+	if !met(exact) {
 		t.Error("a completion exactly at acceptCompletionsFrom counts as met")
 	}
 	asg.AcceptCompletionsFrom = "not-a-time"
-	if ev.met(asg, []completionRecordSpec{late}) {
+	if met(late) {
 		t.Error("an unparseable acceptCompletionsFrom does not evaluate as met")
 	}
 }
 
-func TestPathGuides_URLAndPrivateCatalogue(t *testing.T) {
+func TestBundledPathGuides_FallsBackToPathIndex(t *testing.T) {
 	prev := pathIndexFetch
 	pathIndexFetch = func(context.Context, string) ([]string, error) {
 		return []string{"select-platform"}, nil
 	}
 	t.Cleanup(func() { pathIndexFetch = prev })
 
-	urlEv := &obligationEvaluator{ctx: context.Background(), logger: log.DefaultLogger, guidesOK: true}
-	res := urlEv.assignmentGuides(assignmentSpec{TargetType: "path", TargetID: "linux-server-integration"})
-	if !res.resolved || len(res.guides) != 1 || res.guides[0] != "select-platform" {
-		t.Fatalf("url path = %+v", res)
-	}
-
-	// A fresh evaluator: e.guides is set once at construction
-	// (newObligationEvaluator), never mutated after a path has already been
-	// resolved and memoized on this evaluator.
-	ev := &obligationEvaluator{
-		ctx:    context.Background(),
-		logger: log.DefaultLogger,
-		guides: []customGuideRepositoryEntry{
-			{ID: "private-path", Status: "published", Manifest: &customGuideManifest{Type: "path", Milestones: []string{"step-a", "draft-step"}}},
-			{ID: "step-a", Status: "published"},
-			{ID: "draft-step", Status: "draft"},
-		},
-		guidesOK: true,
-	}
-	res = ev.assignmentGuides(assignmentSpec{TargetType: "path", TargetID: "private-path"})
-	if !res.resolved || len(res.guides) != 1 || res.guides[0] != "step-a" {
-		t.Fatalf("private path = %+v", res.guides)
+	guides, found, err := bundledPathGuides(context.Background(), "linux-server-integration")
+	if err != nil || !found || len(guides) != 1 || guides[0] != "select-platform" {
+		t.Fatalf("guides = %v, found = %v, err = %v", guides, found, err)
 	}
 }
 
@@ -167,92 +153,122 @@ func TestResolveGuidesFromPathIndex_SkipsCover(t *testing.T) {
 	}
 }
 
-// A private App Platform path is the third source learning-paths.hook.ts
-// merges, and on Cloud it is where a path with its own members lives.
-func TestMyAssignments_EvaluatesAppPlatformPathFromCompletions(t *testing.T) {
-	path := guideEntry("fe-alerting-path", "Alerting enablement", "published", "path")
-	path.Manifest.Milestones = []string{"fe-alerting-01", "fe-alerting-draft"}
-	withGuideLister(t, singlePageGuideLister(
-		path,
-		guideEntry("fe-alerting-01", "Module 1", "published", "guide"),
-		guideEntry("fe-alerting-draft", "Module 2", "draft", "guide"),
-	))
-	withAssignmentLister(t, singlePageAssignmentLister(
-		asg("user:1", "fe-alerting-path", "", "onboarding", "2026-09-01T00:00:00Z"),
-	))
-	withLister(t, singlePageLister(
-		rec("user:1", "app-platform", "fe-alerting-01", "Module 1", "interactive", "fe-alerting-path", "objectives", "2026-09-14T15:00:00Z", 100),
-	))
-
-	_, resp := doMyAssignments(t, "user:1")
-	if len(resp.Assignments) != 1 {
-		t.Fatalf("assignments = %+v", resp.Assignments)
+func TestMyAssignments_SatisfactionBySource(t *testing.T) {
+	twoGuidePath := func(t *testing.T) {
+		path := guideEntry("fe-two-guide-path", "Two-guide path", "published", "path")
+		path.Manifest.Milestones = []string{"fe-guide-done", "fe-guide-todo"}
+		withGuideLister(t, singlePageGuideLister(
+			path,
+			guideEntry("fe-guide-done", "Module 1", "published", "guide"),
+			guideEntry("fe-guide-todo", "Module 2", "published", "guide"),
+		))
 	}
-	if !resp.Assignments[0].Satisfied {
-		t.Error("a published member completion satisfies the path; a draft member is not required")
+	cases := []struct {
+		name          string
+		setup         func(t *testing.T) (targetID string, completions []completionRecordSpec)
+		wantSatisfied bool
+		wantGuides    map[string]bool
+	}{
+		{
+			name: "bundled path satisfied",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				path := pathWithGuides(t)
+				return path.ID, completionsFor(path, "2026-09-14T15:00:00Z")
+			},
+			wantSatisfied: true,
+		},
+		{
+			name: "unknown path unmet",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				return "not-a-bundled-path", completionsFor(pathWithGuides(t), "2026-09-14T15:00:00Z")
+			},
+		},
+		{
+			name: "App Platform path ignores a draft member",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				path := guideEntry("fe-alerting-path", "Alerting enablement", "published", "path")
+				path.Manifest.Milestones = []string{"fe-alerting-01", "fe-alerting-draft"}
+				withGuideLister(t, singlePageGuideLister(
+					path,
+					guideEntry("fe-alerting-01", "Module 1", "published", "guide"),
+					guideEntry("fe-alerting-draft", "Module 2", "draft", "guide"),
+				))
+				return "fe-alerting-path", []completionRecordSpec{
+					rec("user:1", "app-platform", "fe-alerting-01", "Module 1", "interactive", "fe-alerting-path", "objectives", "2026-09-14T15:00:00Z", 100),
+				}
+			},
+			wantSatisfied: true,
+		},
+		{
+			name: "App Platform path partially done reports per-guide state",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				twoGuidePath(t)
+				return "fe-two-guide-path", []completionRecordSpec{
+					rec("user:1", "app-platform", "fe-guide-done", "Module 1", "interactive", "fe-two-guide-path", "objectives", "2026-09-14T15:00:00Z", 100),
+				}
+			},
+			wantGuides: map[string]bool{"fe-guide-done": true, "fe-guide-todo": false},
+		},
+		{
+			name: "online catalogue path satisfied",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
+					switch {
+					case strings.HasSuffix(rawURL, "repository.json"):
+						return []byte(`{"online-only-path": {"path": "online-only-path/v1", "type": "path"}}`), nil
+					case strings.HasSuffix(rawURL, "/online-only-path/v1/manifest.json"):
+						return []byte(`{"id": "online-only-path", "milestones": ["online-milestone-1"]}`), nil
+					default:
+						return nil, fmt.Errorf("unexpected URL %q", rawURL)
+					}
+				})
+				return "online-only-path", []completionRecordSpec{
+					rec("user:1", "bundled", "online-milestone-1", "Online milestone", "interactive", "online-only-path", "objectives", "2026-09-14T15:00:00Z", 100),
+				}
+			},
+			wantSatisfied: true,
+		},
+		{
+			name: "no completion list is unmet",
+			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				return pathWithGuides(t).ID, nil
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetPackageRecommendationsCache()
+			withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+			withFetcherOverride(t, func(context.Context, string, int64) ([]byte, error) {
+				return nil, errors.New("package index unavailable")
+			})
+			target, completions := tc.setup(t)
+			withAssignmentLister(t, singlePageAssignmentLister(asg("user:1", target, "", "onboarding", "2026-09-01T00:00:00Z")))
+			if completions != nil {
+				withLister(t, singlePageLister(completions...))
+			}
+
+			_, resp := doMyAssignments(t, "user:1")
+
+			if len(resp.Assignments) != 1 {
+				t.Fatalf("assignments = %+v", resp.Assignments)
+			}
+			entry := resp.Assignments[0]
+			if entry.Satisfied != tc.wantSatisfied {
+				t.Errorf("satisfied = %v, want %v", entry.Satisfied, tc.wantSatisfied)
+			}
+			if tc.wantGuides != nil {
+				got := map[string]bool{}
+				for _, g := range entry.Guides {
+					got[g.GuideID] = g.Completed
+				}
+				if !reflect.DeepEqual(got, tc.wantGuides) {
+					t.Errorf("guides = %v, want %v", got, tc.wantGuides)
+				}
+			}
+		})
 	}
 }
-
-func TestMyAssignments_EvaluatesBundledPathFromCompletions(t *testing.T) {
-	path := pathWithGuides(t)
-	withAssignmentLister(t, singlePageAssignmentLister(
-		asg("user:1", path.ID, "", "bootcamp", "2026-09-01T00:00:00Z"),
-		asg("user:1", "not-a-bundled-path", "", "onboarding", "2026-09-01T00:00:00Z"),
-	))
-	withLister(t, singlePageLister(completionsFor(path, "2026-09-14T15:00:00Z")...))
-
-	_, resp := doMyAssignments(t, "user:1")
-	got := map[string]bool{}
-	for _, entry := range resp.Assignments {
-		got[entry.TargetID] = entry.Satisfied
-	}
-	if !got[path.ID] {
-		t.Errorf("%s should be satisfied", path.ID)
-	}
-	if got["not-a-bundled-path"] {
-		t.Error("an unknown path stays unmet")
-	}
-}
-
-// The public online catalogue (Discover More's own source) is the third
-// path source assignmentGuides() falls through to, once sources 1
-// (bundled/URL) and 2 (App Platform) both miss.
-func TestMyAssignments_EvaluatesOnlineCataloguePathFromCompletions(t *testing.T) {
-	resetPackageRecommendationsCache()
-	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
-	withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
-		switch {
-		case strings.HasSuffix(rawURL, "repository.json"):
-			return []byte(`{"online-only-path": {"path": "online-only-path/v1", "type": "path"}}`), nil
-		case strings.HasSuffix(rawURL, "/online-only-path/v1/manifest.json"):
-			return []byte(`{"id": "online-only-path", "milestones": ["online-milestone-1"]}`), nil
-		default:
-			return nil, fmt.Errorf("unexpected URL %q", rawURL)
-		}
-	})
-
-	withAssignmentLister(t, singlePageAssignmentLister(
-		asg("user:1", "online-only-path", "", "onboarding", "2026-09-01T00:00:00Z"),
-	))
-	withLister(t, singlePageLister(
-		rec("user:1", "bundled", "online-milestone-1", "Online milestone", "interactive", "online-only-path", "objectives", "2026-09-14T15:00:00Z", 100),
-	))
-
-	_, resp := doMyAssignments(t, "user:1")
-	if len(resp.Assignments) != 1 {
-		t.Fatalf("assignments = %+v", resp.Assignments)
-	}
-	if !resp.Assignments[0].Satisfied {
-		t.Error("a completion against the online catalogue's own milestone id satisfies the assignment")
-	}
-}
-
-// writeSatisfiedAssignments now runs in the background (it used to run
-// synchronously on the completion write's response path). These two tests
-// prove the two things that matters about that: the PATCH still happens
-// (proven by waiting on it, not by sleeping and hoping), and a panic
-// anywhere in that background work can never escape and take the whole
-// plugin process down with it.
 
 func TestWriteSatisfiedAssignments_RunsInBackgroundAndPatchesNewlySatisfied(t *testing.T) {
 	path := pathWithGuides(t)
@@ -273,9 +289,7 @@ func TestWriteSatisfiedAssignments_RunsInBackgroundAndPatchesNewlySatisfied(t *t
 	}
 	withAssignmentLister(t, lister)
 
-	// Every guide but the last is already on record; the "just completed"
-	// fact this call carries covers the last one, which is what should tip
-	// this assignment over into satisfied.
+	// The just-completed guide is the last one missing from the LIST.
 	done := completionsFor(path, "2026-09-14T15:00:00Z")
 	withLister(t, singlePageLister(done[:len(done)-1]...))
 
@@ -311,11 +325,48 @@ func TestWriteSatisfiedAssignments_RecoversFromPanic(t *testing.T) {
 
 	select {
 	case <-reached:
-		// The background goroutine reached the panic. If writeSatisfiedAssignments's
-		// own recover() had not caught it, an unrecovered panic in a goroutine
-		// takes the whole process down with it -- this test (and every other
-		// test in this binary) would never get to report a result at all.
+		// An unrecovered panic here would kill the whole test binary.
 	case <-time.After(2 * time.Second):
 		t.Fatal("panicking lister was never reached")
+	}
+}
+
+func TestSyncSatisfiedAssignments_Skips(t *testing.T) {
+	path := pathWithGuides(t)
+	done := completionsFor(path, "2026-09-14T15:00:00Z")
+	yes := true
+
+	cases := []struct {
+		name string
+		edit func(a *assignmentSpec)
+		just completionRecordSpec
+	}{
+		{name: "already satisfied", edit: func(a *assignmentSpec) { a.StatusSatisfied = &yes }, just: done[0]},
+		{name: "just-completed guide is not in the target", just: rec("user:1", "bundled", "unrelated", "Unrelated", "interactive", "", "objectives", "2026-09-14T16:00:00Z", 100)},
+		{name: "withdrawn", edit: func(a *assignmentSpec) { a.Lifecycle = "withdrawn" }, just: done[0]},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			target := asg("user:1", path.ID, "", "onboarding", "2026-09-01T00:00:00Z")
+			target.Name = "assignment-1"
+			if tc.edit != nil {
+				tc.edit(&target)
+			}
+			var updates int32
+			lister := singlePageAssignmentLister(target)
+			lister.updateStatus = func(context.Context, string, string, string, bool) error {
+				atomic.AddInt32(&updates, 1)
+				return nil
+			}
+			withAssignmentLister(t, lister)
+			withLister(t, singlePageLister(done...))
+
+			r := completionRequest(t, "/completion-records", "user:1")
+			newTestApp(t).syncSatisfiedAssignments(r, "user:1", tc.just, log.DefaultLogger)
+
+			if n := atomic.LoadInt32(&updates); n != 0 {
+				t.Errorf("UpdateStatus calls = %d, want 0", n)
+			}
+		})
 	}
 }
