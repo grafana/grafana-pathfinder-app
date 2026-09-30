@@ -700,9 +700,7 @@ describe('suggested path assignment badges', () => {
   });
 
   it('matches a package-backed recommendation by manifest id, not by title, even when a title match would disagree', () => {
-    // The title-based match would pick the second assignment (title equal to
-    // the recommendation's); the real targetId in the manifest points at the
-    // first, overdue one instead. Only the id-based match can tell them apart.
+    // Title would match the second assignment; only the manifest id picks the overdue first.
     const card = renderSuggested({
       recommendations: [
         {
@@ -727,9 +725,7 @@ describe('suggested path assignment badges', () => {
   });
 
   it('shows no badge when two assignments share a title and the recommendation has no id to break the tie', () => {
-    // A bundled-catalogue recommendation never carries a manifest, so title
-    // is the only signal here -- and it's ambiguous. Showing neither
-    // assignment's badge is safer than guessing one.
+    // No manifest and an ambiguous title: show no badge rather than guess.
     const card = renderSuggested({
       assignments: [
         assignment({ targetId: 'getting-started', overdue: true, dueAt: '2020-01-01T00:00:00Z' }),

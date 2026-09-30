@@ -34,8 +34,8 @@ import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuid
 import { ContextPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { useRecommendationsScrollPosition } from './hooks';
-import { useLearningPaths, useMyAssignments, daysUntilDue, type ResolvedAssignment } from '../../learning-paths';
-import { getLearningPathCardStyles } from '../LearningPaths/learning-paths.styles';
+import { useLearningPaths, useMyAssignments, type ResolvedAssignment } from '../../learning-paths';
+import { AssignmentBadges } from '../LearningPaths/AssignmentBadges';
 
 /**
  * Resolve the effective display type for a recommendation.
@@ -50,29 +50,15 @@ const getEffectiveDisplayType = (recommendation: Recommendation): Recommendation
   return recommendation.type;
 };
 
-/**
- * The recommendation's own catalogue id, when it has one. Only a
- * package-backed recommendation carries a manifest, and only a manifest
- * carries an id — a bundled-catalogue path is never registered as a
- * package, so a recommendation for one never reaches this.
- */
+/** The manifest id of a package-backed recommendation; bundled-catalogue paths have none. */
 function recommendationTargetId(recommendation: Recommendation): string | undefined {
   const id = recommendation.manifest?.id;
   return typeof id === 'string' && id.trim() !== '' ? id : undefined;
 }
 
 /**
- * Matches a suggestion card to the assignment it represents, preferring a
- * real id over its display title. An id match is exact and can't collide:
- * for a package-backed recommendation (an App Platform-authored path), the
- * manifest's own id is that same path's targetId.
- *
- * A bundled catalogue path is never registered as a package, so its
- * recommendation never carries an id — title is the only signal available
- * for those, and title is not a unique key: two catalogue entries can share
- * a display title with nothing here to break the tie. Rather than guess,
- * an ambiguous title drops the badge instead of picking one — a missing
- * badge is a smaller mistake than a wrong one.
+ * Matches a card to its assignment by manifest id, else by unique title.
+ * An ambiguous title drops the badge rather than guess.
  */
 function assignmentForPath(
   recommendation: Recommendation,
@@ -93,25 +79,6 @@ function assignmentForPath(
   const title = recommendation.title.trim().toLowerCase();
   const byTitle = assignments.filter((assignment) => assignment.title.trim().toLowerCase() === title);
   return byTitle.length === 1 ? byTitle[0] : undefined;
-}
-
-function assignmentDueString(assignment: ResolvedAssignment): string | undefined {
-  if (!assignment.dueAt) {
-    return undefined;
-  }
-  const dueDays = daysUntilDue(assignment.dueAt);
-  if (dueDays === undefined) {
-    return undefined;
-  }
-  if (assignment.overdue || dueDays < 0) {
-    return t('myLearning.dueOverdue', 'Overdue');
-  }
-  if (dueDays === 0) {
-    return t('myLearning.dueRelativeToday', 'Today');
-  }
-  return dueDays === 1
-    ? t('myLearning.dueDayCount', '{{count}} day', { count: dueDays })
-    : t('myLearning.dueDayCount', '{{count}} days', { count: dueDays });
 }
 
 /** Maps a recommendation's effective display type onto the canonical analytics content_type. */
@@ -369,7 +336,6 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   assignments = [],
 }: RecommendationsSectionProps) {
   const styles = useStyles2(getStyles);
-  const cardStyles = useStyles2(getLearningPathCardStyles);
   const skeletonStyles = useStyles2(getSkeletonStyles);
   const hasCustomGuidesContent = isLoadingCustomGuides || customGuides.length > 0;
   const suggestedGuidesCount = recommendations.length + featuredRecommendations.length;
@@ -780,10 +746,6 @@ export const RecommendationsSection = memo(function RecommendationsSection({
               const packageInfo = getRecommendationPackageInfo(recommendation);
               const displayType = getEffectiveDisplayType(recommendation);
               const assignment = assignmentForPath(recommendation, assignments);
-              const dueString = assignment ? assignmentDueString(assignment) : undefined;
-              const dueDays = assignment?.dueAt ? daysUntilDue(assignment.dueAt) : undefined;
-              const isOverdue = Boolean(assignment?.overdue || (dueDays !== undefined && dueDays < 0));
-              const isUpcoming = !isOverdue && dueDays === 0;
               const isExpandable = isSummaryExpandable(recommendation);
               const isExpanded = isExpandable && Boolean(recommendation.summaryExpanded);
               return (
@@ -816,25 +778,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                             {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
                             {getCategoryLabel(displayType)}
                           </span>
-                          {assignment && (
-                            <span className={cx(cardStyles.pathCardBadge, cardStyles.assignedBadge)}>
-                              <Icon name="user" size="xs" />
-                              {t('myLearning.assignedBadge', 'Assigned')}
-                            </span>
-                          )}
-                          {dueString && (
-                            <span
-                              className={cx(
-                                cardStyles.pathCardBadge,
-                                cardStyles.dueBadge,
-                                isUpcoming && cardStyles.dueBadgeUpcoming,
-                                isOverdue && cardStyles.dueBadgeOverdue
-                              )}
-                            >
-                              <Icon name="clock-nine" size="xs" />
-                              {dueString}
-                            </span>
-                          )}
+                          {assignment && <AssignmentBadges assignment={assignment} />}
                         </div>
                       </div>
                       <div className={styles.cardActions}>

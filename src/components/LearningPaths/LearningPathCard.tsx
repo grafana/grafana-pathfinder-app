@@ -10,20 +10,12 @@ import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
-import { daysUntilDue, markCurrentGuide } from '../../learning-paths';
+import { formatDueDate, getDueStatus, markCurrentGuide } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { getLearningPathCardStyles } from './learning-paths.styles';
+import { AssignmentBadges, dueLabel } from './AssignmentBadges';
 import { GuideList } from './GuideList';
 import { ProgressRing } from './ProgressRing';
-
-function formatDueDate(dueAt: string): string {
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.\d+)?Z$/.exec(dueAt);
-  const date = dateOnly ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])) : new Date(dueAt);
-  if (Number.isNaN(date.getTime())) {
-    return dueAt;
-  }
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 /**
  * Card displaying a learning path with collapsible guide list
@@ -47,28 +39,14 @@ export function LearningPathCard({
   const [isConfirmingAssignmentReset, setIsConfirmingAssignmentReset] = useState(false);
   const detailsId = useId();
 
-  const dueDays = assignment?.dueAt ? daysUntilDue(assignment.dueAt) : undefined;
-  const isOverdue = Boolean(assignment?.overdue || (dueDays !== undefined && dueDays < 0));
-  const isUpcoming = !isOverdue && dueDays === 0;
-  const dueString =
-    dueDays === undefined
-      ? undefined
-      : isOverdue
-        ? t('myLearning.dueOverdue', 'Overdue')
-        : dueDays === 0
-          ? t('myLearning.dueRelativeToday', 'Today')
-          : dueDays === 1
-            ? t('myLearning.dueRelativeTomorrow', '{{count}} day', { count: dueDays })
-            : t('myLearning.dueDayCount', '{{count}} days', { count: dueDays });
+  const dueStatus = assignment ? getDueStatus(assignment) : undefined;
 
   // Whether this is a URL-based path (guides fetched dynamically)
   const isUrlBased = Boolean(path.url);
   const isLoadingGuides = isUrlBased && guides.length === 0;
 
-  // Assignment satisfaction is completion-record-driven, not local progress, so
-  // override covered guides' `completed` and recompute `isCurrent`. Guides local
-  // storage calls done but the assignment doesn't credit are `mismatchedGuides`;
-  // continuing has to clear them first or a fresh completion would never fire.
+  // Satisfaction follows completion records, not local progress; guides local
+  // storage marks done but the assignment doesn't credit must reset before Continue.
   const assignmentGuides = assignment?.guides;
   const { effectiveGuides, mismatchedGuides } = useMemo(() => {
     if (!assignmentGuides || assignmentGuides.length === 0) {
@@ -148,8 +126,8 @@ export function LearningPathCard({
       className={cx(
         styles.card,
         isCompleted && styles.cardCompleted,
-        isUpcoming && styles.cardUpcoming,
-        isOverdue && styles.cardOverdue
+        dueStatus?.tone === 'today' && styles.cardUpcoming,
+        dueStatus?.tone === 'overdue' && styles.cardOverdue
       )}
       data-testid={testIds.learningPaths.card(path.id)}
     >
@@ -166,25 +144,7 @@ export function LearningPathCard({
           <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>{path.title}</h3>
 
           <div className={styles.meta}>
-            {!isCompleted && assignment && (
-              <span className={cx(styles.pathCardBadge, styles.assignedBadge)}>
-                <Icon name="user" size="xs" />
-                {t('myLearning.assignedBadge', 'Assigned')}
-              </span>
-            )}
-            {!isCompleted && dueString && (
-              <span
-                className={cx(
-                  styles.pathCardBadge,
-                  styles.dueBadge,
-                  isUpcoming && styles.dueBadgeUpcoming,
-                  isOverdue && styles.dueBadgeOverdue
-                )}
-              >
-                <Icon name="clock-nine" size="xs" />
-                {dueString}
-              </span>
-            )}
+            {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
             {isLoadingGuides ? (
               <span>Loading guides...</span>
             ) : (
@@ -273,14 +233,14 @@ export function LearningPathCard({
                 ) : null}
               </span>
             </div>
-            {assignment.dueAt && dueString && (
+            {dueStatus && (
               <div className={styles.expandMetaRow}>
                 <Icon name="clock-nine" size="sm" />
                 <span>
                   {t('myLearning.dueDetail', 'Due {{date}} — {{relative}}{{left}}', {
-                    date: formatDueDate(assignment.dueAt),
-                    relative: dueString,
-                    left: dueDays !== undefined && dueDays > 0 ? t('myLearning.dueLeft', ' left') : '',
+                    date: formatDueDate(assignment.dueAt!),
+                    relative: dueLabel(dueStatus),
+                    left: dueStatus.days > 0 ? t('myLearning.dueLeft', ' left') : '',
                   })}
                 </span>
               </div>

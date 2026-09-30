@@ -5,7 +5,7 @@
  */
 import type { AssignmentEntry } from '../lib/assignments-client';
 import type { LearningPath, ResolvedAssignment } from '../types/learning-paths.types';
-import { daysUntilDue, resolveAssignments } from './assignments-core';
+import { daysUntilDue, getDueStatus, resolveAssignments } from './assignments-core';
 
 function path(overrides: Partial<LearningPath> & { id: string; title: string }): LearningPath {
   return { description: '', guides: [], badgeId: '', ...overrides };
@@ -251,5 +251,19 @@ describe('resolveAssignments overdue boundary across a real zone', () => {
       timeZone: 'America/Los_Angeles',
     });
     expect(overdue.notDone[0]!.overdue).toBe(true);
+  });
+});
+
+describe('getDueStatus', () => {
+  const now = Date.parse('2026-09-18T12:00:00Z');
+  it.each([
+    ['no dueAt', { overdue: false }, undefined],
+    ['unparseable', { dueAt: 'soon', overdue: false }, undefined],
+    ['overdue flag', { dueAt: '2026-09-25T00:00:00Z', overdue: true }, { days: 7, tone: 'overdue' }],
+    ['past', { dueAt: '2026-09-10T00:00:00Z', overdue: false }, { days: -8, tone: 'overdue' }],
+    ['today', { dueAt: '2026-09-18T00:00:00Z', overdue: false }, { days: 0, tone: 'today' }],
+    ['later', { dueAt: '2026-09-21T00:00:00Z', overdue: false }, { days: 3, tone: 'later' }],
+  ])('%s', (_name, assignment, expected) => {
+    expect(getDueStatus(assignment, now)).toEqual(expected);
   });
 });

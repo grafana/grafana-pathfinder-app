@@ -161,6 +161,8 @@ jest.mock('../../learning-paths', () => ({
     };
   },
   daysUntilDue: jest.requireActual('../../learning-paths/assignments-core').daysUntilDue,
+  getDueStatus: jest.requireActual('../../learning-paths/assignments-core').getDueStatus,
+  formatDueDate: jest.requireActual('../../learning-paths/assignments-core').formatDueDate,
   compareResolvedAssignments: jest.requireActual('../../learning-paths/assignments-core').compareResolvedAssignments,
   markCurrentGuide: jest.requireActual('../../learning-paths/mark-current-guide').markCurrentGuide,
 }));
@@ -404,11 +406,7 @@ describe('MyLearningTab launch flow', () => {
   });
 
   it('keeps an unsatisfied assigned path in My Courses even at 100% local progress, alongside Completed', () => {
-    // Local progress can drift from what's actually on record server-side
-    // (a queued-but-unsent write, a stale cache write, etc.) — an outstanding
-    // assignment has to stay visible in My Courses regardless of that drift.
-    // Completed is untouched: it's still purely local-progress-driven, so the
-    // same path also keeps showing there.
+    // An outstanding assignment stays visible regardless of local-progress drift.
     mockAssignments = [
       {
         targetType: 'path',
@@ -429,11 +427,8 @@ describe('MyLearningTab launch flow', () => {
   });
 
   it("sources a card's guide breakout and progress from the assignment's own guides, not local completion", async () => {
-    // Local says guide-1 is the only one done; the assignment's own guide
-    // list (completion records) says the opposite — guide-1 outstanding,
-    // guide-2 done. The card must reflect the assignment's view once one
-    // resolved, not the pre-override local one. path-new (not URL-based) so
-    // Continue resolves a per-guide title, unlike path-1's cover-page launch.
+    // Local and assignment guide lists disagree; the card must follow the assignment.
+    // path-new (not URL-based) so Continue resolves a per-guide title.
     mockGetPathGuides.mockImplementation((id: string) =>
       id === 'path-new'
         ? [
@@ -462,9 +457,7 @@ describe('MyLearningTab launch flow', () => {
 
     const card = screen.getByTestId(testIds.learningPaths.card('path-new'));
     expect(card).toHaveTextContent('1/2 guides');
-    // guide-1 is locally done but the assignment says otherwise — Continue
-    // must warn before it resets local progress on it, not launch straight
-    // away.
+    // guide-1 is locally done but not credited; Continue must warn before resetting it.
     fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-new')));
     expect(prepareMock).not.toHaveBeenCalled();
     const dialog = screen.getByRole('dialog');
@@ -474,8 +467,7 @@ describe('MyLearningTab launch flow', () => {
     await waitFor(() =>
       expect(mockResetPathGuides).toHaveBeenCalledWith('path-new', [expect.objectContaining({ id: 'guide-1' })])
     );
-    // guide-2 (assignment-completed) is no longer "current"; guide-1
-    // (assignment-outstanding, just reset) is — Continue opens the outstanding one.
+    // After reset, guide-1 (outstanding) is current, not guide-2.
     await waitFor(() =>
       expect(prepareMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ title: 'Guide one' }))
     );
@@ -703,10 +695,7 @@ describe('MyLearningTab launch flow', () => {
   });
 
   it('shows the more urgent assignment when two active rules target the same path', () => {
-    // shapeAssignments (backend) keeps two rows for one path rather than
-    // collapsing them, so the frontend must pick the most urgent duplicate to
-    // display rather than an arbitrary one. resolveAssignments sorts
-    // due-dated ahead of undated, so the due-dated row here must win.
+    // The backend keeps two rows for one path; the due-dated row must win.
     mockAssignments = [
       {
         targetType: 'path',

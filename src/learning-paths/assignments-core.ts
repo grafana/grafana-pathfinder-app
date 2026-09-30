@@ -45,6 +45,13 @@ function localDayNumber(ms: number, timeZone?: string): number {
   return Date.UTC(year, month - 1, day) / DAY_MS;
 }
 
+// Midnight UTC is how date-only dues are written; read as the calendar date
+// as written, independent of zone, so `2026-09-18T00:00:00Z` stays Sept 18 everywhere.
+function dueDateParts(dueAt: string): [year: number, monthIndex: number, day: number] | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.\d+)?Z$/.exec(dueAt);
+  return match ? [Number(match[1]), Number(match[2]) - 1, Number(match[3])] : undefined;
+}
+
 /**
  * Calendar days from today to `dueAt`. Negative = already past. A midnight-UTC
  * `dueAt` means that calendar date in the viewer's local zone; any other
@@ -54,19 +61,41 @@ function localDayNumber(ms: number, timeZone?: string): number {
  * about per zone.
  */
 export function daysUntilDue(dueAt: string, now: number = Date.now(), timeZone?: string): number | undefined {
-  // Midnight UTC is how date-only dues are written. Read that as the
-  // calendar date as written, independent of zone, so `2026-09-18T00:00:00Z`
-  // stays Sept 18 everywhere.
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.\d+)?Z$/.exec(dueAt);
-  if (dateOnly) {
-    const dueDay = Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])) / DAY_MS;
-    return dueDay - localDayNumber(now, timeZone);
+  const parts = dueDateParts(dueAt);
+  if (parts) {
+    return Date.UTC(...parts) / DAY_MS - localDayNumber(now, timeZone);
   }
   const dueMs = Date.parse(dueAt);
   if (!Number.isFinite(dueMs)) {
     return undefined;
   }
   return localDayNumber(dueMs, timeZone) - localDayNumber(now, timeZone);
+}
+
+export function formatDueDate(dueAt: string): string {
+  const parts = dueDateParts(dueAt);
+  const date = parts ? new Date(...parts) : new Date(dueAt);
+  if (Number.isNaN(date.getTime())) {
+    return dueAt;
+  }
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+export type DueStatus = { days: number; tone: 'overdue' | 'today' | 'later' };
+
+/** Days until due and display tone, or undefined when there is no parseable due date. */
+export function getDueStatus(
+  assignment: Pick<ResolvedAssignment, 'dueAt' | 'overdue'>,
+  now: number = Date.now()
+): DueStatus | undefined {
+  if (!assignment.dueAt) {
+    return undefined;
+  }
+  const days = daysUntilDue(assignment.dueAt, now);
+  if (days === undefined) {
+    return undefined;
+  }
+  return { days, tone: assignment.overdue || days < 0 ? 'overdue' : days === 0 ? 'today' : 'later' };
 }
 
 // `dueAt` timestamps aren't guaranteed to share an offset or fractional-second
