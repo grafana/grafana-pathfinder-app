@@ -322,7 +322,7 @@ export function LearningPathCard({
               <p>
                 {t(
                   'myLearning.assignmentResetBody',
-                  "Starting this assignment will reset local progress on the following guide(s), so they're recorded again:"
+                  'Starting this assignment will reset local progress on the following guide(s):'
                 )}
               </p>
               <ul>

@@ -201,6 +201,25 @@ async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Pr
   });
 }
 
+/**
+ * Clears every local storage namespace a milestone's own resolved content-key
+ * URL may be recorded under, given explicit `{guideId, url}` pairs rather than
+ * a known path. Shared by resetPathGuides' URL-based branch (which
+ * additionally sweeps the legacy `milestoneCompletionStorage` under the
+ * path's own base URL — this helper does not, since its other caller,
+ * resetOnlinePathGuides, has no such base URL to sweep) and resetOnlinePathGuides
+ * itself.
+ */
+async function clearGuideUrlContentKeys(targets: ReadonlyArray<{ guideId: string; url?: string }>): Promise<void> {
+  const contentKeys = targets.flatMap(({ url }) => (url ? [url] : []));
+
+  await clearInteractiveProgressForContentKeys(contentKeys);
+  await interactiveCompletionStorage.clearMany(contentKeys);
+  await journeyCompletionStorage.clearMany(contentKeys);
+  await guideCompletionMarkStorage.clearMany(contentKeys);
+  contentKeys.forEach((key) => evictContentCache(key));
+}
+
 // ============================================================================
 // MAIN HOOK
 // ============================================================================
@@ -661,7 +680,6 @@ export function useLearningPaths(): UseLearningPathsReturn {
         // toolbar's single-guide reset, rather than the whole-prefix sweep
         // resetPath uses for a full-path reset.
         const targets = guideIds.map((guideId) => ({ guideId, url: resolveGuideMetadata(guideId, pathId).url }));
-        const contentKeys = targets.flatMap(({ url }) => (url ? [url] : []));
 
         await Promise.all(
           targets.map(({ guideId, url }) =>
@@ -669,11 +687,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
           )
         );
 
-        await clearInteractiveProgressForContentKeys(contentKeys);
-        await interactiveCompletionStorage.clearMany(contentKeys);
-        await journeyCompletionStorage.clearMany(contentKeys);
-        await guideCompletionMarkStorage.clearMany(contentKeys);
-        contentKeys.forEach((key) => evictContentCache(key));
+        await clearGuideUrlContentKeys(targets);
       } else {
         // Same per-guide id schemes resetPath's else-branch reads, but the
         // path's own id-scheme keys are treated as candidate journey bases
@@ -713,6 +727,36 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [paths, loadProgress, resolveGuideMetadata]
   );
 
+  // Same assignment-mismatch reset as resetPathGuides, for guides this hook
+  // has no path entry for at all — source-3 (online-catalogue) assignment
+  // targets, resolved by online-assignment-paths.ts rather than this hook's
+  // own `paths`. The caller already has each guide's own resolved content
+  // URL (resolveOnlineAssignmentCard stamps one on every guide), so there's
+  // no path lookup to do and no legacy `milestoneCompletionStorage` sweep —
+  // that store predates package-based paths and never held a record for one.
+  const resetOnlinePathGuides = useCallback(
+    async (pathId: string, guides: ReadonlyArray<{ guideId: string; url?: string }>): Promise<void> => {
+      if (guides.length === 0) {
+        return;
+      }
+
+      await clearGuideUrlContentKeys(guides.map(({ guideId, url }) => ({ guideId, url })));
+
+      const guideIds = guides.map((g) => g.guideId);
+      await learningProgressStorage.removeCompletedGuides(guideIds);
+      invalidateEmittedCompletionsForPathMembers(guideIds);
+
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
+          detail: { contentKey: '*', pathId },
+        })
+      );
+
+      await loadProgress({ current: true });
+    },
+    [loadProgress]
+  );
+
   return {
     paths,
     allBadges: BADGES,
@@ -725,6 +769,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
     markGuideCompleted,
     resetPath,
     resetPathGuides,
+    resetOnlinePathGuides,
     dismissCelebration,
     streakInfo,
     isLoading,

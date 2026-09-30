@@ -22,6 +22,7 @@
  * @coupling Backend: resolveOnlinePackageGuides in pkg/plugin/package_recommendations.go
  */
 import { buildPackageFileUrl, fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
+import { getMilestoneSlug } from '../lib/learning-journey-url';
 import { getManifestMemberIds } from '../types/package.types';
 import type { LearningPath, PathGuide } from '../types/learning-paths.types';
 import type { ResolvedNavLink } from '../types/context.types';
@@ -64,24 +65,34 @@ export async function resolveOnlineAssignmentCard(
   // Only members that are themselves indexed packages — mirrors
   // app-platform-paths.ts's published-only gate so an unindexed id doesn't
   // render titled by its raw id and inflate the denominator.
-  const guideIds = getManifestMemberIds(navLink.manifest).filter((id) => entryById.has(id));
+  const manifestMembers = getManifestMemberIds(navLink.manifest)
+    .filter((id) => entryById.has(id))
+    .map((id) => entryById.get(id)!);
+
+  // A milestone's own completion is keyed by the URL slug of its page, not
+  // by this canonical manifest id — the CDN's shared, templated URL slugs
+  // (e.g. "prepare-configuration") often differ from the package-specific
+  // canonical id (e.g. "postgresql-data-source-prepare"). Mirrors
+  // resolveMilestoneGuideID in pkg/plugin/package_recommendations.go, which
+  // does the same translation server-side for assignment satisfaction.
+  const guideIds = manifestMembers.map((member) => getMilestoneSlug(member.path) || member.id);
 
   const completedByGuideId = new Map((assignment.guides ?? []).map((g) => [g.guideId, g.completed]));
   let foundCurrent = false;
-  const guides: PathGuide[] = guideIds.map((guideId) => {
+  const guides: PathGuide[] = manifestMembers.map((member, index) => {
+    const guideId = guideIds[index]!;
     const completed = completedByGuideId.get(guideId) ?? false;
     const isCurrent = !completed && !foundCurrent;
     if (isCurrent) {
       foundCurrent = true;
     }
-    const guideEntry = entryById.get(guideId)!;
     return {
       id: guideId,
       guideId,
-      title: guideEntry.title || guideId,
+      title: member.title || guideId,
       completed,
       isCurrent,
-      url: buildPackageFileUrl(baseUrl, guideEntry.path, 'content.json') || undefined,
+      url: buildPackageFileUrl(baseUrl, member.path, 'content.json') || undefined,
     };
   });
 

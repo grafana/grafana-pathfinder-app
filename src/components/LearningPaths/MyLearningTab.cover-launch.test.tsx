@@ -24,6 +24,7 @@ jest.mock('@grafana/i18n', () => ({
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: () => 'style' }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+  ConfirmModal: ({ isOpen }: { isOpen: boolean }) => (isOpen ? <div role="dialog" /> : null),
 }));
 
 const pathBaseUrl = 'https://grafana.com/docs/learning-paths/path-1/';

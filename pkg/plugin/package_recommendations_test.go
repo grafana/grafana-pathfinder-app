@@ -553,6 +553,43 @@ func TestHandlePackageRecommendations_PartialResultUsesShortTTL(t *testing.T) {
 	}
 }
 
+func TestResolveMilestoneGuideID(t *testing.T) {
+	packages := []PackageEntry{
+		{ID: "postgresql-data-source-prepare", Path: "postgresql-data-source-lj/prepare-configuration/"},
+		{ID: "no-path-entry", Path: ""},
+	}
+	cases := []struct {
+		name        string
+		milestoneID string
+		want        string
+	}{
+		{"translates a canonical id to its sibling entry's URL slug", "postgresql-data-source-prepare", "prepare-configuration"},
+		{"falls back to the milestone id when no sibling entry exists", "unknown-milestone", "unknown-milestone"},
+		{"falls back to the milestone id when the sibling entry has no path", "no-path-entry", "no-path-entry"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolveMilestoneGuideID(packages, tc.milestoneID); got != tc.want {
+				t.Errorf("resolveMilestoneGuideID(...) = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPackageEntrySlug(t *testing.T) {
+	cases := []struct{ path, want string }{
+		{"postgresql-data-source-lj/prepare-configuration/", "prepare-configuration"},
+		{"prepare-configuration", "prepare-configuration"},
+		{"/a/b/c/", "c"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := packageEntrySlug(tc.path); got != tc.want {
+			t.Errorf("packageEntrySlug(%q) = %q, want %q", tc.path, got, tc.want)
+		}
+	}
+}
+
 func TestBuildPackageFileURL_NormalizesSlashes(t *testing.T) {
 	cases := []struct {
 		baseURL string
@@ -953,6 +990,40 @@ func TestResolveOnlinePackageGuides(t *testing.T) {
 		}
 		if got.resolved {
 			t.Errorf("got = %+v, want unresolved", got)
+		}
+	})
+
+	t.Run("milestone id is translated to its sibling entry's URL slug", func(t *testing.T) {
+		resetPackageRecommendationsCache()
+		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+		// "canonical-prepare" is a manifest milestone id, but the CDN serves
+		// it under a differently-named, shared-template URL slug
+		// ("prepare-configuration") — the exact drift TestResolveMilestoneGuideID
+		// covers in isolation, exercised here end-to-end through
+		// resolveOnlinePackageGuides.
+		repo := []byte(`{
+			"translated-path": {"path": "translated-path/v1", "type": "path"},
+			"canonical-prepare": {"path": "translated-path/prepare-configuration", "type": "guide"}
+		}`)
+		manifest := []byte(`{"id": "translated-path", "milestones": ["canonical-prepare"]}`)
+		withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
+			switch {
+			case strings.HasSuffix(rawURL, "repository.json"):
+				return repo, nil
+			case strings.HasSuffix(rawURL, "/translated-path/v1/manifest.json"):
+				return manifest, nil
+			default:
+				return nil, fmt.Errorf("unexpected URL %q", rawURL)
+			}
+		})
+		app := newTestApp(t)
+
+		got, err := app.resolveOnlinePackageGuides(context.Background(), "translated-path")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.resolved || len(got.guides) != 1 || got.guides[0] != "prepare-configuration" {
+			t.Fatalf("got = %+v, want a single guide %q", got, "prepare-configuration")
 		}
 	})
 

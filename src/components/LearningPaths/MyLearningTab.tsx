@@ -94,6 +94,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     getGuideUrlForPath,
     resetPath,
     resetPathGuides,
+    resetOnlinePathGuides,
     streakInfo,
     isLoading,
   } = useLearningPaths();
@@ -114,9 +115,49 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   // an assigned target, never a bulk merge, so there's no risk of these
   // flooding My Courses the way merging the whole online catalogue would.
   const onlineAssignedPaths = useMemo(() => Array.from(onlinePaths.values()).map((entry) => entry.path), [onlinePaths]);
+  // Wire completion (assignment.guides) can drift from what local storage
+  // actually recorded — the same reasoning getPathGuides applies to bundled
+  // paths via progress.completedGuides (learning-paths.hook.ts), applied here
+  // to online-catalogue guides too. Without this, `guides` would just be
+  // another copy of the same wire data assignmentDetails.guides carries, and
+  // LearningPathCard's mismatch detection could never find a mismatch.
   const getPathGuidesWithOnline = useCallback(
-    (pathId: string) => onlinePaths.get(pathId)?.guides ?? getPathGuides(pathId),
-    [onlinePaths, getPathGuides]
+    (pathId: string) => {
+      const online = onlinePaths.get(pathId);
+      if (!online) {
+        return getPathGuides(pathId);
+      }
+      let foundCurrent = false;
+      return online.guides.map((guide) => {
+        const completed = progress.completedGuides.includes(guide.id);
+        const isCurrent = !completed && !foundCurrent;
+        if (isCurrent) {
+          foundCurrent = true;
+        }
+        return { ...guide, completed, isCurrent };
+      });
+    },
+    [onlinePaths, getPathGuides, progress.completedGuides]
+  );
+
+  // Dispatches to whichever reset knows this path: resetPathGuides for
+  // bundled/App-Platform ids (in `paths`), resetOnlinePathGuides for
+  // online-catalogue ones (in `onlinePaths`, never `paths` — see
+  // onlineAssignedPaths above). MyCoursesSection can render either from the
+  // same list, so the handler it's given has to tell them apart itself.
+  const handleResetGuides = useCallback(
+    async (pathId: string, guideIds: string[]): Promise<void> => {
+      const online = onlinePaths.get(pathId);
+      if (online) {
+        const guides = online.guides
+          .filter((guide) => guideIds.includes(guide.id))
+          .map((guide) => ({ guideId: guide.id, url: guide.url }));
+        await resetOnlinePathGuides(pathId, guides);
+        return;
+      }
+      await resetPathGuides(pathId, guideIds);
+    },
+    [onlinePaths, resetOnlinePathGuides, resetPathGuides]
   );
 
   // An unsatisfied assignment (wire `satisfied`, from completion records —
@@ -525,7 +566,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
             getPathProgress={getPathProgress}
             onContinue={handleOpenGuide}
             onReset={resetPath}
-            onResetGuides={resetPathGuides}
+            onResetGuides={handleResetGuides}
             launchingPathId={launchingId}
             launchDisabled={launchingId !== null}
             styles={styles}

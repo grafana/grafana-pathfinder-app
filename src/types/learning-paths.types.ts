@@ -297,6 +297,12 @@ export interface UseLearningPathsReturn {
    * guide outside `guideIds`.
    */
   resetPathGuides: (pathId: string, guideIds: string[]) => Promise<void>;
+  /**
+   * Same reset as `resetPathGuides`, for guides with no entry in `paths` at
+   * all — online-catalogue (source 3) assignment targets, which carry their
+   * own resolved content URL rather than one this hook can look up.
+   */
+  resetOnlinePathGuides: (pathId: string, guides: ReadonlyArray<{ guideId: string; url?: string }>) => Promise<void>;
   /** Dismiss a pending celebration */
   dismissCelebration: (badgeId: string) => Promise<void>;
   /** Current streak display info */

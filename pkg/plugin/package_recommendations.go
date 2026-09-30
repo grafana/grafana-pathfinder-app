@@ -455,9 +455,10 @@ func defaultPackageRepositoryFetcher(ctx context.Context, rawURL string, maxByte
 // An assigned package has no reason to carry `targeting` (assignments are
 // pushed, not matched), so it is very often NOT among the entries
 // enrichPackagesWithManifests already fetched manifest.json for — this
-// fetches it directly in that case. milestone id extraction mirrors
-// app-platform-paths.ts / appPlatformPaths: the manifest's own `milestones`
-// list, taken as-is as guide ids.
+// fetches it directly in that case. Each milestone id from the manifest is
+// then translated via resolveMilestoneGuideID before being returned — see
+// its doc comment for why the manifest's own milestone ids are not usable
+// as completion guide ids directly.
 func (a *App) resolveOnlinePackageGuides(ctx context.Context, targetID string) (guideList, error) {
 	resp, err := a.getCachedPackageRecommendations(ctx)
 	if err != nil {
@@ -490,7 +491,7 @@ func (a *App) resolveOnlinePackageGuides(ctx context.Context, targetID string) (
 		guides := make([]string, 0, len(milestones))
 		for _, m := range milestones {
 			if s, ok := m.(string); ok {
-				guides = append(guides, s)
+				guides = append(guides, resolveMilestoneGuideID(resp.Packages, s))
 			}
 		}
 		if len(guides) == 0 {
@@ -499,6 +500,45 @@ func (a *App) resolveOnlinePackageGuides(ctx context.Context, targetID string) (
 		return guideList{guides: guides, resolved: true}, nil
 	}
 	return guideList{}, nil
+}
+
+// resolveMilestoneGuideID translates a manifest milestone's canonical id
+// (manifest.milestones) into the guide id its CompletionRecord actually
+// carries. A milestone's completion is keyed by the last segment of its own
+// page URL (learning-journey-helpers.ts's getMilestoneSlug), not by this
+// canonical id — the two differ whenever the CDN's shared, templated URL
+// slugs ("prepare-configuration") don't match the package-specific canonical
+// id ("postgresql-data-source-prepare"). Every milestone id is itself a
+// sibling entry in the same package index (a `type: "guide"` PackageEntry),
+// so its real slug is available without another fetch. Falls back to the
+// canonical id when the milestone has no entry of its own, rather than
+// dropping the guide.
+func resolveMilestoneGuideID(packages []PackageEntry, milestoneID string) string {
+	for i := range packages {
+		if packages[i].ID != milestoneID {
+			continue
+		}
+		if slug := packageEntrySlug(packages[i].Path); slug != "" {
+			return slug
+		}
+		break
+	}
+	return milestoneID
+}
+
+// packageEntrySlug returns the last non-empty path segment of a package
+// entry's `path` — mirrors getMilestoneSlug's derivation of a milestone's
+// completion identity from its page URL, applied here to the entry's
+// declared path instead.
+func packageEntrySlug(path string) string {
+	trimmed := strings.Trim(path, "/")
+	if trimmed == "" {
+		return ""
+	}
+	if idx := strings.LastIndex(trimmed, "/"); idx >= 0 {
+		return trimmed[idx+1:]
+	}
+	return trimmed
 }
 
 // resetPackageRecommendationsCache clears the cache. Test-only.
