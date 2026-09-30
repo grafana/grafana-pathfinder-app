@@ -73,7 +73,6 @@
     "showMoreTabs_one": "탭 {{count}}개 더 보기",
     "showMoreTabs_other": "탭 {{count}}개 더 보기",
     "switchToTab": "{{title}}(으)로 전환",
-    "wordmark": "대화형 학습",
     "beta": "Beta",
     "classicHelpMenuSettings": "Classic Help menu settings"
   },
