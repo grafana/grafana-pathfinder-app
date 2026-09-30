@@ -57,8 +57,8 @@ function recommendationTargetId(recommendation: Recommendation): string | undefi
 }
 
 /**
- * Matches a card to its assignment by manifest id, else by unique title.
- * An ambiguous title drops the badge rather than guess.
+ * Matches a card to its assignment by manifest id; only a card with no id falls back to a unique title.
+ * An id that matches nothing or an ambiguous title drops the badge rather than guess.
  */
 function assignmentForPath(
   recommendation: Recommendation,
@@ -70,10 +70,7 @@ function assignmentForPath(
 
   const targetId = recommendationTargetId(recommendation);
   if (targetId !== undefined) {
-    const byId = assignments.find((assignment) => assignment.targetId === targetId);
-    if (byId) {
-      return byId;
-    }
+    return assignments.find((assignment) => assignment.targetId === targetId);
   }
 
   const title = recommendation.title.trim().toLowerCase();

@@ -50,30 +50,39 @@ func newTestEvaluator(sources ...pathGuideSource) *obligationEvaluator {
 	return &obligationEvaluator{ctx: context.Background(), logger: log.DefaultLogger, sources: sources}
 }
 
+func mustGuideProgress(t *testing.T, ev *obligationEvaluator, asg assignmentSpec, completions []completionRecordSpec) []assignmentGuideEntry {
+	t.Helper()
+	guides, err := ev.guideProgress(asg, completions)
+	if err != nil {
+		t.Fatalf("guideProgress: %v", err)
+	}
+	return guides
+}
+
 func TestGuideProgress_GuideAndPath(t *testing.T) {
 	ev := newTestEvaluator(bundledPathGuides(log.DefaultLogger))
 	path := pathWithGuides(t)
 	done := completionsFor(path, "2026-09-14T15:00:00Z")
 
 	guide := assignmentSpec{TargetType: "guide", TargetID: path.Guides[0], TargetSource: "bundled"}
-	if satisfiedFromGuides(ev.guideProgress(guide, done[:1])) {
+	if satisfiedFromGuides(mustGuideProgress(t, ev, guide, done[:1])) {
 		t.Error("a guide target is not evaluated")
 	}
 
 	asg := assignmentSpec{TargetType: "path", TargetID: path.ID}
-	if satisfiedFromGuides(ev.guideProgress(asg, done[:len(done)-1])) {
+	if satisfiedFromGuides(mustGuideProgress(t, ev, asg, done[:len(done)-1])) {
 		t.Error("a path is unmet until every guide has a completion")
 	}
-	if !satisfiedFromGuides(ev.guideProgress(asg, done)) {
+	if !satisfiedFromGuides(mustGuideProgress(t, ev, asg, done)) {
 		t.Error("a path is met once every guide has a completion")
 	}
 
 	tracked := asg
 	tracked.TrackID = "seller-track"
-	if ev.guideProgress(tracked, done) != nil {
+	if mustGuideProgress(t, ev, tracked, done) != nil {
 		t.Error("a track-qualified path is not evaluated without a track manifest")
 	}
-	if ev.guideProgress(assignmentSpec{TargetType: "course", TargetID: path.ID}, done) != nil {
+	if mustGuideProgress(t, ev, assignmentSpec{TargetType: "course", TargetID: path.ID}, done) != nil {
 		t.Error("an unknown target type is not evaluated")
 	}
 }
@@ -100,7 +109,7 @@ func TestGuideProgress_AcceptCompletionsFrom(t *testing.T) {
 		DueAt:                 "2026-03-01T00:00:00Z",
 	}
 	met := func(completions ...completionRecordSpec) bool {
-		return satisfiedFromGuides(ev.guideProgress(asg, completions))
+		return satisfiedFromGuides(mustGuideProgress(t, ev, asg, completions))
 	}
 	if met(early) {
 		t.Error("a completion before acceptCompletionsFrom does not count")
@@ -198,6 +207,7 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 		{
 			name: "unknown path unmet",
 			setup: func(t *testing.T) (string, []completionRecordSpec) {
+				withFetcherOverride(t, func(context.Context, string, int64) ([]byte, error) { return []byte(`{}`), nil })
 				return "not-a-bundled-path", completionsFor(pathWithGuides(t), "2026-09-14T15:00:00Z")
 			},
 		},

@@ -396,7 +396,7 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 // buildCompletionIndex drains the namespace LIST across pages — up to the
 // aggregate record budget — and collates the records into a per-user index.
 func buildCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, logger log.Logger) (*completionIndex, int, error) {
-	records, pages, err := drainCompletionRecords(ctx, namespace, lister, logger)
+	records, pages, err := drainCompletionRecords(ctx, namespace, lister, completionListMaxTotalRecords, logger)
 	if err != nil {
 		return nil, pages, err
 	}
@@ -408,8 +408,8 @@ func buildCompletionIndex(ctx context.Context, namespace string, lister completi
 
 // drainCompletionRecords is the raw LIST buildCompletionIndex collates. The
 // assignment join uses it directly: collation drops the per-row completedAt
-// the obligation criteria test.
-func drainCompletionRecords(ctx context.Context, namespace string, lister completionRecordLister, logger log.Logger) ([]completionRecordSpec, int, error) {
+// the obligation criteria test. maxRecords of 0 means no cap.
+func drainCompletionRecords(ctx context.Context, namespace string, lister completionRecordLister, maxRecords int, logger log.Logger) ([]completionRecordSpec, int, error) {
 	var records []completionRecordSpec
 	continueToken := ""
 	pages := 0
@@ -420,9 +420,9 @@ func drainCompletionRecords(ctx context.Context, namespace string, lister comple
 		}
 		pages++
 		records = append(records, page.Records...)
-		if len(records) >= completionListMaxTotalRecords && page.Continue != "" {
+		if maxRecords > 0 && len(records) >= maxRecords && page.Continue != "" {
 			logger.Warn("completion records LIST truncated at aggregate budget",
-				"namespace", namespace, "maxTotalRecords", completionListMaxTotalRecords, "pages", pages)
+				"namespace", namespace, "maxTotalRecords", maxRecords, "pages", pages)
 			break
 		}
 		if page.Continue == "" {

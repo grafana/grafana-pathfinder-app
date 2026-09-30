@@ -38,15 +38,15 @@ describe('fetchMyAssignments', () => {
 
     const result = await fetchMyAssignments('stacks-123');
 
-    expect(result).toHaveLength(1);
-    expect(result[0]!.targetId).toBe('fundamentals');
+    expect(result.ok && result.assignments).toHaveLength(1);
+    expect(result.ok && result.assignments[0]!.targetId).toBe('fundamentals');
     expect(mockGet).toHaveBeenCalledWith(expect.stringContaining('/assignments/my'), undefined, undefined, {
       showErrorAlert: false,
       showSuccessAlert: false,
     });
   });
 
-  it('returns an empty array when the proxy reports itself unavailable', async () => {
+  it('fails when the proxy reports itself unavailable', async () => {
     mockGet.mockResolvedValue({
       capability: { available: false, reason: 'obo-unavailable' },
       assignments: [],
@@ -54,7 +54,7 @@ describe('fetchMyAssignments', () => {
 
     const result = await fetchMyAssignments('stacks-123');
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ ok: false });
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('obo-unavailable');
   });
 
@@ -63,7 +63,7 @@ describe('fetchMyAssignments', () => {
 
     const result = await fetchMyAssignments('stacks-123');
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ ok: true, assignments: [] });
     expect(mockGet).not.toHaveBeenCalled();
     expect(recordAssignmentsUnavailable).not.toHaveBeenCalled();
     expect(logger.warn).not.toHaveBeenCalled();
@@ -77,23 +77,23 @@ describe('fetchMyAssignments', () => {
 
     const result = await fetchMyAssignments('stacks-123');
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ ok: false });
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('feature-toggle-disabled');
   });
 
   it('returns an empty array when no namespace is provided', async () => {
     const result = await fetchMyAssignments('');
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ ok: true, assignments: [] });
     expect(mockGet).not.toHaveBeenCalled();
   });
 
-  it('returns an empty array when the response is malformed', async () => {
+  it('fails when the response is malformed', async () => {
     mockGet.mockResolvedValue({ capability: { available: true } });
 
     const result = await fetchMyAssignments('stacks-123');
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ ok: false });
   });
 
   it.each([
@@ -105,7 +105,7 @@ describe('fetchMyAssignments', () => {
 
     const result = await fetchMyAssignments('stacks-123');
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ ok: false });
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('malformed-response');
     expect(logger.warn).toHaveBeenCalledWith('[assignments] malformed response', { reason: 'malformed-response' });
   });
@@ -123,13 +123,13 @@ describe('fetchMyAssignments', () => {
     expect(JSON.stringify((logger.warn as jest.Mock).mock.calls)).not.toContain(sentinel);
   });
 
-  it('still resolves to an empty array when the telemetry facade throws', async () => {
+  it('still resolves to a failed result when the telemetry facade throws', async () => {
     mockGet.mockRejectedValue(new Error('network error'));
     (recordAssignmentsUnavailable as jest.Mock).mockImplementationOnce(() => {
       throw new Error('observability blew up');
     });
 
-    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual([]);
+    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual({ ok: false });
   });
 
   it('de-duplicates in-flight calls but never caches a result', async () => {
@@ -139,12 +139,19 @@ describe('fetchMyAssignments', () => {
     await Promise.all([fetchMyAssignments('stacks-123'), fetchMyAssignments('stacks-123')]);
     expect(mockGet).toHaveBeenCalledTimes(1);
 
-    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual(entries);
+    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual({ ok: true, assignments: entries });
     expect(mockGet).toHaveBeenCalledTimes(2);
 
     mockGet.mockRejectedValueOnce(new Error('network error'));
-    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual([]);
-    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual(entries);
+    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual({ ok: false });
+    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual({ ok: true, assignments: entries });
     expect(mockGet).toHaveBeenCalledTimes(4);
+  });
+
+  it('reports a thrown request as a failed fetch', async () => {
+    mockGet.mockRejectedValue({ status: 429, message: 'slow down' });
+
+    await expect(fetchMyAssignments('stacks-123')).resolves.toEqual({ ok: false });
+    expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('http-429');
   });
 });

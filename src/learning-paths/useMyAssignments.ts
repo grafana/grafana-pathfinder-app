@@ -1,7 +1,7 @@
 /**
  * Fetches the caller's assignments on mount and after each published
- * completion, and owns the path state derived from them. Best-effort empty
- * on failure.
+ * completion, and owns the path state derived from them. A failed fetch keeps
+ * the last good assignments.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { config } from '@grafana/runtime';
@@ -50,7 +50,11 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   const [rawAssignments, setRawAssignments] = useState<AssignmentEntry[]>([]);
   const namespace = config.namespace;
   const isMountedRef = useRef(true);
+  const inFlightRef = useRef(false);
+  const pendingRef = useRef(false);
+  const emittedUnresolvedKeyRef = useRef('');
 
+  // Refreshes never overlap: a request made while one is in flight runs once, after it settles.
   const refresh = useCallback(async () => {
     if (!namespace) {
       if (isMountedRef.current) {
@@ -58,11 +62,19 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
       }
       return;
     }
-
-    const fetched = await fetchMyAssignments(namespace);
-    if (isMountedRef.current) {
-      setRawAssignments(fetched);
+    if (inFlightRef.current) {
+      pendingRef.current = true;
+      return;
     }
+    inFlightRef.current = true;
+    do {
+      pendingRef.current = false;
+      const fetched = await fetchMyAssignments(namespace);
+      if (isMountedRef.current && fetched.ok) {
+        setRawAssignments(fetched.assignments);
+      }
+    } while (pendingRef.current && isMountedRef.current);
+    inFlightRef.current = false;
   }, [namespace]);
 
   const hasInitiallyLoaded = useRef(false);
@@ -110,7 +122,11 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
 
       const resolvedOnlineIds = new Set(cards.map((card) => card.resolved.targetId));
       const stillUnresolved = unresolvedIds.filter((id) => !resolvedOnlineIds.has(id));
-      if (stillUnresolved.length > 0) {
+      const emitKey = [...stillUnresolved].sort().join('\n');
+      if (stillUnresolved.length === 0) {
+        emittedUnresolvedKeyRef.current = '';
+      } else if (emitKey !== emittedUnresolvedKeyRef.current) {
+        emittedUnresolvedKeyRef.current = emitKey;
         logger.warn('[assignments] unresolvable target', {
           reason: 'unresolvable-target',
           count: stillUnresolved.length,

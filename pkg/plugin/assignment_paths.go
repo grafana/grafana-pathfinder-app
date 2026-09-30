@@ -21,7 +21,7 @@ import (
 // guides when trackID is set (empty means the default milestones). found=false
 // means the source does not know the target and the next one is tried;
 // found=true stops resolution, with nil guides when the target could not be
-// resolved.
+// resolved. err means the source failed, which says nothing about the target.
 type pathGuideSource func(ctx context.Context, targetID, trackID string) (guides []string, found bool, err error)
 
 const pathIndexTimeout = 10 * time.Second

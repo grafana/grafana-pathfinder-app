@@ -23,6 +23,11 @@ const (
 	// assignmentAggregateDeadline bounds a whole multi-page drain, which runs on
 	// a detached context.
 	assignmentAggregateDeadline = 60 * time.Second
+
+	// Per-user flood guard for GET /assignments/my: each call can drain the
+	// whole namespace, and a healthy client polls far below this.
+	assignmentsReadRateRefillPerSec = 1.0
+	assignmentsReadRateBurst        = 20.0
 )
 
 // assignmentLifecycleActive is the only lifecycle this route serves.
@@ -89,6 +94,14 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if a.assignmentsReadRateLimiter != nil {
+		if allow, retryAfter := a.assignmentsReadRateLimiter.allow(userID); !allow {
+			a.ctxLogger(r.Context()).Debug("assignments read rate-limited (local)")
+			a.writeRateLimited(w, retryAfter)
+			return
+		}
+	}
+
 	lister, namespace, available, reason := a.resolveAssignmentBackend(r)
 	if !available {
 		a.writeAssignmentsCapability(w, reason)
@@ -98,27 +111,35 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 	// Detached from request cancellation, bounded by a deadline.
 	logger := a.ctxLogger(r.Context())
 	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), assignmentAggregateDeadline)
-	records, err := drainAssignments(fetchCtx, namespace, userID, lister, logger)
+	records, err := drainAssignments(fetchCtx, namespace, userID, lister)
 	cancel()
-
 	if err != nil {
-		if isTerminalUpstreamError(err) {
-			// Terminal: surface the upstream status (e.g. "upstream-404") in the reason.
-			reason := reasonBackendUnavailable
-			var upErr *appPlatformUpstreamError
-			if errors.As(err, &upErr) {
-				reason = fmt.Sprintf("upstream-%d", upErr.status)
-			}
-			logger.Info("assignments unavailable (terminal)", "namespace", namespace, "error", err)
-			a.writeAssignmentsCapability(w, reason)
-			return
-		}
-		logger.Info("assignments unavailable (transient)", "namespace", namespace, "error", err)
-		a.writeAssignmentsUnavailable(w)
+		a.writeAssignmentsReadFailure(w, logger, namespace, "assignments", err)
 		return
 	}
 
-	entries := shapeAssignments(records, a.satisfactionFunc(r, userID))
+	entries := []assignmentEntry{}
+	if len(records) > 0 {
+		completions, err := a.callerCompletionRecords(r, userID)
+		if err != nil {
+			a.writeAssignmentsReadFailure(w, logger, namespace, "completion records", err)
+			return
+		}
+		var unmarked []assignmentSpec
+		progress := a.satisfactionFunc(r, completions)
+		entries = shapeAssignments(logger, records, func(rec assignmentSpec) ([]assignmentGuideEntry, error) {
+			guides, perr := progress(rec)
+			if perr != nil {
+				logger.Info("assignment guides unavailable", "targetId", rec.TargetID, "trackId", rec.TrackID, "error", perr)
+				return nil, perr
+			}
+			if rec.Name != "" && !isStatusSatisfied(rec) && satisfiedFromGuides(guides) {
+				unmarked = append(unmarked, rec)
+			}
+			return guides, nil
+		})
+		a.markSatisfiedInBackground(r, lister, namespace, unmarked)
+	}
 	logger.Debug("assignments served", "namespace", namespace, "callerAssignments", len(entries))
 	a.writeJSON(w, myAssignmentsResponse{
 		Capability:  assignmentCapability{Available: true},
@@ -128,12 +149,41 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 	}, http.StatusOK)
 }
 
+// writeAssignmentsReadFailure answers a whole-list failure: structural
+// unavailability and terminal upstream statuses become capability=false carrying
+// the reason, anything else a retryable 503. Serving 200 with every assignment
+// unmet would show finished training as outstanding.
+func (a *App) writeAssignmentsReadFailure(w http.ResponseWriter, logger log.Logger, namespace, what string, err error) {
+	var unavailable *completionsUnavailableError
+	if errors.As(err, &unavailable) {
+		a.writeAssignmentsCapability(w, unavailable.reason)
+		return
+	}
+	if isTerminalUpstreamError(err) {
+		reason := reasonBackendUnavailable
+		var upErr *appPlatformUpstreamError
+		if errors.As(err, &upErr) {
+			reason = fmt.Sprintf("upstream-%d", upErr.status)
+		}
+		logger.Info(what+" unavailable (terminal)", "namespace", namespace, "error", err)
+		a.writeAssignmentsCapability(w, reason)
+		return
+	}
+	logger.Info(what+" unavailable (transient)", "namespace", namespace, "error", err)
+	a.writeAssignmentsUnavailable(w)
+}
+
 // shapeAssignments orders the caller's obligations newest first. Two rules for
-// the same target stay two records so no deadline is discarded.
-func shapeAssignments(records []assignmentSpec, progress func(assignmentSpec) []assignmentGuideEntry) []assignmentEntry {
+// the same target stay two records so no deadline is discarded. An assignment
+// whose progress cannot be evaluated is logged and omitted.
+func shapeAssignments(logger log.Logger, records []assignmentSpec, progress func(assignmentSpec) ([]assignmentGuideEntry, error)) []assignmentEntry {
 	entries := []assignmentEntry{}
 	for _, rec := range records {
-		guides := progress(rec)
+		guides, err := progress(rec)
+		if err != nil {
+			logger.Info("assignment omitted, progress unavailable", "targetId", rec.TargetID, "ruleId", rec.RuleID, "error", err)
+			continue
+		}
 		entries = append(entries, assignmentEntry{
 			TargetType:            rec.TargetType,
 			TargetID:              rec.TargetID,
@@ -184,8 +234,11 @@ func sortAssignments(entries []assignmentEntry) {
 
 // drainAssignments drains the namespace LIST and returns the caller's active
 // records. There is deliberately no record cap: it would silently drop the
-// caller's record past the cut.
-func drainAssignments(ctx context.Context, namespace, userID string, lister assignmentLister, logger log.Logger) ([]assignmentSpec, error) {
+// caller's record past the cut. The LIST is namespace-scoped and carries every
+// user's records, so this is the trust boundary: each page is filtered to the
+// caller before anything else sees it. Withdrawal revokes an obligation, so only
+// active records are served.
+func drainAssignments(ctx context.Context, namespace, userID string, lister assignmentLister) ([]assignmentSpec, error) {
 	records := []assignmentSpec{}
 	continueToken := ""
 	for {
@@ -193,16 +246,11 @@ func drainAssignments(ctx context.Context, namespace, userID string, lister assi
 		if err != nil {
 			return nil, err
 		}
-
-		// Trust boundary: the LIST is namespace-scoped and carries every user's
-		// records, so filter each page to the caller before anything else sees it.
-		// Withdrawal revokes an obligation, so only active records are served.
 		for _, rec := range page.Records {
 			if rec.UserID == userID && rec.Lifecycle == assignmentLifecycleActive {
 				records = append(records, rec)
 			}
 		}
-
 		if page.Continue == "" {
 			return records, nil
 		}

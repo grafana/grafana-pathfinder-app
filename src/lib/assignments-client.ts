@@ -19,7 +19,13 @@ export type AssignmentEntry = AssignmentEntryWire;
 const ASSIGNMENTS_URL = `${PLUGIN_BACKEND_URL}/assignments/my`;
 
 // Several surfaces fetch on open concurrently; a stored TTL would stale the live evaluation.
-const inflight = new Map<string, Promise<AssignmentEntry[]>>();
+const inflight = new Map<string, Promise<MyAssignmentsResult>>();
+
+/** `ok: false` means the listing could not be read, so callers must keep any last good state rather than treat it as empty. */
+export type MyAssignmentsResult = { ok: true; assignments: AssignmentEntry[] } | { ok: false };
+
+const FETCH_FAILED: MyAssignmentsResult = { ok: false };
+const NOTHING_ASSIGNED: MyAssignmentsResult = { ok: true, assignments: [] };
 
 function reportFetchFailure(err: unknown): void {
   try {
@@ -33,7 +39,7 @@ function reportFetchFailure(err: unknown): void {
 
 const MALFORMED_REASON = 'malformed-response';
 
-async function requestAssignments(): Promise<AssignmentEntry[]> {
+async function requestAssignments(): Promise<MyAssignmentsResult> {
   const response = await getBackendSrv().get<MyAssignmentsResponseWire>(ASSIGNMENTS_URL, undefined, undefined, {
     showErrorAlert: false,
     showSuccessAlert: false,
@@ -42,23 +48,23 @@ async function requestAssignments(): Promise<AssignmentEntry[]> {
     const reason = response?.capability?.reason ?? 'unknown';
     logger.warn('[assignments] unavailable', { reason });
     recordAssignmentsUnavailable(reason);
-    return [];
+    return FETCH_FAILED;
   }
   if (!Array.isArray(response.assignments)) {
     logger.warn('[assignments] malformed response', { reason: MALFORMED_REASON });
     recordAssignmentsUnavailable(MALFORMED_REASON);
-    return [];
+    return FETCH_FAILED;
   }
-  return response.assignments;
+  return { ok: true, assignments: response.assignments };
 }
 
 /**
- * Fetch the caller's assignments; best-effort, resolves to an empty array when unavailable or failed.
- * Concurrent calls for a namespace share one in-flight request.
+ * Fetch the caller's assignments; best-effort. A capability-unavailable, failed or malformed
+ * answer is `ok: false`. Concurrent calls for a namespace share one in-flight request.
  */
-export async function fetchMyAssignments(namespace: string): Promise<AssignmentEntry[]> {
+export async function fetchMyAssignments(namespace: string): Promise<MyAssignmentsResult> {
   if (!isBackendApiAvailable() || !namespace) {
-    return [];
+    return NOTHING_ASSIGNED;
   }
 
   const existing = inflight.get(namespace);
@@ -66,10 +72,10 @@ export async function fetchMyAssignments(namespace: string): Promise<AssignmentE
     return existing;
   }
 
-  const request = requestAssignments()
+  const request: Promise<MyAssignmentsResult> = requestAssignments()
     .catch((err: unknown) => {
       reportFetchFailure(err);
-      return [] as AssignmentEntry[];
+      return FETCH_FAILED;
     })
     .finally(() => {
       inflight.delete(namespace);

@@ -50,8 +50,14 @@ func failingAssignmentLister(err error) *fakeAssignmentLister {
 	}}
 }
 
+// withAssignmentLister installs the assignment lister and, unless the test has
+// already set one, an empty completion lister: satisfaction needs a readable
+// completion list.
 func withAssignmentLister(t *testing.T, l assignmentLister) {
 	t.Helper()
+	if completionListerOverride == nil {
+		withLister(t, singlePageLister())
+	}
 	prev := assignmentListerOverride
 	assignmentListerOverride = l
 	t.Cleanup(func() { assignmentListerOverride = prev })

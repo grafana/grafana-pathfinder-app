@@ -724,6 +724,23 @@ describe('suggested path assignment badges', () => {
     expect(card).toHaveTextContent('Overdue');
   });
 
+  it('shows no badge when the manifest id matches nothing, even if one assignment shares the title', () => {
+    const card = renderSuggested({
+      recommendations: [
+        {
+          title: 'Some Suggested Path',
+          url: 'https://example.com/packages/not-assigned/',
+          type: 'package',
+          manifest: { id: 'not-assigned', type: 'path' },
+        },
+      ],
+      assignments: [assignment({ targetId: 'unrelated-path', title: 'Some Suggested Path' })],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+
+    expect(card).not.toHaveTextContent('Assigned');
+    expect(card).not.toHaveTextContent('Overdue');
+  });
+
   it('shows no badge when two assignments share a title and the recommendation has no id to break the tie', () => {
     // No manifest and an ambiguous title: show no badge rather than guess.
     const card = renderSuggested({

@@ -3,17 +3,31 @@
  * (mirroring usePublishedGuides.test.ts's mocking style). Resolution rules
  * live in assignments-core.test.ts.
  */
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 import type { LearningPath } from '../types/learning-paths.types';
 import type { AssignmentEntry } from '../lib/assignments-client';
 
 let mockNamespace: string | undefined = 'stacks-123';
+const mockBackendGet = jest.fn();
 jest.mock('@grafana/runtime', () => ({
   config: {
     get namespace() {
       return mockNamespace;
     },
+  },
+  getBackendSrv: () => ({ get: mockBackendGet }),
+}));
+
+jest.mock('../utils/interactive-guides-api', () => ({
+  isBackendApiAvailable: () => true,
+}));
+
+const completionListeners = new Set<() => void>();
+jest.mock('../completion-records/completion-write-hook', () => ({
+  onCompletionPublished: (listener: () => void) => {
+    completionListeners.add(listener);
+    return () => completionListeners.delete(listener);
   },
 }));
 
@@ -24,6 +38,7 @@ jest.mock('../lib/assignments-client', () => ({
 
 jest.mock('../lib/telemetry/facade', () => ({
   recordAssignmentTargetsUnresolved: jest.fn(),
+  recordAssignmentsUnavailable: jest.fn(),
 }));
 
 // Empty by default so an unresolved target stays unresolved; tests override it for the online path.
@@ -83,7 +98,7 @@ describe('useMyAssignments', () => {
   });
 
   it('resolves a fetched assignment into notDone', async () => {
-    mockFetchMyAssignments.mockResolvedValue([assignment({ targetId: 'fundamentals' })]);
+    mockFetchMyAssignments.mockResolvedValue({ ok: true, assignments: [assignment({ targetId: 'fundamentals' })] });
 
     const { result } = renderHook(() =>
       useMyAssignments({
@@ -102,7 +117,7 @@ describe('useMyAssignments', () => {
   });
 
   it('logs an unresolvable target without putting the path id on the warn', async () => {
-    mockFetchMyAssignments.mockResolvedValue([assignment({ targetId: 'ghost-path' })]);
+    mockFetchMyAssignments.mockResolvedValue({ ok: true, assignments: [assignment({ targetId: 'ghost-path' })] });
 
     const { result } = renderHook(() =>
       useMyAssignments({
@@ -124,7 +139,7 @@ describe('useMyAssignments', () => {
   });
 
   it("reflects local completion in an online target's guides", async () => {
-    mockFetchMyAssignments.mockResolvedValue([assignment({ targetId: 'online-path' })]);
+    mockFetchMyAssignments.mockResolvedValue({ ok: true, assignments: [assignment({ targetId: 'online-path' })] });
     mockFetchOnlinePackageRecommendations.mockResolvedValue({
       baseUrl: 'https://cdn.example/',
       packages: [
@@ -148,7 +163,10 @@ describe('useMyAssignments', () => {
   });
 
   it("returns a track assignment's guides in track order with the first incomplete current", async () => {
-    mockFetchMyAssignments.mockResolvedValue([assignment({ targetId: 'p', trackId: 'ops' })]);
+    mockFetchMyAssignments.mockResolvedValue({
+      ok: true,
+      assignments: [assignment({ targetId: 'p', trackId: 'ops' })],
+    });
     const guide = (id: string, completed = false) => ({ id, title: id, completed, isCurrent: false });
     const manifest = {
       id: 'p',
@@ -171,5 +189,106 @@ describe('useMyAssignments', () => {
       { id: 'g3', isCurrent: false },
       { id: 'g2', isCurrent: true },
     ]);
+  });
+
+  describe('completion-triggered refresh', () => {
+    const ok = (...targetIds: string[]) => ({
+      ok: true,
+      assignments: targetIds.map((targetId) => assignment({ targetId })),
+    });
+    const catalogue = [path({ id: 'a', title: 'A' }), path({ id: 'b', title: 'B' })];
+
+    it('runs one follow-up request after a completion lands mid-fetch, and applies it', async () => {
+      const resolvers: Array<(v: unknown) => void> = [];
+      mockFetchMyAssignments.mockImplementation(() => new Promise((resolve) => resolvers.push(resolve)));
+
+      const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: catalogue }));
+      await waitFor(() => expect(resolvers).toHaveLength(1));
+
+      act(() => {
+        completionListeners.forEach((listener) => listener());
+        completionListeners.forEach((listener) => listener());
+      });
+      expect(mockFetchMyAssignments).toHaveBeenCalledTimes(1);
+
+      await act(async () => resolvers[0]!(ok('a')));
+      await waitFor(() => expect(resolvers).toHaveLength(2));
+      await act(async () => resolvers[1]!(ok('b')));
+
+      expect(mockFetchMyAssignments).toHaveBeenCalledTimes(2);
+      expect(result.current.items.map((item) => item.targetId)).toEqual(['b']);
+    });
+
+    it('keeps the previous assignments when a refetch fails', async () => {
+      mockFetchMyAssignments.mockResolvedValueOnce(ok('a')).mockResolvedValueOnce({ ok: false });
+
+      const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: catalogue }));
+      await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+      await act(async () => completionListeners.forEach((listener) => listener()));
+
+      expect(mockFetchMyAssignments).toHaveBeenCalledTimes(2);
+      expect(result.current.items.map((item) => item.targetId)).toEqual(['a']);
+    });
+
+    it('keeps the previous assignments when a refetch gets the capability-unavailable envelope', async () => {
+      mockFetchMyAssignments.mockImplementation(jest.requireActual('../lib/assignments-client').fetchMyAssignments);
+      mockBackendGet
+        .mockResolvedValueOnce({ capability: { available: true }, assignments: [assignment({ targetId: 'a' })] })
+        .mockResolvedValueOnce({ capability: { available: false, reason: 'obo-unavailable' }, assignments: [] });
+
+      const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: catalogue }));
+      await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+      await act(async () => completionListeners.forEach((listener) => listener()));
+
+      expect(mockBackendGet).toHaveBeenCalledTimes(2);
+      expect(result.current.items.map((item) => item.targetId)).toEqual(['a']);
+    });
+
+    it('stops listening for completions on unmount', async () => {
+      mockFetchMyAssignments.mockResolvedValue(ok('a'));
+
+      const { unmount } = renderHook(() => useMyAssignments({ ...baseOptions, paths: catalogue }));
+      await waitFor(() => expect(mockFetchMyAssignments).toHaveBeenCalledTimes(1));
+      unmount();
+
+      expect(completionListeners.size).toBe(0);
+      completionListeners.forEach((listener) => listener());
+      expect(mockFetchMyAssignments).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('unresolved-target telemetry', () => {
+    const ok = (...targetIds: string[]) => ({
+      ok: true,
+      assignments: targetIds.map((targetId) => assignment({ targetId })),
+    });
+    const fire = () => act(async () => completionListeners.forEach((listener) => listener()));
+
+    it('emits once when the same unresolved set is seen across refetches', async () => {
+      mockFetchMyAssignments.mockResolvedValue(ok('ghost'));
+
+      renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+      await waitFor(() => expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledTimes(1));
+
+      await fire();
+      await fire();
+
+      expect(mockFetchMyAssignments).toHaveBeenCalledTimes(3);
+      expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledTimes(1);
+    });
+
+    it('emits again when the unresolved set changes', async () => {
+      mockFetchMyAssignments.mockResolvedValueOnce(ok('ghost')).mockResolvedValueOnce(ok('ghost', 'phantom'));
+
+      renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+      await waitFor(() => expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledWith(1));
+
+      await fire();
+
+      await waitFor(() => expect(mockReportUnresolvedAssignmentTargets).toHaveBeenLastCalledWith(2));
+      expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledTimes(2);
+    });
   });
 });
