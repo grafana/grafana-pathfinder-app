@@ -472,35 +472,28 @@ export function InteractiveSection({
   // interactive steps reach this at all (F-1, #909 follow-up).
   useEffect(() => {
     if (isCompleted && (stepComponents.length > 0 || gateAnalysis.isAllPassive)) {
-      // Single unified event — replaces the two legacy CustomEvents
-      // (`section-completed` on document + `interactive-section-completed`
-      // on window). The `!hasEmittedGuideCompletionRef.current` guard
-      // becomes redundant for the section dispatch because `isCompleted`
-      // only flips true once per completion, but keep it as a cheap
-      // belt-and-braces against future re-dispatch effects.
-      if (!hasEmittedGuideCompletionRef.current) {
-        hasEmittedGuideCompletionRef.current = true;
-        dispatchProgress({ kind: 'section', sectionId, completed: true });
-        // Persist the section's done state so `section-completed:`
-        // requirement checks work without the section being mounted
-        // (other milestones, virtualized regions, conditional branches).
-        // Preview mode is sandboxed — keep the ephemeral check DOM-only.
-        if (!isPreviewMode) {
-          sectionDoneStorage.set(getContentKey(), sectionId, true);
-          // An acknowledgement is percentage-bearing evidence for every
-          // section shape — it credits the section's last block — and no
-          // ack write goes through `persistSection`, so refresh here for
-          // all of them, not only the all-passive ones.
-          refreshAndNotifyGuideProgress(getContentKey());
-        }
-      }
+      const persistAndNotify = async () => {
+        if (!hasEmittedGuideCompletionRef.current) {
+          hasEmittedGuideCompletionRef.current = true;
+          const contentKey = isPreviewMode ? null : getContentKey();
 
-      // Trigger global reactive check to enable next eligible steps
-      // Also trigger watchNextStep to help the next step unlock if it has requirements
-      import('../../requirements-manager').then(({ SequentialRequirementsManager }) => {
+          // Preview mode is sandboxed — keep the ephemeral check DOM-only.
+          if (contentKey !== null) {
+            await sectionDoneStorage.set(contentKey, sectionId, true);
+          }
+
+          dispatchProgress({ kind: 'section', sectionId, completed: true });
+          if (contentKey !== null) {
+            refreshAndNotifyGuideProgress(contentKey);
+          }
+        }
+
+        const { SequentialRequirementsManager } = await import('../../requirements-manager');
         SequentialRequirementsManager.getInstance().triggerReactiveCheck();
         SequentialRequirementsManager.getInstance().watchNextStep(3000); // Watch for 3 seconds
-      });
+      };
+
+      void persistAndNotify();
     }
   }, [isCompleted, sectionId, stepComponents.length, isPreviewMode, gateAnalysis.isAllPassive]);
 
