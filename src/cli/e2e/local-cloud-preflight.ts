@@ -1,7 +1,7 @@
 import { parseVersion } from '../../lib/guide-version';
 import { dirname } from 'path';
 
-import { loadManifestFromDir, runManifestPreflight } from './manifest-preflight';
+import { loadManifestFromDir, resolveManifestMinVersion, runManifestPreflight } from './manifest-preflight';
 import { checkGrafanaHealth } from './grafana-health';
 
 export interface LocalCloudGuideTarget {
@@ -69,8 +69,9 @@ export async function preflightLocalCloudGuides(guides: LocalCloudGuideTarget[])
       throw new Error(`Pre-flight check failed for ${guide.id} at ${guide.targetUrl}: ${health.error}`);
     }
     let cloudVersion: string | undefined;
-    if (manifest.testEnvironment.minVersion !== undefined) {
-      if (!manifest.testEnvironment.minVersion.trim()) {
+    const minVersion = resolveManifestMinVersion(manifest);
+    if (minVersion !== undefined) {
+      if (!minVersion.trim()) {
         throw new Error(`Manifest pre-flight failed for ${guide.id}: minVersion must not be empty.`);
       }
       try {

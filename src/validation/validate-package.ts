@@ -13,6 +13,7 @@ import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
 import { ContentJsonSchema, ManifestJsonSchema } from '../types/package.schema';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
 import type { DependencyList, ManifestJson } from '../types/package.types';
+import { SEMVER_PATTERN } from './condition-validator';
 import type { ValidationError, ValidationWarning } from './errors';
 import { readJsonFile } from './package-io';
 import { validateGuide, type ValidationResult } from './validate-guide';
@@ -240,6 +241,14 @@ export function validatePackageTree(
 // --- Internal helpers ---
 
 function validateManifestSemantics(manifest: ManifestJson, errors: ValidationError[]): void {
+  if (manifest.minGrafanaVersion !== undefined && !SEMVER_PATTERN.test(manifest.minGrafanaVersion)) {
+    errors.push({
+      message: `manifest.json: minGrafanaVersion "${manifest.minGrafanaVersion}" is not valid semver (major.minor.patch)`,
+      path: ['manifest.json', 'minGrafanaVersion'],
+      code: 'schema_validation',
+    });
+  }
+
   if (!manifest.milestones || manifest.milestones.length === 0) {
     return;
   }

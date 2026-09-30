@@ -329,6 +329,10 @@ export interface ManifestPreflightOptions {
   grafanaVersion?: string;
 }
 
+export function resolveManifestMinVersion(manifest: ManifestJson): string | undefined {
+  return manifest.testEnvironment?.minVersion ?? manifest.minGrafanaVersion;
+}
+
 /**
  * Run all manifest pre-flight checks and return an aggregated outcome.
  *
@@ -344,12 +348,10 @@ export async function runManifestPreflight(
   manifest: ManifestJson,
   options: ManifestPreflightOptions
 ): Promise<PreflightOutcome> {
-  // A guide that declares a runtime floor and no test floor is telling us both:
-  // an E2E run below the version its readers are warned about proves nothing.
   const declared = manifest.testEnvironment ?? {};
   const testEnvironment: TestEnvironment = {
     ...declared,
-    minVersion: declared.minVersion ?? manifest.minGrafanaVersion,
+    minVersion: resolveManifestMinVersion(manifest),
   };
   const results: PreflightResult[] = [];
 
