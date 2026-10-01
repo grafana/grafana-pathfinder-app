@@ -1077,14 +1077,7 @@ describe('InteractiveGuided — full-screen sidebar handoff', () => {
     await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
   });
 
-  it('still calls executeGuidedStep after the component unmounts during the handoff wait (the handoff is expected to unmount full screen)', async () => {
-    // Regression test (Cursor Bugbot, "Guided handoff aborts after dock"):
-    // the handoff's own navigation unmounts this full-screen instance on
-    // EVERY successful run, not just a raced one. An earlier version of this
-    // fix bailed out on !isMountedRef.current here, which meant the guided
-    // step never actually ran after docking — the user had to click Start
-    // again in the sidebar. Simple steps and code-block Insert both continue
-    // after the wait; guided steps must too.
+  it('waits for the sidebar successor after the full-screen host unmounts', async () => {
     mockGetMode.mockReturnValue('fullscreen');
     let resolveHandoff!: () => void;
     mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
@@ -1092,21 +1085,252 @@ describe('InteractiveGuided — full-screen sidebar handoff', () => {
         resolveHandoff = resolve;
       })
     );
-
-    const { unmount } = render(
-      <InteractiveGuided
-        stepId="guided-unmount-mid-handoff"
-        internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]}
-        fullScreenFallbackLocation="/connections"
-      />
-    );
-
+    const props = {
+      stepId: 'guided-unmount-mid-handoff',
+      internalActions: [{ targetAction: 'highlight' as const, refTarget: '#x' }],
+    };
+    const fullscreen = render(<InteractiveGuided {...props} />);
     fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
-    await waitFor(() => expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledTimes(1));
-
-    unmount();
-    resolveHandoff();
-
+    fullscreen.unmount();
+    await act(async () => {
+      resolveHandoff();
+    });
+    expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+    mockGetMode.mockReturnValue('sidebar');
+    render(<InteractiveGuided {...props} />);
     await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('InteractiveGuided — successor ownership', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetMode.mockReturnValue('sidebar');
+    mockRequestSidebarHandoffAndWait.mockResolvedValue(undefined);
+    (useStepChecker as jest.Mock).mockReturnValue({ isEnabled: true, isChecking: false, completionReason: 'none' });
+    window.__DocsPluginActiveTabUrl = 'bundled:successor-test';
+  });
+
+  afterEach(() => {
+    delete window.__DocsPluginActiveTabUrl;
+    window.history.replaceState(null, '', '/');
+  });
+
+  it.each(['cancel', 'close', 'reset'])('transfers full-screen cancellation to the sidebar: %s', async (action) => {
+    mockGetMode.mockReturnValue('fullscreen');
+    let finishHandoff!: () => void;
+    let signal!: AbortSignal;
+    let finishStep!: (result: string) => void;
+    mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishHandoff = resolve;
+      })
+    );
+    mockExecuteGuidedStep.mockImplementation((_a, _i, _n, _t, _c, options) => {
+      signal = options.signal;
+      return new Promise((resolve) => {
+        finishStep = resolve;
+        signal.addEventListener('abort', () => resolve('cancelled'), { once: true });
+      });
+    });
+    const props = {
+      stepId: 'transferred',
+      internalActions: [{ targetAction: 'highlight' as const, refTarget: '#target' }],
+    };
+    const fullscreen = render(<InteractiveGuided {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    fullscreen.unmount();
+    mockGetMode.mockReturnValue('sidebar');
+    const sidebar = render(<InteractiveGuided {...props} />);
+    await act(async () => {
+      finishHandoff();
+    });
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('button', { name: /start guided interaction/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel tour/i })).toBeVisible();
+    await act(async () => {
+      if (action === 'close') {
+        sidebar.unmount();
+      } else if (action === 'reset') {
+        sidebar.rerender(<InteractiveGuided {...props} resetTrigger={1} />);
+      } else {
+        fireEvent.click(screen.getByRole('button', { name: /cancel tour/i }));
+      }
+    });
+    const abortedOnDismiss = signal.aborted;
+    await act(async () => {
+      finishStep('cancelled');
+    });
+    expect(abortedOnDismiss).toBe(true);
+    const next = acquireGuidedRun();
+    expect(next).not.toBeNull();
+    next?.release();
+    expect(mockStoredCompleted).toBe(false);
+  });
+
+  it('continues after an intermediate navigation and lets the replacement cancel the next step', async () => {
+    let finishFirst!: (result: string) => void;
+    let signal!: AbortSignal;
+    mockExecuteGuidedStep
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishFirst = resolve;
+          })
+      )
+      .mockImplementationOnce((_a, _i, _n, _t, _c, options) => {
+        signal = options.signal;
+        return new Promise((resolve) => signal.addEventListener('abort', () => resolve('cancelled'), { once: true }));
+      });
+    const props = {
+      stepId: 'navigation-successor',
+      internalActions: [
+        { targetAction: 'highlight' as const, refTarget: 'a[href="/dashboards"]' },
+        { targetAction: 'noop' as const, targetComment: 'Second step' },
+      ],
+    };
+    const original = render(<InteractiveGuided {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      window.history.pushState(null, '', '/dashboards');
+      original.unmount();
+      finishFirst('completed');
+    });
+    const successor = render(<InteractiveGuided {...props} />);
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Step 2 of 2')).toBeVisible();
+    await act(async () => {
+      successor.unmount();
+    });
+    expect(signal.aborted).toBe(true);
+    const next = acquireGuidedRun();
+    expect(next).not.toBeNull();
+    next?.release();
+    expect(mockStoredCompleted).toBe(false);
+  });
+
+  it('uses the successor completion callback after navigation', async () => {
+    let finishFirst!: (result: string) => void;
+    mockExecuteGuidedStep
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishFirst = resolve;
+          })
+      )
+      .mockResolvedValueOnce('completed');
+    const props = {
+      stepId: 'callback-successor',
+      internalActions: [{ targetAction: 'noop' as const }, { targetAction: 'noop' as const }],
+    };
+    const previousComplete = jest.fn();
+    const nextComplete = jest.fn();
+    const original = render(<InteractiveGuided {...props} onComplete={previousComplete} />);
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      window.history.pushState(null, '', '/dashboards');
+      original.unmount();
+      finishFirst('completed');
+    });
+    render(<InteractiveGuided {...props} onComplete={nextComplete} />);
+    await waitFor(() => expect(nextComplete).toHaveBeenCalledTimes(1));
+    expect(previousComplete).not.toHaveBeenCalled();
+    expect(mockStoredCompleted).toBe(true);
+  });
+  it('cancels when the sidebar closes before the handoff wait finishes', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    let finishHandoff!: () => void;
+    mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishHandoff = resolve;
+      })
+    );
+    const props = {
+      stepId: 'pending-handoff',
+      internalActions: [{ targetAction: 'highlight' as const, refTarget: '#missing' }],
+    };
+    const original = render(<InteractiveGuided {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    original.unmount();
+    mockGetMode.mockReturnValue('sidebar');
+    const successor = render(<InteractiveGuided {...props} />);
+    successor.unmount();
+    await act(async () => {
+      finishHandoff();
+    });
+    expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+    const next = acquireGuidedRun();
+    expect(next).not.toBeNull();
+    next?.release();
+  });
+
+  it('expires an unclaimed handoff without starting an invisible action', async () => {
+    jest.useFakeTimers();
+    try {
+      mockGetMode.mockReturnValue('fullscreen');
+      let finishHandoff!: () => void;
+      mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          finishHandoff = resolve;
+        })
+      );
+      const original = render(
+        <InteractiveGuided
+          stepId="missing-successor"
+          internalActions={[{ targetAction: 'highlight', refTarget: '#missing' }]}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+      original.unmount();
+      await act(async () => {
+        finishHandoff();
+      });
+      expect(acquireGuidedRun()).toBeNull();
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+      expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+      const next = acquireGuidedRun();
+      expect(next).not.toBeNull();
+      next?.release();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not adopt a run from a different guide with matching step IDs', async () => {
+    jest.useFakeTimers();
+    try {
+      mockGetMode.mockReturnValue('fullscreen');
+      let finishHandoff!: () => void;
+      mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          finishHandoff = resolve;
+        })
+      );
+      const props = {
+        stepId: 'shared-step-id',
+        internalActions: [{ targetAction: 'highlight' as const, refTarget: '#missing' }],
+      };
+      const original = render(<InteractiveGuided {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+      original.unmount();
+      window.__DocsPluginActiveTabUrl = 'bundled:different-guide';
+      mockGetMode.mockReturnValue('sidebar');
+      render(<InteractiveGuided {...props} />);
+      expect(screen.getByRole('button', { name: /start guided interaction/i })).toBeVisible();
+      await act(async () => {
+        finishHandoff();
+        jest.advanceTimersByTime(3000);
+      });
+      expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+      const next = acquireGuidedRun();
+      expect(next).not.toBeNull();
+      next?.release();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
