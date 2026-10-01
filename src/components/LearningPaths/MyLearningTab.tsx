@@ -123,7 +123,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   }, [paths, onlinePaths, getPathProgress, assignmentByTargetId]);
 
   const privatePaths = useMemo(() => inProgress.filter((path) => path.isPrivate), [inProgress]);
-  const courses = useMemo(() => inProgress.filter((path) => !path.isPrivate), [inProgress]);
+  // An assigned private path also surfaces here, same as an online-catalogue
+  // one — alongside Private Paths, not instead of it; duplication is fine.
+  const courses = useMemo(
+    () => inProgress.filter((path) => !path.isPrivate || assignmentByTargetId.get(path.id)),
+    [inProgress, assignmentByTargetId]
+  );
 
   const completedPaths = useMemo(() => {
     const local = paths.filter((path) => isPathCompleted(path.id));
