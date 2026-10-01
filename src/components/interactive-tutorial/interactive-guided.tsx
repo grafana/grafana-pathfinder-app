@@ -1,19 +1,23 @@
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
-import { acquireGuidedRun, type GuidedRun } from '../../global-state/guided-run';
+import { getActiveTabUrl, getContentKey, getContentKeyOverride } from '../../global-state/content-key';
+import { getGuidedSession } from './guided-session';
 import { usePathfinderPluginConfig } from '../../hooks';
 import type { ConditionInput } from '../../types/requirements.types';
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
+import React, {
+  useState,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
 import { Button } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
-import {
-  GuidedHandler,
-  InteractiveStateManager,
-  NavigationManager,
-  matchesStepAction,
-  type DetectedActionEvent,
-} from '../../interactive-engine';
+import { NavigationManager, matchesStepAction, type DetectedActionEvent } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
 import {
@@ -214,39 +218,33 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
     );
 
-    // Local UI state
     const mode = useInteractiveMode();
     const controllerChannel = useControllerChannel();
-    const [isExecuting, setIsExecuting] = useState(false);
-    // Set when the user cancels a controller-mode run, so the awaiting branch
-    // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
+    const sessionKey = JSON.stringify([
+      getActiveTabUrl() ?? getContentKeyOverride() ?? getContentKey(),
+      sectionId,
+      renderedStepId,
+      internalActions,
+    ]);
+    const session = useMemo(() => getGuidedSession(sessionKey), [sessionKey]);
+    const { isExecuting, currentStepIndex, failedStepIndex, currentStepStatus, executionError, wasCancelled } =
+      useSyncExternalStore(session.subscribe, session.getSnapshot);
+    const {
+      runRef,
+      isExecutingRef,
+      setIsExecuting,
+      setCurrentStepIndex,
+      setFailedStepIndex,
+      setCurrentStepStatus,
+      setExecutionError,
+      setWasCancelled,
+      handler: guidedHandler,
+    } = session;
     const controllerCancelledRef = useRef(false);
     const activeRunIdRef = useRef<string>('');
     const allowCompletedRetryRef = useRef(false);
-    // Track mounted state so a full-screen handoff's navigation, which can
-    // unmount this instance while executeStep awaits it, doesn't resume work
-    // (or call setState) on a component that's already gone.
-    const isMountedRef = useRef(true);
-    useEffect(() => {
-      isMountedRef.current = true;
-      return () => {
-        isMountedRef.current = false;
-      };
-    }, []);
-    // Synchronous re-entrancy latch: `isExecuting` state isn't readable as
-    // true until React flushes the update, so a second click during the
-    // (300-3000ms) full-screen handoff wait below would pass the same stale
-    // `isExecuting === false` check and start a second run — which would
-    // also clobber the first run's listeners via guidedHandler's shared
-    // `cleanupListeners()`. A ref closes that window.
-    const isExecutingRef = useRef(false);
-    const runRef = useRef<GuidedRun | null>(null);
     const handoffRef = useRef(false);
-    const [currentStepIndex, setCurrentStepIndex] = useState(0);
-    const [failedStepIndex, setFailedStepIndex] = useState(-1);
-    const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
-    const [executionError, setExecutionError] = useState<string | null>(null);
-    const [wasCancelled, setWasCancelled] = useState(false);
+    const hostRef = useRef(Symbol());
 
     // Completion lives in the store. Section-managed steps notify the parent;
     // standalone steps write directly.
@@ -276,38 +274,51 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const { config: pluginConfig } = usePathfinderPluginConfig();
     const interactiveConfig = useMemo(() => getInteractiveConfig(pluginConfig), [pluginConfig]);
 
-    // Create guided handler instance
-    const guidedHandler = useMemo(() => {
-      const stateManager = new InteractiveStateManager();
-      const navigationManager = new NavigationManager();
-      return new GuidedHandler(stateManager, navigationManager, waitForReactUpdates);
-    }, []);
-
-    // Cleanup on unmount: cancel any running guided interaction and clear highlights
-    // guidedHandler.cancel() already calls cleanupListeners(true) which clears highlights
-    // via the handler's own navigationManager instance - no need to create a new one
     useEffect(() => {
+      const mountedLocation = window.location.href;
+      const host = hostRef.current;
+      session.attach(host);
       return () => {
-        if (!handoffRef.current) {
-          runRef.current?.cancel();
-          guidedHandler.cancel();
-        }
+        session.detach(host, handoffRef.current || window.location.href !== mountedLocation);
       };
-    }, [guidedHandler]);
+    }, [session]);
+
+    useEffect(() => {
+      return session.bindCompletion(hostRef.current, () => {
+        persistCompletion();
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+        onComplete?.();
+      });
+    }, [session, persistCompletion, onStepComplete, stepId, onComplete]);
 
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
-        runRef.current?.cancel();
+        session.cancel();
         runRef.current = null;
+        isExecutingRef.current = false;
+        setIsExecuting(false);
         persistReset();
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- reset local UI state when the parent bumps resetTrigger, alongside the persistReset store write
         setExecutionError(null);
         setCurrentStepIndex(0);
         setFailedStepIndex(-1);
         setCurrentStepStatus('waiting');
         setWasCancelled(false);
       }
-    }, [resetTrigger, persistReset]);
+    }, [
+      resetTrigger,
+      persistReset,
+      isExecutingRef,
+      setIsExecuting,
+      session,
+      runRef,
+      setExecutionError,
+      setCurrentStepIndex,
+      setFailedStepIndex,
+      setCurrentStepStatus,
+      setWasCancelled,
+    ]);
 
     // Single source of truth: the completion store.
     const isCompleted = storedCompleted;
@@ -364,7 +375,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         ) {
           return false;
         }
-        const run = acquireGuidedRun();
+        const run = session.acquire();
         if (!run) {
           getAppEvents().publish({
             type: 'alert-info',
@@ -372,8 +383,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           });
           return false;
         }
-        runRef.current = run;
         isExecutingRef.current = true;
+        setIsExecuting(true);
 
         try {
           if (checker.completionReason === 'objectives') {
@@ -397,8 +408,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             }
           }
 
-          // Docking unmounts the full-screen host, so its run must continue after handoff.
-          run.signal.throwIfAborted();
+          await session.waitForHost(run.signal);
           setIsExecuting(true);
           setExecutionError(null);
           setCurrentStepIndex(startIndex);
@@ -413,19 +423,13 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             if (completionPersisted || runRef.current !== run) {
               return;
             }
-            persistCompletion();
-            if (onStepComplete && stepId) {
-              onStepComplete(stepId);
-            }
-            if (onComplete) {
-              onComplete();
-            }
+            session.complete();
             completionPersisted = true;
           };
 
           try {
             for (let i = startIndex; i < internalActions.length; i++) {
-              run.signal.throwIfAborted();
+              await session.waitForHost(run.signal);
               const action = internalActions[i];
               setCurrentStepIndex(i);
               setCurrentStepStatus('waiting');
@@ -537,18 +541,25 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           }
           return false;
         } finally {
-          run.release();
-          if (runRef.current === run) {
-            runRef.current = null;
-          }
-          isExecutingRef.current = false;
-          if (isMountedRef.current) {
+          const ownsRun = runRef.current === run;
+          session.release(run);
+          if (ownsRun) {
+            isExecutingRef.current = false;
             setIsExecuting(false);
             setCurrentStepIndex(0);
           }
         }
       },
       [
+        session,
+        runRef,
+        isExecutingRef,
+        setIsExecuting,
+        setCurrentStepIndex,
+        setFailedStepIndex,
+        setCurrentStepStatus,
+        setExecutionError,
+        setWasCancelled,
         checker.isEnabled,
         checkRequirements,
         renderedStepId,
@@ -818,6 +829,13 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         await executeStep();
       },
       [
+        isExecutingRef,
+        setIsExecuting,
+        setCurrentStepIndex,
+        setFailedStepIndex,
+        setCurrentStepStatus,
+        setExecutionError,
+        setWasCancelled,
         disabled,
         isExecuting,
         isCompletedWithObjectives,
@@ -850,7 +868,17 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       if (onStepReset && stepId) {
         onStepReset(stepId);
       }
-    }, [disabled, isExecuting, stepId, onStepReset, persistReset]);
+    }, [
+      disabled,
+      isExecuting,
+      stepId,
+      onStepReset,
+      persistReset,
+      setExecutionError,
+      setCurrentStepIndex,
+      setCurrentStepStatus,
+      setWasCancelled,
+    ]);
 
     const markSkipped = checker.markSkipped;
     const handleSkipStep = useCallback(async () => {
@@ -867,7 +895,16 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       if (onComplete) {
         onComplete();
       }
-    }, [stepId, onStepComplete, onComplete, persistCompletion, markSkipped]);
+    }, [
+      stepId,
+      onStepComplete,
+      onComplete,
+      persistCompletion,
+      markSkipped,
+      setExecutionError,
+      setFailedStepIndex,
+      setWasCancelled,
+    ]);
 
     // Handle retry after timeout or cancellation
     const handleRetry = useCallback(async () => {
@@ -886,20 +923,25 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     // Handle cancel during guided execution
     const handleCancel = useCallback(async () => {
-      // In controller mode the run is remote: release the awaitStepComplete waiter
-      // so the await resolves and the spinner clears, and flag the cancel so the
-      // awaiting branch skips its "not completed" toast.
       controllerCancelledRef.current = true;
       controllerChannel?.cancelStepComplete(renderedStepId, activeRunIdRef.current);
-      runRef.current?.cancel();
-      guidedHandler.cancel();
+      session.cancel();
 
       setIsExecuting(false);
       setExecutionError(null);
       setCurrentStepIndex(0);
       setCurrentStepStatus('waiting');
       setWasCancelled(true);
-    }, [guidedHandler, controllerChannel, renderedStepId]);
+    }, [
+      session,
+      controllerChannel,
+      renderedStepId,
+      setIsExecuting,
+      setExecutionError,
+      setCurrentStepIndex,
+      setCurrentStepStatus,
+      setWasCancelled,
+    ]);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 
