@@ -1,5 +1,6 @@
 import { waitForReactUpdates } from '../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS } from './constants';
 import logoSvg from '../img/logo.svg';
 import {
   describeElement,
@@ -961,7 +962,7 @@ export class NavigationManager {
       progressContainer.className = 'interactive-comment-progress-container';
 
       const progressBar = document.createElement('div');
-      progressBar.className = 'interactive-comment-progress-bar';
+      progressBar.className = INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS;
       progressBar.style.width = `${progressBarPercent(stepInfo)}%`;
 
       progressContainer.appendChild(progressBar);
