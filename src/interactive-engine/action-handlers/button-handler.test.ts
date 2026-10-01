@@ -82,7 +82,11 @@ describe('ButtonHandler', () => {
       await buttonHandler.execute(mockData, false);
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
-      expect(resolveWithRetry).toHaveBeenCalledWith('test-button', 'button');
+      expect(resolveWithRetry).toHaveBeenCalledWith('test-button', 'button', {
+        signal: undefined,
+        lazyRender: undefined,
+        scrollContainer: undefined,
+      });
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockButtons[0]!, undefined);
@@ -93,7 +97,11 @@ describe('ButtonHandler', () => {
       await buttonHandler.execute(mockData, true);
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
-      expect(resolveWithRetry).toHaveBeenCalledWith('test-button', 'button');
+      expect(resolveWithRetry).toHaveBeenCalledWith('test-button', 'button', {
+        signal: undefined,
+        lazyRender: undefined,
+        scrollContainer: undefined,
+      });
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockButtons[0]!.click).toHaveBeenCalled();

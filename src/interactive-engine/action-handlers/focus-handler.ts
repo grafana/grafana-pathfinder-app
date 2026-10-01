@@ -28,18 +28,17 @@ export class FocusHandler {
 
     try {
       this.context?.signal?.throwIfAborted();
-      const resolved = await resolveWithRetry(
-        data.refTarget,
-        'focus',
-        ...(this.context ? ([this.context] as const) : ([] as const))
-      );
+      const resolved = await resolveWithRetry(data.refTarget, 'focus', {
+        signal: this.context?.signal,
+        lazyRender: this.context?.lazyRender,
+        scrollContainer: this.context?.scrollContainer,
+      });
       this.context?.signal?.throwIfAborted();
 
       let targetElements: HTMLElement[];
       if (!resolved) {
         return { outcome: 'error', reason: 'target_missing' };
       } else {
-        // Check if selector should return only one element (contains pseudo-selectors like :first-child, :last-child, etc.)
         const shouldSelectSingle = this.shouldSelectSingleElement(resolved.resolvedSelector);
         targetElements = shouldSelectSingle ? [resolved.element] : resolved.elements;
       }

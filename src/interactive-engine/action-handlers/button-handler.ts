@@ -56,22 +56,16 @@ export class ButtonHandler {
     }
   }
 
-  /**
-   * Find buttons using intelligent selector/text detection with retry support
-   * Uses resolveWithRetry for resilience against timing issues
-   */
   private async findButtons(refTarget: string, target: TargetState | null): Promise<HTMLElement[]> {
-    // For CSS selectors, use resolveWithRetry then filter to buttons
     if (isCssSelector(refTarget)) {
-      const resolved = await resolveWithRetry(
-        refTarget,
-        'button',
-        ...(this.context ? ([this.context] as const) : ([] as const))
-      );
+      const resolved = await resolveWithRetry(refTarget, 'button', {
+        signal: this.context?.signal,
+        lazyRender: this.context?.lazyRender,
+        scrollContainer: this.context?.scrollContainer,
+      });
       this.context?.signal?.throwIfAborted();
       if (resolved) {
-        // A targetState step may point at a Switch wrapper, which is neither a
-        // button nor role=button but does contain the control we need to drive.
+        // Stateful targets may be wrappers around the actual control.
         const buttons = resolved.elements.filter(
           (el) =>
             el.tagName === 'BUTTON' ||
@@ -87,12 +81,11 @@ export class ButtonHandler {
       return [];
     }
 
-    // For plain text, use resolveWithRetry which internally uses findButtonByText
-    const resolved = await resolveWithRetry(
-      refTarget,
-      'button',
-      ...(this.context ? ([this.context] as const) : ([] as const))
-    );
+    const resolved = await resolveWithRetry(refTarget, 'button', {
+      signal: this.context?.signal,
+      lazyRender: this.context?.lazyRender,
+      scrollContainer: this.context?.scrollContainer,
+    });
     this.context?.signal?.throwIfAborted();
     return resolved ? resolved.elements : [];
   }

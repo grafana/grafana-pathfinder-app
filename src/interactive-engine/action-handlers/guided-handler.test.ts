@@ -117,6 +117,22 @@ describe('GuidedHandler', () => {
       document.querySelectorAll('.interactive-comment-box').forEach((element) => element.remove());
     });
 
+    it('can complete successive local runs without secure-context randomUUID', async () => {
+      const descriptor = Object.getOwnPropertyDescriptor(crypto, 'randomUUID');
+      Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined });
+      try {
+        await runTwoStepSequence('insecure A');
+        await runTwoStepSequence('insecure B');
+        expect(paintOf('insecure B', 1)).toMatchObject({ completedSteps: [0] });
+      } finally {
+        if (descriptor) {
+          Object.defineProperty(crypto, 'randomUUID', descriptor);
+        } else {
+          Reflect.deleteProperty(crypto, 'randomUUID');
+        }
+      }
+    });
+
     it('retains completed-step credit within a sequence', async () => {
       await runTwoStepSequence('run A');
 

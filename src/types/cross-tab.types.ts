@@ -5,6 +5,7 @@ export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
 export type CrossTabRole = 'controller' | 'live';
 
+// Derive by exclusion so new engine fields cannot silently disappear from the wire.
 export type CrossTabInternalAction = Omit<InternalAction, 'requirements'>;
 
 export function toCrossTabInternalAction(action: InternalAction): CrossTabInternalAction {

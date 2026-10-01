@@ -753,29 +753,23 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             return;
           }
           if (!controllerChannel) {
-            // No live tab connected (NEW-1073-1): tell the user instead of toggling
-            // a spinner that resolves to nothing.
             getAppEvents().publish({
               type: 'alert-info',
               payload: ['No live tab connected', 'Open a live Grafana tab to run this step there.'],
             });
             return;
           }
-          // §6.4 (entry-only): composites are NOT re-gated at click time the way a
-          // simple step is (which calls checker.revalidate() before posting). A
-          // requirement round-trip can cost up to ~4s, and a composite would pay
-          // that per click on top of its staged replay, so we keep the entry gate
-          // only and let each sub-action fail on the live tab if a prereq regressed.
+          // Composite requirements use the entry gate to avoid repeated cross-tab round trips.
           isExecutingRef.current = true;
           setExecutionError(null);
           setWasCancelled(false);
           setCurrentStepStatus('waiting');
+          setCurrentStepIndex(startIndex);
           controllerCancelledRef.current = false;
           const runId = crypto.randomUUID();
           activeRunIdRef.current = runId;
           setIsExecuting(true);
-          // Subscribe before posting so the first progress tick the live tab emits
-          // can't arrive before we're listening.
+          // Subscribe before posting so the first live-tab progress tick cannot be lost.
           let lastIndex = startIndex;
           const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index) => {
             lastIndex = index;
@@ -808,9 +802,6 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             } else if (!controllerCancelledRef.current) {
               setFailedStepIndex(lastIndex);
               setExecutionError('The live tab did not finish this step. Retry the current step.');
-              // NEW-1073-3: the live tab didn't finish (it disconnected or the step
-              // failed there) and the user didn't cancel — surface a retry hint
-              // rather than silently leaving the step incomplete.
               getAppEvents().publish({
                 type: 'alert-warning',
                 payload: ['Step not completed', 'The live tab did not finish this step — please retry.'],

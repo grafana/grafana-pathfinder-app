@@ -61,11 +61,11 @@ export class HoverHandler {
   }
 
   private async findTargetElement(selector: string): Promise<HTMLElement | null> {
-    const resolved = await resolveWithRetry(
-      selector,
-      'hover',
-      ...(this.context ? ([this.context] as const) : ([] as const))
-    );
+    const resolved = await resolveWithRetry(selector, 'hover', {
+      signal: this.context?.signal,
+      lazyRender: this.context?.lazyRender,
+      scrollContainer: this.context?.scrollContainer,
+    });
     this.context?.signal?.throwIfAborted();
 
     if (!resolved) {

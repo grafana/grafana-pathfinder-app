@@ -361,6 +361,7 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
                   break;
 
                 case 'popout':
+                  run.handoff = true;
                   executionResult = await interactivePopout(elementData, !isShowMode);
                   break;
 

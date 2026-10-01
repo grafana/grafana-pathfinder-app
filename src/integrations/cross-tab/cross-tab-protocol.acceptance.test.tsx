@@ -61,7 +61,7 @@ jest.mock('../../requirements-manager', () => {
 });
 
 jest.mock('../../interactive-engine/action-handlers', () => {
-  const makeHandler = () => ({ execute: jest.fn().mockResolvedValue(undefined) });
+  const makeHandler = () => ({ execute: jest.fn().mockResolvedValue({ outcome: 'ok' }) });
   const makeGuided = () => ({
     resetProgress: jest.fn(),
     cancel: jest.fn(),
@@ -294,7 +294,6 @@ async function sign(
   return { ...fields, sig } as SignedMessageFields & Record<string, unknown>;
 }
 
-// The four side-effecting command families that cross the trust boundary.
 const COMMAND_FAMILIES: Array<{
   kind: string;
   body: Record<string, unknown>;
@@ -310,6 +309,11 @@ const COMMAND_FAMILIES: Array<{
       action: { targetAction: 'button', refTarget: '#safe' },
     },
     mutate: (b) => ({ ...b, action: { targetAction: 'button', refTarget: '#attacker' } }),
+  },
+  {
+    kind: 'step-cancel',
+    body: { kind: 'step-cancel', stepId: 's1', runId: 'run-1' },
+    mutate: (b) => ({ ...b, runId: 'attacker-run' }),
   },
   {
     kind: 'check-requirements',
@@ -611,6 +615,41 @@ describe('cross-tab pairing protocol acceptance', () => {
       expect(getAcceptedSession()).toBeNull();
     });
 
+    it('ignores unsigned cancellation but aborts the active run on a signed cancellation', async () => {
+      const harness = await pairOverBus();
+      let signal!: AbortSignal;
+      executeOf(ButtonHandler).mockImplementationOnce((data) => {
+        signal = data.signal;
+        return new Promise((resolve) =>
+          signal.addEventListener('abort', () => resolve({ outcome: 'cancelled' }), { once: true })
+        );
+      });
+      act(() =>
+        harness.channel.post({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 's1',
+          runId: 'cancel-run',
+          action: { targetAction: 'button', refTarget: '#pending' },
+        })
+      );
+      await waitFor(() => expect(signal).toBeDefined());
+      const attacker = harness.bus.endpoint('attacker');
+      await act(async () => {
+        attacker.post({ kind: 'step-cancel', stepId: 's1', runId: 'cancel-run' });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(signal.aborted).toBe(false);
+      act(() => harness.channel.cancelStepComplete('s1', 'cancel-run'));
+      await waitFor(() =>
+        expect(harness.live.postedPayloads).toContainEqual(
+          expect.objectContaining({ kind: 'step-complete', stepId: 's1', runId: 'cancel-run', ok: false })
+        )
+      );
+      expect(signal.aborted).toBe(true);
+      harness.cleanup();
+    });
+
     it('runs a signed command end-to-end once the user accepts', async () => {
       const harness = await pairOverBus();
       act(() => {
@@ -627,6 +666,11 @@ describe('cross-tab pairing protocol acceptance', () => {
       expect(executeOf(ButtonHandler)).toHaveBeenCalledWith(
         expect.objectContaining({ refTarget: '#go', targetAction: 'button' }),
         true
+      );
+      await waitFor(() =>
+        expect(harness.live.postedPayloads).toContainEqual(
+          expect.objectContaining({ kind: 'step-complete', stepId: 's1', runId: 'run-1', ok: true })
+        )
       );
       harness.cleanup();
     });
@@ -648,6 +692,20 @@ describe('cross-tab pairing protocol acceptance', () => {
         expect(await verifySignedMessage(signed, LIVE_TAB_ID)).toBe(true);
       }
     );
+
+    it.each(COMMAND_FAMILIES)('rejects unsigned, wrong-session, stale and replayed $kind', async ({ body }) => {
+      const ctrl = await acceptControllerInManager();
+      expect(await verifySignedMessage(body as unknown as SignedMessageFields, LIVE_TAB_ID)).toBe(false);
+      expect(
+        await verifySignedMessage(await sign(ctrl.privateKey, body, { sessionId: 'wrong-session' }), LIVE_TAB_ID)
+      ).toBe(false);
+      expect(
+        await verifySignedMessage(await sign(ctrl.privateKey, body, { sigTs: Date.now() - 60_000 }), LIVE_TAB_ID)
+      ).toBe(false);
+      const signed = await sign(ctrl.privateKey, body);
+      expect(await verifySignedMessage(signed, LIVE_TAB_ID)).toBe(true);
+      expect(await verifySignedMessage(signed, LIVE_TAB_ID)).toBe(false);
+    });
 
     it('rejects a message bound to the wrong sessionId', async () => {
       const ctrl = await acceptControllerInManager();

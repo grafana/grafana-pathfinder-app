@@ -43,6 +43,8 @@ interface GuidedStepArbiter {
   getResult: () => CompletionResult | null;
 }
 
+let nextGuidedRunId = 0;
+
 export class GuidedHandler {
   private activeListeners: ActiveListener[] = [];
   private pendingTimeouts: Array<ReturnType<typeof setTimeout>> = [];
@@ -101,14 +103,14 @@ export class GuidedHandler {
       this.resetProgress();
     }
     const controller = new AbortController();
-    this.runController = controller;
-    this.runId = crypto.randomUUID();
     const cancel = () => this.cancel();
-    options?.signal?.addEventListener('abort', cancel, { once: true });
-    if (options?.signal?.aborted) {
-      controller.abort();
-    }
     try {
+      this.runId = `guided-${++nextGuidedRunId}`;
+      this.runController = controller;
+      options?.signal?.addEventListener('abort', cancel, { once: true });
+      if (options?.signal?.aborted) {
+        controller.abort();
+      }
       return await withFaroUserAction(
         createInteractionName(UserInteraction.DoItButtonClick),
         {

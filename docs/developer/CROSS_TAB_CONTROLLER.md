@@ -59,7 +59,7 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 (`source: 'pathfinder'`, a per-tab `senderId` used to drop self-echoes, and a
 `timestamp`):
 
-- `step-command` — `{ phase: 'show' | 'do', stepId, runId, startIndex?, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, internalActions? } }`.
+- `step-command` — `{ phase: 'show' | 'do', stepId, runId, startIndex?, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, lazyRender?, scrollContainer?, openGuide?, internalActions? } }`.
   `targetState` carries an authored `targetstate` through to the live tab so
   toggle actions converge on the requested state instead of clicking blindly.
   Composite steps carry their ordered sub-actions in `internalActions`; the
@@ -139,7 +139,7 @@ drive that Grafana. The controller→live command path is therefore
   accept does nothing. Competing valid challenges fail closed (the prompt is
   cleared and both launches revoked); a rejected session stays suppressed; an
   expired pending challenge can be retried.
-- **Signed commands.** Every side-effecting message — `step-command`,
+- **Signed commands.** Every side-effecting message — `step-command`, `step-cancel`,
   `check-requirements`, `fix-requirement`, `sidebar-handoff` — is ECDSA-signed
   and bound to `sessionId`, `liveTabId`, the command body, a fresh `sigNonce`,
   and a `sigTs`. The executor's auth gate (`verifySignedMessage`) checks the

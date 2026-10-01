@@ -19,6 +19,15 @@ import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
 
+const mockInteractiveMode = jest.fn(() => 'interactive');
+const mockControllerChannel = jest.fn();
+jest.mock('../../global-state/interactive-mode-context', () => ({
+  useInteractiveMode: () => mockInteractiveMode(),
+}));
+jest.mock('../../global-state/controller-channel', () => ({
+  useControllerChannel: () => mockControllerChannel(),
+}));
+
 // ─── Mock @grafana/ui ────────────────────────────────────────────────────────
 jest.mock('@grafana/ui', () => ({
   Button: ({ children, onClick, disabled, ...rest }: any) => (
@@ -184,6 +193,8 @@ jest.mock('../../global-state/panel-mode', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 beforeEach(() => {
+  mockInteractiveMode.mockReturnValue('interactive');
+  mockControllerChannel.mockReturnValue(null);
   mockActionRequirements.mockReset().mockResolvedValue({ pass: true });
   mockDispatchFix.mockClear();
   mockPublish.mockClear();
@@ -705,6 +716,49 @@ describe('InteractiveGuided — current action recovery', () => {
       expect(mockExecuteGuidedStep.mock.calls.map((call) => call[1])).toEqual([0, 1, 1]);
     }
   );
+  it('seeds controller retry progress before the live tab sends progress', async () => {
+    mockInteractiveMode.mockReturnValue('controller');
+    let progress!: (index: number) => void;
+    let finish!: (ok: boolean) => void;
+    const channel = {
+      post: jest.fn(),
+      onStepProgress: jest.fn((_step, _run, callback) => {
+        progress = callback;
+        return jest.fn();
+      }),
+      awaitStepComplete: jest.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          })
+      ),
+    };
+    mockControllerChannel.mockReturnValue(channel);
+    const { container } = render(
+      <InteractiveGuided
+        stepId="remote-retry"
+        internalActions={[
+          { targetAction: 'button', refTarget: '#one', targetComment: 'First instruction' },
+          { targetAction: 'button', refTarget: '#two', targetComment: 'Second instruction' },
+        ]}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    act(() => progress(1));
+    await act(async () => finish(false));
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('remote-retry')));
+    expect(channel.post).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'step-command', startIndex: 1 }));
+    expect(screen.getByText('Step 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Second instruction')).toBeInTheDocument();
+    expect(container.querySelector('.interactive-guided-progress-fill')).toHaveStyle({ width: '50%' });
+    expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+    await act(async () => finish(true));
+    expect(screen.getByTestId(testIds.interactive.step('remote-retry'))).toHaveAttribute(
+      'data-test-step-state',
+      'completed'
+    );
+  });
+
   it('keeps the failed substep visible while retry waits for the execution render', async () => {
     mockExecuteGuidedStep
       .mockResolvedValueOnce('completed')

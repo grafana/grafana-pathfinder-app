@@ -57,11 +57,11 @@ export class FormFillHandler {
   }
 
   private async findTargetElement(selector: string): Promise<HTMLElement | null> {
-    const resolved = await resolveWithRetry(
-      selector,
-      'formfill',
-      ...(this.context ? ([this.context] as const) : ([] as const))
-    );
+    const resolved = await resolveWithRetry(selector, 'formfill', {
+      signal: this.context?.signal,
+      lazyRender: this.context?.lazyRender,
+      scrollContainer: this.context?.scrollContainer,
+    });
     this.context?.signal?.throwIfAborted();
 
     if (!resolved) {

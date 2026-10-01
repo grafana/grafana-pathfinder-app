@@ -60,9 +60,7 @@ jest.mock('./action-handlers', () => ({
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
     cancel: jest.fn(),
   })),
-  PopoutHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
-  })),
+  PopoutHandler: jest.requireActual('./action-handlers/popout-handler').PopoutHandler,
 }));
 
 jest.mock('./interactive-state-manager', () => ({
@@ -79,6 +77,7 @@ jest.mock('./navigation-manager', () => ({
     highlight: jest.fn().mockResolvedValue(undefined),
     fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
     openAndDockNavigation: jest.fn().mockResolvedValue(undefined),
+    clearOwnedHighlights: jest.fn(),
   })),
 }));
 
@@ -169,6 +168,28 @@ describe('executeInteractiveAction composed with the real requestSidebarHandoffA
     await executePromise;
 
     expect(handlerCallOrder).toEqual(['handler-executed']);
+  });
+
+  it.each([
+    ['floating', 'pathfinder-request-pop-out'],
+    ['sidebar', 'pathfinder-request-dock'],
+  ])('completes a real popout to %s when its mode event unmounts the host', async (targetValue, event) => {
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'sidebar');
+    const { result, unmount } = renderHook(() => useInteractiveElements({ containerRef }));
+    document.addEventListener(event, unmount, { once: true });
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current.executeInteractiveAction({ targetAction: 'popout', refTarget: '', targetValue });
+    });
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1000);
+    });
+    expect(await pending).toBe('ok');
+    const { InteractiveStateManager } = require('./interactive-state-manager');
+    expect(InteractiveStateManager.mock.results.at(-1)!.value.setState).toHaveBeenCalledWith(
+      expect.objectContaining({ targetAction: 'popout', targetValue }),
+      'completed'
+    );
   });
 
   it('returns error when a handler reports a missing target', async () => {
