@@ -784,7 +784,9 @@ Catalog build errors for selected packages, dependency alternatives, or provider
 
 For these cloud runs, `--repository <index-file>` also works: its parent directory becomes the checkout root. The CLI rebuilds the catalog instead of trusting the index contents. Local-target paths and published-source runs retain their existing index behavior.
 
-Source validation rejects symbolic links, hard links, and special files before reading manifests when `--repository` is supplied. The scan includes assets but excludes the root `.git`, `.github`, `node_modules`, and `scripts` directories. It does not freeze the checkout or prevent later edits.
+The selected package directory and manifest are validated before the manifest is read to determine its tier. Linked or special-file manifests are rejected without reading their bytes, including when `--repository` is omitted. When a repository is supplied, the selected package must also be inside its package catalog and reached without traversing links below the checkout root.
+
+A package proceeding to cloud execution receives full checkout validation before catalog loading or execution. This scan rejects symbolic links, hard links, and special files, includes assets, and excludes the root `.git`, `.github`, `node_modules`, and `scripts` directories. It does not freeze the checkout or prevent later edits.
 
 Cloud execution reuses the existing pool and named-target policies. A named target still needs its matching `--cloud-instance-admin-token` binding. Missing credentials for a selected local cloud package or its required guides produce a configuration error (exit code 2). This applies to guides, paths, and journeys. Existing shared-target safety refusals still apply. See [remote package-aware testing](#remote-package-aware-testing) for those policies.
 
@@ -794,7 +796,7 @@ After provisioning, the runner checks health and manifest requirements against t
 
 The following cases produce skipped reports rather than an unqualified pass:
 
-- A local-tier package selected with `--tier cloud`. This skip needs neither `--repository` nor cloud credentials.
+- A local-tier package selected with `--tier cloud`. This skip needs neither `--repository` nor cloud credentials. It reads only the safely validated selected manifest, without scanning content, assets, or unrelated checkout files. A skipped report does not imply that the checkout passed validation.
 - A selected graph with no interactive blocks. The report lists the selected root and all planned leaves as unexecuted.
 - A `snippet-ref` block, including nested references.
 - A navigate action with `openGuide`, or a `reftarget`/`refTarget` URL with a nonempty `doc` query value.

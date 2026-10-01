@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'fs';
+import { existsSync, lstatSync, readdirSync, realpathSync, statSync, type Stats } from 'fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 
 import { isInteractiveBlockType } from '../../types/json-guide-classification';
@@ -135,11 +135,7 @@ function localRepositoryRoot(repositoryPath: string): string {
   return statSync(resolvedPath).isDirectory() ? resolvedPath : dirname(resolvedPath);
 }
 
-export function assertLocalCloudCheckoutSources(repositoryPath: string | undefined, packageDir: string): void {
-  if (!repositoryPath) {
-    throw new Error('A local cloud guide requires --repository <path>.');
-  }
-  const root = realpathSync(localRepositoryRoot(repositoryPath));
+function assertLocalCloudPackageLocation(root: string, packageDir: string): void {
   const selected = realpathSync(packageDir);
   const selectedRelative = relative(root, selected);
   if (
@@ -154,6 +150,67 @@ export function assertLocalCloudCheckoutSources(repositoryPath: string | undefin
   if (LOCAL_CHECKOUT_EXCLUDES.some((excluded) => selectedParts[0] === excluded) || selectedParts.includes('assets')) {
     throw new Error('Selected local cloud package is outside the package catalog.');
   }
+}
+
+export function assertLocalCloudSelectedPackageSources(repositoryPath: string | undefined, packageDir: string): void {
+  const repositoryRoot = repositoryPath ? localRepositoryRoot(repositoryPath) : undefined;
+  const root = repositoryRoot ? realpathSync(repositoryRoot) : undefined;
+  if (root) {
+    assertLocalCloudPackageLocation(root, packageDir);
+  }
+  const selectedDirectory = resolve(packageDir);
+  let selectedDirectories = [selectedDirectory];
+  if (root) {
+    let ancestor = selectedDirectory;
+    while (dirname(ancestor) !== ancestor) {
+      ancestor = dirname(ancestor);
+      selectedDirectories.push(ancestor);
+    }
+    selectedDirectories.reverse();
+    // An inner link back to the root must not become the checkout boundary.
+    const rootIndex = selectedDirectories.findIndex((directory) => realpathSync(directory) === root);
+    if (rootIndex === -1) {
+      throw new Error('Selected local cloud package is not reached through the local repository root.');
+    }
+    selectedDirectories = selectedDirectories.slice(rootIndex + 1);
+  }
+  for (const selectedPath of selectedDirectories) {
+    const sourceStat = lstatSync(selectedPath);
+    if (sourceStat.isSymbolicLink()) {
+      throw new Error(`Local cloud source contains a symbolic link: ${selectedPath}`);
+    }
+    if (!sourceStat.isDirectory()) {
+      throw new Error(`Local cloud source contains a special file: ${selectedPath}`);
+    }
+  }
+
+  const manifestPath = join(packageDir, 'manifest.json');
+  let manifestStat: Stats;
+  try {
+    manifestStat = lstatSync(manifestPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return;
+    }
+    throw error;
+  }
+  if (manifestStat.isSymbolicLink()) {
+    throw new Error(`Local cloud source contains a symbolic link: ${manifestPath}`);
+  }
+  if (!manifestStat.isFile()) {
+    throw new Error(`Local cloud source contains a special file: ${manifestPath}`);
+  }
+  if (manifestStat.nlink !== 1) {
+    throw new Error(`Local cloud source contains a hard link: ${manifestPath}`);
+  }
+}
+
+export function assertLocalCloudCheckoutSources(repositoryPath: string | undefined, packageDir: string): void {
+  if (!repositoryPath) {
+    throw new Error('A local cloud guide requires --repository <path>.');
+  }
+  const root = realpathSync(localRepositoryRoot(repositoryPath));
+  assertLocalCloudPackageLocation(root, packageDir);
 
   const pending = [root];
   while (pending.length > 0) {

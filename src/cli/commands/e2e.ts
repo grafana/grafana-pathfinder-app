@@ -28,6 +28,7 @@ import {
 import { checkTier, loadManifestFromDir, runManifestPreflight } from '../e2e/manifest-preflight';
 import {
   assertLocalCloudCheckoutSources,
+  assertLocalCloudSelectedPackageSources,
   loadLocalRepositorySource,
   LocalMetapackageResolutionError,
   LocalCloudNonExecutionError,
@@ -1236,8 +1237,8 @@ function resolveLocalRunInputs(files: string[], options: E2ECommandOptions): Run
   if (options.package) {
     try {
       const explicitLocalCloudPackage = options.tier === 'cloud';
-      if (explicitLocalCloudPackage && options.repository) {
-        assertLocalCloudCheckoutSources(options.repository, options.package);
+      if (explicitLocalCloudPackage) {
+        assertLocalCloudSelectedPackageSources(options.repository, options.package);
       }
       const manifest = explicitLocalCloudPackage ? loadManifestFromDir(options.package) : null;
       if (manifest && manifest.testEnvironment?.tier !== 'cloud') {
@@ -1246,6 +1247,9 @@ function resolveLocalRunInputs(files: string[], options: E2ECommandOptions): Run
           manifest,
           `Package requires tier "${manifest.testEnvironment?.tier ?? 'local'}" rather than cloud.`
         );
+      }
+      if (explicitLocalCloudPackage && options.repository) {
+        assertLocalCloudCheckoutSources(options.repository, options.package);
       }
       const cloudAuth = explicitLocalCloudPackage
         ? createCloudAuthPolicy({ cloudInstanceAdminTokenSpecs: options.cloudInstanceAdminToken })

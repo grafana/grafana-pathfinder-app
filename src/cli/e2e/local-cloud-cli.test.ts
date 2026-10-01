@@ -405,6 +405,112 @@ describe('local cloud package CLI preflight', () => {
     }
   });
 
+  it.each(
+    (['local', 'cloud'] as const).flatMap((tier) =>
+      [true, false].flatMap((withRepository) =>
+        (['external symbolic', 'in-root symbolic', 'dangling symbolic', 'hard', 'directory'] as const).map(
+          (sourceKind) => ({ tier, withRepository, sourceKind })
+        )
+      )
+    )
+  )(
+    'rejects a $sourceKind $tier-tier selected manifest without reading it (repository: $withRepository)',
+    async ({ tier, withRepository, sourceKind }) => {
+      const packageDir = join(root, 'cloud-guide');
+      const manifestPath = join(packageDir, 'manifest.json');
+      const outside = mkdtempSync(join(tmpdir(), 'pathfinder-unsafe-manifest-'));
+      const targetPath = join(sourceKind === 'in-root symbolic' ? root : outside, 'manifest.json');
+      try {
+        writeFileSync(targetPath, JSON.stringify({ id: 'cloud-guide', type: 'guide', testEnvironment: { tier } }));
+        rmSync(manifestPath);
+        if (sourceKind === 'directory') {
+          mkdirSync(manifestPath);
+        } else if (sourceKind === 'hard') {
+          linkSync(targetPath, manifestPath);
+        } else {
+          symlinkSync(sourceKind === 'dangling symbolic' ? join(outside, 'missing.json') : targetPath, manifestPath);
+        }
+        const reportPath = join(root, 'unsafe-manifest-report.json');
+        const options = E2eCommand.parse({
+          package: packageDir,
+          ...(withRepository ? { repository: root } : {}),
+          tier: 'cloud',
+          output: reportPath,
+          artifacts: join(root, 'artifacts'),
+        });
+        const readSpy = jest.spyOn(fs, 'readFileSync');
+        try {
+          await expect(runE2e(options)).rejects.toThrow(`CLI exited with ${ExitCode.CONFIGURATION_ERROR}`);
+          expect(readSpy.mock.calls.some(([path]) => path === manifestPath || path === targetPath)).toBe(false);
+          expect(fetchSpy).not.toHaveBeenCalled();
+          expect(runPlaywrightTests).not.toHaveBeenCalled();
+          expect(runPlaywrightChain).not.toHaveBeenCalled();
+          const report = JSON.parse(readFileSync(reportPath, 'utf8')) as Report;
+          expect(report.outcome).toBe('configuration_error');
+          expect(report.errorMessage).toContain(
+            sourceKind === 'directory' ? 'special file' : sourceKind === 'hard' ? 'hard link' : 'symbolic link'
+          );
+        } finally {
+          readSpy.mockRestore();
+        }
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it.each(['outside', 'excluded', 'linked directory', 'linked ancestor'] as const)(
+    'rejects an unsafe %s local-tier selection before reading its manifest',
+    async (location) => {
+      const outside = mkdtempSync(join(tmpdir(), 'pathfinder-unsafe-selection-'));
+      let packageDir = join(root, 'cloud-guide');
+      try {
+        if (location === 'outside') {
+          packageDir = outside;
+        } else if (location === 'excluded') {
+          packageDir = join(root, 'scripts', 'local-guide');
+          mkdirSync(packageDir, { recursive: true });
+        }
+        const manifestPath = join(packageDir, 'manifest.json');
+        writeFileSync(
+          manifestPath,
+          JSON.stringify({ id: 'local-only', type: 'guide', testEnvironment: { tier: 'local' } })
+        );
+        if (location === 'linked directory' || location === 'linked ancestor') {
+          const linked = join(root, 'linked');
+          symlinkSync(location === 'linked directory' ? packageDir : root, linked);
+          packageDir = location === 'linked directory' ? linked : join(linked, 'cloud-guide');
+        }
+        const reportPath = join(root, 'unsafe-selection-report.json');
+        const readSpy = jest.spyOn(fs, 'readFileSync');
+        try {
+          await expect(runE2e(cloudOptions(packageDir, reportPath))).rejects.toThrow(
+            `CLI exited with ${ExitCode.CONFIGURATION_ERROR}`
+          );
+          expect(
+            readSpy.mock.calls.some(([path]) => path === manifestPath || path === join(packageDir, 'manifest.json'))
+          ).toBe(false);
+          expect(fetchSpy).not.toHaveBeenCalled();
+          expect(runPlaywrightTests).not.toHaveBeenCalled();
+          expect(runPlaywrightChain).not.toHaveBeenCalled();
+          const report = JSON.parse(readFileSync(reportPath, 'utf8')) as Report;
+          expect(report.outcome).toBe('configuration_error');
+          expect(report.errorMessage).toContain(
+            location === 'outside'
+              ? 'outside the local repository'
+              : location === 'excluded'
+                ? 'outside the package catalog'
+                : 'symbolic link'
+          );
+        } finally {
+          readSpy.mockRestore();
+        }
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    }
+  );
+
   it.each(['directory', 'content.json'] as const)(
     'rejects a linked discovered package %s before reading its manifests or content',
     async (linkedPart) => {
@@ -427,12 +533,16 @@ describe('local cloud package CLI preflight', () => {
             `CLI exited with ${ExitCode.CONFIGURATION_ERROR}`
           );
           expect(readSpy.mock.calls.some(([path]) => typeof path === 'string' && path.startsWith(outside))).toBe(false);
-          expect(readSpy.mock.calls.some(([path]) => path === join(root, 'cloud-guide', 'manifest.json'))).toBe(false);
+          expect(readSpy.mock.calls.some(([path]) => path === join(root, 'cloud-guide', 'content.json'))).toBe(false);
+          expect(readSpy.mock.calls.some(([path]) => path === join(root, 'discovered-package', 'manifest.json'))).toBe(
+            false
+          );
           expect(readSpy.mock.calls.some(([path]) => path === join(root, 'discovered-package', 'content.json'))).toBe(
             false
           );
           expect(fetchSpy).not.toHaveBeenCalled();
           expect(runPlaywrightTests).not.toHaveBeenCalled();
+          expect(runPlaywrightChain).not.toHaveBeenCalled();
           expect((JSON.parse(readFileSync(reportPath, 'utf8')) as Report).errorMessage).toContain('symbolic link');
         } finally {
           readSpy.mockRestore();
@@ -444,7 +554,7 @@ describe('local cloud package CLI preflight', () => {
   );
 
   it.each(['selected content', 'selected asset', 'discovered asset'] as const)(
-    'rejects a hard-linked %s before reading selected source or leasing',
+    'rejects a hard-linked %s before loading catalog content or leasing',
     async (location) => {
       const outside = mkdtempSync(join(tmpdir(), 'pathfinder-hard-linked-source-'));
       const externalFile = join(outside, 'data.json');
@@ -467,7 +577,10 @@ describe('local cloud package CLI preflight', () => {
             `CLI exited with ${ExitCode.CONFIGURATION_ERROR}`
           );
           expect(readSpy.mock.calls.some(([path]) => path === externalFile || path === destination)).toBe(false);
-          expect(readSpy.mock.calls.some(([path]) => path === join(root, 'cloud-guide', 'manifest.json'))).toBe(false);
+          expect(readSpy.mock.calls.some(([path]) => path === join(root, 'cloud-guide', 'content.json'))).toBe(false);
+          expect(readSpy.mock.calls.some(([path]) => path === join(root, 'discovered-package', 'manifest.json'))).toBe(
+            false
+          );
           expect(fetchSpy).not.toHaveBeenCalled();
           expect(runPlaywrightTests).not.toHaveBeenCalled();
           expect(runPlaywrightChain).not.toHaveBeenCalled();
@@ -481,7 +594,7 @@ describe('local cloud package CLI preflight', () => {
     }
   );
 
-  it('rejects a link inside assets before reading the selected manifest or leasing', async () => {
+  it('rejects a link inside assets before loading catalog content or leasing', async () => {
     const outside = mkdtempSync(join(tmpdir(), 'pathfinder-linked-asset-'));
     try {
       const assetDir = join(root, 'cloud-guide', 'assets');
@@ -496,9 +609,10 @@ describe('local cloud package CLI preflight', () => {
           `CLI exited with ${ExitCode.CONFIGURATION_ERROR}`
         );
         expect(readSpy.mock.calls.some(([path]) => path === externalFile)).toBe(false);
-        expect(readSpy.mock.calls.some(([path]) => path === join(root, 'cloud-guide', 'manifest.json'))).toBe(false);
+        expect(readSpy.mock.calls.some(([path]) => path === join(root, 'cloud-guide', 'content.json'))).toBe(false);
         expect(fetchSpy).not.toHaveBeenCalled();
         expect(runPlaywrightTests).not.toHaveBeenCalled();
+        expect(runPlaywrightChain).not.toHaveBeenCalled();
         expect((JSON.parse(readFileSync(reportPath, 'utf8')) as Report).errorMessage).toContain('symbolic link');
       } finally {
         readSpy.mockRestore();
@@ -1178,6 +1292,65 @@ describe('local cloud package CLI preflight', () => {
         expect.objectContaining({ id: 'local-only', reason: 'skipped_tier_mismatch', failed: false, tier: 'local' }),
       ]);
       expect(report.preRunSkipped[0]!.message).toContain('requires tier "local" rather than cloud');
+    }
+  );
+
+  it.each(
+    (['guide', 'path', 'journey'] as const).flatMap((type) =>
+      (['directory', 'index file'] as const).flatMap((repositoryInput) =>
+        (['symbolic', 'hard'] as const).map((linkKind) => ({ type, repositoryInput, linkKind }))
+      )
+    )
+  )(
+    'skips a local-tier $type with $repositoryInput repository input and an unrelated $linkKind link',
+    async ({ type, repositoryInput, linkKind }) => {
+      const packageDir = join(root, 'cloud-guide');
+      writeFileSync(
+        join(packageDir, 'manifest.json'),
+        JSON.stringify({
+          id: 'local-only',
+          type,
+          ...(type !== 'guide' ? { milestones: ['cloud-guide'] } : {}),
+          testEnvironment: { tier: 'local' },
+        })
+      );
+      const targetPath = join(root, 'unrelated-target.txt');
+      writeFileSync(targetPath, 'Unrelated checkout file');
+      const linkPath = join(root, 'unrelated-link.txt');
+      if (linkKind === 'symbolic') {
+        symlinkSync(targetPath, linkPath);
+      } else {
+        linkSync(targetPath, linkPath);
+      }
+      const reportPath = join(root, 'linked-checkout-skip.json');
+      const options = E2eCommand.parse({
+        package: packageDir,
+        repository: repositoryInput === 'directory' ? root : join(root, 'repository.json'),
+        tier: 'cloud',
+        output: reportPath,
+        artifacts: join(root, 'artifacts'),
+      });
+      const readSpy = jest.spyOn(fs, 'readFileSync');
+      const scanSpy = jest.spyOn(fs, 'readdirSync');
+      try {
+        await expect(runE2e(options)).resolves.toMatchObject({ status: 'ok', summary: 'Nothing to run' });
+        expect(scanSpy).not.toHaveBeenCalled();
+        expect(readSpy.mock.calls.map(([path]) => path)).toEqual([join(packageDir, 'manifest.json')]);
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(runPlaywrightTests).not.toHaveBeenCalled();
+        expect(runPlaywrightChain).not.toHaveBeenCalled();
+        expect(exitSpy).not.toHaveBeenCalled();
+        const report = JSON.parse(readFileSync(reportPath, 'utf8')) as SkipReport;
+        expect(report.outcome).toBe('skipped');
+        expect(report.selection).toEqual(type !== 'guide' ? { id: 'local-only', type } : undefined);
+        expect(report.summary).toMatchObject({ totalGuides: 1, passedGuides: 0, failedGuides: 0, skippedGuides: 1 });
+        expect(report.preRunSkipped).toEqual([
+          expect.objectContaining({ id: 'local-only', reason: 'skipped_tier_mismatch', failed: false, tier: 'local' }),
+        ]);
+      } finally {
+        readSpy.mockRestore();
+        scanSpy.mockRestore();
+      }
     }
   );
 
