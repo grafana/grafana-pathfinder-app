@@ -7,11 +7,12 @@
  *     guard from research brief §4
  *   - guide and journey keys are independent; distinct guides emit separately
  *   - a throwing subscriber never breaks the completion path
- *   - with zero subscribers the recorder is a behavior-neutral no-op
+ *   - early completions wait for the write subscriber
  *   - the guard is durable across a reload (a fresh in-memory Set), and
  *     `invalidateEmittedCompletion`/`invalidateAllEmittedCompletions` are the
  *     only way to lift it — the reset-then-re-mark and duplicate-write fixes
  */
+import { logger } from '../lib/logging';
 import {
   recordGuideCompletion,
   recordJourneyCompletion,
@@ -21,6 +22,9 @@ import {
   __resetRecorderForTests,
 } from './completion-recorder';
 import type { CompletionFact, CompletionListener, GuideCompletionFact, JourneyCompletionFact } from './types';
+
+let mockOwner: string | null = 'user-1:org-1';
+jest.mock('./completion-write-storage', () => ({ currentCompletionQueueOwnerKey: () => mockOwner }));
 
 const persistedEmitted = new Map<string, true>();
 
@@ -70,6 +74,7 @@ function acceptInto(sink: CompletionFact[]): CompletionListener {
 }
 
 beforeEach(() => {
+  mockOwner = 'user-1:org-1';
   __resetRecorderForTests();
   persistedEmitted.clear();
 });
@@ -132,7 +137,7 @@ describe('completion recorder — emitter seam', () => {
     expect(seen).toHaveLength(0);
   });
 
-  it('with zero subscribers is a no-op that does not throw', () => {
+  it('buffers with zero subscribers without throwing', () => {
     expect(() => recordGuideCompletion(guideFact())).not.toThrow();
   });
 });
@@ -349,5 +354,90 @@ describe('completion recorder — resilience', () => {
 
     expect(() => recordGuideCompletion(guideFact())).not.toThrow();
     expect(seen).toHaveLength(1);
+  });
+});
+
+describe('completion recorder startup recovery', () => {
+  it('keeps the first 100 startup facts and warns when dropping the newest', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    try {
+      const facts = Array.from({ length: 101 }, (_, index) => guideFact({ guideId: `guide-${index}` }));
+      facts.forEach(recordGuideCompletion);
+      const seen: CompletionFact[] = [];
+      onCompletionRecorded(acceptInto(seen));
+      expect(seen).toEqual(facts.slice(0, 100));
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith('completion write: startup buffer is full');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('drops a rejected replay without marking it emitted and allows a later completion to retry', () => {
+    const fact = guideFact();
+    recordGuideCompletion(fact);
+    const reject = jest.fn(() => false);
+    const unsubscribe = onCompletionRecorded(reject);
+    expect(reject).toHaveBeenCalledWith(fact);
+    expect(persistedEmitted.size).toBe(0);
+    unsubscribe();
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+    expect(seen).toEqual([]);
+    recordGuideCompletion(fact);
+    expect(seen).toEqual([fact]);
+    expect(persistedEmitted.size).toBe(1);
+  });
+
+  it('invalidates both pending completion kinds through a legacy guide id without clearing other guides', () => {
+    recordGuideCompletion(guideFact());
+    recordJourneyCompletion(journeyFact());
+    const other = guideFact({ guideId: 'other' });
+    recordGuideCompletion(other);
+    invalidateEmittedCompletion('bundled', 'intro/content.json');
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+    expect(seen).toEqual([other]);
+  });
+
+  it('replays early completions once when the write hook becomes available', () => {
+    const fact = guideFact();
+    recordGuideCompletion(fact);
+    recordGuideCompletion(fact);
+    expect(persistedEmitted.size).toBe(0);
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+    recordGuideCompletion(fact);
+    expect(seen).toEqual([fact]);
+    expect(persistedEmitted.size).toBe(1);
+  });
+
+  it.each(['guide', 'all'])('does not replay a completion reset before startup recovers (%s)', (scope) => {
+    recordGuideCompletion(guideFact());
+    if (scope === 'guide') {
+      invalidateEmittedCompletion('bundled', 'intro');
+    } else {
+      invalidateAllEmittedCompletions();
+    }
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+    expect(seen).toEqual([]);
+  });
+
+  it('does not replay completions from another user or organization', () => {
+    recordGuideCompletion(guideFact());
+    mockOwner = 'user-1:org-2';
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+    expect(seen).toEqual([]);
+  });
+
+  it('does not replay anonymous completions after sign in', () => {
+    mockOwner = null;
+    recordGuideCompletion(guideFact());
+    mockOwner = 'user-1:org-1';
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+    expect(seen).toEqual([]);
   });
 });

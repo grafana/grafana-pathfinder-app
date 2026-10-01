@@ -60,13 +60,21 @@ export function resolveFaroEnvironment(): { environment: FaroEnvironment; isLoca
   return { environment, isLocalOverride };
 }
 
-// Both derived from their source of truth (Grafana serves plugin assets from
-// /public/plugins/<id>/; sourcemapped frames use webpack://<package name>/),
-// so a plugin rename can't silently break the whitelist.
 const PLUGIN_ASSET_PATH = `/public/plugins/${pluginJson.id}/`;
 
 function isPathfinderStackFrame(filename: string | undefined): boolean {
-  return typeof filename === 'string' && (filename.includes(PLUGIN_ASSET_PATH) || filename.includes(APP_NAME));
+  if (!filename) {
+    return false;
+  }
+  try {
+    const url = new URL(filename);
+    if (url.protocol === 'webpack:') {
+      return url.hostname === APP_NAME && !url.pathname.includes('/node_modules/@grafana/faro-');
+    }
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.pathname.includes(PLUGIN_ASSET_PATH);
+  } catch {
+    return false;
+  }
 }
 
 // Exceptions we report explicitly (error boundaries, logger) must survive the
