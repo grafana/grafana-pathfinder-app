@@ -16,7 +16,7 @@ Administrators can disable Interactive learning for their organization from the 
 
 The organization setting must save successfully and load when users reload Grafana. If settings cannot be read, Interactive learning can remain enabled. Administrators should reload and verify the result after saving.
 
-Learning paths can also offer named tracks alongside the **Foundations** sequence. Choose a track on the path's cover page to follow its guides and track your progress. Kiosk pages can now include launch forms and copyable commands alongside guide tiles.
+Learning paths can also offer named tracks alongside the **Fundamentals** sequence. Choose a track on the path's cover page to follow its guides and track your progress. Kiosk pages can now include launch forms and copyable commands alongside guide tiles.
 
 No learner action is required to migrate existing content.
 

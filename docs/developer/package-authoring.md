@@ -63,7 +63,7 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `id`                | `string`                             | **Yes**                       | —                         | Bare package identifier — must match `content.json`                                                                            |
 | `type`              | `"guide"` \| `"path"` \| `"journey"` | **Yes**                       | —                         | Package type                                                                                                                   |
 | `repository`        | `string`                             | No                            | `"interactive-tutorials"` | Provenance — which repository this package belongs to                                                                          |
-| `milestones`        | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages — the always-present default sequence ("Foundations")                                       |
+| `milestones`        | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages — the always-present default sequence ("Fundamentals")                                      |
 | `tracks`            | `Track[]`                            | No — `path` only              | —                         | Named, independently-ordered guide sequences alongside `milestones` (see [tracks](#tracks))                                    |
 | `description`       | `string`                             | Recommended                   | —                         | Full description for display and search                                                                                        |
 | `language`          | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                                                                                  |
@@ -98,7 +98,7 @@ A bare package `id` must be unique across **every** repository a stack can see �
 
 ## Tracks
 
-`tracks` (Path Tracks RFC) declares named, independently-ordered guide sequences for one path, one per audience or role — additive alongside the always-present `milestones` default ("Foundations"). Each entry is:
+`tracks` (Path Tracks RFC) declares named, independently-ordered guide sequences for one path, one per audience or role — additive alongside the always-present `milestones` default ("Fundamentals"). Each entry is:
 
 ```jsonc
 { "trackId": "builder", "label": "Builder", "guides": ["welcome-to-grafana", "builder-advanced-panels"] }
