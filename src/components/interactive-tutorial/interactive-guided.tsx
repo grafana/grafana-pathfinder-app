@@ -244,6 +244,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const activeRunIdRef = useRef<string>('');
     const allowCompletedRetryRef = useRef(false);
     const handoffRef = useRef(false);
+    const hostRef = useRef(Symbol());
 
     // Completion lives in the store. Section-managed steps notify the parent;
     // standalone steps write directly.
@@ -273,17 +274,17 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const { config: pluginConfig } = usePathfinderPluginConfig();
     const interactiveConfig = useMemo(() => getInteractiveConfig(pluginConfig), [pluginConfig]);
 
-    const mountedLocation = window.location.href;
     useEffect(() => {
-      const host = Symbol();
+      const mountedLocation = window.location.href;
+      const host = hostRef.current;
       session.attach(host);
       return () => {
         session.detach(host, handoffRef.current || window.location.href !== mountedLocation);
       };
-    }, [session, mountedLocation]);
+    }, [session]);
 
     useEffect(() => {
-      session.bindCompletion(() => {
+      return session.bindCompletion(hostRef.current, () => {
         persistCompletion();
         if (onStepComplete && stepId) {
           onStepComplete(stepId);

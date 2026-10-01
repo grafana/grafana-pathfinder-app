@@ -30,6 +30,8 @@ function createGuidedSession(key: string) {
   };
   const listeners = new Set<() => void>();
   const hosts = new Set<symbol>();
+  const completionCallbacks = new Map<symbol, () => void>();
+  let completionAfterUnmount: (() => void) | undefined;
   let transferTimer: ReturnType<typeof setTimeout> | undefined;
   const handler = new GuidedHandler(new InteractiveStateManager(), new NavigationManager(), waitForReactUpdates);
   const runRef: { current: GuidedRun | null } = { current: null };
@@ -50,15 +52,23 @@ function createGuidedSession(key: string) {
       activeSession = null;
     }
   };
-  let complete = () => {};
   const session = {
     key,
     handler,
     runRef,
     isExecutingRef,
-    complete: () => complete(),
-    bindCompletion: (callback: () => void) => {
-      complete = callback;
+    complete: () => {
+      const currentHost = Array.from(hosts).at(-1);
+      const callback = currentHost ? completionCallbacks.get(currentHost) : completionAfterUnmount;
+      callback?.();
+    },
+    bindCompletion: (host: symbol, callback: () => void) => {
+      completionCallbacks.set(host, callback);
+      return () => {
+        if (completionCallbacks.get(host) === callback) {
+          completionCallbacks.delete(host);
+        }
+      };
     },
     getSnapshot: () => state,
     subscribe: (listener: () => void) => {
@@ -86,6 +96,7 @@ function createGuidedSession(key: string) {
       if (runRef.current === run) {
         clearTransfer();
         runRef.current = null;
+        completionAfterUnmount = undefined;
         if (activeSession === session) {
           activeSession = null;
         }
@@ -93,11 +104,17 @@ function createGuidedSession(key: string) {
     },
     attach: (host: symbol) => {
       hosts.add(host);
+      completionAfterUnmount = undefined;
       clearTransfer();
       listeners.forEach((listener) => listener());
     },
     detach: (host: symbol, transferring: boolean) => {
+      if (hosts.size === 1 && hosts.has(host) && runRef.current) {
+        // A final target click can unmount its host before the handler reports success.
+        completionAfterUnmount = completionCallbacks.get(host);
+      }
       hosts.delete(host);
+      completionCallbacks.delete(host);
       if (hosts.size > 0) {
         return;
       }
