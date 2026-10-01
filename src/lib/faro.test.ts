@@ -314,6 +314,14 @@ describe('filterPathfinderTelemetry', () => {
     expect(filterPathfinderTelemetry(exceptionItem([filename]))).toBeNull();
   });
 
+  it.each([
+    '/public/plugins/grafana-pathfinder-app/1.js',
+    'webpack:///grafana-pathfinder-app/src/lib/faro.ts',
+    'webpack-internal://grafana-pathfinder-app/./src/lib/faro.ts',
+  ])('drops ambient frames without a supported absolute asset URL or named webpack namespace: %s', (filename) => {
+    expect(filterPathfinderTelemetry(exceptionItem([filename]))).toBeNull();
+  });
+
   it('keeps versioned CDN assets and subpath deployments', () => {
     for (const filename of [
       'https://plugins-cdn.grafana.net/grafana-pathfinder-app/2.19.0/public/plugins/grafana-pathfinder-app/6456.js',

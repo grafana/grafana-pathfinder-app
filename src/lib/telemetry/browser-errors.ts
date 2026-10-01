@@ -1,4 +1,4 @@
-import { BaseInstrumentation } from '@grafana/faro-web-sdk';
+import { BaseInstrumentation, getStackFramesFromError } from '@grafana/faro-web-sdk';
 
 function isErrorLike(value: unknown): value is Error {
   return (
@@ -17,15 +17,15 @@ export class PathfinderErrorsInstrumentation extends BaseInstrumentation {
 
   private readonly onError = (event: ErrorEvent) => {
     try {
-      if (isErrorLike(event.error) && event.error.stack) {
-        this.api.pushError(event.error);
-      } else if (event.message) {
-        this.api.pushError(new Error(event.message), {
-          stackFrames: event.filename
-            ? [{ filename: event.filename, function: '?', lineno: event.lineno, colno: event.colno }]
-            : [],
-        });
+      const error = isErrorLike(event.error) ? event.error : event.message ? new Error(event.message) : null;
+      if (!error) {
+        return;
       }
+      const stackFrames = isErrorLike(event.error) ? getStackFramesFromError(error) : [];
+      if (stackFrames.length === 0 && event.filename) {
+        stackFrames.push({ filename: event.filename, function: '?', lineno: event.lineno, colno: event.colno });
+      }
+      this.api.pushError(error, { stackFrames });
     } catch {
       // An inaccessible cross-realm error must not cause another browser error.
     }

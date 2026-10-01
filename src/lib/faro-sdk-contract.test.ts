@@ -148,7 +148,40 @@ describe('browser error capture through the installed Faro SDK', () => {
       wrapperError.stack =
         'Error: Permission denied\n    at apply (webpack://grafana-pathfinder-app/../node_modules/@grafana/faro-web-sdk/dist/esm/instrumentations/errors/registerOnerror.js:18:0)';
       window.dispatchEvent(new ErrorEvent('error', { error: wrapperError }));
-      expect(transport.items).toHaveLength(1);
+      const frameless = new TypeError('Frameless plugin failure');
+      frameless.stack = 'TypeError: Frameless plugin failure';
+      window.dispatchEvent(
+        new ErrorEvent('error', {
+          error: frameless,
+          filename: 'https://example.org/public/plugins/grafana-pathfinder-app/2.js',
+          lineno: 12,
+          colno: 7,
+        })
+      );
+      window.dispatchEvent(
+        new ErrorEvent('error', {
+          error: frameless,
+          filename: 'https://example.org/public/build/grafana.js',
+        })
+      );
+      expect(transport.items).toHaveLength(2);
+      expect(transport.items[1]).toMatchObject({
+        type: 'exception',
+        payload: {
+          type: 'TypeError',
+          value: 'Frameless plugin failure',
+          stacktrace: {
+            frames: [
+              {
+                filename: 'https://example.org/public/plugins/grafana-pathfinder-app/2.js',
+                function: '?',
+                lineno: 12,
+                colno: 7,
+              },
+            ],
+          },
+        },
+      });
       expect(transport.items[0]).toMatchObject({ type: 'exception', payload: { value: 'Plugin failure' } });
     } finally {
       faro.instrumentations.remove(instrumentation);

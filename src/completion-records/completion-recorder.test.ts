@@ -12,6 +12,7 @@
  *     `invalidateEmittedCompletion`/`invalidateAllEmittedCompletions` are the
  *     only way to lift it — the reset-then-re-mark and duplicate-write fixes
  */
+import { logger } from '../lib/logging';
 import {
   recordGuideCompletion,
   recordJourneyCompletion,
@@ -357,6 +358,48 @@ describe('completion recorder — resilience', () => {
 });
 
 describe('completion recorder startup recovery', () => {
+  it('keeps the first 100 startup facts and warns when dropping the newest', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    try {
+      const facts = Array.from({ length: 101 }, (_, index) => guideFact({ guideId: `guide-${index}` }));
+      facts.forEach(recordGuideCompletion);
+      const seen: CompletionFact[] = [];
+      onCompletionRecorded(acceptInto(seen));
+      expect(seen).toEqual(facts.slice(0, 100));
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith('completion write: startup buffer is full');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('drops a rejected replay without marking it emitted and allows a later completion to retry', () => {
+    const fact = guideFact();
+    recordGuideCompletion(fact);
+    const reject = jest.fn(() => false);
+    const unsubscribe = onCompletionRecorded(reject);
+    expect(reject).toHaveBeenCalledWith(fact);
+    expect(persistedEmitted.size).toBe(0);
+    unsubscribe();
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+    expect(seen).toEqual([]);
+    recordGuideCompletion(fact);
+    expect(seen).toEqual([fact]);
+    expect(persistedEmitted.size).toBe(1);
+  });
+
+  it('invalidates both pending completion kinds through a legacy guide id without clearing other guides', () => {
+    recordGuideCompletion(guideFact());
+    recordJourneyCompletion(journeyFact());
+    const other = guideFact({ guideId: 'other' });
+    recordGuideCompletion(other);
+    invalidateEmittedCompletion('bundled', 'intro/content.json');
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+    expect(seen).toEqual([other]);
+  });
+
   it('replays early completions once when the write hook becomes available', () => {
     const fact = guideFact();
     recordGuideCompletion(fact);

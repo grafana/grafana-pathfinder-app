@@ -30,7 +30,7 @@ it('leaves the host error handler intact and never accesses its apply property',
     window.dispatchEvent(new ErrorEvent('error', { error, message: error.message }));
     expect(window.onerror).toBe(host);
     expect(host).toHaveBeenCalledTimes(1);
-    expect(pushError).toHaveBeenCalledWith(error);
+    expect(pushError).toHaveBeenCalledWith(error, { stackFrames: expect.any(Array) });
     instrumentation.destroy();
     expect(window.onerror).toBe(host);
   } finally {
@@ -119,3 +119,29 @@ it('uses the source location when an Error has no stack', () => {
     ],
   });
 });
+
+it.each(['TypeError: Frameless', 'unparseable stack contents'])(
+  'uses the source location for a non-empty frameless stack: %s',
+  (stack) => {
+    const error = new TypeError('Frameless');
+    error.stack = stack;
+    window.dispatchEvent(
+      new ErrorEvent('error', {
+        error,
+        filename: 'https://example.org/public/plugins/grafana-pathfinder-app/1.js',
+        lineno: 12,
+        colno: 7,
+      })
+    );
+    expect(pushError).toHaveBeenCalledWith(error, {
+      stackFrames: [
+        {
+          filename: 'https://example.org/public/plugins/grafana-pathfinder-app/1.js',
+          function: '?',
+          lineno: 12,
+          colno: 7,
+        },
+      ],
+    });
+  }
+);
