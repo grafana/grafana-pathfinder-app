@@ -59,3 +59,15 @@ registerGuideCompletionBridge({
   markGuideCompleted: markGuideCompletedImpl,
   findPathByUrl: findPathByUrlImpl,
 });
+// Path Assignments
+export { useMyAssignments } from './useMyAssignments';
+export {
+  daysUntilDue,
+  compareDueAt,
+  compareResolvedAssignments,
+  formatDueDate,
+  getDueStatus,
+} from './assignments-core';
+export type { DueStatus } from './assignments-core';
+export type { ResolvedAssignment } from '../types/learning-paths.types';
+export { markCurrentGuide } from './mark-current-guide';

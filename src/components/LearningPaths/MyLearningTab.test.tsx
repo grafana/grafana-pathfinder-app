@@ -12,7 +12,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
 import { recordGuideRender } from '../../lib/telemetry/facade';
 import { MyLearningTab } from './MyLearningTab';
@@ -66,8 +66,11 @@ jest.mock('@grafana/runtime', () => ({
 
 jest.mock('@grafana/i18n', () => ({
   t: (key: string, fallback: string, vars?: Record<string, unknown>) => {
-    const template =
-      key === 'myLearning.discoverMoreMilestones' && vars?.count === 1 ? '{{count}} milestone' : fallback;
+    const one =
+      vars?.count === 1
+        ? { 'myLearning.discoverMoreMilestones': '{{count}} milestone', 'myLearning.dueDayCount': '{{count}} day' }[key]
+        : undefined;
+    const template = one ?? fallback;
     return vars ? template.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k])) : template;
   },
 }));
@@ -76,6 +79,14 @@ jest.mock('@grafana/i18n', () => ({
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: (_target, prop) => String(prop) }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+  ConfirmModal: ({ isOpen, body, confirmText, dismissText, onConfirm, onDismiss }: any) =>
+    isOpen ? (
+      <div role="dialog">
+        {body}
+        <button onClick={onConfirm}>{confirmText}</button>
+        <button onClick={onDismiss}>{dismissText}</button>
+      </div>
+    ) : null,
 }));
 
 // Mutable so individual tests can shape the paths and URL resolution the
@@ -88,6 +99,7 @@ const mockGetPathGuides = jest.fn();
 const mockGetPathProgress = jest.fn();
 const mockIsPathCompleted = jest.fn();
 const mockGetGuideUrlForPath = jest.fn();
+const mockResetPathGuides = jest.fn();
 let mockDiscoverItems: Array<{
   id: string;
   title: string;
@@ -97,6 +109,22 @@ let mockDiscoverItems: Array<{
   manifest?: Record<string, unknown>;
 }> = [];
 let mockDiscoverExcludeTitles: Set<string> | undefined;
+type MockAssignment = {
+  targetType: string;
+  targetId: string;
+  title: string;
+  trackId?: string;
+  trackLabel?: string;
+  assignedBy?: string;
+  dueAt?: string;
+  overdue: boolean;
+  satisfied: boolean;
+  progress: number;
+  guides?: Array<{ guideId: string; completed: boolean }>;
+};
+let mockAssignments: MockAssignment[] = [];
+let mockAssignedCompleted: MockAssignment[] = [];
+let mockOnlinePaths: any[] = [];
 
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
@@ -114,9 +142,31 @@ jest.mock('../../learning-paths', () => ({
     isPathCompleted: mockIsPathCompleted,
     getGuideUrlForPath: mockGetGuideUrlForPath,
     resetPath: jest.fn(),
+    resetPathGuides: mockResetPathGuides,
     streakInfo: { days: 0 },
     isLoading: false,
   }),
+  useMyAssignments: () => {
+    const items = [...mockAssignments, ...mockAssignedCompleted];
+    const assignmentByTargetId = new Map<string, MockAssignment>();
+    for (const item of items) {
+      if (!assignmentByTargetId.has(item.targetId)) {
+        assignmentByTargetId.set(item.targetId, item);
+      }
+    }
+    return {
+      items,
+      notDone: mockAssignments,
+      assignmentByTargetId,
+      onlinePaths: mockOnlinePaths,
+      getPathGuides: mockGetPathGuides,
+    };
+  },
+  daysUntilDue: jest.requireActual('../../learning-paths/assignments-core').daysUntilDue,
+  getDueStatus: jest.requireActual('../../learning-paths/assignments-core').getDueStatus,
+  formatDueDate: jest.requireActual('../../learning-paths/assignments-core').formatDueDate,
+  compareResolvedAssignments: jest.requireActual('../../learning-paths/assignments-core').compareResolvedAssignments,
+  markCurrentGuide: jest.requireActual('../../learning-paths/mark-current-guide').markCurrentGuide,
 }));
 
 jest.mock('../SkeletonLoader', () => ({ SkeletonLoader: () => null }));
@@ -186,6 +236,8 @@ beforeEach(() => {
   mockBadges = [];
   mockDiscoverItems = [];
   mockDiscoverExcludeTitles = undefined;
+  mockAssignments = [];
+  mockAssignedCompleted = [];
   mockGetPathGuides.mockImplementation((id: string) =>
     id === 'path-done'
       ? [{ id: 'guide-2', title: 'Guide two', completed: true, isCurrent: false }]
@@ -198,6 +250,7 @@ beforeEach(() => {
   );
   mockIsPathCompleted.mockImplementation((id: string) => id === 'path-done');
   mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/learning-paths/path-1/guide-1/');
+  mockResetPathGuides.mockResolvedValue(undefined);
   resolvePackageNavLinksMock.mockResolvedValue([]);
 });
 
@@ -354,6 +407,130 @@ describe('MyLearningTab launch flow', () => {
     );
   });
 
+  it('keeps an unsatisfied assigned path in My Courses even at 100% local progress, alongside Completed', () => {
+    // An outstanding assignment stays visible regardless of local-progress drift.
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-done',
+        title: 'Done path',
+        overdue: false,
+        satisfied: false,
+        progress: 100,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
+    const completed = screen.getByTestId(testIds.learningPaths.completedSection);
+    expect(myCourses).toHaveTextContent('Done path');
+    expect(completed).toHaveTextContent('Done path');
+  });
+
+  it("sources a card's guide breakout and progress from the assignment's own guides, not local completion", async () => {
+    // Local and assignment guide lists disagree; the card must follow the assignment.
+    // path-new (not URL-based) so Continue resolves a per-guide title.
+    mockGetPathGuides.mockImplementation((id: string) =>
+      id === 'path-new'
+        ? [
+            { id: 'guide-1', title: 'Guide one', completed: true, isCurrent: false },
+            { id: 'guide-2', title: 'Guide two', completed: false, isCurrent: true },
+          ]
+        : []
+    );
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-new',
+        title: 'New path',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+        guides: [
+          { guideId: 'guide-1', completed: false },
+          { guideId: 'guide-2', completed: true },
+        ],
+      },
+    ];
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const card = screen.getByTestId(testIds.learningPaths.card('path-new'));
+    expect(card).toHaveTextContent('1/2 guides');
+    // guide-1 is locally done but not credited; Continue must warn before resetting it.
+    fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-new')));
+    expect(prepareMock).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Guide one');
+
+    fireEvent.click(within(dialog).getByText('Reset and continue'));
+    await waitFor(() =>
+      expect(mockResetPathGuides).toHaveBeenCalledWith('path-new', [expect.objectContaining({ id: 'guide-1' })])
+    );
+    // After reset, guide-1 (outstanding) is current, not guide-2.
+    await waitFor(() =>
+      expect(prepareMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ title: 'Guide one' }))
+    );
+  });
+
+  it('cancels the assignment reset dialog without launching or resetting anything', () => {
+    mockGetPathGuides.mockImplementation((id: string) =>
+      id === 'path-new'
+        ? [
+            { id: 'guide-1', title: 'Guide one', completed: true, isCurrent: false },
+            { id: 'guide-2', title: 'Guide two', completed: false, isCurrent: true },
+          ]
+        : []
+    );
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-new',
+        title: 'New path',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+        guides: [
+          { guideId: 'guide-1', completed: false },
+          { guideId: 'guide-2', completed: true },
+        ],
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const card = screen.getByTestId(testIds.learningPaths.card('path-new'));
+    fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-new')));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByText('Cancel'));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockResetPathGuides).not.toHaveBeenCalled();
+    expect(prepareMock).not.toHaveBeenCalled();
+  });
+
+  it('leaves a satisfied assignment out of My Courses once local progress also says done', () => {
+    mockAssignedCompleted = [
+      {
+        targetType: 'path',
+        targetId: 'path-done',
+        title: 'Done path',
+        overdue: false,
+        satisfied: true,
+        progress: 100,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
+    const completed = screen.getByTestId(testIds.learningPaths.completedSection);
+    expect(myCourses).not.toHaveTextContent('Done path');
+    expect(completed).toHaveTextContent('Done path');
+  });
+
   it('renders the stable My Learning section landmarks', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
 
@@ -361,6 +538,247 @@ describe('MyLearningTab launch flow', () => {
     expect(screen.getByTestId(testIds.learningPaths.badgesSection)).toBeInTheDocument();
     expect(screen.getByTestId(testIds.learningPaths.discoverMoreSection)).toBeInTheDocument();
     expect(screen.getByTestId(testIds.learningPaths.completedSection)).toBeInTheDocument();
+  });
+
+  it('shows the assigned track, counts guides over it, and launches the cover on that track', async () => {
+    mockPaths = [
+      {
+        id: 'path-track',
+        title: 'Track path',
+        guides: ['g-foundation', 'g-ops-1', 'g-ops-2'],
+        manifest: { type: 'path', milestones: ['g-foundation'] },
+      },
+    ];
+    mockGetPathGuides.mockImplementation((id: string) =>
+      id === 'path-track'
+        ? [
+            { id: 'g-ops-1', title: 'Ops one', completed: true, isCurrent: false },
+            { id: 'g-ops-2', title: 'Ops two', completed: false, isCurrent: true },
+          ]
+        : []
+    );
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-track',
+        title: 'Track path',
+        trackId: 'ops',
+        trackLabel: 'Ops engineers',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+        guides: [
+          { guideId: 'g-ops-1', completed: true },
+          { guideId: 'g-ops-2', completed: false },
+        ],
+      },
+    ];
+    resolvePackageNavLinksMock.mockResolvedValue([
+      { packageId: 'path-track', title: 'Track path', contentUrl: 'backend-guide:path-track' },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const card = screen.getByTestId(testIds.learningPaths.card('path-track'));
+    expect(card).toHaveTextContent('1/2 guides');
+    expect(card.querySelector('.expandable')).toHaveTextContent('Track Ops engineers');
+
+    fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-track')));
+
+    await waitFor(() =>
+      expect(prepareMock).toHaveBeenCalledWith(
+        'backend-guide:path-track',
+        expect.objectContaining({ packageInfo: expect.objectContaining({ packageId: 'path-track', trackId: 'ops' }) })
+      )
+    );
+  });
+
+  it('puts the due badge on the header meta and assigned-by in the expanded details', () => {
+    mockPaths = [
+      {
+        id: 'path-1',
+        title: 'Started path',
+        guides: ['guide-1'],
+        estimatedMinutes: 20,
+      },
+      { id: 'path-new', title: 'New path', guides: ['guide-new'] },
+    ];
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-1',
+        title: 'Started path',
+        assignedBy: 'Org Admin',
+        dueAt: '2099-01-15T00:00:00Z',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const assigned = screen.getByTestId(testIds.learningPaths.card('path-1'));
+    const header = assigned.querySelector('.header');
+    const details = assigned.querySelector('.expandable');
+
+    expect(header).toHaveTextContent('Assigned');
+    expect(header).toHaveTextContent(/\d+ days/);
+    expect(header).not.toHaveTextContent('left');
+    expect(header).toHaveTextContent('0/1 guides');
+    expect(header).not.toHaveTextContent('min');
+    expect(header).not.toHaveTextContent('Assigned by');
+    expect(details).toHaveTextContent('Assigned by');
+    expect(details).toHaveTextContent('Org Admin');
+    expect(details).toHaveTextContent(/Due .+ — \d+ days left/);
+    expect(assigned).not.toHaveTextContent('Next:');
+
+    const unassigned = screen.getByTestId(testIds.learningPaths.card('path-new'));
+    expect(unassigned).not.toHaveTextContent('Started by you');
+    expect(unassigned).not.toHaveTextContent('Assigned by');
+    expect(unassigned).not.toHaveTextContent('Next:');
+  });
+
+  it('paints today yellow, overdue red, and later dates as the default badge', () => {
+    const dueAt = (daysFromToday: number) => {
+      const date = new Date();
+      date.setHours(12, 0, 0, 0);
+      date.setDate(date.getDate() + daysFromToday);
+      return date.toISOString();
+    };
+
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-new',
+        title: 'New path',
+        assignedBy: 'Org Admin',
+        dueAt: dueAt(0),
+        overdue: false,
+        satisfied: false,
+        progress: 0,
+      },
+      {
+        targetType: 'path',
+        targetId: 'edge-low',
+        title: 'Barely started',
+        assignedBy: 'Org Admin',
+        dueAt: dueAt(1),
+        overdue: false,
+        satisfied: false,
+        progress: 1,
+      },
+      {
+        targetType: 'path',
+        targetId: 'path-1',
+        title: 'Started path',
+        assignedBy: 'Org Admin',
+        dueAt: dueAt(-4),
+        overdue: true,
+        satisfied: false,
+        progress: 50,
+      },
+      {
+        targetType: 'path',
+        targetId: 'edge-high',
+        title: 'Almost done',
+        assignedBy: 'Org Admin',
+        dueAt: dueAt(7),
+        overdue: false,
+        satisfied: false,
+        progress: 99,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const today = screen.getByTestId(testIds.learningPaths.card('path-new'));
+    const tomorrow = screen.getByTestId(testIds.learningPaths.card('edge-low'));
+    const overdue = screen.getByTestId(testIds.learningPaths.card('path-1'));
+    const later = screen.getByTestId(testIds.learningPaths.card('edge-high'));
+
+    expect(today).toHaveTextContent('Assigned');
+    expect(today).toHaveTextContent('Today');
+    expect(today.className).toContain('cardUpcoming');
+    expect(tomorrow).toHaveTextContent('1 day');
+    expect(tomorrow).toHaveTextContent('1 day left');
+    expect(tomorrow.className).not.toContain('cardUpcoming');
+    expect(overdue).toHaveTextContent('Overdue');
+    expect(overdue.className).toContain('cardOverdue');
+    expect(overdue.className).not.toContain('cardUpcoming');
+    expect(later).toHaveTextContent('7 days');
+    expect(later).toHaveTextContent('7 days left');
+    expect(later.className).not.toContain('cardUpcoming');
+    expect(later.className).not.toContain('cardOverdue');
+  });
+
+  it('lifts assigned courses above unassigned ones, soonest due first', () => {
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-new',
+        title: 'New path',
+        assignedBy: 'Org Admin',
+        dueAt: '2099-06-01T00:00:00Z',
+        overdue: false,
+        satisfied: false,
+        progress: 0,
+      },
+      {
+        targetType: 'path',
+        targetId: 'path-1',
+        title: 'Started path',
+        assignedBy: 'Org Admin',
+        dueAt: '2099-01-15T00:00:00Z',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const cards = [
+      ...screen
+        .getByTestId(testIds.learningPaths.myCoursesSection)
+        .querySelectorAll('[data-testid^="learning-path-card-"]'),
+    ].map((el) => el.getAttribute('data-testid'));
+
+    expect(cards.slice(0, 2)).toEqual(['learning-path-card-path-1', 'learning-path-card-path-new']);
+    expect(cards).toContain('learning-path-card-edge-low');
+    expect(cards.indexOf('learning-path-card-path-new')).toBeLessThan(cards.indexOf('learning-path-card-edge-low'));
+  });
+
+  it('shows the more urgent assignment when two active rules target the same path', () => {
+    // The backend keeps two rows for one path; the due-dated row must win.
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-1',
+        title: 'Started path',
+        assignedBy: 'Onboarding',
+        dueAt: '2099-01-15T00:00:00Z',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+      },
+      {
+        targetType: 'path',
+        targetId: 'path-1',
+        title: 'Started path',
+        assignedBy: 'Seller Track',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const card = screen.getByTestId('learning-path-card-path-1');
+    expect(card).toHaveTextContent('Onboarding');
+    expect(card).not.toHaveTextContent('Seller Track');
   });
 
   it('labels Discover more path metadata as milestones', () => {

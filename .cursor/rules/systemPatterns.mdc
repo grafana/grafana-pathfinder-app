@@ -194,13 +194,17 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 | File                                | Role                                                                                                              |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `main.go`                           | Plugin entrypoint. Calls `app.Manage("grafana-pathfinder-app", plugin.NewApp, ...)`                                |
-| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger, the on-behalf-of exchanger, and the completion-write rate limiter. |
+| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger, the on-behalf-of exchanger, and the per-user rate limiter (completion writes and `GET /assignments/my`). |
 | `plugin/resources.go`               | Route table — `http.ServeMux` wrapped in `httpadapter.New` — plus `writeJSON` / `writeError`.                      |
 | `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory). Owns `timeNow`. |
 | `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`): per-user collation of a namespace LIST behind a single-flight TTL cache with stale-serve. Backend proxy pattern §4-§7. |
 | `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform client for `completionrecords`: supplies group/version + resource, decodes each `items[].spec` for LISTs, and issues the create (POST) for the write path. |
 | `plugin/completion_records_write.go` | Completion Records durable write proxy (`POST /completion-records`): identity gate, server-stamped identity fields, idempotent record name, and the retry-contract status mapping. Contract: backend proxy pattern §11 (write variant) and §3 (identity). |
-| `plugin/completion_records_write_ratelimit.go` | Per-user token-bucket rate limiter (`newCompletionWriteRateLimiter`, held on `App`) guarding `POST /completion-records` (backend proxy pattern §9 flood guard). |
+| `plugin/completion_records_write_ratelimit.go` | Per-user token-bucket rate limiter (`newCompletionWriteRateLimiter`, held on `App`) guarding `POST /completion-records` and `GET /assignments/my` (backend proxy pattern §9 flood guard). |
+| `plugin/assignments.go`             | Assignments read proxy (`GET /assignments/my`): per-caller filtering of the namespace LIST; an assignment whose path guides cannot be resolved is omitted rather than served unmet. |
+| `plugin/assignments_client.go`      | Per-kind wrapper for the `Assignment` resource: LIST plus the `status` PUT. |
+| `plugin/assignment_paths.go`        | Path-guide sources for an assignment target: bundled, custom and online. |
+| `plugin/assignment_satisfaction.go` | Per-request satisfaction evaluation, plus background and on-read `status.satisfied` writes. |
 | `plugin/custom_guide_repository.go` | Namespace-global custom-guide catalogue proxy (`/custom-guide-repository`).                                        |
 | `plugin/custom_guide_repository_client.go` | Per-kind wrapper for the guide-catalogue resource.                                                         |
 | `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. `New` returns `(nil, nil)` when no credential is provisioned, so resolvers report `obo-unavailable` instead of failing. |
@@ -212,7 +216,7 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 **Routes** (all under `/api/plugins/grafana-pathfinder-app/resources/`):
 
 `/package-recommendations`, `/completion-records` (POST create), `/completion-records/my`,
-`/completion-records/capability`, `/custom-guide-repository`, `/health`.
+`/completion-records/capability`, `/assignments/my`, `/custom-guide-repository`, `/health`.
 
 **Security boundaries:**
 

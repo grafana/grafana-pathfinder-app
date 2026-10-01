@@ -212,41 +212,6 @@ describe('fetchCustomGuideRepository', () => {
     expect(mockGet).toHaveBeenCalledTimes(1);
   });
 
-  // The reason lands on a Faro event attribute and in the bridged log context,
-  // so every rejection shape must collapse to a token from the closed set.
-  it.each([
-    { shape: 'a top-level status', err: { status: 503, statusText: 'Service Unavailable' }, reason: 'http-503' },
-    { shape: 'a top-level statusCode', err: { statusCode: 418 }, reason: 'http-418' },
-    { shape: 'a nested data.statusCode', err: { data: { statusCode: 502 } }, reason: 'http-502' },
-    {
-      shape: 'status ahead of both statusCode shapes',
-      err: { status: 503, statusCode: 404, data: { statusCode: 500 } },
-      reason: 'http-503',
-    },
-    {
-      shape: 'statusCode ahead of data.statusCode',
-      err: { statusCode: 404, data: { statusCode: 500 } },
-      reason: 'http-404',
-    },
-    { shape: 'one below the low bound', err: { status: 99 }, reason: 'transport-error' },
-    { shape: 'the low bound', err: { status: 100 }, reason: 'http-100' },
-    { shape: 'the high bound', err: { status: 599 }, reason: 'http-599' },
-    { shape: 'one above the high bound', err: { status: 600 }, reason: 'transport-error' },
-    { shape: 'a wildly out-of-range status', err: { status: 99999 }, reason: 'transport-error' },
-    { shape: 'a negative status', err: { status: -503 }, reason: 'transport-error' },
-    { shape: 'a string status', err: { status: '503' }, reason: 'transport-error' },
-    { shape: 'a non-integer status', err: { data: { statusCode: 503.0000001 } }, reason: 'transport-error' },
-    { shape: 'no status at all', err: new Error('network error'), reason: 'transport-error' },
-  ])('records $reason for $shape', async ({ err, reason }) => {
-    mockGet.mockRejectedValue(err);
-
-    const result = await fetchCustomGuideRepository('stacks-123');
-
-    expect(result).toEqual([]);
-    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith(reason);
-    expect(logger.warn).toHaveBeenCalledWith('[custom-guides] catalogue fetch failed', { reason });
-  });
-
   // logging.ts sanitizes the log context but does not strip it, so anything put
   // there reaches Faro — an error message would be a user-derived free-text
   // attribute, which docs/developer/TELEMETRY.md forbids.

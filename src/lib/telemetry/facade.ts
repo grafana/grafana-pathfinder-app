@@ -123,6 +123,16 @@ export function recordCustomGuideCatalogueUnavailable(reason: string): void {
   pushFaroEvent(TELEMETRY_EVENTS.customGuideCatalogueUnavailable, { reason });
 }
 
+// Reason is a capability.reason, `http-<status>` or `transport-error`; never an id or identity.
+export function recordAssignmentsUnavailable(reason: string): void {
+  pushFaroEvent(TELEMETRY_EVENTS.assignmentsUnavailable, { reason });
+}
+
+// Count only, never a target id.
+export function recordAssignmentTargetsUnresolved(count: number): void {
+  pushFaroEvent(TELEMETRY_EVENTS.assignmentTargetUnresolved, { reason: 'unresolvable-target', count });
+}
+
 /**
  * A sandbox-backed block could not run, with the rung of the ladder that
  * stopped it. Emitted once per block that had to degrade, not per render.

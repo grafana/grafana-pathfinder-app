@@ -4,13 +4,16 @@
  * Collapsible learning path card with balanced compact design.
  */
 
-import React, { useId, useState } from 'react';
-import { useStyles2, Icon } from '@grafana/ui';
+import React, { useId, useMemo, useState } from 'react';
+import { useStyles2, Icon, ConfirmModal } from '@grafana/ui';
 import { cx } from '@emotion/css';
+import { t } from '@grafana/i18n';
 
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
+import { formatDueDate, getDueStatus, markCurrentGuide } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { getLearningPathCardStyles } from './learning-paths.styles';
+import { AssignmentBadges, dueLabel } from './AssignmentBadges';
 import { GuideList } from './GuideList';
 import { ProgressRing } from './ProgressRing';
 
@@ -24,31 +27,67 @@ export function LearningPathCard({
   isCompleted,
   onContinue,
   onReset,
+  onResetGuides,
   defaultExpanded = false,
   isLaunching = false,
   launchDisabled = false,
+  assignment,
 }: LearningPathCardProps & { defaultExpanded?: boolean }) {
   const styles = useStyles2(getLearningPathCardStyles);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+  const [isConfirmingAssignmentReset, setIsConfirmingAssignmentReset] = useState(false);
   const detailsId = useId();
+
+  const dueStatus = assignment ? getDueStatus(assignment) : undefined;
 
   // Whether this is a URL-based path (guides fetched dynamically)
   const isUrlBased = Boolean(path.url);
   const isLoadingGuides = isUrlBased && guides.length === 0;
 
-  // Find the next guide to continue with
-  const currentGuide = guides.find((g) => g.isCurrent);
-  const firstIncompleteGuide = guides.find((g) => !g.completed);
-  const firstGuide = guides[0];
-  const nextGuide = currentGuide || firstIncompleteGuide || firstGuide;
+  // Satisfaction follows completion records, not local progress; guides local
+  // storage marks done but the assignment doesn't credit must reset before Continue.
+  const assignmentGuides = assignment?.guides;
+  const { effectiveGuides, mismatchedGuides } = useMemo(() => {
+    if (!assignmentGuides || assignmentGuides.length === 0) {
+      return { effectiveGuides: guides, mismatchedGuides: [] };
+    }
+    const completedByGuideId = new Map(assignmentGuides.map((g) => [g.guideId, g.completed]));
+    return {
+      effectiveGuides: markCurrentGuide(
+        guides.map((guide) => ({ ...guide, completed: completedByGuideId.get(guide.id) ?? guide.completed }))
+      ),
+      mismatchedGuides: guides.filter((guide) => guide.completed && completedByGuideId.get(guide.id) === false),
+    };
+  }, [guides, assignmentGuides]);
+
+  const currentGuide = effectiveGuides.find((g) => g.isCurrent);
+  const firstIncompleteGuide = effectiveGuides.find((g) => !g.completed);
+  const firstGuide = effectiveGuides[0];
+
+  const guideToOpen = currentGuide?.id || firstIncompleteGuide?.id || firstGuide?.id;
 
   const handleContinue = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const guideToOpen = currentGuide?.id || firstIncompleteGuide?.id || firstGuide?.id;
+    if (mismatchedGuides.length > 0) {
+      setIsConfirmingAssignmentReset(true);
+      return;
+    }
     if (guideToOpen) {
       onContinue(guideToOpen, path.id);
     }
+  };
+
+  const handleConfirmAssignmentReset = async () => {
+    await onResetGuides?.(path.id, mismatchedGuides);
+    setIsConfirmingAssignmentReset(false);
+    if (guideToOpen) {
+      onContinue(guideToOpen, path.id);
+    }
+  };
+
+  const handleCancelAssignmentReset = () => {
+    setIsConfirmingAssignmentReset(false);
   };
 
   const handleResetClick = (e: React.MouseEvent) => {
@@ -80,11 +119,16 @@ export function LearningPathCard({
     return 'Continue';
   };
 
-  const completedCount = guides.filter((g) => g.completed).length;
+  const completedCount = effectiveGuides.filter((g) => g.completed).length;
 
   return (
     <div
-      className={cx(styles.card, isCompleted && styles.cardCompleted)}
+      className={cx(
+        styles.card,
+        isCompleted && styles.cardCompleted,
+        dueStatus?.tone === 'today' && styles.cardUpcoming,
+        dueStatus?.tone === 'overdue' && styles.cardOverdue
+      )}
       data-testid={testIds.learningPaths.card(path.id)}
     >
       {/*
@@ -100,6 +144,7 @@ export function LearningPathCard({
           <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>{path.title}</h3>
 
           <div className={styles.meta}>
+            {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
             {isLoadingGuides ? (
               <span>Loading guides...</span>
             ) : (
@@ -107,18 +152,7 @@ export function LearningPathCard({
                 {completedCount}/{guides.length} guides
               </span>
             )}
-            {path.estimatedMinutes && (
-              <>
-                <span className={styles.metaDot}>·</span>
-                <span>~{path.estimatedMinutes} min</span>
-              </>
-            )}
           </div>
-
-          {/* Next guide hint - only show for in-progress paths when collapsed */}
-          {!isCompleted && progress > 0 && nextGuide && !isExpanded && (
-            <div className={styles.nextHint}>Next: {nextGuide.title}</div>
-          )}
         </div>
 
         {/* Actions - fixed position at end */}
@@ -185,10 +219,72 @@ export function LearningPathCard({
         className={cx(styles.expandable, isExpanded && styles.expandableOpen)}
         aria-hidden={!isExpanded}
       >
+        {assignment && !isCompleted && (
+          <div className={cx(styles.expandMeta, !path.description && styles.expandMetaBordered)}>
+            <div className={styles.expandMetaRow}>
+              <Icon name="user" size="sm" />
+              <span>
+                {t('myLearning.assignedBy', 'Assigned by')}
+                {assignment.assignedBy ? (
+                  <>
+                    {' '}
+                    <strong>{assignment.assignedBy}</strong>
+                  </>
+                ) : null}
+              </span>
+            </div>
+            {assignment.trackLabel && (
+              <div className={styles.expandMetaRow}>
+                <Icon name="layer-group" size="sm" />
+                <span>
+                  {t('myLearning.assignedTrack', 'Track')}{' '}
+                  <strong className={styles.trackHighlight}>{assignment.trackLabel}</strong>
+                </span>
+              </div>
+            )}
+            {dueStatus && (
+              <div className={styles.expandMetaRow}>
+                <Icon name="clock-nine" size="sm" />
+                <span>
+                  {t('myLearning.dueDetail', 'Due {{date}} — {{relative}}{{left}}', {
+                    date: formatDueDate(assignment.dueAt!),
+                    relative: dueLabel(dueStatus),
+                    left: dueStatus.days > 0 ? t('myLearning.dueLeft', ' left') : '',
+                  })}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
         {path.description && <p className={styles.description}>{path.description}</p>}
-
-        <GuideList guides={guides} isLoading={isLoadingGuides} className={styles.guideList} />
+        <GuideList guides={effectiveGuides} isLoading={isLoadingGuides} className={styles.guideList} />
       </div>
+
+      {onResetGuides && (
+        <ConfirmModal
+          isOpen={isConfirmingAssignmentReset}
+          title={t('myLearning.assignmentResetTitle', 'Reset local progress?')}
+          body={
+            <>
+              <p>
+                {t(
+                  'myLearning.assignmentResetBody',
+                  'Starting this assignment will reset local progress on the following guide(s):'
+                )}
+              </p>
+              <ul>
+                {mismatchedGuides.map((guide) => (
+                  <li key={guide.id}>{guide.title}</li>
+                ))}
+              </ul>
+            </>
+          }
+          confirmText={t('myLearning.assignmentResetConfirm', 'Reset and continue')}
+          dismissText={t('myLearning.assignmentResetCancel', 'Cancel')}
+          onConfirm={handleConfirmAssignmentReset}
+          onDismiss={handleCancelAssignmentReset}
+        />
+      )}
     </div>
   );
 }

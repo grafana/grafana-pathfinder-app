@@ -29,6 +29,14 @@ export function getColorPalette(theme: GrafanaTheme2) {
     pathAccentMedium: isDark ? 'rgba(139, 124, 246, 0.3)' : 'rgba(108, 99, 255, 0.25)',
     pathGlow: isDark ? 'rgba(139, 124, 246, 0.4)' : 'rgba(108, 99, 255, 0.3)',
 
+    dueSoon: isDark ? '#F5C26B' : '#C4851A',
+    dueSoonLight: isDark ? 'rgba(245, 194, 107, 0.18)' : 'rgba(196, 133, 26, 0.12)',
+    dueSoonGlow: isDark ? 'rgba(245, 194, 107, 0.4)' : 'rgba(196, 133, 26, 0.3)',
+
+    overdue: isDark ? '#F87171' : '#DC2626',
+    overdueLight: isDark ? 'rgba(248, 113, 113, 0.18)' : 'rgba(220, 38, 38, 0.12)',
+    overdueGlow: isDark ? 'rgba(248, 113, 113, 0.4)' : 'rgba(220, 38, 38, 0.3)',
+
     // Streak fire colors
     streakFire: isDark ? '#FF8C5A' : '#FF6B35',
     streakFireLight: isDark ? 'rgba(255, 140, 90, 0.15)' : 'rgba(255, 107, 53, 0.12)',
@@ -159,6 +167,24 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
         boxShadow: `0 2px 8px ${colors.successGlow}`,
       },
     }),
+    cardUpcoming: css({
+      background: `linear-gradient(135deg, ${colors.dueSoonLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      borderColor: colors.dueSoon,
+
+      '&:hover': {
+        borderColor: colors.dueSoon,
+        boxShadow: `0 2px 8px ${colors.dueSoonGlow}`,
+      },
+    }),
+    cardOverdue: css({
+      background: `linear-gradient(135deg, ${colors.overdueLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      borderColor: colors.overdue,
+
+      '&:hover': {
+        borderColor: colors.overdue,
+        boxShadow: `0 2px 8px ${colors.overdueGlow}`,
+      },
+    }),
     header: css({
       display: 'flex',
       alignItems: 'flex-start',
@@ -190,6 +216,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
     meta: css({
       display: 'flex',
       alignItems: 'center',
+      flexWrap: 'wrap',
       gap: theme.spacing(0.75),
       marginTop: theme.spacing(0.5),
       fontSize: theme.typography.bodySmall.fontSize,
@@ -198,13 +225,37 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
     metaDot: css({
       color: theme.colors.text.disabled,
     }),
-    nextHint: css({
-      marginTop: theme.spacing(0.75),
-      fontSize: theme.typography.bodySmall.fontSize,
-      color: theme.colors.text.secondary,
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
+    pathCardBadge: css({
+      display: 'inline-flex',
+      alignItems: 'center',
+      flexShrink: 0,
+      gap: theme.spacing(0.25),
+      padding: `${theme.spacing(0.125)} ${theme.spacing(0.5)}`,
+      borderRadius: theme.shape.radius.pill,
+      fontSize: '11px',
+      fontWeight: theme.typography.fontWeightMedium,
+      lineHeight: 1.3,
       whiteSpace: 'nowrap',
+    }),
+    assignedBadge: css({
+      backgroundColor: colors.pathAccentLight,
+      border: `1px solid ${colors.pathAccent}`,
+      color: colors.pathAccent,
+    }),
+    dueBadge: css({
+      backgroundColor: colors.successLight,
+      border: `1px solid ${colors.success}`,
+      color: colors.success,
+    }),
+    dueBadgeUpcoming: css({
+      backgroundColor: colors.dueSoonLight,
+      border: `1px solid ${colors.dueSoon}`,
+      color: colors.dueSoon,
+    }),
+    dueBadgeOverdue: css({
+      backgroundColor: colors.overdueLight,
+      border: `1px solid ${colors.overdue}`,
+      color: colors.overdue,
     }),
     actions: css({
       display: 'flex',
@@ -321,14 +372,31 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       opacity: 0,
     }),
     expandableOpen: css({
-      // A fixed value is required for the max-height transition above to
-      // animate, so this can't just be 'none' — 1200 comfortably fits every
-      // real path's guide count today, and overflowY covers any path whose
-      // guides (now taller, with unbounded-length descriptions) exceed it,
-      // so content is always reachable instead of silently clipped.
+      // max-height needs a fixed value to animate; overflowY keeps taller content reachable.
       maxHeight: 1200,
       overflowY: 'auto',
       opacity: 1,
+    }),
+    expandMeta: css({
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(0.5),
+      padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1)}`,
+    }),
+    expandMetaBordered: css({
+      borderTop: `1px solid ${theme.colors.border.weak}`,
+      paddingTop: theme.spacing(1),
+    }),
+    expandMetaRow: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.75),
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.secondary,
+    }),
+    trackHighlight: css({
+      color: theme.colors.text.primary,
+      fontWeight: theme.typography.fontWeightMedium,
     }),
     description: css({
       margin: 0,
@@ -380,11 +448,7 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     guideItemCurrentCard: css({
       background: `linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.secondary} 100%)`,
       borderColor: colors.pathAccentMedium,
-      // guideItemCurrentClickable is always applied alongside this (both
-      // gate on the same guide.isCurrent && enableCurrentRowLink check), so
-      // the hover needs to sit on top of this opaque gradient as its own
-      // image layer — an action.hover backgroundColor would be painted
-      // underneath the gradient and stay invisible across most of the row.
+      // Hover is an image layer above the opaque gradient; a backgroundColor would be hidden.
       '&:hover': {
         backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover}), linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.secondary} 100%)`,
       },

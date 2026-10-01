@@ -17,7 +17,14 @@ import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/util
 import { resolvePackageNavLinks } from '../../docs-retrieval';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import type { LearningPath } from '../../types/learning-paths.types';
-import { useLearningPaths, useDiscoverMore, BADGES, getPathsData, type DiscoverMoreItem } from '../../learning-paths';
+import {
+  useLearningPaths,
+  useDiscoverMore,
+  useMyAssignments,
+  BADGES,
+  getPathsData,
+  type DiscoverMoreItem,
+} from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -80,25 +87,54 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     paths,
     badgesWithStatus,
     progress,
-    getPathGuides,
+    getPathGuides: getLocalPathGuides,
     getPathProgress,
     isPathCompleted,
     getGuideUrlForPath,
     resetPath,
+    resetPathGuides,
     streakInfo,
     isLoading,
   } = useLearningPaths();
 
+  const { assignmentByTargetId, onlinePaths, getPathGuides } = useMyAssignments({
+    paths,
+    getPathProgress,
+    getPathGuides: getLocalPathGuides,
+    completedGuides: progress.completedGuides,
+    resolveNavLinks: resolvePackageNavLinks,
+  });
+
+  // An unsatisfied assignment keeps a path in My Courses even at 100% local
+  // progress; online-catalogue paths exist only because they're assigned, so
+  // their wire `satisfied`/`progress` decide the section.
   const inProgress = useMemo(() => {
-    return paths
-      .filter((path) => getPathProgress(path.id) < 100)
-      .sort((a, b) => getPathProgress(b.id) - getPathProgress(a.id));
-  }, [paths, getPathProgress]);
+    const local = paths.filter((path) => {
+      const assignment = assignmentByTargetId.get(path.id);
+      const hasOutstandingAssignment = Boolean(assignment && !assignment.satisfied);
+      return hasOutstandingAssignment || getPathProgress(path.id) < 100;
+    });
+    const online = onlinePaths.filter((path) => !assignmentByTargetId.get(path.id)?.satisfied);
+    return [...local, ...online].sort(
+      (a, b) =>
+        (assignmentByTargetId.get(b.id)?.progress ?? getPathProgress(b.id)) -
+        (assignmentByTargetId.get(a.id)?.progress ?? getPathProgress(a.id))
+    );
+  }, [paths, onlinePaths, getPathProgress, assignmentByTargetId]);
 
   const privatePaths = useMemo(() => inProgress.filter((path) => path.isPrivate), [inProgress]);
-  const courses = useMemo(() => inProgress.filter((path) => !path.isPrivate), [inProgress]);
+  // An assigned private path also surfaces here, same as an online-catalogue
+  // one — alongside Private Paths, not instead of it; duplication is fine.
+  const courses = useMemo(
+    () => inProgress.filter((path) => !path.isPrivate || assignmentByTargetId.get(path.id)),
+    [inProgress, assignmentByTargetId]
+  );
 
-  const completedPaths = useMemo(() => paths.filter((path) => isPathCompleted(path.id)), [paths, isPathCompleted]);
+  const completedPaths = useMemo(() => {
+    const local = paths.filter((path) => isPathCompleted(path.id));
+    const online = onlinePaths.filter((path) => assignmentByTargetId.get(path.id)?.satisfied);
+    return [...local, ...online];
+  }, [paths, onlinePaths, isPathCompleted, assignmentByTargetId]);
 
   const excludeTitles = useMemo(
     () => new Set([...inProgress, ...completedPaths].map((path) => path.title)),
@@ -179,6 +215,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         const packageInfo: PackageOpenInfo = {
           packageId: path.id,
           packageManifest: { ...path.manifest, id: path.id },
+          trackId: assignmentByTargetId.get(path.id)?.trackId,
         };
         const [navLink] = await resolvePackageNavLinks([path.id]);
         if (!mountedRef.current) {
@@ -219,12 +256,14 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         }
       }
     },
-    [performLaunch, getGuideUrlForPath]
+    [performLaunch, getGuideUrlForPath, assignmentByTargetId]
   );
+
+  const allPaths = useMemo(() => [...paths, ...onlinePaths], [paths, onlinePaths]);
 
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
-      const parentPath = paths.find((p) => p.id === pathId);
+      const parentPath = allPaths.find((p) => p.id === pathId);
 
       // Manifest-backed (package) paths — App Platform and public/CDN course
       // packages alike — always land on their own cover page from My Learning,
@@ -301,7 +340,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
       void launch(guideUrl, title, pathId, packageInfo);
     },
-    [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
+    [launch, allPaths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
   );
 
   const handleDiscoverStart = useCallback(
@@ -445,10 +484,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         <div className={styles.columnsRow}>
           <MyCoursesSection
             courses={courses}
+            assignmentByTargetId={assignmentByTargetId}
             getPathGuides={getPathGuides}
             getPathProgress={getPathProgress}
             onContinue={handleOpenGuide}
             onReset={resetPath}
+            onResetGuides={resetPathGuides}
             launchingPathId={launchingId}
             launchDisabled={launchingId !== null}
             styles={styles}

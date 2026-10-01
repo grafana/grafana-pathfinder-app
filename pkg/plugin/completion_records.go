@@ -396,6 +396,20 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 // buildCompletionIndex drains the namespace LIST across pages — up to the
 // aggregate record budget — and collates the records into a per-user index.
 func buildCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, logger log.Logger) (*completionIndex, int, error) {
+	records, pages, err := drainCompletionRecords(ctx, namespace, lister, completionListMaxTotalRecords, logger)
+	if err != nil {
+		return nil, pages, err
+	}
+	return &completionIndex{
+		byUser: collateByUser(records),
+		asOf:   timeNow(),
+	}, pages, nil
+}
+
+// drainCompletionRecords is the raw LIST buildCompletionIndex collates. The
+// assignment join uses it directly: collation drops the per-row completedAt
+// the obligation criteria test. maxRecords of 0 means no cap.
+func drainCompletionRecords(ctx context.Context, namespace string, lister completionRecordLister, maxRecords int, logger log.Logger) ([]completionRecordSpec, int, error) {
 	var records []completionRecordSpec
 	continueToken := ""
 	pages := 0
@@ -406,9 +420,9 @@ func buildCompletionIndex(ctx context.Context, namespace string, lister completi
 		}
 		pages++
 		records = append(records, page.Records...)
-		if len(records) >= completionListMaxTotalRecords && page.Continue != "" {
+		if maxRecords > 0 && len(records) >= maxRecords && page.Continue != "" {
 			logger.Warn("completion records LIST truncated at aggregate budget",
-				"namespace", namespace, "maxTotalRecords", completionListMaxTotalRecords, "pages", pages)
+				"namespace", namespace, "maxTotalRecords", maxRecords, "pages", pages)
 			break
 		}
 		if page.Continue == "" {
@@ -416,11 +430,7 @@ func buildCompletionIndex(ctx context.Context, namespace string, lister completi
 		}
 		continueToken = page.Continue
 	}
-
-	return &completionIndex{
-		byUser: collateByUser(records),
-		asOf:   timeNow(),
-	}, pages, nil
+	return records, pages, nil
 }
 
 // collateByUser groups records by userId, then collapses each user's records to

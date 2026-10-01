@@ -909,6 +909,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       error: null,
       type: packageInfo ? getPackageRenderType(packageInfo.packageManifest) : 'docs',
       packageInfo,
+      ...(packageInfo?.trackId && { activeTrackId: packageInfo.trackId, activeTrackPathId: packageInfo.packageId }),
     };
 
     this.setState({

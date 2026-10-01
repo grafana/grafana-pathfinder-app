@@ -24,6 +24,7 @@ jest.mock('@grafana/i18n', () => ({
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: () => 'style' }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+  ConfirmModal: ({ isOpen }: { isOpen: boolean }) => (isOpen ? <div role="dialog" /> : null),
 }));
 
 const pathBaseUrl = 'https://grafana.com/docs/learning-paths/path-1/';
@@ -51,6 +52,16 @@ jest.mock('../../learning-paths', () => ({
     streakInfo: { days: 0 },
     isLoading: false,
   }),
+  useMyAssignments: ({ getPathGuides }: { getPathGuides: unknown }) => ({
+    items: [],
+    notDone: [],
+    assignmentByTargetId: new Map(),
+    onlinePaths: [],
+    getPathGuides,
+  }),
+  daysUntilDue: jest.requireActual('../../learning-paths/assignments-core').daysUntilDue,
+  compareResolvedAssignments: jest.requireActual('../../learning-paths/assignments-core').compareResolvedAssignments,
+  markCurrentGuide: jest.requireActual('../../learning-paths/mark-current-guide').markCurrentGuide,
 }));
 
 jest.mock('../SkeletonLoader', () => ({ SkeletonLoader: () => null }));
