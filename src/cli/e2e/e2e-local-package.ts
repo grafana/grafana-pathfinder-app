@@ -158,8 +158,23 @@ export function assertLocalCloudSelectedPackageSources(repositoryPath: string | 
   if (root) {
     assertLocalCloudPackageLocation(root, packageDir);
   }
-  let selectedPath = resolve(packageDir);
-  do {
+  const selectedDirectory = resolve(packageDir);
+  let selectedDirectories = [selectedDirectory];
+  if (root) {
+    let ancestor = selectedDirectory;
+    while (dirname(ancestor) !== ancestor) {
+      ancestor = dirname(ancestor);
+      selectedDirectories.push(ancestor);
+    }
+    selectedDirectories.reverse();
+    // An inner link back to the root must not become the checkout boundary.
+    const rootIndex = selectedDirectories.findIndex((directory) => realpathSync(directory) === root);
+    if (rootIndex === -1) {
+      throw new Error('Selected local cloud package is not reached through the local repository root.');
+    }
+    selectedDirectories = selectedDirectories.slice(rootIndex + 1);
+  }
+  for (const selectedPath of selectedDirectories) {
     const sourceStat = lstatSync(selectedPath);
     if (sourceStat.isSymbolicLink()) {
       throw new Error(`Local cloud source contains a symbolic link: ${selectedPath}`);
@@ -167,11 +182,7 @@ export function assertLocalCloudSelectedPackageSources(repositoryPath: string | 
     if (!sourceStat.isDirectory()) {
       throw new Error(`Local cloud source contains a special file: ${selectedPath}`);
     }
-    if (!root) {
-      break;
-    }
-    selectedPath = dirname(selectedPath);
-  } while (selectedPath !== root && selectedPath !== repositoryRoot);
+  }
 
   const manifestPath = join(packageDir, 'manifest.json');
   let manifestStat: Stats;

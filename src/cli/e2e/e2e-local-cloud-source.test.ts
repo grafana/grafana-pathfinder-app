@@ -1,7 +1,7 @@
 import { execFileSync } from 'child_process';
 import fs, { linkSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join, relative } from 'path';
+import { basename, dirname, join, relative } from 'path';
 
 import {
   assertLocalCloudCheckoutSources,
@@ -158,6 +158,76 @@ describe('local cloud package source resolution', () => {
       symlinkSync(root, alias);
       expect(() => assertLocalCloudSelectedPackageSources(alias, join(alias, 'local-guide'))).not.toThrow();
       expect(() => assertLocalCloudSelectedPackageSources(alias, guideDir)).not.toThrow();
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['checkout root', 'checkout parent'] as const)(
+    'accepts a selected path through a different alias of the %s',
+    (kind) => {
+      const outside = mkdtempSync(join(tmpdir(), 'pathfinder-checkout-alias-'));
+      try {
+        const repositoryAlias = join(outside, 'repository-checkout');
+        const selectedAlias = join(outside, 'selected-checkout');
+        symlinkSync(root, repositoryAlias);
+        symlinkSync(kind === 'checkout root' ? root : dirname(root), selectedAlias);
+        const selectedRoot = kind === 'checkout root' ? selectedAlias : join(selectedAlias, basename(root));
+        writeJson(repositoryPath, {});
+        const scanSpy = jest.spyOn(fs, 'readdirSync');
+        const readSpy = jest.spyOn(fs, 'readFileSync');
+        try {
+          for (const repository of [root, repositoryAlias, repositoryPath, join(repositoryAlias, 'repository.json')]) {
+            expect(() =>
+              assertLocalCloudSelectedPackageSources(repository, join(selectedRoot, 'local-guide'))
+            ).not.toThrow();
+          }
+          expect(scanSpy).not.toHaveBeenCalled();
+          expect(readSpy).not.toHaveBeenCalled();
+        } finally {
+          scanSpy.mockRestore();
+          readSpy.mockRestore();
+        }
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it('rejects an ancestor link back to the checkout root through a different root alias', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'pathfinder-checkout-alias-'));
+    try {
+      const alias = join(outside, 'checkout');
+      symlinkSync(root, alias);
+      symlinkSync(root, join(root, 'linked'));
+      const readSpy = jest.spyOn(fs, 'readFileSync');
+      try {
+        expect(() => assertLocalCloudSelectedPackageSources(root, join(alias, 'linked', 'local-guide'))).toThrow(
+          'symbolic link'
+        );
+        expect(readSpy).not.toHaveBeenCalled();
+      } finally {
+        readSpy.mockRestore();
+      }
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('terminates when no selected-path ancestor resolves to the checkout root', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'pathfinder-checkout-alias-'));
+    try {
+      const alias = join(outside, 'selected-guide');
+      symlinkSync(guideDir, alias);
+      const readSpy = jest.spyOn(fs, 'readFileSync');
+      try {
+        expect(() => assertLocalCloudSelectedPackageSources(root, alias)).toThrow(
+          'not reached through the local repository root'
+        );
+        expect(readSpy).not.toHaveBeenCalled();
+      } finally {
+        readSpy.mockRestore();
+      }
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
