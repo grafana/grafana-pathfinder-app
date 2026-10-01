@@ -9,11 +9,24 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { waitForReactUpdates } from '../../lib/async-utils';
+import { GuidedHandler as RealGuidedHandler } from '../../interactive-engine/action-handlers/guided-handler';
+import { querySelectorAllEnhanced } from '../../lib/dom';
+import { acquireGuidedRun } from '../../global-state/guided-run';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
+
+const mockInteractiveMode = jest.fn(() => 'interactive');
+const mockControllerChannel = jest.fn();
+jest.mock('../../global-state/interactive-mode-context', () => ({
+  useInteractiveMode: () => mockInteractiveMode(),
+}));
+jest.mock('../../global-state/controller-channel', () => ({
+  useControllerChannel: () => mockControllerChannel(),
+}));
 
 // ─── Mock @grafana/ui ────────────────────────────────────────────────────────
 jest.mock('@grafana/ui', () => ({
@@ -39,8 +52,12 @@ jest.mock('@grafana/data', () => ({
 // The component publishes app-event toasts via getAppEvents(); importing the
 // real module pulls in config/LocationService, which needs @grafana/data's
 // getThemeById (not provided by the mock above).
+const mockPublish = jest.fn();
+jest.mock('../../lib/faro', () => ({
+  withFaroUserAction: (_name: string, _attrs: unknown, work: () => unknown) => work(),
+}));
 jest.mock('@grafana/runtime', () => ({
-  getAppEvents: () => ({ publish: jest.fn() }),
+  getAppEvents: () => ({ publish: mockPublish }),
 }));
 
 // ─── Mock useAiFixEnabled (off) — avoids pulling @grafana/assistant, which this
@@ -52,6 +69,7 @@ jest.mock('../../integrations/assistant-integration/use-ai-fix-enabled', () => (
 // ─── Mock analytics (no-op) ──────────────────────────────────────────────────
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
+  createInteractionName: (name: string) => name,
   UserInteraction: { DoItButtonClick: 'do_it', StepAutoCompleted: 'auto' },
   buildInteractiveStepProperties: jest.fn(() => ({})),
 }));
@@ -75,6 +93,9 @@ jest.mock('../../constants/interactive-config', () => ({
 
 // ─── Mock DOM utils ──────────────────────────────────────────────────────────
 jest.mock('../../lib/dom', () => ({
+  resolveSelector: (selector: string) => selector,
+  isElementVisible: () => true,
+  describeElement: () => 'button',
   findButtonByText: jest.fn().mockReturnValue([]),
   querySelectorAllEnhanced: jest.fn().mockReturnValue({ elements: [], usedFallback: false }),
 }));
@@ -84,6 +105,8 @@ jest.mock('../../security', () => ({
   sanitizeDocumentationHTML: jest.fn((html: string) => html),
 }));
 
+const mockActionRequirements = jest.fn().mockResolvedValue({ pass: true });
+const mockDispatchFix = jest.fn().mockResolvedValue({ ok: true });
 let mockStoredCompleted = false;
 let mockCompletionReason = 'none';
 const mockMarkSkipped = jest.fn(() => {
@@ -116,6 +139,8 @@ jest.mock('../../requirements-manager', () => ({
     maxRetries: 3,
   })),
   validateInteractiveRequirements: jest.fn(),
+  useGuideRequirements: () => ({ checkRequirements: mockActionRequirements }),
+  dispatchFix: (...args: unknown[]) => mockDispatchFix(...args),
 }));
 
 // ─── Track call order for waitForReactUpdates vs executeGuidedStep ───────────
@@ -168,6 +193,11 @@ jest.mock('../../global-state/panel-mode', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 beforeEach(() => {
+  mockInteractiveMode.mockReturnValue('interactive');
+  mockControllerChannel.mockReturnValue(null);
+  mockActionRequirements.mockReset().mockResolvedValue({ pass: true });
+  mockDispatchFix.mockClear();
+  mockPublish.mockClear();
   mockStoredCompleted = false;
   mockCompletionReason = 'none';
   mockExecuteGuidedStep.mockReset();
@@ -437,6 +467,152 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
 });
 
 describe('InteractiveGuided — cancellation', () => {
+  it('honours a requirement fix after the handler has prepared its target', async () => {
+    mockActionRequirements
+      .mockResolvedValueOnce({ pass: false, error: [{ canFix: true, fixType: 'navigation' }] })
+      .mockResolvedValueOnce({ pass: true });
+    mockExecuteGuidedStep.mockImplementation(async (_action, _index, _count, _timeout, _complete, options) => {
+      expect(mockActionRequirements).not.toHaveBeenCalled();
+      return (await options.revalidate()) ? 'completed' : 'error';
+    });
+    render(
+      <InteractiveGuided
+        stepId="fix-after-target"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#target', requirements: 'navmenu-open' }]}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockStoredCompleted).toBe(true));
+    expect(mockDispatchFix).toHaveBeenCalledWith(
+      expect.objectContaining({ fixType: 'navigation', requirements: 'navmenu-open' })
+    );
+    expect(mockActionRequirements).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([true, false])(
+    'persists a padding-click completion after host unmount (standalone: %s)',
+    async (standalone) => {
+      const target = document.createElement('button');
+      target.id = 'padding-target';
+      document.body.append(target);
+      jest
+        .mocked(querySelectorAllEnhanced)
+        .mockReturnValue({ elements: [target], usedFallback: false, originalSelector: '#padding-target' });
+      jest
+        .spyOn(target, 'getBoundingClientRect')
+        .mockReturnValue({ left: 100, right: 200, top: 100, bottom: 140, width: 100, height: 40 } as DOMRect);
+      const navigation = {
+        ensureNavigationOpen: jest.fn(),
+        ensureElementVisible: jest.fn(),
+        expandParentNavigationSection: jest.fn(),
+        clearOwnedHighlights: jest.fn(),
+        highlightWithComment: jest.fn(),
+        showNoopComment: jest.fn(),
+      };
+      const realHandler = new RealGuidedHandler({} as any, navigation as any, async () => {});
+      mockExecuteGuidedStep.mockImplementation(realHandler.executeGuidedStep.bind(realHandler));
+      const onComplete = jest.fn();
+      const onStepComplete = jest.fn();
+      const view = render(
+        <InteractiveGuided
+          stepId="padding-complete"
+          onComplete={onComplete}
+          onStepComplete={standalone ? undefined : onStepComplete}
+          internalActions={[{ targetAction: 'highlight', refTarget: '#padding-target' }]}
+        />
+      );
+      target.onclick = () => view.unmount();
+      try {
+        fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+        await waitFor(() => expect(navigation.highlightWithComment).toHaveBeenCalled());
+        await act(async () => {
+          document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 95, clientY: 110 }));
+        });
+        await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+        if (standalone) {
+          expect(mockStoredCompleted).toBe(true);
+        } else {
+          expect(onStepComplete).toHaveBeenCalledTimes(1);
+        }
+      } finally {
+        realHandler.cancel();
+        target.remove();
+        jest
+          .mocked(querySelectorAllEnhanced)
+          .mockReturnValue({ elements: [], usedFallback: false, originalSelector: '' });
+      }
+    }
+  );
+
+  it('returns to idle after reset while an aborted handler settles', async () => {
+    let finish!: (result: string) => void;
+    mockExecuteGuidedStep.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const props = { stepId: 'reset-active', internalActions: [{ targetAction: 'noop' as const }] };
+    const { rerender } = render(<InteractiveGuided {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalled());
+    rerender(<InteractiveGuided {...props} resetTrigger={1} />);
+    await act(async () => {
+      finish('cancelled');
+    });
+    expect(screen.getByTestId(testIds.interactive.step('reset-active'))).toHaveAttribute(
+      'data-test-step-state',
+      'idle'
+    );
+    expect(mockStoredCompleted).toBe(false);
+  });
+
+  it('persists the final successful action without a cosmetic delay', async () => {
+    let finish!: (result: string) => void;
+    mockExecuteGuidedStep.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const onComplete = jest.fn();
+    const { unmount } = render(
+      <InteractiveGuided stepId="final-action" onComplete={onComplete} internalActions={[{ targetAction: 'noop' }]} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalled());
+    await act(async () => {
+      finish('completed');
+    });
+    unmount();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(mockStoredCompleted).toBe(true);
+  });
+
+  it('retains retry state when another guided interaction holds the lease', async () => {
+    mockExecuteGuidedStep.mockResolvedValue('error');
+    render(<InteractiveGuided stepId="lease-retry" internalActions={[{ targetAction: 'noop' }]} />);
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    const step = screen.getByTestId(testIds.interactive.step('lease-retry'));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'error'));
+    const otherRun = acquireGuidedRun();
+    expect(otherRun).not.toBeNull();
+    try {
+      fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('lease-retry')));
+      await act(async () => {});
+      expect(step).toHaveAttribute('data-test-step-state', 'error');
+      expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1);
+      expect(mockPublish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'alert-info',
+          payload: expect.arrayContaining(['Another guided interaction is in progress']),
+        })
+      );
+    } finally {
+      otherRun?.release();
+    }
+  });
+
   it('does not persist completeEarly completion after cancellation', async () => {
     mockExecuteGuidedStep.mockResolvedValue('cancelled');
     const onStepComplete = jest.fn();
@@ -511,36 +687,135 @@ describe('InteractiveGuided — objectives completion', () => {
     expect(screen.queryByTestId(testIds.interactive.errorMessage('objectives-step'))).not.toBeInTheDocument();
   });
 });
-describe('InteractiveGuided — sequence restart', () => {
-  it.each(['timeout', 'cancelled', 'error'] as const)('restarts at step zero after %s', async (result) => {
-    const internalActions = [
-      { targetAction: 'highlight' as const, refTarget: '#first' },
-      { targetAction: 'button' as const, refTarget: '#second' },
-    ];
+describe('InteractiveGuided — current action recovery', () => {
+  it.each(['error', 'timeout'] as const)(
+    'retries a %s action without replaying completed predecessors',
+    async (failure) => {
+      mockExecuteGuidedStep
+        .mockResolvedValueOnce('completed')
+        .mockResolvedValueOnce(failure)
+        .mockResolvedValueOnce('completed');
+      render(
+        <InteractiveGuided
+          stepId="resume-current"
+          internalActions={[
+            { targetAction: 'noop', targetComment: 'First' },
+            { targetAction: 'noop', targetComment: 'Second' },
+          ]}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.step('resume-current'))).toHaveAttribute(
+          'data-test-step-state',
+          'error'
+        )
+      );
+      fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('resume-current')));
+      await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(3));
+      expect(mockExecuteGuidedStep.mock.calls.map((call) => call[1])).toEqual([0, 1, 1]);
+    }
+  );
+  it('seeds controller retry progress before the live tab sends progress', async () => {
+    mockInteractiveMode.mockReturnValue('controller');
+    let progress!: (index: number) => void;
+    let finish!: (ok: boolean) => void;
+    const channel = {
+      post: jest.fn(),
+      onStepProgress: jest.fn((_step, _run, callback) => {
+        progress = callback;
+        return jest.fn();
+      }),
+      awaitStepComplete: jest.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          })
+      ),
+    };
+    mockControllerChannel.mockReturnValue(channel);
+    const { container } = render(
+      <InteractiveGuided
+        stepId="remote-retry"
+        internalActions={[
+          { targetAction: 'button', refTarget: '#one', targetComment: 'First instruction' },
+          { targetAction: 'button', refTarget: '#two', targetComment: 'Second instruction' },
+        ]}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    act(() => progress(1));
+    await act(async () => finish(false));
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('remote-retry')));
+    expect(channel.post).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'step-command', startIndex: 1 }));
+    expect(screen.getByText('Step 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Second instruction')).toBeInTheDocument();
+    expect(container.querySelector('.interactive-guided-progress-fill')).toHaveStyle({ width: '50%' });
+    expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+    await act(async () => finish(true));
+    expect(screen.getByTestId(testIds.interactive.step('remote-retry'))).toHaveAttribute(
+      'data-test-step-state',
+      'completed'
+    );
+  });
+
+  it('keeps the failed substep visible while retry waits for the execution render', async () => {
     mockExecuteGuidedStep
       .mockResolvedValueOnce('completed')
-      .mockResolvedValueOnce(result)
+      .mockResolvedValueOnce('error')
+      .mockResolvedValueOnce('completed');
+    const { container } = render(
+      <InteractiveGuided
+        stepId="retry-visible"
+        internalActions={[
+          { targetAction: 'noop', targetComment: 'First instruction' },
+          { targetAction: 'noop', targetComment: 'Second instruction' },
+        ]}
+      />
+    );
+    const step = screen.getByTestId(testIds.interactive.step('retry-visible'));
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'error'));
+    let finishRender!: () => void;
+    jest.mocked(waitForReactUpdates).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRender = resolve;
+        })
+    );
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('retry-visible')));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'executing'));
+    expect(step).toHaveAttribute('data-test-substep-index', '1');
+    expect(screen.getByText('Step 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Second instruction')).toBeInTheDocument();
+    expect(container.querySelector('.interactive-guided-progress-fill')).toHaveStyle({ width: '50%' });
+    expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(2);
+    await act(async () => finishRender());
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'completed'));
+    expect(mockExecuteGuidedStep.mock.calls.map((call) => call[1])).toEqual([0, 1, 1]);
+  });
+
+  it('restarts from step zero after cancellation', async () => {
+    mockExecuteGuidedStep
+      .mockResolvedValueOnce('completed')
+      .mockResolvedValueOnce('cancelled')
       .mockResolvedValueOnce('completed')
       .mockResolvedValueOnce('cancelled');
-
-    render(<InteractiveGuided stepId="sequence-restart" internalActions={internalActions} stepTimeout={1000} />);
-    const step = screen.getByTestId(testIds.interactive.step('sequence-restart'));
-    const settledState = result === 'cancelled' ? 'cancelled' : 'error';
-
+    render(
+      <InteractiveGuided
+        stepId="cancel-restart"
+        internalActions={[
+          { targetAction: 'noop', targetComment: 'First' },
+          { targetAction: 'noop', targetComment: 'Second' },
+        ]}
+      />
+    );
+    const step = screen.getByTestId(testIds.interactive.step('cancel-restart'));
     fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
-    await waitFor(() => {
-      expect(step).toHaveAttribute('data-test-step-state', settledState);
-    });
-    expect(mockExecuteGuidedStep).toHaveBeenNthCalledWith(1, internalActions[0], 0, 2, 1000, undefined);
-    expect(mockExecuteGuidedStep).toHaveBeenNthCalledWith(2, internalActions[1], 1, 2, 1000, undefined);
-
-    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('sequence-restart')));
-    await waitFor(() => {
-      expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(4);
-      expect(step).toHaveAttribute('data-test-step-state', 'cancelled');
-    });
-    expect(mockExecuteGuidedStep).toHaveBeenNthCalledWith(3, internalActions[0], 0, 2, 1000, undefined);
-    expect(mockExecuteGuidedStep).toHaveBeenNthCalledWith(4, internalActions[1], 1, 2, 1000, undefined);
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'cancelled'));
+    fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('cancel-restart')));
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(4));
+    expect(mockExecuteGuidedStep.mock.calls.map((call) => call[1])).toEqual([0, 1, 0, 1]);
   });
 });
 

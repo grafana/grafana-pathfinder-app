@@ -260,3 +260,18 @@ describe('json-parser — stable derived stepIds (closes #8 standalone instabili
     expect(trueId).not.toBe(falseId);
   });
 });
+
+it.each(['guided', 'multistep'] as const)('preserves authored lazy discovery options in %s actions', (type) => {
+  const guide = makeGuide({
+    type,
+    steps: [{ action: 'highlight', reftarget: '#panel', lazyRender: true, scrollContainer: '#panels' }],
+  });
+  const result = parseJsonGuide(guide);
+  expect(result.isValid).toBe(true);
+  const block = result.data!.elements.find(
+    (element) => element.type === (type === 'guided' ? 'interactive-guided' : 'interactive-multi-step')
+  )!;
+  expect(block.props.internalActions).toEqual([
+    expect.objectContaining({ lazyRender: true, scrollContainer: '#panels' }),
+  ]);
+});

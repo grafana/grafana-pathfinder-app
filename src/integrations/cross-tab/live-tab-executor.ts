@@ -1,9 +1,9 @@
 import { conditionLabel } from '../../lib/condition-input';
 import { config, getAppEvents } from '@grafana/runtime';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
-import { waitForReactUpdates } from '../../lib/async-utils';
+import { sleep, waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import type { InteractiveElementData } from '../../types/interactive.types';
+import type { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import {
@@ -32,6 +32,7 @@ import {
   type StepCommandMessage,
 } from '../../types/cross-tab.types';
 import * as pairingManager from '../../lib/pairing-manager';
+import { acquireGuidedRun } from '../../global-state/guided-run';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import pluginJson from '../../plugin.json';
@@ -85,8 +86,6 @@ export const DEFAULT_PACING: ExecutorPacing = {
 // cannot see a field added as optional on one side only.
 const _resultMirrorIsExact: WireMirrors<RemoteRequirementResult, RequirementsCheckResult> = true;
 void _resultMirrorIsExact;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Double rAF: one frame to flush the action's state update, a second to let the
 // browser paint it, so the next internal action sees a settled DOM.
@@ -157,14 +156,35 @@ export function installLiveTabExecutor(
   // is cancelled) before the next command starts — commands cannot interleave
   // and race on shared highlight state (F-1069-1).
   let queue: Promise<void> = Promise.resolve();
+  const runs = new Map<string, { controller: AbortController; finished: boolean }>();
+  const runKey = (message: { senderId: string; sessionId?: string; stepId: string; runId: string }) =>
+    JSON.stringify([message.senderId, message.sessionId, message.stepId, message.runId]);
+  const pruneRuns = () => {
+    for (const [key, run] of runs) {
+      if (runs.size <= 256) {
+        break;
+      }
+      if (run.finished) {
+        runs.delete(key);
+      }
+    }
+  };
 
-  const runAction = async (action: CrossTabInternalAction, isShow: boolean): Promise<void> => {
+  const runAction = async (
+    action: CrossTabInternalAction,
+    isShow: boolean,
+    signal: AbortSignal
+  ): Promise<ActionExecutionResult> => {
+    signal.throwIfAborted();
     if (!isInteractiveActionType(action.targetAction)) {
       logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
-      return;
+      return { outcome: 'error', reason: 'unsupported_action' };
     }
 
     const data: InteractiveElementData = {
+      signal,
+      lazyRender: action.lazyRender,
+      scrollContainer: action.scrollContainer,
       refTarget: action.refTarget ?? '',
       targetAction: action.targetAction,
       targetValue: action.targetValue,
@@ -178,22 +198,17 @@ export function installLiveTabExecutor(
 
     switch (action.targetAction) {
       case 'highlight':
-        await focusHandler.execute(data, !isShow);
-        break;
+        return focusHandler.execute(data, !isShow);
       case 'button':
-        await buttonHandler.execute(data, !isShow);
-        break;
+        return buttonHandler.execute(data, !isShow);
       case 'formfill':
-        await formFillHandler.execute(data, !isShow);
-        break;
+        return formFillHandler.execute(data, !isShow);
       case 'navigate':
-        await navigateHandler.execute(data, !isShow);
-        break;
+        return navigateHandler.execute(data, !isShow);
       case 'hover':
-        await hoverHandler.execute(data, !isShow);
-        break;
+        return hoverHandler.execute(data, !isShow);
       case 'noop':
-        break;
+        return { outcome: 'ok' };
       case 'guided':
       case 'multistep':
         // A composite verb reaching runAction means its internalActions were
@@ -202,13 +217,14 @@ export function installLiveTabExecutor(
         logger.warn(
           `[Pathfinder] cross-tab executor: composite action "${action.targetAction}" carried no internalActions to replay`
         );
-        break;
+        return { outcome: 'error', reason: 'unsupported_action' };
       case 'popout':
         logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
-        break;
+        return { outcome: 'error', reason: 'unsupported_action' };
       default:
         logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
         assertExhaustive(action.targetAction);
+        return { outcome: 'error', reason: 'unsupported_action' };
     }
   };
 
@@ -220,30 +236,38 @@ export function installLiveTabExecutor(
   // so the user watches the same staged sequence rather than an instant burst.
   // Composites always run the full show→do sequence; the command's wire `phase`
   // is not consulted (controllers only ever post composites as a 'do').
-  const runComposite = async (actions: ActionList, onProgress: OnProgress): Promise<void> => {
+  const runComposite = async (actions: ActionList, onProgress: OnProgress, signal: AbortSignal): Promise<void> => {
     for (let i = 0; i < actions.length; i++) {
       // Paced replay holds the loop open for seconds; bail between actions if a
       // teardown set cancelled so we never touch the DOM post-uninstall (NEW-1064-2).
-      if (cancelled) {
-        return;
-      }
+      signal.throwIfAborted();
       onProgress(i);
       const action = actions[i]!;
-      await runAction(action, true);
-      await sleep(pacing.showToDoMs);
-      await runAction(action, false);
+      if ((await runAction(action, true, signal)).outcome !== 'ok') {
+        throw new Error('Remote preview failed');
+      }
+      await sleep(pacing.showToDoMs, signal);
+      if ((await runAction(action, false, signal)).outcome !== 'ok') {
+        throw new Error('Remote action failed');
+      }
       await settleDom();
-      await sleep(pacing.settleMs);
+      await sleep(pacing.settleMs, signal);
       if (i < actions.length - 1) {
-        await sleep(pacing.interStepMs);
+        await sleep(pacing.interStepMs, signal);
       }
     }
   };
 
   // Guided is human-driven: highlight each target and wait for the user to perform
   // it on the live tab, rather than the auto replay a multi-step uses.
-  const runGuided = async (actions: ActionList, onProgress: OnProgress): Promise<boolean> => {
-    for (let i = 0; i < actions.length; i++) {
+  const runGuided = async (
+    actions: ActionList,
+    onProgress: OnProgress,
+    signal: AbortSignal,
+    startIndex = 0
+  ): Promise<boolean> => {
+    guidedHandler.resetProgress(startIndex);
+    for (let i = startIndex; i < actions.length; i++) {
       onProgress(i);
       const action = actions[i]!;
       // The receive gate accepts any KNOWN_TARGET_ACTIONS verb, which is wider than
@@ -256,7 +280,10 @@ export function installLiveTabExecutor(
       const result = await guidedHandler.executeGuidedStep(
         { ...action, targetAction: action.targetAction as GuidedAction['targetAction'] },
         i,
-        actions.length
+        actions.length,
+        undefined,
+        undefined,
+        { signal }
       );
       if (result !== 'completed' && result !== 'skipped') {
         return false;
@@ -265,7 +292,7 @@ export function installLiveTabExecutor(
     return true;
   };
 
-  const runStepCommand = async (command: StepCommandMessage): Promise<void> => {
+  const runStepCommand = async (command: StepCommandMessage, signal: AbortSignal): Promise<void> => {
     if (cancelled) {
       return;
     }
@@ -285,29 +312,34 @@ export function installLiveTabExecutor(
       },
       async () => {
         let ok = false;
+        let lease: ReturnType<typeof acquireGuidedRun> = null;
         try {
+          signal.throwIfAborted();
+          if (command.action.targetAction === 'guided') {
+            lease = acquireGuidedRun();
+            if (!lease) {
+              throw new Error('Another guided interaction is active');
+            }
+          }
           if (internalActions?.length) {
             if (command.action.targetAction === 'guided') {
-              ok = await runGuided(internalActions, postProgress);
+              ok = await runGuided(internalActions, postProgress, signal, command.startIndex);
             } else {
-              await runComposite(internalActions, postProgress);
+              await runComposite(internalActions, postProgress, signal);
               ok = true;
             }
           } else {
-            await runAction(command.action, command.phase === 'show');
-            ok = true;
+            ok = (await runAction(command.action, command.phase === 'show', signal)).outcome === 'ok';
           }
         } catch (error) {
           logger.error('[Pathfinder] cross-tab executor: failed to run remote step', { error });
           ok = false;
+        } finally {
+          lease?.release();
         }
+        ok = ok && !signal.aborted;
         setFaroUserActionAttributes({ step_ok: ok });
-        // Tell the controller whether a composite actually finished, so it surfaces
-        // failure instead of completing early. Simple steps stay optimistic by design
-        // and report nothing back.
-        if (internalActions?.length) {
-          transport.post({ kind: 'step-complete', stepId, runId, ok });
-        }
+        transport.post({ kind: 'step-complete', stepId, runId, ok });
       },
       USER_ACTION_TIMEOUT_LONG_MS
     );
@@ -390,11 +422,28 @@ export function installLiveTabExecutor(
     if (SIGNED_MESSAGE_KINDS.has(validated.kind)) {
       void (async () => {
         const authorized = await authGate.verifySignedMessage(validated, ownLiveTabId);
-        if (!authorized) {
+        if (!authorized || cancelled) {
           return;
         }
         if (validated.kind === 'step-command') {
-          queue = queue.then(() => runStepCommand(validated));
+          const key = runKey(validated);
+          if (runs.has(key)) {
+            return;
+          }
+          const run = { controller: new AbortController(), finished: false };
+          runs.set(key, run);
+          queue = queue
+            .then(() => runStepCommand(validated, run.controller.signal))
+            .finally(() => {
+              run.finished = true;
+              pruneRuns();
+            });
+        } else if (validated.kind === 'step-cancel') {
+          const key = runKey(validated);
+          const run = runs.get(key) ?? { controller: new AbortController(), finished: true };
+          runs.set(key, run);
+          run.controller.abort();
+          pruneRuns();
         } else if (validated.kind === 'check-requirements') {
           void evaluateRequirements(validated);
         } else if (validated.kind === 'fix-requirement') {
@@ -419,6 +468,8 @@ export function installLiveTabExecutor(
 
   return () => {
     cancelled = true;
+    runs.forEach((run) => run.controller.abort());
+    guidedHandler.cancel();
     unsubscribe();
     unsubscribeAccepted();
     transport.stop();

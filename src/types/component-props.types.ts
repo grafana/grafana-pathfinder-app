@@ -91,6 +91,8 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
  * Internal type used by InteractiveSection to track steps
  */
 export interface StepInfo {
+  lazyRender?: boolean;
+  scrollContainer?: string;
   stepId: string;
   element: React.ReactElement<InteractiveStepProps> | React.ReactElement<any>;
   index: number;

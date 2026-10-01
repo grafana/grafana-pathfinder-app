@@ -34,6 +34,8 @@ export const isGuidedDomActionType = (action: InteractiveActionType): action is 
  * Used for multi-step sequences where action types may vary
  */
 export interface InternalAction {
+  lazyRender?: boolean;
+  scrollContainer?: string;
   targetAction: string;
   refTarget?: string;
   targetValue?: string;

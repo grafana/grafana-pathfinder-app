@@ -3,6 +3,10 @@ import { useInteractiveElements } from './interactive.hook';
 import { withFaroUserAction } from '../lib/faro';
 import type { InteractiveElementData } from '../types/interactive.types';
 
+jest.mock('../utils/find-doc-page', () => ({
+  findDocPage: () => ({ url: 'bundled:next', title: 'Next', type: 'guide' }),
+}));
+
 jest.mock('../lib/faro', () => ({
   withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
   USER_ACTION_TIMEOUT_LONG_MS: 600000,
@@ -10,6 +14,7 @@ jest.mock('../lib/faro', () => ({
 
 // Mock Grafana's location service
 jest.mock('@grafana/runtime', () => ({
+  config: { bootData: { user: { orgRole: 'Viewer' } } },
   locationService: {
     push: jest.fn(),
   },
@@ -30,27 +35,27 @@ jest.mock('../requirements-manager', () => {
 // Mock action handlers
 jest.mock('./action-handlers', () => ({
   FocusHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   ButtonHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   NavigateHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   FormFillHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   HoverHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   GuidedHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
     cancel: jest.fn(),
   })),
   PopoutHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
 }));
 
@@ -69,6 +74,7 @@ jest.mock('./navigation-manager', () => ({
     highlight: jest.fn().mockResolvedValue(undefined),
     fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
     openAndDockNavigation: jest.fn().mockResolvedValue(undefined),
+    clearOwnedHighlights: jest.fn(),
   })),
 }));
 
@@ -751,5 +757,66 @@ describe('useInteractiveElements', () => {
         stepId: 'unknown',
       });
     });
+  });
+});
+
+describe('interactive run ownership', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'sidebar');
+  });
+  it('aborts a pending action when its host unmounts and refuses a concurrent start', async () => {
+    const { ButtonHandler } = require('./action-handlers');
+    let signal!: AbortSignal;
+    let finish!: () => void;
+    const execute = jest.fn((data: InteractiveElementData) => {
+      signal = data.signal!;
+      return new Promise((resolve) => {
+        finish = () => resolve({ outcome: 'ok' });
+      });
+    });
+    ButtonHandler.mockImplementationOnce(() => ({ execute }));
+    const { result, unmount } = renderHook(() => useInteractiveElements());
+    const first = result.current.executeInteractiveAction({ targetAction: 'button' });
+    expect(await result.current.executeInteractiveAction({ targetAction: 'button' })).toBe('error');
+    expect(execute).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(signal.aborted).toBe(true);
+    finish();
+    expect(await first).toBe('error');
+  });
+
+  it.each(['ok', 'error'] as const)('passes through a navigate %s result', async (outcome) => {
+    const { NavigateHandler } = require('./action-handlers');
+    NavigateHandler.mockImplementationOnce(() => ({ execute: jest.fn().mockResolvedValue({ outcome }) }));
+    const { result } = renderHook(() => useInteractiveElements());
+    expect(await result.current.executeInteractiveAction({ targetAction: 'navigate', refTarget: '/explore' })).toBe(
+      outcome
+    );
+  });
+
+  it('finishes navigate-with-doc when opening the guide unmounts its host', async () => {
+    jest.useFakeTimers();
+    const { NavigateHandler } = require('./action-handlers');
+    const RealNavigateHandler = jest.requireActual('./action-handlers/navigate-handler').NavigateHandler;
+    NavigateHandler.mockImplementationOnce((state: unknown) => new RealNavigateHandler(state, async () => {}));
+    const { autoLaunchChannel } = require('../global-state/auto-launch');
+    const { result, unmount } = renderHook(() => useInteractiveElements());
+    const opened = jest.fn(() => unmount());
+    const unsubscribe = autoLaunchChannel.subscribe(opened);
+    try {
+      const pending = result.current.executeInteractiveAction({
+        targetAction: 'navigate',
+        refTarget: '/explore?doc=bundled:next',
+      });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(2000);
+      });
+      expect(opened).toHaveBeenCalled();
+      expect(await pending).toBe('ok');
+    } finally {
+      unsubscribe();
+      jest.useRealTimers();
+    }
   });
 });

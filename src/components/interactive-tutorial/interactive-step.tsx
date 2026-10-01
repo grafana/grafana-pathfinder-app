@@ -24,7 +24,6 @@ import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../int
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { CodeBlock } from '../../docs-retrieval';
-import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { isGrafanaDrivingHandoffNeeded } from '../../global-state/panel-mode';
 import { STEP_STATES, type StepStateValue } from './step-states';
@@ -107,7 +106,7 @@ export async function executeWithLazyScroll(
   // DOM-targeting actions: quick synchronous check if element exists (provides user feedback if missing)
   // Use resolveWithRetry with NO delays — the action handlers do their own retry with backoff,
   // so retrying here would cause redundant 2.6s delays on every action.
-  const resolved = await resolveWithRetry(refTarget, targetAction, { delays: [] });
+  const resolved = await resolveWithRetry(refTarget, targetAction, { delays: [], lazyRender, scrollContainer });
   const elementExists = resolved !== null;
 
   if (elementExists) {
@@ -115,24 +114,8 @@ export async function executeWithLazyScroll(
     return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
-  // Element not found - try lazy scroll discovery only if enabled
   if (lazyRender) {
-    console.log(`[LazyScroll] Element not found, attempting scroll discovery: ${refTarget}`);
-    const foundElement = await scrollUntilElementFound(refTarget, {
-      scrollContainerSelector: scrollContainer,
-    });
-
-    if (foundElement) {
-      // Element discovered after scroll - execute action
-      return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
-    }
-
-    // Scroll completed but element still not found
-    return {
-      outcome: 'error',
-      elementFound: false,
-      error: 'Element not found after scrolling dashboard',
-    };
+    return { outcome: 'error', elementFound: false, error: 'Element not found after scrolling dashboard' };
   }
 
   // lazyRender not enabled and element not found - return clear error
@@ -547,6 +530,8 @@ export const InteractiveStep = forwardRef<
           openGuide,
           buttonType: 'do',
           fullScreenFallbackLocation,
+          lazyRender,
+          scrollContainer,
         });
         if (actionOutcome === 'error') {
           setPostVerifyError('Action did not complete successfully.');
@@ -618,6 +603,8 @@ export const InteractiveStep = forwardRef<
       openGuide,
       postVerify,
       verifyStepResult,
+      lazyRender,
+      scrollContainer,
       executeInteractiveAction,
       onStepComplete,
       onComplete,
@@ -741,6 +728,81 @@ export const InteractiveStep = forwardRef<
       onMatch: handleAutoDetectedMatch,
     });
 
+    const runRemoteAction = useCallback(
+      async (phase: 'show' | 'do'): Promise<boolean> => {
+        if (!controllerChannel || !stepId) {
+          setPostVerifyError('Connect a live Grafana tab to run this step.');
+          return false;
+        }
+        const completeOnDispatch = phase === 'do' && completeEarly;
+        const runId = crypto.randomUUID();
+        const completion = completeOnDispatch ? undefined : controllerChannel.awaitStepResult(stepId, runId, 30_000);
+        controllerChannel.post({
+          kind: 'step-command',
+          phase,
+          stepId,
+          runId,
+          action: {
+            ...toCrossTabInternalAction({
+              targetAction,
+              refTarget,
+              targetValue: currentTargetValue,
+              targetState,
+              targetComment,
+              openGuide,
+              lazyRender,
+              scrollContainer,
+            }),
+            refTarget,
+          },
+        });
+        if (completeOnDispatch) {
+          persistCompletion();
+          onStepComplete?.(stepId);
+          onComplete?.();
+          return true;
+        }
+        const result = await completion;
+        if (result !== 'completed') {
+          setPostVerifyError(
+            result === 'timeout' || result === 'disconnected'
+              ? 'The live tab did not confirm completion. Refresh both tabs and try again.'
+              : 'The action did not complete in the live tab. Restore the required state and try again.'
+          );
+          return false;
+        }
+        if (phase === 'do' && postVerify?.trim()) {
+          const result = await controllerChannel.requestRequirementCheck(stepId, postVerify, {
+            targetAction,
+            refTarget,
+            targetValue: currentTargetValue,
+          });
+          if (!result?.pass) {
+            setPostVerifyError('Verification failed in the live tab.');
+            return false;
+          }
+        }
+        return true;
+      },
+      [
+        controllerChannel,
+        lazyRender,
+        scrollContainer,
+        stepId,
+        targetAction,
+        refTarget,
+        currentTargetValue,
+        targetState,
+        targetComment,
+        openGuide,
+        postVerify,
+        completeEarly,
+        persistCompletion,
+        onStepComplete,
+        onComplete,
+      ]
+    );
+
     const handleShowAction = useCallback(async () => {
       if (disabled || isShowRunning || isCompletedWithObjectives || !finalIsEnabled) {
         return;
@@ -771,25 +833,17 @@ export const InteractiveStep = forwardRef<
         if (!(await revalidate())) {
           return;
         }
-        controllerChannel?.post({
-          kind: 'step-command',
-          phase: 'show',
-          stepId,
-          runId: crypto.randomUUID(),
-          action: {
-            ...toCrossTabInternalAction({
-              targetAction,
-              refTarget,
-              targetValue: currentTargetValue,
-              targetState,
-              targetComment,
-              openGuide,
-            }),
-            refTarget,
-          },
-        });
+        setIsShowRunning(true);
+        let succeeded = false;
+        try {
+          succeeded = await runRemoteAction('show');
+        } finally {
+          setIsShowRunning(false);
+        }
+        if (!succeeded) {
+          return;
+        }
         if (!doIt) {
-          // Simple controller steps complete optimistically because no live acknowledgement is available.
           persistCompletion();
           if (onStepComplete) {
             onStepComplete(stepId);
@@ -865,7 +919,7 @@ export const InteractiveStep = forwardRef<
       analyticsStepMeta,
       persistCompletion,
       mode,
-      controllerChannel,
+      runRemoteAction,
       revalidate,
     ]);
 
@@ -898,24 +952,19 @@ export const InteractiveStep = forwardRef<
         if (!(await revalidate())) {
           return;
         }
-        controllerChannel?.post({
-          kind: 'step-command',
-          phase: 'do',
-          stepId,
-          runId: crypto.randomUUID(),
-          action: {
-            ...toCrossTabInternalAction({
-              targetAction,
-              refTarget,
-              targetValue: currentTargetValue,
-              targetState,
-              targetComment,
-              openGuide,
-            }),
-            refTarget,
-          },
-        });
-        // Simple controller steps complete optimistically because no live acknowledgement is available.
+        setIsDoRunning(true);
+        let succeeded = false;
+        try {
+          succeeded = await runRemoteAction('do');
+        } finally {
+          setIsDoRunning(false);
+        }
+        if (!succeeded) {
+          return;
+        }
+        if (completeEarly) {
+          return;
+        }
         persistCompletion();
         if (onStepComplete) {
           onStepComplete(stepId);
@@ -946,6 +995,7 @@ export const InteractiveStep = forwardRef<
     }, [
       disabled,
       isDoRunning,
+      completeEarly,
       isCompletedWithObjectives,
       finalIsEnabled,
       lazyRender,
@@ -954,16 +1004,13 @@ export const InteractiveStep = forwardRef<
       executeStep,
       targetAction,
       currentTargetValue,
-      targetState,
       analyticsStepMeta,
       mode,
-      controllerChannel,
+      runRemoteAction,
       persistCompletion,
       onStepComplete,
       onComplete,
       stepId,
-      targetComment,
-      openGuide,
       revalidate,
     ]);
 

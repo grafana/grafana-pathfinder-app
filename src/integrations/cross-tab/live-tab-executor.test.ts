@@ -28,8 +28,10 @@ jest.mock('../../lib/faro', () => ({
 }));
 
 jest.mock('../../interactive-engine/action-handlers', () => {
-  const makeHandler = () => ({ execute: jest.fn().mockResolvedValue(undefined) });
+  const makeHandler = () => ({ execute: jest.fn().mockResolvedValue({ outcome: 'ok' }) });
   const makeGuided = () => ({
+    resetProgress: jest.fn(),
+    cancel: jest.fn(),
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
   });
   return {
@@ -122,6 +124,52 @@ describe('installLiveTabExecutor', () => {
     (dispatchFix as jest.Mock).mockResolvedValue({ ok: true });
   });
 
+  it('cancels an active guided run without waiting behind the execution queue', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    const guided = (GuidedHandler as unknown as jest.Mock).mock.results[0]!.value;
+    guided.executeGuidedStep.mockImplementation(
+      (_a: unknown, _i: number, _n: number, _t: unknown, _cb: unknown, options: { signal: AbortSignal }) =>
+        new Promise((resolve) => options.signal.addEventListener('abort', () => resolve('cancelled'), { once: true }))
+    );
+    const command: CrossTabMessage = {
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'cancel-guide',
+      runId: 'cancel-run',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [
+          { targetAction: 'highlight', refTarget: '#one' },
+          { targetAction: 'highlight', refTarget: '#two' },
+        ],
+      },
+    };
+    transport.emit(command);
+    await waitFor(() => expect(guided.executeGuidedStep).toHaveBeenCalledTimes(1));
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-cancel',
+      stepId: 'cancel-guide',
+      runId: 'cancel-run',
+    });
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-complete', runId: 'cancel-run', ok: false })
+      )
+    );
+    transport.emit(command);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(guided.executeGuidedStep).toHaveBeenCalledTimes(1);
+    uninstall();
+  });
+
   it('starts the transport on install and stops it on uninstall', () => {
     const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
@@ -169,7 +217,7 @@ describe('installLiveTabExecutor', () => {
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
 
     transport.emit(stampStepCommand('do', 'button', "button[type='submit']"));
-    transport.emit(stampStepCommand('do', 'navigate', '/dashboards'));
+    transport.emit(stampStepCommand('do', 'navigate', '/dashboards', 'run-2'));
 
     await waitFor(() => expect(executeOf(ButtonHandler)).toHaveBeenCalled());
     await waitFor(() => expect(executeOf(NavigateHandler)).toHaveBeenCalled());
@@ -277,7 +325,10 @@ describe('installLiveTabExecutor', () => {
     expect(executeGuidedStep).toHaveBeenCalledWith(
       expect.objectContaining({ targetState: 'aria-expanded:true' }),
       0,
-      1
+      1,
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
     uninstall();
   });
@@ -343,6 +394,89 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
+  it('resumes a guided retry with predecessor credit and executes only the remaining substeps', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    const internalActions = [
+      { targetAction: 'button', refTarget: '#one' },
+      { targetAction: 'button', refTarget: '#two' },
+    ];
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'resume',
+      runId: 'retry',
+      startIndex: 1,
+      action: { targetAction: 'guided', refTarget: '', internalActions },
+    });
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-complete', runId: 'retry', ok: true })
+      )
+    );
+    const guided = (GuidedHandler as jest.Mock).mock.results[0]!.value;
+    expect(guided.resetProgress).toHaveBeenCalledWith(1);
+    expect(guided.executeGuidedStep).toHaveBeenCalledTimes(1);
+    expect(guided.executeGuidedStep).toHaveBeenCalledWith(
+      internalActions[1],
+      1,
+      2,
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(transport.postedMessages).toContainEqual(
+      expect.objectContaining({ kind: 'step-progress', index: 1, total: 2 })
+    );
+    expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'step-progress', index: 0 }));
+    uninstall();
+  });
+
+  it.each(['queued', 'early'])(
+    'does not execute a %s cancelled command after the active run settles',
+    async (timing) => {
+      const transport = new FakeCrossTabTransport('live-self');
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+      let release!: () => void;
+      executeOf(ButtonHandler).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve({ outcome: 'ok' });
+          })
+      );
+      transport.emit(stampStepCommand('do', 'button', '#active', 'active'));
+      await waitFor(() => expect(executeOf(ButtonHandler)).toHaveBeenCalledTimes(1));
+      const command = stampStepCommand('do', 'button', '#cancelled', 'cancelled');
+      const cancel: CrossTabMessage = {
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'step-cancel',
+        stepId: 's1',
+        runId: 'cancelled',
+      };
+      transport.emit(timing === 'queued' ? command : cancel);
+      transport.emit(timing === 'queued' ? cancel : command);
+      transport.emit(stampStepCommand('do', 'button', '#after', 'after'));
+      release();
+      await waitFor(() =>
+        expect(transport.postedMessages).toContainEqual(
+          expect.objectContaining({ kind: 'step-complete', runId: 'after', ok: true })
+        )
+      );
+      expect(executeOf(ButtonHandler).mock.calls.map(([data]) => data.refTarget)).toEqual(['#active', '#after']);
+      if (timing === 'queued') {
+        expect(transport.postedMessages).toContainEqual(
+          expect.objectContaining({ kind: 'step-complete', runId: 'cancelled', ok: false })
+        );
+      }
+      uninstall();
+    }
+  );
+
   it('starts successive guided runs on the same handler at step zero', async () => {
     const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
@@ -372,10 +506,42 @@ describe('installLiveTabExecutor', () => {
 
     expect(GuidedHandler).toHaveBeenCalledTimes(1);
     expect(executeGuidedStep).toHaveBeenCalledTimes(4);
-    expect(executeGuidedStep).toHaveBeenNthCalledWith(1, internalActions[0], 0, 2);
-    expect(executeGuidedStep).toHaveBeenNthCalledWith(2, internalActions[1], 1, 2);
-    expect(executeGuidedStep).toHaveBeenNthCalledWith(3, internalActions[0], 0, 2);
-    expect(executeGuidedStep).toHaveBeenNthCalledWith(4, internalActions[1], 1, 2);
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(
+      1,
+      internalActions[0],
+      0,
+      2,
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(
+      2,
+      internalActions[1],
+      1,
+      2,
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(
+      3,
+      internalActions[0],
+      0,
+      2,
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(executeGuidedStep).toHaveBeenNthCalledWith(
+      4,
+      internalActions[1],
+      1,
+      2,
+      undefined,
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     uninstall();
   });
 

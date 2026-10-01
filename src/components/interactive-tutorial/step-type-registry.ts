@@ -122,6 +122,8 @@ export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
     refTarget: props.refTarget,
     targetValue: props.targetValue,
     targetState: props.targetState,
+    lazyRender: props.lazyRender,
+    scrollContainer: props.scrollContainer,
     targetComment: props.targetComment,
     openGuide: props.openGuide,
     requirements: props.requirements,

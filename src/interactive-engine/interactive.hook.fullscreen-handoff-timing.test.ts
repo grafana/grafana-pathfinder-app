@@ -1,7 +1,7 @@
 /**
  * Full-screen handoff coverage lives here so the hook is exercised with the
  * real panel-mode timing. This suite covers the handoff event payload, the
- * completion guard applied to the handler data, and suppressed outcomes.
+ * cancellation signal applied to the handler data, and failed outcomes.
  */
 
 import { renderHook, act } from '@testing-library/react';
@@ -38,30 +38,29 @@ jest.mock('../requirements-manager', () => {
 const handlerCallOrder: string[] = [];
 jest.mock('./action-handlers', () => ({
   FocusHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   ButtonHandler: jest.fn().mockImplementation(() => ({
     execute: jest.fn().mockImplementation(async () => {
       handlerCallOrder.push('handler-executed');
+      return { outcome: 'ok' };
     }),
   })),
   NavigateHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   FormFillHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   HoverHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
   })),
   GuidedHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ outcome: 'ok' }),
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
     cancel: jest.fn(),
   })),
-  PopoutHandler: jest.fn().mockImplementation(() => ({
-    execute: jest.fn().mockResolvedValue(undefined),
-  })),
+  PopoutHandler: jest.requireActual('./action-handlers/popout-handler').PopoutHandler,
 }));
 
 jest.mock('./interactive-state-manager', () => ({
@@ -78,6 +77,7 @@ jest.mock('./navigation-manager', () => ({
     highlight: jest.fn().mockResolvedValue(undefined),
     fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
     openAndDockNavigation: jest.fn().mockResolvedValue(undefined),
+    clearOwnedHighlights: jest.fn(),
   })),
 }));
 
@@ -144,7 +144,7 @@ describe('executeInteractiveAction composed with the real requestSidebarHandoffA
 
     const { ButtonHandler } = require('./action-handlers');
     const buttonHandlerInstance = ButtonHandler.mock.results.at(-1)!.value;
-    expect(buttonHandlerInstance.execute.mock.calls[0]![0].skipCompletionOnEmptyTarget).toBe(true);
+    expect(buttonHandlerInstance.execute.mock.calls[0]![0].signal.aborted).toBe(false);
   });
 
   it('falls through to the handler via the safety timeout when the mount event never fires', async () => {
@@ -170,13 +170,33 @@ describe('executeInteractiveAction composed with the real requestSidebarHandoffA
     expect(handlerCallOrder).toEqual(['handler-executed']);
   });
 
-  it('returns error when a handler suppresses completion', async () => {
+  it.each([
+    ['floating', 'pathfinder-request-pop-out'],
+    ['sidebar', 'pathfinder-request-dock'],
+  ])('completes a real popout to %s when its mode event unmounts the host', async (targetValue, event) => {
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'sidebar');
+    const { result, unmount } = renderHook(() => useInteractiveElements({ containerRef }));
+    document.addEventListener(event, unmount, { once: true });
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current.executeInteractiveAction({ targetAction: 'popout', refTarget: '', targetValue });
+    });
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1000);
+    });
+    expect(await pending).toBe('ok');
+    const { InteractiveStateManager } = require('./interactive-state-manager');
+    expect(InteractiveStateManager.mock.results.at(-1)!.value.setState).toHaveBeenCalledWith(
+      expect.objectContaining({ targetAction: 'popout', targetValue }),
+      'completed'
+    );
+  });
+
+  it('returns error when a handler reports a missing target', async () => {
     localStorage.setItem('grafana-pathfinder-app-panel-mode', 'sidebar');
     const { ButtonHandler } = require('./action-handlers');
     ButtonHandler.mockImplementationOnce(() => ({
-      execute: jest.fn().mockImplementation(async (data: { completionSuppressed?: boolean }) => {
-        data.completionSuppressed = true;
-      }),
+      execute: jest.fn().mockResolvedValue({ outcome: 'error', reason: 'target_missing' }),
     }));
     const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
@@ -190,6 +210,20 @@ describe('executeInteractiveAction composed with the real requestSidebarHandoffA
     });
 
     expect(outcome).toBe('error');
+  });
+
+  it('keeps a sidebar handoff alive when docking unmounts its original host', async () => {
+    const { result, unmount } = renderHook(() => useInteractiveElements({ containerRef }));
+    const pending = result.current.executeInteractiveAction({ targetAction: 'button', refTarget: 'test-target' });
+    await Promise.resolve();
+    unmount();
+    window.dispatchEvent(new CustomEvent('pathfinder-sidebar-mounted'));
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(400);
+    });
+    expect(await pending).toBe('ok');
+    const { ButtonHandler } = require('./action-handlers');
+    expect(ButtonHandler.mock.results.at(-1)!.value.execute.mock.calls[0]![0].signal.aborted).toBe(false);
   });
 
   it('forwards openGuide to the navigate handler through executeInteractiveAction', async () => {
