@@ -31,7 +31,11 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getJourneyProgress, journeyMilestonePercentages } from '../../../docs-retrieval';
+import {
+  journeyMilestonePercentages,
+  percentagesToProgress,
+  resolveActiveMilestoneToolbarContext,
+} from '../../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { usePanelModeControls } from '../../../global-state/use-panel-mode';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
@@ -88,12 +92,26 @@ export function LearningJourneyMilestoneToolbar({
   // store's announcement is what keeps them from painting a stale fill.
   useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
 
-  const lj = activeTab.content?.type === 'learning-journey' ? activeTab.content.metadata.learningJourney : undefined;
-  const showMilestoneProgress = activeTab.type === 'learning-journey' && Boolean(lj);
+  // Scoped to whichever sequence the reader actually navigated through —
+  // base Foundations or their active Path Track (`activeTab.activeTrackId`/
+  // `activeTrackMilestones`) — so a track-only guide (no `learningJourney` at
+  // all) still gets nav/label/progress, and a guide that's a member of BOTH
+  // sequences shows the one the reader is actually in rather than always the
+  // base sequence. See `resolveActiveMilestoneToolbarContext`.
+  const activeMilestoneContext = activeTab.content
+    ? resolveActiveMilestoneToolbarContext(activeTab.content, activeTab.activeTrackId, activeTab.activeTrackMilestones)
+    : null;
+  const showMilestoneProgress = activeTab.type === 'learning-journey' && Boolean(activeMilestoneContext);
 
-  if (!showMilestoneProgress || !lj) {
+  if (!showMilestoneProgress || !activeMilestoneContext) {
     return null;
   }
+
+  const milestonePercentages = journeyMilestonePercentages(
+    activeMilestoneContext.baseUrl,
+    activeMilestoneContext.milestones
+  );
+  const completionPercentage = percentagesToProgress(milestonePercentages);
 
   const handlePrev = () => {
     // Log the destination milestone (where the user is heading TO), not the
@@ -105,11 +123,11 @@ export function LearningJourneyMilestoneToolbar({
     reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
       content_title: activeTab.title,
       content_url: activeTab.baseUrl,
-      current_milestone: Math.max(0, (lj.currentMilestone ?? 0) - 1),
-      total_milestones: lj.totalMilestones || 0,
+      current_milestone: Math.max(0, activeMilestoneContext.currentMilestone - 1),
+      total_milestones: activeMilestoneContext.totalMilestones,
       direction: 'backward',
       interaction_location: 'milestone_progress_bar',
-      completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
+      completion_percentage: completionPercentage,
     });
     panel.navigateToPreviousMilestone();
   };
@@ -124,17 +142,17 @@ export function LearningJourneyMilestoneToolbar({
     reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
       content_title: activeTab.title,
       content_url: activeTab.baseUrl,
-      current_milestone: Math.min(lj.totalMilestones ?? 0, (lj.currentMilestone ?? 0) + 1),
-      total_milestones: lj.totalMilestones || 0,
+      current_milestone: Math.min(activeMilestoneContext.totalMilestones, activeMilestoneContext.currentMilestone + 1),
+      total_milestones: activeMilestoneContext.totalMilestones,
       direction: 'forward',
       interaction_location: 'milestone_progress_bar',
-      completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
+      completion_percentage: completionPercentage,
     });
     panel.navigateToNextMilestone();
   };
 
-  const currentMs = lj.milestones.find((m) => m.number === (lj.currentMilestone ?? 0));
-  const websiteUrl = currentMs?.websiteUrl ?? lj.websiteUrl;
+  const currentMs = activeMilestoneContext.milestones.find((m) => m.number === activeMilestoneContext.currentMilestone);
+  const websiteUrl = currentMs?.websiteUrl ?? activeMilestoneContext.websiteUrl;
   const fallbackUrl = activeTab.content?.url || activeTab.baseUrl;
   const externalUrl = websiteUrl || fallbackUrl ? cleanDocsUrl(websiteUrl || fallbackUrl!) : undefined;
   const showReset = hasInteractiveProgress || activeTab.type === 'interactive';
@@ -161,8 +179,8 @@ export function LearningJourneyMilestoneToolbar({
       source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
       link_type: AnalyticsLinkType.ExternalBrowser,
       interaction_location: openInteractionLocation,
-      current_milestone: lj.currentMilestone || 0,
-      total_milestones: lj.totalMilestones || 0,
+      current_milestone: activeMilestoneContext.currentMilestone,
+      total_milestones: activeMilestoneContext.totalMilestones,
     });
     setTimeout(() => {
       window.open(externalUrl, '_blank', 'noopener,noreferrer');
@@ -211,14 +229,12 @@ export function LearningJourneyMilestoneToolbar({
   // reader who only pages forward leaves the segments behind them unfilled.
   // The label and the current-position highlight stay navigation-derived.
   const completedMilestoneNumbers = new Set(
-    journeyMilestonePercentages(lj.baseUrl, lj.milestones)
-      .filter(({ percent }) => percent === 100)
-      .map(({ milestone }) => milestone.number)
+    milestonePercentages.filter(({ percent }) => percent === 100).map(({ milestone }) => milestone.number)
   );
 
-  const segments = Array.from({ length: lj.totalMilestones || 0 }, (_, i) => {
+  const segments = Array.from({ length: activeMilestoneContext.totalMilestones }, (_, i) => {
     const number = i + 1;
-    if (number === (lj.currentMilestone ?? 0)) {
+    if (number === activeMilestoneContext.currentMilestone) {
       return 'current';
     }
     return completedMilestoneNumbers.has(number) ? 'done' : 'upcoming';
@@ -244,13 +260,13 @@ export function LearningJourneyMilestoneToolbar({
               {activeTab.title}
             </div>
             <div className={styles.milestoneSubtitle}>
-              {lj.currentMilestone === 0
+              {activeMilestoneContext.currentMilestone === 0
                 ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
-                    total: lj.totalMilestones,
+                    total: activeMilestoneContext.totalMilestones,
                   })
                 : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                    current: lj.currentMilestone,
-                    total: lj.totalMilestones,
+                    current: activeMilestoneContext.currentMilestone,
+                    total: activeMilestoneContext.totalMilestones,
                   })}
             </div>
           </div>

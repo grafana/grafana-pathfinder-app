@@ -37,6 +37,10 @@ import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 import { getMilestoneSlug } from '../lib/learning-journey-url';
 export { getMilestoneSlug };
 
+import { resolveActiveMilestoneSequence, resolveActiveMilestoneToolbarContext } from './active-milestone-sequence';
+export { resolveActiveMilestoneSequence, resolveActiveMilestoneToolbarContext };
+export type { ActiveMilestoneToolbarContext } from './active-milestone-sequence';
+
 /**
  * Optional manifest/display context threaded from the completion call sites so
  * the recorder can key on `(guideSource, guideId) = (repository, manifest.id)`
@@ -69,44 +73,6 @@ function toAbsoluteGrafanaUrl(url: string): string {
 /**
  * Navigation helpers - these work with metadata, not DOM
  */
-
-/**
- * The milestone sequence Next/Previous should traverse. On the cover page,
- * a selected track redirects to that track's guides via this content's own
- * fresh `tracks` field, not the caller's persisted `activeTrackMilestones`
- * snapshot (see `LearningJourneyTab.activeTrackMilestones`), which can go
- * stale. Past the cover, `tracks` is never populated, so staying
- * track-aware there requires that persisted snapshot instead, matched
- * against this content's own URL. Falls through to Foundations when the
- * current guide isn't part of the active track.
- *
- * The match runs even with no `learningJourney` at all, since a track-only
- * guide carries none — gating on it would leave such a guide's Next/Previous
- * permanently disabled once opened.
- */
-function resolveActiveMilestoneSequence(
-  content: RawContent,
-  activeTrackId?: string | null,
-  activeTrackMilestones?: readonly Milestone[] | null
-): { currentMilestone: number; milestones: Milestone[] } | null {
-  const lj = content.type === 'learning-journey' ? content.metadata.learningJourney : undefined;
-
-  if (activeTrackId) {
-    if (lj?.currentMilestone === 0) {
-      const track = lj.tracks?.find((t) => t.trackId === activeTrackId);
-      if (track) {
-        return { currentMilestone: 0, milestones: [...track.milestones] };
-      }
-    } else if (activeTrackMilestones) {
-      const current = activeTrackMilestones.find((m) => m.url === content.url);
-      if (current) {
-        return { currentMilestone: current.number, milestones: [...activeTrackMilestones] };
-      }
-    }
-  }
-
-  return lj ? { currentMilestone: lj.currentMilestone, milestones: lj.milestones } : null;
-}
 
 export function getNextMilestoneUrl(
   content: RawContent,
