@@ -1,10 +1,50 @@
 # Changelog
 
-## Unreleased
+## 2.20.0
+
+### Added
+
+- **Assigned learning paths on My Paths**: Paths assigned to the signed-in user appear at the top of My Paths and are badged in the recommendations panel, with completion evaluated live and server-side from the user's own completion records. (#1957)
+
+- **Cloud E2E runs for unpublished local packages**: Run unpublished guides and prerequisites from a local checkout against platform-leased Grafana Cloud stacks, without a commit or CDN publication. (#2009)
+
+- **Runtime Grafana floor for guide manifests**: Guides can declare an optional `minGrafanaVersion`, surfacing a warning in the sidebar and floating/full-screen content surfaces when the running Grafana version is below that floor. Steps remain usable; missing or unreadable versions don't warn. (#1714)
+
+- **Configurable kiosk exit button label**: Catalog authors can override the kiosk exit button's visible label and accessible name through a top-level `exitButtonLabel` field, replacing the fixed "Back to Grafana" text. (#2031)
+
+- **Edit public guides as private copies**: Admins can choose Edit as private guide from an open public JSON guide's menu to customize an independent copy in the visual block editor, using the existing private-guide save and publish flow. The public original stays unchanged. (#1969)
+
+- **Customize private guide copies with Assistant**: Customize with Assistant asks about audience, desired outcome, and environment, then sends that context plus the guide to Assistant for a revised copy that opens in the block editor for review before saving. (#1972)
+
+### Fixed
+
+- **Guided tours through docking and navigation**: A guide-scoped session now retains its handler, running state, and cancellation across host replacements, so starting a tour in full screen and then docking or navigating no longer locks out new starts or aborts the run early. (#2039)
+
+- **Milestone toolbar on track-only guides**: Reading a guide reached through a Path Tracks track now keeps the milestone navigation and progress toolbar at the top, scoped to that track's own sequence, instead of losing it. (#2033)
+
+- **Startup chunk recovery and error attribution**: Startup imports retry without blocking plugin registration after a transient plugin CDN failure, and browser error capture now requires an actual Pathfinder asset or source path instead of misattributing unrelated Firefox and ResizeObserver errors. (#2026)
+
+- **Hardened guided execution and recovery**: Guided interactions keep their highlight visible until the run ends, recover a replaced target within a bounded window, and give each run cancellation and ownership through target discovery, delayed actions, and cross-tab execution; failed actions report an explicit outcome instead of a false completion. (#2018)
+
+- **Local-tier package checks before a full checkout scan**: Selecting a local-tier package validates the selected manifest first, so an unrelated symbolic or hard link elsewhere in the checkout produces the expected tier-mismatch skip instead of a configuration error. (#2037)
+
+- **Path guide list styling**: Restyled path guide list rows with more spacing and a colored panel per row, and removed the single-line description truncation. (#2021)
+
+- **Settings reads during Grafana startup**: Settings reads retry on transient 500, 502, 503, or 504 responses while a newly started Grafana instance's aggregated API comes up, preserving authoritative failures and the existing absent-resource fallback. (#2025)
+
+- **Forwarded interactive step properties**: `openGuide`, `formHint`, and `validateInput` fields parsed from top-level JSON guides now reach the runtime across direct React actions, section orchestration, controller and cross-tab commands, and live-tab execution; explicit `openGuide` takes precedence over the legacy `?doc=` URL fallback. (#1633)
+
+### Chore
+
+- **Fundamentals tab label**: Renamed the learning path cover page's main Tracks tab from "Foundations" to "Fundamentals". (#2034)
+
+- **French locale parity**: Brought the French catalog to full en-US key parity, filling empty stubs and translating remaining strings across the path cover page, My Learning tab, and Pathfinder settings. (#2036)
+
+- **Public documentation refresh**: Refreshed the public Interactive learning documentation with the Grafana Cloud disable/re-enable procedure and clarified organization scope, reload behavior, and the distinction between disabling Pathfinder and disabling recommendations. (#2024)
 
 ### Removed
 
-- **"Interactive Learning" wordmark in the docs panel tab bar**: Removed the wordmark and its adjacent divider from the recommendations rail, added in #1447. It read as unpolished branding rather than useful chrome; the recommendations icon button next to it is unaffected.
+- **"Interactive Learning" wordmark in the docs panel tab bar**: Removed the wordmark and its adjacent divider from the recommendations rail, added in #1447. It read as unpolished branding rather than useful chrome; the recommendations icon button next to it is unaffected. (#2020)
 
 ## 2.19.0
 
