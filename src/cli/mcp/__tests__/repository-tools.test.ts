@@ -290,13 +290,25 @@ describe('pathfinder_launch_package', () => {
     expect(payload.code).toBe('NOT_FOUND');
   });
 
-  it('always surfaces a partial-status warning with a tracking link on success', async () => {
+  it('links a guide with only the doc parameter and carries no warning', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_launch_package', { id: 'business-value' });
-    const warning = payload.warning as { status: string; message: string; tracking: string };
-    expect(warning).toBeDefined();
-    expect(warning.status).toBe('partial');
-    expect(warning.message).toMatch(/does NOT currently load|generic docs view/i);
-    expect(warning.tracking).toBe('https://github.com/grafana/grafana-pathfinder-app/issues/855');
+    const payload = await callTool('pathfinder_launch_package', { id: 'getting-started' });
+    expect(payload.launchPath).toBe(
+      `/a/grafana-pathfinder-app?doc=${encodeURIComponent('https://interactive-learning.grafana.net/packages/getting-started/content.json')}`
+    );
+    expect(payload.warning).toBeUndefined();
+  });
+
+  it('marks a path or journey link as a learning journey', async () => {
+    mockFetchJsonOnce(sampleIndex);
+    const payload = await callTool('pathfinder_launch_package', {
+      id: 'tour-journey',
+      instanceUrl: 'https://stack1.grafana.net',
+      panelMode: 'floating',
+    });
+    const doc = encodeURIComponent('https://interactive-learning.grafana.net/packages/tour-journey/content.json');
+    expect(payload.launchPath).toBe(`/a/grafana-pathfinder-app?doc=${doc}&type=learning-journey&panelMode=floating`);
+    expect(payload.launchUrl).toBe(`https://stack1.grafana.net${payload.launchPath as string}`);
+    expect(payload.warning).toBeUndefined();
   });
 });
