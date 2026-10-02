@@ -94,6 +94,7 @@ export const KioskCatalogSchema = z
           type: z.string().optional(),
           targetUrl: text.optional(),
           page: text.optional(),
+          interactiveLearning: z.boolean().optional(),
         })
       )
       .min(1)
@@ -104,7 +105,21 @@ export const KioskCatalogSchema = z
     if (ids.size !== catalog.rules.length) {
       ctx.addIssue({ code: 'custom', message: 'Duplicate rule ID' });
     }
+    for (const rule of catalog.rules) {
+      if (
+        rule.interactiveLearning === false &&
+        (!rule.page || !rule.page.startsWith('/') || rule.page.startsWith('//') || /[\\\x00-\x20]/.test(rule.page))
+      ) {
+        ctx.addIssue({ code: 'custom', message: 'Product rules require an internal page path' });
+      }
+    }
     for (const block of catalog.page.blocks) {
+      if (
+        block.type === 'launch-form' &&
+        catalog.rules.find((rule) => rule.id === block.ruleId)?.interactiveLearning === false
+      ) {
+        ctx.addIssue({ code: 'custom', message: 'Launch forms require interactive learning' });
+      }
       const refs =
         block.type === 'launch-form'
           ? [block.ruleId]

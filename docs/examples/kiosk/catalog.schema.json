@@ -310,6 +310,9 @@
         },
         "page": {
           "$ref": "#/$defs/__schema9"
+        },
+        "interactiveLearning": {
+          "type": "boolean"
         }
       },
       "required": ["id", "title", "url", "description"],

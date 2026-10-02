@@ -117,7 +117,7 @@ interface Props {
   page: Page;
   rules: KioskRule[];
   mode: KioskMode;
-  onLaunch: () => void;
+  onLaunch?: () => void;
 }
 
 function renderCommandTokens(tokens: ReturnType<typeof Prism.tokenize>): React.ReactNode {
@@ -199,7 +199,7 @@ function LaunchForm({
   blockIndex: number;
   rule: KioskRule;
   mode: KioskMode;
-  onLaunch: () => void;
+  onLaunch?: () => void;
 }) {
   const styles = useStyles2(getStyles);
   const id = useId();
@@ -418,6 +418,7 @@ export function KioskPage({ page, rules, mode, onLaunch }: Props) {
                       onClick={() => launchKioskGuide(rule, mode, onLaunch)}
                     >
                       {link.label ?? rule.title}
+                      {rule.interactiveLearning === false && ' — Open product'}
                     </Button>
                   );
                 })}

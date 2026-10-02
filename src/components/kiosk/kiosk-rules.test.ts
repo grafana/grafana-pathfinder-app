@@ -204,3 +204,24 @@ it('does not report cancellation as degradation or successful loading', async ()
   expect(logger.warn).not.toHaveBeenCalled();
   expect(recordKioskCatalogLoaded).not.toHaveBeenCalled();
 });
+
+it('accepts a navigation-only rule without validating or fetching its ignored guide URL', async () => {
+  mockFetch.mockResolvedValue({
+    ok: true,
+    json: async () => ({ rules: [{ ...rule, url: 'unused', interactiveLearning: false, page: '/a/product' }] }),
+  });
+  const result = await loadKioskData(defaultUrl);
+  expect(result.rules[0]?.interactiveLearning).toBe(false);
+  expect(result.warning).toBeUndefined();
+  expect(mockFetch).toHaveBeenCalledTimes(1);
+});
+it.each([undefined, '//evil.example', 'javascript:alert(1)'])(
+  'rejects navigation-only page %s at catalog load',
+  async (page) => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ rules: [{ ...rule, interactiveLearning: false, page }] }),
+    });
+    expect((await loadKioskData(defaultUrl)).warning).toBeDefined();
+  }
+);

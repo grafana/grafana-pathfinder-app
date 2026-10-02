@@ -13,6 +13,7 @@ export interface KioskRule {
   type: string;
   targetUrl?: string;
   page?: string;
+  interactiveLearning?: boolean;
 }
 
 export interface KioskRulesResponse {
@@ -56,7 +57,13 @@ function invalidRuleField(item: unknown): string | undefined {
       return field;
     }
   }
-  if (!isAllowedContentUrl(obj.url as string)) {
+  if (obj.interactiveLearning !== undefined && typeof obj.interactiveLearning !== 'boolean') {
+    return 'interactiveLearning';
+  }
+  if (obj.interactiveLearning === false && typeof obj.page !== 'string') {
+    return 'page';
+  }
+  if (obj.interactiveLearning !== false && !isAllowedContentUrl(obj.url as string)) {
     return 'url';
   }
   if (

@@ -1,3 +1,4 @@
+import { handleKioskLinkClick } from '../../utils/kiosk-navigation';
 import { getGuideResponseId } from '../../lib/guide-response-id';
 import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBoundary';
 import { finishGuideLoad, pauseGuideLoad, resumeGuideLoad } from '../../lib/telemetry/guide-load';
@@ -586,6 +587,9 @@ function ContentWithVariables({
   // Intercept clicks on interactive-learning links inside content.
   // Instead of navigating away, open the guide as a new tab in the sidebar.
   const handleContentClick = useCallback((e: React.MouseEvent) => {
+    if (handleKioskLinkClick(e.nativeEvent, true)) {
+      return;
+    }
     const anchor = (e.target as Element).closest?.('a[href]');
     if (!anchor) {
       return;

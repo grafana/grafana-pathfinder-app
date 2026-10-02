@@ -90,3 +90,28 @@ it('rejects arbitrary hero styling', () => {
     }).success
   ).toBe(false);
 });
+
+it.each([undefined, true, false])('accepts interactiveLearning=%s on product links', (interactiveLearning) => {
+  const catalog = {
+    ...demo,
+    page: { version: 1, blocks: [{ type: 'guide-links', layout: 'cards', links: [{ ruleId: 'combined' }] }] },
+    rules: [{ ...demo.rules[0], interactiveLearning }],
+  };
+  expect(KioskCatalogSchema.safeParse(catalog).success).toBe(true);
+});
+it.each([undefined, '', '//evil.example', 'https://evil.example', '/\\evil.example'])(
+  'rejects navigation-only page %s',
+  (page) => {
+    expect(
+      KioskCatalogSchema.safeParse({ ...demo, rules: [{ ...demo.rules[0], interactiveLearning: false, page }] }).success
+    ).toBe(false);
+  }
+);
+it('rejects navigation-only launch forms', () => {
+  expect(
+    KioskCatalogSchema.safeParse({
+      ...demo,
+      rules: demo.rules.map((rule) => ({ ...rule, interactiveLearning: false })),
+    }).success
+  ).toBe(false);
+});

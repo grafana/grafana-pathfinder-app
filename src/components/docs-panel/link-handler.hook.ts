@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
+import { handleKioskLinkClick, prepareKioskLink } from '../../utils/kiosk-navigation';
 import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import {
   reportAppInteraction,
@@ -76,6 +77,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
   useEffect(() => {
     const handleLinkClick = (event: MouseEvent) => {
+      if (handleKioskLinkClick(event, true)) {
+        return;
+      }
       const target = event.target as HTMLElement;
 
       // Handle both button and anchor elements with data-journey-start
@@ -626,6 +630,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
     }
 
     const syncBottomNavVisibility = () => {
+      contentElement.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((anchor) => prepareKioskLink(anchor, true));
       const nextButton = contentElement.querySelector<HTMLElement>('.journey-nav-next');
       const prevButton = contentElement.querySelector<HTMLElement>('.journey-nav-prev');
       if (nextButton) {
