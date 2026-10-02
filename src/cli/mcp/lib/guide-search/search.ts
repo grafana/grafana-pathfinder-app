@@ -294,7 +294,7 @@ function scoreEntry(
           }
           best = Math.max(best, FIELD_WEIGHTS[field] * (idf.get(candidate) ?? 0) * factor);
           matchedOn.add(field);
-          inTitleOrId ||= field === 'title' || field === 'id';
+          inTitleOrId ||= factor === 1 && (field === 'title' || field === 'id');
         }
       }
       if (best > 0) {

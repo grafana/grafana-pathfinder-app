@@ -186,6 +186,32 @@ describe('pathfinder_find_guides', () => {
     }
   });
 
+  it('links a path step to its parent path under type "guide"', async () => {
+    mockIndexOnce(snapshot);
+    const { payload } = await callFind({
+      queries: ['helm chart'],
+      type: 'guide',
+      instanceUrl: 'https://stack1.grafana.net',
+    });
+    const step = payload.results.find((r: { id: string }) => r.id === 'kubernetes-lp-deploy-helm-chart');
+    const parentLink = `/a/grafana-pathfinder-app?doc=${doc('kubernetes-lp')}&type=learning-journey`;
+    expect(step).toMatchObject({
+      partOf: { id: 'kubernetes-lp', step: 2, of: 6 },
+      launchPath: parentLink,
+      launchUrl: `https://stack1.grafana.net${parentLink}`,
+    });
+  });
+
+  it('keeps its own link for a guide that belongs to no path under type "guide"', async () => {
+    mockIndexOnce(sampleIndex);
+    const { payload } = await callFind({ queries: ['alerting 101'], type: 'guide' });
+    expect(payload.results[0]).toMatchObject({
+      id: 'alerting-101',
+      launchPath: `/a/grafana-pathfinder-app?doc=${doc('alerting-101')}`,
+    });
+    expect(payload.results[0]).not.toHaveProperty('partOf');
+  });
+
   it('keeps five results from the real catalog small', async () => {
     mockIndexOnce(snapshot);
     const { payload, text } = await callFind({ queries: ['adaptive logs', 'reduce log volume', 'log cost'] });

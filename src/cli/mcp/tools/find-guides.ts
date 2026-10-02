@@ -120,7 +120,7 @@ async function handleFindGuides(args: FindGuidesInput): Promise<ToolResult> {
     );
   }
 
-  const results = outcome.results.map((result) => renderResult(result, catalog.baseUrl, args.instanceUrl));
+  const results = outcome.results.map((result) => renderResult(result, index, catalog.baseUrl, args.instanceUrl));
   return textResult(
     renderMachineJson({
       results,
@@ -132,9 +132,15 @@ async function handleFindGuides(args: FindGuidesInput): Promise<ToolResult> {
   );
 }
 
-function renderResult(result: GuideSearchResult, baseUrl: string, instanceUrl?: string): Record<string, unknown> {
+function renderResult(
+  result: GuideSearchResult,
+  index: GuideSearchIndex,
+  baseUrl: string,
+  instanceUrl?: string
+): Record<string, unknown> {
   const { entry } = result;
-  const link = buildLaunchLink({ baseUrl, entryPath: entry.path, type: entry.type, instanceUrl });
+  const linkEntry = (result.partOf && index.byId.get(result.partOf.id)?.entry) ?? entry;
+  const link = buildLaunchLink({ baseUrl, entryPath: linkEntry.path, type: linkEntry.type, instanceUrl });
   return omitEmpty({
     id: entry.id,
     type: result.type,
