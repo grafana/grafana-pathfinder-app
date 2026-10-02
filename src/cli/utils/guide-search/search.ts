@@ -229,7 +229,7 @@ export function searchGuides(index: GuideSearchIndex, request: GuideSearchReques
 
   const results =
     request.type === 'guide'
-      ? collectGuides(index, scored, passesCategory)
+      ? collectGuides(index, scored, isEligible, passesCategory)
       : collectGrouped(index, scored, isEligible, passesCategory, request.type === 'path');
 
   results.sort(compareRanked);
@@ -356,25 +356,34 @@ interface Ranked {
   result: GuideSearchResult;
 }
 
+/** A step links to its parent path, so a step whose every parent is excluded or hidden is dropped. */
 function collectGuides(
   index: GuideSearchIndex,
   scored: Scored[],
+  isEligible: (indexed: IndexedEntry | undefined) => indexed is IndexedEntry,
   passesCategory: (indexed: IndexedEntry) => boolean
 ): Ranked[] {
   return scored
     .filter((s) => s.indexed.kind === 'guide' && passesCategory(s.indexed))
-    .map((s) => {
-      const parent = index.parents.get(s.indexed.entry.id)?.[0];
-      const parentEntry = parent ? index.byId.get(parent.pathId)?.entry : undefined;
-      return {
-        score: s.score,
-        result: {
-          ...baseResult(s.indexed, s.strong, s.matchedOn),
-          ...(parent && parentEntry
-            ? { partOf: { id: parentEntry.id, title: parentEntry.title, step: parent.step, of: parent.of } }
-            : {}),
+    .flatMap((s) => {
+      const parents = index.parents.get(s.indexed.entry.id);
+      if (!parents) {
+        return [{ score: s.score, result: baseResult(s.indexed, s.strong, s.matchedOn) }];
+      }
+      const parent = parents.find((ref) => isEligible(index.byId.get(ref.pathId)));
+      const parentEntry = parent ? index.byId.get(parent.pathId)!.entry : undefined;
+      if (!parent || !parentEntry) {
+        return [];
+      }
+      return [
+        {
+          score: s.score,
+          result: {
+            ...baseResult(s.indexed, s.strong, s.matchedOn),
+            partOf: { id: parentEntry.id, title: parentEntry.title, step: parent.step, of: parent.of },
+          },
         },
-      };
+      ];
     });
 }
 

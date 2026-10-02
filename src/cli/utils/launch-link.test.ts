@@ -1,4 +1,4 @@
-import { buildLaunchLink } from '../launch-link';
+import { buildLaunchLink } from './launch-link';
 
 const BASE = 'https://interactive-learning.grafana.net/packages/';
 const doc = (id: string) => encodeURIComponent(`${BASE}${id}/content.json`);

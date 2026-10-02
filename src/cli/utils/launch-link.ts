@@ -1,14 +1,17 @@
 /**
  * The one builder for Pathfinder deep links to published packages, shared by
- * `pathfinder_launch_package` and `pathfinder_find_guides`.
+ * the `find-guides` command (and so `pathfinder_find_guides`) and
+ * `pathfinder_launch_package`.
  *
  * Node-safe twin of `buildPathfinderShareUrl` in
  * `src/utils/pathfinder-search-params.ts`, which needs `window`. Both apply the
  * same rule: a path or journey link carries `type=learning-journey`.
  */
 
-import { buildPackageFileUrl } from '../../utils/repository-client';
-import { PLUGIN_VIEWER_BASE } from './constants';
+import { buildPackageFileUrl } from './repository-client';
+
+/** Grafana plugin viewer base path. Combined with `?doc=…` for guide links. */
+export const PLUGIN_VIEWER_BASE = '/a/grafana-pathfinder-app';
 
 export interface LaunchLinkInput {
   /** Repository base URL — the folder that holds `repository.json`. */
