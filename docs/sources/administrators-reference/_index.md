@@ -140,7 +140,9 @@ https://your-stack.grafana.net/?pathfinderKiosk=1&kioskRulesUrl=https%3A%2F%2Fin
 
 Replace the example catalog address with your published catalog. If your Grafana URL already has a query string, append parameters with `&`.
 
-Guides selected from a URL-launched kiosk open in the same browser tab and Grafana instance. Selecting a guide exits the kiosk and opens the sidebar. Refreshing while the kiosk is open reopens the selected catalog; closing it removes the kiosk launch parameters.
+Guides selected from a URL-launched kiosk open in the same browser tab and Grafana instance. Product tiles labeled **Open product** open the product directly and close the learning panel while keeping saved guides and panel preferences. Browser Back returns to the kiosk after either launch.
+
+When the kiosk opens, its launch parameters are removed from the address bar. Refresh and browser Back or Forward restore the selected catalog from that history entry. Selecting the exit button or pressing **Escape** dismisses it, so refresh does not reopen it. Share the original kiosk link; the cleaned address is not a kiosk link.
 
 ### Custom catalogs
 
@@ -160,7 +162,9 @@ A catalog can be a rules array or an object containing `rules` and an optional H
 ]
 ```
 
-The optional `page` must be a safe internal Grafana path. URL-launched kiosks ignore `targetUrl` destinations, keeping learners on the current instance. Guide URLs must be accepted content sources. Custom HTML banners are sanitized before display.
+Set `interactiveLearning: false` on a rule to open a product directly. This requires a safe internal `page`; the guide `url` is retained but ignored. These rules show no guide completion progress and cannot be used by launch forms. Omit the field or set it to `true` to launch a guide. Deploy a Pathfinder version supporting this field before publishing the catalog: earlier strict catalog readers reject it.
+
+The optional `page` for a guide must be a safe internal Grafana path. URL-launched kiosks ignore `targetUrl` destinations, keeping learners on the current instance. Guide URLs must be accepted content sources. Custom HTML banners are sanitized before display.
 
 Without a custom catalog, the kiosk shows the bundled Grafana learning catalog. If a selected catalog fails, Pathfinder tries the configured default, then the generic online catalog, and finally a bundled fallback. Loading guide content can still require a network connection.
 

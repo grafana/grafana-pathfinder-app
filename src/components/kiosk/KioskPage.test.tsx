@@ -260,3 +260,27 @@ it('copies exactly the displayed resolved stack argument', async () => {
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(document.querySelector('code')?.textContent));
   expect(document.querySelector('code')?.textContent).toBe('setup --stack your-stack');
 });
+
+it.each(['instance', 'presentation'] as const)('launches product rules from the links layout in %s mode', (mode) => {
+  const product = {
+    id: 'product',
+    title: 'Product',
+    description: 'Explore',
+    url: 'ignored',
+    page: '/a/product',
+    type: 'interactive',
+    interactiveLearning: false,
+  };
+  const onLaunch = jest.fn();
+  render(
+    <KioskPage
+      page={{ version: 1, blocks: [{ type: 'guide-links', layout: 'links', links: [{ ruleId: 'product' }] }] }}
+      rules={[product]}
+      mode={mode}
+      onLaunch={onLaunch}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Product — Open product' }));
+  expect(launchKioskGuide).toHaveBeenCalledWith(product, mode, onLaunch);
+  expect(prepareKioskInputs).not.toHaveBeenCalled();
+});

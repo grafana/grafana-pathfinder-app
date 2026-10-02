@@ -1,3 +1,5 @@
+import { config } from '@grafana/runtime';
+import { sidebarState } from '../../global-state/sidebar';
 import { launchKioskGuide } from './launch-kiosk-guide';
 import { REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
@@ -11,9 +13,10 @@ import type { KioskRule } from './kiosk-rules';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
 const mockPush = jest.fn();
+const mockPublish = jest.fn();
 jest.mock('@grafana/runtime', () => ({
   config: {},
-  getAppEvents: () => ({ publish: jest.fn() }),
+  getAppEvents: () => ({ publish: mockPublish }),
   locationService: {
     push: (...args: unknown[]) => mockPush(...args),
     getLocation: () => ({ pathname: '/dashboards', search: '?orgId=2&pathfinderKiosk=1', hash: '' }),
@@ -245,4 +248,63 @@ describe('KioskTile', () => {
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockOpen).not.toHaveBeenCalled();
   });
+});
+
+describe('product navigation', () => {
+  const product: KioskRule = {
+    title: 'Product',
+    description: 'Explore',
+    type: 'interactive',
+    url: 'ignored',
+    page: '/a/product?view=all&doc=ignored#tab',
+    interactiveLearning: false,
+  };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    config.appSubUrl = '';
+  });
+  it('opens the product without guide side effects and retains the panel preference', () => {
+    panelModeManager.setModePersisted('floating');
+    const close = jest.fn();
+    render(<KioskTile rule={product} index={0} mode="instance" onLaunch={close} />);
+    fireEvent.click(screen.getByRole('button', { name: /Open product/ }));
+    expect(mockPush).toHaveBeenCalledWith('/a/product?view=all&orgId=2#tab');
+    expect(reportAppInteraction).not.toHaveBeenCalledWith(UserInteraction.KioskDemoStarted, expect.anything());
+    expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
+    expect(panelModeManager.getMode()).toBe('sidebar');
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/% complete/)).not.toBeInTheDocument();
+  });
+  it('closes only the Pathfinder sidebar', () => {
+    sidebarState.setIsSidebarMounted(true);
+    launchKioskGuide(product, 'instance');
+    expect(mockPublish).toHaveBeenCalledWith({ type: 'close-extension-sidebar', payload: {} });
+    mockPublish.mockClear();
+    (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(true);
+    launchKioskGuide(product, 'instance');
+    expect(mockPublish).not.toHaveBeenCalled();
+    (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
+    sidebarState.setIsSidebarMounted(false);
+  });
+  it('uses the target instance subpath in presentation mode', () => {
+    launchKioskGuide({ ...product, targetUrl: 'https://example.com/grafana/' }, 'presentation');
+    expect(window.open).toHaveBeenCalledWith(
+      'https://example.com/grafana/a/product?view=all#tab',
+      '_blank',
+      'noopener,noreferrer'
+    );
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+  it('strips an existing Grafana subpath before router navigation', () => {
+    config.appSubUrl = '/grafana';
+    launchKioskGuide({ ...product, page: '/grafana/a/product' }, 'instance');
+    expect(mockPush).toHaveBeenCalledWith('/a/product?orgId=2');
+  });
+  it.each([undefined, '//evil.example', 'javascript:alert(1)', '/\\evil.example'])(
+    'rejects invalid product page %s',
+    (page) => {
+      launchKioskGuide({ ...product, page }, 'instance');
+      expect(mockPush).not.toHaveBeenCalled();
+    }
+  );
 });

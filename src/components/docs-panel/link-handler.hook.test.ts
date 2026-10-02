@@ -1,3 +1,4 @@
+import { config } from '@grafana/runtime';
 import { renderHook, fireEvent, waitFor } from '@testing-library/react';
 import { useLinkClickHandler } from './link-handler.hook';
 import { UserInteraction } from '../../lib/analytics';
@@ -858,4 +859,66 @@ describe('useLinkClickHandler', () => {
       );
     });
   });
+});
+
+describe('kiosk return links', () => {
+  it.each([
+    [
+      '/?pathfinderKiosk=1&kioskRulesUrl=https%3A%2F%2Finteractive-learning.grafana.net%2Fguides%2Fkiosk%2Fdem%2Frules.json',
+      {},
+    ],
+    ['/?pathfinderKiosk=1', { ctrlKey: true }],
+    ['https://external.example/?pathfinderKiosk=1', {}],
+  ])('does not resolve or open a kiosk return link as guide content: %s', (href, options) => {
+    const content = document.createElement('div');
+    const anchor = document.createElement('a');
+    anchor.href = href as string;
+    const child = document.createElement('span');
+    child.textContent = 'Return to DEM';
+    anchor.appendChild(child);
+    content.appendChild(anchor);
+    const model = {
+      loadTab: jest.fn(),
+      openLearningJourney: jest.fn(),
+      openDocsPage: jest.fn(),
+      getActiveTab: () => null,
+      navigateToNextMilestone: jest.fn(),
+      navigateToPreviousMilestone: jest.fn(),
+      canNavigateNext: () => false,
+      canNavigatePrevious: () => false,
+    };
+    renderHook(() =>
+      useLinkClickHandler({ contentRef: { current: content }, activeTab: null, theme: {} as any, model })
+    );
+    fireEvent.click(child, options);
+    expect(model.openLearningJourney).not.toHaveBeenCalled();
+    expect(model.openDocsPage).not.toHaveBeenCalled();
+    expect(model.loadTab).not.toHaveBeenCalled();
+  });
+});
+
+it('normalizes rendered kiosk hrefs for native new-tab actions before any click', () => {
+  config.appSubUrl = '/grafana';
+  const content = document.createElement('div');
+  const anchor = document.createElement('a');
+  anchor.href = '/?pathfinderKiosk=1';
+  content.appendChild(anchor);
+  const model = {
+    loadTab: jest.fn(),
+    openLearningJourney: jest.fn(),
+    getActiveTab: () => null,
+    navigateToNextMilestone: jest.fn(),
+    navigateToPreviousMilestone: jest.fn(),
+    canNavigateNext: () => false,
+    canNavigatePrevious: () => false,
+  };
+  try {
+    renderHook(() =>
+      useLinkClickHandler({ contentRef: { current: content }, activeTab: null, theme: {} as any, model })
+    );
+    expect(anchor.pathname).toBe('/grafana/');
+    expect(anchor.search).toBe('?pathfinderKiosk=1');
+  } finally {
+    config.appSubUrl = '';
+  }
 });

@@ -61,6 +61,7 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
         overrideUrl={launch.rulesUrl}
         mode={launch.source === 'url' ? 'instance' : 'presentation'}
         onClose={handleClose}
+        onLaunch={() => kioskState.set(null)}
       />
     </ThemeContext.Provider>
   );

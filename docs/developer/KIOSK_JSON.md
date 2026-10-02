@@ -120,3 +120,19 @@ Authors can opt in to the reserved `{{grafana.stackUrl}}` placeholder in command
 The renderer substitutes the hosting Grafana instance's full HTTPS origin as a shell-quoted argument, preserving dev domains and ports. Use the placeholder as an entire, unquoted argument. Localhost and HTTP instances show `your-stack` for manual replacement. A fixed URL or `your-stack` without the placeholder stays unchanged. Both display and Copy use the resolved command.
 
 Only this reserved command placeholder is resolved. Guide answers, URL parameters, and arbitrary variables are never interpolated. The stack does not come from a guide tile's destination, and command values are excluded from analytics and logs. Deploy renderer support before publishing catalogs that use the placeholder.
+
+## Product destinations
+
+Set `interactiveLearning: false` on a rule to open its `page` directly. The page must be a valid internal Grafana path. The `url` remains a guide reference but is ignored for this launch. Omitting `interactiveLearning`, or setting it to `true`, preserves guide launches.
+
+Product tiles show **Open product** and no completion progress. Cards and link layouts both support product destinations. Launch forms require an interactive learning rule. Instance mode navigates in the current tab and closes Pathfinder's learning panel while retaining saved guides and the panel preference. Presentation mode opens the configured target instance in a new tab, preserving its Grafana subpath.
+
+Deploy a Pathfinder version supporting `interactiveLearning` before publishing catalogs that use it. Earlier strict catalog readers reject the new field and fall back to another catalog.
+
+## Kiosk links and browser history
+
+An accepted `pathfinderKiosk=1` launch consumes `pathfinderKiosk` and `kioskRulesUrl` from the address bar and stores the catalog request on that history entry. Other query parameters, the fragment, and unrelated history state are retained. Refresh and browser Back/Forward restore that entry's kiosk. The cleaned address is not a shareable kiosk link; share the original launch URL explicitly.
+
+Launching a product or guide pushes a destination entry and retains the kiosk entry for browser Back. The exit button and Escape explicitly dismiss the kiosk and clear its entry state, so refresh cannot reopen it. Unrelated SPA navigation does not inherit kiosk state. There is no global last-kiosk preference.
+
+Guide links containing `pathfinderKiosk=1` navigate to the kiosk instead of opening a documentation tab. Root-relative links target the current Grafana instance, including its subpath. External-instance links and modified clicks retain browser navigation behavior. `doc` and `controller` parameters retain precedence over kiosk launches.

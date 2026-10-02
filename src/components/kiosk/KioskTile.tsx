@@ -26,7 +26,7 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
     !rule.targetUrl ||
     new URL(rule.targetUrl, window.location.origin).origin === window.location.origin;
   useEffect(() => {
-    if (!sameInstance) {
+    if (!sameInstance || rule.interactiveLearning === false) {
       return;
     }
     let cancelled = false;
@@ -40,9 +40,11 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
     return () => {
       cancelled = true;
     };
-  }, [rule.url, rule.type, sameInstance, revision]);
+  }, [rule.url, rule.type, rule.interactiveLearning, sameInstance, revision]);
   const percentage =
-    sameInstance && progress?.url === rule.url && progress.type === rule.type ? progress.percentage : undefined;
+    rule.interactiveLearning !== false && sameInstance && progress?.url === rule.url && progress.type === rule.type
+      ? progress.percentage
+      : undefined;
 
   const handleClick = useCallback(() => {
     launchKioskGuide(rule, mode, onLaunch);
@@ -54,7 +56,7 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
         <span className={styles.tileIcon}>
           <Icon name="compass" size="lg" />
         </span>
-        <span className={styles.tileBadge}>{rule.type}</span>
+        <span className={styles.tileBadge}>{rule.interactiveLearning === false ? 'Product' : rule.type}</span>
       </span>
       <span className={styles.tileTitle} data-testid={testIds.kioskMode.tileTitle(index)}>
         {rule.title}
@@ -67,7 +69,7 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
         </span>
       )}
       <span className={styles.tileArrow}>
-        <span>Launch guide</span>
+        <span>{rule.interactiveLearning === false ? 'Open product' : 'Launch guide'}</span>
         <Icon name="arrow-right" size="sm" />
       </span>
     </button>
