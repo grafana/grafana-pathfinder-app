@@ -42,7 +42,7 @@ export default function MemoizedContextPanel() {
 function SidebarContent() {
   const { config, isResolved, hasError } = usePathfinderPluginConfig();
   if (!isResolved && !hasError) {
-    return <LoadingPlaceholder text="Loading Pathfinder settings" />;
+    return <LoadingPlaceholder text="Loading interactive learning settings" />;
   }
   return <ResolvedSidebarContent config={config} />;
 }

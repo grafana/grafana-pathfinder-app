@@ -245,7 +245,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         aria-label={
           isCloud
             ? t('appConfig.pathfinderPreview', 'Interactive learning')
-            : t('appConfig.pathfinderEnabled', 'Enable Pathfinder')
+            : t('appConfig.pathfinderEnabled', 'Enable interactive learning')
         }
         backgroundColor={isCloud ? 'secondary' : undefined}
         borderColor={isCloud ? 'info' : undefined}
@@ -265,7 +265,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             <p>
               {t(
                 'appConfig.pathfinderPreviewDescription',
-                'Pathfinder brings contextual help and interactive guides into Grafana.'
+                'Interactive learning brings contextual help and interactive guides into Grafana.'
               )}
             </p>
             <p>
@@ -277,10 +277,10 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           </>
         )}
         <Field
-          label={t('appConfig.pathfinderEnabled', 'Enable Pathfinder')}
+          label={t('appConfig.pathfinderEnabled', 'Enable interactive learning')}
           description={t(
             'appConfig.pathfinderEnabledDescription',
-            'Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, Pathfinder stays available.'
+            'Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, interactive learning stays available.'
           )}
         >
           <Switch
@@ -290,10 +290,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           />
         </Field>
         {!getFeatureFlagValue('pathfinder.enabled', true) && (
-          <Alert title={t('appConfig.pathfinderRemotelyDisabled', 'Pathfinder is disabled remotely')} severity="info">
+          <Alert
+            title={t('appConfig.pathfinderRemotelyDisabled', 'Interactive learning is disabled remotely')}
+            severity="info"
+          >
             {t(
               'appConfig.pathfinderRemotelyDisabledDescription',
-              'The remote switch currently prevents Pathfinder from running. Your saved preference will apply when Pathfinder is enabled remotely again.'
+              'The remote switch currently prevents interactive learning from running. Your saved preference will apply when interactive learning is enabled remotely again.'
             )}
           </Alert>
         )}

@@ -324,7 +324,7 @@ it.each([{}, { pathfinderEnabled: true }])(
     mockSaveTenant.mockResolvedValue(true);
     mockFetchTenant.mockResolvedValueOnce(tenantSnapshot({})).mockResolvedValueOnce(tenantSnapshot(saved));
     await expect(saveTenantSettings({ pluginId: PLUGIN_ID, changes: { pathfinderEnabled: false } })).rejects.toThrow(
-      'Pathfinder preference was not retained'
+      'Interactive learning preference was not retained'
     );
     expect(mockUpdatePlugin).not.toHaveBeenCalled();
   }
