@@ -595,6 +595,18 @@ node dist/cli/cli/index.js --format json find-guides --queries postgresql --type
 
 ---
 
+### Live quality check
+
+The ranking unit tests run offline over a small synthetic catalog. To measure search quality against the real published catalog, run:
+
+```bash
+npm run eval:guide-search
+```
+
+It builds the CLI, runs each case in `scripts/guide-search-eval/cases.json` through `find-guides` against the live catalog (or `PATHFINDER_REPOSITORY_URL` when set), and prints top-three recall, `noStrongMatch` correctness on the cases with no right answer, and every miss. It exits non-zero when top-three recall is below 90% or any no-answer case reports a strong match. Pass `--json` to `node scripts/guide-search-eval/evaluate.js` for a machine-readable report.
+
+The check needs the network and the catalog changes underneath it, so it does not run in `npm test` or on pull requests. When a case fails because the catalog changed, update the case's expected ids rather than the thresholds.
+
 ## CI workflow example with package validation
 
 This GitHub Actions snippet validates packages and checks `repository.json` and manifest-stats freshness — the pattern used in this repository's `.github/workflows/ci.yml`:
