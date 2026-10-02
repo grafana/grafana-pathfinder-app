@@ -131,6 +131,17 @@ describe('searchGuides', () => {
     });
   });
 
+  it('does not count a prefix-expanded term toward strong', () => {
+    const results = search({ queries: ['deplo helm'], type: 'guide' }).results;
+    expect(results.find((r) => r.entry.id === 'kubernetes-lp-deploy')).toMatchObject({
+      relevance: 'partial',
+      matchedOn: ['title', 'id'],
+    });
+    expect(search({ queries: ['deploy helm'], type: 'guide' }).results[0]).toMatchObject({
+      relevance: 'strong',
+    });
+  });
+
   it('combines several queries so one strong phrasing wins', () => {
     const outcome = search({ queries: ['make fewer series', 'reduce cardinality'] });
     expect(outcome.results[0]).toMatchObject({ relevance: 'strong' });
@@ -210,13 +221,13 @@ describe('searchGuides', () => {
     expect(outcome.ok && outcome.results.map((r) => r.entry.id)).toEqual(['z-path', 'a-guide', 'b-guide']);
   });
 
-  it('matches data-source variants by prefix', () => {
+  it('matches data-source variants by prefix without labelling them strong', () => {
     const variants = buildGuideSearchIndex([
       { id: 'postgresql-data-source-lj', type: 'path', path: 'p/', title: 'Connect to a PostgreSQL data source' },
     ]);
     const outcome = searchGuides(variants, { queries: ['connect postgres'], limit: 5 });
     expect(outcome.ok && outcome.results.map((r) => [r.entry.id, r.relevance])).toEqual([
-      ['postgresql-data-source-lj', 'strong'],
+      ['postgresql-data-source-lj', 'partial'],
     ]);
   });
 
