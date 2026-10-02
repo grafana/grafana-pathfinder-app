@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.20.1
+
+### Added
+
+- **Direct product tiles in kiosk catalogs**: Catalog authors can offer Open product tiles alongside guided setup, taking users directly to a Grafana product without starting a guide or showing learning progress. Publish catalogs using the new field only after their target instances run a supporting Pathfinder version. (#2042)
+
+### Fixed
+
+- **Kiosk navigation and return links**: URL-launched kiosks keep their shareable launch parameters and restore the catalog on refresh or browser Back/Forward. Explicit exit and Escape clear those parameters, while guide footer links return to the kiosk from sidebar and floating mode. (#2042)
+
 ## 2.20.0
 
 ### Added
