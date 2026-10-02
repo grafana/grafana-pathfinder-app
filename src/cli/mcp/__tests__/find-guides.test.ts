@@ -8,7 +8,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-import snapshot from '../../utils/guide-search/__tests__/fixtures/catalog-snapshot.json';
+import fixture from '../../utils/guide-search/__tests__/fixtures/catalog-fixture.json';
 import { __resetRepositoryClientForTests, REPOSITORY_URL_ENV_VAR } from '../../utils/repository-client';
 import { buildServer } from '../server';
 import { __resetFindGuidesForTests } from '../../commands/find-guides';
@@ -187,19 +187,19 @@ describe('pathfinder_find_guides', () => {
   });
 
   it('links a path step to its parent path under type "guide"', async () => {
-    mockIndexOnce(snapshot);
+    mockIndexOnce(fixture);
     const { payload } = await callFind({
-      queries: ['helm chart'],
+      queries: ['configure log pipelines'],
       type: 'guide',
       instanceUrl: 'https://stack1.grafana.net',
     });
-    const step = payload.results.find((r: { id: string }) => r.id === 'kubernetes-lp-deploy-helm-chart');
-    const parentLink = `/a/grafana-pathfinder-app?doc=${doc('kubernetes-lp')}&type=learning-journey`;
+    const step = payload.results.find((r: { id: string }) => r.id === 'ingest-logs-configure');
+    const parentLink = `/a/grafana-pathfinder-app?doc=${doc('ingest-logs-lj')}&type=learning-journey`;
     expect(step).toMatchObject({
-      partOf: { id: 'kubernetes-lp', step: 2, of: 6 },
+      partOf: { id: 'ingest-logs-lj', step: 2, of: 3 },
       launchPath: parentLink,
       launchUrl: `https://stack1.grafana.net${parentLink}`,
-      startsIn: '/a/grafana-k8s-app',
+      startsIn: '/a/example-collector-app',
     });
   });
 
@@ -226,9 +226,9 @@ describe('pathfinder_find_guides', () => {
     expect(payload.results[0]).not.toHaveProperty('partOf');
   });
 
-  it('keeps five results from the real catalog small', async () => {
-    mockIndexOnce(snapshot);
-    const { payload, text } = await callFind({ queries: ['adaptive logs', 'reduce log volume', 'log cost'] });
+  it('keeps five results small', async () => {
+    mockIndexOnce(fixture);
+    const { payload, text } = await callFind({ queries: ['verify incoming data', 'collector', 'telemetry'] });
     expect(payload.results).toHaveLength(5);
     expect(Buffer.byteLength(text, 'utf8')).toBeLessThan(3072);
   });
