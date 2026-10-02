@@ -7,7 +7,7 @@ import pluginJson from '../../plugin.json';
 import { AUTO_OPEN_DOCS_EVENT, REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { stripPathfinderParams } from '../../utils/pathfinder-search-params';
+import { PATHFINDER_PARAMS, stripPathfinderParams } from '../../utils/pathfinder-search-params';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import type { KioskRule } from './kiosk-rules';
 import { parseKioskWebUrl } from '../../security/kiosk-url';
@@ -31,7 +31,7 @@ export function launchKioskGuide(
       return;
     }
     const destination = new URL(page, window.location.origin);
-    stripPathfinderParams(destination);
+    stripProductLaunchParams(destination);
     if (mode === 'presentation') {
       const target = parseKioskWebUrl(
         rule.targetUrl || new URL(`${config.appSubUrl ?? ''}/`, window.location.origin).href,
@@ -45,7 +45,7 @@ export function launchKioskGuide(
         basePath && (destination.pathname === basePath || destination.pathname.startsWith(`${basePath}/`))
           ? destination.pathname
           : `${basePath}${destination.pathname}`;
-      stripPathfinderParams(target);
+      stripProductLaunchParams(target);
       for (const [key, value] of destination.searchParams) {
         target.searchParams.set(key, value);
       }
@@ -158,5 +158,13 @@ export function launchKioskGuide(
     }
   } else {
     window.open(url.toString(), '_blank', 'noopener,noreferrer');
+  }
+}
+
+function stripProductLaunchParams(url: URL): void {
+  for (const param of PATHFINDER_PARAMS) {
+    if (param !== 'page' && param !== 'type' && param !== 'source') {
+      url.searchParams.delete(param);
+    }
   }
 }

@@ -275,6 +275,21 @@ describe('product navigation', () => {
     expect(close).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/% complete/)).not.toBeInTheDocument();
   });
+  it('preserves product query names while removing guide activation parameters', () => {
+    const page =
+      '/datasources/new?type=prometheus&page=2&source=catalog&doc=ignored&panelMode=floating&controller=1&pathfinderKiosk=1&kioskRulesUrl=ignored&kiosk_session=ignored';
+    launchKioskGuide({ ...product, page }, 'instance');
+    expect(mockPush).toHaveBeenCalledWith('/datasources/new?type=prometheus&page=2&source=catalog&orgId=2');
+    launchKioskGuide(
+      { ...product, page, targetUrl: 'https://example.com/grafana/?source=target&page=3&type=loki&doc=ignored' },
+      'presentation'
+    );
+    expect(window.open).toHaveBeenCalledWith(
+      'https://example.com/grafana/datasources/new?source=catalog&page=2&type=prometheus',
+      '_blank',
+      'noopener,noreferrer'
+    );
+  });
   it('closes only the Pathfinder sidebar', () => {
     sidebarState.setIsSidebarMounted(true);
     launchKioskGuide(product, 'instance');

@@ -1,4 +1,3 @@
-import { locationService } from '@grafana/runtime';
 import { kioskState } from '../global-state/kiosk';
 import { getConfigWithDefaults } from '../constants';
 import { initializeConfiguredSurfaces } from './configured-bootstrap';
@@ -17,7 +16,6 @@ const live = { pathfinderEnabled: true, controllerRequested: false, hasDoc: fals
 
 describe('configured bootstrap', () => {
   beforeEach(() => {
-    locationService.replace('/');
     window.history.replaceState({}, '', '/');
     kioskState.set(null);
   });
@@ -36,7 +34,6 @@ describe('configured bootstrap', () => {
       openPanelOnLaunch: true,
     });
     resolve(authoritative);
-    locationService.replace(`${window.location.pathname}${window.location.search}${window.location.hash}`);
     await initialized;
 
     expect(calls.mountExecutor).toHaveBeenCalledWith(authoritative);
@@ -142,7 +139,6 @@ describe('configured bootstrap', () => {
       kioskRulesUrl: 'https://catalog.example.com/default.json',
     });
     resolve(config);
-    locationService.replace(`${window.location.pathname}${window.location.search}${window.location.hash}`);
     await initialized;
     expect(calls.mountKiosk).toHaveBeenCalledTimes(1);
     expect(calls.mountKiosk).toHaveBeenCalledWith(config);
@@ -155,7 +151,6 @@ describe('configured bootstrap', () => {
     const calls = effects();
     const initialized = initializeConfiguredSurfaces(Promise.resolve(getConfigWithDefaults({})), live, calls);
     window.history.replaceState({}, '', '/?pathfinderKiosk=1&kioskRulesUrl=new');
-    locationService.replace(`${window.location.pathname}${window.location.search}${window.location.hash}`);
     await initialized;
     expect(kioskState.getSnapshot()?.rulesUrl).toBe('new');
   });

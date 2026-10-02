@@ -4,76 +4,30 @@ import { parsePathfinderDeepLink } from './pathfinder-search-params';
 
 let detach: (() => void) | undefined;
 
-const HISTORY_KEY = 'grafana-pathfinder-app:kiosk';
-let replacing = false;
-
-function entryState(): Record<string, unknown> {
-  const state = locationService.getLocation().state;
-  return state && typeof state === 'object' ? { ...state } : {};
-}
-
-function replaceEntry(state: Record<string, unknown>): void {
-  const location = locationService.getLocation();
-  const search = new URLSearchParams(location.search);
-  search.delete('pathfinderKiosk');
-  search.delete('kioskRulesUrl');
-  replacing = true;
-  try {
-    locationService.replace({ ...location, search: search.size ? `?${search}` : '', state });
-  } finally {
-    replacing = false;
-  }
-}
-
 export function clearKioskLaunchParams(): void {
-  const state = entryState();
-  delete state[HISTORY_KEY];
-  replaceEntry(state);
+  const url = new URL(window.location.href);
+  url.searchParams.delete('pathfinderKiosk');
+  url.searchParams.delete('kioskRulesUrl');
+  locationService.replace({
+    ...locationService.getLocation(),
+    search: url.search,
+    hash: url.hash,
+  });
 }
 
 export function installKioskNavigation(mount: () => void): boolean {
   detach?.();
-  const handleNavigation = (_location?: unknown, action?: string) => {
-    if (replacing) {
-      return kioskState.getSnapshot() !== null;
+  const handleNavigation = () => {
+    const params = parsePathfinderDeepLink(window.location.search);
+    if (!params.pathfinderKiosk || params.doc || params.controller) {
+      if (kioskState.getSnapshot()?.source === 'url') {
+        kioskState.set(null);
+      }
+      return false;
     }
-    const params = parsePathfinderDeepLink(locationService.getLocation().search);
-    const state = entryState();
-    if (params.pathfinderKiosk && !params.doc && !params.controller) {
-      const launch = { source: 'url' as const, rulesUrl: params.kioskRulesUrl };
-      state[HISTORY_KEY] = launch;
-      replaceEntry(state);
-      kioskState.set(launch);
-      mount();
-      return true;
-    }
-    const saved = state[HISTORY_KEY];
-    if (
-      !params.doc &&
-      !params.controller &&
-      action !== 'PUSH' &&
-      action !== 'REPLACE' &&
-      saved &&
-      typeof saved === 'object' &&
-      'source' in saved &&
-      saved.source === 'url' &&
-      (!('rulesUrl' in saved) || saved.rulesUrl === undefined || typeof saved.rulesUrl === 'string')
-    ) {
-      kioskState.set({
-        source: 'url',
-        rulesUrl: 'rulesUrl' in saved ? (saved.rulesUrl as string | undefined) : undefined,
-      });
-      mount();
-      return true;
-    }
-    if (saved) {
-      delete state[HISTORY_KEY];
-      replaceEntry(state);
-    }
-    if (kioskState.getSnapshot()?.source === 'url') {
-      kioskState.set(null);
-    }
-    return false;
+    kioskState.set({ source: 'url', rulesUrl: params.kioskRulesUrl });
+    mount();
+    return true;
   };
   const handleClick = (event: MouseEvent) => {
     handleKioskLinkClick(event);

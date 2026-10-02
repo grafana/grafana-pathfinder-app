@@ -131,8 +131,8 @@ Deploy a Pathfinder version supporting `interactiveLearning` before publishing c
 
 ## Kiosk links and browser history
 
-An accepted `pathfinderKiosk=1` launch consumes `pathfinderKiosk` and `kioskRulesUrl` from the address bar and stores the catalog request on that history entry. Other query parameters, the fragment, and unrelated history state are retained. Refresh and browser Back/Forward restore that entry's kiosk. The cleaned address is not a shareable kiosk link; share the original launch URL explicitly.
+The `pathfinderKiosk=1` and `kioskRulesUrl` parameters stay in the address bar while the kiosk is open. The URL can be shared or refreshed to reopen the same catalog. Browser Back/Forward restores the kiosk from its URL.
 
-Launching a product or guide pushes a destination entry and retains the kiosk entry for browser Back. The exit button and Escape explicitly dismiss the kiosk and clear its entry state, so refresh cannot reopen it. Unrelated SPA navigation does not inherit kiosk state. There is no global last-kiosk preference.
+Launching a product or guide pushes a destination entry and retains the kiosk entry for browser Back. The exit button and Escape explicitly dismiss the kiosk and remove its launch parameters, so refresh cannot reopen it. There is no global last-kiosk preference or custom history state.
 
 Guide links containing `pathfinderKiosk=1` navigate to the kiosk instead of opening a documentation tab. Root-relative links target the current Grafana instance, including its subpath. External-instance links and modified clicks retain browser navigation behavior. `doc` and `controller` parameters retain precedence over kiosk launches.

@@ -144,27 +144,15 @@ it('removes the previous click handler on reinstallation', () => {
   expect(locationService.push).toHaveBeenCalledTimes(1);
 });
 
-it('consumes launch parameters, restores a clean entry on refresh and POP, and rejects copied PUSH state', () => {
+it('keeps the shareable launch URL and unrelated history state while the kiosk is open', () => {
   window.history.replaceState({ other: 123 }, '', '/?pathfinderKiosk=1&kioskRulesUrl=first&orgId=2#keep');
   installKioskNavigation(jest.fn());
-  expect(window.location.search).toBe('?orgId=2');
-  expect(window.location.hash).toBe('#keep');
-  const entry = window.history.state;
-  expect(entry.other).toBe(123);
+  expect(window.location.search).toBe('?pathfinderKiosk=1&kioskRulesUrl=first&orgId=2');
+  expect(window.history.state).toEqual({ other: 123 });
+  expect(locationService.replace).not.toHaveBeenCalled();
   kioskState.set(null);
   expect(installKioskNavigation(jest.fn())).toBe(true);
   expect(kioskState.getSnapshot()?.rulesUrl).toBe('first');
-  window.history.replaceState({}, '', '/dashboards');
-  navigate();
-  expect(kioskState.getSnapshot()).toBeNull();
-  window.history.replaceState(entry, '', '/?orgId=2#keep');
-  (navigate as (...args: unknown[]) => void)(undefined, 'POP');
-  expect(kioskState.getSnapshot()?.rulesUrl).toBe('first');
-  window.history.replaceState(entry, '', '/other');
-  (navigate as (...args: unknown[]) => void)(undefined, 'PUSH');
-  expect(kioskState.getSnapshot()).toBeNull();
-  expect(window.history.state).toEqual({ other: 123 });
-  expect(installKioskNavigation(jest.fn())).toBe(false);
 });
 
 it('explicit dismissal cannot revive on refresh', () => {

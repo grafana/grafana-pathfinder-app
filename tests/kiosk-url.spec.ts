@@ -211,6 +211,9 @@ test('opens an ordinary same-instance kiosk link without reloading Grafana', asy
   await expect(page.getByRole('heading', { name: 'Custom kiosk', exact: true })).toBeVisible();
   await expect(page.locator('#kiosk-demo-navigation-marker')).toBeAttached();
   expect(new URL(page.url()).searchParams.get('kioskRulesUrl')).toBe(customUrl);
+  expect(new URL(page.url()).searchParams.get('pathfinderKiosk')).toBe('1');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Custom kiosk', exact: true })).toBeVisible();
 });
 
 test('does not replay a closed kiosk when Grafana updates dashboard query parameters', async ({ page }) => {
@@ -235,5 +238,40 @@ test('does not replay a closed kiosk when Grafana updates dashboard query parame
     return locationService.getLocation().search;
   });
   expect(new URLSearchParams(search).has('pathfinderKiosk')).toBe(false);
+  await expect(page.getByTestId(testIds.kioskMode.overlay)).not.toBeVisible();
+});
+
+test('keeps the kiosk URL for refresh and Back while preserving product query parameters', async ({ page }) => {
+  await page.route(customUrl, (route) =>
+    route.fulfill({
+      json: {
+        ...catalog('Product kiosk'),
+        rules: [
+          {
+            ...catalog('Product kiosk').rules[0],
+            interactiveLearning: false,
+            page: '/dashboards?type=prometheus&page=2&source=kiosk-test',
+          },
+        ],
+      },
+    })
+  );
+  await page.goto(kioskSearch(customUrl));
+  await expect(page.getByRole('heading', { name: 'Product kiosk', exact: true })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get('kioskRulesUrl')).toBe(customUrl);
+  await page.reload();
+  await page.getByRole('button', { name: /Open product/ }).click();
+  await expect(page.getByTestId(testIds.kioskMode.overlay)).not.toBeVisible();
+  await expect(page.getByTestId(testIds.docsPanel.container)).not.toBeVisible();
+  const destination = new URL(page.url());
+  expect(destination.pathname).toBe('/dashboards');
+  expect(destination.searchParams.get('type')).toBe('prometheus');
+  expect(destination.searchParams.get('page')).toBe('2');
+  expect(destination.searchParams.get('source')).toBe('kiosk-test');
+  expect(destination.searchParams.has('pathfinderKiosk')).toBe(false);
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Product kiosk', exact: true })).toBeVisible();
+  await page.getByTestId(testIds.kioskMode.closeButton).click();
+  await page.reload();
   await expect(page.getByTestId(testIds.kioskMode.overlay)).not.toBeVisible();
 });

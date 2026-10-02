@@ -142,7 +142,7 @@ Replace the example catalog address with your published catalog. If your Grafana
 
 Guides selected from a URL-launched kiosk open in the same browser tab and Grafana instance. Product tiles labeled **Open product** open the product directly and close the learning panel while keeping saved guides and panel preferences. Browser Back returns to the kiosk after either launch.
 
-When the kiosk opens, its launch parameters are removed from the address bar. Refresh and browser Back or Forward restore the selected catalog from that history entry. Selecting the exit button or pressing **Escape** dismisses it, so refresh does not reopen it. Share the original kiosk link; the cleaned address is not a kiosk link.
+While the kiosk is open, its launch parameters stay in the address bar, so you can share the URL or refresh to reopen the same catalog. Browser Back or Forward restores the kiosk from its URL. Selecting the exit button or pressing **Escape** removes the launch parameters, so refresh does not reopen it.
 
 ### Custom catalogs
 
