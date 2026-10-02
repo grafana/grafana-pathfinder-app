@@ -17,6 +17,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/custom-guide", a.handleCustomGuide)
 	mux.HandleFunc("/pathfinder-settings", a.handlePathfinderSettings)
 	mux.HandleFunc("/assignments/my", a.handleMyAssignments)
+	mux.HandleFunc("/tangelo-integration/status", a.handleTangeloStatus)
 	mux.HandleFunc("/health", a.handleHealth)
 }
 

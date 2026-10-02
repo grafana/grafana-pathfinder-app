@@ -581,3 +581,23 @@ describe('deployment-skew: missing route matrix', () => {
     expect(sent.map((b) => b.guideId).sort()).toEqual(['a', 'b']);
   });
 });
+
+describe('pathfinderUrl', () => {
+  it('captures the page URL when the completion is queued, not when it is sent', async () => {
+    let url = 'https://stack.grafana.net/a/grafana-pathfinder-app?doc=bundled%3Ag1';
+    armCompletionWriteHook(deps({ currentUrl: () => url }));
+    recordGuideCompletion(guideFact());
+    url = 'https://stack.grafana.net/dashboards';
+    await runTimer();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.pathfinderUrl).toBe('https://stack.grafana.net/a/grafana-pathfinder-app?doc=bundled%3Ag1');
+  });
+
+  it('omits a URL too long for the backend rather than truncating it', async () => {
+    armCompletionWriteHook(deps({ currentUrl: () => `https://stack.grafana.net/${'a'.repeat(2048)}` }));
+    recordGuideCompletion(guideFact());
+    await runTimer();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.pathfinderUrl).toBeUndefined();
+  });
+});

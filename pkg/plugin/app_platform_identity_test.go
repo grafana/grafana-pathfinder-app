@@ -114,6 +114,7 @@ type idToken struct {
 	// pin what an absent claim yields.
 	username string
 	name     string
+	email    string
 }
 
 // signIDToken builds and ES256-signs a JWT to spec.
@@ -139,6 +140,9 @@ func signIDToken(t *testing.T, tok idToken) string {
 	}
 	if tok.name != "" {
 		claims["name"] = tok.name
+	}
+	if tok.email != "" {
+		claims["email"] = tok.email
 	}
 	payload, err := json.Marshal(claims)
 	if err != nil {

@@ -1,0 +1,27 @@
+# Overlay for the Tangelo completion webhook demo (demo/tangelo/DEMO.md). Runs a
+# separate Grafana on port 3030 under its own project name, so it never touches
+# the regular dev stack:
+#
+#     docker compose -p pathfinder-tangelo -f docker-compose.yaml \
+#       -f demo/tangelo/docker-compose.tangelo.yaml up -d --build grafana
+services:
+  grafana:
+    container_name: grafana-pathfinder-tangelo
+    ports: !override
+      - '3030:3030'
+    environment:
+      GF_SERVER_HTTP_PORT: '3030'
+      GF_SERVER_ROOT_URL: 'http://localhost:3030/'
+      # idForwarding gives the plugin the signed ID token its identity gate
+      # verifies; the aggregation toggle opens the completion write route.
+      GF_FEATURE_TOGGLES_ENABLE: appSidecar,extensionSidebar,localizationForPlugins,userStorageAPI,idForwarding,aggregation.pathfinderbackend-ext-grafana-app.enabled
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes: !override
+      - ./dist:/var/lib/grafana/plugins/grafana-pathfinder-app
+      - ./provisioning:/etc/grafana/provisioning
+      - ./demo/tangelo/app-provisioning.yaml:/etc/grafana/provisioning/plugins/app.yaml
+      - tangelo-grafana-data:/var/lib/grafana
+
+volumes:
+  tangelo-grafana-data:

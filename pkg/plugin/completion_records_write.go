@@ -149,6 +149,11 @@ type completionWriteRequest struct {
 	// and non-blank; never persisted. See completionRecordName for how it derives
 	// the record name.
 	IdempotencyKey string `json:"idempotencyKey"`
+
+	// PathfinderURL is the page the learner was on when they completed. Optional
+	// and never persisted: only the Tangelo webhook reads it, and an unusable
+	// value skips that webhook rather than failing the write.
+	PathfinderURL string `json:"pathfinderUrl"`
 }
 
 // handleCreateCompletionRecord serves POST /completion-records.
@@ -264,6 +269,9 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	})
 	a.ctxLogger(r.Context()).Debug("completion record created",
 		"namespace", namespace, "guideSource", spec.GuideSource, "guideId", spec.GuideID, "name", name)
+	// After the durable write, including the 409 replay: Tangelo dedupes a
+	// repeat, and the replay is the only second chance a failed send gets.
+	a.notifyTangeloCompletion(r, req.PathfinderURL, spec.CompletedAt)
 	a.writeJSON(w, map[string]string{"name": name}, http.StatusCreated)
 }
 

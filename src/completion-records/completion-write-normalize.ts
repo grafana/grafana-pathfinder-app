@@ -11,6 +11,8 @@
 export const MAX_ID_BYTES = 256;
 /** Byte ceiling for the guide title. Matches the backend. */
 export const MAX_TITLE_BYTES = 1024;
+/** Byte ceiling for the completion page URL. Matches the backend. */
+export const MAX_URL_BYTES = 2048;
 
 // Strip C0 control characters and DEL. Built from an escaped pattern so the
 // source stays ASCII-clean (no literal control bytes in the file).
@@ -47,4 +49,13 @@ export function normalizeField(value: string, maxBytes: number): string {
 /** An identifier is valid when it is a non-empty string after normalization. */
 export function isValidIdentifier(value: string): boolean {
   return normalizeField(value, MAX_ID_BYTES).length > 0;
+}
+
+/**
+ * The URL unchanged when it fits the backend bound, otherwise `undefined`:
+ * truncating a URL would send a different, wrong address.
+ */
+export function boundedUrl(value: string): string | undefined {
+  const stripped = value.replace(CONTROL_CHARS, '');
+  return stripped.length > 0 && byteLength(stripped) <= MAX_URL_BYTES ? stripped : undefined;
 }
