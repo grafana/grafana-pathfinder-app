@@ -160,6 +160,7 @@ describe('MCP server', () => {
           'pathfinder_authoring_start',
           'pathfinder_create_package',
           'pathfinder_finalize_for_app_platform',
+          'pathfinder_find_guides',
           'pathfinder_get_schema',
           'pathfinder_help',
           'pathfinder_inspect',
@@ -827,6 +828,7 @@ describe('MCP server', () => {
         'edit-block',
         'remove-block',
         'schema',
+        'find-guides',
       ]);
 
       const { tools } = await client.listTools();

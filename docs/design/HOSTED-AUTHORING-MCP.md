@@ -106,7 +106,8 @@ The two modes are mutually exclusive per call (mixing returns `INPUT_MODE_AMBIGU
 | `pathfinder_manage_guide`              | Guide-level writes; currently `operation: "set-manifest"` plus an opaque `opts` bag                                             |
 | `pathfinder_read_session`              | MCP-native session reads with an explicit top-level Zod schema                                                                  |
 | `pathfinder_read_repository`           | MCP-native CDN reads with an explicit top-level Zod schema                                                                      |
-| `pathfinder_launch_package`            | Builds a shareable `?doc=` deep link for a published package (**partial** — see #855)                                           |
+| `pathfinder_launch_package`            | Builds a shareable `?doc=` deep link for a published package                                                                    |
+| `pathfinder_find_guides`               | Ranked search over the public catalog for guides and learning paths to suggest, with launch links                               |
 | `pathfinder_inspect`                   | Runs CLI `inspect` selectors from a help-derived `opts` bag against an artifact/session                                         |
 | `pathfinder_validate`                  | Runs full package validation against an artifact and returns structured issues                                                  |
 | `pathfinder_finalize_for_app_platform` | Returns an `InteractiveGuide` resource payload, publish instructions, viewer link fields, and `localExport` fallback            |

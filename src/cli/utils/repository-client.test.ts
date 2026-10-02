@@ -181,6 +181,65 @@ describe('fetchRepositoryIndex', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('shares one in-flight fetch between concurrent callers for the same repository', async () => {
+    mockFetchJsonOnce(sampleIndex);
+    const [a, b] = await Promise.all([fetchRepositoryIndex(), fetchRepositoryIndex()]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(a).toBe(b);
+  });
+
+  it('keeps concurrent fetches for different repositories apart', async () => {
+    const otherIndex = { other: { path: 'other/', type: 'guide', title: 'Other' } };
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => (url.startsWith('https://staging.example/') ? otherIndex : sampleIndex),
+    }));
+    const [defaultIndex, staging] = await Promise.all([
+      fetchRepositoryIndex(),
+      fetchRepositoryIndex('https://staging.example/packages'),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(defaultIndex.ok && defaultIndex.packages.map((p) => p.id)).toHaveLength(3);
+    expect(staging.ok && staging.baseUrl).toBe('https://staging.example/packages/');
+    expect(staging.ok && staging.packages.map((p) => p.id)).toEqual(['other']);
+  });
+
+  it('caches each repository separately', async () => {
+    mockFetchJsonOnce(sampleIndex);
+    mockFetchJsonOnce(sampleIndex);
+    await fetchRepositoryIndex();
+    await fetchRepositoryIndex('https://staging.example/packages');
+    await fetchRepositoryIndex();
+    await fetchRepositoryIndex('https://staging.example/packages/');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports the ETag, else Last-Modified, as catalogVersion', async () => {
+    const respond = (headers: Record<string, string>) =>
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(headers),
+        json: async () => sampleIndex,
+      });
+    respond({ etag: 'W/"abc"', 'last-modified': 'Fri, 02 Oct 2026 13:12:49 GMT' });
+    const withEtag = await fetchRepositoryIndex();
+    expect(withEtag.ok && withEtag.catalogVersion).toBe('W/"abc"');
+
+    __resetRepositoryClientForTests();
+    respond({ 'last-modified': 'Fri, 02 Oct 2026 13:12:49 GMT' });
+    const withDate = await fetchRepositoryIndex();
+    expect(withDate.ok && withDate.catalogVersion).toBe('Fri, 02 Oct 2026 13:12:49 GMT');
+
+    __resetRepositoryClientForTests();
+    respond({});
+    const without = await fetchRepositoryIndex();
+    expect(without.ok && 'catalogVersion' in without).toBe(false);
+  });
+
   it('reports HTTP_ERROR on 5xx', async () => {
     mockFetchHttpErrorOnce(503);
     const result = await fetchRepositoryIndex();
