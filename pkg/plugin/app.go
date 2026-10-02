@@ -57,6 +57,11 @@ type App struct {
 
 	// Per-user rate limiter for GET /assignments/my.
 	assignmentsReadRateLimiter *userRateLimiter
+
+	// Nil unless the Tangelo completion webhook is switched on and both of its
+	// credentials are provisioned.
+	tangelo       *tangeloNotifier
+	tangeloStatus tangeloStatus
 }
 
 // NewApp creates a new App instance.
@@ -73,6 +78,11 @@ func NewApp(_ context.Context, appSettings backend.AppInstanceSettings) (instanc
 		logger:                     logger,
 		completionWriteRateLimiter: newCompletionWriteRateLimiter(),
 		assignmentsReadRateLimiter: newUserRateLimiter(assignmentsReadRateBurst, assignmentsReadRateRefillPerSec),
+		tangelo:                    newTangeloNotifier(settings.Tangelo),
+		tangeloStatus: tangeloStatus{
+			CredentialsPresent: settings.Tangelo.credentialsPresent(),
+			Enabled:            settings.Tangelo.Enabled,
+		},
 	}
 
 	// A stack without provisioned on-behalf-of credentials still loads: the App
@@ -85,6 +95,9 @@ func NewApp(_ context.Context, appSettings backend.AppInstanceSettings) (instanc
 	} else if oboExchanger == nil {
 		logger.Info("On-behalf-of auth not provisioned, App Platform proxy routes disabled")
 	}
+
+	logger.Info("Tangelo completion webhook configuration",
+		"enabled", settings.Tangelo.Enabled, "credentialsPresent", settings.Tangelo.credentialsPresent())
 
 	mux := http.NewServeMux()
 	app.registerRoutes(mux)

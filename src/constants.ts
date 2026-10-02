@@ -202,6 +202,8 @@ export interface PathfinderSystemSettings {
 
 export interface PathfinderPluginConfig
   extends Partial<PathfinderTenantSettings>, Partial<PathfinderUserSettings>, PathfinderSystemSettings {
+  /** Read by the backend from plugin jsonData, so it never goes through the tenant settings kind. */
+  tangeloCompletionEnabled?: boolean;
   /** @deprecated Read only for the one-shot migration to user-scoped local storage. */
   devModeUserIds?: number[];
 }

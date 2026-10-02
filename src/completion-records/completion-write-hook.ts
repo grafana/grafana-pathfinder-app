@@ -9,7 +9,13 @@ import {
   type WriteOutcome,
 } from './completion-write-client';
 import { createWriteQueue, type WriteQueue } from './completion-write-queue';
-import { MAX_ID_BYTES, MAX_TITLE_BYTES, isValidIdentifier, normalizeField } from './completion-write-normalize';
+import {
+  MAX_ID_BYTES,
+  MAX_TITLE_BYTES,
+  boundedUrl,
+  isValidIdentifier,
+  normalizeField,
+} from './completion-write-normalize';
 import {
   createCompletionWriteStorage,
   currentCompletionQueueOwnerKey,
@@ -23,6 +29,7 @@ export interface WriteHookDeps {
   ownerKey: () => string | null;
   storage: (ownerKey: string) => CompletionWriteStorage;
   platform: () => CompletionPlatform;
+  currentUrl: () => string;
   now: () => number;
   random: () => number;
   setTimer: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -54,6 +61,7 @@ const defaultDeps: WriteHookDeps = {
   ownerKey: currentCompletionQueueOwnerKey,
   storage: createCompletionWriteStorage,
   platform: currentCompletionPlatform,
+  currentUrl: () => window.location.href,
   now: () => Date.now(),
   random: Math.random,
   setTimer: (fn, ms) => setTimeout(fn, ms),
@@ -180,6 +188,7 @@ class CompletionWriteController {
       completedAt: fact.completedAt,
       durationMs: fact.durationMs,
       platform: this.deps.platform(),
+      pathfinderUrl: boundedUrl(this.deps.currentUrl()),
     };
   }
 
