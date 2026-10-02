@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 
-import { compileBoundedRegex, MAX_URL_REGEX_LENGTH, MAX_URL_REGEX_TIMEOUTS, testBoundedRegex } from '../bounded-regex';
+import { compileBoundedRegex, MAX_URL_REGEX_LENGTH, testBoundedRegex } from '../bounded-regex';
 import { compileTargeting, isAvailableOnPlatform, normalizePageUrl, pageMatchLength } from '../targeting';
 
 function compile(match: unknown) {
@@ -98,15 +98,10 @@ describe('bounded urlRegex evaluation', () => {
     expect(Date.now() - started).toBeLessThan(1000);
   });
 
-  it('keeps a pattern after one timeout and disables it after repeated timeouts', () => {
+  it('disables a pattern after its first timeout', () => {
     const pattern = compileBoundedRegex('^(a+)+$')!;
-    const hostileInput = `${'a'.repeat(40)}!`;
-    expect(testBoundedRegex(pattern, hostileInput)).toBe(false);
-    expect(pattern.disabled).toBe(false);
     expect(testBoundedRegex(pattern, 'aaa')).toBe(true);
-    for (let i = 1; i < MAX_URL_REGEX_TIMEOUTS; i++) {
-      testBoundedRegex(pattern, hostileInput);
-    }
+    expect(testBoundedRegex(pattern, `${'a'.repeat(40)}!`)).toBe(false);
     expect(pattern.disabled).toBe(true);
     expect(testBoundedRegex(pattern, 'aaa')).toBe(false);
   });
