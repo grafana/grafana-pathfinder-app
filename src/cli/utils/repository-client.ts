@@ -2,8 +2,8 @@
  * CDN repository client.
  *
  * Read-only fetcher for the public Pathfinder package CDN. Read by the
- * `pathfinder_read_repository` / `pathfinder_launch_package` MCP tools (P6 in
- * `docs/design/AI-AUTHORING-IMPLEMENTATION.md`) and by `e2e --remote`, which is why it
+ * `pathfinder_read_repository` / `pathfinder_launch_package` / `pathfinder_find_guides`
+ * MCP tools (P6 in `docs/design/AI-AUTHORING-IMPLEMENTATION.md`) and by `e2e --remote`, which is why it
  * sits here rather than under either of them: fetching a public index is not adaptation,
  * and a runner reaching into an adapter's folder for it was the only place that
  * dependency ran the wrong way.
