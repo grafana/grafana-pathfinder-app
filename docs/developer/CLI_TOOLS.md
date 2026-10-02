@@ -593,6 +593,8 @@ node dist/cli/cli/index.js find-guides --page-url /a/grafana-synthetic-monitorin
 node dist/cli/cli/index.js --format json find-guides --queries postgresql --type path
 ```
 
+---
+
 ## CI workflow example with package validation
 
 This GitHub Actions snippet validates packages and checks `repository.json` and manifest-stats freshness — the pattern used in this repository's `.github/workflows/ci.yml`:
