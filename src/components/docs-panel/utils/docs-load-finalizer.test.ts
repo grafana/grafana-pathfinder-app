@@ -180,6 +180,38 @@ describe('buildDocsLoadSuccessPatch', () => {
     expect(patch.packageInfo).toBe(packageInfo);
   });
 
+  it('replaces a backend-guide resource name with the fetched guide title', () => {
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'alerting-intro-lj', baseUrl: 'backend-guide:alerting-intro-lj' }),
+      requestedUrl: 'backend-guide:alerting-intro-lj',
+      fetchedContent: content({
+        url: 'backend-guide:alerting-intro-lj',
+        metadata: { title: 'Getting started with alerting' },
+      }),
+    });
+
+    expect(patch.title).toBe('Getting started with alerting');
+  });
+
+  it('keeps a title that was already set, and does not retitle bundled guides', () => {
+    const launched = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Getting started with alerting', baseUrl: 'backend-guide:alerting-intro-lj' }),
+      requestedUrl: 'backend-guide:alerting-intro-lj',
+      fetchedContent: content({
+        url: 'backend-guide:alerting-intro-rules',
+        metadata: { title: 'Create your first alert rule' },
+      }),
+    });
+    const bundled = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Guide one', baseUrl: 'bundled:launch/content.json' }),
+      requestedUrl: 'bundled:requested',
+      fetchedContent: content({ metadata: { title: 'Some other title' } }),
+    });
+
+    expect(launched.title).toBeUndefined();
+    expect(bundled.title).toBeUndefined();
+  });
+
   it('uses interactive type without package info for interactive content', () => {
     expect(
       buildDocsLoadSuccessPatch({
