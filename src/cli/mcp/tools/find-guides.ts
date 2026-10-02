@@ -149,7 +149,7 @@ function renderResult(
     category: entry.category,
     relevance: result.relevance,
     matchedOn: result.matchedOn,
-    startsIn: entry.startingLocation,
+    startsIn: linkEntry.startingLocation,
     launchPath: link?.launchPath,
     launchUrl: link?.launchUrl,
     stepCount: result.stepCount,

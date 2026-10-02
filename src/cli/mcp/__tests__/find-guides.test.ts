@@ -199,7 +199,21 @@ describe('pathfinder_find_guides', () => {
       partOf: { id: 'kubernetes-lp', step: 2, of: 6 },
       launchPath: parentLink,
       launchUrl: `https://stack1.grafana.net${parentLink}`,
+      startsIn: '/a/grafana-k8s-app',
     });
+  });
+
+  it('omits startsIn for a path step when its parent path has no starting location', async () => {
+    const { startingLocation: _omitted, ...pathWithoutStart } = sampleIndex['kubernetes-lp'];
+    mockIndexOnce({
+      ...sampleIndex,
+      'kubernetes-lp': pathWithoutStart,
+      'kubernetes-lp-alerts': { ...sampleIndex['kubernetes-lp-alerts'], startingLocation: '/alerting/list' },
+    });
+    const { payload } = await callFind({ queries: ['kubernetes alerting rules'], type: 'guide' });
+    const step = payload.results.find((r: { id: string }) => r.id === 'kubernetes-lp-alerts');
+    expect(step).toMatchObject({ partOf: { id: 'kubernetes-lp' } });
+    expect(step).not.toHaveProperty('startsIn');
   });
 
   it('keeps its own link for a guide that belongs to no path under type "guide"', async () => {
