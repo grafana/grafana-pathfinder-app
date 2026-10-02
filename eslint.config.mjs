@@ -214,7 +214,7 @@ export default defineConfig([
         },
         {
           selector:
-            'JSXAttribute[name.name=/^(aria-label|alt|title|placeholder|label|description|text|tooltip)$/] > Literal[value=/Pathfinder/]',
+            'JSXAttribute[name.name=/^(aria-label|alt|title|placeholder|label|description|text|tooltip)$/] Literal[value=/Pathfinder/]',
           message: USER_FACING_NAME_MESSAGE,
         },
         {

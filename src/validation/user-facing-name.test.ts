@@ -58,13 +58,14 @@ function leafStrings(node: unknown, keyPath: string[] = []): Array<[string, stri
 
 describe('user-facing product name', () => {
   describe('lint contract', () => {
-    type ProbeName = 'jsxText' | 'jsxAttribute' | 'translationDefault' | 'internalUses';
+    type ProbeName = 'jsxText' | 'jsxAttribute' | 'jsxAttributeExpression' | 'translationDefault' | 'internalUses';
     let results: Record<ProbeName, LintMessage[]>;
 
     beforeAll(() => {
       results = lintProbes({
         jsxText: `export const A = () => <p>Pathfinder brings help into Grafana.</p>;`,
         jsxAttribute: `export const A = () => <img alt="Pathfinder" aria-label="Pathfinder panel" />;`,
+        jsxAttributeExpression: `declare const isDocsLink: boolean;\nexport const A = () => <a title={isDocsLink ? 'Open in Pathfinder' : 'Open in new tab'} aria-label={'Pathfinder panel'} />;`,
         translationDefault: `declare const t: (key: string, fallback: string) => string;\nvoid t('a.b', 'Enable Pathfinder');`,
         internalUses: `
 declare const t: (key: string, fallback: string) => string;
@@ -84,6 +85,10 @@ export const A = () => <div data-pathfinder-content="" aria-label={t('pathfinder
 
     it('rejects "Pathfinder" in user-facing JSX attributes', () => {
       expect(pathfinderMessages('jsxAttribute')).toHaveLength(2);
+    });
+
+    it('rejects "Pathfinder" in expression-valued user-facing JSX attributes', () => {
+      expect(pathfinderMessages('jsxAttributeExpression')).toHaveLength(2);
     });
 
     it('rejects "Pathfinder" in t() default values', () => {
