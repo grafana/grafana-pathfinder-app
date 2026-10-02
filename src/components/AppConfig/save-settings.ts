@@ -24,7 +24,9 @@ export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettin
     if (changes.pathfinderEnabled !== undefined) {
       const saved = await fetchPathfinderSettingsSnapshot();
       if (saved?.config.pathfinderEnabled !== changes.pathfinderEnabled) {
-        throw new Error('Pathfinder preference was not retained. Verify the backend schema is deployed and try again.');
+        throw new Error(
+          'Interactive learning preference was not retained. Verify the backend schema is deployed and try again.'
+        );
       }
     }
     return;

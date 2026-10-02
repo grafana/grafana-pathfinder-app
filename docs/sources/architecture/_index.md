@@ -73,7 +73,7 @@ Pathfinder tracks step progress, guide completion, and learning-path milestones.
 
 Browser storage retains working state such as open tabs and in-progress steps. Some learning state also uses Grafana user storage, and installations with the completion service can save completion records on the server. Do not assume that every in-progress step or local draft follows you to another browser. Clearing browser storage can remove local state.
 
-Closing the sidebar does not reset learning progress. The **Enable Pathfinder** administrator setting also preserves existing progress when disabled. Use the guide's reset control when you want to repeat it from the beginning.
+Closing the sidebar does not reset learning progress. The **Enable interactive learning** administrator setting also preserves existing progress when disabled. Use the guide's reset control when you want to repeat it from the beginning.
 
 Guides can appear in the sidebar, a floating panel, or full screen. The optional **Open in interactive window** feature uses a paired browser tab to control the original Grafana tab. It requires administrator enablement and explicit pairing.
 

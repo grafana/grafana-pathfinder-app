@@ -473,8 +473,8 @@ export function ChallengeBlockForm({
                 </>
               ) : (
                 <div>
-                  Pathfinder requirement that proves the challenge is solved. Multiple chips mean &quot;all must
-                  pass&quot;.
+                  An interactive learning requirement that proves the challenge is solved. Multiple chips mean &quot;all
+                  must pass&quot;.
                 </div>
               )}
             </div>
