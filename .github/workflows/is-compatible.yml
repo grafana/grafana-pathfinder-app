@@ -27,7 +27,7 @@ jobs:
 
           echo "modulets=${MODULETS}" >> $GITHUB_OUTPUT
       - name: Compatibility check
-        uses: grafana/plugin-actions/is-compatible@8eedc83764c0580ca9a30e20a2a50094fa3396a0 # main
+        uses: grafana/plugin-actions/is-compatible@57cc2ad74da580b805030081f1686b90eb76d345 # main
         with:
           module: ${{ steps.find-module-ts.outputs.modulets }}
           comment-pr: no
