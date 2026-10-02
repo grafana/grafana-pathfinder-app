@@ -8,10 +8,10 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-import snapshot from '../lib/guide-search/__tests__/fixtures/catalog-snapshot.json';
+import snapshot from '../../utils/guide-search/__tests__/fixtures/catalog-snapshot.json';
 import { __resetRepositoryClientForTests, REPOSITORY_URL_ENV_VAR } from '../../utils/repository-client';
 import { buildServer } from '../server';
-import { __resetFindGuidesForTests } from '../tools/find-guides';
+import { __resetFindGuidesForTests } from '../../commands/find-guides';
 
 const BASE = 'https://interactive-learning.grafana.net/packages/';
 const doc = (id: string) => encodeURIComponent(`${BASE}${id}/content.json`);

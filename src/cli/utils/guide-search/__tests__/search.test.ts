@@ -113,6 +113,12 @@ describe('searchGuides', () => {
     });
   });
 
+  it('names an eligible parent in partOf, and drops a step whose every parent is excluded', () => {
+    const [step] = search({ queries: ['helm chart'], type: 'guide', excludeIds: ['kubernetes-lp'] }).results;
+    expect(step).toMatchObject({ partOf: { id: 'tour-journey', step: 1, of: 1 } });
+    expect(ids({ queries: ['helm chart'], type: 'guide', excludeIds: ['kubernetes-lp', 'tour-journey'] })).toEqual([]);
+  });
+
   it('returns only paths when type is path', () => {
     expect(ids({ queries: ['alerting'], type: 'path' })).toEqual(['kubernetes-lp']);
   });

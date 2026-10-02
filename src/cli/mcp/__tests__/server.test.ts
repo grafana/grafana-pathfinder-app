@@ -828,6 +828,7 @@ describe('MCP server', () => {
         'edit-block',
         'remove-block',
         'schema',
+        'find-guides',
       ]);
 
       const { tools } = await client.listTools();

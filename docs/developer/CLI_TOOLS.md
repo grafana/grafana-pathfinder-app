@@ -555,6 +555,44 @@ Consumers in other languages should reimplement these rules in their own validat
 
 ---
 
+## Find-guides command
+
+Searches the public package catalog (`repository.json`) for interactive guides and learning paths, ranked by relevance. It is the same implementation the `pathfinder_find_guides` MCP tool serves; see [MCP server](./MCP_SERVER.md#repository-tools-p6) for the ranking rules and result fields. Bundled guides and guides authored on a stack are not searched.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js find-guides --queries <text> [--queries <text> ...] [options]
+node dist/cli/cli/index.js find-guides --page-url <path> [options]
+```
+
+Pass at least one `--queries` or a `--page-url`. Repeat `--queries`, `--categories`, and `--exclude-ids` once per value.
+
+### Options
+
+- `--queries <text>`: A short search, up to six. Mix the user's words with the Grafana product names they imply.
+- `--page-url <path>`: The Grafana page path the user is on, for example `/a/grafana-adaptivelogs-app/overview`. Boosts guides targeted at that page; on its own it lists what applies to that page.
+- `--categories <category>`: Only these categories. An unknown category fails and lists the valid ones.
+- `--type <guide|path>`: `path` returns learning paths only; `guide` returns single guides and path steps.
+- `--platform <cloud|oss>`: Hide guides that do not apply to this platform.
+- `--exclude-ids <id>`: Leave out guides already shown.
+- `--limit <n>`: Maximum results, 1 to 15 (default 5).
+- `--instance-url <url>`: A Grafana origin; adds an absolute `launchUrl` to each result.
+
+The repository comes from `PATHFINDER_REPOSITORY_URL` when set, and the public CDN otherwise.
+
+### Output
+
+Text output lists each result with its type, relevance (`strong` or `partial`), matched fields, starting page, matched path steps, and the link that opens it. `--format json` prints the structured outcome; its `data` is exactly the `pathfinder_find_guides` response.
+
+### Examples
+
+```bash
+node dist/cli/cli/index.js find-guides --queries "my log bill is too high" --queries "adaptive logs" --queries "log volume"
+node dist/cli/cli/index.js find-guides --page-url /a/grafana-synthetic-monitoring-app --platform cloud
+node dist/cli/cli/index.js --format json find-guides --queries postgresql --type path
+```
+
 ## CI workflow example with package validation
 
 This GitHub Actions snippet validates packages and checks `repository.json` and manifest-stats freshness — the pattern used in this repository's `.github/workflows/ci.yml`:

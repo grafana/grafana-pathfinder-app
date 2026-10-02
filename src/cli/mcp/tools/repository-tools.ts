@@ -7,7 +7,7 @@
  * `pathfinder_read_repository` collapses the former list_packages / get_package / get_manifest tools
  * into one tool with an operation flag (`list-packages` | `get-package` | `get-manifest`).
  * `pathfinder_launch_package` stays separate — different output contract. Its links come from
- * `lib/launch-link.ts`, shared with `pathfinder_find_guides`.
+ * `utils/launch-link.ts`, shared with the `find-guides` command.
  *
  * Stateless — no artifact in/out, no session token. The repository base
  * URL is read from `PATHFINDER_REPOSITORY_URL` (falls back to the public
@@ -28,7 +28,7 @@ import {
   type RepositoryClientError,
   type RepositoryPackage,
 } from '../../utils/repository-client';
-import { buildLaunchLink } from '../lib/launch-link';
+import { buildLaunchLink } from '../../utils/launch-link';
 import { renderMachineJson } from '../../utils/output';
 import { readOnly } from './annotations';
 import { textResult } from './result';
