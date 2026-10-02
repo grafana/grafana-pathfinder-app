@@ -99,6 +99,7 @@ import { memoryStore, resetSectionHarness, silenceSectionWarnings } from '../../
 import { publishGuideIndex, evictAllGuideIndexes } from '../../global-state/active-guide-index';
 import { computeGuideBlockIndex, type CountableBlock } from '../../lib/guide-stats';
 import { peekGuidePercentage } from '../../global-state/completion-store';
+import { sectionDoneStorage } from '../../lib/user-storage';
 
 const NON_PREVIEW_KEY = '/';
 const PREVIEW_KEY = 'block-editor://preview/test-guide';
@@ -354,6 +355,41 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
           expect(sectionEvents).toHaveLength(1);
           expect(sectionEvents[0]!.detail).toEqual({ kind: 'section', sectionId: SECTION_ID, completed: true });
         });
+      } finally {
+        unsubscribe();
+      }
+    });
+
+    it('persists the section done state before dispatching section completion', async () => {
+      let resolveWrite!: () => void;
+      const pendingWrite = new Promise<void>((resolve) => {
+        resolveWrite = resolve;
+      });
+      jest.mocked(sectionDoneStorage.set).mockImplementationOnce(() => pendingWrite);
+      const { events, unsubscribe } = recordSectionEvents();
+
+      try {
+        renderSingleStepSection();
+        await waitFor(() => expect(screen.getByTestId(completeBtn(STEP_ID))).toBeInTheDocument());
+        act(() => {
+          screen.getByTestId(completeBtn(STEP_ID)).click();
+        });
+
+        await waitFor(() => expect(sectionDoneStorage.set).toHaveBeenCalledWith(NON_PREVIEW_KEY, SECTION_ID, true));
+        expect(events.some((event) => event.name === 'pathfinder:progress' && event.detail.kind === 'section')).toBe(
+          false
+        );
+
+        await act(async () => {
+          resolveWrite();
+          await pendingWrite;
+        });
+
+        await waitFor(() =>
+          expect(events.some((event) => event.name === 'pathfinder:progress' && event.detail.kind === 'section')).toBe(
+            true
+          )
+        );
       } finally {
         unsubscribe();
       }
