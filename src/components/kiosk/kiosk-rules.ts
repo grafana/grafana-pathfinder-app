@@ -162,9 +162,12 @@ export async function loadKioskData(
     if (failed.size === 0) {
       return data;
     }
-    const failure = failed.has('configured')
-      ? 'The configured kiosk could not be loaded.'
-      : 'The requested kiosk could not be loaded.';
+    const failure =
+      failed.has('override') && failed.has('configured')
+        ? 'The requested kiosk and the configured default kiosk could not be loaded.'
+        : failed.has('configured')
+          ? 'The configured kiosk could not be loaded.'
+          : 'The requested kiosk could not be loaded.';
     const showing =
       tier === 'configured'
         ? 'Showing the configured default kiosk.'
