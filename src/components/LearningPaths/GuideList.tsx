@@ -32,7 +32,7 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
       {isLoading ? (
         <div className={styles.guideItem}>
           <Icon name="fa fa-spinner" size="sm" />
-          <span className={styles.guideTitle}>{t('myLearning.loadingGuides', 'Loading guides...')}</span>
+          <span>{t('myLearning.loadingGuides', 'Loading guides...')}</span>
         </div>
       ) : (
         guides.map((guide) => (
@@ -43,8 +43,7 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
               guide.isCurrent && styles.guideItemCurrent,
               guide.isCurrent && enableCurrentRowLink && styles.guideItemCurrentCard,
               guide.isCurrent && enableCurrentRowLink && styles.guideItemCurrentClickable,
-              guide.locked && styles.guideItemLocked,
-              guide.description && styles.guideItemWithDescription
+              guide.locked && styles.guideItemLocked
             )}
             // The current row is the only clickable one, and only when the
             // caller opts in — data-journey-start is the same attribute
@@ -96,7 +95,7 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
               )}
             </span>
             <span className={styles.guideTextGroup}>
-              <span className={styles.guideTitle}>{guide.title}</span>
+              <span>{guide.title}</span>
               {guide.description && <span className={styles.guideDescription}>{guide.description}</span>}
               {(guide.locked || typeof guide.estimatedMinutes === 'number') && (
                 <span className={styles.guideMeta}>

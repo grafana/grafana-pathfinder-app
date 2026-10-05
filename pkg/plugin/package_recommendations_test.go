@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
 // stubFetcher returns a packageRepositoryFetcher backed by a counter, so
@@ -553,6 +556,29 @@ func TestHandlePackageRecommendations_PartialResultUsesShortTTL(t *testing.T) {
 	}
 }
 
+func TestResolveMilestoneGuideID(t *testing.T) {
+	packages := []PackageEntry{
+		{ID: "postgresql-data-source-prepare", Path: "postgresql-data-source-lj/prepare-configuration/"},
+		{ID: "no-path-entry", Path: ""},
+	}
+	cases := []struct {
+		name        string
+		milestoneID string
+		want        string
+	}{
+		{"translates a canonical id to its sibling entry's URL slug", "postgresql-data-source-prepare", "prepare-configuration"},
+		{"falls back to the milestone id when no sibling entry exists", "unknown-milestone", "unknown-milestone"},
+		{"falls back to the milestone id when the sibling entry has no path", "no-path-entry", "no-path-entry"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolveMilestoneGuideID(packages, tc.milestoneID); got != tc.want {
+				t.Errorf("resolveMilestoneGuideID(...) = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestBuildPackageFileURL_NormalizesSlashes(t *testing.T) {
 	cases := []struct {
 		baseURL string
@@ -820,7 +846,6 @@ func TestGetCachedPackageRecommendations_WaiterRespectsContextCancellation(t *te
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 
 	release := make(chan struct{})
-	t.Cleanup(func() { close(release) })
 	started := make(chan struct{})
 	var once sync.Once
 	withFetcherOverride(t, func(ctx context.Context, rawURL string, maxBytes int64) ([]byte, error) {
@@ -831,7 +856,15 @@ func TestGetCachedPackageRecommendations_WaiterRespectsContextCancellation(t *te
 
 	app := newTestApp(t)
 
+	// The refresh writes the shared cache when it finishes, so the test must
+	// not return before it does or it lands in the next test's cache.
+	refreshed := make(chan struct{})
+	t.Cleanup(func() {
+		close(release)
+		<-refreshed
+	})
 	go func() {
+		defer close(refreshed)
 		_, _ = app.getCachedPackageRecommendations(context.Background())
 	}()
 	<-started
@@ -844,5 +877,96 @@ func TestGetCachedPackageRecommendations_WaiterRespectsContextCancellation(t *te
 	}
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)
+	}
+}
+
+func TestOnlinePathGuides(t *testing.T) {
+	const repoBody = `{
+		"assigned-targeted": {"path": "assigned-targeted/v1", "type": "path",
+			"targeting": {"match": {"urlPrefix": "/x"}}},
+		"assigned-untargeted": {"path": "assigned-untargeted/v1", "type": "path"},
+		"no-milestones": {"path": "no-milestones/v1", "type": "path"},
+		"tracked": {"path": "tracked/v1", "type": "path"},
+		"tracked-journey": {"path": "tracked-journey/v1", "type": "journey"}
+	}`
+	manifests := map[string]string{
+		"assigned-targeted":   `{"id": "assigned-targeted", "milestones": ["m1", "m2"]}`,
+		"assigned-untargeted": `{"id": "assigned-untargeted", "milestones": ["m3"]}`,
+		"no-milestones":       `{"id": "no-milestones", "milestones": []}`,
+		"tracked":             `{"id": "tracked", "type": "path", "milestones": ["m1"], "tracks": [{"trackId": "ops", "label": "Ops", "guides": ["m4", "m1"]}, {"trackId": "empty", "label": "Empty", "guides": []}]}`,
+		"tracked-journey":     `{"id": "tracked-journey", "type": "journey", "milestones": ["m1"], "tracks": [{"trackId": "ops", "label": "Ops", "guides": ["m4"]}]}`,
+	}
+
+	// setup installs a fetcher serving the repo and manifests and returns the
+	// per-target manifest fetch counts.
+	setup := func(t *testing.T, manifestErr error) (*App, map[string]int) {
+		t.Helper()
+		resetPackageRecommendationsCache()
+		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+		fetches := map[string]int{}
+		withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
+			if strings.HasSuffix(rawURL, "repository.json") {
+				return []byte(repoBody), nil
+			}
+			for id, manifest := range manifests {
+				if strings.HasSuffix(rawURL, "/"+id+"/v1/manifest.json") {
+					fetches[id]++
+					if manifestErr != nil {
+						return nil, manifestErr
+					}
+					return []byte(manifest), nil
+				}
+			}
+			return nil, fmt.Errorf("unexpected URL %q", rawURL)
+		})
+		return newTestApp(t), fetches
+	}
+
+	cases := []struct {
+		name        string
+		target      string
+		track       string
+		prime       bool
+		manifestErr error
+		wantGuides  []string
+		wantFound   bool
+		wantErr     bool
+		wantFetches int
+	}{
+		{name: "enriched manifest is reused without refetch", target: "assigned-targeted", prime: true, wantGuides: []string{"m1", "m2"}, wantFound: true},
+		{name: "unenriched manifest is fetched on demand once", target: "assigned-untargeted", wantGuides: []string{"m3"}, wantFound: true, wantFetches: 1},
+		{name: "unknown target is not found", target: "does-not-exist"},
+		{name: "track guides are read in declared order", target: "tracked", track: "ops", wantGuides: []string{"m4", "m1"}, wantFound: true, wantFetches: 1},
+		{name: "track without guides is found with none", target: "tracked", track: "empty", wantFound: true, wantFetches: 1},
+		{name: "unknown track is found with no guides", target: "tracked", track: "missing", wantFound: true, wantFetches: 1},
+		{name: "journey declares no tracks", target: "tracked-journey", track: "ops", wantFound: true, wantFetches: 1},
+		{name: "empty milestones is found with no guides", target: "no-milestones", wantFound: true, wantFetches: 1},
+		{name: "manifest fetch failure is an error", target: "assigned-untargeted", manifestErr: errors.New("manifest unavailable"), wantFound: true, wantErr: true, wantFetches: 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app, fetches := setup(t, tc.manifestErr)
+			if tc.prime {
+				if _, err := app.getCachedPackageRecommendations(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				fetches[tc.target] = 0
+			}
+
+			guides, found, err := app.onlinePathGuides(log.DefaultLogger)(context.Background(), tc.target, tc.track)
+
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if found != tc.wantFound {
+				t.Errorf("found = %v, want %v", found, tc.wantFound)
+			}
+			if !reflect.DeepEqual(guides, tc.wantGuides) {
+				t.Errorf("guides = %v, want %v", guides, tc.wantGuides)
+			}
+			if fetches[tc.target] != tc.wantFetches {
+				t.Errorf("manifest fetches = %d, want %d", fetches[tc.target], tc.wantFetches)
+			}
+		})
 	}
 }

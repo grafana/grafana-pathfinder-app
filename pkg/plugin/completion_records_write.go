@@ -251,6 +251,17 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 
 	// Surface the new record promptly on the next GET /completion-records/my.
 	invalidateCompletionIndex(namespace)
+	a.writeSatisfiedAssignments(r, userID, completionRecordSpec{
+		UserID:            spec.UserID,
+		GuideID:           spec.GuideID,
+		GuideSource:       spec.GuideSource,
+		GuideTitle:        spec.GuideTitle,
+		GuideCategory:     spec.GuideCategory,
+		PathID:            spec.PathID,
+		Source:            spec.Source,
+		CompletedAt:       spec.CompletedAt,
+		CompletionPercent: spec.CompletionPercent,
+	})
 	a.ctxLogger(r.Context()).Debug("completion record created",
 		"namespace", namespace, "guideSource", spec.GuideSource, "guideId", spec.GuideID, "name", name)
 	a.writeJSON(w, map[string]string{"name": name}, http.StatusCreated)

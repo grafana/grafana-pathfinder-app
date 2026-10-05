@@ -183,6 +183,7 @@ This validates the `content.json` and `manifest.json` within the directory, incl
 - Asset reference validation (warns if `content.json` references `./assets/*` files that don't exist)
 - Severity-based messages: ERROR for required fields, WARN for recommended fields, INFO for defaulted fields
 - `testEnvironment` validation (warns on unrecognized tier values, invalid semver in `minVersion`)
+- `minGrafanaVersion` validation — the top-level runtime floor must be valid semver. Distinct from `testEnvironment.minVersion`: the e2e preflight inherits this value only when no test floor is declared (see [package authoring](./package-authoring.md#mingrafanaversion))
 
 **Validate a tree of package directories:**
 

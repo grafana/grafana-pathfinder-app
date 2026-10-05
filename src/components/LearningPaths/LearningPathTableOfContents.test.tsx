@@ -349,7 +349,7 @@ describe('LearningPathTableOfContents', () => {
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
       expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
-      expect(screen.queryByText('Foundations')).not.toBeInTheDocument();
+      expect(screen.queryByText('Fundamentals')).not.toBeInTheDocument();
       expect(screen.getByText('Set up')).toBeInTheDocument();
       expect(screen.getByText('Explore')).toBeInTheDocument();
     });
@@ -361,12 +361,12 @@ describe('LearningPathTableOfContents', () => {
       expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
     });
 
-    it('renders a Foundations tab plus one tab per declared track', () => {
+    it('renders a Fundamentals tab plus one tab per declared track', () => {
       setCompletedSlugs(new Set());
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
 
       expect(screen.getByRole('tablist')).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Foundations' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Fundamentals' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Builder' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Seller' })).toBeInTheDocument();
     });
@@ -402,7 +402,7 @@ describe('LearningPathTableOfContents', () => {
 
     // Regression: the active track tab used to be purely local state, never
     // reaching the panel model, so Next/Previous always resolved against
-    // Foundations regardless of the selected tab. onActiveTrackChange is how
+    // Fundamentals regardless of the selected tab. onActiveTrackChange is how
     // the model learns which tab is selected.
     it('reports the selected tab via onActiveTrackChange, including on mount', () => {
       setCompletedSlugs(new Set());
@@ -421,15 +421,15 @@ describe('LearningPathTableOfContents', () => {
       fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
       expect(onActiveTrackChange).toHaveBeenLastCalledWith('builder', builderMilestones);
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Foundations' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Fundamentals' }));
       expect(onActiveTrackChange).toHaveBeenLastCalledWith(null, null);
     });
 
     // Every navigation remounts this component (ContentRenderer keys on the
     // loaded URL). Without initialActiveTrackId, a fresh mount always starts
-    // at Foundations and its mount-time onActiveTrackChange call would
+    // at Fundamentals and its mount-time onActiveTrackChange call would
     // overwrite the caller's stored selection with it.
-    it('restores the selected tab from initialActiveTrackId instead of defaulting to Foundations on mount', () => {
+    it('restores the selected tab from initialActiveTrackId instead of defaulting to Fundamentals on mount', () => {
       setCompletedSlugs(new Set());
       const onActiveTrackChange = jest.fn();
       render(
@@ -447,7 +447,7 @@ describe('LearningPathTableOfContents', () => {
       expect(onActiveTrackChange).toHaveBeenLastCalledWith('builder', builderMilestones);
     });
 
-    it("falls back to Foundations when initialActiveTrackId names no real track (a different path's leftover selection)", () => {
+    it("falls back to Fundamentals when initialActiveTrackId names no real track (a different path's leftover selection)", () => {
       setCompletedSlugs(new Set());
       render(
         <LearningPathTableOfContents
@@ -458,7 +458,7 @@ describe('LearningPathTableOfContents', () => {
         />
       );
 
-      expect(screen.getByRole('tab', { name: 'Foundations' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tab', { name: 'Fundamentals' })).toHaveAttribute('aria-selected', 'true');
     });
 
     // content-renderer.tsx reuses this component instance across
@@ -466,7 +466,7 @@ describe('LearningPathTableOfContents', () => {
     // reset when the props change, or a track selected on one path either
     // leaves no tab active on the next (its trackId doesn't exist there)
     // or silently pre-selects a same-named track the reader never clicked.
-    it('resets the active tab to Foundations when the path changes (no remount key between paths)', () => {
+    it('resets the active tab to Fundamentals when the path changes (no remount key between paths)', () => {
       setCompletedSlugs(new Set());
       const { rerender } = render(
         <LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />
@@ -478,24 +478,24 @@ describe('LearningPathTableOfContents', () => {
       // A different path, reusing the SAME "Builder"/"Seller" track ids and
       // labels — the exact case where a naive reset-by-trackId-existence
       // would silently keep a track selected instead of defaulting back to
-      // Foundations, since a track sharing the stale id exists here too.
+      // Fundamentals, since a track sharing the stale id exists here too.
       const otherPathBaseUrl = 'https://grafana.com/docs/learning-paths/other-demo/';
       const otherMilestones: Milestone[] = [
         { number: 1, title: 'Other set up', url: `${otherPathBaseUrl}other-set-up/content.json`, isActive: false },
       ];
       rerender(<LearningPathTableOfContents milestones={otherMilestones} baseUrl={otherPathBaseUrl} tracks={tracks} />);
 
-      expect(screen.getByRole('tab', { name: 'Foundations' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tab', { name: 'Fundamentals' })).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByRole('tab', { name: 'Seller' })).toHaveAttribute('aria-selected', 'false');
       expect(screen.getByText('Other set up')).toBeInTheDocument();
       expect(screen.queryByText('Seller one')).not.toBeInTheDocument();
     });
 
-    it('shows the Foundations sequence by default, with Foundations active', () => {
+    it('shows the Fundamentals sequence by default, with Fundamentals active', () => {
       setCompletedSlugs(new Set());
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
 
-      expect(screen.getByRole('tab', { name: 'Foundations' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tab', { name: 'Fundamentals' })).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByText('Set up')).toBeInTheDocument();
       expect(screen.getByText('Explore')).toBeInTheDocument();
       expect(screen.queryByText('Builder one')).not.toBeInTheDocument();
@@ -535,7 +535,7 @@ describe('LearningPathTableOfContents', () => {
       );
     });
 
-    it('reuses the Foundations sequential lock/unlock mechanism for a track', () => {
+    it('reuses the Fundamentals sequential lock/unlock mechanism for a track', () => {
       setCompletedSlugs(new Set());
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
 
@@ -545,7 +545,7 @@ describe('LearningPathTableOfContents', () => {
       expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(1);
     });
 
-    it('reflects the hero module count for the active tab, not the Foundations count', () => {
+    it('reflects the hero module count for the active tab, not the Fundamentals count', () => {
       setCompletedSlugs(new Set());
       render(
         <LearningPathTableOfContents
@@ -566,13 +566,13 @@ describe('LearningPathTableOfContents', () => {
     // authority (COMPLETION-MODEL.md) — the durable, path-wide percentage
     // shown elsewhere (My Learning) can legitimately read lower than this
     // ring's own number for the same guides, since it stays keyed to
-    // Foundations membership alone. The ring must not read as path
+    // Fundamentals membership alone. The ring must not read as path
     // completion; its accessible label names the active sequence instead.
     it("scopes the progress ring's accessible label to the active sequence, not the path as a whole", () => {
       setCompletedSlugs(new Set(['set-up', 'seller-one']));
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
 
-      expect(screen.getByRole('img', { name: '50% through Foundations' })).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: '50% through Fundamentals' })).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
 

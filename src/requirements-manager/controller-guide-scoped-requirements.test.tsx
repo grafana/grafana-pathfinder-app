@@ -86,6 +86,7 @@ describe('controller mode keeps var-* on the renderer side', () => {
       post: jest.fn(),
       requestRequirementCheck,
       requestFix: jest.fn(),
+      awaitStepResult: jest.fn().mockResolvedValue('completed'),
       awaitStepComplete: jest.fn(),
       cancelStepComplete: jest.fn(),
       onStepProgress: jest.fn(() => () => undefined),

@@ -543,6 +543,32 @@ where a create differs from a read:
   post-write refresh still serves a slightly-stale 200 instead of a cold 503.
   Any LIST that began before the write may finish for its caller but cannot repopulate that cache;
   a post-write GET starts a new refresh.
+- **Assignment satisfaction is a second consumer of the raw rows**
+  (`assignment_satisfaction.go`). It reads `CompletionRecords` uncollated, because collation drops
+  the per-row `completedAt`, and evaluates each row on its own: guide id plus `completedAt` against
+  the assignment's `acceptCompletionsFrom`, matching on guide id across guide sources. A successful
+  create also triggers a background, best-effort `status.satisfied` write (a status-subresource
+  PUT) on the caller's assignments that the new completion newly meets; it never fails the
+  completion write. `GET /assignments/my` repairs any lost write, a 409 included: an assignment it
+  evaluates as met while `status.satisfied` is unset gets the same write in the background on the
+  learner's next read.
+  One failure rule governs `GET /assignments/my`. A whole-list failure that affects every
+  assignment (the assignments LIST or the completion read) is a 503 with `Retry-After`, or the
+  capability envelope when terminal or structural; the client keeps its last good list. A failure
+  scoped to one assignment, where no path-guide source (bundled catalogue and docs path index,
+  custom catalogue, online index) finds the target and at least one failed, is logged and the
+  assignment is omitted from the response; it is never served as unmet. An unknown target or a
+  missing track, with no source failing, stays an unresolved assignment.
+  The assignment and custom-guide LISTs are drained per caller with that caller's identity,
+  because their RBAC identity-invariance is unproven (see `custom_guide_repository.go`). The
+  raw-row completion drain is deliberately uncapped, bounded by its deadline and per-page size,
+  while `GET /completion-records/my` keeps its 50,000-record index cap. Known limit: docs path
+  index lookups run sequentially, each bounded at 10s, so a stack that blackholes grafana.com
+  slows the response by up to that per distinct bundled URL target. Known limit: a failed online
+  package-index fetch is cached for the recommendations cache's full 6h TTL, so assignments only
+  the online index can resolve are omitted for that window; the UI resolves those paths through the
+  same index and could not render them either, and `status.satisfied` is repaired by
+  reconcile-on-read after recovery.
 - **Outcomes map onto the front-end retry-queue contract — four outcomes (created, retry,
   disarm-and-keep, drop) across five status classes:** 201 created (durable);
   **404 preserved verbatim** as the structural "route not deployed here" signal — the create POSTs

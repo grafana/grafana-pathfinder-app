@@ -1,5 +1,6 @@
+import { sleep } from '../../lib/async-utils';
 import { InteractiveStateManager } from '../interactive-state-manager';
-import { InteractiveElementData } from '../../types/interactive.types';
+import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 
 /**
@@ -28,29 +29,34 @@ const POPOUT_EVENT_BY_MODE: Record<PopoutTargetMode, string> = {
 export class PopoutHandler {
   constructor(
     private stateManager: InteractiveStateManager,
-    private waitForReactUpdates: () => Promise<void>
+    private waitForReactUpdates: () => Promise<void>,
+    private context?: InteractiveElementData
   ) {}
 
-  async execute(data: InteractiveElementData, _perform: boolean): Promise<void> {
+  async execute(data: InteractiveElementData, _perform: boolean): Promise<ActionExecutionResult> {
+    if (data !== this.context && (data.signal || data.lazyRender)) {
+      return new PopoutHandler(this.stateManager, this.waitForReactUpdates, data).execute(data, _perform);
+    }
     this.stateManager.setState(data, 'running');
 
     try {
+      this.context?.signal?.throwIfAborted();
       const mode = this.resolveTargetMode(data.targetValue);
       if (!mode) {
-        this.stateManager.handleError(
-          new Error(`PopoutHandler requires targetValue of 'sidebar' or 'floating', got: ${String(data.targetValue)}`),
-          'PopoutHandler',
-          data,
-          true
-        );
-        return;
+        return { outcome: 'error', reason: 'unsupported_action' };
       }
 
       document.dispatchEvent(new CustomEvent(POPOUT_EVENT_BY_MODE[mode]));
 
       await this.markAsCompleted(data);
+      this.context?.signal?.throwIfAborted();
+      return { outcome: 'ok' };
     } catch (error) {
-      this.stateManager.handleError(error as Error, 'PopoutHandler', data);
+      if (this.context?.signal?.aborted) {
+        return { outcome: 'cancelled' };
+      }
+      this.stateManager.handleError(error as Error, 'PopoutHandler', data, false);
+      return { outcome: 'error', reason: 'action_failed' };
     }
   }
 
@@ -63,8 +69,11 @@ export class PopoutHandler {
 
   private async markAsCompleted(data: InteractiveElementData): Promise<void> {
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
     this.stateManager.setState(data, 'completed');
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck));
+    await sleep(INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck, this.context?.signal);
+    this.context?.signal?.throwIfAborted();
     await this.waitForReactUpdates();
+    this.context?.signal?.throwIfAborted();
   }
 }

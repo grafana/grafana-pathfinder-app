@@ -12,6 +12,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
+import { compareVersions, parseVersion } from '../../lib/guide-version';
 import { ManifestJsonSchema } from '../../types/package.schema';
 import type { ManifestJson, TestEnvironment } from '../../types/package.types';
 import { preserveAuthoredStartingLocation } from './starting-location';
@@ -121,35 +122,6 @@ interface GrafanaHealthResponse {
 }
 
 /**
- * Parse a semver-like version string into [major, minor, patch] numbers.
- * Returns null for strings that don't match the expected pattern.
- *
- * Handles Grafana's version format which may include pre-release identifiers
- * like "12.2.0-pre" or "12.2.0+security-01" — those are ignored for comparison.
- */
-export function parseVersion(version: string): [number, number, number] | null {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
-  if (!match) {
-    return null;
-  }
-  return [parseInt(match[1]!, 10), parseInt(match[2]!, 10), parseInt(match[3]!, 10)];
-}
-
-/**
- * Compare two parsed version tuples.
- * Returns negative if a < b, 0 if equal, positive if a > b.
- */
-export function compareVersions(a: [number, number, number], b: [number, number, number]): number {
-  for (let i = 0; i < 3; i++) {
-    const diff = a[i]! - b[i]!;
-    if (diff !== 0) {
-      return diff;
-    }
-  }
-  return 0;
-}
-
-/**
  * Check whether the running Grafana instance meets the manifest's minVersion requirement.
  *
  * When `grafanaVersion` is provided (from a prior health check), the comparison runs
@@ -250,15 +222,20 @@ interface GrafanaPlugin {
   enabled?: boolean;
 }
 
-/**
- * Fetch the list of installed Grafana plugins.
- * Returns a Set of plugin IDs for fast lookup.
- */
-async function fetchInstalledPlugins(grafanaUrl: string): Promise<Set<string>> {
-  const pluginsUrl = new URL('/api/plugins', grafanaUrl).toString();
+async function fetchInstalledPlugins(grafanaUrl: string, token?: string): Promise<Set<string>> {
+  const target = new URL(grafanaUrl);
+  const pluginsUrl = new URL('/api/plugins', target);
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (token) {
+    if (target.protocol !== 'https:') {
+      throw new Error('Authenticated plugin pre-flight requires an HTTPS Grafana target.');
+    }
+    headers.Authorization = `Bearer ${token}`;
+  }
   const response = await fetch(pluginsUrl, {
     method: 'GET',
-    headers: { Accept: 'application/json' },
+    headers,
+    redirect: token ? 'error' : 'follow',
     signal: AbortSignal.timeout(15000),
   });
 
@@ -276,7 +253,11 @@ async function fetchInstalledPlugins(grafanaUrl: string): Promise<Set<string>> {
  * @param testEnvironment - The testEnvironment block from manifest.json
  * @param grafanaUrl - The Grafana base URL
  */
-export async function checkPlugins(testEnvironment: TestEnvironment, grafanaUrl: string): Promise<PreflightResult[]> {
+export async function checkPlugins(
+  testEnvironment: TestEnvironment,
+  grafanaUrl: string,
+  token?: string
+): Promise<PreflightResult[]> {
   const { plugins } = testEnvironment;
 
   if (!plugins || plugins.length === 0) {
@@ -285,7 +266,7 @@ export async function checkPlugins(testEnvironment: TestEnvironment, grafanaUrl:
 
   let installed: Set<string>;
   try {
-    installed = await fetchInstalledPlugins(grafanaUrl);
+    installed = await fetchInstalledPlugins(grafanaUrl, token);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error fetching plugin list';
     // Return a single fail for the fetch error rather than one per plugin
@@ -342,9 +323,14 @@ export function loadManifestFromDir(packageDir: string): ManifestJson | null {
 export interface ManifestPreflightOptions {
   grafanaUrl: string;
   currentTier: CurrentTier;
+  token?: string;
   /** Pre-fetched Grafana version from a prior health check. When provided,
    *  `checkMinVersion` skips its own `/api/health` fetch. */
   grafanaVersion?: string;
+}
+
+export function resolveManifestMinVersion(manifest: ManifestJson): string | undefined {
+  return manifest.testEnvironment?.minVersion ?? manifest.minGrafanaVersion;
 }
 
 /**
@@ -362,7 +348,11 @@ export async function runManifestPreflight(
   manifest: ManifestJson,
   options: ManifestPreflightOptions
 ): Promise<PreflightOutcome> {
-  const testEnvironment = manifest.testEnvironment ?? {};
+  const declared = manifest.testEnvironment ?? {};
+  const testEnvironment: TestEnvironment = {
+    ...declared,
+    minVersion: resolveManifestMinVersion(manifest),
+  };
   const results: PreflightResult[] = [];
 
   // 1. Tier check (fast, no network)
@@ -379,7 +369,7 @@ export async function runManifestPreflight(
   results.push(versionResult);
 
   // 3. Plugin checks
-  const pluginResults = await checkPlugins(testEnvironment, options.grafanaUrl);
+  const pluginResults = await checkPlugins(testEnvironment, options.grafanaUrl, options.token);
   results.push(...pluginResults);
 
   const hasFail = results.some((r) => r.status === 'fail');

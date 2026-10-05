@@ -118,6 +118,8 @@ export interface PackageOpenInfo {
   /** Launching surface, for context-panel sections that are not the recommender.
    *  Narrowed with `coerceLaunchSource` at the launch boundary (Tier 0 cannot import it). */
   launchSource?: string;
+  /** Path Tracks tab the cover page opens on. */
+  trackId?: string;
 }
 
 export interface ContextPanelState extends SceneObjectState {

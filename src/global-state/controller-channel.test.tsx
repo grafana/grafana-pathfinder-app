@@ -189,6 +189,46 @@ describe('ControllerChannelProvider', () => {
     );
   });
 
+  it.each(['cancel', 'timeout'])('signs step-cancel when a pending run ends through %s', async (reason) => {
+    const transport = new FakeCrossTabTransport();
+    let channel!: NonNullable<ReturnType<typeof useControllerChannel>>;
+    function Capture() {
+      const value = useControllerChannel();
+      React.useEffect(() => {
+        channel = value!;
+      }, [value]);
+      return null;
+    }
+    render(
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+        <Capture />
+      </ControllerChannelProvider>
+    );
+    await pairWithLive(transport);
+    jest.useFakeTimers();
+    try {
+      const pending = channel.awaitStepResult('s1', 'cancel-run', 100);
+      if (reason === 'cancel') {
+        channel.cancelStepComplete('s1', 'cancel-run');
+      } else {
+        await act(async () => jest.advanceTimersByTimeAsync(100));
+      }
+      expect(await pending).toBe(reason === 'cancel' ? 'cancelled' : 'timeout');
+    } finally {
+      jest.useRealTimers();
+    }
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({
+          ...signedFieldsFor('live'),
+          kind: 'step-cancel',
+          stepId: 's1',
+          runId: 'cancel-run',
+        })
+      )
+    );
+  });
+
   it('reports connected once a paired live tab heartbeats', async () => {
     const transport = new FakeCrossTabTransport();
     render(

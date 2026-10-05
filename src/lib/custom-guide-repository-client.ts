@@ -15,6 +15,7 @@ import { getBackendSrv } from '@grafana/runtime';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
 import { isBackendApiAvailable } from '../utils/fetchBackendGuides';
+import { classifyRequestFailure } from './fetch-error';
 import { logger } from './logging';
 import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
 import { PackageTypeSchema } from '../types/package.schema';
@@ -91,18 +92,6 @@ const APP_PLATFORM_REPOSITORY = 'app-platform';
 const CACHE_TTL_MS = 30_000;
 const cache = new Map<string, { entries: CustomGuideRepositoryEntry[]; at: number }>();
 const inflight = new Map<string, Promise<CustomGuideRepositoryEntry[]>>();
-
-// Bounded token, never the error text — it lands on a Faro event attribute,
-// which must stay low-cardinality (docs/developer/TELEMETRY.md). `data.statusCode`
-// is body-derived, so the integer bound is what keeps the vocabulary finite.
-function classifyRequestFailure(err: unknown): string {
-  const status =
-    (err as { status?: number })?.status ??
-    (err as { statusCode?: number })?.statusCode ??
-    (err as { data?: { statusCode?: number } })?.data?.statusCode;
-  const bounded = typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599;
-  return bounded ? `http-${status}` : 'transport-error';
-}
 
 function reportCatalogueFetchFailure(err: unknown): void {
   reportProxyFailure(err);

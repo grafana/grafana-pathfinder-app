@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const text = z.string().min(1).max(4096);
+export const KioskExitButtonLabelSchema = z.string().trim().min(1).max(200);
 const name = z
   .string()
   .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/)
@@ -81,6 +82,7 @@ export type KioskPageBlock = KioskPage['blocks'][number];
 export const KioskCatalogSchema = z
   .strictObject({
     banner: z.string().optional(),
+    exitButtonLabel: KioskExitButtonLabelSchema.optional(),
     page: KioskPageSchema,
     rules: z
       .array(
@@ -92,6 +94,7 @@ export const KioskCatalogSchema = z
           type: z.string().optional(),
           targetUrl: text.optional(),
           page: text.optional(),
+          interactiveLearning: z.boolean().optional(),
         })
       )
       .min(1)
@@ -102,7 +105,21 @@ export const KioskCatalogSchema = z
     if (ids.size !== catalog.rules.length) {
       ctx.addIssue({ code: 'custom', message: 'Duplicate rule ID' });
     }
+    for (const rule of catalog.rules) {
+      if (
+        rule.interactiveLearning === false &&
+        (!rule.page || !rule.page.startsWith('/') || rule.page.startsWith('//') || /[\\\x00-\x20]/.test(rule.page))
+      ) {
+        ctx.addIssue({ code: 'custom', message: 'Product rules require an internal page path' });
+      }
+    }
     for (const block of catalog.page.blocks) {
+      if (
+        block.type === 'launch-form' &&
+        catalog.rules.find((rule) => rule.id === block.ruleId)?.interactiveLearning === false
+      ) {
+        ctx.addIssue({ code: 'custom', message: 'Launch forms require interactive learning' });
+      }
       const refs =
         block.type === 'launch-form'
           ? [block.ruleId]

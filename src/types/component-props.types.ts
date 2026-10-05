@@ -91,6 +91,8 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
  * Internal type used by InteractiveSection to track steps
  */
 export interface StepInfo {
+  lazyRender?: boolean;
+  scrollContainer?: string;
   stepId: string;
   element: React.ReactElement<InteractiveStepProps> | React.ReactElement<any>;
   index: number;
@@ -99,6 +101,7 @@ export interface StepInfo {
   targetValue?: string;
   targetState?: boolean | string;
   targetComment?: string; // Optional comment to show during execution
+  openGuide?: string; // Guide to open in sidebar after navigation
   requirements?: ConditionInput;
   postVerify?: string;
   skippable?: boolean; // Whether this step can be skipped

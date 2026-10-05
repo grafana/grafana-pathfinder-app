@@ -3,6 +3,7 @@ import { recordKioskCatalogLoaded } from '../../lib/telemetry';
 jest.mock('../../lib/logging', () => ({ logger: { warn: jest.fn() } }));
 jest.mock('../../lib/telemetry', () => ({ recordKioskCatalogLoaded: jest.fn() }));
 import { BUNDLED_KIOSK_RULES, DEFAULT_BANNER, DEFAULT_KIOSK_URL, loadKioskData } from './kiosk-rules';
+import demo from '../../../docs/examples/kiosk/dem.json';
 
 const defaultUrl = 'https://catalog.example.com/default.json';
 const overrideUrl = 'https://catalog.example.com/custom.json';
@@ -32,6 +33,25 @@ it('uses the configured default when no override is supplied', async () => {
   mockFetch.mockResolvedValue(response('Default kiosk'));
   expect((await loadKioskData(defaultUrl)).rules[0]?.title).toBe('Default kiosk');
   expect(mockFetch).toHaveBeenCalledWith(defaultUrl, expect.anything());
+});
+
+it.each([{ rules: [rule] }, demo])('loads an exit label from a catalog', async (catalog) => {
+  mockFetch.mockResolvedValue({
+    ok: true,
+    json: async () => ({ ...catalog, exitButtonLabel: '  Explore all options  ' }),
+  });
+  expect((await loadKioskData(defaultUrl, overrideUrl)).exitButtonLabel).toBe('Explore all options');
+  expect(mockFetch).toHaveBeenCalledTimes(1);
+});
+
+it.each(['', '   ', 42, null, 'x'.repeat(201)])('falls back after an invalid exit label %j', async (label) => {
+  mockFetch
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ rules: [rule], exitButtonLabel: label }) })
+    .mockResolvedValueOnce(response('Default kiosk'));
+  const result = await loadKioskData(defaultUrl, overrideUrl);
+  expect(result.exitButtonLabel).toBeUndefined();
+  expect(result.rules[0]?.title).toBe('Default kiosk');
+  expect(result.warning).toBeDefined();
 });
 
 it.each(['https://evil.example.com/custom.json', 'javascript:alert(1)', 'not-a-url'])(
@@ -184,3 +204,24 @@ it('does not report cancellation as degradation or successful loading', async ()
   expect(logger.warn).not.toHaveBeenCalled();
   expect(recordKioskCatalogLoaded).not.toHaveBeenCalled();
 });
+
+it('accepts a navigation-only rule without validating or fetching its ignored guide URL', async () => {
+  mockFetch.mockResolvedValue({
+    ok: true,
+    json: async () => ({ rules: [{ ...rule, url: 'unused', interactiveLearning: false, page: '/a/product' }] }),
+  });
+  const result = await loadKioskData(defaultUrl);
+  expect(result.rules[0]?.interactiveLearning).toBe(false);
+  expect(result.warning).toBeUndefined();
+  expect(mockFetch).toHaveBeenCalledTimes(1);
+});
+it.each([undefined, '//evil.example', 'javascript:alert(1)'])(
+  'rejects navigation-only page %s at catalog load',
+  async (page) => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ rules: [{ ...rule, interactiveLearning: false, page }] }),
+    });
+    expect((await loadKioskData(defaultUrl)).warning).toBeDefined();
+  }
+);

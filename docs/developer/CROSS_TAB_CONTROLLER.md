@@ -59,7 +59,7 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 (`source: 'pathfinder'`, a per-tab `senderId` used to drop self-echoes, and a
 `timestamp`):
 
-- `step-command` — `{ phase: 'show' | 'do', stepId, runId, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, internalActions? } }`.
+- `step-command` — `{ phase: 'show' | 'do', stepId, runId, startIndex?, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, lazyRender?, scrollContainer?, openGuide?, internalActions? } }`.
   `targetState` carries an authored `targetstate` through to the live tab so
   toggle actions converge on the requested state instead of clicking blindly.
   Composite steps carry their ordered sub-actions in `internalActions`; the
@@ -68,8 +68,15 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
   `multistep` replays with staged pacing (see [Replay pacing](#replay-pacing));
   a `guided` step runs through the live tab's `GuidedHandler` instead — it
   highlights each target and waits for the user.
-- `step-complete` — `{ stepId, runId, ok }`, live → controller, signals a
-  composite actually finished so the controller marks completion only then.
+- `step-cancel` — `{ stepId, runId }`, a signed controller → live command that
+  aborts the matching run without waiting behind the execution queue.
+- `step-complete` — `{ stepId, runId, ok }`, live → controller, acknowledges
+  simple and composite actions. The controller registers its waiter before
+  sending and normally completes only after success and any post-verification.
+  Simple actions wait up to 30 seconds; composite actions wait up to 15 minutes.
+  A negative acknowledgement is an action failure, distinct from an acknowledgement
+  timeout. Explicit `completeEarly` Do it actions complete on dispatch without an
+  acknowledgement waiter, timeout cancellation, or post-verification gate.
 - `step-progress` — `{ stepId, runId, index, total }`, live → controller, reports which
   internal action a composite is replaying so the controller can animate per-step
   progress while it runs on the live tab. `runId` prevents a late reply from a
@@ -132,7 +139,7 @@ drive that Grafana. The controller→live command path is therefore
   accept does nothing. Competing valid challenges fail closed (the prompt is
   cleared and both launches revoked); a rejected session stays suppressed; an
   expired pending challenge can be retried.
-- **Signed commands.** Every side-effecting message — `step-command`,
+- **Signed commands.** Every side-effecting message — `step-command`, `step-cancel`,
   `check-requirements`, `fix-requirement`, `sidebar-handoff` — is ECDSA-signed
   and bound to `sessionId`, `liveTabId`, the command body, a fresh `sigNonce`,
   and a `sigTs`. The executor's auth gate (`verifySignedMessage`) checks the

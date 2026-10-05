@@ -14,7 +14,16 @@ See the [complete DEM catalog](../examples/kiosk/dem.json) and [generated JSON S
 | `spacing` | `normal`, `spacious`  | `normal`   |
 | `header`  | `standard`, `minimal` | `standard` |
 
-The exit control is always available. Forms stack on narrow screens.
+The exit control is always available and defaults to “Skip this and show all options”. Set the top-level `exitButtonLabel` in either a legacy or structured catalog to override its visible text and accessible name:
+
+```json
+{
+  "exitButtonLabel": "Explore all options",
+  "rules": [{ "title": "Welcome", "url": "bundled:welcome", "description": "Learn Grafana" }]
+}
+```
+
+The label is plain text, trimmed, and limited to 1–200 characters. Empty, whitespace-only, or invalid labels reject the catalog and use the existing fallback flow. Omitting the field keeps the default label. Forms stack on narrow screens.
 
 ## Blocks
 
@@ -111,3 +120,19 @@ Authors can opt in to the reserved `{{grafana.stackUrl}}` placeholder in command
 The renderer substitutes the hosting Grafana instance's full HTTPS origin as a shell-quoted argument, preserving dev domains and ports. Use the placeholder as an entire, unquoted argument. Localhost and HTTP instances show `your-stack` for manual replacement. A fixed URL or `your-stack` without the placeholder stays unchanged. Both display and Copy use the resolved command.
 
 Only this reserved command placeholder is resolved. Guide answers, URL parameters, and arbitrary variables are never interpolated. The stack does not come from a guide tile's destination, and command values are excluded from analytics and logs. Deploy renderer support before publishing catalogs that use the placeholder.
+
+## Product destinations
+
+Set `interactiveLearning: false` on a rule to open its `page` directly. The page must be a valid internal Grafana path. The `url` remains a guide reference but is ignored for this launch. Omitting `interactiveLearning`, or setting it to `true`, preserves guide launches.
+
+Product tiles show **Open product** and no completion progress. Cards and link layouts both support product destinations. Launch forms require an interactive learning rule. Instance mode navigates in the current tab and closes Pathfinder's learning panel while retaining saved guides and the panel preference. Presentation mode opens the configured target instance in a new tab, preserving its Grafana subpath.
+
+Deploy a Pathfinder version supporting `interactiveLearning` before publishing catalogs that use it. Earlier strict catalog readers reject the new field and fall back to another catalog.
+
+## Kiosk links and browser history
+
+The `pathfinderKiosk=1` and `kioskRulesUrl` parameters stay in the address bar while the kiosk is open. The URL can be shared or refreshed to reopen the same catalog. Browser Back/Forward restores the kiosk from its URL.
+
+Launching a product or guide pushes a destination entry and retains the kiosk entry for browser Back. The exit button and Escape explicitly dismiss the kiosk and remove its launch parameters, so refresh cannot reopen it. There is no global last-kiosk preference or custom history state.
+
+Guide links containing `pathfinderKiosk=1` navigate to the kiosk instead of opening a documentation tab. Root-relative links target the current Grafana instance, including its subpath. External-instance links and modified clicks retain browser navigation behavior. `doc` and `controller` parameters retain precedence over kiosk launches.

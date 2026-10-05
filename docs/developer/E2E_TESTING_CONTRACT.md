@@ -69,6 +69,8 @@ This report has `outcome: "skipped"` and no `errorCode`. It keeps the complete c
 
 The CLI shows `Skipped (unsupported steps)` and exits with code 0. The skipped guide blocks guides that declare it as a prerequisite.
 
+The CLI also uses `skipped_unsupported_steps` for interactive local-source cloud guides without a verified passed browser step. For a claimed browser pass, this includes empty results, all-skipped results, and zero executed coverage. The report has `outcome: "skipped"` and an explicit message that the local source was not tested. The same console label, exit code, and prerequisite-blocking behavior apply. This status does not always mean that the guide contains an unsupported step kind. Prose-only guides follow the exception in [local-source cloud runs](E2E_TESTING.md#non-execution-results).
+
 Browser actions use only rendered DOM state. Raw guide JSON can identify authored interactive content, but it cannot control browser actions.
 
 These runner changes do not change root ownership, existing test IDs, state values, or product completion behavior.

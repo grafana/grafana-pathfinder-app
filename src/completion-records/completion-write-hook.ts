@@ -1,6 +1,6 @@
 import { logger } from '../lib/logging';
 
-import { onCompletionRecorded } from './completion-recorder';
+import { discardPendingCompletions, onCompletionRecorded } from './completion-recorder';
 import {
   currentCompletionPlatform,
   postCompletionRecord,
@@ -27,6 +27,26 @@ export interface WriteHookDeps {
   random: () => number;
   setTimer: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   clearTimer: (handle: ReturnType<typeof setTimeout>) => void;
+}
+
+const publishedListeners = new Set<() => void>();
+
+/** Fires after a queued completion POST succeeds. Subscribe to refetch assignments. */
+export function onCompletionPublished(listener: () => void): () => void {
+  publishedListeners.add(listener);
+  return () => {
+    publishedListeners.delete(listener);
+  };
+}
+
+function notifyCompletionPublished(): void {
+  for (const listener of publishedListeners) {
+    try {
+      listener();
+    } catch (error) {
+      logger.warn('completion write: published listener threw', { error: String(error) });
+    }
+  }
 }
 
 const defaultDeps: WriteHookDeps = {
@@ -58,6 +78,7 @@ class CompletionWriteController {
           send: deps.send,
           random: deps.random,
           storage: deps.storage(ownerKey),
+          onCreated: notifyCompletionPublished,
         })
       : null;
   }
@@ -229,13 +250,12 @@ export function armCompletionWriteHook(overrides?: Partial<WriteHookDeps>): void
  * queue draining durable records for the guides the user just cleared.
  */
 export function discardQueuedCompletionWrites(): void {
+  discardPendingCompletions();
   if (controller) {
     controller.discardQueued();
     return;
   }
-  // Not armed on this surface (anonymous, or reset reached before init's dynamic
-  // import resolved). Clear the persisted queue directly so a reset still drops
-  // what an earlier load or another tab left behind.
+  // Reset can precede the async write-hook initialization.
   const ownerKey = defaultDeps.ownerKey();
   if (ownerKey) {
     defaultDeps.storage(ownerKey).clear();

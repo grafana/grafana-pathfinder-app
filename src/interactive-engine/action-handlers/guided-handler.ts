@@ -1,3 +1,5 @@
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
+import { sleep } from '../../lib/async-utils';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager, type CommentBoxStepInfo } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
@@ -41,10 +43,16 @@ interface GuidedStepArbiter {
   getResult: () => CompletionResult | null;
 }
 
+let nextGuidedRunId = 0;
+
 export class GuidedHandler {
   private activeListeners: ActiveListener[] = [];
   private pendingTimeouts: Array<ReturnType<typeof setTimeout>> = [];
   private pendingIntervals: Array<ReturnType<typeof setInterval>> = [];
+  private runController: AbortController | null = null;
+  private runId = '';
+  private noopComment: HTMLElement | null = null;
+  private highlightedTarget: HTMLElement | null = null;
   private currentAbortController: AbortController | null = null;
   private completedSteps: number[] = [];
 
@@ -77,30 +85,51 @@ export class GuidedHandler {
     }
   }
 
+  resetProgress(completedCount = 0): void {
+    this.completedSteps = Array.from({ length: completedCount }, (_, index) => index);
+  }
   async executeGuidedStep(
     action: AuthoredGuidedAction,
     stepIndex: number,
     totalSteps: number,
     timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout,
-    onActionCompleted?: () => void
+    onActionCompleted?: () => void,
+    options?: { signal?: AbortSignal; revalidate?: () => Promise<boolean> }
   ): Promise<CompletionResult> {
-    if (stepIndex === 0) {
-      this.completedSteps = [];
+    if (this.runController) {
+      return 'error';
     }
-
-    return withFaroUserAction(
-      createInteractionName(UserInteraction.DoItButtonClick),
-      {
-        target_action: action.targetAction,
-        ref_target: action.refTarget ?? '',
-        step_index: stepIndex,
-        total_steps: totalSteps,
-      },
-      () => this.runGuidedStep(action, stepIndex, totalSteps, timeout, onActionCompleted),
-      // Internal waits are bounded by `timeout`; the margin only catches a hung step.
-      timeout + 10_000,
-      { critical: true, outcomeFrom: outcomeFromCompletionResult }
-    );
+    if (stepIndex === 0) {
+      this.resetProgress();
+    }
+    const controller = new AbortController();
+    const cancel = () => this.cancel();
+    try {
+      this.runId = `guided-${++nextGuidedRunId}`;
+      this.runController = controller;
+      options?.signal?.addEventListener('abort', cancel, { once: true });
+      if (options?.signal?.aborted) {
+        controller.abort();
+      }
+      return await withFaroUserAction(
+        createInteractionName(UserInteraction.DoItButtonClick),
+        {
+          target_action: action.targetAction,
+          ref_target: action.refTarget ?? '',
+          step_index: stepIndex,
+          total_steps: totalSteps,
+        },
+        () => this.runGuidedStep(action, stepIndex, totalSteps, timeout, onActionCompleted, options?.revalidate),
+        // Internal waits are bounded by `timeout`; the margin only catches a hung step.
+        timeout + 10_000,
+        { critical: true, outcomeFrom: outcomeFromCompletionResult }
+      );
+    } finally {
+      options?.signal?.removeEventListener('abort', cancel);
+      if (this.runController === controller) {
+        this.runController = null;
+      }
+    }
   }
 
   private createGuidedStepArbiter(): GuidedStepArbiter {
@@ -136,85 +165,132 @@ export class GuidedHandler {
     stepIndex: number,
     totalSteps: number,
     timeout: number,
-    onActionCompleted?: () => void
+    onActionCompleted?: () => void,
+    revalidate?: () => Promise<boolean>
   ): Promise<CompletionResult> {
-    const arbiter = this.createGuidedStepArbiter();
-
+    const signal = this.runController!.signal;
+    const deadline = Date.now() + timeout;
+    let recoveryDeadline: number | undefined;
+    let arbiter = this.createGuidedStepArbiter();
     try {
       this.cleanupListeners();
+      signal.throwIfAborted();
       if (action.targetAction === 'noop') {
+        if (revalidate && !(await revalidate())) {
+          return this.finishGuidedStep('error', stepIndex);
+        }
+        signal.throwIfAborted();
         return await this.executeNoopStep(action, stepIndex, totalSteps, timeout);
       }
-
-      // The guided block's step schema admits every authorable verb, so a
-      // pre-gate guide can still carry one the handler cannot wait on
-      // (`validate-guide.ts` rejects the shape for anything authored from now
-      // on). The outcome reproduces what element resolution used to reach: a
-      // `navigate` refTarget is a URL path, never a selector, so a skippable
-      // step skipped and the run carried on while a non-skippable one errored.
-      // Skippable `popout` is the one accepted divergence — it carries no
-      // refTarget at all, so it errored before resolution and now skips.
       if (!isGuidedDomActionType(action.targetAction)) {
-        logger.warn(`Guided step ${stepIndex + 1} uses an action the guided handler cannot drive`, {
-          targetAction: action.targetAction,
+        logger.warn('Guided handler cannot drive this action', { targetAction: action.targetAction });
+        return this.finishGuidedStep(action.isSkippable ? 'skipped' : 'error', stepIndex);
+      }
+      if (!action.refTarget) {
+        return this.finishGuidedStep('error', stepIndex);
+      }
+      await this.expandNavigationParentIfNeeded(action.refTarget);
+      if (action.lazyRender) {
+        await resolveWithRetry(action.refTarget, action.targetAction, {
+          delays: [],
+          lazyRender: true,
+          scrollContainer: action.scrollContainer,
+          signal,
         });
-        return this.finishGuidedStep(arbiter.settle(action.isSkippable ? 'skipped' : 'error'), stepIndex);
       }
-
-      const refTarget = action.refTarget;
-      const targetAction = action.targetAction;
-
-      if (!refTarget) {
-        throw new Error(`Non-noop action ${targetAction} requires a refTarget`);
-      }
-
-      await this.expandNavigationParentIfNeeded(refTarget);
-
-      let targetElement: HTMLElement;
-      try {
-        targetElement = await this.findTargetElementWithRetry(
-          refTarget,
-          targetAction,
-          timeout,
-          INTERACTIVE_CONFIG.guided.retryInterval,
-          action.isSkippable === true
-        );
-      } catch (elementNotFoundError) {
-        if (action.isSkippable) {
-          return this.finishGuidedStep('skipped', stepIndex);
+      while (!signal.aborted) {
+        arbiter = this.createGuidedStepArbiter();
+        const remaining = Math.min(deadline, recoveryDeadline ?? deadline) - Date.now();
+        if (remaining <= 0) {
+          return this.finishGuidedStep(recoveryDeadline ? 'error' : 'timeout', stepIndex);
         }
-        throw elementNotFoundError;
+        let target: HTMLElement;
+        try {
+          target = await this.findTargetElementWithRetry(
+            action.refTarget,
+            action.targetAction,
+            remaining,
+            recoveryDeadline ? 100 : INTERACTIVE_CONFIG.guided.retryInterval,
+            !recoveryDeadline && action.isSkippable === true,
+            signal,
+            recoveryDeadline !== undefined,
+            revalidate
+          );
+        } catch (_error) {
+          if (signal.aborted) {
+            return this.finishGuidedStep('cancelled', stepIndex);
+          }
+          return this.finishGuidedStep(!recoveryDeadline && action.isSkippable ? 'skipped' : 'error', stepIndex);
+        }
+        signal.throwIfAborted();
+        await this.prepareElement(target);
+        signal.throwIfAborted();
+        if (revalidate && !(await revalidate())) {
+          return this.finishGuidedStep('error', stepIndex);
+        }
+        signal.throwIfAborted();
+        recoveryDeadline = undefined;
+        let lostTarget = false;
+        this.createCompletionListener(
+          action,
+          action.targetAction,
+          target,
+          Math.max(0, deadline - Date.now()),
+          arbiter,
+          onActionCompleted
+        );
+        const onAbort = () => arbiter.settle('cancelled');
+        signal.addEventListener('abort', onAbort, { once: true });
+        this.activeListeners.push({ target: signal, type: 'abort', handler: onAbort });
+        const watch = setInterval(() => {
+          if (!target.isConnected && arbiter.getResult() === null) {
+            lostTarget = true;
+            arbiter.settle('error');
+          }
+        }, INTERACTIVE_CONFIG.guided.connectivityCheckInterval);
+        this.pendingIntervals.push(watch);
+        if (action.isSkippable) {
+          this.createSkipListener(stepIndex, arbiter);
+        }
+        this.createCancelListener(stepIndex, arbiter);
+        try {
+          await this.highlightTarget(
+            target,
+            action.targetAction,
+            stepIndex,
+            totalSteps,
+            commentForTargetState(action.targetComment, target, action.targetState),
+            action.isSkippable,
+            action.formHint,
+            action.targetValue,
+            action.refTarget
+          );
+        } catch (error) {
+          if (target.isConnected || signal.aborted || arbiter.getResult() === 'completed') {
+            throw error;
+          }
+          lostTarget = true;
+          arbiter.settle('error');
+        }
+        signal.throwIfAborted();
+        const result = await arbiter.promise;
+        this.finishGuidedStep(result, stepIndex);
+        if (!lostTarget || signal.aborted) {
+          return signal.aborted && result !== 'completed' ? 'cancelled' : result;
+        }
+        recoveryDeadline = Math.min(deadline, Date.now() + 5000);
+        this.navigationManager.showNoopComment('The page changed. Looking for this step again…', () => this.cancel());
       }
-
-      await this.prepareElement(targetElement);
-      // Attach before highlighting so click activation cannot beat the listener.
-      this.createCompletionListener(action, targetAction, targetElement, timeout, arbiter, onActionCompleted);
-      if (action.isSkippable) {
-        this.createSkipListener(stepIndex, arbiter);
-      }
-      this.createCancelListener(stepIndex, arbiter);
-      await this.highlightTarget(
-        targetElement,
-        targetAction,
-        stepIndex,
-        totalSteps,
-        commentForTargetState(action.targetComment, targetElement, action.targetState),
-        action.isSkippable,
-        action.formHint,
-        action.targetValue,
-        action.refTarget!
-      );
-
-      return this.finishGuidedStep(await arbiter.promise, stepIndex);
+      return this.finishGuidedStep('cancelled', stepIndex);
     } catch (error) {
-      const settledResult = arbiter.getResult();
-      if (settledResult === null) {
-        logger.error(`Guided step ${stepIndex + 1} failed`, { error });
-      } else if (settledResult !== 'error') {
-        logger.warn(`Guided step ${stepIndex + 1} settled before setup failed`, { error, result: settledResult });
+      const settled = arbiter.getResult();
+      if (settled === 'completed' || settled === 'skipped') {
+        return this.finishGuidedStep(settled, stepIndex);
       }
-      const result = settledResult ?? arbiter.settle('error');
-      return this.finishGuidedStep(result, stepIndex);
+      if (!signal.aborted) {
+        logger.error('Guided setup failed', { error });
+      }
+      return this.finishGuidedStep(signal.aborted ? 'cancelled' : 'error', stepIndex);
     }
   }
 
@@ -279,8 +355,11 @@ export class GuidedHandler {
   private createNoopCompletionListener(stepIndex: number, timeout: number): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
       const handleContinue = (event: Event) => {
-        const customEvent = event as CustomEvent<{ stepIndex: number }>;
-        if (customEvent.detail?.stepIndex === stepIndex) {
+        const customEvent = event as CustomEvent<{ stepIndex: number; runId?: string }>;
+        if (
+          (customEvent.detail?.runId === undefined || customEvent.detail.runId === this.runId) &&
+          customEvent.detail?.stepIndex === stepIndex
+        ) {
           resolve('completed');
         }
       };
@@ -306,7 +385,8 @@ export class GuidedHandler {
     comment: string,
     isSkippable?: boolean
   ): Promise<void> {
-    this.navigationManager.clearAllHighlights();
+    const runId = this.runId;
+    this.navigationManager.clearOwnedHighlights();
 
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
@@ -361,7 +441,7 @@ export class GuidedHandler {
     continueButton.textContent = 'Continue →';
     continueButton.style.backgroundColor = '#3871dc'; // Primary color
     continueButton.onclick = () => {
-      document.dispatchEvent(new CustomEvent('guided-noop-continue', { detail: { stepIndex } }));
+      document.dispatchEvent(new CustomEvent('guided-noop-continue', { detail: { stepIndex, runId } }));
     };
     buttonContainer.appendChild(continueButton);
 
@@ -370,7 +450,7 @@ export class GuidedHandler {
       skipButton.className = 'interactive-comment-skip-btn';
       skipButton.textContent = 'Skip';
       skipButton.onclick = () => {
-        document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex } }));
+        document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex, runId } }));
       };
       buttonContainer.appendChild(skipButton);
     }
@@ -379,7 +459,7 @@ export class GuidedHandler {
     cancelButton.className = 'interactive-comment-cancel-btn';
     cancelButton.textContent = 'Cancel';
     cancelButton.onclick = () => {
-      document.dispatchEvent(new CustomEvent('guided-step-cancelled', { detail: { stepIndex } }));
+      document.dispatchEvent(new CustomEvent('guided-step-cancelled', { detail: { stepIndex, runId } }));
     };
     buttonContainer.appendChild(cancelButton);
 
@@ -389,6 +469,7 @@ export class GuidedHandler {
     commentBox.appendChild(content);
 
     document.body.appendChild(commentBox);
+    this.noopComment = commentBox;
   }
 
   /**
@@ -400,17 +481,39 @@ export class GuidedHandler {
     actionType: GuidedDomActionType,
     timeout: number,
     retryInterval: number,
-    skipRetryOnFailure = false
+    skipRetryOnFailure = false,
+    signal?: AbortSignal,
+    recovering = false,
+    prepareTarget?: () => Promise<boolean>
   ): Promise<HTMLElement> {
     const startTime = Date.now();
     let attemptCount = 0;
+    let preparedTarget = false;
 
     while (Date.now() - startTime < timeout) {
+      signal?.throwIfAborted();
       attemptCount++;
       try {
+        if (recovering) {
+          const resolved = resolveSelector(selector);
+          const matches =
+            actionType === 'button' && !isCssSelector(resolved)
+              ? findButtonByText(resolved)
+              : querySelectorAllEnhanced(resolved).elements;
+          if (matches.length !== 1 || !matches[0]?.isConnected) {
+            throw new Error('Target replacement is missing or ambiguous');
+          }
+        }
         const element = await this.findTargetElement(selector, actionType);
         return element;
       } catch (error) {
+        if (!preparedTarget && prepareTarget) {
+          preparedTarget = true;
+          // A failed check can still repair prerequisites without ending target discovery.
+          await prepareTarget();
+          signal?.throwIfAborted();
+          continue;
+        }
         const elapsed = Date.now() - startTime;
         const remaining = timeout - elapsed;
 
@@ -429,7 +532,7 @@ export class GuidedHandler {
           throw error;
         }
         // Wait before retrying, but don't exceed timeout
-        await new Promise((resolve) => setTimeout(resolve, Math.min(retryInterval, remaining)));
+        await sleep(Math.min(retryInterval, remaining), signal);
       }
     }
 
@@ -569,6 +672,7 @@ export class GuidedHandler {
     targetValue?: string, // Target value for data-test-target-value attribute
     refTarget?: string // E2E contract: selector for current target (data-test-refTarget)
   ): Promise<void> {
+    const runId = this.runId;
     // Use custom comment if provided, otherwise generate default message
     const message = customComment || this.getActionMessage(actionType);
 
@@ -584,7 +688,7 @@ export class GuidedHandler {
       ? () => {
           // Dispatch skip event when skip button is clicked
           const skipEvent = new CustomEvent('guided-step-skipped', {
-            detail: { stepIndex },
+            detail: { stepIndex, runId },
           });
           document.dispatchEvent(skipEvent);
         }
@@ -594,7 +698,7 @@ export class GuidedHandler {
     const cancelCallback = () => {
       // Dispatch cancel event when cancel button is clicked
       const cancelEvent = new CustomEvent('guided-step-cancelled', {
-        detail: { stepIndex },
+        detail: { stepIndex, runId },
       });
       document.dispatchEvent(cancelEvent);
     };
@@ -612,6 +716,7 @@ export class GuidedHandler {
       undefined, // No next callback for guided mode
       undefined, // No previous callback for guided mode
       {
+        signal: this.runController?.signal,
         skipAnimations: stepIndex > 0, // Instant transitions after first step
         actionType: actionType, // Pass action type for data-test-action attribute
         targetValue: targetValue, // Pass target value for data-test-target-value attribute
@@ -620,7 +725,9 @@ export class GuidedHandler {
     );
 
     // Add a persistent highlight class that won't auto-remove
+    this.runController?.signal.throwIfAborted();
     element.classList.add('interactive-guided-active');
+    this.highlightedTarget = element;
   }
 
   /**
@@ -694,9 +801,13 @@ export class GuidedHandler {
   }
 
   private createSkipListener(stepIndex: number, arbiter: GuidedStepArbiter): void {
+    const runId = this.runId;
     const handleSkip = (event: Event) => {
-      const customEvent = event as CustomEvent<{ stepIndex: number }>;
-      if (customEvent.detail.stepIndex === stepIndex) {
+      const customEvent = event as CustomEvent<{ stepIndex: number; runId?: string }>;
+      if (
+        (customEvent.detail.runId === undefined || customEvent.detail.runId === runId) &&
+        customEvent.detail.stepIndex === stepIndex
+      ) {
         arbiter.settle('skipped');
       }
     };
@@ -710,9 +821,13 @@ export class GuidedHandler {
   }
 
   private createCancelListener(stepIndex: number, arbiter: GuidedStepArbiter): void {
+    const runId = this.runId;
     const handleCancel = (event: Event) => {
-      const customEvent = event as CustomEvent<{ stepIndex: number }>;
-      if (customEvent.detail.stepIndex === stepIndex) {
+      const customEvent = event as CustomEvent<{ stepIndex: number; runId?: string }>;
+      if (
+        (customEvent.detail.runId === undefined || customEvent.detail.runId === runId) &&
+        customEvent.detail.stepIndex === stepIndex
+      ) {
         arbiter.settle('cancelled');
       }
     };
@@ -826,16 +941,11 @@ export class GuidedHandler {
   ): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
       let isResolved = false;
-      let rectUpdateInterval: NodeJS.Timeout | null = null;
       const cleanup = (result: CompletionResult) => {
         if (isResolved) {
           return;
         }
         isResolved = true;
-        if (rectUpdateInterval) {
-          clearInterval(rectUpdateInterval);
-          rectUpdateInterval = null;
-        }
         resolve(result);
       };
       const complete = () => {
@@ -844,12 +954,6 @@ export class GuidedHandler {
         }
         cleanup(arbiter.settle('completed', onActionCompleted));
       };
-      rectUpdateInterval = setInterval(() => {
-        if (!element.isConnected) {
-          cleanup('cancelled');
-        }
-      }, INTERACTIVE_CONFIG.guided.connectivityCheckInterval);
-      this.pendingIntervals.push(rectUpdateInterval);
 
       const handleClick = (event: Event) => {
         if (isResolved) {
@@ -1141,10 +1245,15 @@ export class GuidedHandler {
     });
     this.activeListeners = [];
     if (clearHighlights) {
-      this.navigationManager.clearAllHighlights();
+      this.highlightedTarget?.classList.remove('interactive-guided-active');
+      this.highlightedTarget = null;
+      this.noopComment?.remove();
+      this.noopComment = null;
+      this.navigationManager.clearOwnedHighlights();
     }
   }
   cancel(): void {
+    this.runController?.abort();
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;

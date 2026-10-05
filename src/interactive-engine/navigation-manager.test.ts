@@ -419,6 +419,31 @@ describe('NavigationManager', () => {
     });
 
     describe('hidden elements', () => {
+      it('keeps a wide hidden target comment inside the viewport initially and after movement', async () => {
+        mockIsElementVisible.mockReturnValue(false);
+        const rect = { top: 100, left: 20, bottom: 200, right: 920, width: 900, height: 100 };
+        mockElement.getBoundingClientRect = jest.fn().mockImplementation(() => rect);
+
+        await navigationManager.highlightWithComment(mockElement, 'Open the default route');
+
+        const comment = document.querySelector<HTMLElement>('.interactive-comment-box')!;
+        const assertPosition = () => {
+          expect(parseFloat(comment.style.left)).toBeGreaterThanOrEqual(8);
+          expect(parseFloat(comment.style.left) + 420).toBeLessThanOrEqual(window.innerWidth - 8);
+          expect(parseFloat(comment.style.top)).toBe(rect.bottom + 20);
+        };
+        try {
+          assertPosition();
+          rect.top += 40;
+          rect.bottom += 40;
+          window.dispatchEvent(new Event('resize'));
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          assertPosition();
+        } finally {
+          navigationManager.clearAllHighlights();
+        }
+      });
+
       it('should use dot indicator and show warning for hidden elements', async () => {
         mockIsElementVisible.mockReturnValue(false);
         mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
@@ -610,6 +635,17 @@ describe('NavigationManager', () => {
     });
 
     describe('position tracking', () => {
+      it('keeps a sized target visible at the viewport origin', async () => {
+        mockElement.getBoundingClientRect = jest
+          .fn()
+          .mockReturnValue({ top: 0, left: 0, bottom: 100, right: 100, width: 100, height: 100 });
+        await navigationManager.highlightWithComment(mockElement, undefined, false);
+        window.dispatchEvent(new Event('resize'));
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const highlight = document.querySelector<HTMLElement>('.interactive-highlight-outline')!;
+        expect(highlight.style.display).not.toBe('none');
+      });
+
       it('should update highlight position when element moves', async () => {
         // Initial position
         mockElement.getBoundingClientRect = jest.fn().mockReturnValue({

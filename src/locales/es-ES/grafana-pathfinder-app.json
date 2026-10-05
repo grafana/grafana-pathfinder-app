@@ -128,7 +128,7 @@
     "beta": "Beta",
     "pathfinderEnabled": "Enable Pathfinder",
     "pathfinderEnabledDescription": "Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, Pathfinder stays available.",
-    "pathfinderPreview": "Pathfinder public preview",
+    "pathfinderPreview": "Interactive learning",
     "pathfinderPreviewDescription": "Pathfinder brings contextual help and interactive guides into Grafana.",
     "pathfinderRemotelyDisabled": "Pathfinder is disabled remotely",
     "pathfinderRemotelyDisabledDescription": "The remote switch currently prevents Pathfinder from running. Your saved preference will apply when Pathfinder is enabled remotely again.",

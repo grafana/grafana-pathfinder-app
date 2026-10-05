@@ -20,6 +20,7 @@ interface KioskOverlayProps {
   rulesUrl: string;
   overrideUrl?: string;
   onClose: () => void;
+  onLaunch?: () => void;
   mode?: KioskMode;
 }
 
@@ -27,6 +28,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
   rulesUrl,
   overrideUrl,
   onClose,
+  onLaunch,
   mode = 'presentation',
 }) => {
   const styles = useStyles2(getKioskOverlayStyles);
@@ -43,6 +45,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
   const page = current?.page;
   const banner = current?.banner ?? '';
   const warning = current?.warning;
+  const exitButtonLabel = current?.exitButtonLabel ?? 'Skip this and show all options';
 
   const sanitizedBanner = useMemo(() => {
     if (!banner || banner === DEFAULT_BANNER) {
@@ -186,10 +189,10 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
             icon="arrow-left"
             className={styles.closeButton}
             onClick={() => handleExit('button')}
-            aria-label="Back to Grafana"
+            aria-label={exitButtonLabel}
             data-testid={testIds.kioskMode.closeButton}
           >
-            Back to Grafana
+            {exitButtonLabel}
           </Button>
         </div>
 
@@ -231,13 +234,13 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
             page={page}
             rules={rules}
             mode={mode}
-            onLaunch={onClose}
+            onLaunch={onLaunch}
           />
         )}
         {!loading && !page && (
           <div className={styles.grid} data-testid={testIds.kioskMode.tileGrid}>
             {rules.map((rule, index) => (
-              <KioskTile key={rule.url} rule={rule} index={index} mode={mode} onLaunch={onClose} />
+              <KioskTile key={rule.url} rule={rule} index={index} mode={mode} onLaunch={onLaunch} />
             ))}
           </div>
         )}

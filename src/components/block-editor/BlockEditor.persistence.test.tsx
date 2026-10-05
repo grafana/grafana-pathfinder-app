@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
 import type { JsonGuide } from './types';
+import { replaceEditorDraft } from './editor-draft';
 import { BlockEditor } from './BlockEditor';
 
 jest.mock('./BlockJsonEditor', () => {
@@ -26,6 +27,23 @@ jest.mock('./BlockJsonEditor', () => {
 describe('BlockEditor persistence', () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  it('loads a copied draft in visual mode and keeps subsequent edits across remounts', () => {
+    const guide: JsonGuide = {
+      id: 'private-copy',
+      title: 'Original (copy)',
+      blocks: [{ type: 'markdown', content: 'Copied block' }],
+    };
+    replaceEditorDraft(guide);
+    const { unmount } = render(<BlockEditor />);
+    expect(screen.getByRole('radio', { name: 'Edit' })).toBeChecked();
+    expect(screen.getByText('Copied block')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: 'Preview' }));
+    unmount();
+    render(<BlockEditor />);
+    expect(screen.getByRole('radio', { name: 'Preview' })).toBeChecked();
+    expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).guide.id).toBe('private-copy');
   });
 
   it('writes preview mode immediately when selected', () => {

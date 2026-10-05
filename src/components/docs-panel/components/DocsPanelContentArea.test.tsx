@@ -8,11 +8,14 @@
 
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import { config } from '@grafana/runtime';
+import { resetGuideVersionImpressions } from './GuideVersionNotice';
 import { testIds } from '../../../constants/testIds';
 import { DocsPanelContentArea, type DocsPanelContentAreaProps } from './DocsPanelContentArea';
 
 jest.mock('@grafana/i18n', () => ({
-  t: (_key: string, fallback: string) => fallback,
+  t: (_key: string, fallback: string, vars?: Record<string, unknown>) =>
+    vars ? fallback.replace(/\{\{(\w+)\}\}/g, (_match, name: string) => String(vars[name] ?? '')) : fallback,
 }));
 
 jest.mock('@grafana/data', () => ({
@@ -24,6 +27,7 @@ jest.mock('../../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   getContentTypeForAnalytics: jest.fn(() => 'docs'),
   UserInteraction: {
+    GuideVersionUnsupportedShown: 'guide_version_unsupported_shown',
     DocsPanelInteraction: 'docs_panel_interaction',
     OpenExtraResource: 'open_extra_resource',
   },
@@ -32,6 +36,10 @@ jest.mock('../../../lib/analytics', () => ({
 jest.mock('../../../docs-retrieval', () => ({
   recordGuideCompletionForSurface: jest.fn(),
   journeyProgressFromMilestones: jest.fn(() => 0),
+  // Pure logic, no `@grafana/runtime`/storage imports — see
+  // `active-milestone-sequence.ts`'s own doc comment.
+  resolveActiveMilestoneToolbarContext: jest.requireActual('../../../docs-retrieval/active-milestone-sequence')
+    .resolveActiveMilestoneToolbarContext,
 }));
 
 // Heavy leaf children are irrelevant to these tests — stub them out so the
@@ -409,6 +417,141 @@ describe('DocsPanelContentArea', () => {
     });
   });
 
+  // A track-only guide (present in a manifest `tracks[].guides` entry, not
+  // in the path's base `milestones`) carries no `learningJourney` at all
+  // (COMPLETION-MODEL.md decision 10). Both the legacy meta row and the
+  // loading-state bar used to gate on that field alone, so a track-only
+  // guide got the meta row AND (once LearningJourneyMilestoneToolbar's own
+  // fix landed) the real toolbar at the same time, and no bar while
+  // loading. Both gates now share `resolveActiveMilestoneToolbarContext`
+  // with the toolbar so exactly one ever shows.
+  describe('track-only and dual-membership guide chrome', () => {
+    const trackMilestones = [
+      { number: 1, title: 't1', url: 'https://example.com/track/t1', isActive: true },
+      { number: 2, title: 't2', url: 'https://example.com/track/t2', isActive: false },
+    ];
+
+    it('suppresses the legacy meta row for a track-only guide (the toolbar takes over instead)', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'learning-journey',
+          isLoading: false,
+          activeTrackId: 'builder',
+          activeTrackMilestones: trackMilestones,
+          currentUrl: 'https://example.com/track/t1',
+          content: {
+            url: 'https://example.com/track/t1',
+            type: 'learning-journey',
+            content: '',
+            metadata: { trackMemberBaseUrl: 'https://example.com/path' },
+          },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+
+      expect(screen.queryByText('Interactive journey')).not.toBeInTheDocument();
+      expect(screen.queryByText(/\d+ milestones$/)).not.toBeInTheDocument();
+    });
+
+    it('shows the legacy meta row when a guide has neither learningJourney nor track membership', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'learning-journey',
+          isLoading: false,
+          content: { url: base.activeTab!.baseUrl, type: 'learning-journey', content: '', metadata: {} },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+
+      expect(screen.getByText('Interactive journey')).toBeInTheDocument();
+    });
+
+    it('shows the loading bar scoped to the track for a track-only guide', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'learning-journey',
+          isLoading: true,
+          activeTrackId: 'builder',
+          activeTrackMilestones: trackMilestones,
+          currentUrl: 'https://example.com/track/t1',
+          content: {
+            url: 'https://example.com/track/t1',
+            type: 'learning-journey',
+            content: '',
+            metadata: { trackMemberBaseUrl: 'https://example.com/path' },
+          },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+
+      expect(screen.getByText('Milestone 1 of 2')).toBeInTheDocument();
+      expect(journeyProgressFromMilestones).toHaveBeenCalledWith(
+        'https://example.com/path',
+        expect.arrayContaining([expect.objectContaining({ number: 1 })])
+      );
+    });
+
+    it('does not show the loading bar when a guide has neither learningJourney nor track membership', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'learning-journey',
+          isLoading: true,
+          content: { url: base.activeTab!.baseUrl, type: 'learning-journey', content: '', metadata: {} },
+        } as any,
+      });
+
+      const { container } = render(<DocsPanelContentArea {...props} />);
+
+      expect(container.querySelector('.progressFill')).not.toBeInTheDocument();
+    });
+
+    it('scopes the loading bar to the active track for a dual-membership guide, not the base sequence', () => {
+      const base = makeProps();
+      const lj = {
+        baseUrl: 'https://example.com/path-canonical',
+        totalMilestones: 5,
+        currentMilestone: 1,
+        milestones: [],
+      };
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'learning-journey',
+          isLoading: true,
+          activeTrackId: 'builder',
+          activeTrackMilestones: [
+            { number: 1, title: 'b1', url: 'https://other.example.com/x', isActive: false },
+            { number: 2, title: 'b2', url: 'https://example.com/guide-m1', isActive: true },
+          ],
+          currentUrl: 'https://example.com/guide-m1',
+          content: {
+            url: 'https://example.com/guide-m1',
+            type: 'learning-journey',
+            content: '',
+            metadata: { learningJourney: lj },
+          },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+
+      // The base learningJourney says 1 of 5 — the active track (2 of 2) must win.
+      expect(screen.getByText('Milestone 2 of 2')).toBeInTheDocument();
+      expect(screen.queryByText('Milestone 1 of 5')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Dev Tools render gate', () => {
     const devToolsTab = {
       id: 'devtools',
@@ -524,5 +667,74 @@ describe('DocsPanelContentArea', () => {
       expect(screen.getByTestId('home-content')).toBeInTheDocument();
       expect(screen.queryByTestId('editor-tab-content')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('DocsPanelContentArea — guide version notice', () => {
+  // Assign onto the real config rather than mocking '@grafana/runtime': this
+  // suite reaches the module transitively and a partial mock would blank the
+  // rest of it.
+  const originalVersion = config.buildInfo?.version;
+
+  beforeEach(() => {
+    config.buildInfo.version = '13.1.0';
+    resetGuideVersionImpressions();
+    jest.clearAllMocks();
+  });
+
+  afterAll(() => {
+    config.buildInfo.version = originalVersion;
+  });
+
+  it('renders no notice for a guide with no manifest', () => {
+    render(<DocsPanelContentArea {...makeProps()} />);
+
+    expect(screen.queryByTestId(testIds.guideVersionNotice.container)).not.toBeInTheDocument();
+  });
+
+  it('renders the notice when the content manifest declares a floor above the running Grafana', () => {
+    const props = makeProps();
+    props.stableContent!.metadata.packageManifest = { minGrafanaVersion: '13.2.0' };
+
+    render(<DocsPanelContentArea {...props} />);
+
+    expect(screen.getByTestId(testIds.guideVersionNotice.container)).toBeInTheDocument();
+  });
+});
+
+describe('guide warning impression lifecycle', () => {
+  beforeEach(() => {
+    config.buildInfo.version = '13.1.0';
+    resetGuideVersionImpressions();
+    jest.clearAllMocks();
+  });
+
+  it('deduplicates milestone navigation, reload and progress reset for the same guide', () => {
+    const props = makeProps();
+    props.stableContent!.metadata.packageManifest = { minGrafanaVersion: '13.2.0' };
+    const view = render(<DocsPanelContentArea {...props} />);
+    view.rerender(
+      <DocsPanelContentArea
+        {...props}
+        activeTab={{ ...props.activeTab!, currentUrl: 'https://example.com/guide/step-2' }}
+      />
+    );
+    view.rerender(<DocsPanelContentArea {...props} activeTab={{ ...props.activeTab!, isLoading: true }} />);
+    view.rerender(<DocsPanelContentArea {...props} hasInteractiveProgress={false} />);
+    expect(
+      reportAppInteraction.mock.calls.filter(([event]: [string]) => event === 'guide_version_unsupported_shown')
+    ).toHaveLength(1);
+  });
+
+  it('does not count a loaded guide while recommendations are active', () => {
+    const props = makeProps();
+    props.stableContent!.metadata.packageManifest = { minGrafanaVersion: '13.2.0' };
+    const view = render(<DocsPanelContentArea {...props} isRecommendationsTab />);
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+    view.rerender(<DocsPanelContentArea {...props} />);
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      'guide_version_unsupported_shown',
+      expect.objectContaining({ guide_url: props.activeTab!.baseUrl })
+    );
   });
 });

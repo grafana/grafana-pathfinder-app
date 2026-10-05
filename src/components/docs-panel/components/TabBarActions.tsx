@@ -20,7 +20,11 @@ import { currentPlatform } from '../../../lib/platform';
 import { testIds } from '../../../constants/testIds';
 import { clearExtensionSidebarDocked } from '../../../lib/storage/extension-sidebar';
 import { isNonContentTab } from '../utils';
+import { ConfirmModal } from '../../block-editor/NotificationModals';
+import { usePrivateGuideCopy } from '../hooks/usePrivateGuideCopy';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
+import { useIsAssistantAvailable } from '../../../integrations/assistant-integration';
+import { CustomizeGuideModal } from './CustomizeGuideModal';
 
 const previewMenuItemClass = css({
   flexDirection: 'row',
@@ -59,6 +63,8 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
   onOpenEditorTab,
   onOpenDevToolsTab,
 }) => {
+  const privateCopy = usePrivateGuideCopy(activeTab, onOpenEditorTab);
+  const isAssistantAvailable = useIsAssistantAvailable();
   const user = config.bootData?.user;
   const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
 
@@ -146,6 +152,28 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
 
   return (
     <div className={className}>
+      {privateCopy.customization && (
+        <CustomizeGuideModal
+          key={privateCopy.customization.id}
+          guide={privateCopy.customization}
+          isOpen={!privateCopy.needsConfirmation}
+          sourceUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
+          onReview={privateCopy.reviewCopy}
+          onDismiss={privateCopy.cancel}
+        />
+      )}
+      <ConfirmModal
+        isOpen={privateCopy.needsConfirmation}
+        title={t('docsPanel.replaceEditorDraft', 'Replace editor draft?')}
+        message={t(
+          'docsPanel.replaceEditorDraftMessage',
+          'Opening this copy will replace your current editor draft, including locally unsaved changes. Saved private guides will remain unchanged.'
+        )}
+        confirmText={t('docsPanel.replaceDraft', 'Replace draft')}
+        cancelText={t('docsPanel.cancelCopy', 'Cancel')}
+        onConfirm={privateCopy.confirm}
+        onCancel={privateCopy.cancelConfirmation}
+      />
       <IconButton
         name="book-open"
         size="sm"
@@ -158,6 +186,22 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
         placement="bottom-end"
         overlay={
           <Menu>
+            {privateCopy.available && (
+              <Menu.Item
+                label={t('docsPanel.editAsPrivateGuide', 'Edit as private guide')}
+                icon="copy"
+                disabled={privateCopy.isPreparing}
+                onClick={() => void privateCopy.prepare()}
+              />
+            )}
+            {privateCopy.available && isAssistantAvailable && (
+              <Menu.Item
+                label={t('docsPanel.customizeGuideTitle', 'Customize with Assistant')}
+                icon="ai"
+                disabled={privateCopy.isPreparing}
+                onClick={() => void privateCopy.prepare(true)}
+              />
+            )}
             {isEditorUser && onOpenEditorTab && (
               <Menu.Item label={t('docsPanel.createGuide', 'Create guide')} icon="plus" onClick={handleEditorClick} />
             )}

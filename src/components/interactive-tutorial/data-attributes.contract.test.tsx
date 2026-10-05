@@ -857,7 +857,6 @@ describe.skip('E2E Integration Specs (require full app context)', () => {
 
   it.todo('InteractiveStep: transitions from idle to executing on Show me click');
   it.todo('InteractiveStep: transitions from idle to executing on Do it click');
-  it.todo('InteractiveStep: data-test-form-state changes during form validation');
 
   it.todo('All components: data-test-requirements-state updates on requirement check');
   it.todo('All components: fix button triggers fixRequirement and updates state');

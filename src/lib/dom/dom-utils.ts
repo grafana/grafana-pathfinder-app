@@ -1,3 +1,4 @@
+import { sleep } from '../async-utils';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { logger } from '../logging';
 import { isInteractiveActionType } from '../interactive-action';
@@ -316,6 +317,7 @@ const DEFAULT_DASHBOARD_SCROLL_CONTAINER = '.scrollbar-view';
  * Progressive scroll discovery configuration
  */
 export interface LazyScrollOptions {
+  signal?: AbortSignal;
   scrollContainerSelector?: string;
   maxScrollAttempts?: number;
   scrollIncrement?: number;
@@ -340,6 +342,7 @@ export async function scrollUntilElementFound(
     scrollIncrement = 400, // Smaller increments for smoother scrolling
     waitTime = 350, // Longer wait to allow smooth scroll animation to complete
   } = options;
+  options.signal?.throwIfAborted();
 
   // Find the scroll container
   const scrollContainer = document.querySelector(scrollContainerSelector);
@@ -368,6 +371,7 @@ export async function scrollUntilElementFound(
   });
 
   for (let attempt = 0; attempt < maxScrollAttempts; attempt++) {
+    options.signal?.throwIfAborted();
     const { atEndY, atEndX } = getScrollBoundaries();
     // Scroll each axis that still has undiscovered content.
     scrollContainer.scrollBy({
@@ -377,7 +381,7 @@ export async function scrollUntilElementFound(
     });
 
     // Wait for smooth scroll animation + lazy render to kick in
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
+    await sleep(waitTime, options.signal);
 
     // Check if element now exists using enhanced selector
     const result = querySelectorAllEnhanced(resolvedSelector);

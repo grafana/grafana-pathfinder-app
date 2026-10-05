@@ -2,6 +2,8 @@ package plugin
 
 import (
 	"math"
+	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -66,33 +68,41 @@ const (
 	completionWriteRateBurst        = 20.0 // buffered completions drainable at once
 )
 
-// completionWriteRateLimiter manages per-user token buckets for the write path.
-// Buckets are created lazily and never evicted — memory grows by a small
-// constant per distinct caller, acceptable for a single-tenant plugin instance.
+// userRateLimiter manages per-user token buckets. Buckets are created lazily
+// and never evicted — memory grows by a small constant per distinct caller,
+// acceptable for a single-tenant plugin instance.
 //
 // Time is read through the package-wide timeNow seam (the repository's single
 // clock invariant), so a test that freezes/advances timeNow drives refill and
 // Retry-After deterministically — the handler's validation clock and the
 // limiter's clock never diverge.
-type completionWriteRateLimiter struct {
-	mu      sync.Mutex
-	buckets map[string]*tokenBucket
+type userRateLimiter struct {
+	mu           sync.Mutex
+	buckets      map[string]*tokenBucket
+	burst        float64
+	refillPerSec float64
 }
 
-func newCompletionWriteRateLimiter() *completionWriteRateLimiter {
-	return &completionWriteRateLimiter{
-		buckets: map[string]*tokenBucket{},
+func newUserRateLimiter(burst, refillPerSec float64) *userRateLimiter {
+	return &userRateLimiter{
+		buckets:      map[string]*tokenBucket{},
+		burst:        burst,
+		refillPerSec: refillPerSec,
 	}
+}
+
+func newCompletionWriteRateLimiter() *userRateLimiter {
+	return newUserRateLimiter(completionWriteRateBurst, completionWriteRateRefillPerSec)
 }
 
 // allow returns (true, 0) if the user's bucket had a token, or
 // (false, retryAfter) when the request should be rejected.
-func (r *completionWriteRateLimiter) allow(user string) (bool, time.Duration) {
+func (r *userRateLimiter) allow(user string) (bool, time.Duration) {
 	now := timeNow()
 	r.mu.Lock()
 	b, ok := r.buckets[user]
 	if !ok {
-		b = newTokenBucket(completionWriteRateBurst, completionWriteRateRefillPerSec, now)
+		b = newTokenBucket(r.burst, r.refillPerSec, now)
 		r.buckets[user] = b
 	}
 	r.mu.Unlock()
@@ -100,4 +110,10 @@ func (r *completionWriteRateLimiter) allow(user string) (bool, time.Duration) {
 		return true, 0
 	}
 	return false, b.retryAfter()
+}
+
+// writeRateLimited answers 429 with a Retry-After rounded up to whole seconds.
+func (a *App) writeRateLimited(w http.ResponseWriter, retryAfter time.Duration) {
+	w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
+	a.writeError(w, "rate-limited", http.StatusTooManyRequests)
 }

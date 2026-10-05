@@ -6,8 +6,8 @@ import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-side
 import pluginJson from '../../plugin.json';
 import { AUTO_OPEN_DOCS_EVENT, REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { panelModeManager } from '../../global-state/panel-mode';
-import { locationService } from '@grafana/runtime';
-import { stripPathfinderParams } from '../../utils/pathfinder-search-params';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
+import { PATHFINDER_PARAMS, stripPathfinderParams } from '../../utils/pathfinder-search-params';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import type { KioskRule } from './kiosk-rules';
 import { parseKioskWebUrl } from '../../security/kiosk-url';
@@ -22,10 +22,53 @@ export function launchKioskGuide(
   prepared?: PreparedGuideLaunch
 ): void {
   const page = rule.page === undefined ? undefined : validateInternalNavigationPath(rule.page);
-  if (page === null || !isAllowedContentUrl(rule.url)) {
+  if (page === null || (rule.interactiveLearning !== false && !isAllowedContentUrl(rule.url))) {
     return;
   }
   const current = locationService.getLocation();
+  if (rule.interactiveLearning === false) {
+    if (!page) {
+      return;
+    }
+    const destination = new URL(page, window.location.origin);
+    stripProductLaunchParams(destination);
+    if (mode === 'presentation') {
+      const target = parseKioskWebUrl(
+        rule.targetUrl || new URL(`${config.appSubUrl ?? ''}/`, window.location.origin).href,
+        window.location.origin
+      );
+      if (!target) {
+        return;
+      }
+      const basePath = target.pathname.replace(/\/+$/, '');
+      target.pathname =
+        basePath && (destination.pathname === basePath || destination.pathname.startsWith(`${basePath}/`))
+          ? destination.pathname
+          : `${basePath}${destination.pathname}`;
+      stripProductLaunchParams(target);
+      for (const [key, value] of destination.searchParams) {
+        target.searchParams.set(key, value);
+      }
+      target.hash = destination.hash;
+      window.open(target.href, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    const orgId = new URLSearchParams(current.search).get('orgId');
+    if (orgId && !destination.searchParams.has('orgId')) {
+      destination.searchParams.set('orgId', orgId);
+    }
+    const subpath = config.appSubUrl ?? '';
+    if (subpath && (destination.pathname === subpath || destination.pathname.startsWith(`${subpath}/`))) {
+      destination.pathname = destination.pathname.slice(subpath.length) || '/';
+    }
+    onLaunch?.();
+    if (sidebarState.getIsSidebarMounted() && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
+      getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
+    }
+    panelModeManager.setModeTransient('sidebar');
+    locationService.push(`${destination.pathname}${destination.search}${destination.hash}`);
+    return;
+  }
   const url =
     mode === 'instance'
       ? new URL(page ?? `${current.pathname}${current.search}${current.hash}`, window.location.origin)
@@ -115,5 +158,13 @@ export function launchKioskGuide(
     }
   } else {
     window.open(url.toString(), '_blank', 'noopener,noreferrer');
+  }
+}
+
+function stripProductLaunchParams(url: URL): void {
+  for (const param of PATHFINDER_PARAMS) {
+    if (param !== 'page' && param !== 'type' && param !== 'source') {
+      url.searchParams.delete(param);
+    }
   }
 }

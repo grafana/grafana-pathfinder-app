@@ -1,8 +1,11 @@
 import React from 'react';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
 import { InteractiveMultiStep } from './interactive-multi-step';
+
+jest.mock('../../lib/dom/selector-retry', () => ({ resolveWithRetry: jest.fn() }));
 
 jest.mock('@grafana/ui', () => ({
   Button: ({ children, onClick, disabled, ...rest }: any) => (
@@ -265,5 +268,51 @@ describe('InteractiveMultiStep — objectives completion', () => {
 
     expect(step).toHaveAttribute('data-test-step-state', 'completed');
     expect(screen.queryByTestId(testIds.interactive.errorMessage('multi-objectives'))).not.toBeInTheDocument();
+  });
+});
+
+describe('InteractiveMultiStep cancellation', () => {
+  it.each(['discovery', 'action'])('does not report a failure when cancelled during %s', async (phase) => {
+    const pending = (_target: unknown, _action: unknown, options: { signal: AbortSignal }) =>
+      new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason)));
+    if (phase === 'discovery') {
+      jest.mocked(resolveWithRetry).mockImplementation(pending as any);
+    } else {
+      mockExecuteInteractiveAction.mockImplementation(({ buttonType, signal }) =>
+        buttonType === 'show'
+          ? Promise.resolve('ok')
+          : new Promise((resolve) => signal.addEventListener('abort', () => resolve('error')))
+      );
+    }
+    render(
+      <InteractiveMultiStep
+        stepId="cancel-pending"
+        internalActions={[
+          {
+            targetAction: 'button',
+            refTarget: '#pending',
+            ...(phase === 'discovery' ? { requirements: 'exists-reftarget', lazyRender: true } : {}),
+          },
+        ]}
+      />
+    );
+    fireEvent.click(screen.getByTestId(testIds.interactive.doItButton('cancel-pending')));
+    await waitFor(() =>
+      expect(phase === 'discovery' ? resolveWithRetry : mockExecuteInteractiveAction).toHaveBeenCalled()
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.step('cancel-pending'))).not.toHaveAttribute(
+        'data-test-step-state',
+        'executing'
+      )
+    );
+    expect(screen.getByTestId(testIds.interactive.step('cancel-pending'))).not.toHaveAttribute(
+      'data-test-step-state',
+      'error'
+    );
+    expect(mockStoredCompleted).toBe(false);
   });
 });

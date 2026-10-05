@@ -221,6 +221,27 @@ describe('validatePackage', () => {
     expect(result.messages.some((m) => m.message.includes('not valid semver'))).toBe(true);
   });
 
+  it.each(['13.2', 'not-semver', '', '13.2.0-beta'])('rejects an invalid runtime floor %s', (minGrafanaVersion) => {
+    writeJson(path.join(tmpDir, 'content.json'), { id: 'test', title: 'Test', blocks: [] });
+    writeJson(path.join(tmpDir, 'manifest.json'), { id: 'test', type: 'guide', minGrafanaVersion });
+
+    const result = validatePackage(tmpDir);
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        path: ['manifest.json', 'minGrafanaVersion'],
+        message: expect.stringContaining('not valid semver'),
+      })
+    );
+  });
+
+  it.each([undefined, '13.2.0'])('accepts an optional valid runtime floor %s', (minGrafanaVersion) => {
+    writeJson(path.join(tmpDir, 'content.json'), { id: 'test', title: 'Test', blocks: [] });
+    writeJson(path.join(tmpDir, 'manifest.json'), { id: 'test', type: 'guide', minGrafanaVersion });
+
+    expect(validatePackage(tmpDir).isValid).toBe(true);
+  });
+
   it('should accept a valid testEnvironment instance hostname', () => {
     const pkgDir = path.join(tmpDir, 'valid-instance');
     writeJson(path.join(pkgDir, 'content.json'), {

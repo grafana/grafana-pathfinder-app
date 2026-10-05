@@ -3,6 +3,7 @@ import React, { lazy, Suspense, useEffect } from 'react';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { logger } from './lib/logging';
+import { retryChunkImport } from './lib/retry-chunk-import';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { initializeConfiguredSurfaces } from './utils/configured-bootstrap';
@@ -81,55 +82,36 @@ const pathfinderAvailability = await resolvePathfinderAvailability(
 const pathfinderEnabled = pathfinderAvailability === 'enabled';
 const hostname = window.location.hostname;
 
-// Faro frontend telemetry, behind its own remote kill-switch — default-on, so
-// a missing flag means enabled; initFaro itself enforces the Grafana Cloud-only
-// gate. Init is eager (not awaited — the SDK chunk must not block boot); the
-// beforeSend activity gate in lib/faro drops all telemetry until Pathfinder
-// is open in one of its surfaces.
-try {
-  if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
-    // Session enrichment (identity, surface, experiment cohorts) is owned by initFaro.
-    const { initFaro, resolveSessionReplayOptions } = await import('./lib/faro');
-    // initFaro stamps the session cohorts before any arm is known, so a lazily
-    // enrolled experiment has to re-stamp. Subscribed from inside this block rather
-    // than imported by the enroller: the stamper sits behind a static Faro import, so
-    // reaching for it there would load the telemetry chunk even with the flag off.
-    const { stampSessionExperiments } = await import('./lib/telemetry/session');
-    subscribeToEnrollment(stampSessionExperiments);
-    // Session replay is a second remote switch on top — also default-on, so a
-    // missing flag means recording. It captures the whole page, masked, from
-    // the first time Pathfinder is opened. The rate is a volume dial on top of
-    // the switch, range-checked in lib/telemetry/replay. Both are read once,
-    // here: a later flip reaches a tab only on its next load.
-    initFaro(
-      resolveSessionReplayOptions(
-        getFeatureFlagValue('pathfinder.session-replay', true),
-        getNumberFlagValue('pathfinder.session-replay-sampling-rate', 1)
-      )
-    )
-      .then(async () => {
-        const { recordStartupSettings } = await import('./lib/telemetry/facade');
-        const record = () => {
-          const { durationMs, outcome } = getPathfinderStartupDecision();
-          recordStartupSettings(durationMs, outcome);
-        };
-        // Keep bootstrap telemetry inside the existing first-open activity boundary.
-        if (hasReportedPathfinderSurface() && isPathfinderOpen()) {
-          record();
-        } else {
-          const unsubscribe = onPathfinderSurfaceChange((surface) => {
-            if (surface !== 'closed') {
-              unsubscribe();
-              record();
-            }
-          });
-        }
-      })
-      .catch((e) => logger.exception(e, { source: 'Faro init' }));
+// Telemetry chunk retries must never delay plugin registration.
+void (async () => {
+  if (!getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
+    return;
   }
-} catch (e) {
-  logger.exception(e, { source: 'Faro init' });
-}
+  const { initFaro, resolveSessionReplayOptions } = await retryChunkImport(() => import('./lib/faro'));
+  const { stampSessionExperiments } = await retryChunkImport(() => import('./lib/telemetry/session'));
+  subscribeToEnrollment(stampSessionExperiments);
+  await initFaro(
+    resolveSessionReplayOptions(
+      getFeatureFlagValue('pathfinder.session-replay', true),
+      getNumberFlagValue('pathfinder.session-replay-sampling-rate', 1)
+    )
+  );
+  const { recordStartupSettings } = await retryChunkImport(() => import('./lib/telemetry/facade'));
+  const record = () => {
+    const { durationMs, outcome } = getPathfinderStartupDecision();
+    recordStartupSettings(durationMs, outcome);
+  };
+  if (hasReportedPathfinderSurface() && isPathfinderOpen()) {
+    record();
+  } else {
+    const unsubscribe = onPathfinderSurfaceChange((surface) => {
+      if (surface !== 'closed') {
+        unsubscribe();
+        record();
+      }
+    });
+  }
+})().catch((error: unknown) => logger.exception(error, { source: 'Faro init' }));
 
 // Initialize highlighted-guide experiment (reads flag, processes resetCache).
 // The popout half is set up later, after the sidebar-mount decision, so it
@@ -191,8 +173,7 @@ plugin.init = function () {
   }
 
   // Grafana does not await init; navigation listeners must register synchronously.
-  // Defer the completion-write stack so every page load does not pay for its chunk.
-  void import('./completion-records/completion-write-hook')
+  void retryChunkImport(() => import('./completion-records/completion-write-hook'))
     .then(({ armCompletionWriteHook }) => armCompletionWriteHook())
     .catch((err) => logger.error('[Pathfinder] Failed to arm completion-write hook', { error: err }));
 
