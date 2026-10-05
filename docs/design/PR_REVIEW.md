@@ -217,7 +217,7 @@ An incomplete assessment needs one concise reason, claims no mergeability, and e
 
 ### Stage ledger
 
-A complete review carries the evidence that the required stages ran. `review-report.mjs` rejects a complete report when the ledger is missing, malformed, or shows unfinished work, and prints the ledger as two `Coverage:` and `Checks:` lines above the state marker. If required work cannot run, set `assessment` to incomplete instead; an incomplete report needs no ledger, claims no mergeability, and publishes no state.
+A complete review carries the evidence that the required stages ran. `review-report.mjs` rejects a complete report when the ledger is missing, malformed, or shows unfinished work, and prints the ledger as `Coverage:` and `Checks:` lines above the state marker. If required work cannot run, set `assessment` to incomplete instead; an incomplete report needs no ledger, claims no mergeability, and publishes no state.
 
 ```json
 {
