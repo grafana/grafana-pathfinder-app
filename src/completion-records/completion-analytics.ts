@@ -1,9 +1,9 @@
+import { LOCAL_BUNDLED_GUIDE_IDS } from '../constants/local-bundled-guides';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 
 import type { CompletionFact } from './types';
 
-// Grafana-published sources. Every other source is customer-authored, so its
-// guide identifiers and titles never leave the stack.
+// Privacy boundary: only these sources may send a guide identifier or title to RudderStack.
 const PUBLIC_GUIDE_SOURCES = new Set(['bundled', 'interactive-tutorials', 'online-cdn']);
 
 export function guideIdentityAnalyticsProperties({
@@ -12,6 +12,11 @@ export function guideIdentityAnalyticsProperties({
   guideId,
   guideTitle,
 }: Pick<CompletionFact, 'kind' | 'guideSource' | 'guideId' | 'guideTitle'>): Record<string, string> {
+  const [idProperty, titleProperty] =
+    kind === 'journey' ? ['journey_id', 'journey_title'] : ['guide_id', 'guide_title'];
+  if (guideSource === 'bundled' && LOCAL_BUNDLED_GUIDE_IDS.has(guideId)) {
+    return { guide_source: guideSource, guide_visibility: 'private', [idProperty]: guideId };
+  }
   if (!PUBLIC_GUIDE_SOURCES.has(guideSource)) {
     return {
       guide_source: guideSource === 'app-platform' ? guideSource : 'other',
@@ -21,9 +26,8 @@ export function guideIdentityAnalyticsProperties({
   return {
     guide_source: guideSource,
     guide_visibility: 'public',
-    ...(kind === 'journey'
-      ? { journey_id: guideId, journey_title: guideTitle }
-      : { guide_id: guideId, guide_title: guideTitle }),
+    [idProperty]: guideId,
+    [titleProperty]: guideTitle,
   };
 }
 

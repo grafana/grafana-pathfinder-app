@@ -69,6 +69,31 @@ describe('completion analytics — guide identity', () => {
       });
     }
   );
+
+  it.each(['e2e-test', 'wysiwyg-preview'])('keeps the title of the local %s guide private', (guideId) => {
+    expect(identity({ guideId, guideTitle: 'Acme draft' })).toEqual({
+      guide_source: 'bundled',
+      guide_visibility: 'private',
+      guide_id: guideId,
+    });
+  });
+
+  it('keys a local guide journey under journey_id', () => {
+    expect(identity({ kind: 'journey', guideId: 'e2e-test', guideTitle: 'Acme draft' })).toEqual({
+      guide_source: 'bundled',
+      guide_visibility: 'private',
+      journey_id: 'e2e-test',
+    });
+  });
+
+  it('treats a local guide id from another source by that source', () => {
+    expect(identity({ guideSource: 'interactive-tutorials', guideId: 'e2e-test', guideTitle: 'E2E' })).toEqual({
+      guide_source: 'interactive-tutorials',
+      guide_visibility: 'public',
+      guide_id: 'e2e-test',
+      guide_title: 'E2E',
+    });
+  });
 });
 
 describe('completion analytics — event properties', () => {
@@ -114,6 +139,13 @@ describe('completion analytics — event properties', () => {
     );
 
     expect(properties).toMatchObject({ guide_source: 'other', guide_visibility: 'private' });
+    expect(JSON.stringify(properties)).not.toMatch(/acme/i);
+  });
+
+  it('does not report the title of an e2e run', () => {
+    const properties = completionAnalyticsProperties(fact({ guideId: 'e2e-test', guideTitle: 'Acme draft' }));
+
+    expect(properties).toMatchObject({ guide_source: 'bundled', guide_visibility: 'private', guide_id: 'e2e-test' });
     expect(JSON.stringify(properties)).not.toMatch(/acme/i);
   });
 
