@@ -16,6 +16,10 @@ Functional-first and pragmatic: small composable functions, immutable data and p
 
 Never paste a raw control byte, invisible Unicode formatting character, or bidirectional control into a tracked file — write an escape or build it with `String.fromCharCode`. A raw byte makes `grep -r` and `rg` skip the whole file silently. `src/validation/control-bytes.test.ts` and `src/validation/unicode-format-characters.test.ts` enforce this and explain the fix.
 
+### App Platform access
+
+Browser reads of App Platform resources (`/apis/<group>/...`) go through a plugin-backend proxy, never a direct `getBackendSrv()` read (403 for anonymous viewers, #1966). `src/validation/app-platform-transport.test.ts` enforces it; see `docs/design/BACKEND_PROXY_PATTERN.md`.
+
 ### Comments
 
 **Default to no comments.** Add one only for counterintuitive-but-correct code, hidden invariants the type system can't express, external-bug workarounds (with an upstream link), or security and correctness warnings. If it won't fit on one short line, rename or restructure instead. Every `eslint-disable` needs an explanation after `--`. **Trim on touch**: when editing a function, trim bad-shape comments in it and on adjacent declarations — never as a standalone sweep. The eight bad shapes (QC8) live in the `comment-hygiene` skill.
