@@ -23,6 +23,7 @@ import {
   invalidateEmittedCompletion,
   invalidateAllEmittedCompletions,
   discardPendingCompletions,
+  liftDurableCompletionGuard,
   __resetRecorderForTests,
 } from './completion-recorder';
 import type { CompletionFact, CompletionListener, GuideCompletionFact, JourneyCompletionFact } from './types';
@@ -551,6 +552,18 @@ describe('completion recorder — Track 1 analytics event', () => {
     recordGuideCompletion(guideFact({ guideId: 'again' }));
 
     expect(reportAnalytics).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not report again when a dropped durable write lifts only the durable guard', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact({ guideId: 'dropped' }));
+    liftDurableCompletionGuard('bundled', 'dropped');
+    recordGuideCompletion(guideFact({ guideId: 'dropped' }));
+
+    expect(seen).toHaveLength(2);
+    expect(reportAnalytics).toHaveBeenCalledTimes(1);
   });
 
   it('reports a guide and a journey with the same identity separately', () => {

@@ -134,18 +134,24 @@ export function onCompletionRecorded(listener: CompletionListener): () => void {
 }
 
 // Legacy /content.json identities remain valid until their durable records are retired.
-export function invalidateEmittedCompletion(guideSource: string, guideId: string): void {
-  const variants = bundledGuideIdReadVariants(guideId);
+function identityKeys(guideSource: string, guideId: string): string[] {
   const kinds: readonly CompletionKind[] = ['guide', 'journey'];
-  for (const kind of kinds) {
-    for (const id of variants) {
-      const key = dedupeKey(kind, guideSource, id);
-      pending.delete(key);
-      emitted.delete(key);
-      reported.delete(key);
-      void completionEmittedStorage.clear(key);
-      void completionReportedStorage.clear(key);
-    }
+  return kinds.flatMap((kind) => bundledGuideIdReadVariants(guideId).map((id) => dedupeKey(kind, guideSource, id)));
+}
+
+export function liftDurableCompletionGuard(guideSource: string, guideId: string): void {
+  for (const key of identityKeys(guideSource, guideId)) {
+    pending.delete(key);
+    emitted.delete(key);
+    void completionEmittedStorage.clear(key);
+  }
+}
+
+export function invalidateEmittedCompletion(guideSource: string, guideId: string): void {
+  liftDurableCompletionGuard(guideSource, guideId);
+  for (const key of identityKeys(guideSource, guideId)) {
+    reported.delete(key);
+    void completionReportedStorage.clear(key);
   }
 }
 
