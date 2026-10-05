@@ -13,7 +13,7 @@ Every stage below is required. No worker, supervisor, or orchestrator may skip, 
 
 - A script decides every gate: `security-gate.mjs`, `contract-evolution-gate.mjs`, `review-policy.mjs`, and the planner. Nobody decides that a gated stage "does not apply" when a script already decided.
 - If a stage cannot run, stop and name the blocked stage and why. A background agent cannot ask for consent mid-run, so blocked means stop, never degrade. Render an incomplete assessment, never a complete one with a gap.
-- A stage may be skipped only on the user's explicit instruction. Quote it in the ledger's `skipped[].user_consent`.
+- A stage may be skipped only on the user's explicit instruction. Record it in `skipped[]` under its closed stage name with the instruction quoted in `user_consent`; that entry waives only its own stage. For a behavior change, a check marked `not_applicable` is a skip and needs the same consent.
 - Generate every subagent brief with `node .cursor/skills/review/scripts/dispatch-brief.mjs --repo <owner/name> --pr <n> --scratch <abs-dir>`. Do not hand-write one.
 - The report carries a `stage_ledger`. `review-report.mjs` refuses to render a complete review without one that shows every required stage finished.
 
@@ -52,7 +52,7 @@ Every concern must have an observation worker or `root` owner. Each worker packe
 - A standalone security specialist consumes one general observation slot.
 - The root orchestrator owns synthesis and whatever still overflows. Overflow is the expensive failure mode, because root reviews it serially; prefer delegating a concern over keeping it.
 
-Run `node .cursor/skills/review/scripts/security-gate.mjs --base <base-sha> --head <head-sha>` with literal SHAs. It flags auth, tokens, secrets, URL or redirect trust boundaries, workflow permissions, publishing, cross-origin transport, DOM sinks, and dependency manifest changes. When it triggers, the standalone security skill is mandatory: mark that plan entry `specialist: "security"`; do not also add it outside the observation-worker budget. Record the gate result in the ledger. Running the specialist when the gate does not trigger is allowed. Its adapter returns only canonical observations or `no_findings`; ignore any `clean|minor|blocking` disposition or custom report because `review-policy.mjs` remains the sole disposition authority.
+Run `node .cursor/skills/review/scripts/security-gate.mjs --base <base-sha> --head <head-sha>` with literal SHAs. It flags auth, tokens, secrets, URL or redirect trust boundaries, workflow permissions, publishing, cross-origin transport, DOM sinks, and dependency manifest changes, on added and removed lines. When it triggers, the standalone security skill is mandatory: mark that plan entry `specialist: "security"`; do not also add it outside the observation-worker budget. Record the gate result in the ledger. Running the specialist when the gate does not trigger is allowed. Its adapter returns only canonical observations or `no_findings`; ignore any `clean|minor|blocking` disposition or custom report because `review-policy.mjs` remains the sole disposition authority.
 
 ### Incremental rounds
 

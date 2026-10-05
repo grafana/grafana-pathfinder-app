@@ -230,7 +230,7 @@ A complete review carries the evidence that the required stages ran. `review-rep
   "checks": [
     { "name": "unit_tests", "status": "pass", "command": "npx jest src/lib --coverage=false" },
     { "name": "typecheck", "status": "pass", "command": "npm run typecheck" },
-    { "name": "lint", "status": "not_applicable", "reason": "docs-only change" }
+    { "name": "lint", "status": "pass", "command": "npx eslint src/lib/user-storage.ts" }
   ],
   "efficacy": [
     {
@@ -243,17 +243,30 @@ A complete review carries the evidence that the required stages ran. `review-rep
 }
 ```
 
-| Field             | Rule                                                                                                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mode`            | `full` or `incremental`                                                                                                                                             |
-| `change_class`    | The routed class; sets which checks and efficacy entries are required                                                                                               |
-| `workers`         | `run` must equal the planned observation workers                                                                                                                    |
-| `skeptic_batches` | `run` must equal the batches `review-policy.mjs` required                                                                                                           |
-| `observations`    | `through_policy` must equal `total`, including observations the facade dropped                                                                                      |
-| `security`        | `gate_triggered` is the `security-gate.mjs` result; when true, `specialist_ran` must be true                                                                        |
-| `checks`          | `unit_tests`, `typecheck`, and `lint` each once (`lint` only for `docs-only`); `pass` or `fail` needs a `command`, `not_applicable` a `reason`                      |
-| `efficacy`        | Non-empty for a full review of `product-runtime`, `contracts-and-schemas`, or `mixed`; each entry is `fails_without_fix`, `passes_without_fix`, or `no_test_exists` |
-| `skipped`         | Empty unless the user consented; each entry quotes that consent in `user_consent`                                                                                   |
+| Field             | Rule                                                                                                                                                                                                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mode`            | `full` or `incremental`                                                                                                                                                                                                                                                             |
+| `change_class`    | The routed class; sets which checks and efficacy entries are required                                                                                                                                                                                                               |
+| `workers`         | `run` must equal the planned observation workers                                                                                                                                                                                                                                    |
+| `skeptic_batches` | `run` must equal the batches `review-policy.mjs` required                                                                                                                                                                                                                           |
+| `observations`    | `through_policy` must equal `total`, including observations the facade dropped                                                                                                                                                                                                      |
+| `security`        | `gate_triggered` is the `security-gate.mjs` result; when true, `specialist_ran` must be true                                                                                                                                                                                        |
+| `checks`          | `unit_tests`, `typecheck`, and `lint` each once (`lint` only for `docs-only`); `pass` or `fail` needs a `command`, `not_applicable` a `reason`. For `product-runtime`, `contracts-and-schemas`, and `mixed`, `not_applicable` also needs a consented `skipped` entry for that check |
+| `efficacy`        | Non-empty for a full review of `product-runtime`, `contracts-and-schemas`, or `mixed`; each entry is `fails_without_fix`, `passes_without_fix`, or `no_test_exists`                                                                                                                 |
+| `skipped`         | Empty unless the user consented; each entry has `stage`, `reason`, and the quoted `user_consent`. `stage` is one of the names below, at most once                                                                                                                                   |
+
+A consented `skipped` entry waives exactly one check and nothing else:
+
+| `stage`                           | Waives                                       |
+| --------------------------------- | -------------------------------------------- |
+| `workers`                         | `workers.run` below `planned`                |
+| `skeptic_batches`                 | `skeptic_batches.run` below `required`       |
+| `observations`                    | `observations.through_policy` below `total`  |
+| `security_specialist`             | A triggered gate with `specialist_ran` false |
+| `unit_tests`, `typecheck`, `lint` | That check missing or `not_applicable`       |
+| `test_efficacy`                   | An empty `efficacy` array                    |
+
+The renderer prints every consented skip on a `Skipped with user consent:` line.
 
 `fails_without_fix` means the test was run against the reverted production change in a disposable worktree and failed. `passes_without_fix` and `no_test_exists` are honest records, not failures of the ledger; the review decides whether they are findings. A `fail` check is recorded as it is. The ledger records completeness. It decides no disposition.
 

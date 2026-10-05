@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { addedLinesByFile, computeSecurityGate } from './security-gate.mjs';
+import { changedLinesByFile, computeSecurityGate } from './security-gate.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'security-gate.mjs');
 
@@ -22,6 +22,10 @@ function repoWith(base, head) {
   git(dir, 'config', 'commit.gpgsign', 'false');
   const commit = (files, message) => {
     for (const [path, content] of Object.entries(files)) {
+      if (content === null) {
+        rmSync(join(dir, path));
+        continue;
+      }
       mkdirSync(dirname(join(dir, path)), { recursive: true });
       writeFileSync(join(dir, path), content);
     }
@@ -83,32 +87,64 @@ test('added lines that read the URL or touch a credential trigger the gate', () 
   assert.ok(sink.reasons.some(({ signal }) => signal === 'dom-sink'));
 });
 
-test('removed lines and markdown prose do not trigger the gate', () => {
-  const removed = gateFor(
+test('removed lines that touch a credential, URL, or DOM sink trigger the gate as removed', () => {
+  const removedGuard = gateFor(
+    { 'src/a.ts': 'if (!token) {\n  throw new Error();\n}\nexport const a = 1;\n' },
+    { 'src/a.ts': 'export const a = 1;\n' }
+  );
+  assert.equal(removedGuard.triggered, true);
+  assert.deepEqual(removedGuard.reasons, [{ kind: 'content', signal: 'credential', file: 'src/a.ts', removed: true }]);
+  const removedUrlRead = gateFor(
     { 'src/a.ts': 'const t = window.location.search;\nexport const a = 1;\n' },
     { 'src/a.ts': 'export const a = 1;\n' }
   );
-  assert.equal(removed.triggered, false);
-  const prose = gateFor({ 'docs/a.md': 'x\n' }, { 'docs/a.md': 'Mentions a token and an Authorization header.\n' });
+  assert.ok(removedUrlRead.reasons.some(({ signal, removed }) => signal === 'url-trust-boundary' && removed === true));
+  const deletedFile = gateFor({ 'src/a.ts': 'export {};\n', 'src/b.ts': 'el.innerHTML = x;\n' }, { 'src/b.ts': null });
+  assert.ok(
+    deletedFile.reasons.some(({ signal, file, removed }) => signal === 'dom-sink' && file === 'src/b.ts' && removed)
+  );
+});
+
+test('unchanged context lines and markdown prose do not trigger the gate', () => {
+  const context = gateFor(
+    { 'src/a.ts': 'const t = window.location.search;\nexport const a = 1;\n' },
+    { 'src/a.ts': 'const t = window.location.search;\nexport const a = 2;\n' }
+  );
+  assert.equal(context.triggered, false);
+  const prose = gateFor(
+    { 'docs/a.md': 'Mentions a token and an Authorization header.\n' },
+    { 'docs/a.md': 'Mentions a password and a bearer token.\n' }
+  );
   assert.equal(prose.triggered, false);
 });
 
-test('added lines are collected per file from a unified diff', () => {
+test('added and removed lines are collected per file from a unified diff', () => {
   const diff = [
+    'diff --git a/src/a.ts b/src/a.ts',
+    '--- a/src/a.ts',
     '+++ b/src/a.ts',
+    '@@ -1,2 +1,2 @@',
     '+one',
     ' context',
     '-gone',
+    '--- not a header',
+    'diff --git a/src/b.ts b/src/b.ts',
+    '--- /dev/null',
     '+++ b/src/b.ts',
+    '@@ -0,0 +1 @@',
     '+two',
+    'diff --git a/src/c.ts b/src/c.ts',
+    '--- a/src/c.ts',
     '+++ /dev/null',
-    '+ignored',
+    '@@ -1 +0,0 @@',
+    '-deleted',
   ].join('\n');
   assert.deepEqual(
-    [...addedLinesByFile(diff)],
+    [...changedLinesByFile(diff)],
     [
-      ['src/a.ts', ['one']],
-      ['src/b.ts', ['two']],
+      ['src/a.ts', { added: ['one'], removed: ['gone', '-- not a header'] }],
+      ['src/b.ts', { added: ['two'], removed: [] }],
+      ['src/c.ts', { added: [], removed: ['deleted'] }],
     ]
   );
 });

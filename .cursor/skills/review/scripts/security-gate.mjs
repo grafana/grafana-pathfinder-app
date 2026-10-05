@@ -48,17 +48,35 @@ function git(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
-export function addedLinesByFile(diff) {
-  const added = new Map();
+export function changedLinesByFile(diff) {
+  const changed = new Map();
+  const linesFor = (file) => {
+    if (!changed.has(file)) {
+      changed.set(file, { added: [], removed: [] });
+    }
+    return changed.get(file);
+  };
   let file = null;
+  let oldFile = null;
+  let inHunk = false;
   for (const line of diff.split('\n')) {
-    if (line.startsWith('+++ ')) {
-      file = line.startsWith('+++ b/') ? line.slice(6) : null;
-    } else if (file && line.startsWith('+')) {
-      added.set(file, [...(added.get(file) ?? []), line.slice(1)]);
+    if (line.startsWith('diff --git ')) {
+      file = null;
+      oldFile = null;
+      inHunk = false;
+    } else if (!inHunk && line.startsWith('--- ')) {
+      oldFile = line.startsWith('--- a/') ? line.slice(6) : null;
+    } else if (!inHunk && line.startsWith('+++ ')) {
+      file = line.startsWith('+++ b/') ? line.slice(6) : oldFile;
+    } else if (line.startsWith('@@')) {
+      inHunk = true;
+    } else if (inHunk && file && line.startsWith('+')) {
+      linesFor(file).added.push(line.slice(1));
+    } else if (inHunk && file && line.startsWith('-')) {
+      linesFor(file).removed.push(line.slice(1));
     }
   }
-  return added;
+  return changed;
 }
 
 export function computeSecurityGate({ base, head, cwd = process.cwd() }) {
@@ -75,15 +93,17 @@ export function computeSecurityGate({ base, head, cwd = process.cwd() }) {
       }
     }
   }
-  const added = addedLinesByFile(git(['diff', '--unified=0', '--no-color', '--no-ext-diff', range], cwd));
-  for (const [file, lines] of added) {
+  const changed = changedLinesByFile(git(['diff', '--unified=0', '--no-color', '--no-ext-diff', range], cwd));
+  for (const [file, { added, removed }] of changed) {
     if (file.endsWith('.md')) {
       continue;
     }
     for (const [signal, pattern] of CONTENT_SIGNALS) {
-      const line = lines.find((candidate) => pattern.test(candidate));
-      if (line !== undefined) {
+      if (added.some((line) => pattern.test(line))) {
         reasons.push({ kind: 'content', signal, file });
+      }
+      if (removed.some((line) => pattern.test(line))) {
+        reasons.push({ kind: 'content', signal, file, removed: true });
       }
     }
   }

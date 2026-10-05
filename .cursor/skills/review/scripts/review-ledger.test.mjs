@@ -52,6 +52,7 @@ test('a check needs its command, or a reason when it does not apply', () => {
   const noCommand = ledger({ checks: [{ name: 'unit_tests', status: 'pass' }, ...ledger().checks.slice(1)] });
   assert.throws(() => normalizeStageLedger(noCommand), /check unit_tests command/);
   const noReason = ledger({
+    change_class: 'tests-only',
     checks: [{ name: 'unit_tests', status: 'not_applicable' }, ...ledger().checks.slice(1)],
   });
   assert.throws(() => normalizeStageLedger(noReason), /check unit_tests reason/);
@@ -84,14 +85,95 @@ test('efficacy records survivors honestly and a missing test needs no test name'
   );
 });
 
+function consent(stage) {
+  return { stage, reason: 'no budget this round', user_consent: `skip ${stage} this once` };
+}
+
 test('a skipped stage needs the user consent quoted, and is shown when present', () => {
-  const skipped = { stage: 'test efficacy', reason: 'no worktree budget' };
-  assert.throws(() => normalizeStageLedger(ledger({ skipped: [skipped] })), /without the user's consent/);
-  const consented = ledger({ skipped: [{ ...skipped, user_consent: 'skip the revert checks this once' }] });
+  const skipped = { stage: 'test_efficacy', reason: 'no worktree budget' };
+  assert.throws(() => normalizeStageLedger(ledger({ efficacy: [], skipped: [skipped] })), /without the user's consent/);
+  const consented = ledger({
+    efficacy: [],
+    skipped: [{ ...skipped, user_consent: 'skip the revert checks this once' }],
+  });
+  assert.equal(normalizeStageLedger(consented).efficacy.length, 0);
   assert.match(
     renderCoverageLines(consented).at(-1),
-    /^Skipped with user consent: test efficacy \(no worktree budget\)$/
+    /^Skipped with user consent: test_efficacy \(no worktree budget\)$/
   );
+});
+
+test('skipped stages come from a closed set and appear once', () => {
+  assert.throws(
+    () => normalizeStageLedger(ledger({ skipped: [consent('test efficacy')] })),
+    /skipped stage must be one of workers, skeptic_batches/
+  );
+  assert.throws(
+    () => normalizeStageLedger(ledger({ skipped: [consent('lint'), consent('lint')] })),
+    /skipped stage lint must appear once/
+  );
+});
+
+test('each consented skip waives exactly its matching stage', () => {
+  const cases = [
+    ['workers', { workers: { planned: 2, run: 1 } }, /workers is incomplete/],
+    ['skeptic_batches', { skeptic_batches: { required: 2, run: 0 } }, /skeptic_batches is incomplete/],
+    ['observations', { observations: { total: 3, through_policy: 1 } }, /observations is incomplete/],
+    ['security_specialist', { security: { gate_triggered: true, specialist_ran: false } }, /specialist did not run/],
+    ['unit_tests', { checks: ledger().checks.filter(({ name }) => name !== 'unit_tests') }, /missing unit_tests/],
+    ['typecheck', { checks: ledger().checks.filter(({ name }) => name !== 'typecheck') }, /missing typecheck/],
+    ['lint', { checks: ledger().checks.filter(({ name }) => name !== 'lint') }, /missing lint/],
+    ['test_efficacy', { efficacy: [] }, /efficacy is empty/],
+  ];
+  for (const [stage, gap, expected] of cases) {
+    assert.throws(() => normalizeStageLedger(ledger(gap)), expected, stage);
+    assert.doesNotThrow(() => normalizeStageLedger(ledger({ ...gap, skipped: [consent(stage)] })), stage);
+    const other = stage === 'lint' ? 'typecheck' : 'lint';
+    assert.throws(() => normalizeStageLedger(ledger({ ...gap, skipped: [consent(other)] })), expected, stage);
+  }
+});
+
+test('a waiver does not excuse more work than was planned', () => {
+  assert.throws(
+    () => normalizeStageLedger(ledger({ workers: { planned: 1, run: 2 }, skipped: [consent('workers')] })),
+    /workers is incomplete: 2 of 1/
+  );
+});
+
+test('a skipped specialist and a skipped check are named in the coverage lines', () => {
+  const lines = renderCoverageLines(
+    ledger({
+      security: { gate_triggered: true, specialist_ran: false },
+      checks: ledger().checks.filter(({ name }) => name !== 'typecheck'),
+      skipped: [consent('security_specialist'), consent('typecheck')],
+    })
+  );
+  assert.match(lines[0], /security specialist skipped$/);
+  assert.match(lines[1], /^Checks: unit_tests pass, lint pass, typecheck skipped · /);
+  assert.match(lines[2], /^Skipped with user consent: security_specialist .*; typecheck /);
+});
+
+test('a behavior change cannot mark a required check not applicable without consent', () => {
+  const notApplicable = { name: 'unit_tests', status: 'not_applicable', reason: 'trivial change' };
+  for (const change_class of ['product-runtime', 'contracts-and-schemas', 'mixed']) {
+    const gap = ledger({ change_class, checks: [notApplicable, ...ledger().checks.slice(1)] });
+    assert.throws(() => normalizeStageLedger(gap), /unit_tests cannot be not_applicable/, change_class);
+    assert.equal(
+      normalizeStageLedger({ ...gap, skipped: [consent('unit_tests')] }).checks[0].status,
+      'not_applicable',
+      change_class
+    );
+  }
+  for (const change_class of ['tests-only', 'infra-build-ci']) {
+    const allowed = ledger({ change_class, checks: [notApplicable, ...ledger().checks.slice(1)] });
+    assert.equal(normalizeStageLedger(allowed).checks[0].status, 'not_applicable', change_class);
+  }
+  const docsOnly = ledger({
+    change_class: 'docs-only',
+    efficacy: [],
+    checks: [{ name: 'lint', status: 'not_applicable', reason: 'no linter covers this file' }],
+  });
+  assert.equal(normalizeStageLedger(docsOnly).checks[0].status, 'not_applicable');
 });
 
 test('unknown ledger fields and unknown change classes are rejected', () => {
