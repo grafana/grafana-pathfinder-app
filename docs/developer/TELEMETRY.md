@@ -82,43 +82,51 @@ Privacy protection is split between enforced normalization and caller discipline
 | Property                      | Value                                                                                                                  |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `guide_source`                | The resolving repository: `bundled`, `interactive-tutorials`, `online-cdn` or `app-platform`; anything else is `other` |
-| `guide_visibility`            | `public` for `bundled`, `interactive-tutorials` and `online-cdn`; `private` otherwise                                  |
-| `guide_id`, `guide_title`     | `guide_completed`, public sources only                                                                                 |
+| `guide_visibility`            | `public` for `bundled`, `interactive-tutorials` and `online-cdn`; `private` otherwise and for the local harness guides |
+| `guide_id`, `guide_title`     | `guide_completed`, public sources only; a local harness guide sends `guide_id` alone                                   |
 | `journey_id`, `journey_title` | `journey_completed`, public sources only                                                                               |
 | `guide_category`              | `learning-journey` for milestones and journeys, `interactive` for every other guide                                    |
 | `completion_source`           | Always `objectives`, including a guide finished with Mark complete                                                     |
 | `completion_percentage`       | Always `100`                                                                                                           |
 | `duration_ms`                 | Never sent                                                                                                             |
 
-The last three are constant because every producer in `learning-journey-helpers.ts` hardcodes them, pending completion-model work; they are not yet a signal. The property names follow this app's analytics conventions rather than the RFC draft (`completion_percentage`, `completion_source`). No learning path identifier is sent, because a customer's path can contain a public guide.
+The last three are constant because every producer in `learning-journey-helpers.ts` hardcodes them, pending completion-model work; they are not yet a signal. The property names follow this app's analytics conventions rather than the RFC draft (`completion_percentage`, `completion_source`). `guide_completed` never sends the id of the path that contains the guide (the fact's `pathId`), because a customer's path can contain a public guide.
 
 ### Identity policy
 
-New events carry guide identity only for Grafana-published sources. A customer-authored guide reports its visibility and a coarse source, never an identifier or title; `guideIdentityAnalyticsProperties` in `completion-analytics.ts` is the rule, so a new event that names a guide reuses it. RudderStack properties are otherwise sent unredacted (only the Faro mirror redacts), and these existing events already send raw identifiers, App Platform ones included. They are legacy exceptions, left unchanged for warehouse continuity:
+New events carry guide identity only for Grafana-published sources. A guide from any other source reports its visibility and a coarse source, never an identifier or title; `guideIdentityAnalyticsProperties` in `completion-analytics.ts` is the rule, so a new event that names a guide reuses it. Two limits apply:
+
+- Visibility follows the resolved source alone, and the title is whatever the completing surface shows, usually the panel tab's title. Where the source falls back to a default (see [Source attribution](#source-attribution)), the event is tagged `public` whatever its provenance, so a label a customer chose can reach a `public` event there.
+- The local harness guides, `bundled:e2e-test` (the e2e runner) and `bundled:wysiwyg-preview` (a preview loader nothing writes to today), load their content from localStorage. They report `guide_visibility = 'private'` and their fixed harness id with no title (`src/constants/local-bundled-guides.ts`).
+
+RudderStack properties are otherwise sent unredacted (only the Faro mirror redacts), and existing events already send raw identifiers and titles, App Platform ones included. They are legacy exceptions, left unchanged for warehouse continuity. The list is not exhaustive:
 
 - Step events built by `buildInteractiveStepProperties` (`step_auto_completed`, `show_me_button_click`, `do_it_button_click` and others): `source_document` is the active tab URL, `backend-guide:` keys included.
 - `learning_path_progress`: `path_id` and `path_title`.
 - `alignment_prompt_shown`, `alignment_prompt_confirmed` and `alignment_prompt_dismissed`: `guide_url` and `guide_title`.
 - `jump_into_milestone_click`: `content_url`, which is `backend-guide:<path id>` for an App Platform path, and the path and milestone titles.
+- `open_resource_click` from the custom guides section: `content_url` (`backend-guide:<guide id>`) and `content_title`.
+- `close_tab_click`: `content_url` and `tab_title`.
+- `milestone_arrow_interaction_click`: `content_url` and `content_title`.
 
 ### Mapping to warehouse concepts
 
 - **Milestone completion** is `guide_completed` with `guide_category = 'learning-journey'`. `guide_id` is the bare milestone slug, not qualified by its path, so two journeys that share a slug under one source report it once.
 - **Path completion** is `journey_completed`; "journey" in code means a learning path. `journey_id` is the manifest id, else the curated path id. It fires when every milestone of a milestone-based path is complete, and is skipped when neither id exists, as for a docs-site journey that is not a curated path.
 - **Guide-list curated paths and Path Tracks** have no `journey_completed` trigger yet. Every curated guide-list path has a badge, and its completion shows up only as `badge_unlocked` with `trigger_type = 'path-completed'` (`src/learning-paths/badges.ts` maps `badge_id` to its path). Path completions are the union of `journey_completed` and those badge events. The two do not overlap: a milestone-based path's badge emits no `badge_unlocked`.
-- **Titles** on milestone and journey completions are the title the panel tab was opened with, usually the journey's own, so key them on the id.
+- **Titles** on milestone and journey completions come from the completing surface: the tab's open-time title in the sidebar and floating panel, the content title in the guide reader. That is usually the journey's own title, so key them on the id.
 
 ### Source attribution
 
-`guide_source` is the repository that resolved the guide, not its URL scheme: a `backend-guide:` guide reports `app-platform`, and a CDN package reports whatever its resolver returned. Learning journeys served from the Grafana docs site resolve no repository, so their milestones fall back to `bundled` and the journey to `interactive-tutorials`. The guard is per `(kind, guide_source, guide_id)`, so a guide reached through two repositories reports once under each.
+`guide_source` is the repository that resolved the guide, not its URL scheme: a `backend-guide:` guide reports `app-platform`, and a CDN package reports whatever its resolver returned. Learning journeys served from the Grafana docs site resolve no repository, so their milestones fall back to `bundled` and the journey to `interactive-tutorials`; a standalone guide whose manifest names no repository also falls back to `interactive-tutorials`. The guard is per `(kind, guide_source, guide_id)`, so a guide reached through two repositories reports once under each.
 
 ### Delivery
 
 - **Once per identity per browser profile** on each Grafana stack, whichever user or org is signed in, since the guard lives in plain localStorage. A reset that covers the identity (a per-guide reset, a path reset, or Reset all learning progress) re-arms it, so a reset and redo reports again. Of those resets, only the per-guide one emits an event (`reset_progress_click`).
 - **No backfill.** An identity this browser profile durably recorded before the release that added these events is not reported. One it never recorded durably reports the next time it completes.
 - **Grafana Cloud only.** Grafana registers its RudderStack backend only when a write key is configured, so OSS and self-hosted instances send nothing.
-- **Fire and forget.** The guard is set before the event is sent, so an event an ad blocker or network failure drops is never retried. Counts are a floor.
-- **Synthetic traffic.** The e2e runner opens its guide as `bundled:e2e-test`, so a completed run reports `guide_source = 'bundled'` and `guide_id = 'e2e-test'`. Those runs come mostly from the synthetic `pfe2eprodproduction*` stacks; filter that guide out.
+- **Fire and forget.** The guard is set before the event is sent, and Pathfinder never retries a dropped event, so one an ad blocker or network failure drops is lost. Counts are a floor.
+- **Synthetic traffic.** The e2e runner opens its guide as `bundled:e2e-test`, so a completed run reports `guide_source = 'bundled'`, `guide_visibility = 'private'` and `guide_id = 'e2e-test'`. Those runs come mostly from the synthetic `pfe2eprodproduction*` stacks; filter that guide out.
 
 ## Gating and environments
 
