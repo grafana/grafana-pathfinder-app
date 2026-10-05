@@ -27,7 +27,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
-import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { getGuideBlockCountProperties, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
@@ -194,6 +194,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
         interaction_location: 'content_footer',
         completion_context: context,
         completion_percentage_before: percentage,
+        ...getGuideBlockCountProperties(contentKey),
       });
       void guideCompletionMarkStorage.set(contentKey, true).catch((error) => {
         logger.warn('Failed to persist guide completion mark', { error });
