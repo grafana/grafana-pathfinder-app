@@ -17,6 +17,7 @@ const markGuideCompletedMock = jest.fn();
 const getPathsDataMock = jest.fn();
 
 const persistedEmitted = new Set<string>();
+const persistedReported = new Set<string>();
 
 // Stateful fake for the single consolidated progress store: `set`/`getAll`/
 // `peekAll` all read and write the same map, so a milestone a call just
@@ -54,6 +55,18 @@ jest.mock('../lib/user-storage', () => ({
     },
     clearAll: async () => {
       persistedEmitted.clear();
+    },
+  },
+  completionReportedStorage: {
+    isEmitted: (key: string) => persistedReported.has(key),
+    markEmitted: async (key: string) => {
+      persistedReported.add(key);
+    },
+    clear: async (key: string) => {
+      persistedReported.delete(key);
+    },
+    clearAll: async () => {
+      persistedReported.clear();
     },
   },
   // Reset-path plumbing resetGuideProgress also touches, irrelevant to this
@@ -135,6 +148,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   __resetRecorderForTests();
   persistedEmitted.clear();
+  persistedReported.clear();
   interactiveCompletionData.clear();
   emitted = [];
   unsubscribe = onCompletionRecorded((fact) => {
