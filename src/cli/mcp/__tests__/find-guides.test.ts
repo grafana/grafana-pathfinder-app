@@ -63,7 +63,7 @@ async function callFind(args: Record<string, unknown>): Promise<{ isError: boole
   const client = new Client({ name: 'find-guides-test', version: '0' }, { capabilities: {} });
   await client.connect(clientTransport);
   try {
-    const result = await client.callTool({ name: 'pathfinder_find_guides', arguments: args });
+    const result = await client.callTool({ name: 'pathfinder_find_guides', arguments: { opts: args } });
     const text = (result.content as Array<{ type: string; text: string }>)[0]!.text;
     let payload: unknown = text;
     try {
@@ -125,6 +125,14 @@ describe('pathfinder_find_guides', () => {
   it('rejects a call with neither queries nor pageUrl, and a non-http instanceUrl', async () => {
     expect((await callFind({})).isError).toBe(true);
     expect((await callFind({ queries: ['x'], instanceUrl: 'javascript:alert(1)' })).isError).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unknown parameters in opts instead of dropping them', async () => {
+    const inOpts = await callFind({ queries: ['alerting'], category: 'nope' });
+    expect(inOpts.isError).toBe(true);
+    expect(inOpts.payload).toMatchObject({ status: 'error', code: 'UNSUPPORTED_PARAMETER' });
+    expect(JSON.stringify(inOpts.payload)).toContain('category');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

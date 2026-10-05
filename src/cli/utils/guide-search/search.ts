@@ -7,6 +7,8 @@
 import { normalizeTerms } from './terms';
 import {
   compileTargeting,
+  createRegexBudget,
+  type RegexBudget,
   isAvailableOnPlatform,
   normalizePageUrl,
   pageMatchLength,
@@ -114,10 +116,11 @@ interface Expansion {
 }
 
 export function buildGuideSearchIndex(catalog: readonly CatalogEntry[]): GuideSearchIndex {
+  const regexBudget = createRegexBudget();
   const entries = [...catalog]
     .filter((entry) => typeof entry.id === 'string' && entry.id !== '')
     .sort((a, b) => compareIds(a.id, b.id))
-    .map(indexEntry);
+    .map((raw) => indexEntry(raw, regexBudget));
   const byId = new Map(entries.map((indexed) => [indexed.entry.id, indexed]));
 
   const parents = new Map<string, ParentRef[]>();
@@ -153,9 +156,9 @@ export function buildGuideSearchIndex(catalog: readonly CatalogEntry[]): GuideSe
   return { entries, byId, parents, stepCounts, idf, categories };
 }
 
-function indexEntry(raw: CatalogEntry): IndexedEntry {
+function indexEntry(raw: CatalogEntry, regexBudget: RegexBudget): IndexedEntry {
   const entry = sanitizeEntry(raw);
-  const targeting = compileTargeting(entry.targeting?.match);
+  const targeting = compileTargeting(entry.targeting?.match, regexBudget);
   const hiddenOn = new Set<SearchPlatform>(
     targeting ? (['cloud', 'oss'] as const).filter((p) => !isAvailableOnPlatform(targeting, p)) : []
   );
@@ -317,7 +320,7 @@ function scoreEntry(
   }
   if (page !== null) {
     matchedOn.add('page');
-    strong ||= page.targeted;
+    strong ||= queries.length === 0 && page.targeted;
   }
   return { indexed, score: queryScore + (page?.score ?? 0), strong, matchedOn };
 }

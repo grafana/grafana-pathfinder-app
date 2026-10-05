@@ -33,13 +33,28 @@ interface Evaluation {
 
 const MAX_TARGETING_DEPTH = 16;
 
-export function compileTargeting(match: unknown, depth = 0): TargetingNode | null {
+/** Caps how many `urlRegex` leaves one index compiles, so total regex time stays bounded however large the catalog. */
+export const MAX_URL_REGEX_PATTERNS = 64;
+
+export interface RegexBudget {
+  remaining: number;
+}
+
+export function createRegexBudget(): RegexBudget {
+  return { remaining: MAX_URL_REGEX_PATTERNS };
+}
+
+export function compileTargeting(
+  match: unknown,
+  budget: RegexBudget = createRegexBudget(),
+  depth = 0
+): TargetingNode | null {
   if (!isRecord(match) || depth > MAX_TARGETING_DEPTH) {
     return null;
   }
   const children: TargetingNode[] = [];
   for (const [key, value] of Object.entries(match)) {
-    const node = compileClause(key, value, depth);
+    const node = compileClause(key, value, budget, depth);
     if (node) {
       children.push(node);
     }
@@ -50,12 +65,12 @@ export function compileTargeting(match: unknown, depth = 0): TargetingNode | nul
   return children.length === 1 ? children[0]! : { kind: 'all', children };
 }
 
-function compileClause(key: string, value: unknown, depth: number): TargetingNode | null {
+function compileClause(key: string, value: unknown, budget: RegexBudget, depth: number): TargetingNode | null {
   switch (key) {
     case 'and':
     case 'or': {
       const children = Array.isArray(value)
-        ? value.map((child) => compileTargeting(child, depth + 1)).filter((c): c is TargetingNode => c !== null)
+        ? value.map((child) => compileTargeting(child, budget, depth + 1)).filter((c): c is TargetingNode => c !== null)
         : [];
       return children.length > 0 ? { kind: key === 'and' ? 'all' : 'any', children } : null;
     }
@@ -65,8 +80,13 @@ function compileClause(key: string, value: unknown, depth: number): TargetingNod
       const prefixes = Array.isArray(value) ? value.filter((p): p is string => typeof p === 'string' && p !== '') : [];
       return prefixes.length > 0 ? { kind: 'url-prefix', prefixes } : null;
     }
-    case 'urlRegex':
-      return { kind: 'url-regex', pattern: compileBoundedRegex(value) };
+    case 'urlRegex': {
+      const pattern = budget.remaining > 0 ? compileBoundedRegex(value) : null;
+      if (pattern) {
+        budget.remaining--;
+      }
+      return { kind: 'url-regex', pattern };
+    }
     case 'targetPlatform':
       return typeof value === 'string' ? { kind: 'platform', platform: value } : null;
     default:

@@ -2,6 +2,7 @@
  * @jest-environment node
  */
 
+import { MAX_URL_REGEX_PATTERNS } from '../targeting';
 import { buildGuideSearchIndex, searchGuides, type CatalogEntry, type GuideSearchRequest } from '../search';
 
 const catalog: CatalogEntry[] = [
@@ -183,6 +184,17 @@ describe('searchGuides', () => {
     expect(ids({ queries: ['cardinality'], pageUrl: '/alerting/list' })).toEqual(['cardinality']);
   });
 
+  it('keeps a weak query match partial on a targeted page so off-topic questions still report no strong match', () => {
+    const offTopic = { queries: ['quantum basics'] };
+    expect(search(offTopic).results.map((r) => r.entry.id)).toEqual(['alerting-101']);
+    expect(search(offTopic).noStrongMatch).toBe(true);
+
+    const onPage = search({ ...offTopic, pageUrl: '/alerting/list' });
+    expect(onPage.results.map((r) => [r.entry.id, r.relevance])).toContainEqual(['alerting-101', 'partial']);
+    expect(onPage.results.every((r) => r.relevance === 'partial')).toBe(true);
+    expect(onPage.noStrongMatch).toBe(true);
+  });
+
   it('filters by platform from the targeting tree', () => {
     expect(ids({ queries: ['alerting'], platform: 'oss' })).not.toContain('cloud-alerting');
     expect(ids({ queries: ['self hosted assistant'], platform: 'cloud' })).toEqual([]);
@@ -248,5 +260,28 @@ describe('searchGuides', () => {
     ]);
     const outcome = searchGuides(messy, { queries: ['alerting'], pageUrl: '/x', limit: 5 });
     expect(outcome.ok && outcome.results.map((r) => r.entry.id)).toEqual(['ok']);
+  });
+});
+
+describe('hostile catalog with many catastrophic urlRegex patterns', () => {
+  it('compiles a bounded number of patterns, so one call stays fast and the next is free', () => {
+    const hostile: CatalogEntry[] = Array.from({ length: 200 }, (_, i) => ({
+      id: `hostile-${i}`,
+      type: 'guide',
+      path: `hostile-${i}/`,
+      title: `Hostile ${i}`,
+      targeting: { match: { urlRegex: `^/(a+)+${i}$` } },
+    }));
+    const hostileIndex = buildGuideSearchIndex(hostile);
+    const request = { pageUrl: `/${'a'.repeat(40)}!`, limit: 5 };
+
+    const started = Date.now();
+    const outcome = searchGuides(hostileIndex, request);
+    expect(outcome.ok && outcome.results).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(MAX_URL_REGEX_PATTERNS * 25 * 4);
+
+    const again = Date.now();
+    searchGuides(hostileIndex, request);
+    expect(Date.now() - again).toBeLessThan(100);
   });
 });
