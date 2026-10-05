@@ -142,6 +142,34 @@ flag || (isDevModeEnabled(config, userId) && enableCodaTerminal)
 
 ---
 
+### `pathfinder.intercept-docs-links`
+
+**Type**: Boolean
+
+**Purpose**: Turns on global docs-link interception for a stack, so a grafana.com docs link clicked anywhere in Grafana opens in Pathfinder instead of a new tab. Before this flag the only switch was the experimental `interceptGlobalDocsLinks` tenant setting, which an admin had to find and enable by hand.
+
+**Default**: `false`
+
+**Behavior**:
+
+- **`true`**: interception is on, whatever `interceptGlobalDocsLinks` says.
+- **`false`**: interception follows `interceptGlobalDocsLinks`.
+
+The flag and the setting are a plain OR, applied once settings resolve in `src/module.tsx` (`applySettings`). The flag can turn interception on but never off; an admin opt-in stays on regardless of the flag. OSS and self-managed stacks have no OFREP provider, so there only the setting applies.
+
+**On the configuration page the flag is display-only.** The "Global link interception" toggle shows as on and disabled, labelled as flag-driven, and a save never writes the forced value. Turning the flag off restores whatever the stack had set. `ConfigurationForm.intercept-flag.test.tsx` pins that.
+
+**What interception does with a click** (`src/global-state/link-interception.ts`):
+
+- It ignores modified clicks, middle clicks, `#` and `download` links, links inside Pathfinder content, and Grafana `?kiosk` mode, so the browser handles those.
+- It hands the link to whichever surface accepts it: the sidebar, floating, or full-screen `useAutoOpenListener` cancels the event to accept.
+- If no surface accepts the link in sidebar mode, it opens the sidebar and queues the link.
+- In any other mode it lets the browser follow the link rather than swallow the click.
+
+**Tracking key**: `intercept_docs_links`
+
+---
+
 ### `pathfinder.highlighted-guide-experiment`
 
 **Type**: Object (`HighlightedGuideConfig`)

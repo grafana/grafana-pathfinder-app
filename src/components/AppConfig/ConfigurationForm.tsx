@@ -25,6 +25,7 @@ import { saveTenantSettings } from './save-settings';
 import { useSeededDraft } from './use-seeded-draft';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { isCodaTerminalForcedByFlag } from '../../utils/coda-enablement';
+import { isDocsLinkInterceptionForcedByFlag } from '../../utils/docs-link-interception-enablement';
 import { logger } from '../../lib/logging';
 import { CodaBackendStatus } from './CodaBackendStatus';
 import { getFeatureFlagValue } from '../../utils/openfeature';
@@ -81,6 +82,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
   const codaForcedByFlag = isCodaTerminalForcedByFlag();
   const codaTerminalShown = codaForcedByFlag || state.enableCodaTerminal;
+  const linkInterceptionForcedByFlag = isDocsLinkInterceptionForcedByFlag();
+  const linkInterceptionShown = linkInterceptionForcedByFlag || state.interceptGlobalDocsLinks;
   const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
   const [tenantDevModeToggling, setTenantDevModeToggling] = useState<boolean>(false);
 
@@ -409,8 +412,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         <FieldSet
           label={
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              Global Link Interception
-              <Badge text="Experimental" color="orange" />
+              Global link interception
+              {linkInterceptionForcedByFlag ? (
+                <Badge text="Experimental - feature flag" color="blue" />
+              ) : (
+                <Badge text="Experimental" color="orange" />
+              )}
             </div>
           }
           className={s.marginTopXl}
@@ -419,7 +426,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             <Switch
               id="enable-global-link-interception"
               data-testid={testIds.appConfig.globalLinkInterception}
-              value={state.interceptGlobalDocsLinks}
+              value={linkInterceptionShown}
+              disabled={linkInterceptionForcedByFlag}
               onChange={onToggleGlobalLinkInterception}
             />
             <div className={s.toggleLabels}>
@@ -430,10 +438,16 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 When enabled, clicking Grafana docs links anywhere will open them in Interactive learning instead of a
                 new tab
               </Text>
+              {linkInterceptionForcedByFlag && (
+                <Text variant="bodySmall" color="secondary">
+                  Turned on by the pathfinder.intercept-docs-links feature flag. This Grafana&rsquo;s own setting is
+                  left unchanged, so docs links open in a new tab again when the flag is turned off.
+                </Text>
+              )}
             </div>
           </div>
 
-          {state.interceptGlobalDocsLinks && (
+          {linkInterceptionShown && (
             <Alert severity="info" title="How it works" className={s.marginTop}>
               <Text variant="body">
                 When you click a documentation link anywhere in Grafana, Interactive learning will automatically open
