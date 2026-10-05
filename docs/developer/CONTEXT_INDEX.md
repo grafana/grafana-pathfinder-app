@@ -27,6 +27,8 @@ Load these files **only when working in the relevant domain**.
 
 ## Security, review, and testing
 
+- `WRITING_AND_FILING_CONVENTIONS.md` — Sentence-case writing style, filing issues, A/B experiments, `npx` examples, tech-debt audits
+
 - `frontend-security.mdc` — Frontend security (from security team)
 - `react-antipatterns.mdc` — PR reviews (on hit), hooks/effects/state. An index — routes each R-code to a themed file holding the detail
 - `testingStrategy.mdc` — Writing or reviewing tests
