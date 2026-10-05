@@ -203,16 +203,59 @@ After policy and reconciliation, render one `ReviewReport`:
 | `deferred`      | Exact `next_deferred` from reconciliation          |
 | `cleared`       | Exact `next_cleared` from reconciliation           |
 | `assessment`    | Optional complete or incomplete status             |
+| `stage_ledger`  | Required for a complete assessment; see below      |
 
 Each finding contains only `id`, `concern_id`, `disposition`, `severity`, `title`, `problem`, `suggested_action`, and optional `reversibility`. Disposition is `blocking`, `follow_up`, `suggestion`, or `nit`. The report does not carry confidence, reviewer reasoning, or follow-up ownership.
 
-`review-report.mjs` validates, sorts by disposition then severity, renders every retained finding, derives the verdict and counts, and emits exactly one marker plus one trailing operator recap. It performs no policy decisions.
+`review-report.mjs` validates, sorts by disposition then severity, renders every retained finding, derives the verdict and counts, and emits exactly one marker plus one trailing operator recap. It performs no policy decisions. It also refuses to render a complete review whose `stage_ledger` is missing or shows unfinished work.
 
 Findings render under flat `Blockers:`, `Follow-ups:`, and `Suggestions & nits:` labels, each an independently numbered list, suggestions before nits, empty labels omitted. There is no section preamble and no Markdown heading; `## Review incomplete` is the one heading the renderer emits, and only for that mode.
 
 Rendering does not authorize publication. Present the complete output to the user and obtain explicit approval before posting it or otherwise mutating GitHub.
 
 An incomplete assessment needs one concise reason, claims no mergeability, and emits no marker. A complete report with no blockers says the PR is mergeable.
+
+### Stage ledger
+
+A complete review carries the evidence that the required stages ran. `review-report.mjs` rejects a complete report when the ledger is missing, malformed, or shows unfinished work, and prints the ledger as two `Coverage:` and `Checks:` lines above the state marker. If required work cannot run, set `assessment` to incomplete instead; an incomplete report needs no ledger, claims no mergeability, and publishes no state.
+
+```json
+{
+  "mode": "full",
+  "change_class": "product-runtime",
+  "workers": { "planned": 2, "run": 2 },
+  "skeptic_batches": { "required": 1, "run": 1 },
+  "observations": { "total": 4, "through_policy": 4 },
+  "security": { "gate_triggered": true, "specialist_ran": true },
+  "checks": [
+    { "name": "unit_tests", "status": "pass", "command": "npx jest src/lib --coverage=false" },
+    { "name": "typecheck", "status": "pass", "command": "npm run typecheck" },
+    { "name": "lint", "status": "not_applicable", "reason": "docs-only change" }
+  ],
+  "efficacy": [
+    {
+      "behavior": "concurrent removeCompleted keeps both writes",
+      "test": "user-storage.test.ts",
+      "result": "fails_without_fix"
+    }
+  ],
+  "skipped": []
+}
+```
+
+| Field             | Rule                                                                                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mode`            | `full` or `incremental`                                                                                                                                             |
+| `change_class`    | The routed class; sets which checks and efficacy entries are required                                                                                               |
+| `workers`         | `run` must equal the planned observation workers                                                                                                                    |
+| `skeptic_batches` | `run` must equal the batches `review-policy.mjs` required                                                                                                           |
+| `observations`    | `through_policy` must equal `total`, including observations the facade dropped                                                                                      |
+| `security`        | `gate_triggered` is the `security-gate.mjs` result; when true, `specialist_ran` must be true                                                                        |
+| `checks`          | `unit_tests`, `typecheck`, and `lint` each once (`lint` only for `docs-only`); `pass` or `fail` needs a `command`, `not_applicable` a `reason`                      |
+| `efficacy`        | Non-empty for a full review of `product-runtime`, `contracts-and-schemas`, or `mixed`; each entry is `fails_without_fix`, `passes_without_fix`, or `no_test_exists` |
+| `skipped`         | Empty unless the user consented; each entry quotes that consent in `user_consent`                                                                                   |
+
+`fails_without_fix` means the test was run against the reverted production change in a disposable worktree and failed. `passes_without_fix` and `no_test_exists` are honest records, not failures of the ledger; the review decides whether they are findings. A `fail` check is recorded as it is. The ledger records completeness. It decides no disposition.
 
 ### Re-review state
 
@@ -260,4 +303,4 @@ Nothing follows the results line. `Summary` is one line of at most 120 character
 
 ### Debug trace
 
-Keep routing decisions, clean results, refutations, skeptic reasons, policy reason codes, worker count, skeptic batch count, context characters, full-versus-incremental mode, and timings internal. Show the trace only when the user requests diagnostics.
+Keep routing decisions, clean results, refutations, skeptic reasons, policy reason codes, context characters, and timings internal. The ledger's `Coverage:` and `Checks:` lines are the only trace the published review carries. Show the trace only when the user requests diagnostics.

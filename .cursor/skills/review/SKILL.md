@@ -7,6 +7,16 @@ description: 'Routed PR review orchestrator for grafana-pathfinder-app. Use for 
 
 Decide whether the repository is better off with the change merged. Use this bounded pipeline: Route → Observe → Verify → Dispose → Reconcile → Render → Await user approval → Publish.
 
+## Completeness contract
+
+Every stage below is required. No worker, supervisor, or orchestrator may skip, shrink, or substitute a stage on its own judgment. A low severity, a small diff, or a benign-looking PR is not grounds to do less.
+
+- A script decides every gate: `security-gate.mjs`, `contract-evolution-gate.mjs`, `review-policy.mjs`, and the planner. Nobody decides that a gated stage "does not apply" when a script already decided.
+- If a stage cannot run, stop and name the blocked stage and why. A background agent cannot ask for consent mid-run, so blocked means stop, never degrade. Render an incomplete assessment, never a complete one with a gap.
+- A stage may be skipped only on the user's explicit instruction. Quote it in the ledger's `skipped[].user_consent`.
+- Generate every subagent brief with `node .cursor/skills/review/scripts/dispatch-brief.mjs --repo <owner/name> --pr <n> --scratch <abs-dir>`. Do not hand-write one.
+- The report carries a `stage_ledger`. `review-report.mjs` refuses to render a complete review without one that shows every required stage finished.
+
 ## 1. Route
 
 Read `docs/design/CONCERNS.md` once. Classify the PR as `product-runtime`, `contracts-and-schemas`, `infra-build-ci`, `tests-only`, `docs-only`, or `mixed`; use `mixed` when uncertain.
@@ -42,7 +52,7 @@ Every concern must have an observation worker or `root` owner. Each worker packe
 - A standalone security specialist consumes one general observation slot.
 - The root orchestrator owns synthesis and whatever still overflows. Overflow is the expensive failure mode, because root reviews it serially; prefer delegating a concern over keeping it.
 
-Use the standalone security skill for auth, tokens, secrets, URL or redirect trust boundaries, workflow permissions, publishing, cross-origin transport, or dependency manifest changes. Mark that plan entry `specialist: "security"`; do not also add it outside the observation-worker budget. Its adapter returns only canonical observations or `no_findings`; ignore any `clean|minor|blocking` disposition or custom report because `review-policy.mjs` remains the sole disposition authority.
+Run `node .cursor/skills/review/scripts/security-gate.mjs --base <base-sha> --head <head-sha>` with literal SHAs. It flags auth, tokens, secrets, URL or redirect trust boundaries, workflow permissions, publishing, cross-origin transport, DOM sinks, and dependency manifest changes. When it triggers, the standalone security skill is mandatory: mark that plan entry `specialist: "security"`; do not also add it outside the observation-worker budget. Record the gate result in the ledger. Running the specialist when the gate does not trigger is allowed. Its adapter returns only canonical observations or `no_findings`; ignore any `clean|minor|blocking` disposition or custom report because `review-policy.mjs` remains the sole disposition authority.
 
 ### Incremental rounds
 
@@ -115,6 +125,14 @@ Fold supplemental checks into an existing worker or the root; do not add workers
 
 No supplemental check supplies a disposition.
 
+### Evidence checks
+
+These are required for changed behavior, not supplemental. Run them against the PR head and record each in the ledger.
+
+- Focused tests for every touched or directly related suite (`--coverage=false`), `npm run typecheck`, and eslint on touched files. In a worktree, symlink `node_modules` first.
+- Test efficacy: for each changed behavior with a test, create a second disposable worktree, revert only the production change, run the focused test, and record whether it fails. Remove the worktree. Never mutate the review worktree. A behavior with no test is recorded as `no_test_exists`.
+- Probes: execute any probe a worker claims. Reading code does not count as a probe.
+
 ## 3. Verify
 
 Load `Verification` with `node .cursor/skills/review/scripts/concern-context.mjs --section "Verification"`. Skeptics return only `{ verdict, reason }`, where verdict is `confirmed`, `refuted`, or `uncertain` and reason cites checked evidence.
@@ -166,9 +184,9 @@ Pass every final follow-up as `{ id, concern_id }`. List a prior deferred ID in 
 
 ## 6. Render, await user approval, and publish
 
-Load `Final review report` with `node .cursor/skills/review/scripts/concern-context.mjs --section "Final review report"`. Convert each final policy result to the author-facing fields: stable `id`, owning `concern_id`, final `disposition`, `severity`, `title`, a concise `problem` grounded in evidence and consequence, `suggested_action`, and optional `reversibility`.
+Load `Final review report` with `node .cursor/skills/review/scripts/concern-context.mjs --section "Final review report"`; it includes the `Stage ledger` schema. Convert each final policy result to the author-facing fields: stable `id`, owning `concern_id`, final `disposition`, `severity`, `title`, a concise `problem` grounded in evidence and consequence, `suggested_action`, and optional `reversibility`.
 
-Set report `deferred` and `cleared` to the reconciliation outputs. Do not add ownership metadata, skeptic reasoning, confidence, or parallel issue prose. If required review work could not run, set an incomplete assessment with one concise reason; an incomplete report publishes no state.
+Set report `deferred` and `cleared` to the reconciliation outputs. Set `stage_ledger` from what actually ran. Do not add ownership metadata, skeptic reasoning, confidence, or parallel issue prose. If required review work could not run, set an incomplete assessment with one concise reason; an incomplete report publishes no state. The renderer rejects a complete report whose ledger is missing or shows unfinished work.
 
 Serialize the report and run:
 
@@ -194,6 +212,6 @@ Pattern severity feeds the canonical observation. It never decides disposition.
 
 ## 8. Debug trace and stop condition
 
-Record full-versus-incremental mode, activated concern ownership, observation-worker count, each worker's files and context characters, skeptic batch count, dropped evidence, policy reason codes, coverage gaps, and timings. Keep the trace internal unless the user requests it.
+Record full-versus-incremental mode, activated concern ownership, observation-worker count, each worker's files and context characters, skeptic batch count, dropped evidence, policy reason codes, coverage gaps, and timings. Keep the trace internal unless the user requests it. The ledger's coverage lines are the only part the published review carries.
 
-The review is complete when every activated concern has an observation worker or root owner, all verification has resolved, reconciliation has run, and `review-report.mjs` has produced the final report. Publication remains a separate optional mutation after the approval gate. Observation workers stay inside the planner's returned budget; incremental rounds use no more than two. Skeptics are excluded from both caps.
+The review is complete when every activated concern has an observation worker or root owner, all verification has resolved, reconciliation has run, the ledger shows no unfinished stage, and `review-report.mjs` has produced the final report. Publication remains a separate optional mutation after the approval gate. Observation workers stay inside the planner's returned budget; incremental rounds use no more than two. Skeptics are excluded from both caps.

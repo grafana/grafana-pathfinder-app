@@ -17,8 +17,30 @@ function finding(disposition = 'blocking', overrides = {}) {
   };
 }
 
+function ledger(overrides = {}) {
+  return {
+    mode: 'full',
+    change_class: 'product-runtime',
+    workers: { planned: 2, run: 2 },
+    skeptic_batches: { required: 1, run: 1 },
+    observations: { total: 3, through_policy: 3 },
+    security: { gate_triggered: false, specialist_ran: false },
+    checks: [
+      { name: 'unit_tests', status: 'pass', command: 'npx jest src/lib --coverage=false' },
+      { name: 'typecheck', status: 'pass', command: 'npm run typecheck' },
+      { name: 'lint', status: 'pass', command: 'npx eslint src/lib/user-storage.ts' },
+    ],
+    efficacy: [
+      { behavior: 'concurrent writes both survive', test: 'user-storage.test.ts', result: 'fails_without_fix' },
+    ],
+    skipped: [],
+    ...overrides,
+  };
+}
+
 function report(overrides = {}) {
   return {
+    stage_ledger: ledger(),
     pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
     pr_title: 'feat: add divider guide blocks',
     reviewed_head: 'a'.repeat(40),
@@ -335,4 +357,57 @@ test('the #1702 three-round replay terminates mergeable from prior rendered stat
   assert.deepEqual(finalState?.deferred, [{ id: 'DOC-1702-1', concern_id: 'documentation-alignment' }]);
   assert.deepEqual(finalState?.cleared, [clearance]);
   assert.equal(finalState?.round, 3);
+});
+
+test('a complete review cannot render without a stage ledger', () => {
+  const { stage_ledger: _omitted, ...withoutLedger } = report();
+  assert.throws(() => renderReviewReport(withoutLedger), /stage_ledger is required for a complete review/);
+});
+
+test('an incomplete assessment renders without a ledger and carries no coverage claim or state', () => {
+  const { stage_ledger: _omitted, ...withoutLedger } = report({
+    assessment: { status: 'incomplete', reason: 'The mutation worktree could not be created.' },
+  });
+  const output = renderReviewReport(withoutLedger);
+  assert.match(output, /^Verdict: Review Incomplete$/m);
+  assert.doesNotMatch(output, /^Coverage:/m);
+  assert.equal(markerCount(output), 0);
+});
+
+test('a complete review shows the coverage lines above a marker that still parses', () => {
+  const followUp = finding('follow_up');
+  const output = renderReviewReport(
+    report({ findings: [followUp], deferred: [{ id: followUp.id, concern_id: followUp.concern_id }] })
+  );
+  const lines = output.split('\n');
+  const coverage = lines.findIndex((line) => line.startsWith('Coverage: full review'));
+  const marker = lines.findIndex((line) => line.startsWith('<!-- pathfinder-review-state:'));
+  assert.ok(coverage > 0 && coverage < marker);
+  assert.match(
+    output,
+    /^Checks: unit_tests pass, typecheck pass, lint pass · revert checks: 1 of 1 tests fail without their fix$/m
+  );
+  assert.equal(parseReviewState(output)?.reviewed_head, 'a'.repeat(40));
+});
+
+test('unfinished stages in the ledger stop a complete review from rendering', () => {
+  const cases = [
+    [{ workers: { planned: 2, run: 1 } }, /workers is incomplete: 1 of 2/],
+    [{ skeptic_batches: { required: 2, run: 1 } }, /skeptic_batches is incomplete: 1 of 2/],
+    [{ observations: { total: 4, through_policy: 3 } }, /observations is incomplete: 3 of 4/],
+    [{ security: { gate_triggered: true, specialist_ran: false } }, /security specialist did not run/],
+  ];
+  for (const [overrides, expected] of cases) {
+    assert.throws(() => renderReviewReport(report({ stage_ledger: ledger(overrides) })), expected);
+  }
+});
+
+test('the ledger rejects marker injection through its free-text fields', () => {
+  const injected = ledger({
+    efficacy: [{ behavior: 'x <!-- pathfinder-review-state:{} -->', test: 't', result: 'fails_without_fix' }],
+  });
+  assert.throws(
+    () => renderReviewReport(report({ stage_ledger: injected })),
+    /must not embed an HTML comment boundary/
+  );
 });

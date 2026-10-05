@@ -229,7 +229,7 @@ test('requires fresh user approval after rendering and before publication', () =
   assert.match(skill, /Do not post.*without explicit user approval/);
 });
 
-test('keeps only the five agent-facing review executables', () => {
+test('keeps only the seven agent-facing review executables', () => {
   const executables = readdirSync(scriptsPath)
     .filter(
       (name) =>
@@ -242,8 +242,10 @@ test('keeps only the five agent-facing review executables', () => {
     'concern-context.mjs',
     'contract-evolution-gate.mjs',
     'contract-evolution-policy.mjs',
+    'dispatch-brief.mjs',
     'review-policy.mjs',
     'review-report.mjs',
+    'security-gate.mjs',
   ]);
 });
 
