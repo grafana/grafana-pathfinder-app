@@ -4,7 +4,7 @@ The Interactive Engine (`src/interactive-engine/`) is responsible for executing 
 
 ## Overview
 
-The Interactive Engine provides the core automation and interaction capabilities for interactive learning guides in Grafana. It powers "Show me" and "Do it" buttons, enabling guides to programmatically demonstrate actions (show mode) or automatically execute them (do mode). The engine handles action execution, element highlighting, navigation management, state coordination, user interaction blocking during automation, and optional auto-detection of user-performed actions.
+The Interactive Engine provides the core automation and interaction capabilities for interactive learning guides in Grafana. It powers "Show me" and "Do it" buttons, enabling guides to programmatically demonstrate actions (show mode) or automatically execute them (do mode). The engine handles action execution, element highlighting, navigation management, state coordination, user interaction blocking during automation, and automatic observation of user-performed actions while a guide is open.
 
 ## Architecture
 

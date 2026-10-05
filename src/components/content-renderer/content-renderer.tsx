@@ -1,3 +1,4 @@
+import { CompletionObservationProvider } from './completion-observation-provider';
 import { handleKioskLinkClick } from '../../utils/kiosk-navigation';
 import { getGuideResponseId } from '../../lib/guide-response-id';
 import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBoundary';
@@ -523,22 +524,24 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   return (
     <GuideResponseProvider guideId={guideId}>
       <GuideRequirementsProvider guideId={guideId}>
-        <ContentWithVariables
-          processedContent={processedContent}
-          countingSource={content.countingSource}
-          contentType={content.type}
-          baseUrl={content.url}
-          title={content.metadata.title}
-          isNativeJson={content.isNativeJson ?? false}
-          onContentReady={onContentReady}
-          activeRef={activeRef}
-          className={className}
-          selectionState={selectionState}
-          documentContext={documentContext}
-          beforeContent={beforeContent}
-          afterContent={afterContent}
-          fullScreenFallbackLocation={fullScreenFallbackLocation}
-        />
+        <CompletionObservationProvider key={content.url} contentKey={content.url}>
+          <ContentWithVariables
+            processedContent={processedContent}
+            countingSource={content.countingSource}
+            contentType={content.type}
+            baseUrl={content.url}
+            title={content.metadata.title}
+            isNativeJson={content.isNativeJson ?? false}
+            onContentReady={onContentReady}
+            activeRef={activeRef}
+            className={className}
+            selectionState={selectionState}
+            documentContext={documentContext}
+            beforeContent={beforeContent}
+            afterContent={afterContent}
+            fullScreenFallbackLocation={fullScreenFallbackLocation}
+          />
+        </CompletionObservationProvider>
       </GuideRequirementsProvider>
     </GuideResponseProvider>
   );

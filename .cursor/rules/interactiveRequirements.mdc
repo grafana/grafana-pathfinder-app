@@ -53,9 +53,9 @@ Steps with identical actions in different sections are fully independent: a "Sav
 
 ## Objectives
 
-Objectives are checked before requirements and shortcut them — `docs/developer/engines/requirements-manager.md` owns the priority hierarchy, and `requirements-reference.md` owns syntax and the all-or-nothing rule. The constraints stated in neither:
+Objectives are observed independently of execution eligibility and must pass before either observed or assisted actions complete a block. They shortcut requirements — `docs/developer/engines/requirements-manager.md` owns the priority hierarchy, and `requirements-reference.md` owns syntax and the all-or-nothing rule. The constraints stated in neither:
 
-- A missing or empty objective never auto-completes a step; it must be completed manually.
+- A missing or empty objective never completes a step by itself; observed actions or assisted execution can supply completion evidence.
 - If an objective check fails because of a network or API error, the objective is not met: log the error and let requirements checking proceed normally.
 - When a section's objectives are met, every step under it is marked complete too — sections own their subordinate steps.
 - Do not interrupt a step mid-execution because its objective became met. Finish, then mark complete.

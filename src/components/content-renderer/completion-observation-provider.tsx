@@ -1,0 +1,241 @@
+import {
+  saveObservationHandoff,
+  takeObservationHandoff,
+  OBSERVATION_HANDOFF_EVENT,
+} from '../../global-state/observation/handoff';
+import {
+  REQUEST_SIDEBAR_HANDOFF_EVENT,
+  PANEL_MODE_CHANGE_EVENT,
+  StorageEvents,
+  TERMINAL_STATUS_CHANGED_EVENT,
+} from '../../lib/event-names';
+import { resolveGuideContentKey } from '../../global-state/guide-content-key';
+import React, { useEffect, useMemo, type PropsWithChildren } from 'react';
+import { CompletionCoordinator } from '../../global-state/observation/coordinator';
+import { CompletionObservationContext } from '../../global-state/observation/context';
+import { useGuideRequirements, splitGuideScopedRequirements } from '../../requirements-manager';
+import { conditionTokens } from '../../lib/condition-input';
+import { onContextChange } from '../../lib/context-event-bus';
+import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { useInteractiveMode } from '../../global-state/interactive-mode-context';
+import { useControllerChannel, useControllerConnected } from '../../global-state/controller-channel';
+import {
+  matchesPassiveAction,
+  observePassiveActions,
+  matchesPassiveNavigation,
+  observePassiveNavigation,
+} from '../../interactive-engine';
+
+let observationGeneration = 0;
+
+export function CompletionObservationProvider({ children, contentKey }: PropsWithChildren<{ contentKey: string }>) {
+  const { checkPostconditions } = useGuideRequirements();
+  const mode = useInteractiveMode();
+  const channel = useControllerChannel();
+  const connected = useControllerConnected();
+  const coordinator = useMemo(() => {
+    const inFlight = new Map<string, Promise<boolean>>();
+    return new CompletionCoordinator(async (conditions, step, signal) => {
+      const action = step.actions[0];
+      const options = {
+        requirements: conditions,
+        stepId: step.stepId,
+        targetAction: action?.targetAction,
+        refTarget: action?.refTarget,
+        targetValue: action?.targetValue,
+        lazyRender: false,
+        maxRetries: 0,
+      };
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const evaluate = async () => {
+        if (mode !== 'controller') {
+          return (await checkPostconditions(options)).verdict === 'satisfied';
+        }
+        if (!channel) {
+          return false;
+        }
+        const { guideScoped, remaining } = splitGuideScopedRequirements(conditions);
+        const local =
+          !conditionTokens(guideScoped).length ||
+          (await checkPostconditions({ ...options, requirements: guideScoped })).verdict === 'satisfied';
+        if (!local) {
+          return false;
+        }
+        if (!conditionTokens(remaining).length) {
+          return true;
+        }
+        const remote = await channel.requestRequirementCheck(step.stepId, remaining, { ...options, passive: true });
+        return remote !== null && remote.verdict === 'satisfied';
+      };
+      const key = JSON.stringify([conditions, step.actions[0]]);
+      let pending = inFlight.get(key);
+      if (!pending) {
+        if (inFlight.size >= 4) {
+          return false;
+        }
+        pending = evaluate().finally(() => inFlight.delete(key));
+        inFlight.set(key, pending);
+      }
+      let onAbort = () => {};
+      try {
+        return await Promise.race([
+          new Promise<boolean>((resolve) => {
+            onAbort = () => resolve(false);
+            if (signal.aborted) {
+              onAbort();
+            } else {
+              signal.addEventListener('abort', onAbort, { once: true });
+            }
+          }),
+          pending,
+          new Promise<boolean>((resolve) => {
+            timer = setTimeout(() => resolve(false), 4000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', onAbort);
+      }
+    });
+  }, [checkPostconditions, mode, channel]);
+
+  useEffect(() => {
+    if (mode !== 'controller' && new URLSearchParams(window.location.search).get('controller') === '1') {
+      return;
+    }
+    coordinator.restore(takeObservationHandoff(contentKey));
+    coordinator.start();
+    const unsubscribeContext = onContextChange(coordinator.recheck);
+    const unsubscribeProgress = subscribeProgressEvent((event) => {
+      if (event.kind !== 'guide' && !event.completed) {
+        coordinator.resetScope(event.kind === 'step' ? event.stepId : undefined, event.sectionId);
+      } else {
+        coordinator.recheck();
+      }
+    });
+    const observe =
+      mode === 'interactive'
+        ? observePassiveActions((event) => {
+            coordinator.observe((action) => matchesPassiveAction(action, event));
+          })
+        : () => {};
+    const visibleCheck = () => {
+      if (mode === 'controller' || document.visibilityState !== 'hidden') {
+        coordinator.recheck();
+      }
+    };
+    const saveHandoff = () => saveObservationHandoff(contentKey, coordinator.exportCursors());
+    const handoff = () => {
+      saveHandoff();
+      coordinator.stop();
+    };
+    const restoreHandoff = (event: StorageEvent) => {
+      if (event.key === OBSERVATION_HANDOFF_EVENT && mode === 'controller') {
+        const cursors = takeObservationHandoff(contentKey);
+        if (Object.keys(cursors).length) {
+          coordinator.restore(cursors);
+          coordinator.recheck();
+        }
+      }
+    };
+    window.addEventListener('storage', restoreHandoff);
+    const handleReset = (event: Event) => {
+      const key = (event as CustomEvent<{ contentKey?: string }>).detail?.contentKey;
+      if (!key || key === '*' || key === resolveGuideContentKey(contentKey)) {
+        coordinator.reset();
+      }
+    };
+    const history =
+      mode === 'interactive'
+        ? observePassiveNavigation(() => {
+            coordinator.observe(matchesPassiveNavigation);
+            visibleCheck();
+          })
+        : () => {};
+    document.addEventListener(OBSERVATION_HANDOFF_EVENT, handoff);
+    document.addEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, saveHandoff);
+    document.addEventListener(PANEL_MODE_CHANGE_EVENT, saveHandoff);
+    if (mode === 'controller') {
+      window.addEventListener('pagehide', saveHandoff);
+    }
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleReset);
+    const interval = setInterval(visibleCheck, 5000);
+    window.addEventListener('popstate', visibleCheck);
+    window.addEventListener('hashchange', visibleCheck);
+    window.addEventListener('focus', visibleCheck);
+    window.addEventListener(TERMINAL_STATUS_CHANGED_EVENT, visibleCheck);
+    document.addEventListener('visibilitychange', visibleCheck);
+    return () => {
+      coordinator.stop();
+      window.removeEventListener('storage', restoreHandoff);
+      history();
+      document.removeEventListener(OBSERVATION_HANDOFF_EVENT, handoff);
+      document.removeEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, saveHandoff);
+      document.removeEventListener(PANEL_MODE_CHANGE_EVENT, saveHandoff);
+      window.removeEventListener('pagehide', saveHandoff);
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleReset);
+      unsubscribeContext();
+      unsubscribeProgress();
+      observe();
+      clearInterval(interval);
+      window.removeEventListener('popstate', visibleCheck);
+      window.removeEventListener('hashchange', visibleCheck);
+      window.removeEventListener('focus', visibleCheck);
+      window.removeEventListener(TERMINAL_STATUS_CHANGED_EVENT, visibleCheck);
+      document.removeEventListener('visibilitychange', visibleCheck);
+    };
+  }, [coordinator, mode, contentKey]);
+  useEffect(() => {
+    if (mode !== 'controller' || !channel || !connected) {
+      return;
+    }
+    let generation = coordinator.generation;
+    let subscriptionId = crypto.randomUUID();
+    let subscriptionGeneration = ++observationGeneration;
+    let release = () => {};
+    const listen = () =>
+      channel.onObservation(subscriptionId, (evidence) => {
+        if (evidence.guideKey === contentKey) {
+          if (evidence.kind === 'observation-evidence') {
+            coordinator.observeIndex(evidence.id, evidence.index);
+          }
+          coordinator.recheck();
+        }
+      });
+    release = listen();
+    const publish = () => {
+      if (generation !== coordinator.generation) {
+        channel.post({ kind: 'observation-cancel', subscriptionId });
+        release();
+        subscriptionId = crypto.randomUUID();
+        subscriptionGeneration = ++observationGeneration;
+        generation = coordinator.generation;
+        release = listen();
+      }
+      channel.post({
+        kind: 'observation-subscribe',
+        generation: subscriptionGeneration,
+        subscriptionId,
+        guideKey: contentKey,
+        revision: coordinator.snapshot(),
+        steps: coordinator.pendingActions(),
+      });
+    };
+    publish();
+    const unsubscribe = coordinator.subscribe(publish);
+    const heartbeat = setInterval(publish, 2000);
+    coordinator.recheck();
+    return () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+      release();
+      channel.post({ kind: 'observation-cancel', subscriptionId });
+    };
+  }, [channel, connected, contentKey, coordinator, mode]);
+  useEffect(() => {
+    if (mode === 'controller') {
+      coordinator.invalidate();
+    }
+  }, [connected, coordinator, mode]);
+  return <CompletionObservationContext.Provider value={coordinator}>{children}</CompletionObservationContext.Provider>;
+}

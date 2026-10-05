@@ -3,7 +3,6 @@ import { useInteractiveElements } from '../../interactive-engine';
 import type { ParsedElement } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import type { ConditionalDisplayMode, ConditionalSectionConfig } from '../../types/json-guide.types';
-import { isValidRequirement } from '../../types/requirements.types';
 import { InteractiveSection } from './interactive-section';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { logger } from '../../lib/logging';
@@ -401,8 +400,7 @@ export function InteractiveConditional({
     // does: `[]` is truthy, and a truthy empty condition list makes
     // `useSectionRequirements` install a recheck loop for nothing.
     const sectionRequirements = sectionConfig?.requirements?.length ? sectionConfig.requirements : undefined;
-    const executableSectionObjectives = sectionConfig?.objectives?.filter(isValidRequirement);
-    const sectionObjectives = executableSectionObjectives?.length ? executableSectionObjectives : undefined;
+    const sectionObjectives = sectionConfig?.objectives?.length ? sectionConfig.objectives : undefined;
 
     return (
       <div

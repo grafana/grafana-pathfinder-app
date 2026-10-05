@@ -545,3 +545,45 @@ describe('InteractiveSection — section requirements fix button (#476)', () => 
     });
   });
 });
+
+describe('observed section objectives', () => {
+  it('completes its children through the shared coordinator without running actions', async () => {
+    const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+    const { CompletionObservationContext } = await import('../../global-state/observation/context');
+    const coordinator = new CompletionCoordinator(async () => true);
+    const root = render(
+      <CompletionObservationContext.Provider value={coordinator}>
+        <InteractiveSection id="observed" title="Observed" objectives={['has-datasources']} autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            First
+          </InteractiveStep>
+          <InteractiveStep targetAction="highlight" refTarget=".b">
+            Second
+          </InteractiveStep>
+        </InteractiveSection>
+      </CompletionObservationContext.Provider>
+    );
+    await act(async () => {
+      coordinator.start();
+    });
+    const { useSectionCompletion } = await import('../../global-state/completion-store');
+    function Count() {
+      return <output>{useSectionCompletion('section-observed').size}</output>;
+    }
+    root.rerender(
+      <CompletionObservationContext.Provider value={coordinator}>
+        <InteractiveSection id="observed" title="Observed" objectives={['has-datasources']} autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            First
+          </InteractiveStep>
+          <InteractiveStep targetAction="highlight" refTarget=".b">
+            Second
+          </InteractiveStep>
+        </InteractiveSection>
+        <Count />
+      </CompletionObservationContext.Provider>
+    );
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('2'));
+    coordinator.stop();
+  });
+});

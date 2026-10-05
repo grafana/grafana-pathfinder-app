@@ -35,9 +35,9 @@ describe('executable objectives', () => {
 
       const parsed = parseJsonGuide(JSON.stringify(interactiveGuide([objective])));
       expect(parsed.isValid).toBe(true);
-      expect(
-        parsed.data!.elements.find((element) => element.type === 'interactive-step')?.props.objectives
-      ).toBeUndefined();
+      expect(parsed.data!.elements.find((element) => element.type === 'interactive-step')?.props.objectives).toEqual([
+        objective,
+      ]);
     }
   );
 
@@ -77,15 +77,16 @@ describe('executable objectives', () => {
     expect(JSON.stringify(result.warnings)).toContain('Unknown condition type');
 
     const parsed = parseJsonGuide(JSON.stringify(interactiveGuide([objective])));
-    expect(
-      parsed.data!.elements.find((element) => element.type === 'interactive-step')?.props.objectives
-    ).toBeUndefined();
+    expect(parsed.data!.elements.find((element) => element.type === 'interactive-step')?.props.objectives).toEqual([
+      objective,
+    ]);
   });
 
-  it('forwards only the executable objectives to the runtime', () => {
+  it('preserves invalid objectives so execution cannot bypass their completion gate', () => {
     const parsed = parseJsonGuide(JSON.stringify(interactiveGuide(['Learn about dashboards', 'has-datasource:loki'])));
     expect(parsed.isValid).toBe(true);
     expect(parsed.data!.elements.find((element) => element.type === 'interactive-step')?.props.objectives).toEqual([
+      'Learn about dashboards',
       'has-datasource:loki',
     ]);
   });

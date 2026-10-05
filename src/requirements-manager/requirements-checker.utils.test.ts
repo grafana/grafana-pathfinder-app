@@ -5,7 +5,7 @@ import {
   RequirementsCheckOptions,
   validateInteractiveRequirements,
 } from './requirements-checker.utils';
-import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
+import { locationService, config, hasPermission, getBackendSrv } from '@grafana/runtime';
 import * as grafanaApi from '../lib/grafana-api';
 import { getContentKey } from '../global-state/content-key';
 
@@ -41,7 +41,6 @@ jest.mock('@grafana/runtime', () => ({
     featureToggles: {},
   },
   hasPermission: jest.fn(),
-  getDataSourceSrv: jest.fn(),
   getBackendSrv: jest.fn(),
 }));
 
@@ -165,9 +164,7 @@ describe('requirements-checker.utils', () => {
   describe('hasDataSourceCHECK', () => {
     it('should check for specific data source', async () => {
       const mockDataSources = [{ name: 'Prometheus', uid: 'prom1', type: 'prometheus' }];
-      (getDataSourceSrv as jest.Mock).mockReturnValue({
-        getList: () => mockDataSources,
-      });
+      (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue(mockDataSources);
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-datasource:prometheus',
@@ -179,9 +176,7 @@ describe('requirements-checker.utils', () => {
 
     it('should match by normalized type (strip grafana- prefix and -datasource suffix)', async () => {
       const mockDataSources = [{ name: 'My Custom DS', uid: 'td1', type: 'grafana-testdata-datasource' }];
-      (getDataSourceSrv as jest.Mock).mockReturnValue({
-        getList: () => mockDataSources,
-      });
+      (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue(mockDataSources);
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-datasource:testdata',
@@ -193,9 +188,7 @@ describe('requirements-checker.utils', () => {
 
     it('should fail when no matching data source exists', async () => {
       const mockDataSources = [{ name: 'Prometheus', uid: 'prom1', type: 'prometheus' }];
-      (getDataSourceSrv as jest.Mock).mockReturnValue({
-        getList: () => mockDataSources,
-      });
+      (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue(mockDataSources);
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-datasource:testdata',

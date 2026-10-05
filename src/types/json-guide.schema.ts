@@ -70,8 +70,7 @@ const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
  *
  * The vocabulary is enforced one layer later, and not silently:
  * `condition-validator` walks both fields and warns, `validate --strict`
- * promotes that warning to an error at the authoring gates, `json-parser`
- * drops an unexecutable objective, and the runtime refuses to complete a step
+ * promotes that warning to an error at the authoring gates, interactive blocks retain unexecutable objectives, and the runtime refuses to complete a step
  * on any non-`satisfied` verdict — so an unrecognised `verify` fails that one
  * step's verification instead of erasing the guide around it.
  */
@@ -84,7 +83,7 @@ const objectivesDescription = (container: 'block' | 'section' | 'branch'): strin
     container === 'block'
       ? 'Prefer this over `skippable` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.'
       : `When a ${container}'s objectives hold, every step inside it is marked complete too.`;
-  return `Conditions that automatically complete this ${container}, in the same vocabulary as \`requirements\`. Checked first, before eligibility and requirements, so a ${container} whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a ${container} that creates one). ${closing}`;
+  return `Conditions that automatically complete this ${container}, in the same vocabulary as \`requirements\`. Every objective must be satisfied for completion, including after assistance. Checked first, before eligibility and requirements, so a ${container} whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a ${container} that creates one). ${closing}`;
 };
 
 /**

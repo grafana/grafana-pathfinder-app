@@ -19,7 +19,7 @@ interface BaseStepState {
   isCompleted: boolean;
   isChecking: boolean;
   isSkipped: boolean;
-  completionReason: 'none' | 'objectives' | 'manual' | 'skipped';
+  completionReason: 'none' | 'objectives' | 'observed' | 'manual' | 'skipped';
   explanation: string | undefined;
   error: string | undefined;
   canFixRequirement: boolean;

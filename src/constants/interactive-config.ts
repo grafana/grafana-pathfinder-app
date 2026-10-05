@@ -100,7 +100,7 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
   },
   // Auto-detection configuration for step completion
   autoDetection: {
-    enabled: false, // Global toggle for auto-detection feature (opt-in, disabled by default)
+    enabled: true,
     verificationDelay: 200, // Delay before running post-verification checks (ms)
     feedbackDuration: 1500, // Duration to show auto-completion feedback (ms)
     eventTypes: ['click', 'input', 'change', 'mouseenter'] as const, // DOM events to monitor
@@ -175,7 +175,7 @@ export function getInteractiveConfig(pluginConfig?: PathfinderPluginConfig) {
     },
     autoDetection: {
       ...defaults.autoDetection,
-      enabled: pluginConfig?.enableAutoDetection ?? false, // Default FALSE (opt-in)
+      enabled: true,
     },
     delays: {
       ...defaults.delays,

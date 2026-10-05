@@ -922,3 +922,48 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     warn.mockRestore();
   });
 });
+
+it('gates successful assistance and completeEarly through the observed objective', async () => {
+  const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+  const { CompletionObservationContext } = await import('../../global-state/observation/context');
+  let satisfied = false;
+  const coordinator = new CompletionCoordinator(async () => satisfied);
+  const saved = jest.fn();
+  const completed = jest.fn();
+  render(
+    <>
+      <button id="observed-save" onClick={saved}>
+        Save example
+      </button>
+      <CompletionObservationContext.Provider value={coordinator}>
+        <InteractiveStep
+          stepId="assisted-objective-gate"
+          targetAction="button"
+          refTarget="#observed-save"
+          objectives={['has-dashboard-named:Example']}
+          completeEarly
+          onComplete={completed}
+        >
+          Save the example
+        </InteractiveStep>
+      </CompletionObservationContext.Provider>
+    </>
+  );
+  document.querySelector<HTMLButtonElement>('#observed-save')!.scrollIntoView = jest.fn();
+  await act(async () => {
+    coordinator.start();
+  });
+  const assist = await screen.findByRole('button', { name: /do it/i });
+  await waitFor(() => expect(assist).toBeEnabled());
+  fireEvent.click(assist);
+  await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+  await screen.findByText('Waiting for completion');
+  expect(completed).not.toHaveBeenCalled();
+  await act(async () => {
+    satisfied = true;
+    coordinator.recheck();
+  });
+  await waitFor(() => expect(completed).toHaveBeenCalledTimes(1));
+  expect(saved).toHaveBeenCalledTimes(1);
+  coordinator.stop();
+});

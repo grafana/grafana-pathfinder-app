@@ -5,7 +5,6 @@ import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
 import {
   PathfinderPluginConfig,
-  DEFAULT_ENABLE_AUTO_DETECTION,
   DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   DEFAULT_GUIDED_STEP_TIMEOUT,
   DEFAULT_DISABLE_AUTO_COLLAPSE,
@@ -22,7 +21,6 @@ import { logger } from '../../lib/logging';
 type JsonData = PathfinderPluginConfig;
 
 type State = {
-  enableAutoDetection: boolean;
   requirementsCheckTimeout: number;
   guidedStepTimeout: number;
   disableAutoCollapse: boolean;
@@ -34,7 +32,6 @@ type State = {
 
 function buildStateFromConfig(config: ResolvedPathfinderConfig): State {
   return {
-    enableAutoDetection: config.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
     requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
     guidedStepTimeout: config.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
     disableAutoCollapse: config.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
@@ -70,10 +67,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
       return newErrors;
     });
     return num;
-  };
-
-  const onToggleAutoDetection = (event: ChangeEvent<HTMLInputElement>) => {
-    edit({ enableAutoDetection: event.target.checked });
   };
 
   const onToggleDisableAutoCollapse = (event: ChangeEvent<HTMLInputElement>) => {
@@ -112,7 +105,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
 
   const onResetDefaults = () => {
     edit({
-      enableAutoDetection: DEFAULT_ENABLE_AUTO_DETECTION,
       requirementsCheckTimeout: DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
       guidedStepTimeout: DEFAULT_GUIDED_STEP_TIMEOUT,
       disableAutoCollapse: DEFAULT_DISABLE_AUTO_COLLAPSE,
@@ -167,47 +159,9 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         </Alert>
       )}
       <FieldSet label="Interactive guide features" className={styles.fieldSet}>
-        <Alert
-          title="Experimental feature"
-          severity={state.enableAutoDetection ? 'info' : 'warning'}
-          className={styles.alert}
-        >
-          {state.enableAutoDetection
-            ? 'Auto-completion detection is enabled. Tutorial steps will automatically complete when you perform actions yourself.'
-            : 'Auto-completion detection is disabled. You must click "Do it" buttons to complete tutorial steps.'}
+        <Alert title="Automatic completion" severity="info">
+          Open guides track completed objectives and supported actions automatically. Show me and Do it are optional.
         </Alert>
-
-        <div className={styles.section}>
-          <Text variant="h4" weight="medium">
-            Auto-completion detection
-          </Text>
-          <div className={styles.toggleSection}>
-            <Switch
-              data-testid={testIds.appConfig.interactiveFeatures.toggle}
-              id="enable-auto-detection"
-              value={state.enableAutoDetection}
-              onChange={onToggleAutoDetection}
-            />
-            <div className={styles.toggleLabels}>
-              <Text variant="body" weight="medium">
-                Enable automatic step completion
-              </Text>
-              <Text variant="body" color="secondary">
-                Automatically mark tutorial steps as complete when you perform actions yourself (without clicking
-                &quot;Do it&quot; buttons)
-              </Text>
-            </div>
-          </div>
-
-          {state.enableAutoDetection && (
-            <Alert severity="info" title="How it works" className={styles.infoAlert}>
-              <Text variant="body">
-                When enabled, the system detects your actions and completes tutorial steps automatically for a more
-                natural learning experience. Steps will still verify requirements before completion.
-              </Text>
-            </Alert>
-          )}
-        </div>
 
         <div className={styles.divider} />
 

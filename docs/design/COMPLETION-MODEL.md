@@ -10,6 +10,12 @@
 > named invariant in `docs/design/CONCERN_DETAILS.md` for what the denominator
 > module is allowed to own.
 
+## Completion evidence
+
+Opening a guide starts observing its active branch, including collapsed sections. For interactive, guided, and multistep blocks, every authored objective must return a satisfied verdict before completion, whether the reader acts independently or uses assistance. Existing outcomes count. With no objectives, ordered action evidence and authored verification determine completion. Section objectives retain their child-completion authority; quizzes, challenges, acknowledgement, and **Mark complete** keep their existing rules.
+
+This extends the completion evidence contract without changing the denominator or storage schema. The `observed` reason identifies manual action detection; `objectives` identifies verified outcomes, and `manual` identifies successful assistance. Legacy prose objectives remain loadable and produce authoring warnings, but cannot pass the completion gate. The retired auto-detection preference no longer disables tracking.
+
 ## Purpose
 
 This document exists because the completion code will get dense, and dense code

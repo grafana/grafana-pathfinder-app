@@ -880,6 +880,15 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     checkStepRef.current = checkStep;
   });
 
+  const persistedCompletion = props.observedCompletion;
+  useEffect(() => {
+    if (sectionId !== null && persistedCompletion?.completed && !state.isCompleted) {
+      const reason = persistedCompletion.reason ?? 'manual';
+      safeDispatch({ type: 'SET_COMPLETED', reason });
+      updateManager({ ...state, isCompleted: true, isChecking: false, isEnabled: false, completionReason: reason });
+    }
+  }, [persistedCompletion?.completed, persistedCompletion?.reason, sectionId, state, safeDispatch, updateManager]);
+
   // Initial requirements check for first steps when component mounts
   useEffect(() => {
     // Use helper function to detect first step in a section or standalone step

@@ -57,6 +57,18 @@ Public API:
 
 Hydration is lazy and per-section. Preview-mode content keys (`block-editor://preview/...`, `devtools`) bypass storage writes entirely — the in-memory cache still updates so ephemeral preview UI keeps reacting.
 
+## Passive completion
+
+The active renderer owns one `CompletionCoordinator`. Interactive, guided, and multistep components register with it, including children of collapsed sections. Only the active conditional branch registers. Section objectives use the same scheduler; satisfying them still completes all subordinate steps.
+
+Objectives are authoritative for passive and assisted completion. Finishing an action sequence requests completion; it does not bypass authored objectives. While waiting, the reader can check completion without rerunning the actions. Without objectives, the coordinator observes each expected action in sequence and applies `verify` where authored. A later action never supplies evidence for earlier actions. Informational content is not evidence of reading.
+
+The coordinator writes completed blocks to the existing store, with `objectives`, `observed`, or `manual` (assisted) reasons. Partial action cursors live only for the open session. An intentional surface handoff transfers cursors through a one-use, ten-second browser-storage record; ordinary guide closure does not save them. Reset invalidates checks and observation generations.
+
+Read-only objectives check on open and relevant changes, with a shared five-second visible-tab fallback, four concurrent checks, and per-cycle deduplication. Command objectives require explicit assistance or **Check completion**. The old `enableAutoDetection` setting remains readable for compatibility but no longer controls this behaviour.
+
+In a paired pop-out, signed observation subscriptions install matching in the live tab. Evidence carries subscription, guide, step and action identifiers; observed input values and DOM content stay in the live tab. Subscriptions expire after six seconds without renewal, and cancellation, reset and reconnect invalidate stale generations.
+
 ## Reset paths must evict the cache
 
 The completion store keeps a module-scope cache (entries + hydration markers + version counters) that outlives any single component. Every path that clears persisted progress MUST also evict the cache, or live subscribers will keep rendering the prior "completed" snapshot until they remount.

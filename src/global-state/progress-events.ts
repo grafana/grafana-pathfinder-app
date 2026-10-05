@@ -21,7 +21,7 @@
 
 import { StorageEvents } from '../lib/event-names';
 
-export type ProgressReason = 'none' | 'objectives' | 'manual' | 'skipped';
+export type ProgressReason = 'none' | 'objectives' | 'observed' | 'manual' | 'skipped';
 
 export type ProgressEventDetail =
   | {

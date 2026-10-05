@@ -82,3 +82,10 @@ export type {
 
 // Modal detection + watcher (companion mode)
 export { detectModalActive, getVisibleModalRects, startModalWatch, stopModalWatch } from './modal-watcher';
+
+export {
+  matchesPassiveAction,
+  observePassiveActions,
+  matchesPassiveNavigation,
+  observePassiveNavigation,
+} from './auto-completion/passive-action';

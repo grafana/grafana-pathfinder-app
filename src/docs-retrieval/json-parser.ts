@@ -550,7 +550,7 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
   }
 
   const requirements = block.requirements?.length ? block.requirements : undefined;
-  const objectives = executableObjectives(block.objectives);
+  const objectives = block.objectives?.length ? block.objectives : undefined;
 
   return {
     element: {
@@ -703,7 +703,7 @@ function convertInteractiveBlock(
   }
 
   const requirements = block.requirements?.length ? block.requirements : undefined;
-  const objectives = executableObjectives(block.objectives);
+  const objectives = block.objectives?.length ? block.objectives : undefined;
 
   return {
     element: {
@@ -757,7 +757,7 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string, stepCont
   const children = parseMarkdownToElements(block.content);
 
   const requirements = block.requirements?.length ? block.requirements : undefined;
-  const objectives = executableObjectives(block.objectives);
+  const objectives = block.objectives?.length ? block.objectives : undefined;
 
   // The multistep's overall identity uses the first internal action as
   // the discriminator — that's the action shown when the block opens.
@@ -811,7 +811,7 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
   const children = parseMarkdownToElements(block.content);
 
   const requirements = block.requirements?.length ? block.requirements : undefined;
-  const objectives = executableObjectives(block.objectives);
+  const objectives = block.objectives?.length ? block.objectives : undefined;
 
   const stepId = resolveStepId(
     block.id,

@@ -165,34 +165,19 @@ function subscribeToContent(contentKey: string, listener: () => void): () => voi
   };
 }
 
-function ensureHydrated(contentKey: string, sectionId: string): void {
+const hydrationPromises = new Map<string, Promise<void>>();
+
+function ensureHydrated(contentKey: string, sectionId: string): Promise<void> {
   const key = `${contentKey}::${sectionId}`;
   if (hydratedSections.has(key)) {
-    return;
+    return hydrationPromises.get(key) ?? Promise.resolve();
   }
   hydratedSections.add(key);
   hydrationClears.set(key, new Set());
-  // Snapshot the version at schedule time. If a concurrent eviction
-  // (in-tab or cross-tab) bumps the version before our `.then` runs,
-  // we'll see the mismatch and bail rather than merging stale data.
   const expectedVersion = hydrationVersion.get(key) ?? 0;
-  interactiveStepStorage
+  const pending: Promise<void> = interactiveStepStorage
     .getCompleted(contentKey, sectionId)
     .then((stored) => {
-      // Race guard: `evictContentCache` / `evictSectionCache` may have
-      // wiped this section's entry while the storage read was in flight.
-      // Without this check the resolver would lazily recreate the section
-      // map via `stepsFor(...)` and resurrect cleared progress from the
-      // stale snapshot — making "Reset guide" durably ineffective until
-      // the next mount.
-      //
-      // The version check additionally covers the cross-tab path: when
-      // the storage listener evicts AND a new `ensureHydrated` cycle
-      // has started (re-adding the key to `hydratedSections`) before
-      // this `.then` runs, the version mismatch detects the stale read.
-      // Coalesce both sides — a key that has never been bumped reads
-      // back `undefined`, and we want that to compare equal to the
-      // `0` captured at schedule time.
       const currentVersion = hydrationVersion.get(key) ?? 0;
       if (!hydratedSections.has(key) || currentVersion !== expectedVersion) {
         hydrationClears.delete(key);
@@ -200,9 +185,6 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
       }
       const cleared = hydrationClears.get(key);
       hydrationClears.delete(key);
-      // Whole section was reset during hydration → the entire storage
-      // snapshot is stale. The reset path has already cleared storage,
-      // so nothing more to do.
       if (cleared === 'all') {
         return;
       }
@@ -210,8 +192,6 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
       const hadClears = cleared !== undefined && cleared.size > 0;
       let changed = false;
       stored.forEach((stepId) => {
-        // The user explicitly cleared this ID since hydration started;
-        // don't resurrect it from the stale snapshot.
         if (cleared?.has(stepId)) {
           return;
         }
@@ -225,8 +205,6 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
         notify(contentKey);
         persistSection(contentKey, sectionId);
       }
-      // Reconcile storage with the filtered cache. Without this, the
-      // cleared IDs would persist in storage and reappear on next reload.
       if (hadClears) {
         persistSection(contentKey, sectionId);
       }
@@ -234,7 +212,24 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
     .catch((error) => {
       hydrationClears.delete(key);
       logger.warn('[completion-store] hydration failed', { contentKey, sectionId, error });
+    })
+    .finally(() => {
+      if (hydrationPromises.get(key) === pending) {
+        hydrationPromises.delete(key);
+      }
     });
+  hydrationPromises.set(key, pending);
+  return pending;
+}
+
+export async function readStepCompletion(
+  stepId: string,
+  sectionId: string | undefined,
+  contentKey: string
+): Promise<boolean> {
+  const section = sectionId ?? STANDALONE_SECTION_ID;
+  await ensureHydrated(contentKey, section);
+  return entries.get(contentKey)?.get(section)?.get(stepId)?.completed ?? false;
 }
 
 /**
@@ -505,27 +500,30 @@ export function useStepCompletion(stepId: string, sectionId: string = STANDALONE
   return { completed: snapshot.completed, reason: snapshot.reason };
 }
 
-export function markStepCompleted(stepId: string, sectionId: string | undefined, reason: ProgressReason): void {
-  const contentKey = getContentKey();
+export function markStepCompleted(
+  stepId: string,
+  sectionId: string | undefined,
+  reason: ProgressReason,
+  contentKey = getContentKey()
+): void {
   const resolvedSection = sectionId ?? STANDALONE_SECTION_ID;
   ensureHydrated(contentKey, resolvedSection);
 
   const bySteps = stepsFor(contentKey, resolvedSection);
   const existing = bySteps.get(stepId);
-  // `'skipped'` is sticky until a reset clears the entry. A skipping step writes
-  // it through the checker's bridge, and its section then reports the same step
-  // complete with the generic `'manual'` — which would otherwise relabel a
-  // skipped check as one the user actually passed.
-  if (existing?.completed && (existing.reason === reason || existing.reason === 'skipped')) {
+  if (
+    existing?.completed &&
+    (existing.reason === reason ||
+      existing.reason === 'skipped' ||
+      existing.reason === 'observed' ||
+      existing.reason === 'objectives')
+  ) {
     return;
   }
   bySteps.set(stepId, { completed: true, reason, completedAt: Date.now() });
   bumpSectionVersion(contentKey, resolvedSection);
   persistSection(contentKey, resolvedSection);
   notify(contentKey);
-  // Step-level progress event. Section-managed steps additionally fire
-  // a kind:'section' event from `interactive-section.tsx` when the
-  // section transitions to a terminal state.
   dispatchProgress({
     kind: 'step',
     stepId,

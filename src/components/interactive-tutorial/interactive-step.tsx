@@ -1,24 +1,14 @@
+import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 
 import { waitForReactUpdates } from '../../lib/async-utils';
-import {
-  getPostVerifyExplanation,
-  useGuideRequirements,
-  useStepChecker,
-  validateInteractiveRequirements,
-} from '../../requirements-manager';
+import { getPostVerifyExplanation, useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
 import { recordStepExecution, type StepOutcome } from '../../lib/telemetry';
 import type { InteractiveStepProps } from '../../types/component-props.types';
-import {
-  type DetectedActionEvent,
-  useInteractiveElements,
-  useSingleActionDetection,
-  useFormElementValidation,
-  resolveTargetElement,
-} from '../../interactive-engine';
+import { useInteractiveElements, useFormElementValidation, resolveTargetElement } from '../../interactive-engine';
 import { testIds } from '../../constants/testIds';
 import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../integrations/assistant-integration';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
@@ -28,7 +18,7 @@ import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { isGrafanaDrivingHandoffNeeded } from '../../global-state/panel-mode';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
-import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
@@ -190,14 +180,14 @@ export const InteractiveStep = forwardRef<
       requirements,
       objectives,
       hints,
-      onComplete,
+      onComplete: notifyComplete,
       disabled = false,
       className,
       // New unified state management props (passed by parent)
       stepId,
       isEligibleForChecking = true,
       isCurrentlyExecuting = false,
-      onStepComplete,
+      onStepComplete: notifyStepComplete,
       resetTrigger,
       onStepReset, // New callback for individual step reset
 
@@ -240,12 +230,7 @@ export const InteractiveStep = forwardRef<
     // the parent via `onStepComplete` (which writes through the section's
     // persist effect); standalone steps must write to the store themselves.
     const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
-    const isStandalone = !onStepComplete;
-    const persistCompletion = useCallback(() => {
-      if (isStandalone) {
-        markStepCompleted(renderedStepId, sectionId, 'manual');
-      }
-    }, [isStandalone, renderedStepId, sectionId]);
+    const isStandalone = !notifyStepComplete;
     const persistReset = useCallback(() => {
       if (isStandalone) {
         resetStep(renderedStepId, sectionId);
@@ -275,6 +260,19 @@ export const InteractiveStep = forwardRef<
       setCurrentTargetValue(newValue);
     }, []);
 
+    const observation = useObservedCompletion({
+      stepId: renderedStepId,
+      sectionId,
+      objectives,
+      verify: postVerify,
+      actions: [{ targetAction, refTarget, targetValue: currentTargetValue }],
+      eligible: isEligibleForChecking && !disabled,
+      executing: isShowRunning || isDoRunning || isCurrentlyExecuting,
+      resetTrigger,
+      onStepComplete: notifyStepComplete,
+      onComplete: notifyComplete,
+    });
+    const { complete: persistCompletion, onStepComplete, onComplete } = observation;
     // Single source of truth: the completion store. For section-managed
     // steps, the section's persist effect writes through to the store on
     // COMPLETE_STEP; for standalone steps, `persistCompletion()` above
@@ -295,15 +293,15 @@ export const InteractiveStep = forwardRef<
 
     // Get the interactive functions from the hook
     const { executeInteractiveAction, verifyStepResult } = useInteractiveElements();
-    const { checkPostconditions } = useGuideRequirements();
 
     // For section steps, use a simplified checker that respects section authority
     // For standalone steps, use the full global checker
     const isPartOfSection = renderedStepId.includes('section-') && renderedStepId.includes('-step-');
 
-    const checker = useStepChecker({
+    const rawChecker = useStepChecker({
+      observedCompletion: observation.completion,
       requirements,
-      objectives,
+      objectives: observation.managed ? undefined : objectives,
       hints,
       targetAction,
       refTarget,
@@ -311,13 +309,14 @@ export const InteractiveStep = forwardRef<
       isEligibleForChecking: isPartOfSection ? isEligibleForChecking : isEligibleForChecking && !isCompleted,
       skippable,
       stepIndex, // Pass document-wide step index for sequence awareness
-      lazyRender, // Enable progressive scroll discovery for virtualized containers
+      lazyRender: observation.managed ? false : lazyRender,
       scrollContainer, // CSS selector for scroll container
       disabled, // Pass through for auto-completion suppression
       sectionId, // Lets the checker write skip / objectives transitions to the store
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });
+    const checker = { ...rawChecker, isEnabled: rawChecker.isEnabled && !observation.waiting };
 
     // `checker` is a fresh object every render, but `revalidate` is a stable
     // useCallback — pull it out so the click handlers can depend on it without
@@ -362,7 +361,7 @@ export const InteractiveStep = forwardRef<
     // when eligible, even if they were previously "completed". This handles the case where
     // a previous step is reset and re-completed.
     useEffect(() => {
-      if (isNoopAction && isEligibleForChecking && !disabled) {
+      if (!observation.managed && isNoopAction && isEligibleForChecking && !disabled) {
         // Notify parent section of completion (idempotent - section ignores if already complete)
         if (onStepComplete && stepId) {
           onStepComplete(stepId);
@@ -373,7 +372,7 @@ export const InteractiveStep = forwardRef<
           onComplete();
         }
       }
-    }, [isNoopAction, isEligibleForChecking, disabled, stepId, onStepComplete, onComplete]);
+    }, [observation.managed, isNoopAction, isEligibleForChecking, disabled, stepId, onStepComplete, onComplete]);
 
     const shouldShowExplanation = isPartOfSection
       ? !isNoopAction && (!isEligibleForChecking || (requirements && !checker.isEnabled && !lazyScrollAvailable))
@@ -475,7 +474,7 @@ export const InteractiveStep = forwardRef<
         finalIsEnabled &&
         !isCompletedWithObjectives &&
         !disabled,
-      onValid: handleFormValidationComplete,
+      onValid: observation.managed ? undefined : handleFormValidationComplete,
     });
 
     // Handle reset trigger from parent section.
@@ -507,7 +506,7 @@ export const InteractiveStep = forwardRef<
 
       try {
         // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
-        if (completeEarly) {
+        if (completeEarly && !observation.managed) {
           persistCompletion();
           if (onStepComplete && stepId) {
             onStepComplete(stepId);
@@ -545,7 +544,7 @@ export const InteractiveStep = forwardRef<
         await new Promise((resolve) => setTimeout(resolve, 300));
 
         // Run post-verification if specified by author
-        if (postVerify && postVerify.trim() !== '') {
+        if (!observation.managed && postVerify && postVerify.trim() !== '') {
           // Additional wait before verification to ensure all side effects have completed
           await waitForReactUpdates();
 
@@ -571,7 +570,7 @@ export const InteractiveStep = forwardRef<
         }
 
         // NEW: If NOT completeEarly, mark complete after action (normal flow)
-        if (!completeEarly) {
+        if (!completeEarly || observation.managed) {
           persistCompletion();
 
           // Notify parent if we have the callback (section coordination)
@@ -594,6 +593,7 @@ export const InteractiveStep = forwardRef<
       isCompletedWithObjectives,
       disabled,
       completeEarly,
+      observation.managed,
       stepId,
       targetAction,
       refTarget,
@@ -623,118 +623,13 @@ export const InteractiveStep = forwardRef<
       [executeStep, skippable, checker.markSkipped]
     );
 
-    // Auto-detection: Use shared hook for detecting user actions
-    // Handler for auto-detected action match
-    const handleAutoDetectedMatch = useCallback(
-      async (_detectedAction: DetectedActionEvent) => {
-        // Run post-verification if specified (same as "Do it" button)
-        if (postVerify && postVerify.trim() !== '') {
-          try {
-            const result = await checkPostconditions({
-              requirements: postVerify,
-              targetAction,
-              refTarget,
-              targetValue: currentTargetValue,
-              stepId: stepId || renderedStepId,
-            });
-
-            if (!result.pass) {
-              // Verification failed - don't auto-complete
-              // Track failure in analytics
-              reportAppInteraction(
-                UserInteraction.StepAutoCompleteFailed,
-                buildInteractiveStepProperties(
-                  {
-                    target_action: targetAction,
-                    ref_target: refTarget,
-                    interaction_location: 'interactive_step_auto',
-                    failure_reason: 'post_verification_failed',
-                  },
-                  analyticsStepMeta
-                )
-              );
-              return;
-            }
-          } catch {
-            // Verification error - don't auto-complete
-            // Track failure in analytics
-            reportAppInteraction(
-              UserInteraction.StepAutoCompleteFailed,
-              buildInteractiveStepProperties(
-                {
-                  target_action: targetAction,
-                  ref_target: refTarget,
-                  interaction_location: 'interactive_step_auto',
-                  failure_reason: 'post_verification_error',
-                },
-                analyticsStepMeta
-              )
-            );
-            return;
-          }
-        }
-
-        persistCompletion();
-
-        // Notify parent if we have the callback (section coordination)
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
-        }
-
-        // Call the original onComplete callback if provided
-        if (onComplete) {
-          onComplete();
-        }
-
-        // Track auto-completion in analytics
-        reportAppInteraction(
-          UserInteraction.StepAutoCompleted,
-          buildInteractiveStepProperties(
-            {
-              target_action: targetAction,
-              ref_target: refTarget,
-              ...(currentTargetValue && { target_value: currentTargetValue }),
-              interaction_location: 'interactive_step_auto',
-              completion_method: 'auto_detected',
-            },
-            analyticsStepMeta
-          )
-        );
-      },
-      [
-        postVerify,
-        targetAction,
-        refTarget,
-        currentTargetValue,
-        stepId,
-        renderedStepId,
-        onStepComplete,
-        onComplete,
-        analyticsStepMeta,
-        persistCompletion,
-        checkPostconditions,
-      ]
-    );
-
-    // Use the shared auto-detection hook
-    useSingleActionDetection({
-      targetAction,
-      refTarget,
-      targetValue: currentTargetValue,
-      isEnabled: finalIsEnabled,
-      isCompleted: isCompletedWithObjectives,
-      isExecuting: isCurrentlyExecuting,
-      disabled,
-      onMatch: handleAutoDetectedMatch,
-    });
-
     const runRemoteAction = useCallback(
       async (phase: 'show' | 'do'): Promise<boolean> => {
         if (!controllerChannel || !stepId) {
           setPostVerifyError('Connect a live Grafana tab to run this step.');
           return false;
         }
-        const completeOnDispatch = phase === 'do' && completeEarly;
+        const completeOnDispatch = phase === 'do' && completeEarly && !observation.managed;
         const runId = crypto.randomUUID();
         const completion = completeOnDispatch ? undefined : controllerChannel.awaitStepResult(stepId, runId, 30_000);
         controllerChannel.post({
@@ -771,7 +666,7 @@ export const InteractiveStep = forwardRef<
           );
           return false;
         }
-        if (phase === 'do' && postVerify?.trim()) {
+        if (!observation.managed && phase === 'do' && postVerify?.trim()) {
           const result = await controllerChannel.requestRequirementCheck(stepId, postVerify, {
             targetAction,
             refTarget,
@@ -797,6 +692,7 @@ export const InteractiveStep = forwardRef<
         openGuide,
         postVerify,
         completeEarly,
+        observation.managed,
         persistCompletion,
         onStepComplete,
         onComplete,
@@ -962,7 +858,7 @@ export const InteractiveStep = forwardRef<
         if (!succeeded) {
           return;
         }
-        if (completeEarly) {
+        if (completeEarly && !observation.managed) {
           return;
         }
         persistCompletion();
@@ -996,6 +892,7 @@ export const InteractiveStep = forwardRef<
       disabled,
       isDoRunning,
       completeEarly,
+      observation.managed,
       isCompletedWithObjectives,
       finalIsEnabled,
       lazyRender,
@@ -1145,6 +1042,14 @@ export const InteractiveStep = forwardRef<
           )}
         </div>
 
+        {observation.waiting && (
+          <div role="status">
+            Waiting for completion{' '}
+            <button type="button" onClick={observation.retry}>
+              Check completion
+            </button>
+          </div>
+        )}
         <div className="interactive-step-actions">
           <div className="interactive-step-action-buttons">
             {/* Only show "Show me" button when showMe prop is true AND step is enabled AND not a navigate/noop/popout action */}

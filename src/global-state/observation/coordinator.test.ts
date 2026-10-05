@@ -1,0 +1,323 @@
+import { CompletionCoordinator, type ObservationStep } from './coordinator';
+
+const settle = async () => {
+  for (let i = 0; i < 12; i++) {
+    await Promise.resolve();
+  }
+};
+const step = (overrides: Partial<ObservationStep> = {}): ObservationStep => ({
+  id: 'guide/section/step',
+  stepId: 'step',
+  actions: [{ targetAction: 'button', refTarget: 'Save' }],
+  eligible: true,
+  executing: false,
+  completed: false,
+  commit: jest.fn(),
+  ...overrides,
+});
+
+describe('guide completion observation', () => {
+  it('recognises existing objectives even on a later, ineligible step', async () => {
+    const check = jest.fn().mockResolvedValue(true);
+    const coordinator = new CompletionCoordinator(check);
+    const item = step({ eligible: false, objectives: ['has-datasource:prometheus'] });
+    coordinator.register(item);
+    coordinator.start();
+    await settle();
+    expect(item.commit).toHaveBeenCalledWith('objectives');
+    coordinator.recheck();
+    await settle();
+    expect(item.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not infer earlier actions from a later click and captures rapid consecutive actions', async () => {
+    const coordinator = new CompletionCoordinator(jest.fn());
+    const item = step({
+      actions: [
+        { targetAction: 'button', refTarget: 'Open' },
+        { targetAction: 'button', refTarget: 'Save' },
+      ],
+    });
+    coordinator.register(item);
+    coordinator.start();
+    coordinator.observe((action) => action.refTarget === 'Save');
+    expect(coordinator.cursor(item.id)).toBe(0);
+    coordinator.observe((action) => action.refTarget === 'Open');
+    coordinator.observe((action) => action.refTarget === 'Save');
+    await settle();
+    expect(item.commit).toHaveBeenCalledTimes(1);
+    expect(item.commit).toHaveBeenCalledWith('observed');
+  });
+
+  it('requires separate events for repeated selectors', async () => {
+    const coordinator = new CompletionCoordinator(jest.fn());
+    const item = step({
+      actions: [
+        { targetAction: 'button', refTarget: 'Next' },
+        { targetAction: 'button', refTarget: 'Next' },
+      ],
+    });
+    coordinator.register(item);
+    coordinator.start();
+    coordinator.observe(() => true);
+    await settle();
+    expect(item.commit).not.toHaveBeenCalled();
+    coordinator.observe(() => true);
+    await settle();
+    expect(item.commit).toHaveBeenCalledWith('observed');
+  });
+
+  it('gates assisted completion on objectives and waits for execution to settle', async () => {
+    let satisfied = false;
+    const coordinator = new CompletionCoordinator(async () => satisfied);
+    const item = step({ objectives: ['has-dashboard-named:Example'], executing: true });
+    coordinator.register(item);
+    coordinator.start();
+    coordinator.request(item.id);
+    await settle();
+    expect(item.commit).not.toHaveBeenCalled();
+    coordinator.update(item.id, { ...item, executing: false });
+    await settle();
+    expect(coordinator.waiting(item.id)).toBe(true);
+    satisfied = true;
+    coordinator.recheck();
+    await settle();
+    expect(item.commit).toHaveBeenCalledWith('objectives');
+  });
+
+  it('does not complete from failed verification or unavailable checks', async () => {
+    const check = jest.fn().mockRejectedValue(new Error('offline'));
+    const coordinator = new CompletionCoordinator(check);
+    const item = step({ verify: 'on-page:/saved' });
+    coordinator.register(item);
+    coordinator.start();
+    coordinator.observe(() => true);
+    await settle();
+    expect(item.commit).not.toHaveBeenCalled();
+    check.mockResolvedValue(true);
+    coordinator.recheck();
+    await settle();
+    expect(item.commit).toHaveBeenCalledWith('observed');
+  });
+
+  it('queues a change that arrives during a check', async () => {
+    let finish!: (value: boolean) => void;
+    const check = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          })
+      )
+      .mockResolvedValue(true);
+    const coordinator = new CompletionCoordinator(check);
+    const item = step({ objectives: 'has-datasources' });
+    coordinator.register(item);
+    coordinator.start();
+    coordinator.recheck();
+    finish(false);
+    await settle();
+    expect(item.commit).toHaveBeenCalledWith('objectives');
+  });
+
+  it.each(['reset', 'stop', 'unregister'] as const)('discards stale results after %s', async (operation) => {
+    let finish!: (value: boolean) => void;
+    const check = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          })
+      )
+      .mockResolvedValue(false);
+    const coordinator = new CompletionCoordinator(check);
+    const item = step({ objectives: 'has-datasources' });
+    const release = coordinator.register(item);
+    coordinator.start();
+    if (operation === 'unregister') {
+      release();
+    } else {
+      coordinator[operation]();
+    }
+    finish(true);
+    await settle();
+    expect(item.commit).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates identical checks and never executes command objectives passively', async () => {
+    const check = jest.fn().mockResolvedValue(false);
+    const coordinator = new CompletionCoordinator(check);
+    coordinator.register(step({ id: 'a', objectives: 'has-datasources' }));
+    coordinator.register(step({ id: 'b', objectives: 'has-datasources' }));
+    const command = step({ id: 'c', objectives: 'coda-exit-zero:touch /tmp/x' });
+    coordinator.register(command);
+    coordinator.start();
+    await settle();
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(command.commit).not.toHaveBeenCalled();
+  });
+
+  it('does not complete an informational sequence or an ineligible action', async () => {
+    const coordinator = new CompletionCoordinator(jest.fn());
+    const info = step({ actions: [{ targetAction: 'noop' }] });
+    const blocked = step({ id: 'blocked', eligible: false });
+    coordinator.register(info);
+    coordinator.register(blocked);
+    coordinator.start();
+    coordinator.observe(() => true);
+    await settle();
+    expect(info.commit).not.toHaveBeenCalled();
+    expect(blocked.commit).not.toHaveBeenCalled();
+  });
+});
+
+it('retains a cursor through execution and transfers it without completing earlier actions', async () => {
+  const coordinator = new CompletionCoordinator(async () => true);
+  const item = step({
+    actions: [
+      { targetAction: 'button', refTarget: 'Next' },
+      { targetAction: 'button', refTarget: 'Save' },
+    ],
+  });
+  coordinator.register(item);
+  coordinator.start();
+  coordinator.observe(() => true);
+  coordinator.update(item.id, { ...item, executing: true });
+  coordinator.observe(() => true);
+  expect(coordinator.cursor(item.id)).toBe(1);
+  const cursors = coordinator.exportCursors();
+  coordinator.stop();
+  const next = new CompletionCoordinator(async () => true, cursors);
+  next.register(item);
+  next.start();
+  await settle();
+  expect(item.commit).not.toHaveBeenCalled();
+  next.observe(() => true);
+  await settle();
+  expect(item.commit).toHaveBeenCalledTimes(1);
+  const reopened = new CompletionCoordinator(async () => true);
+  reopened.register(item);
+  expect(reopened.cursor(item.id)).toBe(0);
+});
+
+it('does not bypass blank or partially invalid authored objectives', async () => {
+  const coordinator = new CompletionCoordinator(async (conditions) => !conditions.includes('invalid'));
+  const blank = step({ id: 'blank', objectives: [''] });
+  const mixed = step({ id: 'mixed', objectives: ['has-datasources', 'invalid'] });
+  coordinator.register(blank);
+  coordinator.register(mixed);
+  coordinator.start();
+  coordinator.request(blank.id);
+  coordinator.request(mixed.id);
+  await settle();
+  expect(blank.commit).not.toHaveBeenCalled();
+  expect(mixed.commit).not.toHaveBeenCalled();
+});
+
+it('runs command checks only once per explicit request', async () => {
+  const check = jest.fn().mockResolvedValue(false);
+  const coordinator = new CompletionCoordinator(check);
+  const item = step({ objectives: ['coda-exit-zero:echo hello'] });
+  coordinator.register(item);
+  coordinator.start();
+  coordinator.request(item.id);
+  await settle();
+  expect(check).toHaveBeenCalledTimes(1);
+  coordinator.recheck();
+  await settle();
+  expect(check).toHaveBeenCalledTimes(1);
+  coordinator.retry(item.id);
+  await settle();
+  expect(check).toHaveBeenCalledTimes(2);
+});
+
+it('resets one section without losing another section action cursor', () => {
+  const coordinator = new CompletionCoordinator(async () => false);
+  const actions = [{ targetAction: 'button' }, { targetAction: 'button' }];
+  coordinator.register(step({ id: 'a', sectionId: 'one', actions }));
+  coordinator.register(step({ id: 'b', sectionId: 'two', actions }));
+  coordinator.start();
+  coordinator.observeIndex('a', 0);
+  coordinator.observeIndex('b', 0);
+  coordinator.resetScope(undefined, 'one');
+  expect(coordinator.cursor('a')).toBe(0);
+  expect(coordinator.cursor('b')).toBe(1);
+});
+
+it('only observes mounted conditional branches and retains their cursor within the session', async () => {
+  const coordinator = new CompletionCoordinator(async () => false);
+  const item = step({ actions: [{ targetAction: 'button' }, { targetAction: 'button' }] });
+  const unmount = coordinator.register(item);
+  coordinator.start();
+  coordinator.observe(() => true);
+  unmount();
+  coordinator.observe(() => true);
+  await settle();
+  expect(item.commit).not.toHaveBeenCalled();
+  coordinator.register(item);
+  expect(coordinator.cursor(item.id)).toBe(1);
+  coordinator.observe(() => true);
+  await settle();
+  expect(item.commit).toHaveBeenCalledTimes(1);
+});
+
+it('bounds concurrent checks across different objectives', async () => {
+  let active = 0;
+  let maximum = 0;
+  const pending: Array<() => void> = [];
+  const coordinator = new CompletionCoordinator(
+    () =>
+      new Promise<boolean>((resolve) => {
+        active++;
+        maximum = Math.max(maximum, active);
+        pending.push(() => {
+          active--;
+          resolve(false);
+        });
+      })
+  );
+  for (let i = 0; i < 8; i++) {
+    coordinator.register(step({ id: `${i}`, objectives: [`has-dashboard-named:${i}`] }));
+  }
+  coordinator.start();
+  expect(active).toBe(4);
+  pending.splice(0).forEach((finish) => finish());
+  await settle();
+  expect(active).toBe(4);
+  expect(maximum).toBe(4);
+  pending.splice(0).forEach((finish) => finish());
+  await settle();
+  coordinator.stop();
+});
+
+it('does not mistake assistance clicks for manual evidence on another step', async () => {
+  const coordinator = new CompletionCoordinator(async () => false);
+  const executing = step({ id: 'assisted', executing: true });
+  const other = step({ id: 'other' });
+  coordinator.register(executing);
+  coordinator.register(other);
+  coordinator.start();
+  coordinator.observe(() => true);
+  await settle();
+  expect(other.commit).not.toHaveBeenCalled();
+});
+
+it('waits for persisted progress before recording existing outcomes again', async () => {
+  let hydrated!: (completed: boolean) => void;
+  const readCompleted = () =>
+    new Promise<boolean>((resolve) => {
+      hydrated = resolve;
+    });
+  const check = jest.fn().mockResolvedValue(true);
+  const coordinator = new CompletionCoordinator(check);
+  const item = step({ objectives: ['has-datasources'], readCompleted });
+  coordinator.register(item);
+  coordinator.start();
+  expect(check).not.toHaveBeenCalled();
+  hydrated(true);
+  await settle();
+  expect(item.commit).not.toHaveBeenCalled();
+  coordinator.stop();
+});

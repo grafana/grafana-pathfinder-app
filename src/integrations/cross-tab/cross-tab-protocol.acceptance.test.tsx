@@ -300,6 +300,23 @@ const COMMAND_FAMILIES: Array<{
   mutate: (b: Record<string, unknown>) => Record<string, unknown>;
 }> = [
   {
+    kind: 'observation-subscribe',
+    body: {
+      kind: 'observation-subscribe',
+      generation: 1,
+      subscriptionId: 'g1',
+      guideKey: 'guide',
+      revision: 1,
+      steps: [],
+    },
+    mutate: (b) => ({ ...b, guideKey: 'other' }),
+  },
+  {
+    kind: 'observation-cancel',
+    body: { kind: 'observation-cancel', subscriptionId: 'g1' },
+    mutate: (b) => ({ ...b, subscriptionId: 'other' }),
+  },
+  {
     kind: 'step-command',
     body: {
       kind: 'step-command',

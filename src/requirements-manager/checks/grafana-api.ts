@@ -5,7 +5,7 @@
  * to its peers and the router stays small.
  */
 
-import { config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
+import { config, hasPermission, getBackendSrv } from '@grafana/runtime';
 import { fetchDataSources, fetchPlugins, fetchDashboardsByName } from '../../lib/grafana-api';
 import type { CheckResultError } from '../../types/requirements.types';
 
@@ -97,10 +97,9 @@ export async function hasRoleCheck(check: string): Promise<CheckResultError> {
  */
 export async function hasDataSourceCheck(check: string): Promise<CheckResultError> {
   try {
-    const dataSourceSrv = getDataSourceSrv();
     const dsRequirement = check.replace('has-datasource:', '').toLowerCase();
 
-    const dataSources = dataSourceSrv.getList();
+    const dataSources = await fetchDataSources({ throwOnError: true });
     let found = false;
     let matchType = '';
 

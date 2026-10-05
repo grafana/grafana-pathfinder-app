@@ -124,6 +124,7 @@ export interface SidebarHandoffMessage extends CrossTabEnvelope, Partial<Control
 // Requirement round-trip (controller → live → controller); requestId correlates
 // each reply to its request since several steps may be in flight.
 export interface CheckRequirementsMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  passive?: boolean;
   kind: 'check-requirements';
   requestId: string;
   stepId: string;
@@ -176,7 +177,41 @@ export interface StepProgressMessage extends CrossTabEnvelope {
   total: number;
 }
 
+export interface ObservationSubscriptionMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  kind: 'observation-subscribe';
+  generation: number;
+  subscriptionId: string;
+  guideKey: string;
+  revision: number;
+  steps: Array<{
+    id: string;
+    cursor: number;
+    actions: Array<{ targetAction: string; refTarget?: string; targetValue?: string }>;
+  }>;
+}
+export interface ObservationCancelMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  kind: 'observation-cancel';
+  subscriptionId: string;
+}
+export interface ObservationEvidenceMessage extends CrossTabEnvelope {
+  kind: 'observation-evidence';
+  subscriptionId: string;
+  guideKey: string;
+  id: string;
+  index: number;
+}
+
+export interface ObservationChangeMessage extends CrossTabEnvelope {
+  kind: 'observation-change';
+  subscriptionId: string;
+  guideKey: string;
+}
+
 export type CrossTabMessage =
+  | ObservationChangeMessage
+  | ObservationSubscriptionMessage
+  | ObservationCancelMessage
+  | ObservationEvidenceMessage
   | StepCommandMessage
   | StepCancelMessage
   | HeartbeatMessage
@@ -206,6 +241,8 @@ export type CrossTabPayload = CrossTabMessage extends infer M
 export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Set([
   'step-command',
   'step-cancel',
+  'observation-subscribe',
+  'observation-cancel',
   'check-requirements',
   'fix-requirement',
   'sidebar-handoff',
@@ -355,6 +392,7 @@ function isBoundedConditionInput(value: unknown): boolean {
 function isValidCheckRequirements(message: Record<string, unknown>): boolean {
   return (
     typeof message.requestId === 'string' &&
+    (message.passive === undefined || typeof message.passive === 'boolean') &&
     typeof message.stepId === 'string' &&
     isBoundedConditionInput(message.requirements) &&
     isOptionalString(message.targetAction) &&
@@ -460,9 +498,50 @@ function isValidPairingAccept(message: Record<string, unknown>): boolean {
 // validated field-by-field against this table before dispatch. Each new
 // message kind adds its case here on the branch that introduces it; the
 // Record over CrossTabMessage['kind'] makes a missing case a compile error.
+function isValidObservationSubscription(message: Record<string, unknown>): boolean {
+  return (
+    isBoundedString(message.subscriptionId, 128) &&
+    isBoundedString(message.guideKey, 4096) &&
+    Number.isSafeInteger(message.generation) &&
+    (message.generation as number) >= 0 &&
+    Number.isSafeInteger(message.revision) &&
+    (message.revision as number) >= 0 &&
+    Array.isArray(message.steps) &&
+    message.steps.length <= 256 &&
+    message.steps.every(
+      (step) =>
+        isRecord(step) &&
+        isBoundedString(step.id, 4096) &&
+        Number.isSafeInteger(step.cursor) &&
+        Array.isArray(step.actions) &&
+        step.actions.length <= 256 &&
+        (step.cursor as number) >= 0 &&
+        (step.cursor as number) <= step.actions.length &&
+        step.actions.every(
+          (action) =>
+            isRecord(action) &&
+            typeof action.targetAction === 'string' &&
+            KNOWN_TARGET_ACTIONS.has(action.targetAction) &&
+            (action.refTarget === undefined || isBoundedString(action.refTarget, 4096)) &&
+            (action.targetValue === undefined || isBoundedString(action.targetValue, 16384))
+        )
+    )
+  );
+}
+
 const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, unknown>) => boolean> = {
   'step-command': isValidStepCommand,
   'step-cancel': (message) => typeof message.stepId === 'string' && typeof message.runId === 'string',
+  'observation-subscribe': isValidObservationSubscription,
+  'observation-cancel': (m) => isBoundedString(m.subscriptionId, 128),
+  'observation-change': (m) => isBoundedString(m.subscriptionId, 128) && isBoundedString(m.guideKey, 4096),
+  'observation-evidence': (m) =>
+    isBoundedString(m.subscriptionId, 128) &&
+    isBoundedString(m.guideKey, 4096) &&
+    isBoundedString(m.id, 4096) &&
+    Number.isSafeInteger(m.index) &&
+    (m.index as number) >= 0 &&
+    (m.index as number) < 256,
   heartbeat: isValidHeartbeat,
   'sidebar-handoff': isValidSidebarHandoff,
   'check-requirements': isValidCheckRequirements,

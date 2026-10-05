@@ -1,3 +1,4 @@
+import { useCompletionCoordinator } from '../../global-state/observation/context';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { usePathfinderPluginConfig } from '../../hooks';
 import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef } from 'react';
@@ -80,7 +81,7 @@ import {
 } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
-import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
+import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
@@ -369,11 +370,49 @@ export function InteractiveSection({
   const allInteractiveStepsCompleted =
     stepComponents.length > 0 && (nonNoopSteps.length === 0 || nonNoopSteps.every((s) => completedSteps.has(s.stepId)));
 
+  const completionCoordinator = useCompletionCoordinator();
+  const hasSectionObjectives = Array.isArray(objectives) ? objectives.length > 0 : !!objectives;
+  const [observedObjectives, setObservedObjectives] = useState(false);
+  const [restoredObjectives, setRestoredObjectives] = useState<boolean | undefined>(
+    isPreviewMode || !hasSectionObjectives ? false : undefined
+  );
+  useEffect(() => {
+    if (!hasSectionObjectives || isPreviewMode || resetTrigger > 0) {
+      return;
+    }
+    let active = true;
+    void sectionDoneStorage.get(getContentKey(), sectionId).then((done) => {
+      if (active) {
+        setRestoredObjectives(done === true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [sectionId, hasSectionObjectives, isPreviewMode, resetTrigger]);
+  const objectiveId = JSON.stringify([getContentKey(), sectionId, 'section-objectives']);
+  useEffect(() => {
+    if (!completionCoordinator || !hasSectionObjectives) {
+      return;
+    }
+    return completionCoordinator.register({
+      id: objectiveId,
+      stepId: sectionId,
+      sectionId,
+      actions: [],
+      objectives,
+      eligible: true,
+      executing: isRunning,
+      completed: observedObjectives,
+      commit: () => setObservedObjectives(true),
+    });
+  }, [completionCoordinator, objectiveId, sectionId, objectives, hasSectionObjectives, isRunning, observedObjectives]);
+
   // Add objectives checking for section - disable once interactive steps are done.
   // Note: objectives are *separate* from acknowledgement — when objectives fire
   // the section is done regardless of the gate (`doneVia: 'objectives'`).
   const objectivesChecker = useStepChecker({
-    objectives,
+    objectives: completionCoordinator ? undefined : objectives,
     stepId: sectionId,
     isEligibleForChecking: !allInteractiveStepsCompleted,
     // `null` ⇒ the section's own self-check is not a real step; suppress
@@ -383,14 +422,24 @@ export function InteractiveSection({
     sectionId: null,
   });
 
-  const isCompletedByObjectives = objectivesChecker.completionReason === 'objectives';
+  const isCompletedByObjectives =
+    observedObjectives || restoredObjectives === true || objectivesChecker.completionReason === 'objectives';
 
   // Derive the high-level state kind from the reducer's ack bit + the
   // gate analysis + objectives + the live completion set.
-  const derived = useMemo(
-    () => deriveSectionState(sectionState, stepComponents, gateAnalysis, isCompletedByObjectives, completedSteps),
-    [sectionState, stepComponents, gateAnalysis, isCompletedByObjectives, completedSteps]
-  );
+  const derived = useMemo(() => {
+    const result = deriveSectionState(
+      sectionState,
+      stepComponents,
+      gateAnalysis,
+      isCompletedByObjectives,
+      completedSteps
+    );
+    if (hasSectionObjectives && !isCompletedByObjectives && result.isCompleted) {
+      return { ...result, kind: 'partial' as const, isCompleted: false, doneVia: null };
+    }
+    return result;
+  }, [sectionState, stepComponents, gateAnalysis, isCompletedByObjectives, completedSteps, hasSectionObjectives]);
   const sectionKind = derived.kind;
   const isCompleted = derived.isCompleted;
   // `stepsCompleted` preserves the historical meaning ("all interactive
@@ -419,13 +468,7 @@ export function InteractiveSection({
     }
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
 
-  // Get plugin configuration to determine if auto-detection is enabled
   const { config: pluginConfig } = usePathfinderPluginConfig();
-
-  // Get runtime interactive config with plugin overrides
-  const interactiveConfig = useMemo(() => {
-    return getInteractiveConfig(pluginConfig);
-  }, [pluginConfig]);
 
   // Collapse state + auto-collapse-on-completion + restore-from-storage
   // are owned by `useSectionAutoCollapse`. The hook call sits here
@@ -439,22 +482,6 @@ export function InteractiveSection({
     disableAutoCollapse: pluginConfig.disableAutoCollapse,
   });
 
-  // Enable action monitor when component mounts (if feature is enabled in config)
-  useEffect(() => {
-    const actionMonitor = ActionMonitor.getInstance();
-
-    // Only enable if user has turned on the feature in plugin config
-    if (interactiveConfig.autoDetection.enabled) {
-      actionMonitor.enable();
-    }
-
-    // Cleanup: disable monitor when component unmounts (optional, but good practice)
-    return () => {
-      // Only disable if no other sections are using it
-      // The monitor is a singleton, so this might be shared across sections
-    };
-  }, [interactiveConfig.autoDetection.enabled]); // Re-run if config changes
-
   // Track if we've emitted the guide-level completion event for this section
   const hasEmittedGuideCompletionRef = useRef(false);
 
@@ -462,13 +489,13 @@ export function InteractiveSection({
   // Also clear the persisted done bit so `section-completed:` checks on
   // dependent steps re-block until the user re-completes the section.
   useEffect(() => {
-    if (!isCompleted) {
+    if (!isCompleted && restoredObjectives !== undefined) {
       hasEmittedGuideCompletionRef.current = false;
       if (!isPreviewMode) {
         sectionDoneStorage.clear(getContentKey(), sectionId);
       }
     }
-  }, [isCompleted, isPreviewMode, sectionId]);
+  }, [isCompleted, isPreviewMode, sectionId, restoredObjectives]);
 
   // Trigger reactive checks when section completion status changes.
   // The `gateAnalysis.isAllPassive` branch lets sections with zero
@@ -594,6 +621,8 @@ export function InteractiveSection({
 
       // Notify child steps to clear their local UI state (e.g. quiz selection,
       // guided executor's transient state).
+      setObservedObjectives(false);
+      setRestoredObjectives(false);
       setResetTrigger((prev) => prev + 1);
     },
     [clearStepAcknowledgement, currentlyExecutingStep, sectionId, stepComponents]
@@ -979,7 +1008,20 @@ export function InteractiveSection({
                 // Single synchronous write to the store; survives a mid-section
                 // unmount because the store is module-scope and storage writes
                 // are fire-and-forget.
-                markStepCompleted(stepInfo.stepId, sectionId, 'manual');
+                const observationId = JSON.stringify([getContentKey(), sectionId, stepInfo.stepId]);
+                if (completionCoordinator?.has(observationId)) {
+                  completionCoordinator.request(observationId);
+                  setCurrentlyExecutingStep(null);
+                  stopSectionBlocking(sectionId);
+                  if (!(await completionCoordinator.waitForCompletion(observationId, controller.signal))) {
+                    break;
+                  }
+                  if (i < stepComponents.length - 1 && !controller.signal.aborted) {
+                    startSectionBlocking(sectionId, dummyData, handleSectionCancel);
+                  }
+                } else {
+                  markStepCompleted(stepInfo.stepId, sectionId, 'manual');
+                }
 
                 // Also call the standard completion handler for other side effects (skip state update to avoid double-setting)
                 handleStepComplete(stepInfo.stepId, true);
@@ -1013,15 +1055,6 @@ export function InteractiveSection({
 
                 break;
               }
-            }
-
-            // Section sequence completed or cancelled
-            if (!isCancelledRef.current && loopExitReason === 'ok') {
-              // Belt-and-braces bulk write so any steps that didn't go through the
-              // per-step path (e.g. skipped via fix → `markSkipped` → `handleStepComplete`)
-              // also end up in the store. `markStepsCompleted` is idempotent.
-              const allStepIds = stepComponents.map((step) => step.stepId);
-              markStepsCompleted(allStepIds, sectionId, 'manual');
             }
           } catch (error) {
             logger.error('Error running section sequence', { error });
@@ -1099,6 +1132,7 @@ export function InteractiveSection({
     executeStep,
     executeInteractiveAction,
     handleStepComplete,
+    completionCoordinator,
     startSectionBlocking,
     stopSectionBlocking,
     title,
@@ -1132,6 +1166,8 @@ export function InteractiveSection({
     resetCollapse();
 
     // Signal all child steps to reset their local state
+    setObservedObjectives(false);
+    setRestoredObjectives(false);
     setResetTrigger((prev) => prev + 1);
 
     // Clear ack + collapse storage. Hook gates on preview mode internally.
@@ -1394,9 +1430,9 @@ export function InteractiveSection({
         </div>
       )}
 
-      {!isCollapsed && (
-        <ol className="interactive-section-content">{wrapSectionChildrenForNumbering(enhancedChildren)}</ol>
-      )}
+      <ol className="interactive-section-content" hidden={isCollapsed}>
+        {wrapSectionChildrenForNumbering(enhancedChildren)}
+      </ol>
 
       <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
         {isCollapsed ? (
@@ -1446,6 +1482,11 @@ export function InteractiveSection({
             >
               Cancel
             </Button>
+          </div>
+        ) : stepsCompleted && hasSectionObjectives && !isCompletedByObjectives ? (
+          <div role="status">
+            Waiting for completion{' '}
+            <Button onClick={() => completionCoordinator?.retry(objectiveId)}>Check completion</Button>
           </div>
         ) : sectionKind === 'awaiting-ack' ? (
           /* Acknowledgement gate (issue #842) — surfaces only when every
