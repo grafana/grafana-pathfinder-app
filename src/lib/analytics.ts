@@ -15,6 +15,10 @@ import { pushFaroUserAction } from './telemetry/bridge';
 // directly even from this entry-eager module.
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
+import { furthestEvidencedPosition } from './guide-stats/progress';
+import type { GuideBlockIndex } from './guide-stats/block-index';
+import { getGuideIndex } from '../global-state/active-guide-index';
+import { getContentKey } from '../global-state/content-key';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 import type { LearningJourneyTabType } from '../types/content-panel.types';
 
@@ -676,24 +680,47 @@ export function buildInteractiveStepProperties(
   stepContext: StepContext
 ): Record<string, string | number | boolean> {
   const { stepId, stepIndex, totalSteps, sectionId, sectionTitle } = stepContext;
-
-  // Get source document info
-  const docInfo = getSourceDocument(stepId);
-
-  // Calculate completion percentage
   const completionPercentage = calculateStepCompletion(stepIndex, totalSteps);
 
-  // Build complete properties object
   return {
-    ...docInfo,
+    ...getSourceDocument(stepId),
     ...baseProperties,
     content_type: AnalyticsContentType.InteractiveGuide,
-    ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
+    ...(stepIndex !== undefined && { current_step: stepIndex + 1 }),
     ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
     ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
     ...(sectionId && { section_id: sectionId }),
     ...(sectionTitle && { section_title: sectionTitle }),
+    ...getStepBlockProperties(stepId),
   };
+}
+
+function blockCountProperties(index: GuideBlockIndex): Record<string, number> {
+  return {
+    total_block_count: index.totalBlockCount,
+    completable_block_count: index.completableBlockCount,
+    section_count: index.sectionCount,
+  };
+}
+
+export function getGuideBlockCountProperties(contentKey: string): Record<string, number> {
+  const active = getGuideIndex(contentKey);
+  return active ? blockCountProperties(active.index) : {};
+}
+
+function getStepBlockProperties(stepId: string | undefined): Record<string, number> {
+  if (!stepId) {
+    return {};
+  }
+  const active = getGuideIndex(getContentKey());
+  if (!active) {
+    return {};
+  }
+  const blockPosition = furthestEvidencedPosition(active.index, [{ kind: 'do-it', blockId: stepId }]);
+  if (blockPosition === 0) {
+    return {};
+  }
+  return { block_position: blockPosition, ...blockCountProperties(active.index) };
 }
 
 /**
