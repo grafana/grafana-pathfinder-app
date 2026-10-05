@@ -157,6 +157,72 @@ initialization and Faro activity gating are not detection prerequisites. A silen
 is not recovery proof; verify successful endpoint/user flows. Frontend degraded rendering
 and upstream service recovery are separate observations.
 
+## Step events and percentages
+
+The interactive step events — `show_me_button_click`, `do_it_button_click`, `step_auto_completed`, `step_auto_complete_failed`, `step_skipped`, the blocking data check's `data_check_*` events and `gcx_setup_skipped` — all build their properties through `buildInteractiveStepProperties` in `src/lib/analytics.ts`. They share `source_document`, `step_id`, `current_step`, `total_document_steps`, `completion_percentage`, `section_id` and `section_title`, and join on `source_document` + `step_id`.
+
+### What the step fields mean
+
+- **`completion_percentage` is a step position, not progress.** It is `round(100 × current_step / total_document_steps)`, where `total_document_steps` is the number of tracked steps the section registry counted in the rendered document. The formula has not changed since it was introduced (#202, October 2025), so the series is comparable across versions — but it is never the percentage the app shows. `do_section_button_click` and the events built with `enrichWithStepContext` (links opened from a guide, `reset_progress_click`) carry the same step-position figure.
+- **`completion_method`** is the constant `auto_detected` on `step_auto_completed` and is absent on quiz rows, so it says nothing about how a step was completed. Terminal `do_it_button_click` rows carry `copy` or `exec`.
+- **`step_auto_completed` covers auto-detected completions and quiz answers only.** A guided step emits one per sub-action the reader performs (`internal_step_number` of `internal_actions_count`), so only the row where the two are equal means the block finished. A multistep emits once, when its last action is detected. A quiz emits on a correct answer and also on a max-attempts reveal, with `quiz_is_correct` false and `quiz_revealed` true.
+- **A successful Do it on a plain step emits `do_it_button_click` only**, at click time and before the action runs, so the row does not say whether the action succeeded. No completion event follows.
+- **Some completions send no completion event**: a Do section run (only `do_section_button_click`), Show me on a step that has no Do it (only `show_me_button_click`, sent at click time), a step whose objectives were already met, and "Mark section as complete".
+
+### Block properties
+
+When the guide has a frozen block index (`getGuideIndex` in `src/global-state/active-guide-index.ts`, published for JSON guides only), step events also carry:
+
+| Property                  | Meaning                                                                                                                                                                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `block_position`          | The counted position the completion store credits when this step completes. It is computed by the same arithmetic (`furthestEvidencedPosition` over one "Do it" signal), so a step inside a conditional branch reports its conditional's position. |
+| `total_block_count`       | The guide percentage's denominator: counted blocks, containers excluded.                                                                                                                                                                           |
+| `completable_block_count` | Counted blocks that can emit completion evidence.                                                                                                                                                                                                  |
+| `section_count`           | Section containers in the guide — the index's `sectionCount`, the same figure as the manifest stamp's `sectionCount` and the library survey in `docs/design/COMPLETION-MODEL.md`. A section with no counted blocks cannot move the percentage.     |
+
+All four are omitted when there is no index for the content key (HTML docs never have one) or the step has no position (an anonymous standalone step, or a block whose runtime id a `snippet-ref` shifts). The index is looked up under `getContentKey()`, the key the completion store credits steps under; `source_document` is the same value before that key's sanitization. `mark_complete_clicked` carries `total_block_count`, `completable_block_count` and `section_count` under the same rule, and no guide identity.
+
+### Reproducing the guide percentage
+
+For one reader and one `source_document`:
+
+```text
+position = max(block_position) over step_auto_completed, step_skipped and do_it_button_click rows
+           (guided step_auto_completed rows only where internal_step_number = internal_actions_count)
+percent  = 100                                                if mark_complete_clicked exists or position = total_block_count
+         = min(99, floor(100 × position / total_block_count))  otherwise
+```
+
+That is the app's own rule (`guideProgressAtPosition` in `src/lib/guide-stats/progress.ts`), but the stream only approximates its input. `do_it_button_click` is sent before the action runs, so a failed Do it over-credits. Evidence with no completion event under-credits: Do section runs, Show me–only steps, steps completed by objectives, and section acknowledgements, which credit the section's last counted block. `mark_complete_clicked.completion_percentage_before` is the app's live figure at the moment of the click; use it to check the estimate.
+
+**Binary-only guides** are those with `completable_block_count` 0 and `section_count` 0. Nothing but Mark complete can evidence them, so they read 0% or 100% and nothing in between. In the completion model's survey that is 256 of the 308 guides with no completable block; the other 52 have sections, and "Mark section as complete" gives them intermediate percentages.
+
+### Skips
+
+`step_skipped` is emitted once per skip, from the click that performs it, by every Skip control and once for each step a Do section run skips. It carries the step properties above, so it joins `step_auto_completed` on `source_document` + `step_id`, plus `target_action` (the step type: the interactive action such as `button`, or `multistep`, `guided`, `quiz`, `challenge`, `code-block`, `terminal`, `terminal-connect`, `datasource-check`, `input`), `interaction_location` and `skip_reason`:
+
+| `skip_reason`        | Produced by                                                                                                                                                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user`               | A Skip on a step that could still be done: the always-available Skip on plain, multistep, guided and quiz steps, a cancelled guided tour, a challenge or data check not yet failed, gcx setup before any attempt, and input blocks.      |
+| `requirements_unmet` | A Skip offered because the step cannot be done here: failed requirements (plain, code block, terminal, data check), an unavailable Coda sandbox (terminal), or no data source of the authored type.                                      |
+| `after_failure`      | A Skip after the step was tried and failed: multistep and guided execution errors and timeouts, a failed challenge check or setup, a data check that found no data or errored, and gcx setup that failed or fell back to a pasted token. |
+| `section_run_auto`   | A Do section run skipping a skippable step whose requirements failed and could not be fixed.                                                                                                                                             |
+
+A skipped step credits the guide percentage like a completed one, so `step_skipped` rows belong in the position maximum above. Input blocks are the exception: they have no step id (`step_id` is `unknown`) and record nothing. `data_check_skipped` and `gcx_setup_skipped` still fire as before, gaining only the block properties every step event carries; each skip that sends one also sends `step_skipped`. Block-editor previews are not filtered out, as with every other step event.
+
+### Percentage properties by plugin version
+
+Live values are computed when the event fires. Stored values are read back from browser storage, so the rule that produced them depends on when the value was written, not on the row's `plugin_version`.
+
+| Property                                                                          | Events                                                                 | Source            | Cutovers                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `completion_percentage`                                                           | Step events, `do_section_button_click`, `enrichWithStepContext` events | Live              | Step position in every version.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `block_position`, `total_block_count`, `completable_block_count`, `section_count` | Step events; the three counts on `mark_complete_clicked`               | Live              | Absent before the first release after 2.20.1.                                                                                                                                                                                                                                                                                                                                                                                       |
+| `completion_percentage_before`                                                    | `mark_complete_clicked`                                                | Live              | Block rule since the event shipped in 2.18.0; conditional-branch steps credited from 2.18.2.                                                                                                                                                                                                                                                                                                                                        |
+| `completion_percentage`                                                           | `open_resource_click` (featured cards and recommendations)             | Stored            | Before 2.18.0: completed steps / total document steps. 2.18.0 (#1866): block rule — furthest evidenced position / `total_block_count`, capped at 99 until complete, Mark complete = 100 — for values written from then on; #1864 dropped v2.17-shaped evidence, so values stored by older versions never heal on reopen. 2.18.2 (#1953): conditional-branch credit. 2.19.0 (#1925): legacy milestone completions backfilled as 100. |
+| `completion_percent`                                                              | `learning_path_progress`                                               | Stored, rolled up | The per-guide cutovers above; from 2.19.0 (#1927) the path rollup takes the best sequence instead of a flat mean over every track.                                                                                                                                                                                                                                                                                                  |
+| `completion_percentage`                                                           | `milestone_arrow_interaction_click`, `close_tab_click` (journeys)      | Stored, averaged  | Before 2.18.0: the navigation ordinal (current milestone over total). From 2.18.0: the mean of the members' evidence percentages, with the per-guide cutovers above.                                                                                                                                                                                                                                                                |
+
 ## Kiosk catalogs and launches
 
 `pathfinder_kiosk_catalog_loaded` records the served `tier` (`override`, `configured`, `generic`, or `bundled`) and whether loading `degraded`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason; rejected rule logs name the invalid field without its value.
