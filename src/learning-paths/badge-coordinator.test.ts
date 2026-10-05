@@ -20,6 +20,7 @@ import { StorageEvents } from '../lib/event-names';
 const reportAppInteractionMock = jest.fn();
 const learningProgressGetMock = jest.fn();
 const learningProgressUpdateMock = jest.fn();
+const learningProgressAwardBadgeMock = jest.fn();
 
 jest.mock('../lib/analytics', () => ({
   __esModule: true,
@@ -32,6 +33,7 @@ jest.mock('../lib/user-storage', () => ({
   learningProgressStorage: {
     get: () => learningProgressGetMock(),
     update: (updates: unknown) => learningProgressUpdateMock(updates),
+    awardBadge: (badgeId: string) => learningProgressAwardBadgeMock(badgeId),
   },
 }));
 
@@ -56,7 +58,7 @@ jest.mock('./streak-tracker', () => ({
   calculateUpdatedStreak: (...args: unknown[]) => calculateUpdatedStreakMock(...args),
 }));
 
-import { markGuideCompleted } from './badge-coordinator';
+import { awardBadge, markGuideCompleted } from './badge-coordinator';
 
 function emptyProgress(overrides: Partial<LearningProgress> = {}): LearningProgress {
   return {
@@ -191,5 +193,62 @@ describe('markGuideCompleted', () => {
       error: true,
     });
     expect(learningProgressUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('awardBadge', () => {
+  beforeEach(() => {
+    getBadgeByIdMock.mockImplementation((id: string) => ({
+      id,
+      title: `${id}-title`,
+      trigger: { type: 'path-completed', pathId: 'linux-server-integration' },
+    }));
+  });
+
+  it('reports BadgeUnlocked once when the badge is newly awarded', async () => {
+    learningProgressAwardBadgeMock.mockResolvedValue(true);
+
+    await expect(awardBadge('penguin-wrangler')).resolves.toBe(true);
+
+    expect(learningProgressAwardBadgeMock).toHaveBeenCalledWith('penguin-wrangler');
+    expect(reportAppInteractionMock).toHaveBeenCalledTimes(1);
+    expect(reportAppInteractionMock).toHaveBeenCalledWith('badge-unlocked', {
+      badge_id: 'penguin-wrangler',
+      badge_title: 'penguin-wrangler-title',
+      trigger_type: 'path-completed',
+    });
+  });
+
+  it('reports nothing when the badge was already earned', async () => {
+    learningProgressAwardBadgeMock.mockResolvedValue(false);
+
+    await expect(awardBadge('penguin-wrangler')).resolves.toBe(false);
+
+    expect(reportAppInteractionMock).not.toHaveBeenCalled();
+  });
+
+  it('sends the same payload as a badge awarded by a guide completion', async () => {
+    learningProgressAwardBadgeMock.mockResolvedValue(true);
+    learningProgressGetMock.mockResolvedValue(emptyProgress());
+    getBadgesToAwardMock.mockReturnValue(['penguin-wrangler']);
+
+    await awardBadge('penguin-wrangler');
+    await markGuideCompleted('guide-a');
+
+    expect(reportAppInteractionMock).toHaveBeenCalledTimes(2);
+    expect(reportAppInteractionMock.mock.calls[0]).toEqual(reportAppInteractionMock.mock.calls[1]);
+  });
+
+  it('falls back to the badge id and an unknown trigger for an undefined badge', async () => {
+    learningProgressAwardBadgeMock.mockResolvedValue(true);
+    getBadgeByIdMock.mockReturnValue(undefined);
+
+    await awardBadge('retired-badge');
+
+    expect(reportAppInteractionMock).toHaveBeenCalledWith('badge-unlocked', {
+      badge_id: 'retired-badge',
+      badge_title: 'retired-badge',
+      trigger_type: 'unknown',
+    });
   });
 });

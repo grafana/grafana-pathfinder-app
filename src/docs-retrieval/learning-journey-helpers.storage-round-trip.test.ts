@@ -32,9 +32,13 @@ jest.mock('../lib/guide-completion-bridge', () => {
   // exercises it rather than a second copy; only the path list is faked.
   const { matchesPathUrl }: typeof import('../learning-paths/paths-data') =
     jest.requireActual('../learning-paths/paths-data');
+  const { awardBadge }: typeof import('../learning-paths/badge-coordinator') = jest.requireActual(
+    '../learning-paths/badge-coordinator'
+  );
   return {
     __esModule: true,
     markGuideCompleted: jest.fn().mockResolvedValue(undefined),
+    awardBadge,
     findPathByUrl: (url: string) =>
       (getPathsDataMock().paths as Array<{ url?: string; badgeId?: string; id?: string }>).find((path) =>
         matchesPathUrl(path, url)
@@ -47,6 +51,7 @@ jest.mock('../global-state/completion-store', () => ({
   evictContentCache: jest.fn(),
 }));
 
+import { reportInteraction } from '@grafana/runtime';
 import { interactiveCompletionStorage, milestoneCompletionStorage, learningProgressStorage } from '../lib/user-storage';
 import {
   markMilestoneDone,
@@ -127,6 +132,54 @@ describe('legacy milestone backfill against real storage (pf-1925-backfill-lost-
     const progress = await learningProgressStorage.get();
     expect(progress.earnedBadges.some((b) => b.id === 'linux-badge')).toBe(true);
     expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(1);
+  });
+});
+
+describe('URL-path badge analytics', () => {
+  const base = 'https://grafana.com/docs/learning-paths/linux-server-integration/';
+  const urls = [`${base}m1/`, `${base}m2/`];
+  const context = { packageManifest: { id: 'linux-server-integration', type: 'journey' } };
+
+  function badgeUnlockedCalls(): unknown[][] {
+    return jest.mocked(reportInteraction).mock.calls.filter(([name]) => name === 'pathfinder_badge_unlocked');
+  }
+
+  beforeEach(() => {
+    jest.mocked(reportInteraction).mockClear();
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'linux-server-integration', url: base, badgeId: 'penguin-wrangler' }],
+    });
+  });
+
+  it('reports badge_unlocked with the coordinator payload when the last milestone awards the badge', async () => {
+    await markMilestoneDone(base, 'm1', urls[0]!, urls, context);
+    expect(badgeUnlockedCalls()).toHaveLength(0);
+
+    await markMilestoneDone(base, 'm2', urls[1]!, urls, context);
+    await flush();
+
+    expect(badgeUnlockedCalls()).toHaveLength(1);
+    expect(badgeUnlockedCalls()[0]![1]).toMatchObject({
+      badge_id: 'penguin-wrangler',
+      badge_title: 'Penguin Wrangler',
+      trigger_type: 'path-completed',
+    });
+    expect(badgeUnlockedCalls()[0]![1]).not.toHaveProperty('path_id');
+    expect(badgeUnlockedCalls()[0]![1]).not.toHaveProperty('journey_id');
+  });
+
+  it('reports nothing when a later completion finds the badge already earned', async () => {
+    await markMilestoneDone(base, 'm1', urls[0]!, urls, context);
+    await markMilestoneDone(base, 'm2', urls[1]!, urls, context);
+    await flush();
+    jest.mocked(reportInteraction).mockClear();
+
+    await markMilestoneDone(base, 'm2', urls[1]!, urls, context);
+    await flush();
+
+    expect(badgeUnlockedCalls()).toHaveLength(0);
+    const progress = await learningProgressStorage.get();
+    expect(progress.earnedBadges.filter((b) => b.id === 'penguin-wrangler')).toHaveLength(1);
   });
 });
 
