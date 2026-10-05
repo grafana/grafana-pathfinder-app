@@ -14,7 +14,12 @@ import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+} from '../../lib/analytics';
 import { useStepChecker } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { GcxReadyLine, GcxSetupPanel } from '../../integrations/coda/GcxSetupPanel';
@@ -234,6 +239,14 @@ export const TerminalConnectStep = forwardRef<
         )
       );
       markComplete();
+      reportStepSkipped(
+        {
+          targetAction: 'terminal-connect',
+          interactionLocation: 'terminal_connect_step',
+          skipReason: gcxState === 'failed' || gcxState === 'needs-token' ? 'after_failure' : 'user',
+        },
+        analyticsStepMeta
+      );
     }, [gcxState, markComplete, analyticsStepMeta]);
 
     const persistReset = useCallback(() => {

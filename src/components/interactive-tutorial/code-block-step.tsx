@@ -8,7 +8,12 @@
 
 import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+} from '../../lib/analytics';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -222,6 +227,17 @@ export const CodeBlockStep = forwardRef<
       onComplete?.();
     }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
 
+    const handleSkip = useCallback(() => {
+      if (isCompleted) {
+        return;
+      }
+      markComplete();
+      reportStepSkipped(
+        { targetAction: 'code-block', interactionLocation: 'code_block_step', skipReason: 'requirements_unmet' },
+        analyticsStepMeta
+      );
+    }, [isCompleted, markComplete, analyticsStepMeta]);
+
     const handleShowMe = useCallback(async () => {
       if (isShowRunning) {
         return;
@@ -350,7 +366,7 @@ export const CodeBlockStep = forwardRef<
                 size="sm"
                 variant="secondary"
                 fill="text"
-                onClick={markComplete}
+                onClick={handleSkip}
                 data-testid={testIds.interactive.skipButton(renderedStepId)}
               >
                 Skip

@@ -59,8 +59,10 @@ jest.mock('../../lib/logging', () => ({
 }));
 
 const mockReportAppInteraction = jest.fn();
+const mockReportStepSkipped = jest.fn();
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+  reportStepSkipped: (...args: unknown[]) => mockReportStepSkipped(...args),
   UserInteraction: { GcxCredentialInstalled: 'gcx_credential_installed', GcxSetupSkipped: 'gcx_setup_skipped' },
   buildInteractiveStepProperties: jest.fn((props: unknown) => props),
 }));
@@ -414,6 +416,25 @@ describe('with gcx', () => {
     expect(mockReportAppInteraction).toHaveBeenCalledWith(
       'gcx_setup_skipped',
       expect.objectContaining({ state: 'needs-token', interaction_location: 'terminal_connect_step' })
+    );
+    expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(mockReportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'terminal-connect', interactionLocation: 'terminal_connect_step', skipReason: 'after_failure' },
+      expect.objectContaining({ stepId: STEP_ID })
+    );
+  });
+
+  it('reports a gcx skip taken before any setup attempt as a user skip', () => {
+    mockTerminalStatus = 'connected';
+    mockSessionId = 's_abc';
+    renderStep({ gcx: true });
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.gcxSkipButton(STEP_ID)));
+
+    expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(mockReportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'terminal-connect', interactionLocation: 'terminal_connect_step', skipReason: 'user' },
+      expect.objectContaining({ stepId: STEP_ID })
     );
   });
 

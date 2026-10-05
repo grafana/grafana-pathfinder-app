@@ -6,6 +6,7 @@ import {
   clearScrollTrackingCache,
   buildInteractiveStepProperties,
   getGuideBlockCountProperties,
+  reportStepSkipped,
 } from './analytics';
 import { reportInteraction } from '@grafana/runtime';
 import { pushFaroUserAction } from './telemetry/bridge';
@@ -431,5 +432,39 @@ describe('step events: block progress properties', () => {
       completable_block_count: 2,
       section_count: 1,
     });
+  });
+});
+
+describe('reportStepSkipped', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetContentKeyForTests();
+  });
+
+  afterEach(() => {
+    evictAllGuideIndexes();
+    resetContentKeyForTests();
+  });
+
+  it('reports step_skipped with the same step properties as the other step events', () => {
+    setActiveTabUrl('bundled:skip-guide');
+    reportStepSkipped(
+      { targetAction: 'button', interactionLocation: 'interactive_step', skipReason: 'requirements_unmet' },
+      { stepId: 'step-a', stepIndex: 1, totalSteps: 4, sectionId: 'intro', sectionTitle: 'Intro' }
+    );
+
+    expect(mockReportInteraction).toHaveBeenCalledTimes(1);
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_step_skipped',
+      expect.objectContaining({
+        ...buildInteractiveStepProperties(
+          {},
+          { stepId: 'step-a', stepIndex: 1, totalSteps: 4, sectionId: 'intro', sectionTitle: 'Intro' }
+        ),
+        target_action: 'button',
+        interaction_location: 'interactive_step',
+        skip_reason: 'requirements_unmet',
+      })
+    );
   });
 });

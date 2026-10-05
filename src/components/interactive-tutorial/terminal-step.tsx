@@ -13,7 +13,12 @@ import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+} from '../../lib/analytics';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import {
@@ -215,6 +220,17 @@ export const TerminalStep = forwardRef<
       onComplete?.();
     }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
 
+    const handleSkip = useCallback(() => {
+      if (isCompleted) {
+        return;
+      }
+      markComplete();
+      reportStepSkipped(
+        { targetAction: 'terminal', interactionLocation: 'terminal_step', skipReason: 'requirements_unmet' },
+        analyticsStepMeta
+      );
+    }, [isCompleted, markComplete, analyticsStepMeta]);
+
     const handleCopy = useCallback(async () => {
       reportAppInteraction(
         UserInteraction.DoItButtonClick,
@@ -346,7 +362,7 @@ export const TerminalStep = forwardRef<
                 size="sm"
                 variant="secondary"
                 fill="text"
-                onClick={markComplete}
+                onClick={handleSkip}
                 data-testid={testIds.interactive.terminalSkipButton(renderedStepId)}
               >
                 Skip
@@ -406,7 +422,7 @@ export const TerminalStep = forwardRef<
                 size="sm"
                 variant="secondary"
                 fill="text"
-                onClick={markComplete}
+                onClick={handleSkip}
                 data-testid={testIds.interactive.terminalSkipButton(renderedStepId)}
               >
                 Skip

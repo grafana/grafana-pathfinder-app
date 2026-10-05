@@ -72,6 +72,7 @@ function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
 }
 import {
   reportAppInteraction,
+  reportStepSkipped,
   UserInteraction,
   getSourceDocument,
   calculateStepCompletion,
@@ -780,6 +781,28 @@ export function InteractiveSection({
       };
       startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
+      const autoSkipStep = (stepInfo: StepInfo): void => {
+        const stepRef = stepRefs.current.get(stepInfo.stepId);
+        if (!stepRef?.markSkipped) {
+          return;
+        }
+        stepRef.markSkipped();
+        handleStepComplete(stepInfo.stepId, true);
+        reportStepSkipped(
+          {
+            targetAction: stepInfo.targetAction ?? 'unknown',
+            interactionLocation: 'interactive_section',
+            skipReason: 'section_run_auto',
+          },
+          {
+            stepId: stepInfo.stepId,
+            ...getDocumentStepPosition(sectionId, stepInfo.index),
+            sectionId,
+            sectionTitle: title,
+          }
+        );
+      };
+
       let loopExitReason: LoopExitReason = 'ok';
       let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
       // The completion store handles per-step persistence synchronously via
@@ -884,13 +907,8 @@ export function InteractiveSection({
                           // Fix didn't work - check if step is skippable
                           // Priority 3: Skip if possible
                           if (stepInfo.skippable) {
-                            // Skip this step properly using the step's own markSkipped function
-                            const stepRef = stepRefs.current.get(stepInfo.stepId);
-                            if (stepRef?.markSkipped) {
-                              stepRef.markSkipped(); // This handles the blue state properly
-                              handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                            }
-                            continue; // Continue to next step
+                            autoSkipStep(stepInfo);
+                            continue;
                           } else {
                             loopExitReason = 'requirements_exhausted';
                             break;
@@ -905,12 +923,7 @@ export function InteractiveSection({
 
                         // Fix failed - check if step is skippable
                         if (stepInfo.skippable) {
-                          // Skip this step properly using the step's own markSkipped function
-                          const stepRef = stepRefs.current.get(stepInfo.stepId);
-                          if (stepRef?.markSkipped) {
-                            stepRef.markSkipped(); // This handles the blue state properly
-                            handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                          }
+                          autoSkipStep(stepInfo);
                           continue;
                         } else {
                           loopExitReason = 'requirements_exhausted';
@@ -921,13 +934,8 @@ export function InteractiveSection({
                       // No fix available - check if step is skippable
                       // Priority 3: Skip if possible
                       if (stepInfo.skippable) {
-                        // Skip this step properly using the step's own markSkipped function
-                        const stepRef = stepRefs.current.get(stepInfo.stepId);
-                        if (stepRef?.markSkipped) {
-                          stepRef.markSkipped(); // This handles the blue state properly
-                          handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                        }
-                        continue; // Continue to next step
+                        autoSkipStep(stepInfo);
+                        continue;
                       } else {
                         loopExitReason = 'requirements_exhausted';
                         break;

@@ -12,7 +12,7 @@ import { css } from '@emotion/css';
 import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon, Combobox, type ComboboxOption } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useGuideResponsesOptional } from '../../docs-retrieval';
-import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { reportAppInteraction, reportStepSkipped, UserInteraction } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { logger } from '../../lib/logging';
 import { testIds } from '../../constants/testIds';
@@ -345,8 +345,12 @@ export function InputBlock({
   ]);
 
   const handleSkip = useCallback(() => {
+    if (isSaved) {
+      return;
+    }
     setIsSaved(true);
-  }, []);
+    reportStepSkipped({ targetAction: 'input', interactionLocation: 'input_block', skipReason: 'user' }, {});
+  }, [isSaved]);
 
   // Also handles initial sync when context finishes loading via a custom event
   useEffect(() => {

@@ -517,3 +517,47 @@ it('does not skip or complete a skippable step when lazy discovery is cancelled'
   expect(executeInteractiveActionCalls).toHaveLength(0);
   expect(screen.queryByTestId(resetBtn(SECTION_ID))).not.toBeInTheDocument();
 });
+
+describe('Do section auto-skip reports step_skipped', () => {
+  it.each([
+    ['no fix is available', { pass: false, error: [{ canFix: false }] }, false],
+    ['the fix leaves the requirement unmet', { pass: false, error: [{ canFix: true, fixType: 'navigation' }] }, false],
+    ['the fix throws', { pass: false, error: [{ canFix: true, fixType: 'lazy-scroll' }] }, true],
+  ])('reports one section_run_auto skip when %s', async (_case, requirementsResult, lazyRender) => {
+    mockMarkSkipped.mockClear();
+    jest.mocked(resolveWithRetry).mockRejectedValue(new Error('target never appeared'));
+    const { reportStepSkipped } = jest.requireMock('../../lib/analytics');
+    reportStepSkipped.mockClear();
+    setCheckRequirementsResult(requirementsResult);
+    render(
+      <InteractiveSection id="runner" title="Auto skip">
+        <InteractiveStep
+          stepId="auto-skip"
+          targetAction="button"
+          refTarget="#missing"
+          lazyRender={lazyRender}
+          skippable
+          requirements="exists-reftarget"
+        >
+          Unreachable target
+        </InteractiveStep>
+      </InteractiveSection>
+    );
+
+    await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toBeInTheDocument());
+    act(() => screen.getByTestId(doSectionBtn(SECTION_ID)).click());
+
+    await waitFor(() => expect(mockMarkSkipped).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'button', interactionLocation: 'interactive_section', skipReason: 'section_run_auto' },
+      {
+        stepId: 'auto-skip',
+        stepIndex: 0,
+        totalSteps: 1,
+        sectionId: SECTION_ID,
+        sectionTitle: 'Auto skip',
+      }
+    );
+  });
+});

@@ -496,6 +496,48 @@ describe('skipping', () => {
     expect(screen.getByTestId(TEST_IDS.skip)).toBeInTheDocument();
   });
 
+  describe('step_skipped', () => {
+    function expectSkipReported(skipReason: string) {
+      const { reportStepSkipped } = require('../../lib/analytics');
+      expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+      expect(reportStepSkipped).toHaveBeenCalledWith(
+        { targetAction: 'datasource-check', interactionLocation: 'data_check_step', skipReason },
+        expect.objectContaining({ stepId: 'check-1' })
+      );
+    }
+
+    it('reports a skip taken before any check as a user skip, beside data_check_skipped', async () => {
+      const { reportAppInteraction } = require('../../lib/analytics');
+      renderStep({ skippable: true });
+      await click(TEST_IDS.skip);
+      expectSkipReported('user');
+      expect(reportAppInteraction).toHaveBeenCalledWith('data_check_skipped', expect.anything());
+    });
+
+    it('reports a skip after the check found no data as after_failure', async () => {
+      mockRunQuery.mockResolvedValue(noData);
+      renderStep({ skippable: true });
+      await pick();
+      await click(TEST_IDS.run);
+      await waitFor(() => expect(screen.getByTestId(TEST_IDS.failure)).toBeInTheDocument());
+      await click(TEST_IDS.skip);
+      expectSkipReported('after_failure');
+    });
+
+    it('reports a skip with no data source of the authored type as requirements_unmet', async () => {
+      renderStep({ datasourceFilter: 'elasticsearch', skippable: true });
+      await click(TEST_IDS.skip);
+      expectSkipReported('requirements_unmet');
+    });
+
+    it('reports a skip past failed requirements as requirements_unmet', async () => {
+      mockCheckerEnabled = false;
+      renderStep({ skippable: true, hints: 'Open the data sources page first' });
+      await click(TEST_IDS.skip);
+      expectSkipReported('requirements_unmet');
+    });
+  });
+
   describe('while a check is still running', () => {
     // Skip is clickable during a check, so giving up has to stop the query too.
     let settle: (result: unknown) => void;

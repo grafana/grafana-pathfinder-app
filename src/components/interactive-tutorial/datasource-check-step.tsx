@@ -14,7 +14,13 @@ import { testIds } from '../../constants/testIds';
 import { useGuideResponsesOptional } from '../../docs-retrieval';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
-import { buildInteractiveStepProperties, reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import {
+  buildInteractiveStepProperties,
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  type StepSkipReason,
+} from '../../lib/analytics';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { DataCheckControls } from './data-check-controls';
 import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
@@ -290,6 +296,16 @@ export function DatasourceCheckStep({
     }
   }, [run, markComplete, supportedType, stepContext]);
 
+  const isEnabled = checker.isEnabled && !disabled;
+  const hasDatasources = datasourceOptions.length > 0;
+  const isUnsupportedType = Boolean(selectedDatasource) && !supportedType;
+  let skipReason: StepSkipReason = 'user';
+  if (!isEnabled || !hasDatasources) {
+    skipReason = 'requirements_unmet';
+  } else if (state === 'no-data' || state === 'error') {
+    skipReason = 'after_failure';
+  }
+
   const markSkipped = checker.markSkipped;
   const handleSkip = useCallback(async () => {
     // Giving up has to stop the query too: it would otherwise keep spending
@@ -304,11 +320,11 @@ export function DatasourceCheckStep({
     );
     await markSkipped?.();
     markComplete('skipped');
-  }, [reset, markSkipped, markComplete, supportedType, stepContext]);
-
-  const isEnabled = checker.isEnabled && !disabled;
-  const hasDatasources = datasourceOptions.length > 0;
-  const isUnsupportedType = Boolean(selectedDatasource) && !supportedType;
+    reportStepSkipped(
+      { targetAction: 'datasource-check', interactionLocation: 'data_check_step', skipReason },
+      stepContext
+    );
+  }, [reset, markSkipped, markComplete, supportedType, stepContext, skipReason]);
 
   let stepState: StepStateValue = STEP_STATES.IDLE;
   if (isCompleted) {

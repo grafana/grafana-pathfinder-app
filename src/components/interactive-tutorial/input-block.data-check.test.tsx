@@ -282,3 +282,23 @@ describe('a data source swapped by someone else', () => {
     expect(screen.queryByText('Data available')).not.toBeInTheDocument();
   });
 });
+
+describe('skipping the picker', () => {
+  const SKIP = 'interactive-input-skip-metricsDatasource';
+
+  it('reports one user skip and then stops offering Skip', async () => {
+    const { reportStepSkipped } = require('../../lib/analytics');
+    renderPicker({ skippable: true });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(SKIP));
+    });
+
+    expect(screen.queryByTestId(SKIP)).not.toBeInTheDocument();
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'input', interactionLocation: 'input_block', skipReason: 'user' },
+      {}
+    );
+  });
+});

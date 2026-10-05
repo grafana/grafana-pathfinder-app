@@ -68,6 +68,7 @@ export enum UserInteraction {
   DoSectionButtonClick = 'do_section_button_click',
   StepAutoCompleted = 'step_auto_completed',
   StepAutoCompleteFailed = 'step_auto_complete_failed',
+  StepSkipped = 'step_skipped',
   ResetProgressClick = 'reset_progress_click',
   MarkCompleteClicked = 'mark_complete_clicked',
 
@@ -721,6 +722,27 @@ function getStepBlockProperties(stepId: string | undefined): Record<string, numb
     return {};
   }
   return { block_position: blockPosition, ...blockCountProperties(active.index) };
+}
+
+export type StepSkipReason = 'user' | 'requirements_unmet' | 'section_run_auto' | 'after_failure';
+
+interface StepSkip {
+  targetAction: string;
+  interactionLocation: string;
+  skipReason: StepSkipReason;
+}
+
+export function reportStepSkipped(
+  { targetAction, interactionLocation, skipReason }: StepSkip,
+  stepContext: StepContext
+): void {
+  reportAppInteraction(
+    UserInteraction.StepSkipped,
+    buildInteractiveStepProperties(
+      { target_action: targetAction, interaction_location: interactionLocation, skip_reason: skipReason },
+      stepContext
+    )
+  );
 }
 
 /**
