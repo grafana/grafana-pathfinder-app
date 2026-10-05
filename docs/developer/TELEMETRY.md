@@ -113,7 +113,7 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 
 - **Milestone completion** is `guide_completed` with `guide_category = 'learning-journey'`. `guide_id` is the bare milestone slug, not qualified by its path, so two journeys that share a slug under one source report it once.
 - **Path completion** is `journey_completed`; "journey" in code means a learning path. `journey_id` is the manifest id, else the curated path id. It fires when every milestone of a milestone-based path is complete, and is skipped when neither id exists, as for a docs-site journey that is not a curated path.
-- **Guide-list curated paths and Path Tracks** have no `journey_completed` trigger yet. Every curated guide-list path has a badge, and its completion shows up only as `badge_unlocked` with `trigger_type = 'path-completed'` (`src/learning-paths/badges.ts` maps `badge_id` to its path). Path completions are the union of `journey_completed` and those badge events. The two do not overlap: a milestone-based path's badge emits no `badge_unlocked`.
+- **Guide-list curated paths and Path Tracks** have no `journey_completed` trigger yet. Every curated guide-list path has a badge, and its completion shows up only as `badge_unlocked` with `trigger_type = 'path-completed'` (`src/learning-paths/badges.ts` maps `badge_id` to its path). Path completions are the union of `journey_completed` and those badge events. A milestone-based curated path can report both, so count each path once per reader.
 - **Titles** on milestone and journey completions come from the completing surface: the tab's open-time title in the sidebar and floating panel, the content title in the guide reader. That is usually the journey's own title, so key them on the id.
 
 ### Source attribution
@@ -122,11 +122,11 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 
 ### Delivery
 
-- **Once per identity per browser profile** on each Grafana stack, whichever user or org is signed in, since the guard lives in plain localStorage. A reset that covers the identity (a per-guide reset, a path reset, or Reset all learning progress) re-arms it, so a reset and redo reports again. Of those resets, only the per-guide one emits an event (`reset_progress_click`).
+- **Once per identity per browser profile** on each Grafana stack, whichever user or org is signed in, since the guard lives in plain localStorage. A reset that covers the identity (a per-guide reset, a path reset, or Reset all learning progress) re-arms it, so a reset and redo reports again.
 - **No backfill.** An identity this browser profile durably recorded before the release that added these events is not reported. One it never recorded durably reports the next time it completes.
 - **Grafana Cloud only.** Grafana registers its RudderStack backend only when a write key is configured, so OSS and self-hosted instances send nothing.
 - **Fire and forget.** The guard is set before the event is sent, and Pathfinder never retries a dropped event, so one an ad blocker or network failure drops is lost. Counts are a floor.
-- **Synthetic traffic.** The e2e runner opens its guide as `bundled:e2e-test`, so a completed run reports `guide_source = 'bundled'`, `guide_visibility = 'private'` and `guide_id = 'e2e-test'`. Those runs come mostly from the synthetic `pfe2eprodproduction*` stacks; filter that guide out.
+- **Synthetic traffic.** The e2e runner opens its guide as `bundled:e2e-test`, so a completed run reports `guide_source = 'bundled'`, `guide_visibility = 'private'` and `guide_id = 'e2e-test'`. Those runs come mostly from Grafana's synthetic e2e stacks; filter that guide out.
 
 ## Gating and environments
 
