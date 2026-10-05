@@ -6,20 +6,33 @@ import type { CompletionFact } from './types';
 // guide identifiers and titles never leave the stack.
 const PUBLIC_GUIDE_SOURCES = new Set(['bundled', 'interactive-tutorials', 'online-cdn']);
 
-export function completionAnalyticsProperties(fact: CompletionFact): Record<string, string | number> {
-  const isPublic = PUBLIC_GUIDE_SOURCES.has(fact.guideSource);
-  const identity: Record<string, string> = !isPublic
-    ? {}
-    : fact.kind === 'journey'
-      ? { journey_id: fact.guideId, journey_title: fact.guideTitle }
-      : { guide_id: fact.guideId, guide_title: fact.guideTitle };
+export function guideIdentityAnalyticsProperties({
+  kind,
+  guideSource,
+  guideId,
+  guideTitle,
+}: Pick<CompletionFact, 'kind' | 'guideSource' | 'guideId' | 'guideTitle'>): Record<string, string> {
+  if (!PUBLIC_GUIDE_SOURCES.has(guideSource)) {
+    return {
+      guide_source: guideSource === 'app-platform' ? guideSource : 'other',
+      guide_visibility: 'private',
+    };
+  }
   return {
-    guide_source: isPublic || fact.guideSource === 'app-platform' ? fact.guideSource : 'other',
-    guide_visibility: isPublic ? 'public' : 'private',
+    guide_source: guideSource,
+    guide_visibility: 'public',
+    ...(kind === 'journey'
+      ? { journey_id: guideId, journey_title: guideTitle }
+      : { guide_id: guideId, guide_title: guideTitle }),
+  };
+}
+
+export function completionAnalyticsProperties(fact: CompletionFact): Record<string, string | number> {
+  return {
+    ...guideIdentityAnalyticsProperties(fact),
     guide_category: fact.guideCategory,
     completion_source: fact.source,
     completion_percentage: fact.completionPercent,
-    ...identity,
     ...(fact.durationMs !== undefined && { duration_ms: fact.durationMs }),
   };
 }
