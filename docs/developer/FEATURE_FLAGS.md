@@ -162,6 +162,7 @@ The flag and the setting are a plain OR, applied once settings resolve in `src/m
 **What interception does with a click** (`src/global-state/link-interception.ts`):
 
 - It ignores modified clicks, middle clicks, `#` and `download` links, links inside Pathfinder content, and Grafana `?kiosk` mode, so the browser handles those.
+- It only takes plain docs pages: grafana.com `/docs/` and `/tutorials/` pages and interactive guides whose query string is empty or only `utm_*` tracking parameters. Filtered or searched listings such as `/docs/grafana-cloud/whats-new/?tags=IRM`, the `/docs/` home, and the What's new section (which now redirects to grafana.com/whats-new/) open in the browser.
 - It hands the link to whichever surface accepts it: the sidebar, floating, or full-screen `useAutoOpenListener` cancels the event to accept.
 - If no surface accepts the link in sidebar mode, it opens the sidebar and queues the link.
 - In any other mode it lets the browser follow the link rather than swallow the click.

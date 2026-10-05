@@ -1,5 +1,5 @@
 import type { QueuedDocsLink } from 'types/link-interception.types';
-import { isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from 'security/url-validator';
+import { isGitHubRawUrl, isGrafanaDocsUrl, isInteractiveLearningUrl, isLocalhostUrl } from 'security/url-validator';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 
 export const getDocsLinkFromEvent = (event: MouseEvent): QueuedDocsLink | undefined => {
@@ -22,7 +22,7 @@ export const getDocsLinkFromEvent = (event: MouseEvent): QueuedDocsLink | undefi
 
   const fullUrl = resolveURL(href);
 
-  if (!fullUrl || !isValidUrl(fullUrl)) {
+  if (!fullUrl || !isInterceptableUrl(fullUrl)) {
     return;
   }
 
@@ -78,7 +78,18 @@ function isNotInsideWysiwygEditor(target: Element): boolean {
 // SECURITY (F6): Check if it's a supported docs URL using secure validation
 // In production: Grafana docs URLs and interactive learning domains
 // In dev mode: Also allows localhost and GitHub raw URLs for testing
-function isValidUrl(url: string): boolean {
-  const isDevMode = isDevModeEnabledGlobal();
-  return isAllowedContentUrl(url) || (isDevMode && isLocalhostUrl(url)) || (isDevMode && isGitHubRawUrl(url));
+function isInterceptableUrl(url: string): boolean {
+  if (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url))) {
+    return true;
+  }
+  return (isGrafanaDocsUrl(url) || isInteractiveLearningUrl(url)) && isPlainDocsPage(new URL(url));
+}
+
+// Filtered listings (?tags=, ?search=) and whats-new, which redirects out of /docs/, only render on grafana.com.
+function isPlainDocsPage({ pathname, searchParams }: URL): boolean {
+  const path = pathname.endsWith('/') ? pathname : `${pathname}/`;
+  if (path === '/docs/' || path.startsWith('/docs/grafana-cloud/whats-new/')) {
+    return false;
+  }
+  return [...searchParams.keys()].every((key) => key.startsWith('utm_'));
 }

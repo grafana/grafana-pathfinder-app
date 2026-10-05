@@ -44,8 +44,8 @@ describe('getDocsLinkFromEvent', () => {
     expect(click(document.getElementById('hit')!)?.url).toBe(DOCS_URL);
   });
 
-  it('keeps the query string and hash', () => {
-    const url = 'https://grafana.com/docs/grafana/latest/?utm_source=grafana_footer#intro';
+  it('keeps tracking parameters and the hash', () => {
+    const url = 'https://grafana.com/docs/grafana/latest/?utm_source=grafana_footer&utm_medium=web#intro';
     mount(`<a id="link" href="${url}">Docs</a>`);
 
     expect(click(document.getElementById('link')!)?.url).toBe(url);
@@ -65,6 +65,18 @@ describe('getDocsLinkFromEvent', () => {
 
   it.each([
     ['a non-docs host', '<a id="hit" href="https://example.com/docs/page">x</a>'],
+    [
+      "IRM's filtered What's new listing",
+      '<a id="hit" href="https://grafana.com/docs/grafana-cloud/whats-new/?tags=IRM">x</a>',
+    ],
+    [
+      "the What's new section, which redirects out of docs",
+      '<a id="hit" href="https://grafana.com/docs/grafana-cloud/whats-new">x</a>',
+    ],
+    ["a What's new post", '<a id="hit" href="https://grafana.com/whats-new/2026-10-02-some-feature/">x</a>'],
+    ['a docs search', '<a id="hit" href="https://grafana.com/docs/grafana/latest/?search=alerts&utm_source=x">x</a>'],
+    ['the docs home', '<a id="hit" href="https://grafana.com/docs/">x</a>'],
+    ['a bundled guide scheme', '<a id="hit" href="bundled:first-dashboard">x</a>'],
     ['a relative in-app route', '<a id="hit" href="/dashboards">x</a>'],
     ['a fragment', '<a id="hit" href="#section">x</a>'],
     ['a download', `<a id="hit" href="${DOCS_URL}" download>x</a>`],

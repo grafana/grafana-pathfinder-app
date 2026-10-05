@@ -230,7 +230,7 @@ Do NOT read `architecture.dot` unless you're working on cross-component changes 
    - Images → Create lightbox modal
 3. **`src/global-state/link-interception.ts`** (if `interceptGlobalDocsLinks` or the `pathfinder.intercept-docs-links` flag is on)
    - Listens globally (capture phase); resolves the enclosing `a[href]`, so clicks on a link's inner span/icon count
-   - Filters: Grafana docs/guides/learning-journeys
+   - Filters: plain Grafana docs/guides/learning-journeys pages only (no non-`utm_*` query params, no `/docs/` home or whats-new)
    - Respects modifiers (Ctrl/Cmd+Click → new tab) and Grafana `?kiosk`
    - Excludes: Already inside `[data-pathfinder-content]`
    - Delivers via a cancelable `pathfinder-auto-open-docs` event; cold sidebar → open + queue; otherwise the browser follows the link
