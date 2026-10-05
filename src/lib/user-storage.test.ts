@@ -1064,8 +1064,6 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
     removeItem.mockRestore();
   });
 
-  // The write hook's tests read "a key under COMPLETION_EMITTED_PREFIX" as
-  // "durably recorded", so the analytics guard must never land there.
   it('keeps the analytics once-guard apart from the durable completion guard', async () => {
     await completionEmittedStorage.markEmitted('guide:bundled:shared');
     await completionReportedStorage.markEmitted('guide:bundled:shared');

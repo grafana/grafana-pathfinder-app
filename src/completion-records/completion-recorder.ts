@@ -29,7 +29,6 @@ function synchronizePendingOwner(): string | null {
 // Only durable acceptance marks a completion emitted across reloads.
 const emitted = new Set<string>();
 
-// Separate from `emitted`: the analytics event neither waits on nor stands in for durable acceptance.
 const reported = new Set<string>();
 
 function dedupeKey(kind: CompletionKind, guideSource: string, guideId: string): string {
@@ -71,7 +70,7 @@ function emit(fact: CompletionFact): boolean {
  * Record a terminal guide completion. Covers bundled/standalone-interactive
  * guides reaching 100% and the milestone-as-guide bridge. Never blocks, never
  * throws on the completion path. Idempotent per `(kind, guideSource, guideId)`,
- * durably — see `invalidateEmittedCompletion` for the only way to lift it.
+ * durably.
  */
 export function recordGuideCompletion(fact: GuideCompletionFact): void {
   record(fact);

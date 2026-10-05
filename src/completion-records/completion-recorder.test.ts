@@ -8,9 +8,9 @@
  *   - guide and journey keys are independent; distinct guides emit separately
  *   - a throwing subscriber never breaks the completion path
  *   - early completions wait for the write subscriber
- *   - the guard is durable across a reload (a fresh in-memory Set), and
- *     `invalidateEmittedCompletion`/`invalidateAllEmittedCompletions` are the
- *     only way to lift it — the reset-then-re-mark and duplicate-write fixes
+ *   - the guard is durable across a reload (a fresh in-memory Set) until a
+ *     reset or a dropped queued write lifts it — the reset-then-re-mark and
+ *     duplicate-write fixes
  *   - the Track 1 analytics event fires once per terminal completion on its
  *     own guard, ahead of the startup buffer and independent of durable acceptance
  */
