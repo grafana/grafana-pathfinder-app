@@ -33,6 +33,7 @@ function createGuidedSession(key: string) {
   const completionCallbacks = new Map<symbol, () => void>();
   let completionAfterUnmount: (() => void) | undefined;
   let transferTimer: ReturnType<typeof setTimeout> | undefined;
+  let actionLocation: string | undefined;
   const handler = new GuidedHandler(new InteractiveStateManager(), new NavigationManager(), waitForReactUpdates);
   const runRef: { current: GuidedRun | null } = { current: null };
   const isExecutingRef = { current: false };
@@ -108,6 +109,12 @@ function createGuidedSession(key: string) {
       clearTransfer();
       listeners.forEach((listener) => listener());
     },
+    markActionStart: () => {
+      actionLocation = window.location.href;
+    },
+    // A URL change that a host outlived into the next action is not a handoff.
+    hasNavigatedSince: (mountedLocation: string) =>
+      window.location.href !== mountedLocation && window.location.href !== actionLocation,
     detach: (host: symbol, transferring: boolean) => {
       if (hosts.size === 1 && hosts.has(host) && runRef.current) {
         // A final target click can unmount its host before the handler reports success.
