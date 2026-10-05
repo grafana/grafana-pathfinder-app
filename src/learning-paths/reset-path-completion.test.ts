@@ -39,6 +39,7 @@ jest.mock('../lib/analytics', () => ({
   UserInteraction: new Proxy({}, { get: (_t, p) => String(p) }),
 }));
 
+import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { __resetRecorderForTests, onCompletionRecorded, type CompletionFact } from '../completion-records';
 import { markMilestoneDone } from '../docs-retrieval';
 import {
@@ -513,5 +514,73 @@ describe('resetPathGuides', () => {
 
     await expect(journeyCompletionStorage.get(urls[1]!)).resolves.toBe(0);
     await expect(journeyCompletionStorage.get(urls[0]!)).resolves.toBe(100);
+  });
+});
+
+describe('reset analytics', () => {
+  const CURATED_PATH = {
+    id: 'linux-server-integration',
+    title: 'Linux server integration',
+    description: '',
+    guides: ['select-platform', 'install-alloy'],
+    badgeId: 'penguin-wrangler',
+    url: 'https://grafana.com/docs/learning-paths/linux-server-integration/',
+  };
+
+  function resetEvents(): unknown[][] {
+    return jest.mocked(reportAppInteraction).mock.calls.filter(([type]) => type === UserInteraction.ResetProgressClick);
+  }
+
+  it('reports one path reset with the id of a curated path, however many members it clears', async () => {
+    mockBundledPaths.current = [CURATED_PATH];
+
+    await renderAndResetPath(CURATED_PATH.id);
+
+    expect(resetEvents()).toEqual([
+      [
+        UserInteraction.ResetProgressClick,
+        { reset_scope: 'path', interaction_location: 'learning_path_card_restart', path_id: CURATED_PATH.id },
+      ],
+    ]);
+  });
+
+  it('sends no id for an App Platform path', async () => {
+    await seedCompletedCourse();
+
+    await renderAndResetPath();
+
+    expect(resetEvents()).toEqual([
+      [UserInteraction.ResetProgressClick, { reset_scope: 'path', interaction_location: 'learning_path_card_restart' }],
+    ]);
+  });
+
+  it('reports nothing when the path is unknown and nothing is reset', async () => {
+    const { result, unmount } = renderHook(() => useLearningPaths());
+    await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain(PATH_ID));
+    await act(async () => {
+      await result.current.resetPath('not-a-path');
+    });
+    unmount();
+
+    expect(resetEvents()).toHaveLength(0);
+  });
+
+  it('reports one assignment reset with no id, even for a curated path', async () => {
+    mockBundledPaths.current = [CURATED_PATH];
+
+    await renderAndResetPathGuides(CURATED_PATH.id, [{ id: 'select-platform' }, { id: 'install-alloy' }]);
+
+    expect(resetEvents()).toEqual([
+      [
+        UserInteraction.ResetProgressClick,
+        { reset_scope: 'path', interaction_location: 'learning_path_assignment_reset_modal' },
+      ],
+    ]);
+  });
+
+  it('reports no assignment reset when there are no guides to reset', async () => {
+    await renderAndResetPathGuides(PATH_ID, []);
+
+    expect(resetEvents()).toHaveLength(0);
   });
 });

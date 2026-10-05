@@ -29,6 +29,7 @@ export function useContentReset({ model }: UseContentResetOptions) {
             content_url: analyticsUrl,
             content_type: getContentTypeForAnalytics(analyticsUrl, tabTypeToContentType(activeTab?.type)),
             interaction_location: 'docs_content_meta_header',
+            reset_scope: 'guide',
           })
         );
 

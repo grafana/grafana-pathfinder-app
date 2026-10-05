@@ -21,6 +21,7 @@ import type {
 } from '../types/learning-paths.types';
 
 import { invalidateEmittedCompletion } from '../completion-records';
+import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { StorageEvents } from '../lib/event-names';
 import { getMilestoneSlug } from '../lib/learning-journey-url';
 import { logger } from '../lib/logging';
@@ -199,6 +200,15 @@ async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Pr
         "Some of this path's progress could not be cleared. Reload the page and try again."
       ),
     ],
+  });
+}
+
+function reportPathReset(interactionLocation: string, pathId?: string): void {
+  const curatedPathId = getPathsData().paths.some((path) => path.id === pathId) ? pathId : undefined;
+  reportAppInteraction(UserInteraction.ResetProgressClick, {
+    reset_scope: 'path',
+    interaction_location: interactionLocation,
+    ...(curatedPathId && { path_id: curatedPathId }),
   });
 }
 
@@ -563,6 +573,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (!path) {
         return;
       }
+      reportPathReset('learning_path_card_restart', path.id);
 
       // Guard-invalidation member ids beyond `path.guides`, which for a
       // URL-based path can still be empty here — the dynamic milestone fetch
@@ -656,6 +667,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (guides.length === 0) {
         return;
       }
+      reportPathReset('learning_path_assignment_reset_modal');
       const guideIds = guides.map((guide) => guide.id);
       const path = paths.find((p) => p.id === pathId);
 
