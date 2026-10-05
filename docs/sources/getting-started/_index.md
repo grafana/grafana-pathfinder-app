@@ -65,6 +65,8 @@ Recommendations change with your Grafana page and configuration, so the guides y
 
 You can also open the command palette with **Cmd+K** on macOS or **Ctrl+K** on Windows and Linux, then search for `Interactive learning`, `Need help?`, or `Learn Grafana`.
 
+To share a guide with a coworker, open the guide in the sidebar, then select **More options** > **Copy link to guide**. The link opens the same guide in the sidebar of the current Grafana instance. The item is not shown for guides that cannot open from a link.
+
 ## Follow interactive steps
 
 ### Find a control with Show me

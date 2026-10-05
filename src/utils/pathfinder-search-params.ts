@@ -150,7 +150,9 @@ export interface ShareLinkOpts {
    */
   guideType?: 'learning-journey' | 'docs';
   /** Surface to request via `?panelMode=`. Omit to leave the param off. */
-  panelMode?: 'floating' | 'fullscreen';
+  panelMode?: PathfinderDeepLinkPanelMode;
+  /** Analytics attribution via `?source=`. Omit to leave the param off. */
+  source?: string;
 }
 
 /**
@@ -173,6 +175,9 @@ export function buildPathfinderShareUrl(opts: ShareLinkOpts): string {
   }
   if (opts.guideType === 'learning-journey') {
     url.searchParams.set('type', opts.guideType);
+  }
+  if (opts.source) {
+    url.searchParams.set('source', opts.source);
   }
   return url.toString();
 }
