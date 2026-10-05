@@ -49,7 +49,7 @@ for (const kind of ['guided', 'multistep'] as const) {
                   { action: 'button', reftarget: 'New' },
                   { action: 'highlight', reftarget: 'a[href="/dashboard/new"]' },
                   ...(surface === 'handoff'
-                    ? [{ action: 'highlight', reftarget: '[data-testid="data-testid sidebar add new panel"]' }]
+                    ? [{ action: 'highlight', reftarget: '[data-testid="data-testid RefreshPicker run button"]' }]
                     : []),
                 ],
               },
@@ -69,7 +69,7 @@ for (const kind of ['guided', 'multistep'] as const) {
       await expect(page.getByTestId(testIds.interactive.step('create-dashboard'))).toBeVisible();
       if (surface === 'handoff') {
         await page.getByRole('button', { name: 'New', exact: true }).last().click();
-        await page.getByRole('menuitem', { name: 'New dashboard', exact: true }).click();
+        await page.locator('a[href="/dashboard/new"]').click();
         await expect(page).toHaveURL(/\/dashboard\/new/);
       }
       let reader = page;
@@ -92,7 +92,7 @@ for (const kind of ['guided', 'multistep'] as const) {
           .getByTestId(testIds.interactive.step('create-dashboard'))
       ).not.toHaveAttribute('data-test-step-state', 'completed');
       if (surface === 'handoff') {
-        await page.getByRole('button', { name: 'Panel', exact: true }).click();
+        await page.getByTestId('data-testid RefreshPicker run button').click();
       } else {
         await expect(page).toHaveURL(/\/dashboards(?:\?|$)/);
         await expect(page.locator('.interactive-highlight-persistent')).toHaveCount(0);
@@ -102,7 +102,7 @@ for (const kind of ['guided', 'multistep'] as const) {
             .getByTestId(surface !== 'sidebar' ? testIds.guideReader.overlay : testIds.docsPanel.container)
             .getByTestId(testIds.interactive.step('create-dashboard'))
         ).not.toHaveAttribute('data-test-step-state', 'completed');
-        await page.getByRole('menuitem', { name: 'New dashboard', exact: true }).click();
+        await page.locator('a[href="/dashboard/new"]').click();
         await expect(page).toHaveURL(/\/dashboard\/new/);
       }
       await expect(
@@ -170,7 +170,7 @@ test('Do section waits for objectives after its actions finish', async ({ page, 
     'data-test-step-state',
     'completed'
   );
-  await page.getByRole('menuitem', { name: 'New dashboard', exact: true }).click();
+  await page.locator('a[href="/dashboard/new"]').click();
   await expect(page.getByTestId(testIds.interactive.step('open-dashboard'))).toHaveAttribute(
     'data-test-step-state',
     'completed'
