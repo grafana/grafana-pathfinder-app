@@ -28,6 +28,8 @@ Browser reads of App Platform resources (`/apis/<group>/...`) go through a plugi
 
 All UI text and documentation uses **sentence case** per the [Grafana Writers' Toolkit](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/#capitalization) — capitalize the first word and proper nouns only, including headings, button labels, and menu items. Product and company names are proper nouns (**Grafana**, **Loki**, **Prometheus**, **Tempo**, **Mimir**, **Alloy**, **Grafana Cloud**, **Grafana Enterprise**, **Grafana Labs**); generic terms are not (dashboard, alert, data source, panel, query, plugin).
 
+Users know the plugin as **Interactive learning**; "Pathfinder" is the internal name. Never use it in user-facing text (UI copy, `t()` defaults, aria-labels, alt text, locale values); identifiers, keys, and logs may keep it. ESLint and `user-facing-name.test.ts` enforce this.
+
 ### File creation policy
 
 Do not create summary `.md` files (`IMPLEMENTATION_SUMMARY.md` and friends) unless asked. Report completion in chat.

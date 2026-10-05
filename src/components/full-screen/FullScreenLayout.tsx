@@ -80,7 +80,7 @@ export function FullScreenLayout({
       data-pathfinder-content="true"
       data-testid={testIds.fullScreenMode.container}
       role="region"
-      aria-label="Pathfinder full screen"
+      aria-label="Interactive learning full screen"
     >
       <div className={styles.stickyTopBar}>
         <div className={styles.header}>

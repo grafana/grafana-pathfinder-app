@@ -141,7 +141,7 @@ export function FloatingPanel({
         data-pathfinder-content="true"
         data-panel-state={view}
         role="dialog"
-        aria-label="Pathfinder floating panel"
+        aria-label="Interactive learning floating panel"
       >
         {/* Header — drag handle */}
         <div

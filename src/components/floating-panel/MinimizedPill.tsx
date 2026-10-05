@@ -82,7 +82,7 @@ export function MinimizedPill({ hasActiveGuide, stepProgress, onRestore }: Minim
         aria-label="Restore floating panel"
         title="Click to restore floating panel"
       >
-        <img src={logoSvg} alt="Pathfinder" className={styles.pillLogo} />
+        <img src={logoSvg} alt="Interactive learning" className={styles.pillLogo} />
       </button>
       {stepProgress && (
         <div className={styles.pillBadge}>

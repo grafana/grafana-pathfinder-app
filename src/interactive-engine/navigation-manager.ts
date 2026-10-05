@@ -137,7 +137,7 @@ export class NavigationManager {
     logoContainer.className = 'interactive-comment-logo';
     const logo = document.createElement('img');
     logo.src = logoSvg;
-    logo.alt = 'Pathfinder';
+    logo.alt = 'Interactive learning';
     logoContainer.appendChild(logo);
 
     // Text content - sanitize the HTML
