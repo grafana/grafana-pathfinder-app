@@ -81,6 +81,8 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 **Analytics Events**:
 - `learning_path_progress` → Tracks path interaction with completion %
 - `badge_unlocked` → Tracks badge awards with trigger type
+- `reset_progress_click` → Tracks progress resets; `reset_scope` is `guide`, `path` or `all`
+- Semantics and version cutovers for all three: `docs/developer/TELEMETRY.md` (Learning path events)
 
 ## Frontend tier model
 

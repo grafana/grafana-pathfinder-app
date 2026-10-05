@@ -192,3 +192,44 @@ without settings, user IDs, or stack IDs.
 `assistant_customize_click`, `assistant_customize_success` and `assistant_customize_error` cover both inline block customization and whole-guide customization. Whole-guide runs carry the fixed `source: private-guide` attribute; filter by this attribute when measuring them separately from inline block runs. Inline block events retain their existing `source_document`, `step_id`, `assistant_id`, `assistant_type` and `content_key` attributes.
 
 Whole-guide clicks are recorded before context collection and prompt serialization, so local validation failures have a matching attempt. Success means a generated guide passed validation and was offered for editor review; it does not mean the user saved or published it. A repair attempt belongs to the original click. These events contain no answers, guide content, data-source metadata or generated output.
+
+## Learning path events
+
+These RudderStack events describe learning paths, badges and progress resets. Read them with the semantics below rather than their names: several are snapshots rather than state changes, and some changed meaning between releases.
+
+### Badge unlocks
+
+`badge_unlocked` fires once when a badge is newly written to the reader's learning progress, with `badge_id`, `badge_title` and `trigger_type` taken from `src/learning-paths/badges.ts`. Both award paths build the payload in `src/learning-paths/badge-coordinator.ts`:
+
+- **Guide completion** (`markGuideCompleted`) evaluates every badge whose trigger is met. It runs when a bundled guide reaches 100% and when any journey milestone completes, and never for a standalone guide from the interactive-tutorials CDN, an online CDN package or App Platform. So `first-steps` ("Complete your first guide") means the first bundled guide or milestone completed, not the first guide completed, and the streak badges (`consistent-learner`, `dedicated-learner`) advance only on a day the reader completes a bundled guide or milestone they had not completed before.
+- **Journey completion** (`markMilestoneDone`) awards a URL-based path's badge once every expected milestone is complete.
+
+A `path-completed` `badge_id` maps to one curated path through its `trigger.pathId` in `badges.ts`; the event carries no path or journey id. The six URL-based path badges (`penguin-wrangler`, `log-visualizer`, `metric-miner`, `log-whisperer`, `dashboard-artisan` and `alert-guardian`) were awarded without this event from #587 (v1.8.0, 2026-02-18) through v2.20.1, so the warehouse holds almost none of those awards; count them only from later releases.
+
+A badge reports at most once per learning-progress record. Path resets keep earned badges, so only a full reset (`reset_scope` `all`) lets the same reader earn and report a badge again.
+
+### Path progress snapshots
+
+`learning_path_progress` is a snapshot, not a progress change. My Learning sends it every time a reader clicks **Start** or **Continue** on a path card, with `path_id`, `path_title`, `completion_percent`, `guides_total` and `guides_completed`. Only static guide-list paths send it: `handleOpenGuide` in `MyLearningTab.tsx` returns early, before the emit, for manifest-backed paths (App Platform paths, CDN course packages and online-catalogue assignments) and for URL-based paths, all of which open their cover page instead. That leaves the curated paths that list their own guides: `getting-started` and `observability-basics` on OSS, and `cloud-getting-started` on Cloud.
+
+- `completion_percent` changed rule at v2.18.0 (#1866), so split any trend on it there. Before v2.18.0 it was `round(guides_completed / guides_total * 100)`: it moved only when a whole guide completed and always agreed with `guides_completed`. From v2.18.0 it is the mean of each member's stored percentage, computed at click time, with members in `completedGuides` counted as 100, floored and capped at 99 until every member is complete. Within 2.18.0 and later rows it reads stored values, so its rule follows whatever wrote each member's percentage rather than the event's `plugin_version`: a value stored under the pre-2.18.0 step rule stays in the mean.
+- `guides_completed` counts members listed in `completedGuides` and ignores partial progress. From v2.18.0 it can disagree with `completion_percent`: one of three guides half done sends `completion_percent` 16 and `guides_completed` 0. `guides_total` is the path's member count.
+
+The row sent when a reader accepts **Reset and continue** on an assignment is computed from the progress the card held before the reset, so it still counts the guides that were just reset as completed and overstates both `completion_percent` and `guides_completed`.
+
+### Journey navigation percentage
+
+`milestone_arrow_interaction_click` (from `milestone_progress_bar` and `bottom_navigation`) and `close_tab_click` on a learning-journey tab carry `completion_percentage`. Before v2.18.0 it was the navigation ordinal, `round(currentMilestone / totalMilestones * 100)`, which measured where the reader was rather than what they had done. From v2.18.0 (#1866) it is the mean of each unlocked milestone's stored percentage, floored and capped at 99 until every milestone is complete. Split any trend on this field at 2.18.0. Rows from `milestone_progress_bar` split again at v2.20.0 (#2033): from then the toolbar arrows average the sequence the reader is in, which is their active path track when they have one, and the toolbar also appears on guides that belong only to a track. From v2.18.0 through v2.19.x the toolbar arrows averaged the journey's own unlocked milestones. Bottom navigation and tab close still average the journey's own milestones.
+
+### Progress resets
+
+`reset_progress_click` carries `reset_scope`, so a re-completion can be told apart from a first completion by an earlier reset of matching scope in the reader's stream:
+
+| `reset_scope` | Fires when                                                                                                             | `interaction_location`                 | Extra fields                                                             |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| `guide`       | A reader chooses **Reset guide** in the guide toolbar menu, in the sidebar, floating panel or full screen              | `docs_content_meta_header`             | `content_url`, `content_type`, step context                              |
+| `path`        | A reader confirms **Restart** on a completed path card                                                                 | `learning_path_card_restart`           | `path_id`, only for a curated path in `paths.json` or `paths-cloud.json` |
+| `path`        | A reader accepts **Reset and continue** on an assignment whose locally completed guides the assignment does not credit | `learning_path_assignment_reset_modal` | None                                                                     |
+| `all`         | A reader confirms **Reset progress** in the My Learning footer                                                         | `my_learning_footer`                   | None                                                                     |
+
+Each reset reports once per action, never per member guide. App Platform, CDN course, online-catalogue and assignment paths never send `path_id`, so a reset of one of those cannot be tied to its path. Rows from v2.20.1 and earlier have no `reset_scope`; every one of them is a per-guide reset, since nothing else reported. No mounted surface shows **Restart** today: the button appears only on a completed path card, My Learning renders every path card as incomplete, and `LearningPathsPanel`, which does pass real completion, is not mounted. Expect no `learning_path_card_restart` rows until a surface renders it.
