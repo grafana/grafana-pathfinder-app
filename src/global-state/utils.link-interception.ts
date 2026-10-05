@@ -3,41 +3,37 @@ import { isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from 'security/ur
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 
 export const getDocsLinkFromEvent = (event: MouseEvent): QueuedDocsLink | undefined => {
-  if (!(event.target instanceof Element)) {
+  if (event.defaultPrevented || !(event.target instanceof Element) || !didNotUseModifierKeys(event)) {
     return;
   }
 
   const target = event.target;
+  const anchor = target.closest('a[href]');
 
-  if (!isValidEvent(event) || !isValidHref(event)) {
+  if (!anchor || !isOutsidePathfinderContent(target) || !isNotInsideWysiwygEditor(target)) {
     return;
   }
 
-  const href = target.getAttribute('href');
+  const href = anchor.getAttribute('href');
+
+  if (!href || href.startsWith('#') || anchor.hasAttribute('download')) {
+    return;
+  }
+
   const fullUrl = resolveURL(href);
 
-  if (!fullUrl) {
+  if (!fullUrl || !isValidUrl(fullUrl)) {
     return;
   }
-
-  if (!isValidUrl(fullUrl)) {
-    return;
-  }
-
-  const title = extractTitle(fullUrl);
 
   return {
     url: fullUrl,
-    title,
+    title: extractTitle(fullUrl),
     timestamp: Date.now(),
   };
 };
 
-function resolveURL(href: string | null) {
-  if (!href) {
-    return null;
-  }
-
+function resolveURL(href: string) {
   if (href.startsWith('http://') || href.startsWith('https://')) {
     return href;
   }
@@ -67,53 +63,16 @@ function extractTitle(url: string) {
   return 'Documentation';
 }
 
-function isValidEvent(event: MouseEvent) {
-  return (
-    didNotUseModifierKeys(event) &&
-    isAnchorElement(event) &&
-    isInsidePathfinderContent(event) &&
-    isNotInsideWysiwygEditor(event)
-  );
-}
-
 function didNotUseModifierKeys(event: MouseEvent) {
-  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
-    return false;
-  }
-
-  return true;
+  return event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
 }
 
-function isAnchorElement({ target }: MouseEvent) {
-  return target instanceof Element && target.closest('a[href]') !== null;
+function isOutsidePathfinderContent(target: Element) {
+  return target.closest('[data-pathfinder-content]') === null;
 }
 
-function isInsidePathfinderContent({ target }: MouseEvent) {
-  return target instanceof Element && target.closest('[data-pathfinder-content]') === null;
-}
-
-// Ignore clicks from within the WYSIWYG editor to prevent interference with editor interactions
-function isNotInsideWysiwygEditor({ target }: MouseEvent): boolean {
-  if (!(target instanceof Element)) {
-    return true;
-  }
-
-  // Don't intercept clicks from within ProseMirror editor or wysiwyg editor container
+function isNotInsideWysiwygEditor(target: Element): boolean {
   return target.closest('.ProseMirror') === null && target.closest('.wysiwyg-editor-container') === null;
-}
-
-function isValidHref(event: MouseEvent) {
-  if (!(event.target instanceof Element)) {
-    return false;
-  }
-
-  const href = event.target.getAttribute('href');
-
-  if (!href || href.startsWith('#')) {
-    return false;
-  }
-
-  return true;
 }
 
 // SECURITY (F6): Check if it's a supported docs URL using secure validation
