@@ -84,7 +84,11 @@ describe('settings read recovery', () => {
     expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(2);
     await jest.advanceTimersByTimeAsync(1);
     await rejected;
-    expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(3);
+    expect(
+      fetchMock.mock.calls
+        .filter(([request]) => request.url.endsWith('/pathfinder-settings'))
+        .map(([request]) => request.params?.attempt)
+    ).toEqual([1, 2, 3]);
     expect(fetchMock.mock.calls.every(([request]) => request.method === 'GET')).toBe(true);
   });
 

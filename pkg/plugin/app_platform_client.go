@@ -147,6 +147,7 @@ type appPlatformListClient struct {
 	idToken    string
 	httpClient *http.Client
 	logger     log.Logger
+	attempt    int
 }
 
 func newAppPlatformListClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *appPlatformListClient {
@@ -184,7 +185,7 @@ var createDiagOnce sync.Once
 // maxBytes; upstream HTTP failures carry the status for retryability and scope
 // classification, and a mint failure carries errAccessTokenMintFailed instead.
 func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64) (page *appPlatformListPage, err error) {
-	defer func() { logAppPlatformResult(c.logger, namespace, resource, "list", err) }()
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "list", c.attempt, err) }()
 	if namespace == "" {
 		return nil, fmt.Errorf("app platform list: empty namespace")
 	}
@@ -256,7 +257,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 // present) so the caller can classify transient/terminal/identity-scoped and
 // echo the upstream backpressure hint.
 func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) (err error) {
-	defer func() { logAppPlatformResult(c.logger, namespace, resource, "create", err) }()
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "create", c.attempt, err) }()
 	if namespace == "" {
 		return fmt.Errorf("app platform create: empty namespace")
 	}

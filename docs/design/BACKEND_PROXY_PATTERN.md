@@ -735,6 +735,8 @@ failed hop. Token-exchange failure does not prove an invalid provisioned credent
 
 The shared upstream client emits `event=pathfinder_proxy_failure` once per failed operation
 (including a completion refresh that serves stale data), not once per cached response.
+A settings read retried by the frontend sends `?attempt=N`; attempts after the first log
+`event=pathfinder_proxy_retry_failure` with `attempt`, so alerts count failed reads, not retries.
 Expected settings absence, unsupported collection routes, idempotent write conflicts,
 and cancellations are excluded. Internal logs retain trusted
 stack and trace context; diagnostic responses never include tokens or upstream bodies.

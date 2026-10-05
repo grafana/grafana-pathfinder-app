@@ -141,3 +141,12 @@ func TestAppPlatformReadErrorStatusDoesNotExpireSession(t *testing.T) {
 		}
 	}
 }
+
+func TestReadAttemptIsBounded(t *testing.T) {
+	for query, want := range map[string]int{"": 1, "attempt=x": 1, "attempt=0": 1, "attempt=-3": 1, "attempt=2": 2, "attempt=999": 10} {
+		r := httptest.NewRequest(http.MethodGet, "/pathfinder-settings?"+query, nil)
+		if got := readAttempt(r); got != want {
+			t.Errorf("%q: got %d, want %d", query, got, want)
+		}
+	}
+}

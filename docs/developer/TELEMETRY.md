@@ -150,7 +150,8 @@ supplies the plugin version. Older backend responses without diagnostics remain 
 Backend `event=pathfinder_proxy_failure` logs contain `stack_namespace` (the trusted
 plugin-context namespace), `resource`, `operation`, `stage`, `reason`, and
 `upstream_status`. Unexpected errors also carry `error_type`, the Go type of the
-unwrapped error, never its message. `outcome` and `cache` belong to the response/Faro
+unwrapped error, never its message. Frontend retries of a settings read log
+`event=pathfinder_proxy_retry_failure` with an `attempt` field instead. `outcome` and `cache` belong to the response/Faro
 envelope, not this per-operation log. Grafana supplies plugin version and trace context.
 These backend logs are the primary alert source, so browser
 initialization and Faro activity gating are not detection prerequisites. A silent period

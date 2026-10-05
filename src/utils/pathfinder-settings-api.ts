@@ -111,12 +111,14 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
     return null;
   }
 
+  let attempt = 0;
   try {
     const response = await lastValueFrom(
       defer(() =>
         getBackendSrv().fetch<PathfinderSettingsResource>({
           url: `${PLUGIN_BACKEND_URL}/pathfinder-settings`,
           method: 'GET',
+          params: { attempt: ++attempt },
           showErrorAlert: false,
         })
       ).pipe(
