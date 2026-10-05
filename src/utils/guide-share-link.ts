@@ -6,6 +6,18 @@ import { findDocPage } from './find-doc-page';
 import { buildPathfinderShareUrl } from './pathfinder-search-params';
 
 const BACKEND_GUIDE_PREFIX = 'backend-guide:';
+const BUNDLED_PREFIX = 'bundled:';
+const BUNDLED_CONTENT_SUFFIX = '/content.json';
+
+function toCanonicalDoc(url: string): string {
+  if (url.startsWith(BACKEND_GUIDE_PREFIX)) {
+    return `api:${url.slice(BACKEND_GUIDE_PREFIX.length)}`;
+  }
+  if (url.startsWith(BUNDLED_PREFIX) && url.endsWith(BUNDLED_CONTENT_SUFFIX)) {
+    return url.slice(0, -BUNDLED_CONTENT_SUFFIX.length);
+  }
+  return url;
+}
 
 /**
  * Build a link to the sidebar guide in `tab` for pasting to a coworker, or
@@ -20,7 +32,7 @@ export function buildSidebarGuideLink(tab: Pick<LearningJourneyTab, 'type' | 'ba
   if (!rawUrl) {
     return null;
   }
-  const doc = rawUrl.startsWith(BACKEND_GUIDE_PREFIX) ? `api:${rawUrl.slice(BACKEND_GUIDE_PREFIX.length)}` : rawUrl;
+  const doc = toCanonicalDoc(rawUrl);
   if (!findDocPage(doc)) {
     return null;
   }

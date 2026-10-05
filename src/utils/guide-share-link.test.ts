@@ -29,6 +29,12 @@ describe('buildSidebarGuideLink', () => {
     expect(findDocPage(params.doc!)).not.toBeNull();
   });
 
+  it('links a bundled guide opened through the package resolver in the canonical bundled:<id> form', () => {
+    const { params } = parse(buildSidebarGuideLink(tab('interactive', `bundled:${BUNDLED_ID}/content.json`)));
+    expect(params.doc).toBe(`bundled:${BUNDLED_ID}`);
+    expect(findDocPage(params.doc!)).not.toBeNull();
+  });
+
   it('does not carry the current page query into the link', () => {
     window.history.replaceState({}, '', '/d/abc?from=now-6h&var-x=1');
     const { url } = parse(buildSidebarGuideLink(tab('interactive', `bundled:${BUNDLED_ID}`)));
