@@ -24,6 +24,7 @@ class GlobalLinkInterceptionState {
       return;
     }
 
+    const sidebarWasOpen = sidebarState.getIsSidebarMounted();
     // A mounted surface's listener cancels the event; the mounted flag alone goes stale.
     const delivered = !document.dispatchEvent(
       new CustomEvent(AUTO_OPEN_DOCS_EVENT, {
@@ -56,7 +57,8 @@ class GlobalLinkInterceptionState {
     reportAppInteraction(UserInteraction.GlobalDocsLinkIntercepted, {
       intercepted_url: docsLink.url,
       link_title: docsLink.title,
-      sidebar_was_open: delivered,
+      sidebar_was_open: sidebarWasOpen,
+      delivery: delivered ? 'open_surface' : 'cold_sidebar',
       timestamp: Date.now(),
     });
   };

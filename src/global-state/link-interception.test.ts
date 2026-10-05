@@ -2,9 +2,11 @@ import { linkInterceptionState } from './link-interception';
 import { panelModeManager, type PanelMode } from './panel-mode';
 import { sidebarState } from './sidebar';
 import { AUTO_OPEN_DOCS_EVENT } from '../lib/event-names';
+import { reportAppInteraction } from '../lib/analytics';
 
 jest.mock('./sidebar', () => ({
   sidebarState: {
+    getIsSidebarMounted: jest.fn(),
     openSidebar: jest.fn(),
     setPendingOpenSource: jest.fn(),
   },
@@ -22,6 +24,9 @@ jest.mock('../lib/analytics', () => ({
 const DOCS_URL = 'https://grafana.com/docs/grafana/latest/alerting/';
 
 const mockedGetMode = panelModeManager.getMode as jest.MockedFunction<typeof panelModeManager.getMode>;
+const mockedIsSidebarMounted = sidebarState.getIsSidebarMounted as jest.MockedFunction<
+  typeof sidebarState.getIsSidebarMounted
+>;
 
 function clickDocsLink(): MouseEvent {
   document.body.innerHTML = `<a href="${DOCS_URL}"><span id="label">Alerting</span></a>`;
@@ -45,6 +50,7 @@ let listeners: jest.Mock[] = [];
 beforeEach(() => {
   jest.clearAllMocks();
   mockedGetMode.mockReturnValue('sidebar');
+  mockedIsSidebarMounted.mockReturnValue(false);
   linkInterceptionState.setInterceptionEnabled(true);
 });
 
@@ -90,6 +96,29 @@ describe('linkInterceptionState click handling', () => {
     expect(linkInterceptionState.shiftFromQueue()).toMatchObject({ url: DOCS_URL });
   });
 
+  it('reports an open surface taking the link, keeping sidebar_was_open as the mounted flag', () => {
+    mockedIsSidebarMounted.mockReturnValue(true);
+    listeners.push(listenAsSurface(true));
+
+    clickDocsLink();
+
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      'global_docs_link_intercepted',
+      expect.objectContaining({ intercepted_url: DOCS_URL, sidebar_was_open: true, delivery: 'open_surface' })
+    );
+  });
+
+  it('reports a cold sidebar open, even when the mounted flag is stale', () => {
+    mockedIsSidebarMounted.mockReturnValue(true);
+
+    clickDocsLink();
+
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      'global_docs_link_intercepted',
+      expect.objectContaining({ sidebar_was_open: true, delivery: 'cold_sidebar' })
+    );
+  });
+
   it.each<PanelMode>(['floating', 'fullscreen'])(
     'lets the browser follow the link in %s mode when no surface accepts it',
     (mode) => {
@@ -100,6 +129,7 @@ describe('linkInterceptionState click handling', () => {
       expect(event.defaultPrevented).toBe(false);
       expect(sidebarState.openSidebar).not.toHaveBeenCalled();
       expect(linkInterceptionState.hasQueuedLinks()).toBe(false);
+      expect(reportAppInteraction).not.toHaveBeenCalled();
     }
   );
 
