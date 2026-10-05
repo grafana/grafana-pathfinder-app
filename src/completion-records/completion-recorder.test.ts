@@ -566,6 +566,43 @@ describe('completion recorder — Track 1 analytics event', () => {
     expect(reportAnalytics).toHaveBeenCalledTimes(1);
   });
 
+  it('still records durably when the report throws', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    reportAnalytics.mockImplementationOnce(() => {
+      throw new Error('analytics down');
+    });
+    try {
+      const seen: CompletionFact[] = [];
+      onCompletionRecorded(acceptInto(seen));
+
+      recordGuideCompletion(guideFact({ guideId: 'report-throws' }));
+
+      expect(seen).toHaveLength(1);
+      expect(persistedEmitted.has('guide:bundled:report-throws')).toBe(true);
+      expect(warn).toHaveBeenCalledWith('Failed to report completion analytics', expect.anything());
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('still buffers and replays a completion whose report throws before the hook arms', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    reportAnalytics.mockImplementationOnce(() => {
+      throw new Error('analytics down');
+    });
+    try {
+      recordGuideCompletion(guideFact({ guideId: 'report-throws-early' }));
+      const seen: CompletionFact[] = [];
+      onCompletionRecorded(acceptInto(seen));
+
+      expect(seen).toEqual([expect.objectContaining({ guideId: 'report-throws-early' })]);
+      expect(persistedEmitted.has('guide:bundled:report-throws-early')).toBe(true);
+      expect(reportAnalytics).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('reports a guide and a journey with the same identity separately', () => {
     recordGuideCompletion(guideFact({ guideId: 'x' }));
     recordJourneyCompletion(journeyFact({ guideId: 'x' }));
