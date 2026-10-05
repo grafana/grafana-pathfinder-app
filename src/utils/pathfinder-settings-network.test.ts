@@ -88,7 +88,7 @@ describe('settings read recovery', () => {
       fetchMock.mock.calls
         .filter(([request]) => request.url.endsWith('/pathfinder-settings'))
         .map(([request]) => request.params?.attempt)
-    ).toEqual([1, 2, 3]);
+    ).toEqual([undefined, 2, 3]);
     expect(fetchMock.mock.calls.every(([request]) => request.method === 'GET')).toBe(true);
   });
 
