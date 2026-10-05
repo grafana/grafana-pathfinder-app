@@ -6,6 +6,15 @@ import { parseArgs as parseCliArgs } from 'node:util';
 
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 const MAX_REASONS = 20;
+const DIFF_ARGS = [
+  'diff',
+  '--no-color',
+  '--no-ext-diff',
+  '--no-renames',
+  '--no-relative',
+  '--src-prefix=a/',
+  '--dst-prefix=b/',
+];
 
 const PATH_SIGNALS = [
   ['workflow-permissions', /^\.github\/(?:workflows|actions)\//],
@@ -45,7 +54,11 @@ export function parseArgs(argv) {
 }
 
 function git(args, cwd) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return execFileSync('git', ['-c', 'core.quotePath=false', ...args], {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
 }
 
 export function changedLinesByFile(diff) {
@@ -59,6 +72,7 @@ export function changedLinesByFile(diff) {
   let file = null;
   let oldFile = null;
   let inHunk = false;
+  let unattributed = 0;
   for (const line of diff.split('\n')) {
     if (line.startsWith('diff --git ')) {
       file = null;
@@ -70,13 +84,17 @@ export function changedLinesByFile(diff) {
       file = line.startsWith('+++ b/') ? line.slice(6) : oldFile;
     } else if (line.startsWith('@@')) {
       inHunk = true;
-    } else if (inHunk && file && line.startsWith('+')) {
-      linesFor(file).added.push(line.slice(1));
-    } else if (inHunk && file && line.startsWith('-')) {
-      linesFor(file).removed.push(line.slice(1));
+    } else if (inHunk && (line.startsWith('+') || line.startsWith('-'))) {
+      if (file === null) {
+        unattributed += 1;
+      } else if (line.startsWith('+')) {
+        linesFor(file).added.push(line.slice(1));
+      } else {
+        linesFor(file).removed.push(line.slice(1));
+      }
     }
   }
-  return changed;
+  return { files: changed, unattributed };
 }
 
 export function computeSecurityGate({ base, head, cwd = process.cwd() }) {
@@ -84,7 +102,9 @@ export function computeSecurityGate({ base, head, cwd = process.cwd() }) {
     throw new Error('Base and head must be literal Git commit SHAs');
   }
   const range = `${base}...${head}`;
-  const files = git(['diff', '--name-only', range], cwd).split('\n').filter(Boolean);
+  const files = git([...DIFF_ARGS, '--name-only', range], cwd)
+    .split('\n')
+    .filter(Boolean);
   const reasons = [];
   for (const file of files) {
     for (const [signal, pattern] of PATH_SIGNALS) {
@@ -93,7 +113,10 @@ export function computeSecurityGate({ base, head, cwd = process.cwd() }) {
       }
     }
   }
-  const changed = changedLinesByFile(git(['diff', '--unified=0', '--no-color', '--no-ext-diff', range], cwd));
+  const { files: changed, unattributed } = changedLinesByFile(git([...DIFF_ARGS, '--unified=0', range], cwd));
+  if (unattributed > 0) {
+    reasons.push({ kind: 'diff', signal: 'unattributed-diff-content', count: unattributed });
+  }
   for (const [file, { added, removed }] of changed) {
     if (file.endsWith('.md')) {
       continue;

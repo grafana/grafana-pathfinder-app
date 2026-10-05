@@ -14,12 +14,15 @@ function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 
-function repoWith(base, head) {
+function repoWith(base, head, config = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'security-gate-'));
   git(dir, 'init', '-q');
   git(dir, 'config', 'user.email', 'test@example.com');
   git(dir, 'config', 'user.name', 'Test');
   git(dir, 'config', 'commit.gpgsign', 'false');
+  for (const [key, value] of Object.entries(config)) {
+    git(dir, 'config', key, value);
+  }
   const commit = (files, message) => {
     for (const [path, content] of Object.entries(files)) {
       if (content === null) {
@@ -38,8 +41,8 @@ function repoWith(base, head) {
   return { dir, baseSha, headSha };
 }
 
-function gateFor(base, head) {
-  const { dir, baseSha, headSha } = repoWith(base, head);
+function gateFor(base, head, config) {
+  const { dir, baseSha, headSha } = repoWith(base, head, config);
   try {
     return computeSecurityGate({ base: baseSha, head: headSha, cwd: dir });
   } finally {
@@ -140,13 +143,40 @@ test('added and removed lines are collected per file from a unified diff', () =>
     '-deleted',
   ].join('\n');
   assert.deepEqual(
-    [...changedLinesByFile(diff)],
+    [...changedLinesByFile(diff).files],
     [
       ['src/a.ts', { added: ['one'], removed: ['gone', '-- not a header'] }],
       ['src/b.ts', { added: ['two'], removed: [] }],
       ['src/c.ts', { added: [], removed: ['deleted'] }],
     ]
   );
+  assert.equal(changedLinesByFile(diff).unattributed, 0);
+});
+
+test('hunk lines under a header the parser cannot read are counted, not dropped', () => {
+  const diff = ['diff --git a/x b/x', '--- x', '+++ x', '@@ -1 +1 @@', '-old', '+new'].join('\n');
+  assert.deepEqual(changedLinesByFile(diff), { files: new Map(), unattributed: 2 });
+});
+
+test("the reviewer's diff prefix settings cannot hide a content signal", () => {
+  for (const config of [
+    { 'diff.noprefix': 'true' },
+    { 'diff.mnemonicPrefix': 'true' },
+    { 'diff.srcPrefix': 'old/', 'diff.dstPrefix': 'new/' },
+  ]) {
+    const result = gateFor({ 'src/a.ts': 'export {};\n' }, { 'src/a.ts': 'el.innerHTML = x;\n' }, config);
+    assert.deepEqual(
+      result.reasons,
+      [{ kind: 'content', signal: 'dom-sink', file: 'src/a.ts' }],
+      Object.keys(config)[0]
+    );
+  }
+});
+
+test('content under a quoted file header fails closed', () => {
+  const result = gateFor({ 'src/a.ts': 'export {};\n' }, { 'src/a"b.ts': 'export const b = 1;\n' });
+  assert.equal(result.triggered, true);
+  assert.deepEqual(result.reasons, [{ kind: 'diff', signal: 'unattributed-diff-content', count: 1 }]);
 });
 
 test('the command line refuses anything but literal commit SHAs', () => {
