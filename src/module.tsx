@@ -10,7 +10,11 @@ import { initializeConfiguredSurfaces } from './utils/configured-bootstrap';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
 // (and zod, via user-storage) into module.js.
 import { readPathfinderStartupPreference, waitForPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
-import { resolvePathfinderAvailability, getPathfinderStartupDecision } from './utils/pathfinder-enablement';
+import {
+  resolvePathfinderAvailability,
+  getPathfinderStartupDecision,
+  isImageRendererSession,
+} from './utils/pathfinder-enablement';
 // Direct file import, not the ./docs-retrieval barrel: the barrel statically
 // imports the whole content-fetcher orchestrator (zod, dompurify, the bundled
 // guide index), which would land in module.js. createCompositeResolver is
@@ -76,7 +80,7 @@ const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAuto
 const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
 
 const pathfinderAvailability = await resolvePathfinderAvailability(
-  getFeatureFlagValue('pathfinder.enabled', true),
+  getFeatureFlagValue('pathfinder.enabled', true) && !isImageRendererSession(window.location.search),
   readPathfinderStartupPreference
 );
 const pathfinderEnabled = pathfinderAvailability === 'enabled';

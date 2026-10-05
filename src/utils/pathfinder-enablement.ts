@@ -14,6 +14,10 @@ export function getPathfinderStartupDecision() {
 
 export type PathfinderAvailability = 'enabled' | 'disabled';
 
+export function isImageRendererSession(search: string): boolean {
+  return new URLSearchParams(search).get('render') === '1';
+}
+
 export async function resolvePathfinderAvailability(
   remoteEnabled: boolean,
   readSettings: () => Promise<PathfinderPluginConfig | undefined>

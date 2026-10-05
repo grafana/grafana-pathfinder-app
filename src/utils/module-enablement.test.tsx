@@ -5,7 +5,7 @@ import { runInNewContext } from 'vm';
 import * as ts from 'typescript';
 import { render, screen, waitFor } from '@testing-library/react';
 import { getConfigWithDefaults } from '../constants';
-import { resolvePathfinderAvailability } from './pathfinder-enablement';
+import { isImageRendererSession, resolvePathfinderAvailability } from './pathfinder-enablement';
 import { retryChunkImport } from '../lib/retry-chunk-import';
 
 // Wrap the compiled entrypoint to execute its top-level awaits under Jest's CommonJS runtime.
@@ -72,6 +72,7 @@ async function boot(
       waitForPathfinderPluginConfig: async () => (read ? await read : settings),
     },
     './utils/pathfinder-enablement': {
+      isImageRendererSession,
       resolvePathfinderAvailability,
       getPathfinderStartupDecision: () => ({ durationMs: 10, outcome: 'resolved' }),
     },
@@ -173,6 +174,19 @@ it.each([true, undefined])('registers learning surfaces when remote enabled and 
   expect(effects.handlePathfinderDeepLink).toHaveBeenCalledWith(
     expect.objectContaining({ attemptAutoOpen: expect.any(Function) })
   );
+});
+
+it('stays dormant in an image-renderer session even when enabled', async () => {
+  window.history.replaceState(null, '', '/d/abc/home?render=1&kiosk=1');
+  try {
+    const { plugin, effects } = await boot(true, true);
+    plugin.init();
+    expect(plugin.addComponent).not.toHaveBeenCalled();
+    expect(plugin.addLink).not.toHaveBeenCalled();
+    expect(effects.initializeConfiguredSurfaces).not.toHaveBeenCalled();
+  } finally {
+    window.history.replaceState(null, '', '/');
+  }
 });
 
 it('registers baseline learning surfaces after an unsuccessful settings read', async () => {

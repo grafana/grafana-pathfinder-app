@@ -1,4 +1,8 @@
-import { resolvePathfinderAvailability, getPathfinderStartupDecision } from './pathfinder-enablement';
+import {
+  resolvePathfinderAvailability,
+  getPathfinderStartupDecision,
+  isImageRendererSession,
+} from './pathfinder-enablement';
 
 it.each([true, false])(
   'remote disable wins over tenant preference %s without reading settings',
@@ -56,4 +60,14 @@ it.each([403, 503])('keeps Pathfinder enabled when settings return HTTP %s', asy
       throw { status };
     })
   ).toBe('enabled');
+});
+
+it.each([
+  ['?orgId=1&render=1&kiosk=1', true],
+  ['?render=1', true],
+  ['?render=0', false],
+  ['?kiosk=1', false],
+  ['', false],
+])('detects image-renderer sessions from %p', (search, expected) => {
+  expect(isImageRendererSession(search)).toBe(expected);
 });
