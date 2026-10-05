@@ -500,7 +500,11 @@ because a package id may be 253 characters. `resetPath` **deletes** the keys
 the join builds, so a rewritten candidate would destroy a different guide's
 progress irreversibly. The join therefore refuses any candidate the sanitizer
 would rewrite, and such a member resolves as `unresolved` — excluded and
-counted rather than joined to someone else's record.
+counted rather than joined to someone else's record. The refusal covers the
+whole member, not just the failing candidate: a `bundled:` id of about 180
+characters keeps its bare shape but loses `bundled:<id>/content.json`, and if
+its record sits under the lost shape, searching only the survivors would score
+it as an unopened zero.
 
 The consequence is deliberate and worth stating: for such a member the raw-keyed
 namespaces are still cleared, because a raw key names only its own member, while
