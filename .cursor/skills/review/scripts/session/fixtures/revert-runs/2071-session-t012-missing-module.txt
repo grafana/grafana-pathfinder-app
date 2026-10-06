@@ -1,0 +1,21 @@
+FAIL tests/e2e-runner/utils/disable-rudderstack.test.ts
+  ● Test suite failed to run
+    Cannot find module './disable-rudderstack' from 'tests/e2e-runner/utils/disable-rudderstack.test.ts'
+    However, Jest was able to find:
+    	'./disable-rudderstack.test.ts'
+    You might want to include a file extension in your import, or update your 'moduleFileExtensions', which is currently ['js', 'mjs', 'cjs', 'jsx', 'ts', 'mts', 'cts', 'tsx', 'json', 'node'].
+    See https://jestjs.io/docs/configuration#modulefileextensions-arraystring
+      4 |
+      5 | function createDocument() {
+    > 6 |   const window: Record<string, unknown> = {};
+        |                             ^
+      7 |   runInNewContext(`(${disableRudderstack.toString()})()`, { window });
+      8 |   return window;
+      9 | }
+      at Resolver._throwModNotFoundError (<checkout>/node_modules/jest-resolve/build/index.js:895:11)
+      at Object.<anonymous> (tests/e2e-runner/utils/disable-rudderstack.test.ts:6:29)
+Test Suites: 1 failed, 1 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        0.206 s
+Ran all test suites matching tests/e2e-runner/utils/disable-rudderstack.test.ts.

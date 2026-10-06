@@ -1,0 +1,26 @@
+
+FAIL src/lib/user-storage.test.ts
+  ● milestoneCompletionStorage › keeps both journeys when two markCompleted calls for DIFFERENT journeys race without an await between them
+
+    expect(received).resolves.toEqual(expected) // deep equality
+
+    - Expected  - 3
+    + Received  + 1
+
+    - Set {
+    -   "install-alloy",
+    - }
+    + Set {}
+
+      261 |     ]);
+      262 |
+    > 263 |     await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['install-alloy']));
+          |                                                                                ^
+      264 |     await expect(milestoneCompletionStorage.getCompleted(otherJourneyUrl)).resolves.toEqual(
+      265 |       new Set(['fe-alerting-01'])
+      266 |     );
+
+      at Object.toEqual (<checkout>/node_modules/expect/build/index.js:2140:20)
+      at Object.toEqual (src/lib/user-storage.test.ts:263:80)
+
+Test Suites: 1 failed, 1 total

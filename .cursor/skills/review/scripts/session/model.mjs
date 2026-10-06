@@ -13,7 +13,13 @@ export const CHANGE_CLASSES = [
   'docs-only',
   'mixed',
 ];
-export const CHECK_NAMES = ['unit_tests', 'typecheck', 'lint'];
+export const GO_CHECKS = ['go_build', 'go_lint', 'go_test'];
+export const CHECK_NAMES = ['unit_tests', 'typecheck', 'lint', ...GO_CHECKS];
+export const GO_CHECK_DEFAULTS = {
+  go_build: ['go', 'build', './...'],
+  go_lint: ['npm', 'run', 'lint:go'],
+  go_test: ['go', 'test', './pkg/...'],
+};
 export const SKIP_STAGES = [
   'workers',
   'skeptic_batches',
@@ -22,6 +28,7 @@ export const SKIP_STAGES = [
   'unit_tests',
   'typecheck',
   'lint',
+  ...GO_CHECKS,
   'test_efficacy',
 ];
 export const COMMAND_EXECUTABLES = new Set(['npm', 'npx', 'node', 'go', 'mage']);
@@ -51,7 +58,7 @@ const TEST_INPUT = /(?:^|\/)(?:__tests__|__fixtures__|testdata|fixtures)\/|\.(?:
 
 export function sha256(value) {
   return createHash('sha256')
-    .update(typeof value === 'string' ? value : canonicalJson(value))
+    .update(typeof value === 'string' || Buffer.isBuffer(value) ? value : canonicalJson(value))
     .digest('hex');
 }
 
@@ -415,7 +422,7 @@ function validateContractScan(task, result) {
 }
 
 function requiredCheckNames(changeClass) {
-  return changeClass === 'docs-only' ? ['lint'] : CHECK_NAMES;
+  return changeClass === 'docs-only' ? ['lint'] : ['unit_tests', 'typecheck', 'lint'];
 }
 
 function validateEvidencePlan(task, result) {
@@ -423,14 +430,18 @@ function validateEvidencePlan(task, result) {
   if (!Array.isArray(result.checks) || !Array.isArray(result.efficacy)) {
     fail('checks and efficacy must be arrays');
   }
+  const goChanged = task.spec.surfaces?.go === true;
   const names = new Set();
-  const checks = result.checks.map((check, index) => {
+  const planned = result.checks.map((check, index) => {
     const at = `checks[${index}]`;
     if (!isObject(check) || !CHECK_NAMES.includes(check.name) || names.has(check.name)) {
       fail(`${at}.name must be a unique one of ${CHECK_NAMES.join(', ')}`);
     }
     names.add(check.name);
     if (check.status === 'not_applicable') {
+      if (goChanged && GO_CHECKS.includes(check.name)) {
+        fail(`${at}: ${check.name} cannot be not_applicable when Go changed; give its argv or omit it for the default`);
+      }
       return { name: check.name, status: 'not_applicable', reason: text(check.reason, `${at}.reason`, 300) };
     }
     if (check.argv !== undefined && check.runs !== undefined) {
@@ -446,6 +457,10 @@ function validateEvidencePlan(task, result) {
   if (missing.length > 0) {
     fail(`checks must include ${missing.join(', ')}, as argv or not_applicable with a reason`);
   }
+  const goDefaults = goChanged
+    ? GO_CHECKS.filter((name) => !names.has(name)).map((name) => ({ name, runs: [GO_CHECK_DEFAULTS[name]] }))
+    : [];
+  const checks = [...planned, ...goDefaults];
   const behaviors = new Set();
   const efficacy = result.efficacy.map((entry, index) => {
     const at = `efficacy[${index}]`;
@@ -519,7 +534,7 @@ function validateCheckResolution(task, result) {
 }
 
 function validateSynthesis(task, result) {
-  onlyFields(result, ['merges', 'revisions', 'additions', 'notes'], 'synthesis result');
+  onlyFields(result, ['merges', 'revisions', 'additions', 'efficacy_dispositions', 'notes'], 'synthesis result');
   const refs = new Set(task.spec.refs);
   const merges = (result.merges ?? []).map((merge, index) => {
     const at = `merges[${index}]`;
@@ -552,7 +567,42 @@ function validateSynthesis(task, result) {
       fail(`addition ${addition.finding_id} names concern ${addition.concern_id}, which is not routed`);
     }
   }
-  return { merges, revisions, additions, notes: result.notes ? text(result.notes, 'notes') : null };
+  return {
+    merges,
+    revisions,
+    additions,
+    efficacy_dispositions: validateEfficacyDispositions(task, result.efficacy_dispositions ?? []),
+    notes: result.notes ? text(result.notes, 'notes') : null,
+  };
+}
+
+function validateEfficacyDispositions(task, value) {
+  if (!Array.isArray(value)) {
+    fail('efficacy_dispositions must be an array');
+  }
+  const needed = new Map((task.spec.efficacy_gaps ?? []).map((gap) => [gap.behavior, gap]));
+  const seen = new Set();
+  const dispositions = value.map((entry, index) => {
+    const at = `efficacy_dispositions[${index}]`;
+    if (!isObject(entry) || !needed.has(entry.behavior) || seen.has(entry.behavior)) {
+      fail(`${at}.behavior must name one listed efficacy gap, once`);
+    }
+    onlyFields(entry, ['behavior', 'finding_id', 'reason'], at);
+    seen.add(entry.behavior);
+    if ((entry.finding_id === undefined) === (entry.reason === undefined)) {
+      fail(`${at} needs exactly one of finding_id (the finding this gap became) or reason (why it needs none)`);
+    }
+    return entry.finding_id !== undefined
+      ? { behavior: entry.behavior, finding_id: text(entry.finding_id, `${at}.finding_id`, 80) }
+      : { behavior: entry.behavior, reason: text(entry.reason, `${at}.reason`, 280) };
+  });
+  const missing = [...needed.keys()].filter((behavior) => !seen.has(behavior));
+  if (missing.length > 0) {
+    fail(
+      `efficacy_dispositions must dispose every no_test_exists and passes_without_fix entry; missing: ${missing.join('; ')}. Give the finding_id it became, or the reason it needs none`
+    );
+  }
+  return dispositions;
 }
 
 function validateSkeptic(task, result) {
@@ -641,7 +691,27 @@ export function validateIdentity(identity) {
   if (!ID_PATTERN.test(identity.reviewer ?? '')) {
     fail('reviewer must be a login-like identifier');
   }
+  validateIntent(identity.intent ?? null);
   return identity;
+}
+
+export function validateIntent(intent) {
+  if (intent === null) {
+    return null;
+  }
+  if (!isObject(intent)) {
+    fail('the intent file must hold a JSON object with title and body');
+  }
+  onlyFields(intent, ['title', 'body', 'evidence_cutoff'], 'intent');
+  const title = text(intent.title, 'intent title', 300);
+  if (typeof intent.body !== 'string' || intent.body.length > 65536) {
+    fail('intent body must be a string of at most 65536 characters (the PR description; it may be empty)');
+  }
+  const cutoff = intent.evidence_cutoff ?? null;
+  if (cutoff !== null && (typeof cutoff !== 'string' || Number.isNaN(Date.parse(cutoff)))) {
+    fail('intent evidence_cutoff must be an ISO date');
+  }
+  return { title, body: intent.body, evidence_cutoff: cutoff };
 }
 
 export function emptyState() {
@@ -663,6 +733,7 @@ export function emptyState() {
     policy: null,
     reconciliation: null,
     waivers: {},
+    coaching: [],
     finalized: null,
   };
 }
@@ -698,25 +769,52 @@ const REDUCERS = {
     if (state.tasks[task.id]) {
       fail(`task ${task.id} already exists`);
     }
-    state.tasks[task.id] = { ...task, status: 'ready', result: null, result_hash: null, receipt: null, history: [] };
+    state.tasks[task.id] = {
+      ...task,
+      status: 'ready',
+      result: null,
+      result_hash: null,
+      raw_result: null,
+      receipt: null,
+      history: [],
+      rejections: [],
+    };
     state.order.push(task.id);
   },
-  task_completed(state, { task_id, result, result_hash, receipt }) {
+  task_completed(state, { task_id, result, result_hash, receipt, raw_result = null }) {
     const task = state.tasks[task_id];
     if (!task || task.status !== 'ready') {
       fail(`task ${task_id} is not ready`);
     }
-    Object.assign(task, { status: 'completed', result, result_hash, receipt });
+    Object.assign(task, { status: 'completed', result, result_hash, receipt, raw_result });
   },
-  task_revised(state, { task_id, result, result_hash, receipt, reason }) {
+  result_rejected(state, { task_id, raw_result, error }) {
     const task = state.tasks[task_id];
-    task.history.push({ result_hash: task.result_hash, receipt: task.receipt, replaced_because: reason });
+    if (!task) {
+      fail(`task ${task_id} does not exist`);
+    }
+    task.rejections.push({ raw_result, error });
+  },
+  coaching_recorded(state, data) {
+    if (!state.tasks[data.task_id]) {
+      fail(`task ${data.task_id} does not exist`);
+    }
+    state.coaching.push(data);
+  },
+  task_revised(state, { task_id, result, result_hash, receipt, reason, raw_result = null }) {
+    const task = state.tasks[task_id];
+    task.history.push({
+      result_hash: task.result_hash,
+      raw_result: task.raw_result,
+      receipt: task.receipt,
+      replaced_because: reason,
+    });
     for (const record of Object.values(state.observations)) {
       if (record.source_task === task_id) {
         record.superseded = true;
       }
     }
-    Object.assign(task, { result, result_hash, receipt });
+    Object.assign(task, { result, result_hash, receipt, raw_result });
   },
   task_blocked(state, { task_id, reason, receipt }) {
     const task = state.tasks[task_id];

@@ -24,6 +24,7 @@ export const SHARED_INPUTS = [
   '.cursor/skills/review/scripts/review-policy.mjs',
   '.cursor/skills/review/scripts/review-report.mjs',
   '.cursor/skills/review/scripts/security-gate.mjs',
+  '.cursor/skills/review/scripts/skeptic-claim.mjs',
 ];
 
 function toolFile(path) {
@@ -76,7 +77,7 @@ export function reviewSection(...headings) {
 }
 
 function git(repoDir, args) {
-  return execFileSync('git', ['-c', 'core.quotePath=false', ...args], {
+  return execFileSync('git', ['--literal-pathspecs', '-c', 'core.quotePath=false', ...args], {
     cwd: repoDir,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

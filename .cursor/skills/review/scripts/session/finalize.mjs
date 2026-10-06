@@ -1,6 +1,13 @@
 import { normalizeStageLedger } from '../review-ledger.mjs';
 import { renderReviewReport } from '../review-report.mjs';
-import { baselineFor, commandOutcome, evaluatePolicy, onlyTask, resolutionsFor } from './controller.mjs';
+import {
+  baselineFor,
+  commandOutcome,
+  efficacyRecords,
+  evaluatePolicy,
+  onlyTask,
+  resolutionsFor,
+} from './controller.mjs';
 import { OBSERVER_ROLES, tasksWhere } from './model.mjs';
 
 const BEHAVIOR_CLASSES = new Set(['product-runtime', 'contracts-and-schemas', 'mixed']);
@@ -143,29 +150,21 @@ function deriveChecks(state) {
   });
 }
 
+function dispositionNote(entry) {
+  return entry.finding_id !== undefined ? `finding ${entry.finding_id}` : entry.reason;
+}
+
 function deriveEfficacy(state) {
-  const plan = onlyTask(state, 'evidence_plan');
-  if (plan?.status !== 'completed') {
-    return [];
-  }
-  return plan.result.efficacy.flatMap((entry) => {
-    if (entry.result === 'no_test_exists') {
-      return [{ behavior: entry.behavior, test: null, result: 'no_test_exists' }];
-    }
-    const command = tasksWhere(
-      state,
-      (task) => task.role === 'command' && task.spec.kind === 'efficacy' && task.spec.behavior === entry.behavior
-    )[0];
-    if (command?.status !== 'completed' || command.result.error) {
-      return [];
-    }
-    return [
-      {
-        behavior: entry.behavior,
-        test: entry.test,
-        result: command.result.exit_status === 0 ? 'passes_without_fix' : 'fails_without_fix',
-      },
-    ];
+  const dispositions = onlyTask(state, 'synthesis')?.result?.efficacy_dispositions ?? [];
+  return efficacyRecords(state).map(({ behavior, test, result, evidence }) => {
+    const disposition = dispositions.find((entry) => entry.behavior === behavior);
+    return {
+      behavior,
+      test,
+      result,
+      ...(evidence === null ? {} : { evidence }),
+      ...(disposition ? { disposition_note: dispositionNote(disposition) } : {}),
+    };
   });
 }
 
@@ -179,6 +178,7 @@ export function deriveStageLedger(state) {
   return {
     mode: state.identity.mode,
     change_class: route?.result?.change_class ?? 'mixed',
+    surfaces: { go: state.scope?.surfaces?.go === true },
     workers: {
       planned: state.plan?.plan.workers.length ?? 0,
       run: observers.filter((t) => t.status === 'completed').length,
@@ -290,12 +290,12 @@ export function sessionStatus(state) {
   if (skeptics.some((task) => task.receipt?.agent_id === null)) {
     capability.push('some skeptic verdicts carry no host agent identity, so their independence is not verified');
   }
-  const efficacy = tasks.filter((task) => task.role === 'command' && task.spec.kind === 'efficacy' && task.result);
-  const setup = efficacy.filter((task) => task.result.exit_status !== 0 && task.result.failure_kind !== 'assertion');
-  const evidence = setup.map(
-    (task) =>
-      `${task.id}: the reverted test failed with a ${task.result.failure_kind} failure, not a behavior assertion; the ledger still records fails_without_fix`
-  );
+  const evidence = efficacyRecords(state)
+    .filter(({ result }) => result.startsWith('inconclusive_'))
+    .map(
+      ({ behavior, result, evidence: signature }) =>
+        `${behavior}: the reverted test is ${result}, so it does not show that the test detects the regression (${signature})`
+    );
   return {
     convergence: priorBlockerChanges(state),
     session_id: state.identity?.session_id,

@@ -18,13 +18,23 @@ No task result can carry a worker count, a security-trigger flag, a ledger count
 
 ## Session lifecycle
 
-`start` derives the session identity from the repository, PR, base and head SHAs, reviewer, mode, round, prior-state provenance, and the hashes of the shared review assets. The same inputs give the same session ID, so `start` again resumes. A new head is a new session.
+`start` derives the session identity from the repository, PR, base and head SHAs, reviewer, PR intent, mode, round, prior-state provenance, and the hashes of the shared review assets. The same inputs give the same session ID, so `start` again resumes. A new head is a new session.
 
 State is an append-only, hash-chained event log (`events.jsonl`) in the session directory. `session.json` is a snapshot that is rebuilt from the log after every write. One supervisor writes at a time: a writer lock refuses a second live writer, and every append checks the revision it read. A torn trailing write is ignored on read and repaired on the next append. If any shared review asset changes during a session, the controller refuses further writes.
+
+`--intent-file` holds the PR title, the unedited description, and an optional evidence cutoff. The route, observer, specialist, and synthesis inputs carry it as `pr_intent`, marked as untrusted evidence. When a contract-evolution gate fires, the contract brief asks whether the description says the change follows, extends, or replaces the established contract, as `/review` does. A missing statement or stale anchor is a documentation-drift canonical observation (kind defect, impact none). Observers carry the `/review` supplemental documentation-drift rule word for word: only when changed subsystems, scripts, skills, routes, flags, or architecture can stale agent guidance. It goes through the same policy as every other observation.
+
+Observer, security-specialist, and root-overflow inputs do not inline the owned diff. The controller writes it as per-file shards under the task's `diff/` directory, each at most 20,000 characters (a larger file's diff is split into numbered parts). `input.json` carries `diff_manifest`, one `{ path, shard, characters, changed_functions }` entry per shard. Shard names are built from a sanitized form of the path, so a contributor-controlled filename cannot place a shard outside the task directory.
 
 When a prior review is supplied, the controller saves its exact body as a content-addressed session artifact. The prior-check and synthesis inputs carry each prior finding's original title, problem, and requested action from that artifact, so a fresh supervisor verifies the original objection rather than one rebuilt from an ID. The body is evidence, not instructions. A missing or altered artifact stops the session.
 
 If a prior blocker was not verified fixed but the shared policy now disposes it as something other than blocking, `status` lists it under `convergence`. This is a flag for the reader, not a new rule. The shared policy still decides the disposition from the restated facts.
+
+`record` keeps the submitted result file byte for byte as a content-addressed artifact and puts its `ref`, `sha256`, and submitted path in the event (`raw_result`). The validated, normalized form is the event's `result`, with its own `result_hash`. A rejected result is kept the same way, in a `result_rejected` event with the validator error. `record` then exits 2 and prints a ready `correction` that quotes the error verbatim and names a new version path (`result.v2.json`, then `.v3.json`); a correction never overwrites an earlier version. Anything the supervisor adds beyond that correction is coaching, recorded first with `coach` as a `coaching_recorded` event that holds the exact text. `status` lists coaching events and checks every recorded raw artifact against its hash; `finalize` refuses a session whose raw artifacts were altered or removed.
+
+Skeptic input is built from an allowlist of claim fields (`CLAIM_FIELDS` in `skeptic-claim.mjs`): finding and concern IDs, kind, title, evidence, why it matters, files, origin, impact, reversibility, scope effect, `breaks_shipped_path`, and `induced`. Severity, confidence, suggested action, and timing are withheld. Which task and agent reported a finding, which refs synthesis merged into it, and revision reasons go into the skeptic task's `spec.provenance` in the event log, never into `input.json`. As defence in depth, `record` rejects a producer, prior-check, check-resolution, or synthesis observation whose claim text states something about the review rather than the code, such as reviewer counts, agreement, or a recommendation to block. That check is narrow. Schema validation cannot make arbitrary prose persuasion-proof; the allowlist and the separate provenance record are the primary control, and a post-run audit of what each skeptic saw remains necessary.
+
+The contract-specialist brief carries the full packet schema from `contract-evolution-policy.mjs`, every field, enum, and `sources` entry shape, with valid examples; `schema.json` holds a valid example packet.
 
 Recording the same result twice is a no-op. A different result for a completed task needs `--revise <reason>`. It is accepted only for observer, specialist, root-overflow, and skeptic tasks, and only before anything downstream consumes the result. The superseded observations stay in the log.
 
@@ -42,6 +52,10 @@ The task graph, in order:
 | Synthesis         | `synthesis` (root)                                               | Every earlier task is completed or blocked                    |
 | Verify            | `skeptic` batches (agent)                                        | The policy facade returns `needs_verification`                |
 | Reconcile, render | controller only                                                  | Policy is final for every observation                         |
+
+`start` also derives the changed surface with `changed-surface.mjs`: whether Go changed, and which dependency manifests changed. When Go changed, the evidence plan must include `go_build`, `go_lint`, and `go_test`; the controller fills in `go build ./...`, `npm run lint:go`, and `go test ./pkg/...` for any the plan omits, and rejects `not_applicable` for them. When a dependency manifest changed, the security specialist and the security observer are asked to audit only the added or changed packages and to date their advisory source; when the intent has an evidence cutoff, advisory data after it cannot support a finding. No audit runs otherwise.
+
+Observer, contract-specialist, and skeptic briefs ask for evidence that fits the claim. A runtime-dependent or contested claim needs a focused test, a probe, or a mutant where feasible, with its argv and result. A statically demonstrable defect needs the file:line path from the entry point to the failure. Neither every regression nor every missing test needs a probe or a finding.
 
 The route result must map every changed file to routed concerns or to an explicit gap. In a full review it must route every always-on concern. In an incremental review an always-on concern that is not routed needs a `concern_gaps` entry. When the security gate triggers, the controller marks the security specialist itself.
 
@@ -71,7 +85,18 @@ Every failed check and every contradicted probe needs a resolution:
 - `claim_refuted` (probes only): the probe disproved the worker's claim, and synthesis sees it.
 - `environment`: the review is incomplete.
 
-Each efficacy record carries a `failure_kind` of `assertion`, `setup`, or `unknown`. The ledger still records any failure as `fails_without_fix`, as `/review` does. `status` lists setup failures under `evidence_quality`. Changing a disposition because of this distinction would be a separate policy change.
+The controller classifies each efficacy revert from its captured output, and the ledger records the class with a one-line `evidence` signature:
+
+- `inconclusive_setup`: a setup, import, module-resolution, or compile failure, such as jest `Test suite failed to run`, `Cannot find module`, a TypeScript error, or a Go `[build failed]` or `file.go:line:col:` compile error. The test never exercised the behavior.
+- `fails_on_behavior`: an assertion failed (`expect(...)`, `Expected:`/`Received:`, `AssertionError`, or a Go `--- FAIL` with a `_test.go:line:` assertion line).
+- `inconclusive_error`: the test errored without an assertion failure, such as an uncaught `TypeError` or a Go panic, and any output that matches none of these.
+- `passes_without_fix`: the run exited 0.
+
+Setup signatures are checked first, so a run that both fails to compile and fails an assertion is inconclusive. Only `fails_on_behavior` counts as a test that detects the regression; `status` lists inconclusive runs under `evidence_quality`.
+
+Root synthesis receives every `no_test_exists` and `passes_without_fix` entry as `efficacy_gaps` and must dispose each one in `efficacy_dispositions`, with the `finding_id` of an observation it keeps or adds, or a one-line reason it needs none. The controller rejects a synthesis result that leaves a gap undisposed or names a finding it does not keep. The ledger records the result as `disposition_note`.
+
+These are reporting rules (the stage ledger in `docs/design/PR_REVIEW.md`), not disposition policy: the classes and notes change what the `Checks:` line claims, and no observation's disposition depends on them.
 
 ## Evaluation kit
 
@@ -92,6 +117,7 @@ For the pilot, use 10 adjudicated cases with two fresh-context runs per arm. Use
 - Routing judgment stays with the agent. The controller makes omissions visible (every changed file and every always-on concern is accounted for), but it cannot prove the router chose every relevant neighbour. Coverage is per file, not per hunk.
 - The supervisor reports host agent IDs. The controller cannot verify them against the host's own metadata.
 - A baseline match checks the failure kind and one failing-result line, not the whole failure. Two different failures of the same test can still match.
-- An efficacy revert that fails at compile time is inconclusive evidence that the test is sensitive to the behavior. The ledger still counts it, as `/review` does; analyse it separately in the pilot.
+- Revert classification reads output signatures. A test runner with an unfamiliar output format is classified `inconclusive_error`, never as a behavioral failure.
 - Evidence cutoffs use commit dates. A commit pushed after the cutoff with an older date passes the cutoff check.
+- The meta-claim check on observation text matches known shapes of review talk. Prose that persuades without them passes, so audit skeptic inputs after a run.
 - Optional findings from round 1 do not carry into an incremental round unless they were deferred. This is the existing state-marker behaviour, not a new rule.

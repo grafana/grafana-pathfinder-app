@@ -1,0 +1,25 @@
+  console.warn
+    Failed to detect platform, defaulting to disabled: TypeError: Cannot read properties of undefined (reading 'versionString')
+        at versionString (<work>/constants.ts:264:56)
+FAIL src/utils/module-enablement.test.tsx
+  ● stays dormant in an image-renderer session even when enabled
+
+    expect(jest.fn()).not.toHaveBeenCalled()
+
+    Expected number of calls: 0
+    Received number of calls: 1
+
+    1: {"component": [Function ContextSidebar], "description": "Opens Interactive learning", "targets": "grafana/extension-sidebar/v0-alpha", "title": "Interactive learning"}
+
+      182 |     const { plugin, effects } = await boot(true, true);
+      183 |     plugin.init();
+    > 184 |     expect(plugin.addComponent).not.toHaveBeenCalled();
+          |                                     ^
+      185 |     expect(plugin.addLink).not.toHaveBeenCalled();
+      186 |     expect(effects.initializeConfiguredSurfaces).not.toHaveBeenCalled();
+      187 |   } finally {
+
+      at Object.toHaveBeenCalled (src/utils/module-enablement.test.tsx:184:37)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 15 passed, 16 total

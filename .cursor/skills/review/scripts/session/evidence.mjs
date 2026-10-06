@@ -11,7 +11,7 @@ const SETUP_FAILURE =
 const ASSERTION_FAILURE = /Tests:\s+\d+ failed|✕|AssertionError|Expected:|# fail [1-9]|--- FAIL:/;
 
 function git(cwd, args) {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: MAX_OUTPUT });
+  const result = spawnSync('git', ['--literal-pathspecs', ...args], { cwd, encoding: 'utf8', maxBuffer: MAX_OUTPUT });
   if (result.status !== 0) {
     throw new Error(`git ${args[0]} failed: ${(result.stderr || result.stdout).trim().slice(0, 400)}`);
   }
@@ -26,6 +26,102 @@ function lockfileIdentity(dir) {
 function nodeModulesIdentity(dir) {
   const path = join(dir, 'node_modules');
   return existsSync(path) ? realpathSync(path) : null;
+}
+
+const REVERT_SETUP = [
+  /Test suite failed to run/,
+  /Cannot find module/,
+  /ERR_MODULE_NOT_FOUND/,
+  /error TS\d+/,
+  /SyntaxError/,
+  /Jest encountered an unexpected token/,
+  /\[build failed\]/,
+  /\[setup failed\]/,
+  /\.go:\d+:\d+: /,
+];
+const REVERT_ASSERTION = [
+  /expect\(.*\)(?:\.(?:not|resolves|rejects))*\.\w+\(/,
+  /^\s*Expected\b.*:/,
+  /^\s*Received\b.*:/,
+  /^\s*- Expected\s+- \d+/,
+  /^\s*\+ Received\s+\+ \d+/,
+  /AssertionError|ERR_ASSERTION/,
+  /_test\.go:\d+: /,
+  /Error Trace:/,
+];
+const REVERT_ERROR = [
+  /\b(?:TypeError|ReferenceError|RangeError|EvalError|URIError)\b/,
+  /^panic: /,
+  /Uncaught|Unhandled/i,
+];
+const JEST_CODE_FRAME = /^\s*(?:>\s*)?\d*\s*\|/;
+const JEST_FAILURE_HEADER = /^\s*● /;
+const PASS_SUMMARY = /^\s*(?:Tests:\s+.*passed|ℹ pass \d+|ok\s+\S+)/;
+
+// An assertion whose received value is a missing-binding error (e.g. toThrow receiving "x is not a function")
+// never exercised the behavior; it is the reverted export disappearing, not the regression being caught.
+const RECEIVED_MISSING_BINDING =
+  /^\s*Received(?: message)?:.*\b(?:is not a function|is not defined|is not a constructor|Cannot read propert(?:y|ies) of (?:undefined|null))/;
+
+function failureBlocks(lines) {
+  const starts = lines.flatMap((line, index) => (JEST_FAILURE_HEADER.test(line) ? [index] : []));
+  if (starts.length === 0) {
+    return [{ head: null, lines }];
+  }
+  return starts.map((start, i) => {
+    const body = lines.slice(start + 1, starts[i + 1] ?? lines.length);
+    return { head: body.find((candidate) => candidate.trim() !== '') ?? null, lines: body };
+  });
+}
+
+function behavioralAssertion(blocks) {
+  for (const block of blocks) {
+    const candidates = block.head === null ? block.lines : [block.head];
+    const assertion = signatureLine(candidates, REVERT_ASSERTION);
+    if (assertion && !block.lines.some((line) => RECEIVED_MISSING_BINDING.test(line))) {
+      return assertion;
+    }
+  }
+  return null;
+}
+
+function signatureLine(lines, patterns) {
+  const line = lines.find((candidate) => patterns.some((pattern) => pattern.test(candidate)));
+  return line === undefined ? null : evidenceText(line);
+}
+
+function evidenceText(line) {
+  const text = line.replace(/\s+/g, ' ').trim().replaceAll('<!--', '< !--').replaceAll('-->', '-- >');
+  return text.length > 200 ? `${text.slice(0, 199)}…` : text;
+}
+
+export function classifyRevertRun({ exit_status: exitStatus, output }) {
+  const lines = output.split('\n').filter((line) => !JEST_CODE_FRAME.test(line));
+  if (exitStatus === 0) {
+    const summary = signatureLine(lines, [PASS_SUMMARY]);
+    return {
+      result: 'passes_without_fix',
+      evidence: `the test passed with the fix reverted (exit 0)${summary ? `: ${summary}` : ''}`,
+    };
+  }
+  const setup = signatureLine(lines, REVERT_SETUP);
+  if (setup) {
+    return { result: 'inconclusive_setup', evidence: setup };
+  }
+  const blocks = failureBlocks(lines);
+  const assertion = behavioralAssertion(blocks);
+  if (assertion) {
+    return { result: 'fails_on_behavior', evidence: assertion };
+  }
+  const heads = blocks.flatMap(({ head }) => (head === null ? [] : [head]));
+  const error =
+    signatureLine(heads, REVERT_ERROR) ??
+    signatureLine(lines, REVERT_ERROR) ??
+    signatureLine(lines, [RECEIVED_MISSING_BINDING]);
+  return {
+    result: 'inconclusive_error',
+    evidence: error ?? `exit ${exitStatus} with no recognised assertion failure or error signature`,
+  };
 }
 
 export function classifyFailure(output) {
@@ -185,6 +281,12 @@ export function executeCommandTask({ task, identity, sessionDir, store, readArti
     const kept =
       kind === 'baseline' ? overlayFromHead(worktree, identity.head_sha, task.spec.preserve_paths ?? []) : [];
     evidence = { ...runArgv({ argv: task.spec.argv, cwd: worktree, store }), worktree_sha: sha, reverted, kept };
+    if (kind === 'efficacy') {
+      evidence.revert = classifyRevertRun({
+        exit_status: evidence.exit_status,
+        output: outputOf(evidence, readArtifact),
+      });
+    }
   } catch (error) {
     evidence = { error: error.message, worktree_sha: sha };
   } finally {

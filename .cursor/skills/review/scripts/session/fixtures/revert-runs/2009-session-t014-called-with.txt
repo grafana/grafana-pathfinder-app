@@ -1,0 +1,48 @@
+  console.log
+    
+    🔑 Provisioning a service account for https://learn.grafana.net...
+
+      at log (src/cli/e2e/cloud-provisioning.ts:172:15)
+
+
+FAIL src/cli/e2e/cloud-provisioning.test.ts
+  ● ProvisionedCloudTargets › registers shared targets for interrupted-run cleanup
+
+    expect(jest.fn()).toHaveBeenCalledWith(...expected)
+
+    Expected: {"outcome": "cancelled", "used": true}
+
+    Number of calls: 0
+
+      131 |     expect(environment).toBeDefined();
+      132 |     expect(await registry.teardownAll({ outcome: 'cancelled', used: true })).toEqual([]);
+    > 133 |     expect(environment.teardownChain).toHaveBeenCalledWith({ outcome: 'cancelled', used: true });
+          |                                       ^
+      134 |     expect(await registry.teardownAll({ outcome: 'cancelled', used: true })).toEqual([]);
+      135 |     expect(environment.teardownChain).toHaveBeenCalledTimes(1);
+      136 |   });
+
+      at Object.toHaveBeenCalledWith (src/cli/e2e/cloud-provisioning.test.ts:133:39)
+
+  ● provisionCloudTargetsForChain › tears down already-provisioned targets when a later target fails
+
+    expect(jest.fn()).toHaveBeenCalledTimes(expected)
+
+    Expected number of calls: 1
+    Received number of calls: 0
+
+      288 |     expect(second).toBeDefined();
+      289 |     expect(first!.teardownChain).toHaveBeenCalledTimes(1);
+    > 290 |     expect(second!.teardownChain).toHaveBeenCalledTimes(1);
+          |                                   ^
+      291 |   });
+      292 |
+      293 |   it('leases one manager stack for an unsafe cloud chain', async () => {
+
+      at Object.toHaveBeenCalledTimes (src/cli/e2e/cloud-provisioning.test.ts:290:35)
+
+Test Suites: 1 failed, 1 total
+Tests:       2 failed, 12 passed, 14 total
+Snapshots:   0 total
+Time:        0.235 s
+Ran all test suites matching src/cli/e2e/cloud-provisioning.test.ts.

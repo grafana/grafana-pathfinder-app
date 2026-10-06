@@ -1,0 +1,26 @@
+FAIL src/utils/pathfinder-settings-network.test.ts
+  ● settings read recovery › bounds persistent failures without mutating either store (500)
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 2
+
+      Array [
+        undefined,
+    -   2,
+    -   3,
+    +   undefined,
+    +   undefined,
+      ]
+
+      89 |         .filter(([request]) => request.url.endsWith('/pathfinder-settings'))
+      90 |         .map(([request]) => request.params?.attempt)
+    > 91 |     ).toEqual([undefined, 2, 3]);
+         |       ^
+      92 |     expect(fetchMock.mock.calls.every(([request]) => request.method === 'GET')).toBe(true);
+      93 |   });
+      94 |
+
+      at toEqual (src/utils/pathfinder-settings-network.test.ts:91:7)
+

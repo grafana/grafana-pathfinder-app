@@ -275,10 +275,29 @@ function defaultAnswer(state, task, ctx, answers) {
         state,
         task,
         ctx,
-        task.spec.kind === 'efficacy' ? { exit_status: 1, failure_kind: 'assertion' } : {}
+        task.spec.kind === 'efficacy'
+          ? {
+              exit_status: 1,
+              failure_kind: 'assertion',
+              revert: { result: 'fails_on_behavior', evidence: 'expect(received).toEqual(expected)' },
+            }
+          : {}
       );
     case 'synthesis':
-      return submit(state, task, { merges: [], revisions: [], additions: answers.additions ?? [] }, ctx);
+      return submit(
+        state,
+        task,
+        {
+          merges: [],
+          revisions: [],
+          additions: answers.additions ?? [],
+          efficacy_dispositions: task.spec.efficacy_gaps.map(({ behavior }) => ({
+            behavior,
+            reason: 'covered by an existing integration test',
+          })),
+        },
+        ctx
+      );
     case 'skeptic':
       return submit(
         state,

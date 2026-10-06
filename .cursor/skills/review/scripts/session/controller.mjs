@@ -1,7 +1,9 @@
+import { computeChangedSurface } from '../changed-surface.mjs';
 import { buildReviewPlan } from '../concern-context.mjs';
 import { buildObservation } from '../contract-evolution-policy.mjs';
 import { advanceReviewPolicy, planVerificationBatches, reconcileReviewState } from '../review-policy.mjs';
 import { normalizeClearedEntry, parseReviewState } from '../review-report.mjs';
+import { assertNoMetaClaims, withheldFields } from '../skeptic-claim.mjs';
 import {
   applyEvent,
   CONTROLLER_VERSION,
@@ -15,6 +17,7 @@ import {
   tasksWhere,
   validateIdentity,
   validateReceipt,
+  validateIntent,
   validateTaskResult,
 } from './model.mjs';
 
@@ -82,6 +85,7 @@ export function buildIdentity(input, { effects, sharedInputs, tool }) {
     base_sha: input.base_sha,
     head_sha: input.head_sha,
     reviewer: input.reviewer,
+    intent: validateIntent(input.intent ?? null),
     mode,
     round,
     prior,
@@ -156,7 +160,7 @@ function stageScope(state, ctx) {
   const range = reviewRange(state.identity);
   const files = ctx.effects.changedFiles(range.from, range.to);
   return [
-    { type: 'scope_recorded', data: { range, files } },
+    { type: 'scope_recorded', data: { range, files, surfaces: computeChangedSurface({ files }) } },
     {
       type: 'gate_recorded',
       data: { gate: 'security', result: { range, ...ctx.effects.securityGate(range.from, range.to) } },
@@ -364,6 +368,7 @@ function stageEvidencePlan(state) {
         mode: state.identity.mode,
         change_class: route.result.change_class,
         changed_files: state.scope.files,
+        surfaces: state.scope.surfaces,
       },
     }),
   ];
@@ -585,7 +590,11 @@ function stageSynthesis(state) {
       role: 'synthesis',
       stage: 'synthesis',
       prerequisites: open.map(({ id }) => id),
-      spec: { refs, routed: routedConcerns(state).map(({ id }) => id) },
+      spec: {
+        refs,
+        routed: routedConcerns(state).map(({ id }) => id),
+        efficacy_gaps: efficacyRecords(state).filter(({ result }) => EFFICACY_GAPS.has(result)),
+      },
     }),
   ];
 }
@@ -596,6 +605,33 @@ function stageAdmit(state) {
     return [];
   }
   return [{ type: 'synthesis_applied', data: admitObservations(state, synthesis.result) }];
+}
+
+const EFFICACY_GAPS = new Set(['no_test_exists', 'passes_without_fix']);
+
+export function efficacyRecords(state) {
+  const plan = onlyTask(state, 'evidence_plan');
+  if (plan?.status !== 'completed') {
+    return [];
+  }
+  return plan.result.efficacy.flatMap((entry) => {
+    if (entry.result === 'no_test_exists') {
+      return [{ behavior: entry.behavior, test: null, result: 'no_test_exists', evidence: null, reason: entry.reason }];
+    }
+    const command = tasksWhere(
+      state,
+      (candidate) =>
+        candidate.role === 'command' && candidate.spec.kind === 'efficacy' && candidate.spec.behavior === entry.behavior
+    )[0];
+    if (command?.status !== 'completed' || command.result.error) {
+      return [];
+    }
+    const revert = command.result.revert ?? {
+      result: 'inconclusive_error',
+      evidence: 'the controller recorded no classification for this run',
+    };
+    return [{ behavior: entry.behavior, test: entry.test, result: revert.result, evidence: revert.evidence }];
+  });
 }
 
 export function liveRefs(state) {
@@ -691,7 +727,12 @@ function stagePolicy(state) {
       label: `${batch.role}-${batch.independent_role}`,
       concern_ids: [batch.concern_id],
       prerequisites: [synthesis.id],
-      spec: { ...batch, verification_role: batch.role, round_index: index },
+      spec: {
+        ...batch,
+        verification_role: batch.role,
+        round_index: index,
+        provenance: batch.finding_ids.map((id) => skepticProvenance(state, id)),
+      },
     });
     working = applyDraft(working, draft);
     drafts.push(draft);
@@ -701,6 +742,25 @@ function stagePolicy(state) {
     data: { index, task_ids: drafts.map(({ data }) => data.task.id) },
   });
   return drafts;
+}
+
+function skepticProvenance(state, findingId) {
+  const entry = state.admitted.find(({ observation }) => observation.finding_id === findingId);
+  const record = state.observations[entry.ref];
+  const source = (ref) => {
+    const task = state.tasks[state.observations[ref]?.source_task];
+    return task ? { ref, task: task.id, role: task.role, agent_id: task.receipt?.agent_id ?? null } : { ref };
+  };
+  return {
+    finding_id: findingId,
+    reported_by: record ? [source(entry.ref)] : [],
+    merged: Object.values(state.observations)
+      .filter(({ merged_into: into }) => into === entry.ref)
+      .map(({ ref }) => source(ref)),
+    revisions: (record?.revisions ?? []).map(({ reason }) => reason),
+    added_by_synthesis: entry.added_by_synthesis === true,
+    withheld_fields: withheldFields(entry.observation),
+  };
 }
 
 function stageReconcile(state) {
@@ -804,7 +864,88 @@ function normalizePriorCleared(result) {
   };
 }
 
-export function recordResult(state, { task_id, head, result, receipt, revise_reason }) {
+const META_REMEDY =
+  'Write it as a fact about the code, or leave it out. The controller records who reported each finding and every merge itself.';
+
+function rejectable(check) {
+  try {
+    return check();
+  } catch (error) {
+    throw Object.assign(new Error(error.message), { rejection: true });
+  }
+}
+
+function resultObservations(target, normalized) {
+  const labelled = (label, list) => list.map((observation, index) => [`${label}[${index}]`, observation]);
+  if (target.role === 'synthesis') {
+    return [
+      ...labelled(
+        'revisions',
+        normalized.revisions.map(({ observation }) => observation)
+      ),
+      ...labelled('additions', normalized.additions),
+    ];
+  }
+  const observations = isProducer(target.role)
+    ? producerObservations({ result: normalized })
+    : (normalized.observations ?? []);
+  return [
+    ...labelled('observations', observations),
+    ...(normalized.observation ? [['observation', normalized.observation]] : []),
+  ];
+}
+
+function checkedResult(state, target, result) {
+  let normalized = validateTaskResult(target, result);
+  if (target.role === 'prior_check') {
+    normalized = normalizePriorCleared(normalized);
+  }
+  for (const [label, observation] of resultObservations(target, normalized)) {
+    assertNoMetaClaims(observation, label, META_REMEDY);
+  }
+  if (target.role === 'synthesis') {
+    const { admitted } = admitObservations(state, normalized);
+    const findingIds = new Set(admitted.map(({ observation }) => observation.finding_id));
+    for (const entry of normalized.efficacy_dispositions) {
+      if (entry.finding_id !== undefined && !findingIds.has(entry.finding_id)) {
+        throw new Error(
+          `efficacy disposition for "${entry.behavior}" names finding ${entry.finding_id}, which synthesis does not keep or add`
+        );
+      }
+    }
+  }
+  return normalized;
+}
+
+export function correctionMessage({ task_id, error, submitted, next }) {
+  return [
+    `The controller rejected your result for task ${task_id}. The validator error, verbatim:`,
+    '',
+    error,
+    '',
+    `Write the corrected result as a new file, ${next}. Do not edit or delete ${submitted}; the controller keeps every submitted version. Then reply with the new path.`,
+  ].join('\n');
+}
+
+export function rejectResult(state, { task_id, head, raw_result, error }) {
+  const target = state.tasks[task_id];
+  if (!target || head !== state.identity.head_sha) {
+    throw new Error(error);
+  }
+  return { type: 'result_rejected', data: { task_id, raw_result, error } };
+}
+
+export function recordCoaching(state, { task_id, text }) {
+  if (!state.tasks[task_id]) {
+    throw new Error(`task ${task_id} does not exist in session ${state.identity.session_id}`);
+  }
+  if (typeof text !== 'string' || text.trim().length === 0 || text.length > 4000) {
+    throw new Error('coaching text must be non-empty and at most 4000 characters');
+  }
+  return { type: 'coaching_recorded', data: { task_id, text, text_sha256: sha256(text), recorded_by: 'supervisor' } };
+}
+
+export function recordResult(state, { task_id, head, result, receipt, revise_reason, raw_result = null }) {
   if (head !== state.identity.head_sha) {
     throw new Error(
       `result is pinned to ${head}, but this session reviews ${state.identity.head_sha}. A new head needs a new session`
@@ -817,16 +958,7 @@ export function recordResult(state, { task_id, head, result, receipt, revise_rea
   if (target.status === 'blocked') {
     throw new Error(`task ${task_id} is blocked; start a new session to retry it`);
   }
-  let normalized = validateTaskResult(target, result);
-  if (target.role === 'prior_check') {
-    normalized = normalizePriorCleared(normalized);
-  }
-  if (isProducer(target.role)) {
-    producerObservations({ result: normalized });
-  }
-  if (target.role === 'synthesis') {
-    admitObservations(state, normalized);
-  }
+  const normalized = rejectable(() => checkedResult(state, target, result));
   const hash = sha256(normalized);
   const checkedReceipt = validateReceipt(receipt, target);
   if (target.role === 'skeptic') {
@@ -852,7 +984,14 @@ export function recordResult(state, { task_id, head, result, receipt, revise_rea
     return {
       draft: {
         type: 'task_revised',
-        data: { task_id, result: normalized, result_hash: hash, receipt: checkedReceipt, reason: revise_reason },
+        data: {
+          task_id,
+          result: normalized,
+          result_hash: hash,
+          receipt: checkedReceipt,
+          reason: revise_reason,
+          raw_result,
+        },
       },
       output: { task_id, status: 'revised' },
     };
@@ -860,7 +999,7 @@ export function recordResult(state, { task_id, head, result, receipt, revise_rea
   return {
     draft: {
       type: 'task_completed',
-      data: { task_id, result: normalized, result_hash: hash, receipt: checkedReceipt },
+      data: { task_id, result: normalized, result_hash: hash, receipt: checkedReceipt, raw_result },
     },
     output: { task_id, status: 'recorded' },
   };

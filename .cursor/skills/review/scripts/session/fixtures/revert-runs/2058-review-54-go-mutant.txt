@@ -1,0 +1,3 @@
+--- FAIL: TestReadAttemptIsBounded (0.00s)
+    pathfinder_settings_test.go:149: "attempt=999": got 999, want 10
+FAIL

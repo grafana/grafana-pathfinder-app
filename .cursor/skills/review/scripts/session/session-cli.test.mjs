@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -171,7 +172,10 @@ test('the CLI drives a real repository review to a complete report with controll
     assert.equal(final.complete, true, JSON.stringify(final.obligations));
     const rendered = readFileSync(final.rendered_path, 'utf8');
     assert.match(rendered, /Verdict: Approve\n/);
-    assert.match(rendered, /revert checks: 1 of 1 tests fail without their fix/);
+    assert.match(
+      rendered,
+      /revert checks: 1 of 1 fail on behavior · 0 inconclusive \(setup\) · 0 inconclusive \(error\)/
+    );
     const events = readFileSync(join(sessionDir, 'events.jsonl'), 'utf8')
       .trim()
       .split('\n')
@@ -290,6 +294,7 @@ test('a fresh process resumes an incremental session with the original text of a
       stage_ledger: {
         mode: 'full',
         change_class: 'tests-only',
+        surfaces: { go: false },
         workers: { planned: 1, run: 1 },
         skeptic_batches: { required: 0, run: 0 },
         observations: { total: 1, through_policy: 1 },
@@ -329,6 +334,128 @@ test('a fresh process resumes an incremental session with the original text of a
       cli(['next', '--session', started.session_dir], { expectFailure: true }),
       /cannot be reconstructed from IDs/
     );
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(sessions, { recursive: true, force: true });
+  }
+});
+
+test('start takes the PR title and body from an intent file and hands them to the briefs', () => {
+  const repo = fixtureRepo();
+  const sessions = mkdtempSync(join(tmpdir(), 'review-sessions-'));
+  try {
+    const intentPath = join(sessions, 'intent.json');
+    writeFileSync(intentPath, JSON.stringify({ title: 'fix: add numbers', body: 'Extends add to sum numbers.' }));
+    const args = startArgs(repo, sessions).filter(
+      (arg, index, all) => arg !== '--title' && all[index - 1] !== '--title'
+    );
+    const view = cli([...args, '--intent-file', intentPath]);
+    const route = view.ready.find(({ role }) => role === 'route');
+    assert.equal(
+      JSON.parse(readFileSync(join(dirname(route.brief), 'input.json'), 'utf8')).pr_intent.body,
+      'Extends add to sum numbers.'
+    );
+    writeFileSync(intentPath, JSON.stringify({ title: 'another title', body: '' }));
+    assert.match(
+      cli([...startArgs(repo, sessions), '--intent-file', intentPath], { expectFailure: true }),
+      /--title and the intent file title differ/
+    );
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(sessions, { recursive: true, force: true });
+  }
+});
+
+function events(sessionDir) {
+  return readFileSync(join(sessionDir, 'events.jsonl'), 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+}
+
+const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
+test('a rejected result is kept byte for byte, answered with the verbatim error, and corrected as a new version', () => {
+  const repo = fixtureRepo();
+  const sessions = mkdtempSync(join(tmpdir(), 'review-sessions-'));
+  try {
+    let view = cli(startArgs(repo, sessions));
+    const sessionDir = view.session_dir;
+    let rejectedOnce = false;
+    let coached = false;
+    for (let guard = 0; guard < 40 && view.ready.length > 0; guard += 1) {
+      const [task] = view.ready;
+      if (task.executor === 'controller') {
+        view = cli(['exec', '--session', sessionDir, '--all-ready']);
+        continue;
+      }
+      if (task.role !== 'observer' || rejectedOnce) {
+        view = recordTask(sessionDir, repo.head, task, view);
+        continue;
+      }
+      rejectedOnce = true;
+      const bad = Buffer.from(
+        `{ "no_findings": [ { "concern_id": "${task.concern_ids[0]}", "status": "no_findings", "reason": "fine" } ] }\n\n`
+      );
+      writeFileSync(task.result, bad);
+      const argv = ['record', '--session', sessionDir, '--task', task.task_id, '--head', repo.head];
+      const rejected = spawnSync(
+        process.execPath,
+        [CLI, ...argv, '--result', task.result, '--agent-id', `agent-${task.task_id}`],
+        { encoding: 'utf8' }
+      );
+      assert.equal(rejected.status, 2, rejected.stderr);
+      const { recorded } = JSON.parse(rejected.stdout);
+      assert.equal(recorded.status, 'rejected');
+      assert.ok(recorded.correction.includes(`\n\n${recorded.error}\n\n`), 'the correction quotes the error verbatim');
+      assert.match(recorded.error, /no_findings\[0\]/);
+      assert.equal(recorded.next_result, join(dirname(task.result), 'result.v2.json'));
+      assert.ok(recorded.correction.includes(recorded.next_result));
+      assert.deepEqual(readFileSync(join(sessionDir, recorded.raw_result.ref)), bad);
+      assert.equal(recorded.raw_result.sha256, digest(bad));
+      const rejection = events(sessionDir).find(({ type }) => type === 'result_rejected');
+      assert.equal(rejection.data.raw_result.sha256, digest(bad));
+      assert.equal(rejection.data.error, recorded.error);
+
+      const textFile = join(sessions, 'coaching.txt');
+      writeFileSync(textFile, 'Use reviewed_clean when you checked the concern and found nothing.');
+      const coaching = cli(['coach', '--session', sessionDir, '--task', task.task_id, '--text-file', textFile]);
+      assert.equal(coaching.send_verbatim, 'Use reviewed_clean when you checked the concern and found nothing.');
+      const event = events(sessionDir).find(({ type }) => type === 'coaching_recorded');
+      assert.equal(event.data.text, coaching.send_verbatim);
+      assert.equal(event.data.task_id, task.task_id);
+      coached = true;
+
+      const good = Buffer.from(JSON.stringify(answerFor(task, view), null, 1));
+      writeFileSync(recorded.next_result, good);
+      view = cli([...argv, '--result', recorded.next_result, '--agent-id', `agent-${task.task_id}`]);
+      assert.equal(view.recorded.status, 'recorded');
+      const completed = events(sessionDir).find(
+        ({ type, data }) => type === 'task_completed' && data.task_id === task.task_id
+      );
+      assert.equal(completed.data.raw_result.sha256, digest(good));
+      assert.equal(completed.data.raw_result.submitted_path, recorded.next_result);
+      assert.deepEqual(readFileSync(join(sessionDir, completed.data.raw_result.ref)), good);
+      assert.deepEqual(readFileSync(join(sessionDir, recorded.raw_result.ref)), bad, 'the first version survives');
+      assert.deepEqual(readFileSync(task.result), bad);
+    }
+    assert.ok(rejectedOnce && coached);
+    const status = cli(['status', '--session', sessionDir]);
+    assert.deepEqual(status.raw_results.problems, []);
+    assert.ok(status.raw_results.recorded >= 2);
+    assert.equal(status.coaching.length, 1);
+
+    const rejection = events(sessionDir).find(({ type }) => type === 'result_rejected');
+    const rawPath = join(sessionDir, rejection.data.raw_result.ref);
+    const original = readFileSync(rawPath);
+    writeFileSync(rawPath, '{}');
+    assert.deepEqual(
+      cli(['status', '--session', sessionDir]).raw_results.problems.map(({ problem }) => problem),
+      ['altered']
+    );
+    assert.match(cli(['finalize', '--session', sessionDir], { expectFailure: true }), /altered or removed/);
+    writeFileSync(rawPath, original);
+    assert.equal(cli(['finalize', '--session', sessionDir]).complete, true);
   } finally {
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(sessions, { recursive: true, force: true });

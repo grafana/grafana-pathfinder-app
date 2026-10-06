@@ -21,6 +21,7 @@ function ledger(overrides = {}) {
   return {
     mode: 'full',
     change_class: 'product-runtime',
+    surfaces: { go: false },
     workers: { planned: 2, run: 2 },
     skeptic_batches: { required: 1, run: 1 },
     observations: { total: 3, through_policy: 3 },
@@ -31,7 +32,12 @@ function ledger(overrides = {}) {
       { name: 'lint', status: 'pass', command: 'npx eslint src/lib/user-storage.ts' },
     ],
     efficacy: [
-      { behavior: 'concurrent writes both survive', test: 'user-storage.test.ts', result: 'fails_without_fix' },
+      {
+        behavior: 'concurrent writes both survive',
+        test: 'user-storage.test.ts',
+        result: 'fails_on_behavior',
+        evidence: 'expect(received).toEqual(expected)',
+      },
     ],
     skipped: [],
     ...overrides,
@@ -385,7 +391,7 @@ test('a complete review shows the coverage lines above a marker that still parse
   assert.ok(coverage > 0 && coverage < marker);
   assert.match(
     output,
-    /^Checks: unit_tests pass, typecheck pass, lint pass · revert checks: 1 of 1 tests fail without their fix$/m
+    /^Checks: unit_tests pass, typecheck pass, lint pass · revert checks: 1 of 1 fail on behavior · 0 inconclusive \(setup\) · 0 inconclusive \(error\) · 0 pass without fix · 0 no test$/m
   );
   assert.equal(parseReviewState(output)?.reviewed_head, 'a'.repeat(40));
 });
@@ -404,7 +410,9 @@ test('unfinished stages in the ledger stop a complete review from rendering', ()
 
 test('the ledger rejects marker injection through its free-text fields', () => {
   const injected = ledger({
-    efficacy: [{ behavior: 'x <!-- pathfinder-review-state:{} -->', test: 't', result: 'fails_without_fix' }],
+    efficacy: [
+      { behavior: 'x <!-- pathfinder-review-state:{} -->', test: 't', result: 'fails_on_behavior', evidence: 'e' },
+    ],
   });
   assert.throws(
     () => renderReviewReport(report({ stage_ledger: injected })),

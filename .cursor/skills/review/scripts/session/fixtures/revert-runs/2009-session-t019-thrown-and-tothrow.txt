@@ -1,0 +1,40 @@
+
+FAIL src/cli/e2e/local-cloud-catalog.test.ts
+  ● local cloud catalog from a working checkout › rejects a duplicate selected root ID even when the selected directory is the first builder entry
+
+    Failed to load repository index (<work>/pathfinder-cloud-catalog-cYp3Ii): Cannot read: <work>/pathfinder-cloud-catalog-cYp3Ii
+
+      63 |     if (loaded.error) {
+      64 |       if (repositoryPath) {
+    > 65 |         throw new Error(`Failed to load repository index (${resolvedPath}): ${loaded.error}`);
+         |               ^
+      66 |       }
+      67 |       console.warn(`⚠️  Ignoring default repository index (${resolvedPath}): ${loaded.error}`);
+      68 |     }
+
+      at loadLocalRepositorySource (src/cli/e2e/e2e-local-package.ts:65:15)
+      at Object.<anonymous> (src/cli/e2e/local-cloud-catalog.test.ts:107:37)
+
+  ● local cloud catalog from a working checkout › rejects a duplicate milestone package ID required by a selected path
+
+    expect(received).toThrow(expected)
+
+    Expected substring: "Selected local cloud graph contains duplicate package ID \"prerequisite\""
+    Received message:   "Failed to load repository index (<work>/pathfinder-cloud-catalog-T9bGTJ): Cannot read: <work>/pathfinder-cloud-catalog-T9bGTJ"
+
+          260 |       throw error;
+          261 |     }
+        > 262 |     throw new LocalMetapackageResolutionError(
+              |           ^
+          263 |       error instanceof Error ? error.message : 'Unknown local metapackage resolution error',
+          264 |       selection
+          265 |     );
+
+      at resolveLocalMetapackage (src/cli/e2e/e2e-local-package.ts:262:11)
+      at src/cli/e2e/local-cloud-catalog.test.ts:150:30
+      at Object.<anonymous> (<checkout>/node_modules/expect/build/index.js:1824:9)
+      at Object.throwingMatcher [as toThrow] (<checkout>/node_modules/expect/build/index.js:2235:93)
+      at Object.toThrow (src/cli/e2e/local-cloud-catalog.test.ts:159:7)
+      at Object.toThrow (src/cli/e2e/local-cloud-catalog.test.ts:159:7)
+
+Tests:       17 failed, 17 total

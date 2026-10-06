@@ -7,6 +7,7 @@ function ledger(overrides = {}) {
   return {
     mode: 'full',
     change_class: 'product-runtime',
+    surfaces: { go: false },
     workers: { planned: 1, run: 1 },
     skeptic_batches: { required: 0, run: 0 },
     observations: { total: 2, through_policy: 2 },
@@ -16,7 +17,14 @@ function ledger(overrides = {}) {
       { name: 'typecheck', status: 'pass', command: 'npm run typecheck' },
       { name: 'lint', status: 'pass', command: 'npx eslint src/lib/a.ts' },
     ],
-    efficacy: [{ behavior: 'keeps both writes', test: 'a.test.ts', result: 'fails_without_fix' }],
+    efficacy: [
+      {
+        behavior: 'keeps both writes',
+        test: 'a.test.ts',
+        result: 'fails_on_behavior',
+        evidence: 'expect(received).toEqual(expected)',
+      },
+    ],
     skipped: [],
     ...overrides,
   };
@@ -69,8 +77,14 @@ test('a full review of changed behavior must record test efficacy, an incrementa
 test('efficacy records survivors honestly and a missing test needs no test name', () => {
   const survivors = ledger({
     efficacy: [
-      { behavior: 'wiring', test: 'a.test.ts', result: 'passes_without_fix' },
-      { behavior: 'untested mutator', result: 'no_test_exists' },
+      {
+        behavior: 'wiring',
+        test: 'a.test.ts',
+        result: 'passes_without_fix',
+        evidence: 'Tests: 3 passed, 3 total',
+        disposition_note: 'finding wiring-untested',
+      },
+      { behavior: 'untested mutator', result: 'no_test_exists', disposition_note: 'covered by the e2e suite' },
     ],
   });
   const normalized = normalizeStageLedger(survivors);
@@ -78,11 +92,134 @@ test('efficacy records survivors honestly and a missing test needs no test name'
     normalized.efficacy.map(({ test }) => test),
     ['a.test.ts', null]
   );
-  assert.match(renderCoverageLines(survivors)[1], /0 of 2 tests fail without their fix/);
+  assert.match(
+    renderCoverageLines(survivors)[1],
+    /revert checks: 0 of 2 fail on behavior · 0 inconclusive \(setup\) · 0 inconclusive \(error\) · 1 pass without fix · 1 no test$/
+  );
   assert.throws(
     () => normalizeStageLedger(ledger({ efficacy: [{ behavior: 'wiring', result: 'passes_without_fix' }] })),
     /efficacy test/
   );
+});
+
+test('the legacy fails_without_fix result is rejected with a request to classify it', () => {
+  const legacy = ledger({ efficacy: [{ behavior: 'x', test: 'a.test.ts', result: 'fails_without_fix' }] });
+  assert.throws(() => normalizeStageLedger(legacy), /fails_without_fix is retired\. Classify the reverted run/);
+});
+
+test('inconclusive reverts are counted apart from behavioral failures', () => {
+  const entry = (result, evidence) => ({ behavior: result, test: 'a.test.ts', result, evidence });
+  const mixed = ledger({
+    efficacy: [
+      entry('fails_on_behavior', 'Expected: 3'),
+      entry('inconclusive_setup', 'Cannot find module ./gone'),
+      entry('inconclusive_setup', 'pkg/plugin/app.go:12:3: undefined: proxy'),
+      entry('inconclusive_error', 'TypeError: x is not a function'),
+    ],
+  });
+  assert.match(
+    renderCoverageLines(mixed)[1],
+    /revert checks: 1 of 4 fail on behavior · 2 inconclusive \(setup\) · 1 inconclusive \(error\) · 0 pass without fix · 0 no test$/
+  );
+});
+
+test('every run revert carries evidence, and every untested or surviving behavior a disposition note', () => {
+  const run = { behavior: 'x', test: 'a.test.ts' };
+  assert.throws(
+    () => normalizeStageLedger(ledger({ efficacy: [{ ...run, result: 'fails_on_behavior' }] })),
+    /efficacy fails_on_behavior evidence/
+  );
+  assert.throws(
+    () => normalizeStageLedger(ledger({ efficacy: [{ ...run, result: 'passes_without_fix', evidence: 'exit 0' }] })),
+    /efficacy passes_without_fix disposition_note/
+  );
+  assert.throws(
+    () => normalizeStageLedger(ledger({ efficacy: [{ behavior: 'y', result: 'no_test_exists' }] })),
+    /efficacy no_test_exists disposition_note/
+  );
+  const noted = normalizeStageLedger(
+    ledger({ efficacy: [{ behavior: 'y', result: 'no_test_exists', disposition_note: 'finding y-untested' }] })
+  );
+  assert.deepEqual(noted.efficacy[0], {
+    behavior: 'y',
+    test: null,
+    result: 'no_test_exists',
+    evidence: null,
+    disposition_note: 'finding y-untested',
+  });
+});
+
+const GO = [
+  { name: 'go_build', status: 'pass', command: 'go build ./...' },
+  { name: 'go_lint', status: 'pass', command: 'npm run lint:go' },
+  { name: 'go_test', status: 'pass', command: 'go test ./pkg/...' },
+];
+
+test('the surfaces field is required and comes from changed-surface.mjs', () => {
+  const { surfaces: _omitted, ...withoutSurfaces } = ledger();
+  assert.throws(() => normalizeStageLedger(withoutSurfaces), /stage_ledger surfaces must be an object/);
+  assert.throws(() => normalizeStageLedger(ledger({ surfaces: { go: 'yes' } })), /surfaces\.go must be the boolean/);
+  assert.throws(
+    () => normalizeStageLedger(ledger({ surfaces: { go: false, frontend: true } })),
+    /unknown stage_ledger surfaces field: frontend/
+  );
+});
+
+test('a legacy ledger names both upgrades at once: surfaces from changed-surface.mjs and classified reverts', () => {
+  const { surfaces: _omitted, ...legacy } = ledger({
+    efficacy: [{ behavior: 'x', test: 'a.test.ts', result: 'fails_without_fix' }],
+  });
+  assert.throws(
+    () => normalizeStageLedger(legacy),
+    (error) =>
+      /surfaces must be an object/.test(error.message) &&
+      /changed-surface\.mjs --base <base-sha> --head <head-sha>/.test(error.message) &&
+      /fails_without_fix is retired\. Classify the reverted run/.test(error.message)
+  );
+});
+
+test('a Go change requires go_build, go_lint, and go_test, shown on the Checks line', () => {
+  assert.throws(() => normalizeStageLedger(ledger({ surfaces: { go: true } })), /missing go_build, go_lint, go_test/);
+  const withGo = ledger({ surfaces: { go: true }, checks: [...ledger().checks, ...GO] });
+  assert.match(
+    renderCoverageLines(withGo)[1],
+    /^Checks: unit_tests pass, typecheck pass, lint pass, go_build pass, go_lint pass, go_test pass · /
+  );
+  const docsOnlyGo = ledger({
+    change_class: 'docs-only',
+    surfaces: { go: true },
+    efficacy: [],
+    checks: [{ name: 'lint', status: 'pass', command: 'npx prettier --check docs' }],
+  });
+  assert.throws(() => normalizeStageLedger(docsOnlyGo), /missing go_build, go_lint, go_test/);
+});
+
+test('a Go check cannot be not_applicable when Go changed, even with consent; a consented skip omits it', () => {
+  const notApplicable = { name: 'go_lint', status: 'not_applicable', reason: 'no golangci-lint here' };
+  const checks = [...ledger().checks, GO[0], notApplicable, GO[2]];
+  assert.throws(
+    () => normalizeStageLedger(ledger({ surfaces: { go: true }, checks })),
+    /go_lint cannot be not_applicable when Go changed/
+  );
+  assert.throws(
+    () => normalizeStageLedger(ledger({ surfaces: { go: true }, checks, skipped: [consent('go_lint')] })),
+    (error) =>
+      /go_lint cannot be not_applicable when Go changed/.test(error.message) &&
+      /already has a consented skip, so remove its check entry/.test(error.message) &&
+      !/quote the user's consent/.test(error.message)
+  );
+  const skipped = normalizeStageLedger(
+    ledger({ surfaces: { go: true }, checks: [...ledger().checks, GO[0], GO[2]], skipped: [consent('go_lint')] })
+  );
+  assert.deepEqual(skipped.checks.at(-1), { name: 'go_lint', status: 'skipped' });
+});
+
+test('without a Go change the Go checks may be omitted or recorded', () => {
+  assert.equal(normalizeStageLedger(ledger()).checks.length, 3);
+  const recorded = normalizeStageLedger(
+    ledger({ checks: [...ledger().checks, { name: 'go_lint', status: 'not_applicable', reason: 'no Go changed' }] })
+  );
+  assert.equal(recorded.checks.at(-1).status, 'not_applicable');
 });
 
 function consent(stage) {
@@ -123,6 +260,11 @@ test('each consented skip waives exactly its matching stage', () => {
     ['unit_tests', { checks: ledger().checks.filter(({ name }) => name !== 'unit_tests') }, /missing unit_tests/],
     ['typecheck', { checks: ledger().checks.filter(({ name }) => name !== 'typecheck') }, /missing typecheck/],
     ['lint', { checks: ledger().checks.filter(({ name }) => name !== 'lint') }, /missing lint/],
+    ...['go_build', 'go_lint', 'go_test'].map((name) => [
+      name,
+      { surfaces: { go: true }, checks: [...ledger().checks, ...GO.filter((check) => check.name !== name)] },
+      new RegExp(`missing ${name}`),
+    ]),
     ['test_efficacy', { efficacy: [] }, /efficacy is empty/],
   ];
   for (const [stage, gap, expected] of cases) {
