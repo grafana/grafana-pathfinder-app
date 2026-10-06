@@ -25,3 +25,10 @@ jobs:
           persist-credentials: false
 
       - uses: grafana/plugin-actions/bundle-size@4698961fa64137fcac207108397ebe8a738a33d1
+        with:
+          node-version: '24'
+
+      - name: Enforce initial JavaScript budget
+        env:
+          STATS_FILE: ${{ github.event_name == 'pull_request' && 'pr-stats.json' || 'stats.json' }}
+        run: node scripts/check-bundle-budget.js "$STATS_FILE"

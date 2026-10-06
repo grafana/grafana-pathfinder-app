@@ -1,10 +1,10 @@
 import { AppPlugin, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
-import React, { lazy, Suspense, useEffect } from 'react';
-import { LoadingPlaceholder } from '@grafana/ui';
+import React, { useEffect } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { logger } from './lib/logging';
 import { retryChunkImport } from './lib/retry-chunk-import';
-import { initPluginTranslations } from '@grafana/i18n';
+import { createTranslatedComponent } from './components/App/TranslatedComponent';
+import { ensurePluginTranslations, loadTranslatedModule } from './lib/plugin-translations';
 import pluginJson from './plugin.json';
 import { initializeConfiguredSurfaces } from './utils/configured-bootstrap';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
@@ -46,6 +46,11 @@ const earlySuggestListener = ((event: CustomEvent) => {
   pendingSuggestEvents.push(event);
 }) as EventListener;
 document.addEventListener('pathfinder-suggest', earlySuggestListener);
+
+const startupLink = parsePathfinderDeepLink(window.location.search);
+if (startupLink.pathfinderKiosk && !startupLink.doc && !startupLink.controller) {
+  void ensurePluginTranslations().catch((error: unknown) => logger.exception(error, { source: 'Kiosk translations' }));
+}
 
 // Initialize OpenFeature provider for dynamic feature flag evaluation
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
@@ -129,25 +134,22 @@ if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) 
   }
 }
 
-// Initialize translations
-await initPluginTranslations(pluginJson.id);
+const LazyApp = createTranslatedComponent(() => import('./components/App/App'));
+const LazyPathfinderDisabled = createTranslatedComponent(async () => ({
+  default: (await import('./components/App/PathfinderDisabled')).PathfinderDisabled,
+}));
+const LazyContextPanel = createTranslatedComponent(() => import('./components/App/ContextPanel'));
+const LazyAppConfig = createTranslatedComponent(() => import('./components/AppConfig/AppConfig'));
+const LazyTermsAndConditions = createTranslatedComponent(() => import('./components/AppConfig/TermsAndConditions'));
+const LazyInteractiveFeatures = createTranslatedComponent(() => import('./components/AppConfig/InteractiveFeatures'));
+const LazyGuideReaderOverlay = createTranslatedComponent(async () => ({
+  default: (await import('./components/guide-reader/GuideReaderOverlay')).GuideReaderOverlay,
+}));
+const LazyFloatingPanelManager = createTranslatedComponent(async () => ({
+  default: (await import('./components/floating-panel/FloatingPanelManager')).FloatingPanelManager,
+}));
 
-const LazyApp = lazy(() => import('./components/App/App'));
-const LazyPathfinderDisabled = lazy(() =>
-  import('./components/App/PathfinderDisabled').then(({ PathfinderDisabled }) => ({
-    default: PathfinderDisabled,
-  }))
-);
-const LazyContextPanel = lazy(() => import('./components/App/ContextPanel'));
-const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
-const LazyTermsAndConditions = lazy(() => import('./components/AppConfig/TermsAndConditions'));
-const LazyInteractiveFeatures = lazy(() => import('./components/AppConfig/InteractiveFeatures'));
-
-const App = (props: AppRootProps) => (
-  <Suspense fallback={<LoadingPlaceholder text="" />}>
-    {pathfinderEnabled ? <LazyApp {...props} /> : <LazyPathfinderDisabled />}
-  </Suspense>
-);
+const App = (props: AppRootProps) => (pathfinderEnabled ? <LazyApp {...props} /> : <LazyPathfinderDisabled />);
 
 const plugin = new AppPlugin<{}>()
   .setRootPage(App)
@@ -214,17 +216,17 @@ plugin.init = function () {
           container.id = 'pathfinder-controller-root';
           document.body.appendChild(container);
           reportPathfinderSurface('controller');
-          import('./components/guide-reader/GuideReaderOverlay')
-            .then(async ({ GuideReaderOverlay }) => {
-              const { createCompatRoot } = await import('./lib/create-root-compat');
+          retryChunkImport(() => import('./lib/create-root-compat'))
+            .then(async ({ createCompatRoot }) => {
               const root = await createCompatRoot(container);
               root.render(
-                React.createElement(GuideReaderOverlay, { doc: docsParam, mode: 'controller', controllerPairing })
+                React.createElement(LazyGuideReaderOverlay, { doc: docsParam, mode: 'controller', controllerPairing })
               );
             })
             .catch((err) => {
               logger.error('[Pathfinder] Failed to load interactive controller', { error: err });
               container.remove();
+              reportPathfinderSurfaceClosed('controller');
             });
         }
       },
@@ -243,7 +245,7 @@ plugin.init = function () {
               bannerContainer.remove();
             });
         }
-        import('./integrations/cross-tab/live-tab-executor')
+        loadTranslatedModule(() => import('./integrations/cross-tab/live-tab-executor'))
           .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
           .catch((err) => logger.error('[Pathfinder] Failed to load cross-tab executor', { error: err }));
       },
@@ -296,19 +298,16 @@ plugin.init = function () {
     if (document.getElementById('pathfinder-floating-root')) {
       return;
     }
-    import('./components/floating-panel/FloatingPanelManager')
-      .then(async ({ FloatingPanelManager }) => {
-        if (document.getElementById('pathfinder-floating-root')) {
-          return;
-        }
-        const { createCompatRoot } = await import('./lib/create-root-compat');
-        const container = document.createElement('div');
-        container.id = 'pathfinder-floating-root';
-        document.body.appendChild(container);
+    const container = document.createElement('div');
+    container.id = 'pathfinder-floating-root';
+    document.body.appendChild(container);
+    retryChunkImport(() => import('./lib/create-root-compat'))
+      .then(async ({ createCompatRoot }) => {
         const root = await createCompatRoot(container);
-        root.render(React.createElement(FloatingPanelManager));
+        root.render(React.createElement(LazyFloatingPanelManager));
       })
       .catch((err) => {
+        container.remove();
         logger.error('[Pathfinder] Failed to load floating panel', { error: err });
       });
   };
@@ -386,11 +385,7 @@ if (pathfinderEnabled) {
         };
       }, []);
 
-      return (
-        <Suspense fallback={<LoadingPlaceholder text="" />}>
-          <LazyContextPanel />
-        </Suspense>
-      );
+      return <LazyContextPanel />;
     },
   });
 

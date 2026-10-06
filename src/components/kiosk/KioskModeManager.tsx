@@ -1,11 +1,15 @@
 import React, { useEffect, useCallback, useSyncExternalStore, useState } from 'react';
 import { ThemeContext } from '@grafana/data';
 import { config } from '@grafana/runtime';
-import { KioskOverlay } from './KioskOverlay';
+import { createTranslatedComponent } from '../App/TranslatedComponent';
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../../lib/telemetry/surface';
 import { sidebarState } from '../../global-state/sidebar';
 import { kioskState } from '../../global-state/kiosk';
 import { clearKioskLaunchParams } from '../../utils/kiosk-navigation';
+
+const KioskOverlay = createTranslatedComponent(async () => ({
+  default: (await import('./KioskOverlay')).KioskOverlay,
+}));
 
 interface KioskModeManagerProps {
   rulesUrl: string;

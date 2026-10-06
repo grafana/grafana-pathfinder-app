@@ -6,6 +6,13 @@ import * as ts from 'typescript';
 import { render, screen, waitFor } from '@testing-library/react';
 import { getConfigWithDefaults } from '../constants';
 import { resolvePathfinderAvailability } from './pathfinder-enablement';
+import type { DeepLinkParams } from './pathfinder-search-params';
+import { createTranslatedComponent } from '../components/App/TranslatedComponent';
+
+jest.mock('../lib/plugin-translations', () => ({
+  loadTranslatedModule: async (load: () => Promise<unknown>) => load(),
+}));
+
 import { retryChunkImport } from '../lib/retry-chunk-import';
 
 // Wrap the compiled entrypoint to execute its top-level awaits under Jest's CommonJS runtime.
@@ -27,7 +34,9 @@ async function boot(
   surfaceReported?: boolean,
   panelMode = 'floating',
   failedImports: Record<string, number> = {},
-  flags: Record<string, boolean> = {}
+  flags: Record<string, boolean> = {},
+  deepLink: DeepLinkParams = { doc: 'bundled:test' },
+  translationReady: Promise<void> = Promise.resolve()
 ) {
   const settings = readFailed ? undefined : getConfigWithDefaults({ pathfinderEnabled: tenant });
   const root = { component: undefined as React.ComponentType | undefined };
@@ -53,6 +62,9 @@ async function boot(
     recordStartupSettings: jest.fn(),
     onPathfinderSurfaceChange: jest.fn().mockReturnValue(jest.fn()),
     setInterceptionEnabled: jest.fn(),
+    ensurePluginTranslations: jest.fn().mockReturnValue(translationReady),
+    initializeOpenFeature: jest.fn().mockResolvedValue(undefined),
+    createCompatRoot: jest.fn(async () => ({ render: jest.fn() })),
   };
   const modules: Record<string, unknown> = {
     react: React,
@@ -63,7 +75,11 @@ async function boot(
       PluginExtensionPoints: { CommandPalette: 'command-palette' },
     },
     '@grafana/ui': { LoadingPlaceholder: () => null },
-    '@grafana/i18n': { initPluginTranslations: async () => {} },
+    './components/App/TranslatedComponent': { createTranslatedComponent },
+    './lib/plugin-translations': {
+      ensurePluginTranslations: effects.ensurePluginTranslations,
+      loadTranslatedModule: async (load: () => Promise<unknown>) => load(),
+    },
     './lib/analytics': { reportAppInteraction: jest.fn(), UserInteraction: {}, bindExperimentsProvider: jest.fn() },
     './lib/retry-chunk-import': { retryChunkImport },
     './lib/logging': { logger: { exception: jest.fn(), error: jest.fn(), warn: jest.fn() } },
@@ -85,7 +101,7 @@ async function boot(
     './global-state/suggestion': { suggestionState: {} },
     './utils/pathfinder-deep-link-handler': effects,
     './utils/pathfinder-search-params': {
-      parsePathfinderDeepLink: () => ({ doc: 'bundled:test' }),
+      parsePathfinderDeepLink: () => deepLink,
       parseControllerPairingHash: () => null,
     },
     './lib/storage/extension-sidebar': {
@@ -102,7 +118,7 @@ async function boot(
     './lib/telemetry/facade': effects,
     './lib/telemetry/session': { stampSessionExperiments: jest.fn() },
     './utils/openfeature': {
-      initializeOpenFeature: async () => {},
+      initializeOpenFeature: effects.initializeOpenFeature,
       getFeatureFlagValue: (key: string) =>
         key === 'pathfinder.enabled'
           ? remote
@@ -119,7 +135,7 @@ async function boot(
     './utils/sidebar-auto-open': { getCurrentPath: () => '/', attemptAutoOpen: jest.fn() },
     './completion-records/completion-write-hook': effects,
     './components/floating-panel/FloatingPanelManager': { FloatingPanelManager: () => null },
-    './lib/create-root-compat': { createCompatRoot: async () => ({ render: jest.fn() }) },
+    './lib/create-root-compat': effects,
     './components/App/App': { default: () => <div>Learning app</div>, __esModule: true },
     './components/App/PathfinderDisabled': {
       PathfinderDisabled: () => <div>Disabled</div>,
@@ -311,4 +327,56 @@ it('recovers the completion subscriber without delaying synchronous navigation s
   } finally {
     jest.useRealTimers();
   }
+});
+
+it('releases a failed floating mount claim and allows a later activation to recover', async () => {
+  jest.useFakeTimers();
+  document.getElementById('pathfinder-floating-root')?.remove();
+  try {
+    const { plugin, effects } = await boot(true, true, false, undefined, undefined, undefined, 'floating', {
+      './lib/create-root-compat': 4,
+    });
+    plugin.init();
+    plugin.init();
+    expect(document.querySelectorAll('#pathfinder-floating-root')).toHaveLength(1);
+    expect(effects.installDeepLinkNavListener).toHaveBeenCalled();
+    await jest.runAllTimersAsync();
+    expect(document.getElementById('pathfinder-floating-root')).toBeNull();
+    plugin.init();
+    await jest.runAllTimersAsync();
+    expect(effects.createCompatRoot).toHaveBeenCalledTimes(1);
+    expect(document.querySelectorAll('#pathfinder-floating-root')).toHaveLength(1);
+  } finally {
+    document.getElementById('pathfinder-floating-root')?.remove();
+    jest.useRealTimers();
+  }
+});
+
+it.each<DeepLinkParams>([
+  {},
+  { pathfinderKiosk: true, doc: 'bundled:test' },
+  { pathfinderKiosk: true, controller: true },
+])('does not preload translations without an unambiguous kiosk launch: %j', async (link) => {
+  const { effects } = await boot(true, true, false, undefined, undefined, undefined, 'sidebar', {}, {}, link);
+  expect(effects.ensurePluginTranslations).not.toHaveBeenCalled();
+});
+
+it('starts kiosk translations before asynchronous bootstrap without waiting for them', async () => {
+  const { effects } = await boot(
+    true,
+    true,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    'sidebar',
+    {},
+    {},
+    { pathfinderKiosk: true },
+    new Promise<void>(() => {})
+  );
+  expect(effects.ensurePluginTranslations).toHaveBeenCalledTimes(1);
+  expect(effects.ensurePluginTranslations.mock.invocationCallOrder[0]).toBeLessThan(
+    effects.initializeOpenFeature.mock.invocationCallOrder[0]!
+  );
 });
