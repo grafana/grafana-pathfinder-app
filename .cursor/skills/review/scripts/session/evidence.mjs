@@ -1,0 +1,307 @@
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { sha256, validateArgv, validateRepoPath } from './model.mjs';
+
+const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
+const MAX_OUTPUT = 32 * 1024 * 1024;
+const SETUP_FAILURE =
+  /Test suite failed to run|Cannot find module|SyntaxError|error TS\d+|Jest encountered an unexpected token|ERR_MODULE_NOT_FOUND|\[build failed\]|\[setup failed\]/;
+const ASSERTION_FAILURE = /Tests:\s+\d+ failed|✕|AssertionError|Expected:|# fail [1-9]|--- FAIL:/;
+
+function git(cwd, args) {
+  const result = spawnSync('git', ['--literal-pathspecs', ...args], { cwd, encoding: 'utf8', maxBuffer: MAX_OUTPUT });
+  if (result.status !== 0) {
+    throw new Error(`git ${args[0]} failed: ${(result.stderr || result.stdout).trim().slice(0, 400)}`);
+  }
+  return result.stdout.trim();
+}
+
+function lockfileIdentity(dir) {
+  const path = join(dir, 'package-lock.json');
+  return existsSync(path) ? sha256(readFileSync(path, 'utf8')) : null;
+}
+
+function nodeModulesIdentity(dir) {
+  const path = join(dir, 'node_modules');
+  return existsSync(path) ? realpathSync(path) : null;
+}
+
+const REVERT_SETUP = [
+  /Test suite failed to run/,
+  /Cannot find module/,
+  /ERR_MODULE_NOT_FOUND/,
+  /error TS\d+/,
+  /SyntaxError/,
+  /Jest encountered an unexpected token/,
+  /\[build failed\]/,
+  /\[setup failed\]/,
+  /\.go:\d+:\d+: /,
+];
+const REVERT_ASSERTION = [
+  /expect\(.*\)(?:\.(?:not|resolves|rejects))*\.\w+\(/,
+  /^\s*Expected\b.*:/,
+  /^\s*Received\b.*:/,
+  /^\s*- Expected\s+- \d+/,
+  /^\s*\+ Received\s+\+ \d+/,
+  /AssertionError|ERR_ASSERTION/,
+  /_test\.go:\d+: /,
+  /Error Trace:/,
+];
+const REVERT_ERROR = [
+  /\b(?:TypeError|ReferenceError|RangeError|EvalError|URIError)\b/,
+  /^panic: /,
+  /Uncaught|Unhandled/i,
+];
+const JEST_CODE_FRAME = /^\s*(?:>\s*)?\d*\s*\|/;
+const JEST_FAILURE_HEADER = /^\s*● /;
+const PASS_SUMMARY = /^\s*(?:Tests:\s+.*passed|ℹ pass \d+|ok\s+\S+)/;
+
+// An assertion whose received value is a missing-binding error (e.g. toThrow receiving "x is not a function")
+// never exercised the behavior; it is the reverted export disappearing, not the regression being caught.
+const RECEIVED_MISSING_BINDING =
+  /^\s*Received(?: message)?:.*\b(?:is not a function|is not defined|is not a constructor|Cannot read propert(?:y|ies) of (?:undefined|null))/;
+
+function failureBlocks(lines) {
+  const starts = lines.flatMap((line, index) => (JEST_FAILURE_HEADER.test(line) ? [index] : []));
+  if (starts.length === 0) {
+    return [{ head: null, lines }];
+  }
+  return starts.map((start, i) => {
+    const body = lines.slice(start + 1, starts[i + 1] ?? lines.length);
+    return { head: body.find((candidate) => candidate.trim() !== '') ?? null, lines: body };
+  });
+}
+
+function behavioralAssertion(blocks) {
+  for (const block of blocks) {
+    const candidates = block.head === null ? block.lines : [block.head];
+    const assertion = signatureLine(candidates, REVERT_ASSERTION);
+    if (assertion && !block.lines.some((line) => RECEIVED_MISSING_BINDING.test(line))) {
+      return assertion;
+    }
+  }
+  return null;
+}
+
+function signatureLine(lines, patterns) {
+  const line = lines.find((candidate) => patterns.some((pattern) => pattern.test(candidate)));
+  return line === undefined ? null : evidenceText(line);
+}
+
+function evidenceText(line) {
+  const text = line.replace(/\s+/g, ' ').trim().replaceAll('<!--', '< !--').replaceAll('-->', '-- >');
+  return text.length > 200 ? `${text.slice(0, 199)}…` : text;
+}
+
+export function classifyRevertRun({ exit_status: exitStatus, output }) {
+  const lines = output.split('\n').filter((line) => !JEST_CODE_FRAME.test(line));
+  if (exitStatus === 0) {
+    const summary = signatureLine(lines, [PASS_SUMMARY]);
+    return {
+      result: 'passes_without_fix',
+      evidence: `the test passed with the fix reverted (exit 0)${summary ? `: ${summary}` : ''}`,
+    };
+  }
+  const setup = signatureLine(lines, REVERT_SETUP);
+  if (setup) {
+    return { result: 'inconclusive_setup', evidence: setup };
+  }
+  const blocks = failureBlocks(lines);
+  const assertion = behavioralAssertion(blocks);
+  if (assertion) {
+    return { result: 'fails_on_behavior', evidence: assertion };
+  }
+  const heads = blocks.flatMap(({ head }) => (head === null ? [] : [head]));
+  const error =
+    signatureLine(heads, REVERT_ERROR) ??
+    signatureLine(lines, REVERT_ERROR) ??
+    signatureLine(lines, [RECEIVED_MISSING_BINDING]);
+  return {
+    result: 'inconclusive_error',
+    evidence: error ?? `exit ${exitStatus} with no recognised assertion failure or error signature`,
+  };
+}
+
+export function classifyFailure(output) {
+  if (ASSERTION_FAILURE.test(output)) {
+    return 'assertion';
+  }
+  return SETUP_FAILURE.test(output) ? 'setup' : 'unknown';
+}
+
+function commandEnvironment() {
+  const { NODE_TEST_CONTEXT: _testRunner, ...inherited } = process.env;
+  return { ...inherited, CI: inherited.CI ?? 'true', FORCE_COLOR: '0' };
+}
+
+export function runArgv({ argv, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, store }) {
+  validateArgv(argv, 'argv');
+  const started = Date.now();
+  const result = spawnSync(argv[0], argv.slice(1), {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: MAX_OUTPUT,
+    timeout: timeoutMs,
+    env: commandEnvironment(),
+  });
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  return {
+    argv,
+    cwd,
+    code_head: git(cwd, ['rev-parse', 'HEAD']),
+    exit_status: result.status,
+    signal: result.signal,
+    spawn_error: result.error ? result.error.message : null,
+    duration_ms: Date.now() - started,
+    stdout_ref: store(stdout).ref,
+    stderr_ref: store(stderr).ref,
+    failure_kind: result.status === 0 ? null : classifyFailure(`${stdout}\n${stderr}`),
+    environment: {
+      node: process.version,
+      platform: process.platform,
+      lockfile_sha256: lockfileIdentity(cwd),
+      node_modules: nodeModulesIdentity(cwd),
+    },
+  };
+}
+
+function addWorktree(repoDir, path, sha) {
+  git(repoDir, ['worktree', 'add', '--detach', path, sha]);
+  const modules = join(repoDir, 'node_modules');
+  if (existsSync(modules)) {
+    symlinkSync(realpathSync(modules), join(path, 'node_modules'));
+  }
+}
+
+function removeWorktree(repoDir, path) {
+  const result = spawnSync('git', ['worktree', 'remove', '--force', path], { cwd: repoDir, encoding: 'utf8' });
+  if (existsSync(path)) {
+    rmSync(path, { recursive: true, force: true });
+    spawnSync('git', ['worktree', 'prune'], { cwd: repoDir });
+  }
+  return { removed: !existsSync(path), git_status: result.status, path };
+}
+
+function revertToBase(worktree, base, paths) {
+  const reverted = [];
+  for (const path of paths) {
+    validateRepoPath(path, 'revert path');
+    const atBase = spawnSync('git', ['cat-file', '-e', `${base}:${path}`], { cwd: worktree }).status === 0;
+    if (atBase) {
+      git(worktree, ['checkout', base, '--', path]);
+      reverted.push({ path, action: 'restored_from_base' });
+    } else {
+      git(worktree, ['rm', '-q', '--', path]);
+      reverted.push({ path, action: 'removed_added_file' });
+    }
+  }
+  return reverted;
+}
+
+function assertReviewHead(repoDir, head) {
+  const actual = git(repoDir, ['rev-parse', 'HEAD']);
+  if (actual !== head) {
+    throw new Error(
+      `the review checkout is at ${actual}, not the session head ${head}; commands run only at the pinned head`
+    );
+  }
+}
+
+const FAILING_TEST_LINE = /^\s*(?:✖|✕|●|not ok\b|--- FAIL:)/;
+const SUMMARY_LINE = /^\s*✖ failing tests:?\s*$/;
+const ERROR_LINE = /\berror\b|Error:|\[build failed\]|\[setup failed\]|undefined:|cannot use|too many arguments/i;
+
+export function failingResults(output, kind) {
+  const lines = output.split('\n');
+  if (kind === 'assertion') {
+    return lines.filter((line) => FAILING_TEST_LINE.test(line) && !SUMMARY_LINE.test(line));
+  }
+  return kind === 'setup' ? lines.filter((line) => ERROR_LINE.test(line)) : [];
+}
+
+export function compareBaselineFailure({ head, base, signature, headOutput, baseOutput }) {
+  const miss = (reason) => ({
+    matched: false,
+    reason,
+    head_kind: head.failure_kind ?? null,
+    base_kind: base.failure_kind ?? null,
+  });
+  if (base.error) {
+    return miss(`the baseline could not run: ${base.error}`);
+  }
+  if (base.exit_status === 0) {
+    return miss('the same command passes at the base commit');
+  }
+  if (head.failure_kind !== base.failure_kind) {
+    return miss(`the head failed with a ${head.failure_kind} failure but the base with a ${base.failure_kind} failure`);
+  }
+  if (base.failure_kind === 'unknown') {
+    return miss('neither failure could be classified, so the match is uncertain');
+  }
+  const headFailing = failingResults(headOutput, head.failure_kind).filter((line) => line.includes(signature));
+  if (headFailing.length === 0) {
+    return miss('the signature names no failing result in the head output');
+  }
+  const baseFailing = failingResults(baseOutput, base.failure_kind).filter((line) => line.includes(signature));
+  if (baseFailing.length === 0) {
+    return miss('the signature names no failing result in the baseline output; base may fail for a different reason');
+  }
+  return { matched: true, reason: null, head_kind: head.failure_kind, base_kind: base.failure_kind };
+}
+
+function overlayFromHead(worktree, head, paths) {
+  return paths.map((path) => {
+    validateRepoPath(path, 'preserve path');
+    git(worktree, ['checkout', head, '--', path]);
+    return { path, action: 'kept_from_head' };
+  });
+}
+
+function outputOf(evidence, readArtifact) {
+  return `${readArtifact(evidence.stdout_ref)}\n${readArtifact(evidence.stderr_ref)}`;
+}
+
+export function executeCommandTask({ task, identity, sessionDir, store, readArtifact, headEvidence }) {
+  const repoDir = identity.repo_dir;
+  const kind = task.spec.kind;
+  if (kind === 'check') {
+    assertReviewHead(repoDir, identity.head_sha);
+    return runArgv({ argv: task.spec.argv, cwd: repoDir, store });
+  }
+  const sha = task.spec.at === 'base' ? identity.base_sha : identity.head_sha;
+  const worktree = join(sessionDir, 'work', task.id);
+  let evidence;
+  let cleanup = null;
+  try {
+    addWorktree(repoDir, worktree, sha);
+    const reverted = kind === 'efficacy' ? revertToBase(worktree, identity.base_sha, task.spec.revert_paths) : [];
+    const kept =
+      kind === 'baseline' ? overlayFromHead(worktree, identity.head_sha, task.spec.preserve_paths ?? []) : [];
+    evidence = { ...runArgv({ argv: task.spec.argv, cwd: worktree, store }), worktree_sha: sha, reverted, kept };
+    if (kind === 'efficacy') {
+      evidence.revert = classifyRevertRun({
+        exit_status: evidence.exit_status,
+        output: outputOf(evidence, readArtifact),
+      });
+    }
+  } catch (error) {
+    evidence = { error: error.message, worktree_sha: sha };
+  } finally {
+    if (existsSync(worktree)) {
+      cleanup = removeWorktree(repoDir, worktree);
+    }
+  }
+  if (kind === 'baseline') {
+    evidence.match = compareBaselineFailure({
+      head: headEvidence,
+      base: evidence,
+      signature: task.spec.signature,
+      headOutput: outputOf(headEvidence, readArtifact),
+      baseOutput: evidence.error ? '' : outputOf(evidence, readArtifact),
+    });
+  }
+  return { ...evidence, cleanup: cleanup ?? { removed: true, git_status: null, path: worktree } };
+}

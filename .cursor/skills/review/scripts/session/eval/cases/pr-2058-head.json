@@ -1,0 +1,19 @@
+{
+  "case_id": "pr-2058-head",
+  "repo": "grafana/grafana-pathfinder-app",
+  "pr": 2058,
+  "category": "reported-reversal",
+  "base_sha": "dc18292a3adfde31b44c3eef627e8688ea0e312f",
+  "head_sha": "d3b0cd3bf2398782024941b215c7103ba25a06bd",
+  "evidence_cutoff": "2026-10-05T20:44:47Z",
+  "prior_review": null,
+  "environment": {
+    "node": "24",
+    "setup": [
+      ["npm", "ci"],
+      ["go", "mod", "download"]
+    ]
+  },
+  "adjudication_status": "unadjudicated",
+  "candidate_reason": "Reviewed in the source session; production /review requested changes at this head and the review-session demo approved it. Neither outcome is adjudicated."
+}

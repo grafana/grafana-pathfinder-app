@@ -84,7 +84,7 @@ export function extractConcernContext({ routingMarkdown, detailMarkdown, concern
   };
 }
 
-function workerConcernContext(context) {
+export function workerConcernContext(context) {
   const { id, purpose, review_questions, one_way_doors, verification, contract_anchor, named_invariants } = context;
   return { id, purpose, review_questions, one_way_doors, verification, contract_anchor, named_invariants };
 }

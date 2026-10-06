@@ -1,0 +1,42 @@
+      70 |   ['', false],
+      71 | ])('detects image-renderer sessions from %p', (search, expected) => {
+    > 72 |   expect(isImageRendererSession(search)).toBe(expected);
+         |                                ^
+      73 | });
+      74 |
+
+      at src/utils/pathfinder-enablement.test.ts:72:32
+
+  ● detects image-renderer sessions from "?kiosk=1"
+
+    TypeError: (0 , _pathfinderenablement.isImageRendererSession) is not a function
+
+      70 |   ['', false],
+      71 | ])('detects image-renderer sessions from %p', (search, expected) => {
+    > 72 |   expect(isImageRendererSession(search)).toBe(expected);
+         |                                ^
+      73 | });
+      74 |
+
+      at src/utils/pathfinder-enablement.test.ts:72:32
+
+  ● detects image-renderer sessions from ""
+
+    TypeError: (0 , _pathfinderenablement.isImageRendererSession) is not a function
+
+      70 |   ['', false],
+      71 | ])('detects image-renderer sessions from %p', (search, expected) => {
+    > 72 |   expect(isImageRendererSession(search)).toBe(expected);
+         |                                ^
+      73 | });
+      74 |
+
+      at src/utils/pathfinder-enablement.test.ts:72:32
+
+Test Suites: 1 failed, 1 total
+Tests:       5 failed, 9 passed, 14 total
+Snapshots:   0 total
+Time:        0.663 s
+Ran all test suites matching src/utils/pathfinder-enablement.test.ts.
+Test Suites: 2 failed, 2 total
+Tests:       3 failed, 27 passed, 30 total
