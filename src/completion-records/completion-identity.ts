@@ -200,7 +200,7 @@ export function guideIdentityAnalyticsProperties({
   guideSource,
   guideId,
   guideTitle,
-}: Pick<CompletionFact, 'kind' | 'guideSource' | 'guideId' | 'guideTitle'>): Record<string, string> {
+}: Pick<CompletionFact, 'kind' | 'guideSource' | 'guideId'> & { guideTitle?: string }): Record<string, string> {
   const [idProperty, titleProperty] =
     kind === 'journey' ? ['journey_id', 'journey_title'] : ['guide_id', 'guide_title'];
   if (guideSource === 'bundled' && LOCAL_BUNDLED_GUIDE_IDS.has(guideId)) {
@@ -216,6 +216,6 @@ export function guideIdentityAnalyticsProperties({
     guide_source: guideSource,
     guide_visibility: 'public',
     [idProperty]: guideId,
-    [titleProperty]: guideTitle,
+    ...(guideTitle !== undefined && { [titleProperty]: guideTitle }),
   };
 }
