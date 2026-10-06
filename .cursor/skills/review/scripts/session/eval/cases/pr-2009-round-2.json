@@ -1,0 +1,23 @@
+{
+  "case_id": "pr-2009-round-2",
+  "repo": "grafana/grafana-pathfinder-app",
+  "pr": 2009,
+  "category": "multi-round",
+  "base_sha": "0755bc86ec208baebfb34385beaf0c945979c7a8",
+  "head_sha": "8a5da2a52ffcd0b0ff1cb18b4e8a2fa21dc232d6",
+  "evidence_cutoff": "2026-09-29T19:23:28Z",
+  "prior_review": {
+    "reviewed_head": "b4ea9d784ca656a251d2294fe14cf6cf9d43e54e",
+    "author": "moxious",
+    "submitted_at": "2026-09-29T16:48:23Z"
+  },
+  "environment": {
+    "node": "24",
+    "setup": [
+      ["npm", "ci"],
+      ["go", "mod", "download"]
+    ]
+  },
+  "adjudication_status": "unadjudicated",
+  "candidate_reason": "Second round of PR 2009; exercises incremental mode against the round-1 review produced by the same arm."
+}

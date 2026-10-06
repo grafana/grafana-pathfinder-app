@@ -1,0 +1,20 @@
+{
+  "case_id": "<case id>",
+  "items": [
+    {
+      "id": "k1",
+      "kind": "known_defect | architectural | non_blocking_adjacent | invariant",
+      "statement": "...",
+      "acceptable_dispositions": ["blocking"],
+      "acceptance_condition": "..."
+    }
+  ],
+  "revisions": [
+    {
+      "item_id": "k1",
+      "adjudicator": "<maintainer>",
+      "reason": "added after a run surfaced a valid finding",
+      "at": "<ISO time>"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "case_id": "pr-2057-first-review",
+  "repo": "grafana/grafana-pathfinder-app",
+  "pr": 2057,
+  "category": "reported-reversal",
+  "base_sha": "dc18292a3adfde31b44c3eef627e8688ea0e312f",
+  "head_sha": "13205f80e499fe813527b467c712e6894aa06b5e",
+  "evidence_cutoff": "2026-10-05T20:44:46Z",
+  "prior_review": null,
+  "environment": {
+    "node": "24",
+    "setup": [
+      ["npm", "ci"],
+      ["go", "mod", "download"]
+    ]
+  },
+  "adjudication_status": "unadjudicated",
+  "candidate_reason": "Reported to move from Approve with Minor to Request Changes between a fast and a full-rigor review. The report is a candidate, not an answer key."
+}
