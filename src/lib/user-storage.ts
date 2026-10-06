@@ -1044,6 +1044,30 @@ function parseStepIds(raw: string): unknown[] | null {
   }
 }
 
+function readSkippedSteps(contentKey: string, sectionId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(
+      progressSectionKey(StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX, contentKey, sectionId)
+    );
+    return new Set((raw ? (parseStepIds(raw) ?? []) : []).filter((id): id is string => typeof id === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeSkippedSteps(contentKey: string, sectionId: string, skippedIds: ReadonlySet<string>): void {
+  try {
+    const key = progressSectionKey(StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX, contentKey, sectionId);
+    if (skippedIds.size === 0) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, JSON.stringify([...skippedIds]));
+    }
+  } catch (error) {
+    logger.warn('Failed to persist skipped step attribution', { error });
+  }
+}
+
 /**
  * Cache for the completed-step id scan, so neither `countAllCompleted` nor
  * `listAllCompleted` costs an O(n) localStorage sweep per call. The count is
@@ -1071,6 +1095,21 @@ function invalidateProgressScanCaches(contentKey: string): void {
  * Interactive step completion storage operations
  */
 export const interactiveStepStorage = {
+  getSkipped: readSkippedSteps,
+
+  listAllSkipped(contentKey: string): readonly string[] {
+    const skipped: string[] = [];
+    for (const { sectionId, raw } of listProgressEntries(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey)) {
+      const completed = new Set(parseStepIds(raw) ?? []);
+      for (const id of readSkippedSteps(contentKey, sectionId)) {
+        if (completed.has(id)) {
+          skipped.push(id);
+        }
+      }
+    }
+    return skipped;
+  },
+
   /**
    * Drop the cached completion count for a content key without touching
    * localStorage. Used by the cross-tab `storage` listener in
@@ -1098,12 +1137,18 @@ export const interactiveStepStorage = {
     }
   },
 
-  /**
-   * Sets completed step IDs for a specific content/section
-   */
-  async setCompleted(contentKey: string, sectionId: string, completedIds: Set<string>): Promise<void> {
+  async setCompleted(
+    contentKey: string,
+    sectionId: string,
+    completedIds: Set<string>,
+    skippedIds: ReadonlySet<string> = new Set()
+  ): Promise<void> {
+    const skipped = new Set(
+      [...readSkippedSteps(contentKey, sectionId), ...skippedIds].filter((id) => completedIds.has(id))
+    );
+    // Skip annotations must be visible before a completion notification can record its source.
+    writeSkippedSteps(contentKey, sectionId, skipped);
     try {
-      // Invalidate before the write so the next scan re-reads storage
       completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
@@ -1113,10 +1158,8 @@ export const interactiveStepStorage = {
     }
   },
 
-  /**
-   * Clears completed steps for a specific content/section
-   */
   async clear(contentKey: string, sectionId: string): Promise<void> {
+    writeSkippedSteps(contentKey, sectionId, new Set());
     try {
       completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
@@ -1140,7 +1183,7 @@ export const interactiveStepStorage = {
   },
 
   /**
-   * Clears every section record for one content key, across all four
+   * Clears every section record for one content key, across all progress
    * namespaces. Rejects rather than resolving if any record survives.
    */
   async clearAllForContent(contentKey: string): Promise<void> {
@@ -1190,6 +1233,7 @@ export const interactiveStepStorage = {
     try {
       completedIdsCache.clear();
       acknowledgedIdsCache.clear();
+      const skippedPrefix = StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX;
       const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
       const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
       const ackPrefix = StorageKeys.SECTION_ACKNOWLEDGED_PREFIX;
@@ -1200,7 +1244,8 @@ export const interactiveStepStorage = {
         const key = localStorage.key(i);
         if (
           key &&
-          (key.startsWith(stepsPrefix) ||
+          (key.startsWith(skippedPrefix) ||
+            key.startsWith(stepsPrefix) ||
             key.startsWith(collapsePrefix) ||
             key.startsWith(ackPrefix) ||
             key.startsWith(donePrefix))

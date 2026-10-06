@@ -25,6 +25,7 @@ describe('StorageKeys — stable string contract', () => {
       INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion',
       TABS: 'grafana-pathfinder-app-tabs',
       ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
+      INTERACTIVE_SKIPPED_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-skipped-steps-',
       INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-',
       CONTENT_PROGRESS_V2_PREFIX: 'grafana-pathfinder-app-content-progress-v2:',
       WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview',

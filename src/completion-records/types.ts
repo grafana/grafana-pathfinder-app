@@ -28,7 +28,7 @@ export interface CompletionKey {
 
 export type CompletionKind = 'guide' | 'journey';
 
-/** The terminal trigger: an explicit guide mark or completion evidence. */
+/** Explicit guide mark, credited skipped steps, or other completion evidence. */
 export type CompletionSource = 'objectives' | 'manual' | 'skipped';
 
 export type CompletionCategory = 'interactive' | 'documentation' | 'learning-journey';

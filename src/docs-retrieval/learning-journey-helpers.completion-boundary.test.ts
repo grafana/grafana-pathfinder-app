@@ -1196,19 +1196,28 @@ describe('completion analytics context', () => {
     });
   });
 
-  it('carries the final milestone cause to the journey without using milestone counts as journey counts', async () => {
-    const url = 'https://grafana.com/docs/learning-journeys/example/finish/';
-    await markMilestoneDone('https://grafana.com/docs/learning-journeys/example/', 'finish', url, [url], {
-      repository: 'online-cdn',
-      packageManifest: { id: 'example' },
-      source: 'manual',
-      guideStats: { version: 1, blockCount: 3, completableBlockCount: 0, sectionCount: 0, finalCompletablePosition: 0 },
-    });
-    expect(emitted.find((fact) => fact.kind === 'guide')).toMatchObject({
-      source: 'manual',
-      guideStats: { blockCount: 3 },
-    });
-    expect(emitted.find((fact) => fact.kind === 'journey')).toMatchObject({ source: 'manual' });
-    expect(emitted.find((fact) => fact.kind === 'journey')).not.toHaveProperty('guideStats');
-  });
+  it.each(['manual', 'skipped'] as const)(
+    'carries the final milestone %s cause to the journey without using milestone counts as journey counts',
+    async (source) => {
+      const url = 'https://grafana.com/docs/learning-journeys/example/finish/';
+      await markMilestoneDone('https://grafana.com/docs/learning-journeys/example/', 'finish', url, [url], {
+        repository: 'online-cdn',
+        packageManifest: { id: 'example' },
+        source,
+        guideStats: {
+          version: 1,
+          blockCount: 3,
+          completableBlockCount: 0,
+          sectionCount: 0,
+          finalCompletablePosition: 0,
+        },
+      });
+      expect(emitted.find((fact) => fact.kind === 'guide')).toMatchObject({
+        source,
+        guideStats: { blockCount: 3 },
+      });
+      expect(emitted.find((fact) => fact.kind === 'journey')).toMatchObject({ source });
+      expect(emitted.find((fact) => fact.kind === 'journey')).not.toHaveProperty('guideStats');
+    }
+  );
 });

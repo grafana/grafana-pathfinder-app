@@ -67,6 +67,7 @@ import {
 import { substituteVariables } from '../../utils/variable-substitution';
 import {
   STANDALONE_SECTION_ID,
+  getGuideCompletionSource,
   isBlockEditorPreviewUrl,
   refreshGuidePercentageOnLoad,
 } from '../../global-state/completion-store';
@@ -211,13 +212,14 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
 
   // The first terminal trigger owns the completion cause until a reset.
   const triggerGuideComplete = useCallback(
-    (source: CompletionSource = 'objectives') => {
+    (source?: CompletionSource) => {
       if (guideCompleteCalledRef.current) {
         return;
       }
       guideCompleteCalledRef.current = true;
       markCompleteRearmedRef.current = false;
-      onGuideCompleteRef.current?.(source, resolveGuideContentKey(content.url));
+      const contentKey = resolveGuideContentKey(content.url);
+      onGuideCompleteRef.current?.(source ?? getGuideCompletionSource(contentKey), contentKey);
     },
     [content.url]
   );
