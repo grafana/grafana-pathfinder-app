@@ -71,7 +71,7 @@ for (const theme of ['light', 'dark']) {
     await expect(page.getByLabel('Your website')).toBeFocused();
     await page.getByLabel('Your website').fill('https://example.com/private?token=secret');
     await page.getByLabel('Your website').press('Enter');
-    await expect(page.getByRole('alert')).toContainText('without a path');
+    await expect(page.getByTestId(testIds.kioskMode.overlay).getByRole('alert')).toContainText('without a path');
     await page.getByLabel('Your website').fill('https://example.com');
     await page.screenshot({ path: testInfo.outputPath(`dem-${theme}.png`), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
