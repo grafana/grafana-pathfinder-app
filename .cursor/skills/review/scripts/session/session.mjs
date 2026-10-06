@@ -6,13 +6,22 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { materializeTask } from './briefs.mjs';
-import { advance, buildIdentity, recordBlocked, recordResult, recordWaiver } from './controller.mjs';
+import { materializeTask, taskPaths } from './briefs.mjs';
+import {
+  advance,
+  buildIdentity,
+  correctionMessage,
+  recordBlocked,
+  recordCoaching,
+  recordResult,
+  recordWaiver,
+  rejectResult,
+} from './controller.mjs';
 import { executeCommandTask } from './evidence.mjs';
 import { renderSession, sessionStatus } from './finalize.mjs';
 import { assertSharedInputsUnchanged, loadRegistry, realEffects, sharedInputHashes, toolRevision } from './inputs.mjs';
 import { applyEvent, sealEvents } from './model.mjs';
-import { createSessionDir, loadSession, storeArtifact, withSession } from './store.mjs';
+import { alteredArtifacts, createSessionDir, loadSession, storeArtifact, withSession } from './store.mjs';
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const OPTIONS = {
@@ -40,6 +49,7 @@ const OPTIONS = {
   stage: { type: 'string' },
   reason: { type: 'string' },
   consent: { type: 'string' },
+  'text-file': { type: 'string' },
 };
 
 function absolute(value, label) {
@@ -200,32 +210,105 @@ function receiptFrom(values) {
   };
 }
 
+function recordCommand(sessionDir, task, resultPath) {
+  const identityFlag = task.executor === 'agent' ? ' --agent-id <host agent id>' : '';
+  return `node ${SCRIPT} record --session ${sessionDir} --task ${task.id} --head ${task.head} --result ${resultPath}${identityFlag}`;
+}
+
+function submittedVersions(task) {
+  return task.rejections.length + (task.raw_result ? 1 : 0) + task.history.filter(({ raw_result: raw }) => raw).length;
+}
+
+function parseSubmitted(bytes) {
+  try {
+    return JSON.parse(bytes.toString('utf8'));
+  } catch (error) {
+    throw Object.assign(new Error(`the result file is not valid JSON: ${error.message}`), { rejection: true });
+  }
+}
+
 function record(sessionDir, values) {
+  if (values.blocked !== undefined) {
+    const { state } = mutate(sessionDir, (current) => [
+      recordBlocked(current, {
+        task_id: values.task,
+        head: values.head,
+        reason: values.blocked,
+        receipt: receiptFrom(values),
+      }),
+    ]);
+    return { recorded: { task_id: values.task, status: 'blocked' }, ...view(state, sessionDir) };
+  }
+  const submitted = absolute(values.result, '--result');
+  const bytes = readFileSync(submitted);
+  const rawResult = { ...storeArtifact(sessionDir, bytes, 'json'), submitted_path: submitted };
   let output = null;
-  const { state } = mutate(sessionDir, (current) => {
-    if (values.blocked !== undefined) {
-      output = { task_id: values.task, status: 'blocked' };
-      return [
-        recordBlocked(current, {
-          task_id: values.task,
-          head: values.head,
-          reason: values.blocked,
-          receipt: receiptFrom(values),
-        }),
-      ];
-    }
-    const result = JSON.parse(readFileSync(absolute(values.result, '--result'), 'utf8'));
-    const outcome = recordResult(current, {
-      task_id: values.task,
-      head: values.head,
-      result,
-      receipt: receiptFrom(values),
-      revise_reason: values.revise,
+  try {
+    const result = parseSubmitted(bytes);
+    const { state } = mutate(sessionDir, (current) => {
+      const outcome = recordResult(current, {
+        task_id: values.task,
+        head: values.head,
+        result,
+        receipt: receiptFrom(values),
+        revise_reason: values.revise,
+        raw_result: rawResult,
+      });
+      output = outcome.output;
+      return outcome.draft ? [outcome.draft] : [];
     });
-    output = outcome.output;
-    return outcome.draft ? [outcome.draft] : [];
+    return { recorded: output, ...view(state, sessionDir) };
+  } catch (error) {
+    if (!error.rejection) {
+      throw error;
+    }
+    const { state } = mutate(sessionDir, (current) => [
+      rejectResult(current, { task_id: values.task, head: values.head, raw_result: rawResult, error: error.message }),
+    ]);
+    const task = state.tasks[values.task];
+    const next = join(taskPaths(sessionDir, task).dir, `result.v${submittedVersions(task) + 1}.json`);
+    return {
+      recorded: {
+        task_id: task.id,
+        status: 'rejected',
+        error: error.message,
+        raw_result: rawResult,
+        correction: correctionMessage({ task_id: task.id, error: error.message, submitted, next }),
+        next_result: next,
+        record: recordCommand(sessionDir, task, next),
+      },
+      ...view(state, sessionDir),
+    };
+  }
+}
+
+function rawRecords(state) {
+  return state.order.flatMap((id) => {
+    const task = state.tasks[id];
+    return [
+      task.raw_result,
+      ...(task.rejections ?? []).map(({ raw_result: raw }) => raw),
+      ...(task.history ?? []).map(({ raw_result: raw }) => raw),
+    ]
+      .filter(Boolean)
+      .map(({ ref, sha256 }) => ({ ref, sha256, task_id: id }));
   });
-  return { recorded: output, ...view(state, sessionDir) };
+}
+
+function rawIntegrity(state, sessionDir) {
+  const records = rawRecords(state);
+  return { recorded: records.length, problems: alteredArtifacts(sessionDir, records) };
+}
+
+function coach(sessionDir, values) {
+  const text = readFileSync(absolute(values['text-file'], '--text-file'), 'utf8');
+  let recorded = null;
+  mutate(sessionDir, (current) => {
+    const draft = recordCoaching(current, { task_id: values.task, text });
+    recorded = { task_id: draft.data.task_id, text_sha256: draft.data.text_sha256 };
+    return [draft];
+  });
+  return { coaching_recorded: recorded, send_verbatim: text };
 }
 
 function exec(sessionDir, values) {
@@ -278,6 +361,12 @@ function exec(sessionDir, values) {
 
 function finalize(sessionDir) {
   const existing = loadSession(sessionDir);
+  const integrity = rawIntegrity(existing, sessionDir);
+  if (integrity.problems.length > 0) {
+    throw new Error(
+      `recorded raw results were altered or removed: ${integrity.problems.map(({ ref, problem }) => `${ref} ${problem}`).join(', ')}. The session record is damaged; start a new session`
+    );
+  }
   if (existing.finalized?.complete) {
     return { complete: true, obligations: [], rendered_path: join(sessionDir, 'review.md'), already_finalized: true };
   }
@@ -326,10 +415,19 @@ export function main(argv) {
     case 'status': {
       const dir = sessionArg(values);
       const state = loadSession(dir);
-      return command === 'next' ? view(state, dir) : { session_dir: dir, ...sessionStatus(state) };
+      return command === 'next'
+        ? view(state, dir)
+        : {
+            session_dir: dir,
+            ...sessionStatus(state),
+            raw_results: rawIntegrity(state, dir),
+            coaching: state.coaching.map(({ task_id, text_sha256 }) => ({ task_id, text_sha256 })),
+          };
     }
     case 'record':
       return record(sessionArg(values), values);
+    case 'coach':
+      return coach(sessionArg(values), values);
     case 'exec':
       return exec(sessionArg(values), values);
     case 'waive': {
@@ -342,13 +440,17 @@ export function main(argv) {
     case 'finalize':
       return finalize(sessionArg(values));
     default:
-      throw new Error('Expected one of: start, next, record, exec, waive, status, finalize');
+      throw new Error('Expected one of: start, next, record, coach, exec, waive, status, finalize');
   }
 }
 
 if (process.argv[1] === SCRIPT) {
   try {
-    process.stdout.write(`${JSON.stringify(main(process.argv.slice(2)), null, 2)}\n`);
+    const output = main(process.argv.slice(2));
+    process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+    if (output?.recorded?.status === 'rejected') {
+      process.exitCode = 2;
+    }
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 2;

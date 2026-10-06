@@ -58,7 +58,7 @@ const TEST_INPUT = /(?:^|\/)(?:__tests__|__fixtures__|testdata|fixtures)\/|\.(?:
 
 export function sha256(value) {
   return createHash('sha256')
-    .update(typeof value === 'string' ? value : canonicalJson(value))
+    .update(typeof value === 'string' || Buffer.isBuffer(value) ? value : canonicalJson(value))
     .digest('hex');
 }
 
@@ -733,6 +733,7 @@ export function emptyState() {
     policy: null,
     reconciliation: null,
     waivers: {},
+    coaching: [],
     finalized: null,
   };
 }
@@ -768,25 +769,52 @@ const REDUCERS = {
     if (state.tasks[task.id]) {
       fail(`task ${task.id} already exists`);
     }
-    state.tasks[task.id] = { ...task, status: 'ready', result: null, result_hash: null, receipt: null, history: [] };
+    state.tasks[task.id] = {
+      ...task,
+      status: 'ready',
+      result: null,
+      result_hash: null,
+      raw_result: null,
+      receipt: null,
+      history: [],
+      rejections: [],
+    };
     state.order.push(task.id);
   },
-  task_completed(state, { task_id, result, result_hash, receipt }) {
+  task_completed(state, { task_id, result, result_hash, receipt, raw_result = null }) {
     const task = state.tasks[task_id];
     if (!task || task.status !== 'ready') {
       fail(`task ${task_id} is not ready`);
     }
-    Object.assign(task, { status: 'completed', result, result_hash, receipt });
+    Object.assign(task, { status: 'completed', result, result_hash, receipt, raw_result });
   },
-  task_revised(state, { task_id, result, result_hash, receipt, reason }) {
+  result_rejected(state, { task_id, raw_result, error }) {
     const task = state.tasks[task_id];
-    task.history.push({ result_hash: task.result_hash, receipt: task.receipt, replaced_because: reason });
+    if (!task) {
+      fail(`task ${task_id} does not exist`);
+    }
+    task.rejections.push({ raw_result, error });
+  },
+  coaching_recorded(state, data) {
+    if (!state.tasks[data.task_id]) {
+      fail(`task ${data.task_id} does not exist`);
+    }
+    state.coaching.push(data);
+  },
+  task_revised(state, { task_id, result, result_hash, receipt, reason, raw_result = null }) {
+    const task = state.tasks[task_id];
+    task.history.push({
+      result_hash: task.result_hash,
+      raw_result: task.raw_result,
+      receipt: task.receipt,
+      replaced_because: reason,
+    });
     for (const record of Object.values(state.observations)) {
       if (record.source_task === task_id) {
         record.superseded = true;
       }
     }
-    Object.assign(task, { result, result_hash, receipt });
+    Object.assign(task, { result, result_hash, receipt, raw_result });
   },
   task_blocked(state, { task_id, reason, receipt }) {
     const task = state.tasks[task_id];

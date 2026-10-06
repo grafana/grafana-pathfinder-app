@@ -128,8 +128,20 @@ export function storeArtifact(dir, content, extension = 'txt') {
   const path = join(dir, 'artifacts', name);
   if (!existsSync(path)) {
     atomicWrite(path, content);
+  } else if (sha256(readFileSync(path)) !== digest) {
+    throw new Error(`artifact ${name} no longer matches its content address; the session store was altered`);
   }
   return { ref: `artifacts/${name}`, sha256: digest, bytes: Buffer.byteLength(content) };
+}
+
+export function alteredArtifacts(dir, records) {
+  return records.flatMap(({ ref, sha256: expected, ...rest }) => {
+    const path = join(dir, ref);
+    if (!existsSync(path)) {
+      return [{ ref, ...rest, problem: 'missing' }];
+    }
+    return sha256(readFileSync(path)) === expected ? [] : [{ ref, ...rest, problem: 'altered' }];
+  });
 }
 
 export function withSession(dir, operation) {

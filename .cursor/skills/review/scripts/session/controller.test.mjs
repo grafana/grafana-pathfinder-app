@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { advanceReviewPolicy } from '../review-policy.mjs';
 import { renderReviewReport } from '../review-report.mjs';
-import { recordResult, recordWaiver } from './controller.mjs';
+import { correctionMessage, recordResult, recordWaiver } from './controller.mjs';
 import { deriveStageLedger, obligations, renderSession, sessionStatus } from './finalize.mjs';
 import {
   ALWAYS_ON,
@@ -888,4 +888,17 @@ test('root synthesis must dispose every missing or surviving test, by finding ID
     deriveStageLedger(disposed).efficacy.map(({ disposition_note: note }) => note),
     ['finding lost-write', 'pinned by the e2e cache test']
   );
+});
+
+test('a correction quotes the validator error verbatim and names a new version path', () => {
+  const error = 'Each source must include kind and selection_reason';
+  const message = correctionMessage({
+    task_id: 't017-contract-specialist',
+    error,
+    submitted: '/s/tasks/t017/result.json',
+    next: '/s/tasks/t017/result.v2.json',
+  });
+  assert.ok(message.split('\n').includes(error));
+  assert.match(message, /new file, \/s\/tasks\/t017\/result\.v2\.json/);
+  assert.match(message, /Do not edit or delete \/s\/tasks\/t017\/result\.json/);
 });

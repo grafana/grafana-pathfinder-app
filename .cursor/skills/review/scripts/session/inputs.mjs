@@ -24,6 +24,7 @@ export const SHARED_INPUTS = [
   '.cursor/skills/review/scripts/review-policy.mjs',
   '.cursor/skills/review/scripts/review-report.mjs',
   '.cursor/skills/review/scripts/security-gate.mjs',
+  '.cursor/skills/review/scripts/skeptic-claim.mjs',
 ];
 
 function toolFile(path) {

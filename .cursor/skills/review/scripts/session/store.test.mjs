@@ -7,6 +7,7 @@ import test from 'node:test';
 import { emptyState, foldEvents, sealEvents } from './model.mjs';
 import {
   acquireLock,
+  alteredArtifacts,
   appendEvents,
   createSessionDir,
   loadSession,
@@ -94,4 +95,17 @@ test('the snapshot is rewritten from the event log after every write', () =>
     const snapshot = JSON.parse(readFileSync(join(dir, 'session.json'), 'utf8'));
     assert.equal(snapshot.revision, 1);
     assert.equal(snapshot.identity.session_id, 's');
+  }));
+
+test('artifacts keep raw bytes, and an altered artifact is refused rather than trusted', () =>
+  withDir((dir) => {
+    const bytes = Buffer.from([0x7b, 0x7d, 0x0a, 0x0a, 0xff]);
+    const saved = storeArtifact(dir, bytes, 'json');
+    assert.deepEqual(readFileSync(join(dir, saved.ref)), bytes);
+    assert.equal(saved.bytes, 5);
+    writeFileSync(join(dir, saved.ref), '{}');
+    assert.throws(() => storeArtifact(dir, bytes, 'json'), /no longer matches its content address/);
+    assert.deepEqual(alteredArtifacts(dir, [{ ref: saved.ref, sha256: saved.sha256, task_id: 't1' }]), [
+      { ref: saved.ref, task_id: 't1', problem: 'altered' },
+    ]);
   }));

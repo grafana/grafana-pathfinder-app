@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
+import { CONTRACT_PACKET_EXAMPLE, CONTRACT_PACKET_SCHEMA } from '../contract-evolution-policy.mjs';
+import { assertNoMetaClaims, skepticClaim } from '../skeptic-claim.mjs';
 import { reviewSection, TOOL_ROOT } from './inputs.mjs';
 import { liveRefs, onlyTask } from './controller.mjs';
 import { sha256 } from './model.mjs';
@@ -57,7 +59,7 @@ function header(state, task, paths) {
     '- Check the base commit before you claim a regression. Reading code is not a probe; declare a probe when only running something proves the claim.',
     `- Write any scratch or probe file only under \`${paths.dir}/scratch\`, never in the checkout or the system temp directory.`,
     `- Inputs: \`${paths.input}\`.`,
-    `- Write exactly one JSON object shaped like \`${paths.schema}\` to \`${paths.result}\`. Reply with that path and one sentence; the supervisor records it.`,
+    `- Write exactly one JSON object shaped like \`${paths.schema}\` to \`${paths.result}\`. Reply with that path and one sentence; the supervisor records it. The controller keeps that file byte for byte. If a correction names a new path, write the corrected result there and never change an earlier version.`,
     '',
   ];
 }
@@ -190,7 +192,11 @@ function synthesisInput(state, task, sessionDir) {
 
 function skepticInput(state, task) {
   const byId = new Map((state.admitted ?? []).map(({ observation }) => [observation.finding_id, observation]));
-  return { observations: task.spec.finding_ids.map((id) => byId.get(id)) };
+  const claims = task.spec.finding_ids.map((id) => skepticClaim(byId.get(id)));
+  claims.forEach((claim, index) =>
+    assertNoMetaClaims(claim, `observations[${index}]`, 'Admitted observations must hold only claims about the code.')
+  );
+  return { observations: claims };
 }
 
 function ownedChangedFiles(state, task) {
@@ -388,6 +394,8 @@ function roleBrief(state, task, ctx) {
           '',
           ...contractIntentLines(contractIds),
           reviewSection('Contract evolution packet'),
+          '',
+          CONTRACT_PACKET_SCHEMA,
           ''
         );
       }
@@ -412,7 +420,7 @@ function roleBrief(state, task, ctx) {
         },
         schema:
           task.role === 'root_overflow'
-            ? { ...PRODUCER_SCHEMA, contract_packets: [{ concern_id: '...' }] }
+            ? { ...PRODUCER_SCHEMA, contract_packets: [CONTRACT_PACKET_EXAMPLE] }
             : PRODUCER_SCHEMA,
       };
     }
@@ -424,7 +432,11 @@ function roleBrief(state, task, ctx) {
           '',
           ...contractIntentLines(task.concern_ids),
           ...EVIDENCE_RULES,
+          'Return `packet` (required) and `observations` (any documentation-drift observation). `schema.json` shows a valid packet; its values are invented.',
+          '',
           reviewSection('Contract evolution packet'),
+          '',
+          CONTRACT_PACKET_SCHEMA,
           '',
           reviewSection('Canonical observation'),
         ],
@@ -435,7 +447,7 @@ function roleBrief(state, task, ctx) {
           concern_packet: ctx.registry.workerPacket(task.concern_ids[0].slice('contract-evolution:'.length)),
         },
         schema: {
-          packet: { concern_id: '...', verdict: '...', finding: {} },
+          packet: { ...CONTRACT_PACKET_EXAMPLE, concern_id: task.concern_ids[0].slice('contract-evolution:'.length) },
           observations: [{ ...OBSERVATION_TEMPLATE, concern_id: '<the gated concern id>' }],
           probes: [PROBE_TEMPLATE],
         },

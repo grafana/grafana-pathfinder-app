@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import test from 'node:test';
 
+import { buildObservation, CONTRACT_PACKET_SCHEMA } from '../contract-evolution-policy.mjs';
+import { CLAIM_FIELDS } from '../skeptic-claim.mjs';
 import { DIFF_SHARD_LIMIT, materializeTask } from './briefs.mjs';
 import {
   ALWAYS_ON,
@@ -285,4 +287,139 @@ test('contributor-controlled filenames cannot place a diff shard outside the tas
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+const STAGE1_PRIMING =
+  "Root dedupe: same invariant and evidence surface reported independently by security (sec-1), go-backend (gen2-2), cross-cutting-architecture (gen3-1), and the contract-evolution specialist's doc-scope evidence (go-backend-ce-doc-drift-attempt-scope).";
+
+function duplicateReportSession(mergeReason) {
+  const ctx = fakeContext();
+  const owner = 'correctness-and-reliability';
+  const state = drive(startSession(ctx), ctx, {
+    observer: (current, task) =>
+      task.concern_ids.includes(owner)
+        ? submit(
+            current,
+            task,
+            {
+              observations: [observation(), observation({ finding_id: 'lost-write-again' })],
+              no_findings: task.concern_ids
+                .filter((id) => id !== owner)
+                .map((concern_id) => ({ concern_id, status: 'no_findings', reason: 'reviewed_clean' })),
+            },
+            ctx
+          )
+        : undefined,
+    synthesis: (current, task) =>
+      submit(
+        current,
+        task,
+        { merges: [{ ref: 'o002', into: 'o001', reason: mergeReason }], revisions: [], additions: [] },
+        ctx
+      ),
+    skeptic: 'stop',
+  });
+  return { ctx, state };
+}
+
+test('skeptic input holds only claim fields; who reported and merged a finding stays in the session store', () => {
+  withBriefs((read) => {
+    const { ctx, state } = duplicateReportSession(STAGE1_PRIMING);
+    const [skeptic] = ready(state, 'skeptic');
+    const producer = state.tasks[state.observations.o001.source_task];
+    const { input, brief } = read(state, skeptic, ctx);
+    const serialized = JSON.stringify(input) + brief;
+    for (const leak of [STAGE1_PRIMING, 'reported independently', producer.id, producer.receipt.agent_id, 'o002']) {
+      assert.ok(!serialized.includes(leak), `skeptic input must not carry "${leak}"`);
+    }
+    for (const claim of input.observations) {
+      assert.deepEqual(Object.keys(claim).sort(), [...CLAIM_FIELDS].sort());
+    }
+    const [provenance] = skeptic.spec.provenance;
+    assert.equal(provenance.finding_id, 'lost-write');
+    assert.deepEqual(provenance.reported_by, [
+      { ref: 'o001', task: producer.id, role: 'observer', agent_id: producer.receipt.agent_id },
+    ]);
+    assert.deepEqual(
+      provenance.merged.map(({ ref }) => ref),
+      ['o002']
+    );
+    assert.equal(state.synthesis.merges[0].reason, STAGE1_PRIMING, 'the merge note is kept for audit');
+    assert.deepEqual(Object.keys(provenance.withheld_fields).sort(), [
+      'confidence',
+      'severity',
+      'suggested_action',
+      'timing',
+    ]);
+  });
+});
+
+test('the stage-1 priming line is refused wherever it could enter an admitted observation', () => {
+  const ctx = fakeContext();
+  const primed = observation({ evidence: [...observation().evidence, STAGE1_PRIMING] });
+  const atSynthesis = drive(startSession(ctx), ctx, { synthesis: 'stop' });
+  const synthesis = ready(atSynthesis, 'synthesis')[0];
+  for (const [result, label] of [
+    [{ merges: [], revisions: [], additions: [primed] }, /additions\[0\]\.evidence\[1\]/],
+    [
+      {
+        merges: [],
+        revisions: [],
+        additions: [observation({ why_it_matters: 'All workers agree; root recommends blocking.' })],
+      },
+      /additions\[0\]\.why_it_matters/,
+    ],
+  ]) {
+    assert.throws(
+      () => submit(atSynthesis, synthesis, result, ctx),
+      (error) =>
+        error.rejection === true &&
+        label.test(error.message) &&
+        /states something about the review, not the code/.test(error.message)
+    );
+  }
+  const atObserve = startSession(ctx);
+  const observing = drive(atObserve, ctx, { observer: 'stop' });
+  const observer = ready(observing, 'observer')[0];
+  assert.throws(
+    () =>
+      submit(
+        observing,
+        observer,
+        {
+          observations: [{ ...primed, concern_id: observer.concern_ids[0] }],
+          no_findings: observer.concern_ids
+            .slice(1)
+            .map((concern_id) => ({ concern_id, status: 'no_findings', reason: 'reviewed_clean' })),
+        },
+        ctx
+      ),
+    /observations\[0\]\.evidence\[1\] states something about the review/
+  );
+});
+
+test('a skeptic brief is never written from an admitted observation that carries a meta-claim', () => {
+  withBriefs((read) => {
+    const { ctx, state } = duplicateReportSession('same invariant');
+    const [skeptic] = ready(state, 'skeptic');
+    const tampered = structuredClone(state);
+    tampered.admitted[0].observation.evidence.push('four reviewers independently reported this');
+    assert.throws(() => read(tampered, skeptic, ctx), /states something about the review, not the code/);
+  });
+});
+
+test('the contract specialist brief carries the validator schema with a valid example packet', () => {
+  withBriefs((read) => {
+    const { ctx, state } = gatedSession();
+    const task = ready(state, 'contract_specialist')[0];
+    const { brief, schema } = read(state, task, ctx);
+    assert.ok(brief.includes(CONTRACT_PACKET_SCHEMA));
+    assert.equal(schema.packet.concern_id, 'context-engine');
+    assert.ok(buildObservation(schema.packet));
+    const stage1Sources = { ...schema.packet, sources: [{ id: 1936, reason: 'introduced the contract' }] };
+    assert.throws(
+      () => submit(state, task, { packet: stage1Sources }, ctx),
+      (error) => error.rejection === true && error.message === 'Each source must include kind and selection_reason'
+    );
+  });
 });
