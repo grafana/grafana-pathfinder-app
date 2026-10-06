@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import { reviewSection, TOOL_ROOT } from './inputs.mjs';
 import { liveRefs, onlyTask } from './controller.mjs';
@@ -201,9 +201,65 @@ function ownedChangedFiles(state, task) {
   return [...new Set([...mapped, ...packetFiles])].sort();
 }
 
-function ownedDiff(state, task, ctx) {
-  const files = ownedChangedFiles(state, task);
-  return files.length === 0 ? '' : ctx.effects.diff(state.scope.range.from, state.scope.range.to, files);
+export const DIFF_SHARD_LIMIT = 20000;
+const SHARD_NAME_LIMIT = 80;
+
+function shardName(index, path, part, parts) {
+  const safe = path
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/\.{2,}/g, '_')
+    .replace(/^[._-]+/, '')
+    .slice(-SHARD_NAME_LIMIT);
+  const suffix = parts > 1 ? `.part${part}` : '';
+  return `${String(index + 1).padStart(3, '0')}-${safe || 'file'}${suffix}.diff`;
+}
+
+function splitDiff(text) {
+  const parts = [];
+  let current = '';
+  for (const line of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
+    for (let start = 0; start < line.length; start += DIFF_SHARD_LIMIT) {
+      const piece = line.slice(start, start + DIFF_SHARD_LIMIT);
+      if (current.length + piece.length > DIFF_SHARD_LIMIT) {
+        parts.push(current);
+        current = '';
+      }
+      current += piece;
+    }
+  }
+  return current ? [...parts, current] : parts;
+}
+
+function changedFunctions(text) {
+  const names = [...text.matchAll(/^@@ [^@]* @@ ?(.*)$/gm)].map(([, name]) => name.trim().slice(0, 200));
+  return [...new Set(names.filter(Boolean))];
+}
+
+function ownedDiffShards(state, task, ctx) {
+  const { from, to } = state.scope.range;
+  return ownedChangedFiles(state, task).flatMap((path, index) => {
+    const parts = splitDiff(ctx.effects.diff(from, to, [path]));
+    if (parts.length === 0) {
+      return [{ path, name: null, content: '' }];
+    }
+    return parts.map((content, part) => ({
+      path,
+      name: shardName(index, path, part + 1, parts.length),
+      part: part + 1,
+      parts: parts.length,
+      content,
+    }));
+  });
+}
+
+function diffManifest(shards, dir) {
+  return shards.map(({ path, name, part, parts, content }) => ({
+    path,
+    shard: name && join(dir, 'diff', name),
+    ...(parts > 1 ? { part, parts } : {}),
+    characters: content.length,
+    changed_functions: changedFunctions(content),
+  }));
 }
 
 function roleBrief(state, task, ctx) {
@@ -335,9 +391,15 @@ function roleBrief(state, task, ctx) {
           ''
         );
       }
-      lines.push(reviewSection('Canonical observation'));
+      lines.push(
+        `The owned diff is split into per-file shards of at most ${DIFF_SHARD_LIMIT} characters, listed in \`diff_manifest\` in input.json. Read every shard in full; a large file has numbered parts. A null shard means the file has no textual diff.`,
+        '',
+        reviewSection('Canonical observation')
+      );
+      const shards = ownedDiffShards(state, task, ctx);
       return {
         lines,
+        shards,
         input: {
           concern_packets: Object.fromEntries(concernIds.map((id) => [id, ctx.registry.workerPacket(id)])),
           files: task.spec.files ?? null,
@@ -345,7 +407,7 @@ function roleBrief(state, task, ctx) {
           contract_gates: task.spec.contract_gates ?? null,
           pr_intent: intentInput(state.identity),
           changed_files: ownedChangedFiles(state, task),
-          diff: ownedDiff(state, task, ctx),
+          diff_manifest: diffManifest(shards, ctx.taskDir),
         },
         schema:
           task.role === 'root_overflow'
@@ -446,13 +508,26 @@ export function taskPaths(sessionDir, task) {
   };
 }
 
+function writeShards(dir, shards) {
+  const root = resolve(dir, 'diff');
+  for (const { name, content } of shards.filter(({ name }) => name)) {
+    const target = resolve(root, name);
+    if (dirname(target) !== root) {
+      throw new Error(`diff shard name ${JSON.stringify(name)} escapes the task directory`);
+    }
+    mkdirSync(root, { recursive: true });
+    writeFileSync(target, content);
+  }
+}
+
 export function materializeTask(state, task, sessionDir, ctx) {
   const paths = taskPaths(sessionDir, task);
   if (task.role === 'command' || existsSync(paths.brief)) {
     return paths;
   }
-  const brief = roleBrief(state, task, { ...ctx, sessionDir });
+  const brief = roleBrief(state, task, { ...ctx, sessionDir, taskDir: paths.dir });
   mkdirSync(paths.dir, { recursive: true });
+  writeShards(paths.dir, brief.shards ?? []);
   writeFileSync(paths.input, `${JSON.stringify(brief.input, null, 2)}\n`);
   writeFileSync(paths.schema, `${JSON.stringify(brief.schema, null, 2)}\n`);
   writeFileSync(paths.brief, `${[...header(state, task, paths), ...brief.lines].join('\n')}\n`);

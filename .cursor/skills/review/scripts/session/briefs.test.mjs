@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import test from 'node:test';
 
-import { materializeTask } from './briefs.mjs';
+import { DIFF_SHARD_LIMIT, materializeTask } from './briefs.mjs';
 import {
   ALWAYS_ON,
   cleanPacket,
@@ -166,4 +166,94 @@ test('the evidence-plan brief names the Go checks only when Go changed', () => {
     );
     assert.doesNotMatch(planBrief(['src/a.ts']), /go_build/);
   });
+});
+
+const INPUT_BOUND = 20000;
+
+function hugeDiff(path, lines) {
+  const body = Array.from({ length: lines }, (_, i) => `+  const value${i} = compute(${i}); // ${'x'.repeat(40)}\n`);
+  return `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,0 +1,${lines} @@ function build${lines}()\n${body.join('')}`;
+}
+
+function shardedObserver(files, diffs) {
+  const dir = mkdtempSync(join(tmpdir(), 'session-shards-'));
+  const ctx = fakeContext({ files });
+  ctx.effects.diff = (_from, _to, paths) => paths.map((path) => diffs[path] ?? '').join('');
+  const state = drive(startSession(ctx), ctx, { additions: [observation()], skeptic: 'stop' });
+  const observer = state.order.map((id) => state.tasks[id]).find((task) => task.role === 'observer');
+  const paths = materializeTask(state, observer, join(dir, 'session'), ctx);
+  return { dir, paths, observer, state };
+}
+
+test('a large owned diff is written as bounded per-file shards with a manifest covering every changed file', () => {
+  const diffs = {
+    'src/big.ts': hugeDiff('src/big.ts', 1500),
+    'src/small.ts': hugeDiff('src/small.ts', 20),
+    'src/a.test.ts': hugeDiff('src/a.test.ts', 600),
+    'src/a.ts': '',
+  };
+  const files = Object.keys(diffs);
+  const { dir, paths } = shardedObserver(files, diffs);
+  try {
+    const raw = readFileSync(paths.input, 'utf8');
+    assert.ok(raw.length < INPUT_BOUND, `input.json is ${raw.length} characters`);
+    const input = JSON.parse(raw);
+    assert.equal(input.diff, undefined);
+    const manifest = input.diff_manifest;
+    assert.deepEqual([...new Set(manifest.map(({ path }) => path))].sort(), [...input.changed_files].sort());
+    assert.deepEqual([...input.changed_files].sort(), [...files].sort());
+    assert.deepEqual(
+      manifest.filter(({ path }) => path === 'src/a.ts'),
+      [{ path: 'src/a.ts', shard: null, characters: 0, changed_functions: [] }]
+    );
+    for (const path of files.filter((path) => diffs[path])) {
+      const entries = manifest.filter((entry) => entry.path === path);
+      const contents = entries.map(({ shard }) => readFileSync(shard, 'utf8'));
+      for (const [i, content] of contents.entries()) {
+        assert.ok(content.length <= DIFF_SHARD_LIMIT, `${entries[i].shard} is ${content.length} characters`);
+        assert.equal(entries[i].characters, content.length);
+      }
+      assert.equal(contents.join(''), diffs[path]);
+    }
+    const big = manifest.filter(({ path }) => path === 'src/big.ts');
+    assert.ok(big.length > 1);
+    assert.deepEqual(
+      big.map(({ part, parts }) => [part, parts]),
+      big.map((_, i) => [i + 1, big.length])
+    );
+    assert.deepEqual(big[0].changed_functions, ['function build1500()']);
+    assert.match(readFileSync(paths.brief, 'utf8'), /Read every shard in full/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('contributor-controlled filenames cannot place a diff shard outside the task directory', () => {
+  const files = [
+    'src/a.ts',
+    '../../escape.ts',
+    '/etc/passwd',
+    'src/../../../x.ts',
+    '..',
+    'a\nb $(rm -rf).ts',
+    '.hidden',
+  ];
+  const diffs = Object.fromEntries(files.slice(1).map((path) => [path, `diff --git a/x b/x\n+${path}\n`]));
+  const { dir, paths } = shardedObserver(files, diffs);
+  try {
+    const shardDir = join(paths.dir, 'diff');
+    const written = readdirSync(shardDir);
+    const { diff_manifest: manifest } = JSON.parse(readFileSync(paths.input, 'utf8'));
+    assert.equal(manifest.length, files.length);
+    for (const { path, shard } of manifest.filter(({ path }) => path !== 'src/a.ts')) {
+      assert.equal(dirname(shard), shardDir);
+      assert.match(basename(shard), /^\d{3}-[A-Za-z0-9._-]+\.diff$/);
+      assert.ok(written.includes(basename(shard)));
+      assert.equal(readFileSync(shard, 'utf8'), diffs[path]);
+    }
+    assert.equal(written.length, files.length - 1);
+    assert.deepEqual(readdirSync(dir), ['session']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
