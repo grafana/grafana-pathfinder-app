@@ -171,7 +171,10 @@ test('the CLI drives a real repository review to a complete report with controll
     assert.equal(final.complete, true, JSON.stringify(final.obligations));
     const rendered = readFileSync(final.rendered_path, 'utf8');
     assert.match(rendered, /Verdict: Approve\n/);
-    assert.match(rendered, /revert checks: 1 of 1 tests fail without their fix/);
+    assert.match(
+      rendered,
+      /revert checks: 1 of 1 fail on behavior · 0 inconclusive \(setup\) · 0 inconclusive \(error\)/
+    );
     const events = readFileSync(join(sessionDir, 'events.jsonl'), 'utf8')
       .trim()
       .split('\n')
@@ -290,6 +293,7 @@ test('a fresh process resumes an incremental session with the original text of a
       stage_ledger: {
         mode: 'full',
         change_class: 'tests-only',
+        surfaces: { go: false },
         workers: { planned: 1, run: 1 },
         skeptic_batches: { required: 0, run: 0 },
         observations: { total: 1, through_policy: 1 },

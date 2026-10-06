@@ -1,3 +1,4 @@
+import { computeChangedSurface } from '../changed-surface.mjs';
 import { buildReviewPlan } from '../concern-context.mjs';
 import { buildObservation } from '../contract-evolution-policy.mjs';
 import { advanceReviewPolicy, planVerificationBatches, reconcileReviewState } from '../review-policy.mjs';
@@ -15,6 +16,7 @@ import {
   tasksWhere,
   validateIdentity,
   validateReceipt,
+  validateIntent,
   validateTaskResult,
 } from './model.mjs';
 
@@ -82,6 +84,7 @@ export function buildIdentity(input, { effects, sharedInputs, tool }) {
     base_sha: input.base_sha,
     head_sha: input.head_sha,
     reviewer: input.reviewer,
+    intent: validateIntent(input.intent ?? null),
     mode,
     round,
     prior,
@@ -156,7 +159,7 @@ function stageScope(state, ctx) {
   const range = reviewRange(state.identity);
   const files = ctx.effects.changedFiles(range.from, range.to);
   return [
-    { type: 'scope_recorded', data: { range, files } },
+    { type: 'scope_recorded', data: { range, files, surfaces: computeChangedSurface({ files }) } },
     {
       type: 'gate_recorded',
       data: { gate: 'security', result: { range, ...ctx.effects.securityGate(range.from, range.to) } },
@@ -364,6 +367,7 @@ function stageEvidencePlan(state) {
         mode: state.identity.mode,
         change_class: route.result.change_class,
         changed_files: state.scope.files,
+        surfaces: state.scope.surfaces,
       },
     }),
   ];
@@ -585,7 +589,11 @@ function stageSynthesis(state) {
       role: 'synthesis',
       stage: 'synthesis',
       prerequisites: open.map(({ id }) => id),
-      spec: { refs, routed: routedConcerns(state).map(({ id }) => id) },
+      spec: {
+        refs,
+        routed: routedConcerns(state).map(({ id }) => id),
+        efficacy_gaps: efficacyRecords(state).filter(({ result }) => EFFICACY_GAPS.has(result)),
+      },
     }),
   ];
 }
@@ -596,6 +604,33 @@ function stageAdmit(state) {
     return [];
   }
   return [{ type: 'synthesis_applied', data: admitObservations(state, synthesis.result) }];
+}
+
+const EFFICACY_GAPS = new Set(['no_test_exists', 'passes_without_fix']);
+
+export function efficacyRecords(state) {
+  const plan = onlyTask(state, 'evidence_plan');
+  if (plan?.status !== 'completed') {
+    return [];
+  }
+  return plan.result.efficacy.flatMap((entry) => {
+    if (entry.result === 'no_test_exists') {
+      return [{ behavior: entry.behavior, test: null, result: 'no_test_exists', evidence: null, reason: entry.reason }];
+    }
+    const command = tasksWhere(
+      state,
+      (candidate) =>
+        candidate.role === 'command' && candidate.spec.kind === 'efficacy' && candidate.spec.behavior === entry.behavior
+    )[0];
+    if (command?.status !== 'completed' || command.result.error) {
+      return [];
+    }
+    const revert = command.result.revert ?? {
+      result: 'inconclusive_error',
+      evidence: 'the controller recorded no classification for this run',
+    };
+    return [{ behavior: entry.behavior, test: entry.test, result: revert.result, evidence: revert.evidence }];
+  });
 }
 
 export function liveRefs(state) {
@@ -825,7 +860,15 @@ export function recordResult(state, { task_id, head, result, receipt, revise_rea
     producerObservations({ result: normalized });
   }
   if (target.role === 'synthesis') {
-    admitObservations(state, normalized);
+    const { admitted } = admitObservations(state, normalized);
+    const findingIds = new Set(admitted.map(({ observation }) => observation.finding_id));
+    for (const entry of normalized.efficacy_dispositions) {
+      if (entry.finding_id !== undefined && !findingIds.has(entry.finding_id)) {
+        throw new Error(
+          `efficacy disposition for "${entry.behavior}" names finding ${entry.finding_id}, which synthesis does not keep or add`
+        );
+      }
+    }
   }
   const hash = sha256(normalized);
   const checkedReceipt = validateReceipt(receipt, target);

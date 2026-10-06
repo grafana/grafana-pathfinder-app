@@ -550,6 +550,7 @@ function priorReview({ blocking = [], deferred = [], round = 1, head = PRIOR_HEA
     stage_ledger: {
       mode: 'full',
       change_class: 'tests-only',
+      surfaces: { go: false },
       workers: { planned: 1, run: 1 },
       skeptic_batches: { required: 0, run: 0 },
       observations: { total: 0, through_policy: 0 },
@@ -748,5 +749,143 @@ test('a prior blocker restated without a verified fix but disposed as non-blocki
   assert.match(
     sessionStatus(state).convergence[0],
     /prior blocker lost-write .* was not verified fixed but is now follow_up \(no-current-harm\)/
+  );
+});
+
+const GO_FILES = ['pkg/plugin/app.go', 'pkg/plugin/app_test.go', 'src/a.ts'];
+
+function commandArgv(state, name) {
+  return state.order
+    .map((id) => state.tasks[id])
+    .filter((task) => task.role === 'command' && task.spec.kind === 'check' && task.spec.name === name)
+    .map((task) => task.spec.argv);
+}
+
+test('a Go change adds go build, Go lint, and Go tests to the controller-run evidence plan', () => {
+  const ctx = fakeContext({ files: GO_FILES });
+  const state = drive(startSession(ctx), ctx);
+  assert.deepEqual(state.scope.surfaces.go_paths, ['pkg/plugin/app.go', 'pkg/plugin/app_test.go']);
+  assert.equal(state.tasks[state.order.find((id) => state.tasks[id].role === 'evidence_plan')].spec.surfaces.go, true);
+  assert.deepEqual(commandArgv(state, 'go_build'), [['go', 'build', './...']]);
+  assert.deepEqual(commandArgv(state, 'go_lint'), [['npm', 'run', 'lint:go']]);
+  assert.deepEqual(commandArgv(state, 'go_test'), [['go', 'test', './pkg/...']]);
+  assert.deepEqual(obligations(state), []);
+  assert.deepEqual(deriveStageLedger(state).surfaces, { go: true });
+  assert.match(
+    renderSession(state).rendered,
+    /^Checks: unit_tests pass, typecheck pass, lint pass, go_build pass, go_lint pass, go_test pass · /m
+  );
+});
+
+test('a planned Go check keeps its argv, and a Go check cannot be not_applicable when Go changed', () => {
+  const ctx = fakeContext({ files: GO_FILES });
+  const state = drive(startSession(ctx), ctx, { evidence_plan: 'stop' });
+  const plan = ready(state, 'evidence_plan')[0];
+  const skipLint = {
+    ...EVIDENCE_PLAN,
+    checks: [...EVIDENCE_PLAN.checks, { name: 'go_lint', status: 'not_applicable', reason: 'no linter' }],
+  };
+  assert.throws(() => submit(state, plan, skipLint, ctx), /go_lint cannot be not_applicable when Go changed/);
+  const custom = {
+    ...EVIDENCE_PLAN,
+    checks: [...EVIDENCE_PLAN.checks, { name: 'go_test', argv: ['npm', 'run', 'test:go'] }],
+  };
+  const next = submit(state, plan, custom, ctx);
+  assert.deepEqual(commandArgv(next, 'go_test'), [['npm', 'run', 'test:go']]);
+});
+
+test('without a Go change no Go check runs and the ledger records go false', () => {
+  const ctx = fakeContext();
+  const state = drive(startSession(ctx), ctx);
+  assert.deepEqual(commandArgv(state, 'go_build'), []);
+  assert.deepEqual(deriveStageLedger(state).surfaces, { go: false });
+});
+
+function withEfficacy(ctx, evidence, answers = {}) {
+  let state = drive(startSession(ctx), ctx, { command: 'stop', ...answers });
+  for (const command of ready(state, 'command')) {
+    state = completeCommand(state, command, ctx, command.spec.kind === 'efficacy' ? evidence : {});
+  }
+  return drive(state, ctx, answers);
+}
+
+test('a setup failure on revert is never rendered as a test that detects the regression', () => {
+  const ctx = fakeContext();
+  const state = withEfficacy(ctx, {
+    exit_status: 1,
+    failure_kind: 'setup',
+    revert: { result: 'inconclusive_setup', evidence: "Cannot find module './guide-health'" },
+  });
+  assert.deepEqual(obligations(state), []);
+  const [entry] = deriveStageLedger(state).efficacy;
+  assert.equal(entry.result, 'inconclusive_setup');
+  assert.equal(entry.evidence, "Cannot find module './guide-health'");
+  assert.match(
+    renderSession(state).rendered,
+    /revert checks: 0 of 1 fail on behavior · 1 inconclusive \(setup\) · 0 inconclusive \(error\) · 0 pass without fix · 0 no test/
+  );
+  assert.match(sessionStatus(state).evidence_quality[0], /is inconclusive_setup, so it does not show/);
+});
+
+test('a revert run with no recorded classification is inconclusive, not a behavioral failure', () => {
+  const ctx = fakeContext();
+  const state = withEfficacy(ctx, { exit_status: 1, failure_kind: 'assertion' });
+  assert.equal(deriveStageLedger(state).efficacy[0].result, 'inconclusive_error');
+});
+
+const GAP_PLAN = {
+  ...EVIDENCE_PLAN,
+  efficacy: [
+    ...EVIDENCE_PLAN.efficacy,
+    { behavior: 'pins the cache key', result: 'no_test_exists', reason: 'no unit covers the key' },
+  ],
+};
+
+test('root synthesis must dispose every missing or surviving test, by finding ID or reason', () => {
+  const ctx = fakeContext();
+  const state = withEfficacy(
+    ctx,
+    { exit_status: 0, revert: { result: 'passes_without_fix', evidence: 'the test passed with the fix reverted' } },
+    { evidencePlan: GAP_PLAN, synthesis: 'stop' }
+  );
+  const synthesis = ready(state, 'synthesis')[0];
+  assert.deepEqual(
+    synthesis.spec.efficacy_gaps.map(({ behavior, result }) => [behavior, result]),
+    [
+      ['keeps both writes', 'passes_without_fix'],
+      ['pins the cache key', 'no_test_exists'],
+    ]
+  );
+  const base = { merges: [], revisions: [], additions: [observation()] };
+  assert.throws(() => submit(state, synthesis, base, ctx), /must dispose every no_test_exists and passes_without_fix/);
+  const unknown = {
+    ...base,
+    efficacy_dispositions: [
+      { behavior: 'keeps both writes', finding_id: 'not-a-finding' },
+      { behavior: 'pins the cache key', reason: 'pinned by the e2e cache test' },
+    ],
+  };
+  assert.throws(() => submit(state, synthesis, unknown, ctx), /names finding not-a-finding, which synthesis does not/);
+  const both = { ...base, efficacy_dispositions: [{ behavior: 'keeps both writes', finding_id: 'x', reason: 'y' }] };
+  assert.throws(() => submit(state, synthesis, both, ctx), /exactly one of finding_id/);
+  const disposed = drive(
+    submit(
+      state,
+      synthesis,
+      {
+        ...unknown,
+        efficacy_dispositions: [
+          { ...unknown.efficacy_dispositions[0], finding_id: 'lost-write' },
+          unknown.efficacy_dispositions[1],
+        ],
+      },
+      ctx
+    ),
+    ctx
+  );
+  assert.deepEqual(obligations(disposed), []);
+  assert.deepEqual(
+    deriveStageLedger(disposed).efficacy.map(({ disposition_note: note }) => note),
+    ['finding lost-write', 'pinned by the e2e cache test']
   );
 });

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 
-import { classifyFailure, compareBaselineFailure, executeCommandTask } from './evidence.mjs';
+import { classifyFailure, classifyRevertRun, compareBaselineFailure, executeCommandTask } from './evidence.mjs';
 import { storeArtifact } from './store.mjs';
 
 const ADD_TEST =
@@ -178,4 +178,86 @@ test('failure classification separates assertions from build and setup failures'
   assert.equal(classifyFailure('FAIL\tgithub.com/x/pkg [build failed]'), 'setup');
   assert.equal(classifyFailure('Test suite failed to run\nCannot find module'), 'setup');
   assert.equal(classifyFailure('No tests found, exiting with code 1'), 'unknown');
+});
+
+const JEST_ASSERTION = [
+  '  ● storage › keeps both writes',
+  '',
+  '    expect(received).toEqual(expected) // deep equality',
+  '',
+  '    Expected: ["a", "b"]',
+  '    Received: ["b"]',
+  'Tests:       1 failed, 3 passed, 4 total',
+].join('\n');
+const JEST_MISSING_MODULE = [
+  ' FAIL  tests/e2e-runner/runner.test.ts',
+  '  ● Test suite failed to run',
+  "    Cannot find module './guide-health' from 'tests/e2e-runner/runner.test.ts'",
+  'Tests:       0 total',
+].join('\n');
+const JEST_TYPE_ERROR = [
+  '  ● interactive step › pairs over the bus',
+  '',
+  "    TypeError: Cannot read properties of undefined (reading 'bind')",
+  '      at pairOverBus (src/lib/pairing-manager.ts:41:12)',
+  'Tests:       1 failed, 1 total',
+].join('\n');
+const GO_COMPILE = [
+  '# github.com/grafana/grafana-pathfinder-app/pkg/plugin [github.com/grafana/grafana-pathfinder-app/pkg/plugin.test]',
+  'pkg/plugin/resources_test.go:88:9: undefined: newPackageProxy',
+  'FAIL\tgithub.com/grafana/grafana-pathfinder-app/pkg/plugin [build failed]',
+].join('\n');
+const GO_ASSERTION = [
+  '--- FAIL: TestProxyStripsIdentity (0.00s)',
+  '    resources_test.go:121: expected no X-Grafana-Id header, got "1"',
+  'FAIL',
+].join('\n');
+
+test('a reverted run is classified from its output into behavior, setup, error, or pass', () => {
+  const cases = [
+    [JEST_ASSERTION, 1, 'fails_on_behavior', /expect\(received\)\.toEqual\(expected\)/],
+    [JEST_MISSING_MODULE, 1, 'inconclusive_setup', /Test suite failed to run/],
+    [JEST_TYPE_ERROR, 1, 'inconclusive_error', /TypeError: Cannot read properties of undefined/],
+    [GO_COMPILE, 1, 'inconclusive_setup', /resources_test\.go:88:9: undefined: newPackageProxy/],
+    [GO_ASSERTION, 1, 'fails_on_behavior', /resources_test\.go:121: expected no X-Grafana-Id header/],
+    ['npm ERR! something odd happened', 1, 'inconclusive_error', /exit 1 with no recognised/],
+    ['Tests:       4 passed, 4 total', 0, 'passes_without_fix', /exit 0\): Tests: 4 passed/],
+  ];
+  for (const [output, exitStatus, result, evidence] of cases) {
+    const classified = classifyRevertRun({ exit_status: exitStatus, output });
+    assert.equal(classified.result, result, output);
+    assert.match(classified.evidence, evidence, output);
+    assert.ok(!classified.evidence.includes('\n'));
+  }
+});
+
+test('a jest TypeError with a failed-test summary is an error, not a behavioral failure', () => {
+  assert.equal(classifyRevertRun({ exit_status: 1, output: JEST_TYPE_ERROR }).result, 'inconclusive_error');
+});
+
+test('an efficacy revert records the classified result from the real run output', () => {
+  const { run, cleanup } = fixture(
+    { 'src/add.mjs': 'export const add = (a, b) => a - b;\n' },
+    {
+      'src/add.mjs': 'export const add = (a, b) => a + b;\n',
+      'src/add.test.mjs': ADD_TEST,
+      'src/sum.mjs': "export { add as sum } from './add.mjs';\n",
+      'src/sum.test.mjs':
+        "import assert from 'node:assert/strict';\nimport test from 'node:test';\nimport { sum } from './sum.mjs';\ntest('sums', () => assert.equal(sum(1, 2), 3));\n",
+    }
+  );
+  try {
+    const behavior = run({ kind: 'efficacy', argv: ARGV, revert_paths: ['src/add.mjs'], at: 'head' });
+    assert.equal(behavior.revert.result, 'fails_on_behavior');
+    const setup = run({
+      kind: 'efficacy',
+      argv: ['node', '--test', 'src/sum.test.mjs'],
+      revert_paths: ['src/sum.mjs'],
+      at: 'head',
+    });
+    assert.equal(setup.revert.result, 'inconclusive_setup', setup.revert.evidence);
+    assert.match(setup.revert.evidence, /ERR_MODULE_NOT_FOUND|Cannot find module/);
+  } finally {
+    cleanup();
+  }
 });

@@ -28,6 +28,66 @@ function nodeModulesIdentity(dir) {
   return existsSync(path) ? realpathSync(path) : null;
 }
 
+const REVERT_SETUP = [
+  /Test suite failed to run/,
+  /Cannot find module/,
+  /ERR_MODULE_NOT_FOUND/,
+  /error TS\d+/,
+  /SyntaxError/,
+  /Jest encountered an unexpected token/,
+  /\[build failed\]/,
+  /\[setup failed\]/,
+  /\.go:\d+:\d+: /,
+];
+const REVERT_ASSERTION = [
+  /expect\(.*\)\.\w+\(/,
+  /^\s*Expected\b.*:/,
+  /^\s*Received\b.*:/,
+  /AssertionError|ERR_ASSERTION/,
+  /_test\.go:\d+: /,
+  /Error Trace:/,
+];
+const REVERT_ERROR = [
+  /\b(?:TypeError|ReferenceError|RangeError|EvalError|URIError)\b/,
+  /^panic: /,
+  /Uncaught|Unhandled/i,
+];
+const PASS_SUMMARY = /^\s*(?:Tests:\s+.*passed|ℹ pass \d+|ok\s+\S+)/;
+
+function signatureLine(lines, patterns) {
+  const line = lines.find((candidate) => patterns.some((pattern) => pattern.test(candidate)));
+  return line === undefined ? null : evidenceText(line);
+}
+
+function evidenceText(line) {
+  const text = line.replace(/\s+/g, ' ').trim().replaceAll('<!--', '< !--').replaceAll('-->', '-- >');
+  return text.length > 200 ? `${text.slice(0, 199)}…` : text;
+}
+
+export function classifyRevertRun({ exit_status: exitStatus, output }) {
+  const lines = output.split('\n');
+  if (exitStatus === 0) {
+    const summary = signatureLine(lines, [PASS_SUMMARY]);
+    return {
+      result: 'passes_without_fix',
+      evidence: `the test passed with the fix reverted (exit 0)${summary ? `: ${summary}` : ''}`,
+    };
+  }
+  const setup = signatureLine(lines, REVERT_SETUP);
+  if (setup) {
+    return { result: 'inconclusive_setup', evidence: setup };
+  }
+  const assertion = signatureLine(lines, REVERT_ASSERTION);
+  if (assertion) {
+    return { result: 'fails_on_behavior', evidence: assertion };
+  }
+  const error = signatureLine(lines, REVERT_ERROR);
+  return {
+    result: 'inconclusive_error',
+    evidence: error ?? `exit ${exitStatus} with no recognised assertion failure or error signature`,
+  };
+}
+
 export function classifyFailure(output) {
   if (ASSERTION_FAILURE.test(output)) {
     return 'assertion';
@@ -185,6 +245,12 @@ export function executeCommandTask({ task, identity, sessionDir, store, readArti
     const kept =
       kind === 'baseline' ? overlayFromHead(worktree, identity.head_sha, task.spec.preserve_paths ?? []) : [];
     evidence = { ...runArgv({ argv: task.spec.argv, cwd: worktree, store }), worktree_sha: sha, reverted, kept };
+    if (kind === 'efficacy') {
+      evidence.revert = classifyRevertRun({
+        exit_status: evidence.exit_status,
+        output: outputOf(evidence, readArtifact),
+      });
+    }
   } catch (error) {
     evidence = { error: error.message, worktree_sha: sha };
   } finally {
