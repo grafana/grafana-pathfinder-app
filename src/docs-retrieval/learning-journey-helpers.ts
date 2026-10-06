@@ -20,7 +20,9 @@ import {
 import { sanitizeContentKey } from '../global-state/content-key';
 import { resolvePathMemberPercentages, type PathMember } from '../global-state/path-member-join';
 import { dispatchProgress } from '../global-state/progress-events';
-import { meanOfMemberPercentages } from '../lib/guide-stats';
+import { meanOfMemberPercentages, summarizeGuideBlockIndex } from '../lib/guide-stats';
+import { getGuideIndex } from '../global-state/active-guide-index';
+import type { CompletionSource, CompletionFact } from '../completion-records/types';
 import { markGuideCompleted, findPathByUrl } from '../lib/guide-completion-bridge';
 import {
   recordGuideCompletion,
@@ -50,6 +52,8 @@ export type { ActiveMilestoneToolbarContext } from './active-milestone-sequence'
  * bundled guides, which fall back to `guideSource: 'bundled'` + the slug.
  */
 export interface CompletionContext {
+  source?: CompletionSource;
+  guideStats?: CompletionFact['guideStats'];
   packageManifest?: Record<string, unknown>;
   /** Recommendation-level repository (sibling of manifest in the V1 wire shape). */
   repository?: string;
@@ -700,7 +704,8 @@ function recordBundledGuideCompletion(guideId: string, context?: CompletionConte
     guideCategory: 'interactive',
     pathId: context?.pathId,
     completionPercent: 100,
-    source: 'objectives',
+    source: context?.source ?? 'objectives',
+    ...(context?.guideStats && { guideStats: context.guideStats }),
     completedAt: new Date().toISOString(),
   });
 }
@@ -728,7 +733,8 @@ export function recordStandaloneGuideCompletion(context: CompletionContext): voi
     guideCategory: 'interactive',
     pathId: context.pathId,
     completionPercent: 100,
-    source: 'objectives',
+    source: context?.source ?? 'objectives',
+    ...(context?.guideStats && { guideStats: context.guideStats }),
     completedAt: new Date().toISOString(),
   });
 }
@@ -742,6 +748,8 @@ export function recordStandaloneGuideCompletion(context: CompletionContext): voi
  * affordance, so completing a guide in any of them records the same fact.
  */
 export interface SurfaceCompletionInput {
+  source?: CompletionSource;
+  contentKey?: string;
   /**
    * activeTab.baseUrl — the SURFACE base, which is the milestone URL when a tab
    * was opened directly at a milestone. Drives bundled progress only; the
@@ -811,7 +819,10 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
   const journeyBase = metadata?.learningJourney?.baseUrl ?? metadata?.trackMemberBaseUrl;
   const slug = resolveActiveMilestoneSlug({ currentUrl, journeyBaseUrl: journeyBase }) ?? '';
   const willMarkMilestone = Boolean(slug && journeyBase);
+  const activeIndex = input.contentKey ? getGuideIndex(input.contentKey) : undefined;
   const completionContext: CompletionContext = {
+    source: input.source,
+    guideStats: activeIndex ? summarizeGuideBlockIndex(activeIndex.index) : undefined,
     packageManifest: metadata?.packageManifest,
     repository: metadata?.repository,
     guideTitle,
@@ -962,7 +973,8 @@ export async function markMilestoneDone(
     guideCategory: 'learning-journey',
     pathId: context?.pathId,
     completionPercent: 100,
-    source: 'objectives',
+    source: context?.source ?? 'objectives',
+    ...(context?.guideStats && { guideStats: context.guideStats }),
     completedAt: new Date().toISOString(),
   });
 
@@ -1032,7 +1044,7 @@ export async function markMilestoneDone(
           guideCategory: 'learning-journey',
           pathId: context?.pathId ?? path?.id,
           completionPercent: 100,
-          source: 'objectives',
+          source: context?.source ?? 'objectives',
           completedAt: new Date().toISOString(),
         });
       }

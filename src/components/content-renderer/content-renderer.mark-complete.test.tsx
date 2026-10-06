@@ -177,6 +177,7 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     await clickWhenReady();
 
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(onGuideComplete).toHaveBeenCalledWith('manual', expect.any(String));
     expect(markCompleteEvents()).toHaveLength(1);
     await waitFor(async () => expect(await guideCompletionMarkStorage.get(content.url)).toBe(true));
   });

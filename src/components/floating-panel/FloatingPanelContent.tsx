@@ -166,11 +166,13 @@ export function FloatingPanelContent({
           content={content}
           containerRef={contentRef}
           className={contentClassName}
-          onGuideComplete={() => {
+          onGuideComplete={(source, contentKey) => {
             // Emit the completion fact beneath the surface: floating and
             // full-screen both render through here, so neither manager needs to
             // wire emission and neither can silently drop it.
             recordGuideCompletionForSurface({
+              source,
+              contentKey,
               baseUrl: activeTab?.baseUrl,
               contentUrl: content.url,
               currentUrl: activeTab?.currentUrl,

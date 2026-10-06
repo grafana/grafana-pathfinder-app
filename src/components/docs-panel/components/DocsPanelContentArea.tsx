@@ -475,8 +475,10 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onContentReady={() => {
                         restoreScrollPosition();
                       }}
-                      onGuideComplete={() =>
+                      onGuideComplete={(source, contentKey) =>
                         recordGuideCompletionForSurface({
+                          source,
+                          contentKey,
                           baseUrl: activeTab?.baseUrl,
                           contentUrl: stableContent.url,
                           currentUrl: activeTab?.currentUrl,

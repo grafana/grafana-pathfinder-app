@@ -154,6 +154,39 @@ describe('completion analytics — event properties', () => {
     expect(JSON.stringify(completionAnalyticsProperties(fact({ pathId: 'acme-private-path' })))).not.toMatch(/acme/i);
   });
 
+  it('segments a private prose-only guide without identifying it', () => {
+    const properties = completionAnalyticsProperties(
+      fact({
+        guideSource: 'app-platform',
+        guideId: 'private-name',
+        guideTitle: 'Private title',
+        source: 'manual',
+        guideStats: {
+          version: 1,
+          blockCount: 4,
+          completableBlockCount: 0,
+          sectionCount: 0,
+          finalCompletablePosition: 0,
+        },
+      })
+    );
+    expect(properties).toMatchObject({
+      completion_source: 'manual',
+      total_block_count: 4,
+      completable_block_count: 0,
+      section_count: 0,
+      guide_stats_version: 1,
+      percentage_rule_version: 'block-position-v1',
+    });
+    expect(properties).not.toHaveProperty('guide_id');
+    expect(properties).not.toHaveProperty('guide_title');
+  });
+
+  it('does not invent counts when the rendered index is unavailable', () => {
+    expect(completionAnalyticsProperties(fact())).not.toHaveProperty('total_block_count');
+    expect(completionAnalyticsProperties(fact())).not.toHaveProperty('percentage_rule_version');
+  });
+
   it('omits the duration when it was not measured', () => {
     expect(completionAnalyticsProperties(fact())).not.toHaveProperty('duration_ms');
   });

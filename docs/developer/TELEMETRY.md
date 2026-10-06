@@ -86,15 +86,17 @@ Privacy protection is split between enforced normalization and caller discipline
 | `guide_id`, `guide_title`     | `guide_completed`, public sources only; a local harness guide sends `guide_id` alone                                   |
 | `journey_id`, `journey_title` | `journey_completed`, public sources only                                                                               |
 | `guide_category`              | `learning-journey` for milestones and journeys, `interactive` for every other guide                                    |
-| `completion_source`           | Always `objectives`, including a guide finished with Mark complete                                                     |
+| `completion_source`           | `manual` for Mark complete; `objectives` for automatic completion routes                                               |
 | `completion_percentage`       | Always `100`                                                                                                           |
 | `duration_ms`                 | Never sent                                                                                                             |
 
-The last three are constant because every producer in `learning-journey-helpers.ts` hardcodes them, pending completion-model work; they are not yet a signal. The property names follow this app's analytics conventions rather than the RFC draft (`completion_percentage`, `completion_source`). `guide_completed` never sends the id of the path that contains the guide (the fact's `pathId`), because a customer's path can contain a public guide.
+Terminal percentages are always 100 and no caller measures duration. The first terminal trigger owns `completion_source`: an explicit guide mark is `manual`; automatic routes remain `objectives`, including progress earned through skips. Step skip provenance is not persisted across reloads, so `skipped` is not yet produced here. For a journey, the source describes the final milestone trigger, not every member. The property names follow this app's analytics conventions rather than the RFC draft (`completion_percentage`, `completion_source`). `guide_completed` never sends the id of the path that contains the guide (the fact's `pathId`), because a customer's path can contain a public guide.
+
+Guide completions also carry `total_block_count`, `completable_block_count`, `section_count`, `guide_stats_version` and `percentage_rule_version: block-position-v1` when the completing surface has a frozen guide index. These are live counts, including zeros for prose-only guides, and contain no resource identity. They are omitted when the index is unavailable and on whole-journey events: the final milestone's block count is not the journey denominator. These properties enrich Track 1 only; the durable record schema is unchanged.
 
 ### Identity policy
 
-New events carry guide identity only for Grafana-published sources. A guide from any other source reports its visibility and a coarse source, never an identifier or title; `guideIdentityAnalyticsProperties` in `completion-analytics.ts` is the rule, so a new event that names a guide reuses it. Two limits apply:
+New events carry guide identity only for Grafana-published sources. A guide from any other source reports its visibility and a coarse source, never an identifier or title; `guideIdentityAnalyticsProperties` in `completion-identity.ts` is the rule, so a new event that names a guide reuses it. Two limits apply:
 
 - Visibility follows the resolved source alone, and the title is whatever the completing surface shows, usually the panel tab's title. Where the source falls back to a default (see [Source attribution](#source-attribution)), the event is tagged `public` whatever its provenance, so a label a customer chose can reach a `public` event there.
 - The local harness guides, `bundled:e2e-test` (the e2e runner) and `bundled:wysiwyg-preview` (a preview loader nothing writes to today), load their content from localStorage. They report `guide_visibility = 'private'` and their fixed harness id with no title (`src/constants/local-bundled-guides.ts`).

@@ -88,6 +88,7 @@ describe('ContentRenderer — the automatic section route and reset', () => {
     completeSection('section-3');
 
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
   });
 
   it('keeps the other sections completed when one of them is reset', async () => {

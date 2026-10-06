@@ -1,35 +1,8 @@
-import { LOCAL_BUNDLED_GUIDE_IDS } from '../constants/local-bundled-guides';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 
 import type { CompletionFact } from './types';
-
-// Privacy boundary: only these sources may send a guide identifier or title to RudderStack.
-const PUBLIC_GUIDE_SOURCES = new Set(['bundled', 'interactive-tutorials', 'online-cdn']);
-
-export function guideIdentityAnalyticsProperties({
-  kind,
-  guideSource,
-  guideId,
-  guideTitle,
-}: Pick<CompletionFact, 'kind' | 'guideSource' | 'guideId' | 'guideTitle'>): Record<string, string> {
-  const [idProperty, titleProperty] =
-    kind === 'journey' ? ['journey_id', 'journey_title'] : ['guide_id', 'guide_title'];
-  if (guideSource === 'bundled' && LOCAL_BUNDLED_GUIDE_IDS.has(guideId)) {
-    return { guide_source: guideSource, guide_visibility: 'private', [idProperty]: guideId };
-  }
-  if (!PUBLIC_GUIDE_SOURCES.has(guideSource)) {
-    return {
-      guide_source: guideSource === 'app-platform' ? guideSource : 'other',
-      guide_visibility: 'private',
-    };
-  }
-  return {
-    guide_source: guideSource,
-    guide_visibility: 'public',
-    [idProperty]: guideId,
-    [titleProperty]: guideTitle,
-  };
-}
+import { guideIdentityAnalyticsProperties } from './completion-identity';
+export { guideIdentityAnalyticsProperties } from './completion-identity';
 
 export function completionAnalyticsProperties(fact: CompletionFact): Record<string, string | number> {
   return {
@@ -37,6 +10,13 @@ export function completionAnalyticsProperties(fact: CompletionFact): Record<stri
     guide_category: fact.guideCategory,
     completion_source: fact.source,
     completion_percentage: fact.completionPercent,
+    ...(fact.guideStats && {
+      total_block_count: fact.guideStats.blockCount,
+      completable_block_count: fact.guideStats.completableBlockCount,
+      section_count: fact.guideStats.sectionCount,
+      guide_stats_version: fact.guideStats.version,
+      percentage_rule_version: 'block-position-v1',
+    }),
     ...(fact.durationMs !== undefined && { duration_ms: fact.durationMs }),
   };
 }

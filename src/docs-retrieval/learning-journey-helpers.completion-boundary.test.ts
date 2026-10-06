@@ -100,6 +100,8 @@ jest.mock('../global-state/completion-store', () => ({
   evictContentCache: jest.fn(),
 }));
 
+import { publishGuideIndex, evictAllGuideIndexes } from '../global-state/active-guide-index';
+import { computeGuideBlockIndex } from '../lib/guide-stats';
 import { of } from 'rxjs';
 import { config, setBackendSrv, type BackendSrv } from '@grafana/runtime';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
@@ -146,6 +148,7 @@ function seedMilestoneComplete(url: string): void {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  evictAllGuideIndexes();
   __resetRecorderForTests();
   persistedEmitted.clear();
   persistedReported.clear();
@@ -1169,5 +1172,43 @@ describe('malformed journey metadata (defensive boundary)', () => {
     // real percentage with a spurious 0.
     expect(journeySetMock).toHaveBeenCalledTimes(1);
     expect(journeySetMock).not.toHaveBeenCalledWith('bundled:linux', 0);
+  });
+});
+
+describe('completion analytics context', () => {
+  it.each(['bundled', 'app-platform'])('preserves the manual cause and live counts for %s', (repository) => {
+    const contentKey = 'rendered-guide';
+    publishGuideIndex({
+      contentKey,
+      denominatorSource: 'live-pre-inlining',
+      index: computeGuideBlockIndex([{ type: 'markdown' }]),
+    });
+    recordGuideCompletionForSurface({
+      contentUrl: repository === 'bundled' ? 'bundled:reading' : 'backend-guide:reading',
+      metadata: { title: 'Reading', repository, packageManifest: { id: 'reading' } },
+      source: 'manual',
+      contentKey,
+    });
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({
+      source: 'manual',
+      guideStats: { blockCount: 1, completableBlockCount: 0, sectionCount: 0 },
+    });
+  });
+
+  it('carries the final milestone cause to the journey without using milestone counts as journey counts', async () => {
+    const url = 'https://grafana.com/docs/learning-journeys/example/finish/';
+    await markMilestoneDone('https://grafana.com/docs/learning-journeys/example/', 'finish', url, [url], {
+      repository: 'online-cdn',
+      packageManifest: { id: 'example' },
+      source: 'manual',
+      guideStats: { version: 1, blockCount: 3, completableBlockCount: 0, sectionCount: 0, finalCompletablePosition: 0 },
+    });
+    expect(emitted.find((fact) => fact.kind === 'guide')).toMatchObject({
+      source: 'manual',
+      guideStats: { blockCount: 3 },
+    });
+    expect(emitted.find((fact) => fact.kind === 'journey')).toMatchObject({ source: 'manual' });
+    expect(emitted.find((fact) => fact.kind === 'journey')).not.toHaveProperty('guideStats');
   });
 });
