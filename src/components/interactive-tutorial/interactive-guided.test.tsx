@@ -13,13 +13,16 @@ import { waitForReactUpdates } from '../../lib/async-utils';
 import { GuidedHandler as RealGuidedHandler } from '../../interactive-engine/action-handlers/guided-handler';
 import { querySelectorAllEnhanced } from '../../lib/dom';
 import { acquireGuidedRun } from '../../global-state/guided-run';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
-import { CompletionCoordinator } from '../../global-state/observation/coordinator';
-import { CompletionObservationContext } from '../../global-state/observation/context';
+import {
+  clearHeldCompletionRequests,
+  createCoordinatorWrapper,
+  renderWithCoordinator as render,
+} from '../../test-utils/completion-coordinator';
 
 const mockInteractiveMode = jest.fn(() => 'interactive');
 const mockControllerChannel = jest.fn();
@@ -194,6 +197,10 @@ jest.mock('../../global-state/panel-mode', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+afterEach(() => {
+  clearHeldCompletionRequests();
+});
+
 beforeEach(() => {
   mockInteractiveMode.mockReturnValue('interactive');
   mockControllerChannel.mockReturnValue(null);
@@ -1440,21 +1447,7 @@ describe('InteractiveGuided — successor ownership', () => {
 });
 
 describe('InteractiveGuided — under the completion coordinator', () => {
-  function coordinated(check: () => Promise<boolean> = async () => false) {
-    const coordinator = new CompletionCoordinator(check);
-    coordinator.start();
-    const Wrapper = ({ children }: { children: React.ReactNode }) => (
-      <CompletionObservationContext.Provider value={coordinator}>{children}</CompletionObservationContext.Provider>
-    );
-    return { coordinator, Wrapper };
-  }
-
-  afterEach(() => {
-    new CompletionCoordinator(jest.fn()).reset();
-  });
-
   it('persists a completeEarly final click during capture when completion collapses the host', async () => {
-    const { coordinator, Wrapper } = coordinated();
     const actionOrder: string[] = [];
     mockExecuteGuidedStep.mockImplementation(async (_action, _index, _total, _timeout, onActionCompleted) => {
       actionOrder.push('listener started');
@@ -1477,17 +1470,15 @@ describe('InteractiveGuided — under the completion coordinator', () => {
       ) : null;
     }
 
-    render(<AutoCollapseHarness />, { wrapper: Wrapper });
+    render(<AutoCollapseHarness />);
     fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
 
     await waitFor(() => {
       expect(actionOrder).toEqual(['listener started', 'completion persisted']);
     });
-    coordinator.stop();
   });
 
   it('persists a completion reported after the final click unmounted the host', async () => {
-    const { coordinator, Wrapper } = coordinated();
     const target = document.createElement('button');
     target.id = 'managed-padding-target';
     document.body.append(target);
@@ -1514,8 +1505,7 @@ describe('InteractiveGuided — under the completion coordinator', () => {
         sectionId="section"
         onStepComplete={onStepComplete}
         internalActions={[{ targetAction: 'highlight', refTarget: '#managed-padding-target' }]}
-      />,
-      { wrapper: Wrapper }
+      />
     );
     target.onclick = () => view.unmount();
     try {
@@ -1531,13 +1521,11 @@ describe('InteractiveGuided — under the completion coordinator', () => {
       jest
         .mocked(querySelectorAllEnhanced)
         .mockReturnValue({ elements: [], usedFallback: false, originalSelector: '' });
-      coordinator.stop();
     }
   });
 
   it('reports waiting, not requirements-unmet, while an objective gates a finished run', async () => {
     let satisfied = false;
-    const { coordinator, Wrapper } = coordinated(async () => satisfied);
     mockExecuteGuidedStep.mockResolvedValue('completed');
     const onComplete = jest.fn();
     render(
@@ -1547,7 +1535,7 @@ describe('InteractiveGuided — under the completion coordinator', () => {
         onComplete={onComplete}
         internalActions={[{ targetAction: 'noop' }]}
       />,
-      { wrapper: Wrapper }
+      { wrapper: createCoordinatorWrapper(async () => satisfied) }
     );
     fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
 
@@ -1562,6 +1550,5 @@ describe('InteractiveGuided — under the completion coordinator', () => {
       fireEvent.click(screen.getByTestId(testIds.interactive.checkCompletionButton('managed-gated')));
     });
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
-    coordinator.stop();
   });
 });

@@ -84,9 +84,9 @@ export function useObservedCompletion(options: Options) {
   }, [coordinator, id, resetTrigger]);
   useSyncExternalStore(coordinator?.subscribe ?? noopSubscribe, coordinator?.snapshot ?? zero, zero);
   const complete = useCallback(
-    (reason: ObservationReason = 'manual', early = false) => {
+    (reason: ObservationReason = 'manual', skipVerify = false) => {
       if (coordinator) {
-        coordinator.request(id, reason, early);
+        coordinator.request(id, reason, skipVerify);
       } else if (!latest.current.onStepComplete) {
         markStepCompleted(stepId, sectionId, reason, contentKey);
       }

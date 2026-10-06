@@ -746,7 +746,7 @@ export const InteractiveStep = forwardRef<
           return;
         }
         if (!doIt) {
-          persistCompletion();
+          persistCompletion('manual', true);
           if (onStepComplete) {
             onStepComplete(stepId);
           }
@@ -785,7 +785,7 @@ export const InteractiveStep = forwardRef<
         }
 
         if (!doIt) {
-          persistCompletion();
+          persistCompletion('manual', true);
           if (onStepComplete && stepId) {
             onStepComplete(stepId);
           }

@@ -1,5 +1,6 @@
 import { nextRequiredAction, advanceActionProgress } from './action-progress';
 import { conditionTokens } from '../../lib/condition-input';
+import { logger } from '../../lib/logging';
 import type { ConditionInput } from '../../types/requirements.types';
 
 export interface ObservedAction {
@@ -28,7 +29,7 @@ interface Entry {
   step: ObservationStep;
   cursor: number;
   requested?: ObservationReason;
-  early?: boolean;
+  skipVerify?: boolean;
   unmet?: string;
   checkCommand?: boolean;
   committed: boolean;
@@ -37,7 +38,7 @@ interface Entry {
 
 interface HeldRequest {
   reason: ObservationReason;
-  early: boolean;
+  skipVerify: boolean;
   stepId: string;
   sectionId?: string;
   expires: number;
@@ -53,11 +54,11 @@ function hasObjectives(input: ConditionInput | undefined): boolean {
   return Array.isArray(input) ? input.length > 0 : !!input;
 }
 
-function completionGate(step: ObservationStep, early: boolean | undefined): ConditionInput | undefined {
+function completionGate(step: ObservationStep, skipVerify: boolean | undefined): ConditionInput | undefined {
   if (hasObjectives(step.objectives)) {
     return step.objectives;
   }
-  return early ? undefined : step.verify;
+  return skipVerify ? undefined : step.verify;
 }
 
 // A request outlives the coordinator that took it: an assisted run can finish
@@ -67,10 +68,10 @@ const heldRequests = new Map<string, HeldRequest>();
 
 const liveCoordinators = new Set<CompletionCoordinator>();
 
-function holdRequest(step: ObservationStep, reason: ObservationReason, early: boolean) {
+function holdRequest(step: ObservationStep, reason: ObservationReason, skipVerify: boolean) {
   heldRequests.set(step.id, {
     reason,
-    early,
+    skipVerify,
     stepId: step.stepId,
     sectionId: step.sectionId,
     expires: Date.now() + HELD_REQUEST_TTL_MS,
@@ -179,7 +180,7 @@ export class CompletionCoordinator {
     this.entries.set(step.id, entry);
     const held = takeHeldRequest(step.id);
     if (held && !step.completed) {
-      this.arm(entry, held.reason, held.early);
+      this.arm(entry, held.reason, held.skipVerify);
     }
     this.changed();
     this.recheck();
@@ -189,7 +190,7 @@ export class CompletionCoordinator {
         this.entries.delete(step.id);
         this.dormant.set(step.id, { step: entry.step, cursor: entry.cursor });
         if (entry.requested && !entry.committed && !entry.step.completed) {
-          holdRequest(entry.step, entry.requested, !!entry.early);
+          holdRequest(entry.step, entry.requested, !!entry.skipVerify);
         }
         this.changed();
       }
@@ -268,7 +269,7 @@ export class CompletionCoordinator {
       }
       entry.cursor = 0;
       entry.requested = undefined;
-      entry.early = undefined;
+      entry.skipVerify = undefined;
       entry.unmet = undefined;
       entry.checkCommand = false;
       entry.committed = false;
@@ -368,22 +369,27 @@ export class CompletionCoordinator {
     this.recheck();
   }
 
-  request(id: string, reason: ObservationReason = 'manual', early = false) {
+  request(id: string, reason: ObservationReason = 'manual', skipVerify = false) {
     const entry = this.entries.get(id);
     if (!entry) {
       const dormant = this.dormant.get(id);
-      if (dormant && (reason === 'skipped' || !hasObjectives(completionGate(dormant.step, early)))) {
+      if (dormant && (reason === 'skipped' || !hasObjectives(completionGate(dormant.step, skipVerify)))) {
         this.dormant.delete(id);
-        dormant.step.commit(reason);
+        try {
+          dormant.step.commit(reason);
+        } catch (error) {
+          this.dormant.set(id, dormant);
+          throw error;
+        }
       } else if (dormant) {
-        holdRequest(dormant.step, reason, early);
+        holdRequest(dormant.step, reason, skipVerify);
       }
       return;
     }
     if (entry.committed || entry.step.completed) {
       return;
     }
-    this.arm(entry, reason, early);
+    this.arm(entry, reason, skipVerify);
     this.recheck();
   }
 
@@ -391,19 +397,19 @@ export class CompletionCoordinator {
     const entry = this.entries.get(id);
     const held = entry && !entry.step.completed ? takeHeldRequest(id) : undefined;
     if (entry && held) {
-      this.arm(entry, held.reason, held.early);
+      this.arm(entry, held.reason, held.skipVerify);
       this.recheck();
     }
   }
 
-  private arm(entry: Entry, reason: ObservationReason, early: boolean) {
-    if (reason === 'skipped' || !hasObjectives(completionGate(entry.step, early))) {
+  private arm(entry: Entry, reason: ObservationReason, skipVerify: boolean) {
+    if (reason === 'skipped' || !hasObjectives(completionGate(entry.step, skipVerify))) {
       this.commit(entry, reason);
       return;
     }
     if (!entry.requested) {
       entry.requested = reason;
-      entry.early = early;
+      entry.skipVerify = skipVerify;
       entry.checkCommand = reason === 'manual';
       this.changed();
     }
@@ -422,7 +428,12 @@ export class CompletionCoordinator {
       return;
     }
     entry.committed = true;
-    entry.step.commit(reason);
+    try {
+      entry.step.commit(reason);
+    } catch (error) {
+      entry.committed = false;
+      throw error;
+    }
     this.changed();
   }
 
@@ -476,7 +487,7 @@ export class CompletionCoordinator {
         const conditions = objectiveGate
           ? step.objectives
           : entry.requested
-            ? completionGate(step, entry.early)
+            ? completionGate(step, entry.skipVerify)
             : undefined;
         if (!objectiveGate && !entry.requested) {
           continue;
@@ -501,7 +512,11 @@ export class CompletionCoordinator {
           continue;
         }
         if (unmet === undefined) {
-          this.commit(entry, objectiveGate ? 'objectives' : entry.requested!);
+          try {
+            this.commit(entry, objectiveGate ? 'objectives' : entry.requested!);
+          } catch (error) {
+            logger.warn('[completion-coordinator] completion callback failed', { stepId: step.stepId, error });
+          }
         } else if (entry.unmet !== unmet) {
           entry.unmet = unmet;
           this.changed();

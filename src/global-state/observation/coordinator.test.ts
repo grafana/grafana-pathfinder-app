@@ -432,3 +432,20 @@ describe('waitForCompletion', () => {
     await expect(result).resolves.toBe(false);
   });
 });
+
+it('lets a request retry after the completion callback throws', () => {
+  const coordinator = new CompletionCoordinator(jest.fn());
+  const commit = jest
+    .fn()
+    .mockImplementationOnce(() => {
+      throw new Error('parent persistence failed');
+    })
+    .mockImplementation(() => undefined);
+  const item = step({ id: 'retry-commit', commit });
+  coordinator.register(item);
+  expect(() => coordinator.request(item.id)).toThrow('parent persistence failed');
+  coordinator.request(item.id);
+  expect(commit).toHaveBeenCalledTimes(2);
+  coordinator.request(item.id);
+  expect(commit).toHaveBeenCalledTimes(2);
+});

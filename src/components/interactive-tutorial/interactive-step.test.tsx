@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { clearHeldCompletionRequests, renderWithCoordinator as render } from '../../test-utils/completion-coordinator';
 import { InteractiveStep, executeWithLazyScroll } from './interactive-step';
 import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
@@ -990,4 +991,8 @@ it('completes a section noop step under the coordinator once it is eligible', as
     </CompletionObservationContext.Provider>
   );
   await waitFor(() => expect(onStepComplete).toHaveBeenCalledWith('section-info-step-1'));
+});
+
+afterEach(() => {
+  clearHeldCompletionRequests();
 });
