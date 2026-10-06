@@ -295,7 +295,7 @@ function dependencyRule(surface, cutoff) {
     ];
   }
   return [
-    `Dependencies: these manifests changed: ${surface.dependency_manifests.join(', ')}. Audit only the packages added or changed in them between base and head, not the whole tree. Record the advisory source and the date of its data in the observation evidence.${
+    `Dependencies: changed-surface.mjs reports changed dependency manifests, listed in \`changed_surface.dependency_manifests\` in the data. Audit only the packages added or changed in them between base and head, not the whole tree. Record the advisory source and the date of its data in the observation evidence.${
       cutoff ? ` The review's evidence cutoff is ${cutoff}; advisory data dated after it cannot support a finding.` : ''
     }`,
     '',
@@ -308,11 +308,15 @@ function producerBrief(role, common, packets, context, surface, cutoff) {
   lines.push(...OBSERVE_STEPS);
   if (role === 'security') {
     lines.push(
-      'Security: apply the F1-F6 rules in `.cursor/rules/frontend-security.mdc` to the changed hunks.' +
-        (surface.go
-          ? ' Go changed, so also check the identity trust boundary in `docs/design/BACKEND_PROXY_PATTERN.md`.'
-          : '') +
-        ' Return canonical observations or no_findings, never a clean, minor, or blocking verdict or a custom report.',
+      'Security: use the secure skill (`.cursor/skills/secure/SKILL.md`) on the changed hunks, running each of its phases that applies:',
+      '- Phase 1: the F1-F6 rules in `.cursor/rules/frontend-security.mdc`, for changed frontend files.',
+      ...(surface.go
+        ? [
+            '- Phase 2: the backend allowlist, forwarded-identity, secret, payload, and path checks, with the identity trust boundary in `docs/design/BACKEND_PROXY_PATTERN.md`, because Go changed.',
+          ]
+        : []),
+      '- Phase 3: the MCP HTTP transport audit, when a changed file is under `src/cli/mcp/`.',
+      "The dependency rule below replaces its Phase 4. Return canonical observations or no_findings, never a clean, minor, or blocking verdict or the skill's own report.",
       '',
       ...dependencyRule(surface, cutoff)
     );
@@ -342,6 +346,7 @@ function contractBrief(common, packets, context) {
     '- Before finding contract_branching or contract_missing, inspect every claimed competing owner at head. If history is incomplete and no anchor exists, use insufficient_history.',
     '- If the PR intent does not say whether the change follows, extends, or replaces the established contract, or a PR that establishes or replaces a contract does not update its anchor in `docs/design/CONCERN_DETAILS.md`, add a documentation-drift defect with impact none.',
     '',
+    ...evidenceRules(common, 'A claim about the contract'),
     'Return one JSON object: `{ "packet": <contract evolution packet>, "observations": [<canonical observation>] }`. You decide no disposition.',
     '',
     reviewSection('Contract evolution packet'),
@@ -393,7 +398,7 @@ export function buildDispatchBrief({ repo, pr, scratch }) {
     `5. Scratch files go ONLY in \`${dir}/\`, every file prefixed \`${prefix}\`. Sibling agents share the scratchpad. Before rendering, assert the report's PR number and head SHA are yours.`,
     '',
     'PIPELINE: read `.cursor/skills/review/SKILL.md` in full and follow it exactly, including its completeness contract.',
-    `- Run \`node ${scripts}/security-gate.mjs --base <base-sha> --head <head-sha>\`. If it triggers, the security specialist is mandatory and takes a plan slot. Record both values in the ledger.`,
+    `- Run \`node ${scripts}/security-gate.mjs --base <base-sha> --head <head-sha>\`. If it triggers, the security specialist is mandatory (use the secure skill) and takes a plan slot. Record both values in the ledger.`,
     '- Use the planner worker count as a ceiling for bundling, never as permission to run fewer observation passes than the routed concerns need. Every planned worker must run as a real subagent.',
     '- Send every observation through review-policy.mjs, including low ones, and run exactly the skeptic roles it returns.',
     `- Generate every worker and skeptic brief with \`node ${scripts}/dispatch-brief.mjs --role observer|security|contract|skeptic\` and send it unchanged.`,
