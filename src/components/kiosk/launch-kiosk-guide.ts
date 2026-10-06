@@ -9,7 +9,7 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { PATHFINDER_PARAMS, stripPathfinderParams } from '../../utils/pathfinder-search-params';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { getKioskSessionId } from '../../lib/kiosk-analytics';
+import { getKioskName, getKioskSessionId } from '../../lib/kiosk-analytics';
 import type { KioskRule } from './kiosk-rules';
 import { parseKioskWebUrl } from '../../security/kiosk-url';
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
@@ -92,9 +92,11 @@ export function launchKioskGuide(
     stripPathfinderParams(url);
   }
   const sessionId = getKioskSessionId() ?? crypto.randomUUID();
+  const kioskName = getKioskName() ?? 'unknown';
 
   reportAppInteraction(UserInteraction.KioskDemoStarted, {
     kiosk_session_id: sessionId,
+    kiosk_name: kioskName,
     guide_url: rule.url,
     guide_title: rule.title,
     guide_type: rule.type,
@@ -106,11 +108,17 @@ export function launchKioskGuide(
     url.searchParams.set('doc', rule.url);
   }
   url.searchParams.set('kiosk_session', sessionId);
+  url.searchParams.set('kiosk_name', kioskName);
+  url.searchParams.set('source', 'kiosk_session');
   if (rule.type === 'learning-journey') {
     url.searchParams.set('type', 'learning-journey');
   }
   if (mode === 'instance') {
     window.__pathfinderKioskSessionId = sessionId;
+    window.__pathfinderKioskName = kioskName;
+    if (!sidebarState.getIsSidebarMounted()) {
+      sidebarState.setPendingOpenSource('kiosk_session', 'auto-open');
+    }
     if (prepared && (panelModeManager.getMode() === 'floating' || isExtensionSidebarOwnedByOther(pluginJson.id))) {
       panelModeManager.setPendingGuide({
         url: prepared.url,
@@ -118,7 +126,7 @@ export function launchKioskGuide(
         type: prepared.type,
         packageInfo: prepared.packageInfo,
         preparedContent: prepared.preparedContent,
-        source: prepared.source,
+        source: 'kiosk_session',
       });
       onLaunch?.();
       panelModeManager.setModeTransient('floating');
@@ -138,11 +146,10 @@ export function launchKioskGuide(
       if (sidebarState.getIsSidebarMounted()) {
         document.dispatchEvent(
           new CustomEvent(AUTO_OPEN_DOCS_EVENT, {
-            detail: { url: prepared.url, title: prepared.title, source: 'url_param', launchKey },
+            detail: { url: prepared.url, title: prepared.title, source: 'kiosk_session', launchKey },
           })
         );
       } else {
-        sidebarState.setPendingOpenSource('url_param');
         sidebarState.openSidebar('Interactive learning', {
           url: prepared.url,
           title: prepared.title,

@@ -86,21 +86,26 @@ describe('KioskTile', () => {
   });
 
   it.each(['instance', 'presentation'] as const)('carries the opening session through a %s launch', (mode) => {
-    const session = startKioskSession();
+    const session = startKioskSession('customer-onboarding');
     mockRandomUUID.mockReturnValueOnce('00000000-0000-4000-a000-000000000002');
     window.__pathfinderKioskSessionId = 'previous-guide';
     launchKioskGuide(rule, mode, session.end);
     const destination = mode === 'instance' ? mockPush.mock.calls[0][0] : mockOpen.mock.calls[0][0];
     expect(new URL(destination, window.location.origin).searchParams.get('kiosk_session')).toBe(session.id);
+    expect(new URL(destination, window.location.origin).searchParams.get('kiosk_name')).toBe('customer-onboarding');
+    expect(new URL(destination, window.location.origin).searchParams.get('source')).toBe('kiosk_session');
     expect(reportAppInteraction).toHaveBeenCalledWith(
       UserInteraction.KioskDemoStarted,
-      expect.objectContaining({ kiosk_session_id: session.id })
+      expect.objectContaining({ kiosk_session_id: session.id, kiosk_name: 'customer-onboarding' })
     );
     if (mode === 'instance') {
       expect(window.__pathfinderKioskSessionId).toBe(session.id);
+      expect(window.__pathfinderKioskName).toBe('customer-onboarding');
+      expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto-open' });
     }
     session.end();
     delete window.__pathfinderKioskSessionId;
+    delete window.__pathfinderKioskName;
     mockRandomUUID.mockReset().mockReturnValue('00000000-0000-4000-a000-000000000001');
   });
 
@@ -110,6 +115,7 @@ describe('KioskTile', () => {
 
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskDemoStarted, {
       kiosk_session_id: '00000000-0000-4000-a000-000000000001',
+      kiosk_name: 'unknown',
       guide_url: rule.url,
       guide_title: rule.title,
       guide_type: rule.type,
@@ -246,7 +252,9 @@ describe('KioskTile', () => {
     try {
       launchKioskGuide(rule, 'instance', jest.fn(), prepared);
       expect(panelModeManager.getMode()).toBe('floating');
-      expect(pending).toEqual(expect.objectContaining({ url: rule.url, preparedContent: prepared.preparedContent }));
+      expect(pending).toEqual(
+        expect.objectContaining({ url: rule.url, preparedContent: prepared.preparedContent, source: 'kiosk_session' })
+      );
       expect(new URL(mockPush.mock.calls[0][0], window.location.origin).searchParams.has('doc')).toBe(false);
     } finally {
       document.removeEventListener(REQUEST_FLOATING_GUIDE_EVENT, listener);

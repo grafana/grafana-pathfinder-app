@@ -1,6 +1,7 @@
 import { logger } from '../../lib/logging';
 import { recordKioskCatalogLoaded } from '../../lib/telemetry';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { getKioskName, startKioskSession } from '../../lib/kiosk-analytics';
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: { KioskCatalogLoaded: 'kiosk_catalog_loaded' },
@@ -38,10 +39,23 @@ it('reports the catalog outcome with the opening session and no catalog contents
   await loadKioskData(defaultUrl, overrideUrl, undefined, { sessionId: 'opening-session', mode: 'instance' });
   expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskCatalogLoaded, {
     tier: 'override',
+    kiosk_name: 'custom',
     degraded: false,
     kiosk_session_id: 'opening-session',
     launch_mode: 'instance',
   });
+});
+
+it('names the served fallback catalog instead of the failed requested kiosk', async () => {
+  const session = startKioskSession('dem');
+  mockFetch.mockRejectedValue(new Error('unavailable'));
+  await loadKioskData(defaultUrl, undefined, undefined, { sessionId: session.id, mode: 'instance' });
+  expect(getKioskName()).toBe('default');
+  expect(reportAppInteraction).toHaveBeenCalledWith(
+    UserInteraction.KioskCatalogLoaded,
+    expect.objectContaining({ tier: 'bundled', degraded: true, kiosk_name: 'default' })
+  );
+  session.end();
 });
 
 it('uses the override first and does not fetch the default', async () => {

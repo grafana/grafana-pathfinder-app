@@ -6,6 +6,7 @@
  */
 
 import { reportInteraction } from '@grafana/runtime';
+import { parseKioskName } from './kiosk-attribution';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
 // Bridge, not the Faro adapter: analytics is entry-eager and a direct
@@ -271,13 +272,19 @@ export function reportAppInteraction(
     const variant = experiments ? rollUpVariant(experiments) : null;
 
     const kioskSessionId = properties.kiosk_session_id ?? window.__pathfinderKioskSessionId;
+    const kioskName =
+      parseKioskName(properties.kiosk_name) ??
+      (kioskSessionId === window.__pathfinderKioskSessionId
+        ? parseKioskName(window.__pathfinderKioskName)
+        : undefined) ??
+      'unknown';
 
     const enrichedProperties: Record<string, unknown> = {
       plugin_version: packageJson.version,
       ...properties,
       ...(variant && { variant }),
       ...(experiments && { experiments }),
-      ...(kioskSessionId && { kiosk_session_id: kioskSessionId }),
+      ...(kioskSessionId && { kiosk_session_id: kioskSessionId, kiosk_name: kioskName }),
     };
 
     try {
