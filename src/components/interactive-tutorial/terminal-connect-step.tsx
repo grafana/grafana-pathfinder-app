@@ -236,6 +236,9 @@ export const TerminalConnectStep = forwardRef<
     );
 
     const handleGcxSkip = useCallback(() => {
+      if (isCompleted) {
+        return;
+      }
       reportAppInteraction(
         UserInteraction.GcxSetupSkipped,
         buildInteractiveStepProperties(
@@ -252,7 +255,7 @@ export const TerminalConnectStep = forwardRef<
         },
         analyticsStepMeta
       );
-    }, [gcxState, completeStep, analyticsStepMeta]);
+    }, [isCompleted, gcxState, completeStep, analyticsStepMeta]);
 
     const persistReset = useCallback(() => {
       if (isStandalone) {

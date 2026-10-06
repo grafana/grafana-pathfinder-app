@@ -308,6 +308,9 @@ export function DatasourceCheckStep({
 
   const markSkipped = checker.markSkipped;
   const handleSkip = useCallback(async () => {
+    if (isCompleted) {
+      return;
+    }
     // Giving up has to stop the query too: it would otherwise keep spending
     // after the user moved on, and leave Redo inert until it finished.
     reset();
@@ -324,7 +327,7 @@ export function DatasourceCheckStep({
       { targetAction: 'datasource-check', interactionLocation: 'data_check_step', skipReason },
       stepContext
     );
-  }, [reset, markSkipped, markComplete, supportedType, stepContext, skipReason]);
+  }, [isCompleted, reset, markSkipped, markComplete, supportedType, stepContext, skipReason]);
 
   let stepState: StepStateValue = STEP_STATES.IDLE;
   if (isCompleted) {
