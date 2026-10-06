@@ -46,6 +46,7 @@ function renderFor({ head = SHA_B, pr = 1, round = 1, findings = FINDINGS, incom
           stage_ledger: {
             mode: 'full',
             change_class: 'tests-only',
+            surfaces: { go: false },
             workers: { planned: 1, run: 1 },
             skeptic_batches: { required: 0, run: 0 },
             observations: { total: 0, through_policy: 0 },
