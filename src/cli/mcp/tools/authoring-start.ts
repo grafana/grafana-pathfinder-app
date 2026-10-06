@@ -133,6 +133,7 @@ const AUTHORING_CONTEXT = {
     'pathfinder_read_session — MCP-native explicit schema. Given a sessionToken and operation list-blocks | get-block | get-manifest (plus blockId for get-block), returns a cheap facet of the session artifact. Use freely.',
     'pathfinder_inspect — escape hatch. Given a sessionToken (or artifact) plus help-derived `opts`, returns the full artifact plus a tree summary.',
     'pathfinder_read_repository — MCP-native explicit schema. Given operation list-packages | get-package | get-manifest plus its documented top-level filters/id, discovers or inspects published CDN packages. Sibling of pathfinder_read_session for published (not session) content.',
+    'pathfinder_find_guides — CLI-routed search of the public guide catalog; pass `opts` per pathfinder_help({ command: "find-guides" }). Use it to check whether a guide already exists before authoring a new one, or to answer "is there a guide for this?".',
   ],
 };
 

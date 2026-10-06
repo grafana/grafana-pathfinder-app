@@ -420,7 +420,7 @@ export class GuidedHandler {
     logoContainer.className = 'interactive-comment-logo';
     const logo = document.createElement('img');
     logo.src = 'public/plugins/grafana-pathfinder-app/img/logo.svg';
-    logo.alt = 'Pathfinder';
+    logo.alt = 'Interactive learning';
     logoContainer.appendChild(logo);
 
     const textContainer = document.createElement('div');

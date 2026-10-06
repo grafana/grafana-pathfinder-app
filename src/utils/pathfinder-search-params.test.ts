@@ -188,6 +188,22 @@ describe('buildPathfinderShareUrl', () => {
   });
 });
 
+describe('buildPathfinderShareUrl sidebar and source', () => {
+  const base = new URL('https://example.grafana.net/a/grafana-pathfinder-app');
+
+  it('sets panelMode=sidebar and source when requested', () => {
+    const out = new URL(
+      buildPathfinderShareUrl({ base, doc: 'bundled:foo', panelMode: 'sidebar', source: 'shared_link' })
+    );
+    expect(out.searchParams.get('panelMode')).toBe('sidebar');
+    expect(out.searchParams.get('source')).toBe('shared_link');
+  });
+
+  it('leaves source off by default', () => {
+    expect(new URL(buildPathfinderShareUrl({ base, doc: 'bundled:foo' })).searchParams.has('source')).toBe(false);
+  });
+});
+
 describe('buildFullScreenRouteUrl', () => {
   it('builds the in-app fullscreen route with both doc and type encoded', () => {
     const out = buildFullScreenRouteUrl({

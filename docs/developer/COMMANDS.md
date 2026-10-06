@@ -153,6 +153,9 @@ npm run stats:check         # CI drift check for the stamped stats (writes nothi
 # JSON guide schema export
 npm run schema:export       # export schema to dist/
 
+# Guide search quality against the live catalog (network; on demand, not in CI)
+npm run eval:guide-search
+
 # Terms-and-conditions sync
 npm run docs:sync-terms        # sync TERMS_VERSION across docs/
 npm run docs:sync-terms:check  # local drift check for terms; not run in CI

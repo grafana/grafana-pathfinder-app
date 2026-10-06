@@ -292,7 +292,7 @@ function Chip({ token, onRemove }: ChipProps) {
   const tooltipBody = !isKnown
     ? `Unknown condition — open "View raw" to edit, or remove this chip.`
     : isRecoverable
-      ? 'Auto-recoverable: Pathfinder can fix this at runtime if it fails'
+      ? 'Auto-recoverable: interactive learning can fix this at runtime if it fails'
       : (REQUIREMENT_DESCRIPTIONS[token] ?? REQUIREMENT_DESCRIPTIONS[token.split(':')[0] + ':'] ?? 'Custom condition');
 
   const chipClass = `${styles.chip} ${!isKnown ? styles.chipUnknown : isRecoverable ? styles.chipRecoverable : styles.chipKnown}`;

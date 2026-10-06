@@ -46,7 +46,7 @@ afterEach(() => {
 
 it('defaults to enabled and submits only an explicit opt-out', async () => {
   const { container } = renderForm();
-  const toggle = screen.getByRole('switch', { name: /^Enable Pathfinder/ });
+  const toggle = screen.getByRole('switch', { name: /^Enable interactive learning/ });
   expect(toggle).toBeChecked();
   fireEvent.click(toggle);
   await act(async () => fireEvent.submit(container.querySelector('form')!));
@@ -61,8 +61,8 @@ it.each([true, false])(
   async (stored) => {
     jest.mocked(getFeatureFlagValue).mockReturnValue(false);
     const { container } = renderForm(stored);
-    expect(screen.getByRole('switch', { name: /^Enable Pathfinder/ })).toHaveProperty('checked', stored);
-    expect(screen.getByText('Pathfinder is disabled remotely')).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /^Enable interactive learning/ })).toHaveProperty('checked', stored);
+    expect(screen.getByText('Interactive learning is disabled remotely')).toBeInTheDocument();
     await act(async () => fireEvent.submit(container.querySelector('form')!));
     expect(saveTenantSettings).toHaveBeenCalledWith({ pluginId: 'grafana-pathfinder-app', changes: {} });
   }
@@ -70,7 +70,7 @@ it.each([true, false])(
 
 it('allows an opted-out admin to re-enable Pathfinder', async () => {
   const { container } = renderForm(false);
-  fireEvent.click(screen.getByRole('switch', { name: /^Enable Pathfinder/ }));
+  fireEvent.click(screen.getByRole('switch', { name: /^Enable interactive learning/ }));
   await act(async () => fireEvent.submit(container.querySelector('form')!));
   expect(saveTenantSettings).toHaveBeenCalledWith({
     pluginId: 'grafana-pathfinder-app',
@@ -81,11 +81,11 @@ it('allows an opted-out admin to re-enable Pathfinder', async () => {
 it('keeps a rejected opt-out editable without scheduling a reload', async () => {
   jest.mocked(saveTenantSettings).mockRejectedValue(new Error('conflict'));
   const { container } = renderForm(true);
-  fireEvent.click(screen.getByRole('switch', { name: /^Enable Pathfinder/ }));
+  fireEvent.click(screen.getByRole('switch', { name: /^Enable interactive learning/ }));
   const schedule = jest.spyOn(globalThis, 'setTimeout');
   await act(async () => fireEvent.submit(container.querySelector('form')!));
   expect(screen.getByText('Could not save settings')).toBeInTheDocument();
-  expect(screen.getByRole('switch', { name: /^Enable Pathfinder/ })).not.toBeChecked();
+  expect(screen.getByRole('switch', { name: /^Enable interactive learning/ })).not.toBeChecked();
   expect(schedule.mock.calls.some(([, delay]) => delay === 100)).toBe(false);
   schedule.mockRestore();
 });
@@ -93,7 +93,7 @@ it('keeps a rejected opt-out editable without scheduling a reload', async () => 
 it.each([true, false])('shows preview copy only on Cloud (cloud=%s)', (cloud) => {
   jest.mocked(currentPlatform).mockReturnValue(cloud ? 'cloud' : 'oss');
   renderForm();
-  expect(screen.getByRole('switch', { name: /^Enable Pathfinder/ })).toBeChecked();
+  expect(screen.getByRole('switch', { name: /^Enable interactive learning/ })).toBeChecked();
   expect(screen.queryByText('Interactive learning') !== null).toBe(cloud);
   expect(screen.queryByText(/use Grafana’s classic Help menu/) !== null).toBe(cloud);
   expect(screen.queryByText('Beta') !== null).toBe(cloud);

@@ -28,7 +28,7 @@ function joinList(items: readonly string[]): string {
  * session, not per connect) over expanding this string.
  */
 export const SERVER_INSTRUCTIONS: string = [
-  'Pathfinder is a Grafana plugin that runs interactive, contextual guides inside the Grafana UI. This MCP server lets agents author and publish those guides.',
+  'Pathfinder is a Grafana plugin that runs interactive, contextual guides inside the Grafana UI. This MCP server lets agents find existing guides and author and publish new ones.',
   '',
   // The first paragraph is the single most important sentence in this whole
   // string; it's what overrides the model's "just answer in prose" default.
@@ -38,7 +38,9 @@ export const SERVER_INSTRUCTIONS: string = [
   '',
   `Common topic areas that route here: ${PATHFINDER_DOMAINS.join(', ')} — i.e. tutorials *about* these things. (Tutorials about Grafana products route here; authoring the products themselves — writing queries, building dashboards, configuring alerts — does NOT.)`,
   '',
-  'Always call `pathfinder_authoring_start` first. It returns the schema version, workflow, composition rules, supported domains, and discovery hints you will need for every subsequent tool call.',
+  'To check whether a guide already exists for a topic or page ("is there a guide for this?"), call `pathfinder_find_guides`; it needs no authoring session.',
+  '',
+  'For authoring, always call `pathfinder_authoring_start` first. It returns the schema version, workflow, composition rules, supported domains, and discovery hints you will need for every subsequent tool call.',
   '',
   // Session-mode primer. Reaches the model before tool selection so agents
   // do not default to threading full artifacts back through every mutation.

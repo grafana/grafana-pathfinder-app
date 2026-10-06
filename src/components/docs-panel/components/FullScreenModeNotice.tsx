@@ -92,7 +92,7 @@ export function FullScreenModeNotice() {
       <div className={styles.iconWrap}>
         <Icon name="expand-arrows" size="xl" />
       </div>
-      <h3 className={styles.title}>{t('docsPanel.fullScreenNoticeTitle', 'Pathfinder is in full screen')}</h3>
+      <h3 className={styles.title}>{t('docsPanel.fullScreenNoticeTitle', 'Interactive learning is in full screen')}</h3>
       <p className={styles.description}>
         {t(
           'docsPanel.fullScreenNoticeBody',
