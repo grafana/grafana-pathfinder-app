@@ -165,6 +165,19 @@ test('the surfaces field is required and comes from changed-surface.mjs', () => 
   );
 });
 
+test('a legacy ledger names both upgrades at once: surfaces from changed-surface.mjs and classified reverts', () => {
+  const { surfaces: _omitted, ...legacy } = ledger({
+    efficacy: [{ behavior: 'x', test: 'a.test.ts', result: 'fails_without_fix' }],
+  });
+  assert.throws(
+    () => normalizeStageLedger(legacy),
+    (error) =>
+      /surfaces must be an object/.test(error.message) &&
+      /changed-surface\.mjs --base <base-sha> --head <head-sha>/.test(error.message) &&
+      /fails_without_fix is retired\. Classify the reverted run/.test(error.message)
+  );
+});
+
 test('a Go change requires go_build, go_lint, and go_test, shown on the Checks line', () => {
   assert.throws(() => normalizeStageLedger(ledger({ surfaces: { go: true } })), /missing go_build, go_lint, go_test/);
   const withGo = ledger({ surfaces: { go: true }, checks: [...ledger().checks, ...GO] });
@@ -190,7 +203,10 @@ test('a Go check cannot be not_applicable when Go changed, even with consent; a 
   );
   assert.throws(
     () => normalizeStageLedger(ledger({ surfaces: { go: true }, checks, skipped: [consent('go_lint')] })),
-    /go_lint cannot be not_applicable when Go changed/
+    (error) =>
+      /go_lint cannot be not_applicable when Go changed/.test(error.message) &&
+      /already has a consented skip, so remove its check entry/.test(error.message) &&
+      !/quote the user's consent/.test(error.message)
   );
   const skipped = normalizeStageLedger(
     ledger({ surfaces: { go: true }, checks: [...ledger().checks, GO[0], GO[2]], skipped: [consent('go_lint')] })

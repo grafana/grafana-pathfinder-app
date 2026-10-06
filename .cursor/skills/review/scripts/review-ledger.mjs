@@ -90,6 +90,18 @@ function assertMatched(pair, label, expectedKey, actualKey, remedy, waived) {
   return { expected, actual };
 }
 
+const SURFACES_MISSING =
+  'stage_ledger surfaces must be an object: run `node .cursor/skills/review/scripts/changed-surface.mjs --base <base-sha> --head <head-sha>` and record its go value as surfaces: { "go": <boolean> }';
+const RETIRED_FAILS_WITHOUT_FIX =
+  'stage_ledger efficacy result fails_without_fix is retired. Classify the reverted run from its output: fails_on_behavior (an assertion failed), inconclusive_setup (setup, import, module-resolution, or compile failure), or inconclusive_error (the test errored without an assertion failure)';
+
+function legacyLedgerProblems(input) {
+  const retired =
+    Array.isArray(input.efficacy) &&
+    input.efficacy.some((entry) => entry && typeof entry === 'object' && entry.result === 'fails_without_fix');
+  return [...(input.surfaces === undefined ? [SURFACES_MISSING] : []), ...(retired ? [RETIRED_FAILS_WITHOUT_FIX] : [])];
+}
+
 function readSurfaces(value) {
   const surfaces = assertObject(value, 'surfaces');
   const unknown = Object.keys(surfaces).find((field) => field !== 'go');
@@ -122,7 +134,9 @@ function readChecks(checks, changeClass, surfaces, waived) {
     if (entry.status === 'not_applicable') {
       if (surfaces.go && GO_CHECKS.includes(entry.name)) {
         throw new Error(
-          `stage_ledger check ${entry.name} cannot be not_applicable when Go changed. Run it, or quote the user's consent in a skipped entry for ${entry.name}`
+          waived.has(entry.name)
+            ? `stage_ledger check ${entry.name} cannot be not_applicable when Go changed. It already has a consented skip, so remove its check entry and keep the skip`
+            : `stage_ledger check ${entry.name} cannot be not_applicable when Go changed. Run it, or quote the user's consent in a skipped entry for ${entry.name}`
         );
       }
       if (BEHAVIOR_CLASSES.has(changeClass) && required.includes(entry.name) && !waived.has(entry.name)) {
@@ -165,9 +179,7 @@ function readEfficacy(efficacy, mode, changeClass, waived) {
   return efficacy.map((item) => {
     const entry = assertObject(item, 'efficacy entry');
     if (entry.result === 'fails_without_fix') {
-      throw new Error(
-        'stage_ledger efficacy result fails_without_fix is retired. Classify the reverted run from its output: fails_on_behavior (an assertion failed), inconclusive_setup (setup, import, module-resolution, or compile failure), or inconclusive_error (the test errored without an assertion failure)'
-      );
+      throw new Error(RETIRED_FAILS_WITHOUT_FIX);
     }
     if (!EFFICACY_RESULTS.includes(entry.result)) {
       throw new Error(`stage_ledger efficacy result must be one of ${EFFICACY_RESULTS.join(', ')}`);
@@ -229,6 +241,10 @@ export function normalizeStageLedger(ledger) {
   }
   if (!CHANGE_CLASSES.includes(input.change_class)) {
     throw new Error(`stage_ledger change_class must be one of ${CHANGE_CLASSES.join(', ')}`);
+  }
+  const legacy = legacyLedgerProblems(input);
+  if (legacy.length > 0) {
+    throw new Error(legacy.join('. Also: '));
   }
   const surfaces = readSurfaces(input.surfaces);
   const skipped = readSkipped(input.skipped);
