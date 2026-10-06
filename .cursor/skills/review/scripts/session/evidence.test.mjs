@@ -235,6 +235,79 @@ test('a jest TypeError with a failed-test summary is an error, not a behavioral 
   assert.equal(classifyRevertRun({ exit_status: 1, output: JEST_TYPE_ERROR }).result, 'inconclusive_error');
 });
 
+const PILOT_REVERT_RUNS = [
+  [
+    '2057-session-t011-missing-export.txt',
+    1,
+    'inconclusive_error',
+    /^TypeError: .*isImageRendererSession\) is not a function/,
+  ],
+  [
+    '2057-review-21-missing-export.txt',
+    1,
+    'inconclusive_error',
+    /^TypeError: .*isImageRendererSession\) is not a function/,
+  ],
+  ['2057-session-t012-module-gate.txt', 1, 'fails_on_behavior', /^expect\(jest\.fn\(\)\)\.not\.toHaveBeenCalled\(\)/],
+  ['2074-session-t010-resolves.txt', 1, 'fails_on_behavior', /^expect\(received\)\.resolves\.toEqual\(expected\)/],
+  [
+    '2074-review-markcompleted-resolves.txt',
+    1,
+    'fails_on_behavior',
+    /^expect\(received\)\.resolves\.toEqual\(expected\)/,
+  ],
+  ['2071-session-t012-missing-module.txt', 1, 'inconclusive_setup', /Test suite failed to run/],
+  ['2071-review-16-missing-module.txt', 1, 'inconclusive_setup', /Cannot find module '\.\/disable-rudderstack'/],
+  ['2071-review-17-noop-mutant.txt', 1, 'fails_on_behavior', /Expected/],
+  ['2071-review-18-passes.txt', 0, 'passes_without_fix', /Tests: 784 passed/],
+  ['2058-session-t013-settings-network.txt', 1, 'fails_on_behavior', /^expect\(received\)\.toEqual\(expected\)/],
+  ['2058-session-t014-go-build-failed.txt', 1, 'inconclusive_setup', /\[build failed\]/],
+  ['2058-review-52-go-compile.txt', 1, 'inconclusive_setup', /_test\.go:131:75: too many arguments/],
+  ['2058-review-53-go-mutant.txt', 1, 'fails_on_behavior', /guide_diagnostics_test\.go:172: unexpected fields/],
+  ['2058-review-54-go-mutant.txt', 1, 'fails_on_behavior', /pathfinder_settings_test\.go:149: "attempt=999"/],
+  ['2058-review-55-passes.txt', 0, 'passes_without_fix', /exit 0/],
+  ['2009-session-t014-called-with.txt', 1, 'fails_on_behavior', /^expect\(jest\.fn\(\)\)\.toHaveBeenCalledWith/],
+  ['2009-session-t015-thrown-error.txt', 1, 'inconclusive_error', /exit 1 with no recognised/],
+  ['2009-session-t016-missing-module.txt', 1, 'inconclusive_setup', /Test suite failed to run/],
+  ['2009-session-t019-thrown-and-tothrow.txt', 1, 'fails_on_behavior', /^expect\(received\)\.toThrow\(expected\)/],
+  ['2009-review-g-received-typeerror.txt', 1, 'fails_on_behavior', /^Received message:/],
+  ['2009-review-h-missing-module.txt', 1, 'inconclusive_setup', /Cannot find module '\.\/local-cloud-preflight'/],
+];
+
+test('pilot revert runs classify from their real output, ignoring code frames and reading matcher chains', () => {
+  const dir = join(import.meta.dirname, 'fixtures', 'revert-runs');
+  for (const [file, exitStatus, result, evidence] of PILOT_REVERT_RUNS) {
+    const classified = classifyRevertRun({ exit_status: exitStatus, output: readFileSync(join(dir, file), 'utf8') });
+    assert.equal(classified.result, result, file);
+    assert.match(classified.evidence, evidence, file);
+  }
+});
+
+test('a code-frame echo of an expect call is not an assertion failure', () => {
+  const output = [
+    '  ● detects sessions',
+    '',
+    '    TypeError: detect is not a function',
+    '',
+    '    > 72 |   expect(detect(search)).toBe(expected);',
+    '         |          ^',
+    '      73 | });',
+  ].join('\n');
+  assert.equal(classifyRevertRun({ exit_status: 1, output }).result, 'inconclusive_error');
+});
+
+test('matcher chains and jest diff headers are assertion failures', () => {
+  for (const line of [
+    'expect(received).rejects.toThrow(expected)',
+    'expect(received).not.toContain(expected) // indexOf',
+    'expect(received).resolves.not.toBe(expected)',
+    '    - Expected  - 3',
+    '    + Received  + 1',
+  ]) {
+    assert.equal(classifyRevertRun({ exit_status: 1, output: line }).result, 'fails_on_behavior', line);
+  }
+});
+
 test('an efficacy revert records the classified result from the real run output', () => {
   const { run, cleanup } = fixture(
     { 'src/add.mjs': 'export const add = (a, b) => a - b;\n' },

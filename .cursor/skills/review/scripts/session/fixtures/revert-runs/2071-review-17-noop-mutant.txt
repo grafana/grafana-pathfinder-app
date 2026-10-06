@@ -1,0 +1,8 @@
+    - Expected  - 2
+    + Received  + 2
+    Expected: ""
+    Received: "synthetic-production-key"
+    Received: "https://analytics.example.com"
+Test Suites: 1 failed, 1 total
+Tests:       3 failed, 3 total
+

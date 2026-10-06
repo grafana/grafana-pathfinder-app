@@ -1,0 +1,16 @@
+    TypeError: (0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function
+    TypeError: (0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function
+    TypeError: (0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function
+    Received message:   "(0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function"
+    TypeError: (0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function
+    TypeError: (0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function
+    Received message:   "(0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function"
+    TypeError: (0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function
+    TypeError: (0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function
+    TypeError: (0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function
+    Received message:   "(0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function"
+    TypeError: (0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function
+    Received message:   "(0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function"
+    TypeError: (0 , _e2elocalpackage.resolveLocalCloudGuide) is not a function
+Test Suites: 2 failed, 1 passed, 3 total
+Tests:       21 failed, 10 passed, 31 total

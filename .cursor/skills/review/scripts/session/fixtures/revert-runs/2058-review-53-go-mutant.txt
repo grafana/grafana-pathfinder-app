@@ -1,0 +1,3 @@
+--- FAIL: TestRetriedFailureLogsSeparateEvent (0.00s)
+    guide_diagnostics_test.go:172: unexpected fields: map[string]interface {}{"event":"pathfinder_proxy_failure", "operation":"get", "reason":"http-error", "resource":"pathfindersettings", "stack_name
+FAIL

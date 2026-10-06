@@ -1,0 +1,43 @@
+  console.warn
+    localStorage quota exceeded {
+      error: Error [QuotaExceededError]: Quota exceeded
+    }
+
+      50 |   warn(message: string, context?: Record<string, unknown>): void {
+      51 |     const sanitized = sanitizeForLogging(message);
+    > 52 |     console.warn(sanitized, context ?? '');
+         |             ^
+      53 |     getFaroTelemetry()?.pushFaroLog('warn', sanitized, sanitizeContext(context));
+      54 |   },
+      55 |
+
+      at Object.warn (src/lib/logging.ts:52:13)
+      at Object.warn [as setItem] (src/lib/user-storage.ts:305:18)
+      at Object.setItem (src/lib/user-storage.ts:984:21)
+      at Object.setTabs (src/lib/user-storage.test.ts:789:22)
+FAIL src/lib/user-storage.test.ts
+  ● milestoneCompletionStorage › keeps both journeys when two markCompleted calls for DIFFERENT journeys race without an await between them
+
+    expect(received).resolves.toEqual(expected) // deep equality
+
+    - Expected  - 3
+    + Received  + 1
+
+    - Set {
+    -   "install-alloy",
+    - }
+    + Set {}
+
+      261 |     ]);
+      262 |
+    > 263 |     await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['install-alloy']));
+          |                                                                                ^
+      264 |     await expect(milestoneCompletionStorage.getCompleted(otherJourneyUrl)).resolves.toEqual(
+      265 |       new Set(['fe-alerting-01'])
+      266 |     );
+
+      at Object.toEqual (<checkout>/node_modules/expect/build/index.js:2140:20)
+      at Object.toEqual (src/lib/user-storage.test.ts:263:80)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 84 passed, 85 total

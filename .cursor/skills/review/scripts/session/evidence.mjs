@@ -40,9 +40,11 @@ const REVERT_SETUP = [
   /\.go:\d+:\d+: /,
 ];
 const REVERT_ASSERTION = [
-  /expect\(.*\)\.\w+\(/,
+  /expect\(.*\)(?:\.(?:not|resolves|rejects))*\.\w+\(/,
   /^\s*Expected\b.*:/,
   /^\s*Received\b.*:/,
+  /^\s*- Expected\s+- \d+/,
+  /^\s*\+ Received\s+\+ \d+/,
   /AssertionError|ERR_ASSERTION/,
   /_test\.go:\d+: /,
   /Error Trace:/,
@@ -52,7 +54,19 @@ const REVERT_ERROR = [
   /^panic: /,
   /Uncaught|Unhandled/i,
 ];
+const JEST_CODE_FRAME = /^\s*(?:>\s*)?\d*\s*\|/;
+const JEST_FAILURE_HEADER = /^\s*● /;
 const PASS_SUMMARY = /^\s*(?:Tests:\s+.*passed|ℹ pass \d+|ok\s+\S+)/;
+
+function jestFailureHeads(lines) {
+  return lines.flatMap((line, index) => {
+    if (!JEST_FAILURE_HEADER.test(line)) {
+      return [];
+    }
+    const head = lines.slice(index + 1).find((candidate) => candidate.trim() !== '');
+    return head === undefined ? [] : [head];
+  });
+}
 
 function signatureLine(lines, patterns) {
   const line = lines.find((candidate) => patterns.some((pattern) => pattern.test(candidate)));
@@ -65,7 +79,7 @@ function evidenceText(line) {
 }
 
 export function classifyRevertRun({ exit_status: exitStatus, output }) {
-  const lines = output.split('\n');
+  const lines = output.split('\n').filter((line) => !JEST_CODE_FRAME.test(line));
   if (exitStatus === 0) {
     const summary = signatureLine(lines, [PASS_SUMMARY]);
     return {
@@ -77,11 +91,13 @@ export function classifyRevertRun({ exit_status: exitStatus, output }) {
   if (setup) {
     return { result: 'inconclusive_setup', evidence: setup };
   }
-  const assertion = signatureLine(lines, REVERT_ASSERTION);
+  const heads = jestFailureHeads(lines);
+  const assertion =
+    signatureLine(heads, REVERT_ASSERTION) ?? (heads.length ? null : signatureLine(lines, REVERT_ASSERTION));
   if (assertion) {
     return { result: 'fails_on_behavior', evidence: assertion };
   }
-  const error = signatureLine(lines, REVERT_ERROR);
+  const error = signatureLine(heads, REVERT_ERROR) ?? signatureLine(lines, REVERT_ERROR);
   return {
     result: 'inconclusive_error',
     evidence: error ?? `exit ${exitStatus} with no recognised assertion failure or error signature`,
