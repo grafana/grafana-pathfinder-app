@@ -11,7 +11,7 @@ const SETUP_FAILURE =
 const ASSERTION_FAILURE = /Tests:\s+\d+ failed|✕|AssertionError|Expected:|# fail [1-9]|--- FAIL:/;
 
 function git(cwd, args) {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: MAX_OUTPUT });
+  const result = spawnSync('git', ['--literal-pathspecs', ...args], { cwd, encoding: 'utf8', maxBuffer: MAX_OUTPUT });
   if (result.status !== 0) {
     throw new Error(`git ${args[0]} failed: ${(result.stderr || result.stdout).trim().slice(0, 400)}`);
   }

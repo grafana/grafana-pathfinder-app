@@ -76,7 +76,7 @@ export function reviewSection(...headings) {
 }
 
 function git(repoDir, args) {
-  return execFileSync('git', ['-c', 'core.quotePath=false', ...args], {
+  return execFileSync('git', ['--literal-pathspecs', '-c', 'core.quotePath=false', ...args], {
     cwd: repoDir,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

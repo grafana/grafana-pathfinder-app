@@ -334,3 +334,25 @@ test('an efficacy revert records the classified result from the real run output'
     cleanup();
   }
 });
+
+test('an efficacy revert of a file named like pathspec magic reverts only that file', () => {
+  const { run, cleanup } = fixture(
+    { 'add.mjs': 'export const add = (a, b) => a - b;\n', ':(glob)*': 'base\n' },
+    {
+      'add.mjs': 'export const add = (a, b) => a + b;\n',
+      'add.test.mjs': ADD_TEST,
+      ':(glob)*': 'head\n',
+    }
+  );
+  try {
+    const result = run({
+      kind: 'efficacy',
+      argv: ['node', '--test', 'add.test.mjs'],
+      revert_paths: [':(glob)*'],
+      at: 'head',
+    });
+    assert.equal(result.revert.result, 'passes_without_fix', result.revert.evidence);
+  } finally {
+    cleanup();
+  }
+});
