@@ -35,13 +35,18 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { recordGuideCompletionForSurface, journeyProgressFromMilestones } from '../../../docs-retrieval';
+import {
+  recordGuideCompletionForSurface,
+  journeyProgressFromMilestones,
+  resolveActiveMilestoneToolbarContext,
+} from '../../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
 import { AlignmentPrompt } from './AlignmentPrompt';
+import { GuideVersionNotice } from './GuideVersionNotice';
 import { ErrorDisplay } from './ErrorDisplay';
 import { FullScreenModeNotice } from './FullScreenModeNotice';
 import { LoadingIndicator } from './LoadingIndicator';
@@ -121,6 +126,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   const { config: pluginConfig } = usePathfinderPluginConfig();
   const twoTabControllerEnabled = pluginConfig.enableTwoTabController;
 
+  // The active track restore's identity — see LearningJourneyTab.activeTrackPathId's
+  // doc comment for why this is the manifest id, not a resolved URL.
+  const stableContentPathId = stableContent?.metadata.packageManifest?.id;
+  const activeCoverPathId = typeof stableContentPathId === 'string' ? stableContentPathId : undefined;
+
   const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
 
   // The loading-state milestone bar below reads journeyProgressFromMilestones
@@ -147,10 +157,19 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
                 <SelectorDebugPanel
                   onOpenDocsPage={(url: string, title: string, packageInfo?: PackageOpenInfo) => {
+                    const manifestId = packageInfo?.packageManifest?.id;
                     const opts: OpenDocsOptions = {
                       source: 'devtools',
                       skipReadyToBegin: true,
                       packageInfo,
+                      // PrTester/UrlTester only ever pass packageInfo when
+                      // deliberately opening that package's own cover (never
+                      // a click on a specific member) — the manifest's own
+                      // id positively signals "this is the cover," not a URL
+                      // comparison, so a raw PR URL differing from the
+                      // resolver's published one never gets misread as track
+                      // membership (see OpenDocsOptions.explicitGuideId).
+                      explicitGuideId: typeof manifestId === 'string' ? manifestId : undefined,
                     };
                     return model.openDocsPage(url, title, opts);
                   }}
@@ -182,15 +201,27 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
         }
 
         if (activeTab?.isLoading) {
-          const ljMeta = activeTab.content?.metadata?.learningJourney;
+          // Same resolution the toolbar itself uses (base Foundations or the
+          // reader's active track) — a track-only guide has no `learningJourney`
+          // to read a label/progress from, so gating on that field alone left
+          // this bar hidden for one, and for a dual-membership guide reached
+          // via a track it showed the base sequence's numbers while loading,
+          // one render ahead of the track-scoped toolbar that replaces them.
+          const loadingActiveContext = activeTab.content
+            ? resolveActiveMilestoneToolbarContext(
+                activeTab.content,
+                activeTab.activeTrackId,
+                activeTab.activeTrackMilestones
+              )
+            : null;
           const showBarWhileLoading =
-            ljMeta &&
+            Boolean(loadingActiveContext) &&
             activeTab.content?.type === 'learning-journey' &&
             (activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type));
 
           return (
             <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
-              {showBarWhileLoading && (
+              {showBarWhileLoading && loadingActiveContext && (
                 <div className={styles.milestoneProgress}>
                   <div className={styles.progressInfo}>
                     <div className={styles.progressHeader}>
@@ -205,13 +236,13 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         className={styles.navButton}
                       />
                       <span className={styles.milestoneText}>
-                        {ljMeta.currentMilestone === 0
+                        {loadingActiveContext.currentMilestone === 0
                           ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
-                              total: ljMeta.totalMilestones,
+                              total: loadingActiveContext.totalMilestones,
                             })
                           : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                              current: ljMeta.currentMilestone,
-                              total: ljMeta.totalMilestones,
+                              current: loadingActiveContext.currentMilestone,
+                              total: loadingActiveContext.totalMilestones,
                             })}
                       </span>
                       <IconButton
@@ -233,7 +264,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                           // decision 4) — earned progress, not navigation
                           // position, so this must not climb just because the
                           // reader turned pages without completing anything.
-                          width: `${journeyProgressFromMilestones(ljMeta.baseUrl, ljMeta.milestones)}%`,
+                          width: `${journeyProgressFromMilestones(loadingActiveContext.baseUrl, loadingActiveContext.milestones)}%`,
                         }}
                       />
                     </div>
@@ -258,10 +289,21 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
         if (activeTab?.content && !activeTab.isLoading) {
           const isLearningJourneyTab = activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type);
+          // Mirrors LearningJourneyMilestoneToolbar's own render gate exactly
+          // (same helper, same inputs) so the legacy meta row below and the
+          // toolbar can never both render for the same guide — a track-only
+          // guide has no `learningJourney`, so gating on that field alone
+          // showed this meta row AT THE SAME TIME as the toolbar.
           const showMilestoneProgress =
             isLearningJourneyTab &&
             activeTab.content?.type === 'learning-journey' &&
-            activeTab.content.metadata.learningJourney;
+            Boolean(
+              resolveActiveMilestoneToolbarContext(
+                activeTab.content,
+                activeTab.activeTrackId,
+                activeTab.activeTrackMilestones
+              )
+            );
 
           return (
             <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
@@ -402,6 +444,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
               <div id="inner-docs-content" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
                 {stableContent && (
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
+                    <GuideVersionNotice
+                      manifests={[activeTab?.packageInfo?.packageManifest, stableContent.metadata.packageManifest]}
+                      guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+                      guideTitle={activeTab?.title}
+                    />
                     {activeTab?.pendingAlignment && (
                       <AlignmentPrompt
                         startingLocation={activeTab.pendingAlignment.startingLocation}
@@ -440,6 +487,15 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       }
                       onContinueToNextMilestone={
                         model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
+                      }
+                      onActiveTrackChange={
+                        activeTab
+                          ? (trackId, milestones) =>
+                              model.setActiveTrackId(activeTab.id, trackId, milestones, activeCoverPathId)
+                          : undefined
+                      }
+                      initialActiveTrackId={
+                        activeTab?.activeTrackPathId === activeCoverPathId ? activeTab?.activeTrackId : undefined
                       }
                     />
                   </AlignmentPendingContext.Provider>

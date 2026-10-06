@@ -55,7 +55,9 @@
     "settings": "Pengaturan",
     "showMoreTabs_one": "Tampilkan {{count}} tab lagi",
     "showMoreTabs_other": "Tampilkan {{count}} tab lagi",
-    "switchToTab": "Beralih ke {{title}}"
+    "switchToTab": "Beralih ke {{title}}",
+    "beta": "Beta",
+    "classicHelpMenuSettings": "Classic Help menu settings"
   },
   "feedbackButton": {
     "ariaLabel": "Berikan umpan balik tentang plugin ini",
@@ -113,5 +115,20 @@
     "streakTooltip": "Belajar {{- days}} hari berturut-turut — terus pertahankan!",
     "streakTooltip_one": "Belajar {{- days}} hari berturut-turut — terus pertahankan!",
     "streakTooltip_other": "Belajar {{- days}} hari berturut-turut — terus pertahankan!"
+  },
+  "appConfig": {
+    "beta": "Beta",
+    "pathfinderEnabled": "Enable interactive learning",
+    "pathfinderEnabledDescription": "Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, interactive learning stays available.",
+    "pathfinderPreview": "Interactive learning",
+    "pathfinderPreviewDescription": "Interactive learning brings contextual help and interactive guides into Grafana.",
+    "pathfinderRemotelyDisabled": "Interactive learning is disabled remotely",
+    "pathfinderRemotelyDisabledDescription": "The remote switch currently prevents interactive learning from running. Your saved preference will apply when interactive learning is enabled remotely again.",
+    "pathfinderRevertDescription": "Turn this off to use Grafana’s classic Help menu after users reload. Your learning progress is kept."
+  },
+  "pathfinder": {
+    "disabled": "Interactive learning is disabled",
+    "disabledDescription": "Interactive learning is turned off for this organization.",
+    "openSettings": "Open interactive learning settings"
   }
 }

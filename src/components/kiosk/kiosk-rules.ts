@@ -1,3 +1,4 @@
+import { KioskCatalogSchema, KioskExitButtonLabelSchema, type KioskPage } from '../../types/kiosk-page.schema';
 import { logger } from '../../lib/logging';
 import { recordKioskCatalogLoaded, type KioskCatalogTier } from '../../lib/telemetry';
 import defaultKiosk from './default-kiosk.json';
@@ -5,21 +6,27 @@ import { parseKioskWebUrl, validateKioskOverride } from '../../security/kiosk-ur
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
 
 export interface KioskRule {
+  id?: string;
   title: string;
   url: string;
   description: string;
   type: string;
   targetUrl?: string;
   page?: string;
+  interactiveLearning?: boolean;
 }
 
 export interface KioskRulesResponse {
   banner?: string;
+  exitButtonLabel?: string;
+  page?: KioskPage;
   rules: KioskRule[];
 }
 
 export interface KioskData {
   banner: string;
+  exitButtonLabel?: string;
+  page?: KioskPage;
   rules: KioskRule[];
 }
 
@@ -50,7 +57,13 @@ function invalidRuleField(item: unknown): string | undefined {
       return field;
     }
   }
-  if (!isAllowedContentUrl(obj.url as string)) {
+  if (obj.interactiveLearning !== undefined && typeof obj.interactiveLearning !== 'boolean') {
+    return 'interactiveLearning';
+  }
+  if (obj.interactiveLearning === false && typeof obj.page !== 'string') {
+    return 'page';
+  }
+  if (obj.interactiveLearning !== false && !isAllowedContentUrl(obj.url as string)) {
     return 'url';
   }
   if (
@@ -101,6 +114,13 @@ export async function fetchKioskData(
   }
 
   const data: KioskRulesResponse = await response.json();
+  const exitButtonLabel = KioskExitButtonLabelSchema.optional().safeParse(data?.exitButtonLabel);
+  if (!exitButtonLabel.success) {
+    throw new CatalogError('invalid_rules');
+  }
+  if (data && Object.hasOwn(data, 'page') && !KioskCatalogSchema.safeParse(data).success) {
+    throw new CatalogError('invalid_rules');
+  }
   const rules = Array.isArray(data?.rules) ? data.rules : Array.isArray(data) ? data : [];
   const valid = rules
     .filter((rule: unknown): rule is KioskRule => {
@@ -112,12 +132,14 @@ export async function fetchKioskData(
       return true;
     })
     .map((rule) => ({ ...rule, type: rule.type || 'guide' }));
-  if (valid.length === 0) {
+  if (valid.length === 0 || (data?.page && valid.length !== rules.length)) {
     throw new CatalogError('invalid_rules');
   }
   return {
     banner: typeof data?.banner === 'string' && data.banner.trim() ? data.banner : DEFAULT_BANNER,
     rules: valid,
+    ...(exitButtonLabel.data !== undefined && { exitButtonLabel: exitButtonLabel.data }),
+    ...(data?.page && { page: data.page }),
   };
 }
 
@@ -140,9 +162,12 @@ export async function loadKioskData(
     if (failed.size === 0) {
       return data;
     }
-    const failure = failed.has('configured')
-      ? 'The configured kiosk could not be loaded.'
-      : 'The requested kiosk could not be loaded.';
+    const failure =
+      failed.has('override') && failed.has('configured')
+        ? 'The requested kiosk and the configured default kiosk could not be loaded.'
+        : failed.has('configured')
+          ? 'The configured kiosk could not be loaded.'
+          : 'The requested kiosk could not be loaded.';
     const showing =
       tier === 'configured'
         ? 'Showing the configured default kiosk.'

@@ -45,9 +45,11 @@ import { meanOfMemberPercentages, type MemberRollupProgress } from '../lib/guide
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
+import { pathSequences } from './path-sequences';
 import { fetchPathGuides, type FetchedPathGuides } from './fetch-path-guides';
 import { fetchAppPlatformLearningPaths, type AppPlatformPathsResult } from './app-platform-paths';
 import { markGuideCompleted as coordinatorMarkGuideCompleted } from './badge-coordinator';
+import { markCurrentGuide } from './mark-current-guide';
 
 const EMPTY_APP_PLATFORM_RESULT: AppPlatformPathsResult = { paths: [], guideMetadata: Object.create(null) };
 
@@ -67,6 +69,19 @@ function invalidateEmittedCompletionsForPathMembers(memberIds: readonly string[]
       invalidateEmittedCompletion(guideSource, memberId);
     }
   }
+}
+
+/**
+ * Id-scheme and content keys for a set of bundled/App-Platform member ids —
+ * shared by resetPath's whole-path sweep (called with `path.guides`) and
+ * resetPathGuides' targeted one (called with a subset). Member keys only;
+ * a whole-path sweep adds the path's own id-scheme/content keys separately.
+ */
+function memberKeysFor(guideIds: readonly string[]): { rawSchemeKeys: string[]; contentKeys: string[] } {
+  return {
+    rawSchemeKeys: guideIds.flatMap((guideId) => pathMemberIdSchemeKeys(guideId)),
+    contentKeys: guideIds.flatMap((guideId) => pathMemberContentKeys({ id: guideId })),
+  };
 }
 
 // ============================================================================
@@ -97,7 +112,7 @@ function formatLegacyBadgeTitle(badgeId: string): string {
 }
 
 /**
- * A path's rollup: the mean of its members' percentages
+ * One sequence's rollup: the mean of its members' percentages
  * (docs/design/COMPLETION-MODEL.md, decision 4), joined to each member's
  * persisted percentage by content key (decision 9). Equal weight per
  * member, regardless of length.
@@ -112,12 +127,13 @@ function formatLegacyBadgeTitle(badgeId: string): string {
  * and correct, since that is the scheme it was published under. Only a
  * bundled member arrives without one and falls back to the id schemes.
  */
-function calculatePathRollup(
+function calculateSequenceRollup(
+  guideIds: readonly string[],
   path: LearningPath,
   completedGuides: readonly string[],
   resolveMemberUrl: (guideId: string, pathId: string) => string | undefined
 ): MemberRollupProgress {
-  const members: PathMember[] = path.guides.map((id) => {
+  const members: PathMember[] = guideIds.map((id) => {
     const url = resolveMemberUrl(id, path.id);
     return url ? { id, url } : { id };
   });
@@ -130,6 +146,27 @@ function calculatePathRollup(
     persistedPercentages: interactiveCompletionStorage.peekAll(),
   });
   return meanOfMemberPercentages(resolvedPercentages);
+}
+
+/**
+ * A path's rollup for My Learning: the BEST of its sequences' own rollups
+ * (Foundations, plus each track), not a blended average across every guide
+ * in every track — a track hitting 100% moves the path to Completed even
+ * if Foundations or another track isn't done. `meanOfMemberPercentages`
+ * reserves `percent: 100` for `complete`, so the sequence with the highest
+ * percent is always also the one driving `complete` correctly (a complete
+ * sequence's 100 beats any incomplete sequence's capped-at-99).
+ */
+function calculatePathRollup(
+  path: LearningPath,
+  completedGuides: readonly string[],
+  resolveMemberUrl: (guideId: string, pathId: string) => string | undefined
+): MemberRollupProgress {
+  const sequences = pathSequences(path);
+  return sequences.reduce<MemberRollupProgress>((best, guideIds) => {
+    const rollup = calculateSequenceRollup(guideIds, path, completedGuides, resolveMemberUrl);
+    return rollup.percent > best.percent ? rollup : best;
+  }, meanOfMemberPercentages([]));
 }
 
 /**
@@ -163,6 +200,20 @@ async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Pr
       ),
     ],
   });
+}
+
+/**
+ * Clears every local storage namespace a milestone's own resolved content-key
+ * URL may be recorded under. Does not sweep the legacy `milestoneCompletionStorage`.
+ */
+async function clearGuideUrlContentKeys(targets: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>): Promise<void> {
+  const contentKeys = targets.flatMap(({ url }) => (url ? [url] : []));
+
+  await clearInteractiveProgressForContentKeys(contentKeys);
+  await interactiveCompletionStorage.clearMany(contentKeys);
+  await journeyCompletionStorage.clearMany(contentKeys);
+  await guideCompletionMarkStorage.clearMany(contentKeys);
+  contentKeys.forEach((key) => evictContentCache(key));
 }
 
 // ============================================================================
@@ -407,28 +458,24 @@ export function useLearningPaths(): UseLearningPathsReturn {
         return [];
       }
 
-      let foundCurrent = false;
+      return markCurrentGuide(
+        path.guides.map((guideId) => {
+          // Scope metadata to this path so two paths sharing a guide slug do
+          // not bleed URLs/titles across each other.
+          const metadata = resolveGuideMetadata(guideId, pathId);
 
-      return path.guides.map((guideId) => {
-        const completed = progress.completedGuides.includes(guideId);
-        const isCurrent = !completed && !foundCurrent;
-
-        if (isCurrent) {
-          foundCurrent = true;
-        }
-
-        // Scope metadata to this path so two paths sharing a guide slug do
-        // not bleed URLs/titles across each other.
-        const metadata = resolveGuideMetadata(guideId, pathId);
-
-        return {
-          id: guideId,
-          title: metadata.title,
-          completed,
-          isCurrent,
-          url: metadata.url,
-        };
-      });
+          return {
+            id: guideId,
+            // Always the real id here (never a React-key-only fallback), so
+            // safe to forward as the click-target id too — see PathGuide's own
+            // doc comment on why the two fields exist separately.
+            guideId,
+            title: metadata.title,
+            completed: progress.completedGuides.includes(guideId),
+            url: metadata.url,
+          };
+        })
+      );
     },
     [paths, progress.completedGuides, resolveGuideMetadata]
   );
@@ -566,14 +613,9 @@ export function useLearningPaths(): UseLearningPathsReturn {
         // reads under. Milestone and journey records are keyed by the raw
         // launch URL, the interactive namespaces by its sanitized content key.
         const rawPathSchemeKeys = pathMemberIdSchemeKeys(path.id);
-        const rawSchemeKeys = [
-          ...rawPathSchemeKeys,
-          ...path.guides.flatMap((guideId) => pathMemberIdSchemeKeys(guideId)),
-        ];
-        const contentKeys = [
-          ...pathMemberContentKeys({ id: path.id }),
-          ...path.guides.flatMap((guideId) => pathMemberContentKeys({ id: guideId })),
-        ];
+        const memberKeys = memberKeysFor(path.guides);
+        const rawSchemeKeys = [...rawPathSchemeKeys, ...memberKeys.rawSchemeKeys];
+        const contentKeys = [...pathMemberContentKeys({ id: path.id }), ...memberKeys.contentKeys];
 
         for (const pathKey of rawPathSchemeKeys) {
           await milestoneCompletionStorage.clear(pathKey);
@@ -609,6 +651,63 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [paths, loadProgress]
   );
 
+  const resetPathGuides = useCallback(
+    async (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>): Promise<void> => {
+      if (guides.length === 0) {
+        return;
+      }
+      const guideIds = guides.map((guide) => guide.id);
+      const path = paths.find((p) => p.id === pathId);
+
+      if (path?.url) {
+        const targets = guides.map((guide) => ({
+          id: guide.id,
+          url: guide.url ?? resolveGuideMetadata(guide.id, pathId).url,
+        }));
+
+        await Promise.all(
+          targets.map(({ id, url }) => milestoneCompletionStorage.removeCompleted(path.url!, id, url ? [url] : []))
+        );
+
+        await clearGuideUrlContentKeys(targets);
+      } else if (path) {
+        // The path's own id-scheme keys are candidate journey bases for the
+        // members' milestone slugs (COMPLETION-MODEL.md decision 9).
+        const rawPathSchemeKeys = pathMemberIdSchemeKeys(path.id);
+        const { rawSchemeKeys, contentKeys } = memberKeysFor(guideIds);
+
+        await Promise.all(
+          rawPathSchemeKeys.flatMap((pathKey) =>
+            guideIds.map((guideId) =>
+              milestoneCompletionStorage.removeCompleted(pathKey, guideId, [...pathMemberContentKeys({ id: guideId })])
+            )
+          )
+        );
+
+        await clearInteractiveProgressForContentKeys(contentKeys);
+        await interactiveCompletionStorage.clearMany(contentKeys);
+        await journeyCompletionStorage.clearMany(rawSchemeKeys);
+        await guideCompletionMarkStorage.clearMany(contentKeys);
+
+        contentKeys.forEach((key) => evictContentCache(key));
+      } else {
+        await clearGuideUrlContentKeys(guides);
+      }
+
+      await learningProgressStorage.removeCompletedGuides(guideIds);
+      invalidateEmittedCompletionsForPathMembers(guideIds);
+
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
+          detail: { contentKey: '*', pathId },
+        })
+      );
+
+      await loadProgress({ current: true });
+    },
+    [paths, loadProgress, resolveGuideMetadata]
+  );
+
   return {
     paths,
     allBadges: BADGES,
@@ -620,6 +719,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
     getGuideUrlForPath,
     markGuideCompleted,
     resetPath,
+    resetPathGuides,
     dismissCelebration,
     streakInfo,
     isLoading,

@@ -32,7 +32,7 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
       {isLoading ? (
         <div className={styles.guideItem}>
           <Icon name="fa fa-spinner" size="sm" />
-          <span className={styles.guideTitle}>{t('myLearning.loadingGuides', 'Loading guides...')}</span>
+          <span>{t('myLearning.loadingGuides', 'Loading guides...')}</span>
         </div>
       ) : (
         guides.map((guide) => (
@@ -43,8 +43,7 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
               guide.isCurrent && styles.guideItemCurrent,
               guide.isCurrent && enableCurrentRowLink && styles.guideItemCurrentCard,
               guide.isCurrent && enableCurrentRowLink && styles.guideItemCurrentClickable,
-              guide.locked && styles.guideItemLocked,
-              guide.description && styles.guideItemWithDescription
+              guide.locked && styles.guideItemLocked
             )}
             // The current row is the only clickable one, and only when the
             // caller opts in — data-journey-start is the same attribute
@@ -60,6 +59,11 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
               ? {
                   'data-journey-start': 'true',
                   'data-milestone-url': guide.url,
+                  // guide.id (below `key=`) is a React-key-only fallback for
+                  // some producers when there's no real manifest id — never
+                  // forward it as the click-target id (same guard the cover
+                  // page's CTA already applies to Milestone.id directly).
+                  ...(guide.guideId != null && { 'data-milestone-id': guide.guideId }),
                   'data-interaction-location': 'module_row_click',
                   role: 'button',
                   tabIndex: 0,
@@ -91,7 +95,7 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
               )}
             </span>
             <span className={styles.guideTextGroup}>
-              <span className={styles.guideTitle}>{guide.title}</span>
+              <span>{guide.title}</span>
               {guide.description && <span className={styles.guideDescription}>{guide.description}</span>}
               {(guide.locked || typeof guide.estimatedMinutes === 'number') && (
                 <span className={styles.guideMeta}>

@@ -132,3 +132,11 @@ describe('isExtensionSidebarInUse / clearExtensionSidebarDocked', () => {
     expect(localStorage.getItem(EXTENSION_SIDEBAR_DOCKED_KEY)).toBeNull();
   });
 });
+
+it('does not claim another plugin with the same component title', () => {
+  localStorage.setItem(
+    EXTENSION_SIDEBAR_DOCKED_KEY,
+    JSON.stringify({ pluginId: 'other-plugin', componentTitle: TITLE_MATCH })
+  );
+  expect(isExtensionSidebarOwnedByPathfinder(MY_PLUGIN_ID, TITLE_MATCH)).toBe(false);
+});

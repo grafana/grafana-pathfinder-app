@@ -142,6 +142,35 @@ flag || (isDevModeEnabled(config, userId) && enableCodaTerminal)
 
 ---
 
+### `pathfinder.intercept-docs-links`
+
+**Type**: Boolean
+
+**Purpose**: Turns on global docs-link interception for a stack, so a grafana.com docs link clicked anywhere in Grafana opens in Pathfinder instead of a new tab. Before this flag the only switch was the experimental `interceptGlobalDocsLinks` tenant setting, which an admin had to find and enable by hand.
+
+**Default**: `false`
+
+**Behavior**:
+
+- **`true`**: interception is on, whatever `interceptGlobalDocsLinks` says.
+- **`false`**: interception follows `interceptGlobalDocsLinks`.
+
+The flag and the setting are a plain OR, applied once settings resolve in `src/module.tsx` (`applySettings`). The flag can turn interception on but never off; an admin opt-in stays on regardless of the flag. OSS and self-managed stacks have no OFREP provider, so there only the setting applies.
+
+**On the configuration page the flag is display-only.** The "Global link interception" toggle shows as on and disabled, labelled as flag-driven, and a save never writes the forced value. Turning the flag off restores whatever the stack had set. `ConfigurationForm.intercept-flag.test.tsx` pins that.
+
+**What interception does with a click** (`src/global-state/link-interception.ts`):
+
+- It ignores modified clicks, middle clicks, `#` and `download` links, links inside Pathfinder content, and Grafana `?kiosk` mode, so the browser handles those.
+- It only takes plain docs pages: grafana.com `/docs/` and `/tutorials/` pages and interactive guides whose query string is empty or only `utm_*` tracking parameters. Filtered or searched listings such as `/docs/grafana-cloud/whats-new/?tags=IRM`, the `/docs/` home, and the What's new section (which now redirects to grafana.com/whats-new/) open in the browser.
+- It hands the link to whichever surface accepts it: the sidebar, floating, or full-screen `useAutoOpenListener` cancels the event to accept.
+- If no surface accepts the link in sidebar mode, it opens the sidebar and queues the link.
+- In any other mode it lets the browser follow the link rather than swallow the click.
+
+**Tracking key**: `intercept_docs_links`
+
+---
+
 ### `pathfinder.highlighted-guide-experiment`
 
 **Type**: Object (`HighlightedGuideConfig`)
@@ -180,14 +209,7 @@ A typical A/B setup serves the **same** `pages[]` to both arms with **different*
 
 **Those three values are the whole set.** The variant arrives from MTFF, so it can be anything; a value outside the table — a typo'd `treament`, a stale arm name, an empty string — rejects the **entire** payload. Rejection is whole-payload, not field-level: `pages`, `guideId`, `docType` and `resetCache` are all discarded along with the bad variant, so "rename an arm and set `resetCache: true`" clears nothing. Nobody is enrolled — no auto-open, no once-per-browser marker, and no arm attached to analytics or session telemetry. Renaming an arm therefore turns it off rather than half-enrolling its cohort under a bogus label.
 
-**Where a rejected payload lands depends on the source**, which is the thing to know when debugging:
-
-| Rejected payload from             | Result                                                                                                                                                          |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MTFF (the remote flag)            | The default `excluded` config above                                                                                                                             |
-| `localStorage` override (QA/demo) | The override is **ignored** and the remote MTFF value applies. Locally there is no MTFF provider, so this looks like the default — on a Cloud stack it does not |
-
-Either way the plugin logs a `warn` naming the source and a low-cardinality reason (`unknown_variant` or `invalid_shape`), once per source per page load. An unrecognized variant never produced a `pathfinder_feature_flag_evaluated` exposure event in the first place — `reportFeatureFlagExposure` only tracks `control` and `treatment` — so exposure counts are not a signal that a payload is broken. The `warn` is.
+Rejected payloads use the default `excluded` config above. The plugin logs a `warn` with a low-cardinality reason (`unknown_variant` or `invalid_shape`), once per flag per page load. An unrecognized variant never produces a `pathfinder_feature_flag_evaluated` exposure event — `reportFeatureFlagExposure` only tracks `control` and `treatment` — so exposure counts are not a signal that a payload is broken. The `warn` is.
 
 **Page-pattern semantics — note the difference**: Empty `pages` is treated as **no match**, NOT "all pages" (unlike `pathfinder.experiment-variant`). This makes the safe default of `{ variant: 'excluded', pages: [] }` a true no-op even if the variant is accidentally flipped without configuring pages. Patterns support the same `*` suffix wildcards as `matchPathPattern`.
 

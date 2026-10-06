@@ -118,6 +118,25 @@ beforeEach(() => {
 });
 
 describe('arming', () => {
+  it('persists and sends a completion recorded before the hook loads', async () => {
+    recordGuideCompletion(guideFact());
+    armCompletionWriteHook(deps());
+    expect(createCompletionWriteStorage('user-7:org-3').list()).toHaveLength(1);
+    await runTimer();
+    expect(sent).toHaveLength(1);
+    recordGuideCompletion(guideFact());
+    await runTimer();
+    expect(sent).toHaveLength(1);
+  });
+
+  it('discards buffered completions before a reset can yield to initialization', async () => {
+    recordGuideCompletion(guideFact());
+    discardQueuedCompletionWrites();
+    armCompletionWriteHook(deps());
+    await runTimer();
+    expect(sent).toHaveLength(0);
+  });
+
   it('subscribes immediately and writes an enqueued completion', async () => {
     armCompletionWriteHook(deps());
 

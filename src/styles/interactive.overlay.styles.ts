@@ -252,6 +252,23 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
+    .interactive-highlight-outline.interactive-highlight-persistent {
+      animation: interactive-draw-border ${drawMs}ms ease-out forwards;
+      opacity: 0.95;
+    }
+
+    .interactive-highlight-dot.interactive-highlight-persistent {
+      animation: none;
+      opacity: 0.95;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .interactive-highlight-outline.interactive-highlight-persistent {
+        animation: none;
+        background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100%;
+      }
+    }
+
     /* Enhanced comment box animations */
     @keyframes fadeInComment {
       0% {

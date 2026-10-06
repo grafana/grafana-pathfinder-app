@@ -1,7 +1,7 @@
 /**
- * Go <-> TypeScript contract ratchet for the four App Platform response
+ * Go <-> TypeScript contract ratchet for the five App Platform response
  * envelopes: `/package-recommendations`, `/custom-guide-repository`,
- * `/completion-records/my`, `/completion-records/capability`.
+ * `/completion-records/my`, `/completion-records/capability`, `/assignments/my`.
  *
  * The boundary is a process boundary, so no compiler can couple the two
  * descriptions of these shapes. `pkg/plugin/contract_fixtures_test.go` captures

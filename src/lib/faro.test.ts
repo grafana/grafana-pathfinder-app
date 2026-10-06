@@ -68,7 +68,7 @@ const mockInitializeFaro = jest.fn((_cfg: CapturedFaroConfig) => mockFaroInstanc
 
 jest.mock('@grafana/faro-web-sdk', () => ({
   initializeFaro: (cfg: CapturedFaroConfig) => mockInitializeFaro(cfg),
-  ErrorsInstrumentation: class ErrorsInstrumentation {},
+  BaseInstrumentation: jest.requireActual('@grafana/faro-web-sdk').BaseInstrumentation,
   SessionInstrumentation: class SessionInstrumentation {},
   ViewInstrumentation: class ViewInstrumentation {},
   PerformanceInstrumentation: class PerformanceInstrumentation {},
@@ -306,6 +306,44 @@ describe('filterPathfinderTelemetry', () => {
     expect(JSON.stringify(result)).not.toContain('private-name');
     expect(JSON.stringify(result)).not.toContain('token=secret');
   });
+  it.each([
+    'https://ops.grafana-ops.net/d/status?var-plugin_id=grafana-pathfinder-app',
+    'https://grafana-pathfinder-app.example.org/foreign.js',
+    'webpack://grafana-pathfinder-app/../node_modules/@grafana/faro-web-sdk/dist/esm/instrumentations/errors/registerOnerror.js',
+  ])('drops ambient errors attributed only by a misleading filename: %s', (filename) => {
+    expect(filterPathfinderTelemetry(exceptionItem([filename]))).toBeNull();
+  });
+
+  it.each([
+    '/public/plugins/grafana-pathfinder-app/1.js',
+    'webpack:///grafana-pathfinder-app/src/lib/faro.ts',
+    'webpack-internal://grafana-pathfinder-app/./src/lib/faro.ts',
+  ])('drops ambient frames without a supported absolute asset URL or named webpack namespace: %s', (filename) => {
+    expect(filterPathfinderTelemetry(exceptionItem([filename]))).toBeNull();
+  });
+
+  it('keeps versioned CDN assets and subpath deployments', () => {
+    for (const filename of [
+      'https://plugins-cdn.grafana.net/grafana-pathfinder-app/2.19.0/public/plugins/grafana-pathfinder-app/6456.js',
+      'https://example.org/grafana/public/plugins/grafana-pathfinder-app/module.js',
+    ]) {
+      const item = exceptionItem([filename]);
+      expect(filterPathfinderTelemetry(item)).toBe(item);
+    }
+  });
+
+  it('preserves attributed and explicitly reported ResizeObserver errors', () => {
+    const message = 'ResizeObserver loop completed with undelivered notifications.';
+    const attributed = exceptionItem(
+      ['webpack://grafana-pathfinder-app/./hooks/useVerticalOverflow.ts'],
+      undefined,
+      message
+    );
+    const explicit = exceptionItemWithoutStacktrace({ pathfinder_reported: 'true' }, message);
+    expect(filterPathfinderTelemetry(attributed)).toBe(attributed);
+    expect(filterPathfinderTelemetry(explicit)).toBe(explicit);
+  });
+
   it('keeps an exception with a pathfinder stack frame', () => {
     const item = exceptionItem(['webpack://grafana-pathfinder-app/./src/lib/faro.ts']);
     expect(filterPathfinderTelemetry(item)).toBe(item);
@@ -451,6 +489,24 @@ describe('buildResourceIgnorePattern', () => {
 });
 
 describe('initFaro', () => {
+  it('allows initialization to recover after a failed attempt', async () => {
+    const faro = freshFaro();
+    mockInitializeFaro.mockImplementationOnce(() => {
+      throw new Error('Initialization failed');
+    });
+    await expect(faro.initFaro()).rejects.toThrow('Initialization failed');
+    await expect(faro.initFaro()).resolves.toBeUndefined();
+    expect(mockInitializeFaro).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares an in-flight initialization across callers', async () => {
+    const faro = freshFaro();
+    const first = faro.initFaro();
+    expect(faro.initFaro()).toBe(first);
+    await first;
+    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+  });
+
   it('does not initialize when the instance is not Grafana Cloud', async () => {
     mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
     const faro = freshFaro();
@@ -502,7 +558,7 @@ describe('initFaro', () => {
     const instrumentationNames = calledWith.instrumentations.map((i) => i.constructor.name);
     expect(instrumentationNames).toEqual(
       expect.arrayContaining([
-        'ErrorsInstrumentation',
+        'PathfinderErrorsInstrumentation',
         'SessionInstrumentation',
         'ViewInstrumentation',
         'PerformanceInstrumentation',

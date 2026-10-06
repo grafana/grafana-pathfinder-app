@@ -50,6 +50,10 @@ function bannedDirRegex(dirs) {
   return `^\\.\\./+(\\.\\./)*(?:${dirs.join('|')})(/|$)`;
 }
 
+const USER_FACING_NAME_MESSAGE =
+  'Users know this plugin as "Interactive learning", never "Pathfinder" (the internal name). ' +
+  'Use "interactive learning" in UI text, t() defaults, aria-labels, and alt text. Identifiers, keys, and logs may keep the internal name.';
+
 const TEST_UTILS_PATTERN = {
   regex: bannedDirRegex(['test-utils']),
   message: 'Production code must not import from test-utils/. Test helpers are for test files only.',
@@ -203,6 +207,19 @@ export default defineConfig([
           message:
             'Do not bypass the typed Pathfinder window-global contract with a window cast. ' +
             'Declare the global in src/types/window-globals.ts and access it through window directly.',
+        },
+        {
+          selector: 'JSXText[value=/Pathfinder/]',
+          message: USER_FACING_NAME_MESSAGE,
+        },
+        {
+          selector:
+            'JSXAttribute[name.name=/^(aria-label|alt|title|placeholder|label|description|text|tooltip)$/] Literal[value=/Pathfinder/]',
+          message: USER_FACING_NAME_MESSAGE,
+        },
+        {
+          selector: "CallExpression[callee.name='t'][arguments.1.value=/Pathfinder/]",
+          message: USER_FACING_NAME_MESSAGE,
         },
         {
           selector: "CallExpression[callee.property.name='insertAdjacentHTML']",

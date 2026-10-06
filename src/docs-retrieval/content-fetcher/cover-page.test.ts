@@ -39,14 +39,17 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
     expect(card!.content).toContain('<li>Build a dashboard</li>');
   });
 
-  it('preserves content before the heading as its own markdown block', () => {
+  it('wraps the "what to expect" card even when the leading intro before it gets dropped', () => {
+    // wrapExpectBlockInOrangeOutline splits "Intro paragraph." into its own
+    // markdown block, but dropLeadingPathBodyBlock then removes it — this is
+    // the Path's own leading content, not the "what to expect" card.
     const input = guide([{ type: 'markdown', content: "Intro paragraph.\n\n## Here's what to expect\n\n- A thing" }]);
 
     const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata));
 
-    expect(blocks[0]).toEqual({ type: 'markdown', content: 'Intro paragraph.' });
-    expect(blocks[1]!.type).toBe('html');
-    expect(blocks[1]!.content).toContain('orange-outline-list');
+    expect(blocks.some((b) => b.content === 'Intro paragraph.')).toBe(false);
+    expect(blocks[0]!.type).toBe('html');
+    expect(blocks[0]!.content).toContain('orange-outline-list');
   });
 
   it('preserves content after the next heading as a trailing markdown block', () => {
@@ -105,8 +108,11 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
     expect(last.type).toBe('html');
     expect(last.content).toContain('journey-ready-to-begin');
     expect(last.content).toContain('Ready to Begin');
-    // No expect heading present → the original markdown block is preserved verbatim.
-    expect(blocks[0]).toEqual({ type: 'markdown', content: 'Just some prose, no expect heading.' });
+    // No expect heading present, but the leading block is still dropped
+    // unconditionally — it was the sole block, so it's replaced with an
+    // empty element rather than left empty (ContentProcessor errors on
+    // zero elements).
+    expect(blocks[0]).toEqual({ type: 'html', content: '<div></div>' });
   });
 
   it('omits the Ready to Begin block entirely when skipReadyToBegin is true', () => {
@@ -134,6 +140,80 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
       const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata));
       expect(blocks.some((b) => b.type === 'html' && b.content?.includes('orange-outline-list'))).toBe(true);
     }
+  });
+});
+
+// The React cover-page hero (LearningPathTableOfContents) already renders
+// this Path's own title and description — a Path authored the older,
+// hero-less way opens with the same title+intro as its own leading body
+// block, which reads as a plain duplicate once the hero exists. Always
+// suppressed regardless of shape, since no real content has ever been found
+// worth keeping there.
+describe("injectJourneyExtrasIntoJsonGuide — drops the Path's own leading body block, unconditionally", () => {
+  it('drops a leading markdown block that is just a duplicated title+intro', () => {
+    const input = guide([
+      { type: 'markdown', content: '# Demo tracked learning path\n\nA local demo path exercising Path Tracks.' },
+      { type: 'markdown', content: 'Real, unique milestone-list prose.' },
+    ]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks[0]).toEqual({ type: 'markdown', content: 'Real, unique milestone-list prose.' });
+    expect(blocks.some((b) => b.content?.includes('Demo tracked learning path'))).toBe(false);
+  });
+
+  it('drops a leading block with no heading at all — shape never matters, only position 0', () => {
+    const input = guide([
+      { type: 'markdown', content: "Intro paragraph, no heading.\n\n## Here's what to expect\n\n- A thing" },
+    ]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks.some((b) => b.content?.includes('Intro paragraph, no heading'))).toBe(false);
+  });
+
+  it('drops a leading block whose heading is followed by what looks like real sections — no narrowing, the whole block goes', () => {
+    // block-editor-tutorial/content.json's own leading block has this exact
+    // shape (a heading, then "What are guides?"/"Block types overview"
+    // sections) — the census confirmed this is not real cover-page content
+    // worth keeping, so the whole block is dropped like any other.
+    const input = guide([
+      {
+        type: 'markdown',
+        content:
+          '# Welcome to the guide editor! 🎉\n\n' +
+          'This template demonstrates all the **block types** you can use to create interactive guides.\n\n' +
+          '## What are guides?\n\n' +
+          'Guides are interactive tutorials that help users learn Grafana.\n\n' +
+          '## Block types overview\n\n' +
+          'Click any block in the editor to see its structure.',
+      },
+    ]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks).toEqual([{ type: 'html', content: '<div></div>' }]);
+  });
+
+  // The common minimal case: the whole Path body was just one leading
+  // block, nothing else. A truly empty `blocks: []` fails at render time
+  // (ContentProcessor treats it as a parsing error), so this must stay
+  // non-empty rather than rendering empty below the hero.
+  it('replaces the Path body with an empty, real element when the leading block was its only content', () => {
+    const input = guide([{ type: 'markdown', content: '# Demo tracked learning path\n\nJust the title.' }]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks).toEqual([{ type: 'html', content: '<div></div>' }]);
+  });
+
+  it('leaves a non-markdown block 0 alone (e.g. the "what to expect" card wrapExpectBlockInOrangeOutline already produced)', () => {
+    const input = guide([{ type: 'markdown', content: "## Here's what to expect\n\n- A thing" }]);
+
+    const blocks = parseBlocks(injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true));
+
+    expect(blocks[0]!.type).toBe('html');
+    expect(blocks[0]!.content).toContain('orange-outline-list');
   });
 });
 

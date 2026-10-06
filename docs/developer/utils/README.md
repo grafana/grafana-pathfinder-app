@@ -25,6 +25,7 @@ The only top-level hook in `src/utils/` is `usePublishedGuides.ts`. Development-
 - `find-doc-page.ts` - Resolves deep-link document identifiers into loadable pages
 - `pathfinder-deep-link-handler.ts` - Processes deep links and coordinates panel launch
 - `pathfinder-search-params.ts` - Parses Pathfinder URL parameters and builds share, full-screen, and controller-pairing URLs
+- `guide-share-link.ts` - Builds the sidebar "Copy link to guide" URL for a guide tab, or null when the receiver could not open it
 - `slug.ts` - Stable and unique document-heading slug generation
 - `utils.plugin.ts` - Plugin props context management
 - `utils.routing.ts` - Route prefixing utilities
@@ -313,7 +314,7 @@ function prefixRoute(route: string): string {
 - `highlighted-guide-orchestrator.ts` - Initializes reset state, page matching, once-per-browser auto-open, and guide launch
 - `highlighted-guide-utils.ts` - Manages auto-open markers, matches target pages, and builds featured recommendations
 - `interactive-learning-banner.ts` - Interactive-learning banner arm, enrolled lazily on first panel open rather than at boot. `enrollment-boundary.test.ts` pins the three panel-mount call sites, because evaluating the flag is what emits the exposure; the banner component reads the arm through `subscribeToEnrollment` instead of enrolling
-- `experiment-debug.ts` - Exposes flag overrides and exposure inspection through `window.__pathfinderExperiment`
+- `experiment-debug.ts` - Exposes feature-flag names and exposure inspection through `window.__pathfinderExperiment`
 - `index.ts` - Public exports consumed by `src/module.tsx` and `src/context-engine/context.service.ts`
 
 ---

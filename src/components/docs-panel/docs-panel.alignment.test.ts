@@ -33,7 +33,7 @@ jest.mock('@grafana/scenes', () => {
 });
 
 jest.mock('@grafana/runtime', () => ({
-  config: { bootData: { user: { id: 1 } } },
+  config: { bootData: { user: { id: 1 } }, buildInfo: { version: '13.1.0' } },
   getAppEvents: jest.fn(() => ({ publish: jest.fn(), subscribe: jest.fn() })),
   locationService: {
     push: (...args: unknown[]) => mockLocationServicePush(...args),
@@ -70,6 +70,8 @@ jest.mock('../../docs-retrieval', () => ({
   ContentRenderer: jest.fn(),
   getNextMilestoneUrlFromContent: jest.fn(),
   getPreviousMilestoneUrlFromContent: jest.fn(),
+  getNextMilestoneIdFromContent: jest.fn(),
+  getPreviousMilestoneIdFromContent: jest.fn(),
   getJourneyProgress: jest.fn(() => 0),
   setJourneyCompletionPercentage: jest.fn(),
   getMilestoneSlug: jest.fn(),

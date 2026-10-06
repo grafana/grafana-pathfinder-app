@@ -16,6 +16,7 @@ import { locationService, getAppEvents } from '@grafana/runtime';
 import { getStyles } from '../../styles/context-panel.styles';
 import { getSkeletonStyles } from '../../styles/skeleton.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
+import { resolvePackageNavLinks } from '../../docs-retrieval';
 import type { ResolvedNavLink } from '../../types/context.types';
 import {
   reportAppInteraction,
@@ -33,6 +34,8 @@ import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuid
 import { ContextPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { useRecommendationsScrollPosition } from './hooks';
+import { useLearningPaths, useMyAssignments, type ResolvedAssignment } from '../../learning-paths';
+import { AssignmentBadges } from '../LearningPaths/AssignmentBadges';
 
 /**
  * Resolve the effective display type for a recommendation.
@@ -46,6 +49,34 @@ const getEffectiveDisplayType = (recommendation: Recommendation): Recommendation
   }
   return recommendation.type;
 };
+
+/** The manifest id of a package-backed recommendation; bundled-catalogue paths have none. */
+function recommendationTargetId(recommendation: Recommendation): string | undefined {
+  const id = recommendation.manifest?.id;
+  return typeof id === 'string' && id.trim() !== '' ? id : undefined;
+}
+
+/**
+ * Matches a card to its assignment by manifest id; only a card with no id falls back to a unique title.
+ * An id that matches nothing or an ambiguous title drops the badge rather than guess.
+ */
+function assignmentForPath(
+  recommendation: Recommendation,
+  assignments: ResolvedAssignment[]
+): ResolvedAssignment | undefined {
+  if (getEffectiveDisplayType(recommendation) !== 'learning-journey') {
+    return undefined;
+  }
+
+  const targetId = recommendationTargetId(recommendation);
+  if (targetId !== undefined) {
+    return assignments.find((assignment) => assignment.targetId === targetId);
+  }
+
+  const title = recommendation.title.trim().toLowerCase();
+  const byTitle = assignments.filter((assignment) => assignment.title.trim().toLowerCase() === title);
+  return byTitle.length === 1 ? byTitle[0] : undefined;
+}
 
 /** Maps a recommendation's effective display type onto the canonical analytics content_type. */
 const getContentTypeForDisplayType = (displayType: Recommendation['type']): AnalyticsContentType => {
@@ -276,6 +307,7 @@ interface RecommendationsSectionProps {
   toggleSuggestedGuidesExpansion: () => void;
   toggleSummaryExpansion: (recommendationUrl: string) => void;
   toggleOtherDocsExpansion: () => void;
+  assignments?: ResolvedAssignment[];
 }
 
 export const RecommendationsSection = memo(function RecommendationsSection({
@@ -298,6 +330,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   toggleSuggestedGuidesExpansion,
   toggleSummaryExpansion,
   toggleOtherDocsExpansion,
+  assignments = [],
 }: RecommendationsSectionProps) {
   const styles = useStyles2(getStyles);
   const skeletonStyles = useStyles2(getSkeletonStyles);
@@ -709,6 +742,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
               const contentUrl = getRecommendationContentUrl(recommendation);
               const packageInfo = getRecommendationPackageInfo(recommendation);
               const displayType = getEffectiveDisplayType(recommendation);
+              const assignment = assignmentForPath(recommendation, assignments);
               const isExpandable = isSummaryExpandable(recommendation);
               const isExpanded = isExpandable && Boolean(recommendation.summaryExpanded);
               return (
@@ -736,10 +770,13 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                         >
                           {recommendation.title}
                         </h3>
-                        <span className={getCategoryTagStyle(styles, displayType)}>
-                          {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
-                          {getCategoryLabel(displayType)}
-                        </span>
+                        <div className={styles.cardTagRow}>
+                          <span className={getCategoryTagStyle(styles, displayType)}>
+                            {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
+                            {getCategoryLabel(displayType)}
+                          </span>
+                          {assignment && <AssignmentBadges assignment={assignment} />}
+                        </div>
                       </div>
                       <div className={styles.cardActions}>
                         <button
@@ -1122,6 +1159,14 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   } = usePublishedGuides();
   const [customGuidesExpanded, setCustomGuidesExpanded] = useState(true);
   const [suggestedGuidesExpanded, setSuggestedGuidesExpanded] = useState(true);
+  const { paths, getPathProgress, getPathGuides, progress } = useLearningPaths();
+  const { notDone: assignedNotDone } = useMyAssignments({
+    paths,
+    getPathProgress,
+    getPathGuides,
+    completedGuides: progress.completedGuides,
+    resolveNavLinks: resolvePackageNavLinks,
+  });
 
   // Note: Auto-open event listener moved to CombinedPanelRenderer to avoid remounting issues
   // ContextPanelRenderer remounts when tabs change, causing listener cleanup
@@ -1183,6 +1228,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             toggleSuggestedGuidesExpansion={() => setSuggestedGuidesExpanded((prev) => !prev)}
             toggleSummaryExpansion={toggleSummaryExpansion}
             toggleOtherDocsExpansion={toggleOtherDocsExpansion}
+            assignments={assignedNotDone}
           />
         </div>
 

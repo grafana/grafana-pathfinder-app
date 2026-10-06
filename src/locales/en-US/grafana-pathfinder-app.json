@@ -33,16 +33,20 @@
     "totalHours_one": "~{{count}} hr",
     "totalHours_other": "~{{count}} hr",
     "upNext": "Up next",
-    "locked": "Locked"
+    "locked": "Locked",
+    "foundationsTab": "Fundamentals"
   },
   "docsPanel": {
     "closeTab": "Close {{title}}",
     "closeSidebar": "Close sidebar",
+    "copyLinkToGuide": "Copy link to guide",
     "dock": "Dock",
     "documentation": "Documentation",
     "fullScreen": "Full screen",
     "giveFeedback": "Give feedback",
     "interactiveJourney": "Interactive journey",
+    "linkCopied": "Link copied to clipboard",
+    "linkCopyFailed": "Could not copy the link",
     "learningJourney": "Learning path",
     "loading": "Loading...",
     "menuAriaLabel": "More options",
@@ -73,7 +77,12 @@
     "showMoreTabs_one": "Show {{count}} more tab",
     "showMoreTabs_other": "Show {{count}} more tabs",
     "switchToTab": "Switch to {{title}}",
-    "wordmark": "Interactive Learning"
+    "beta": "Beta",
+    "classicHelpMenuSettings": "Classic Help menu settings"
+  },
+  "guideVersionNotice": {
+    "body": "This guide is written for Grafana {{required}} or later, and this instance runs {{current}}. Some steps might not match what you see.",
+    "title": "This guide needs a newer Grafana"
   },
   "interactiveLearningBanner": {
     "body": "Interactive guides walk you through Grafana one step at a time. \"Show me\" highlights the control to use, and \"Do it\" performs the step for you.",
@@ -86,6 +95,13 @@
     "percentComplete": "{{percent}}% complete"
   },
   "myLearning": {
+    "assignedBadge": "Assigned",
+    "assignedBy": "Assigned by",
+    "assignedTrack": "Track",
+    "assignmentResetBody": "Starting this assignment will reset local progress on the following guide(s):",
+    "assignmentResetCancel": "Cancel",
+    "assignmentResetConfirm": "Reset and continue",
+    "assignmentResetTitle": "Reset local progress?",
     "badges": "Badges",
     "badgesDescription": "Earn badges by completing paths and maintaining streaks",
     "badgesEarned": "Badges earned",
@@ -102,6 +118,12 @@
     "discoverMoreMilestones_other": "{{count}} milestones",
     "discoverMoreOpening": "Opening…",
     "discoverMoreStart": "Start",
+    "dueDayCount_one": "{{count}} day",
+    "dueDayCount_other": "{{count}} days",
+    "dueDetail": "Due {{date}} — {{relative}}{{left}}",
+    "dueLeft": " left",
+    "dueOverdue": "Overdue",
+    "dueRelativeToday": "Today",
     "expand": "Expand",
     "fundamentals": "Fundamentals",
     "guidesCompleted": "Guides completed",
@@ -111,7 +133,7 @@
     "learningPaths": "Learning paths",
     "loadingGuides": "Loading guides...",
     "myCourses": "My paths",
-    "myCoursesDescription": "Paths to explore and continue",
+    "myCoursesDescription": "Assigned paths and paths you've started",
     "myCoursesEmpty": "No learning paths available yet",
     "pathsDescription": "Structured guides to help you master Grafana step by step",
     "privatePaths": "Private paths",
@@ -166,5 +188,20 @@
       "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
       "toggleViewMode": "Toggle view mode"
     }
+  },
+  "appConfig": {
+    "beta": "Beta",
+    "pathfinderEnabled": "Enable interactive learning",
+    "pathfinderEnabledDescription": "Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, interactive learning stays available.",
+    "pathfinderPreview": "Interactive learning",
+    "pathfinderPreviewDescription": "Interactive learning brings contextual help and interactive guides into Grafana.",
+    "pathfinderRemotelyDisabled": "Interactive learning is disabled remotely",
+    "pathfinderRemotelyDisabledDescription": "The remote switch currently prevents interactive learning from running. Your saved preference will apply when interactive learning is enabled remotely again.",
+    "pathfinderRevertDescription": "Turn this off to use Grafana’s classic Help menu after users reload. Your learning progress is kept."
+  },
+  "pathfinder": {
+    "disabled": "Interactive learning is disabled",
+    "disabledDescription": "Interactive learning is turned off for this organization.",
+    "openSettings": "Open interactive learning settings"
   }
 }

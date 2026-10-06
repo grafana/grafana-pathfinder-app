@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { RecommendationsSection } from './context-panel';
 import { PLUGIN_BASE_URL } from '../../constants';
 import { testIds } from '../../constants/testIds';
+import type { ResolvedAssignment } from '../../learning-paths';
 
 jest.mock('@grafana/scenes', () => ({
   SceneObjectBase: class {},
@@ -610,5 +611,147 @@ describe('RecommendationsSection', () => {
       packageId: 'visualization-metrics-lj',
       packageManifest: { id: 'visualization-metrics-lj', type: 'path' },
     });
+  });
+});
+
+describe('suggested path assignment badges', () => {
+  const assignment = (overrides: Partial<ResolvedAssignment> = {}): ResolvedAssignment => ({
+    targetId: 'getting-started',
+    title: 'Getting started with Grafana',
+    overdue: false,
+    satisfied: false,
+    progress: 0,
+    ...overrides,
+  });
+
+  const todayDueAt = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T00:00:00Z`;
+  };
+
+  const renderSuggested = (props: Partial<React.ComponentProps<typeof RecommendationsSection>> = {}) =>
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Getting started with Grafana',
+            url: 'bundled:welcome-to-grafana',
+            type: 'learning-journey',
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+        assignments={[assignment({ dueAt: todayDueAt() })]}
+        {...props}
+      />
+    );
+
+  it('badges a suggested path that matches an assignment', () => {
+    const card = renderSuggested().getByTestId(testIds.contextPanel.recommendationCard(0));
+    expect(card).toHaveTextContent('Assigned');
+    expect(card).toHaveTextContent('Today');
+  });
+
+  it('does not badge a suggested guide', () => {
+    const card = renderSuggested({
+      recommendations: [
+        {
+          title: 'Getting started with Grafana',
+          url: 'bundled:welcome-to-grafana',
+          type: 'interactive',
+        },
+      ],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+    expect(card).not.toHaveTextContent('Assigned');
+    expect(card).not.toHaveTextContent('Today');
+  });
+
+  it('shows Overdue when the assignment is past due', () => {
+    expect(
+      renderSuggested({
+        assignments: [assignment({ overdue: true, dueAt: '2020-01-01T00:00:00Z' })],
+      }).getByTestId(testIds.contextPanel.recommendationCard(0))
+    ).toHaveTextContent('Overdue');
+  });
+
+  it('shows Assigned without a due badge when there is no due date', () => {
+    const card = renderSuggested({ assignments: [assignment()] }).getByTestId(
+      testIds.contextPanel.recommendationCard(0)
+    );
+    expect(card).toHaveTextContent('Assigned');
+    expect(card).not.toHaveTextContent('Today');
+    expect(card).not.toHaveTextContent('Overdue');
+  });
+
+  it('matches a package-backed recommendation by manifest id, not by title, even when a title match would disagree', () => {
+    // Title would match the second assignment; only the manifest id picks the overdue first.
+    const card = renderSuggested({
+      recommendations: [
+        {
+          title: 'Some Suggested Path',
+          url: 'https://example.com/packages/admin-path-1/',
+          type: 'package',
+          manifest: { id: 'admin-path-1', type: 'path' },
+        },
+      ],
+      assignments: [
+        assignment({
+          targetId: 'admin-path-1',
+          title: 'A Completely Different Title',
+          overdue: true,
+          dueAt: '2020-01-01T00:00:00Z',
+        }),
+        assignment({ targetId: 'unrelated-path', title: 'Some Suggested Path' }),
+      ],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+
+    expect(card).toHaveTextContent('Overdue');
+  });
+
+  it('shows no badge when the manifest id matches nothing, even if one assignment shares the title', () => {
+    const card = renderSuggested({
+      recommendations: [
+        {
+          title: 'Some Suggested Path',
+          url: 'https://example.com/packages/not-assigned/',
+          type: 'package',
+          manifest: { id: 'not-assigned', type: 'path' },
+        },
+      ],
+      assignments: [assignment({ targetId: 'unrelated-path', title: 'Some Suggested Path' })],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+
+    expect(card).not.toHaveTextContent('Assigned');
+    expect(card).not.toHaveTextContent('Overdue');
+  });
+
+  it('shows no badge when two assignments share a title and the recommendation has no id to break the tie', () => {
+    // No manifest and an ambiguous title: show no badge rather than guess.
+    const card = renderSuggested({
+      assignments: [
+        assignment({ targetId: 'getting-started', overdue: true, dueAt: '2020-01-01T00:00:00Z' }),
+        assignment({ targetId: 'getting-started-private', dueAt: undefined }),
+      ],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+
+    expect(card).not.toHaveTextContent('Assigned');
+    expect(card).not.toHaveTextContent('Overdue');
+    expect(card).not.toHaveTextContent('Today');
   });
 });

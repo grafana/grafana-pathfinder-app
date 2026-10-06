@@ -21,6 +21,10 @@ Both are Grafana-internal signals; neither is customer-visible. Every RudderStac
 - **Bridge** (`bridge.ts`) — entry-eager modules (`analytics.ts`, `logging.ts`) reach Faro through a late-bound bridge so the SDK stays out of `module.js` (enforced by `entry-bundle-boundary.test.ts`).
 - **Session replay** (`replay.ts` + `replay-scrub.ts`) — a masked rrweb recorder behind `pathfinder.session-replay`. Not part of the `instrumentations` array: it is added via `faro.instrumentations.add()` the first time Pathfinder is opened, because starting at page load would put rrweb's opening full-DOM snapshot on the wrong side of the activity gate and leave a stream of mutations with nothing to apply them to. Both the module and the instrumentation package are dynamically imported, so nothing loads when the flag is off.
 
+Browser errors use `error` and `unhandledrejection` event listeners without replacing or calling Grafana's global handlers. Ambient errors require an absolute HTTP(S) URL with a Pathfinder asset path or the named Pathfinder `webpack:` source namespace. Dashboard query parameters, origin-less asset paths, empty-hostname `webpack:` URLs, and `webpack-internal:` frames do not establish ownership. Faro SDK wrapper sources are excluded only in `webpack:` frames; bundled HTTP(S) frames cannot distinguish SDK wrappers from other code in a plugin asset. Explicitly reported errors remain visible, including ResizeObserver errors attributable to Pathfinder.
+
+Telemetry and completion-hook chunk imports retry `ChunkLoadError` failures up to three times, after 1, 5, and 30 seconds. An `online` event advances a pending retry. Other failures are not retried. Telemetry loading runs independently of plugin registration. While the completion hook loads, the recorder buffers up to 100 completions in memory for the current user and organization, then replays them into the durable queue. This volatile startup buffer extends the completion-records contract before durable queue acceptance. At capacity it drops the newest fact and logs a warning, whereas the durable queue evicts the oldest eligible record and reports degradation. A replay rejected by every listener leaves the fact eligible for a later completion event but removes it from the startup buffer. Resets discard buffered facts in the resetting tab only; a reset in another tab cannot clear this buffer, so recovery may queue a pre-reset completion. A reload before the hook accepts the facts also loses this temporary buffer.
+
 ## What a new feature gets for free
 
 Four channels; three cost nothing beyond conventions the repo already follows:
@@ -95,14 +99,16 @@ What that means operationally:
 
 A guide open carries an in-memory `load_id` from launch preparation through content fetching and the renderer. A successful `pathfinder_content_fetch` measurement means that content was fetched and shaped; it does not prove the guide appeared. Use `pathfinder_guide_render` for the final visible outcome. The mirrored `open_guide` action now finishes with this outcome on instrumented launches (`phase=render`); its `duration_ms` records active loading time.
 
-| Signal                                          | What it explains                                                                                                                                                            |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pathfinder_guide_request`                      | Each HTTP attempt: source, file role, duration, HTTP status, and transport reason. Attempts in a fallback ladder share a load ID.                                           |
-| `pathfinder_guide_render`                       | `rendered`, `error`, `timeout`, or `cancelled` terminal outcome. `awaiting-user` and `degraded` are intermediate states, not failed opens.                                  |
-| `pathfinder_content_fetch`                      | Existing latency measurement, enriched with load ID and structured failure diagnostics.                                                                                     |
-| `pathfinder_content_fetch_fallback`             | Existing fallback event, correlated with the load ID when supplied.                                                                                                         |
-| `pathfinder_package_index`                      | Index availability, backend cache disposition/age, manifest failure counts by HTTP/timeout/JSON/other reason, enrichment-budget exhaustion, and suppressed session retries. |
-| `pathfinder_custom_guide_catalogue_unavailable` | Existing private-catalogue signal, now preserving bounded transient proxy reasons and upstream status.                                                                      |
+| Signal                                          | What it explains                                                                                                                                                                                                                    |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pathfinder_guide_request`                      | Each HTTP attempt: source, file role, duration, HTTP status, and transport reason. Attempts in a fallback ladder share a load ID.                                                                                                   |
+| `pathfinder_guide_render`                       | `rendered`, `error`, `timeout`, or `cancelled` terminal outcome. `awaiting-user` and `degraded` are intermediate states, not failed opens.                                                                                          |
+| `pathfinder_content_fetch`                      | Existing latency measurement, enriched with load ID and structured failure diagnostics.                                                                                                                                             |
+| `pathfinder_content_fetch_fallback`             | Existing fallback event, correlated with the load ID when supplied.                                                                                                                                                                 |
+| `pathfinder_package_index`                      | Index availability, backend cache disposition/age, manifest failure counts by HTTP/timeout/JSON/other reason, enrichment-budget exhaustion, and suppressed session retries.                                                         |
+| `pathfinder_custom_guide_catalogue_unavailable` | Existing private-catalogue signal, now preserving bounded transient proxy reasons and upstream status.                                                                                                                              |
+| `pathfinder_assignments_unavailable`            | Assignment listing could not be read, with a bounded reason (server-reported capability reason, `malformed-response`, or a classified request failure such as `http-503` or `http-429`). The panel keeps the last good assignments. |
+| `pathfinder_assignment_target_unresolved`       | Count of assigned path targets found in neither the local catalogue nor the online catalogue. Target ids are not attributes.                                                                                                        |
 
 Failure diagnostics contain `source`, `stage`, `reason`, optional `http_status`, and `validation_count`. Stages distinguish resolution, fetching, JSON decoding, schema validation, launch preparation, and rendering. A browser network failure is classified as `network-error`, without guessing whether CORS caused it. When every package resolver fails, the first diagnostic other than a routine lookup miss takes precedence; if every attempt misses, the first lookup diagnostic is retained. Later fallback misses do not replace an earlier index, content, or permission failure. This diagnostic selection does not change resolver order, returned error codes, or cache behavior. Native guide JSON that cannot be parsed is rejected; deliberate HTML documents and supported missing/null JSON fallbacks remain supported.
 
@@ -156,3 +162,33 @@ and upstream service recovery are separate observations.
 `pathfinder_kiosk_catalog_loaded` records the served `tier` (`override`, `configured`, `generic`, or `bundled`) and whether loading `degraded`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason; rejected rule logs name the invalid field without its value.
 
 `KioskDemoStarted` includes `launch_mode` (`instance` or `presentation`). Since URL-selected kiosks were added, `target_instance` is the current origin for instance launches and the catalog target (or current origin) for presentation launches. Filter by `launch_mode = presentation` for booth-demo comparisons; older events lack this field. Catalog URLs, rule content, and raw failure messages are not added to catalog telemetry.
+
+Structured kiosk controls emit `kiosk_interaction`, mirrored to Faro through the normal analytics bridge:
+
+| Component     | Actions                                                                   | Extra fields                                                           |
+| ------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `input`       | `change` once per field per mounted form; `invalid` for native validation | `input_type`, zero-based `input_index`                                 |
+| `launch-form` | `submit`, `ready`, `error`                                                | Errors use bounded `reason`: `validation`, `storage`, or `unavailable` |
+| `command`     | `copy`                                                                    | `outcome`: `success` or `error`                                        |
+
+Explicit exits emit the same event with `component=kiosk`, `action=exit`, and `method=button` or `escape`. Launching a guide is not counted as an exit, and dismissing a child dropdown is not counted either.
+
+All carry `launch_mode`; page controls also carry zero-based `block_index`. `fallback` means the guide opened without transferring inputs because its declarations or variable usage were incompatible. This is silent for visitors. `ready` means destination validation and input persistence succeeded; it does not assert that the guide rendered. Existing `KioskDemoStarted` and guide-render telemetry cover the subsequent launch. Alternative cards and links use that same launch event. Input engagement is measured on the first change, not focus or each keystroke. Unmounted/aborted forms do not emit a terminal outcome.
+
+These events deliberately omit values, selected data source names, variable names, prompts, command text, catalog URLs, and raw exceptions. They use the existing consent gates and analytics-to-Faro bridge; they do not introduce another telemetry client.
+
+Kiosk input launch failures log a bounded stage and reason through the shared logger (console and Faro), for example `destination/input-format-mismatch`. Diagnostics exclude submitted values, guide URLs, authored text, and raw exceptions. Ordinary input validation errors are not operational error logs.
+
+Startup settings decisions record a `pathfinder_startup_settings` measurement with
+`startup_settings_ms` and a closed `outcome` value (`resolved`, `read-error`,
+`timeout`, or `remote-disabled`). Reporting waits for Faro initialization and the
+first Pathfinder surface open, preserving the activity boundary. This measures
+opened sessions, not all Grafana page loads; it cannot establish fleet-wide
+opt-out coverage. The local startup diagnostic also reports duration and outcome
+without settings, user IDs, or stack IDs.
+
+## Assistant customization
+
+`assistant_customize_click`, `assistant_customize_success` and `assistant_customize_error` cover both inline block customization and whole-guide customization. Whole-guide runs carry the fixed `source: private-guide` attribute; filter by this attribute when measuring them separately from inline block runs. Inline block events retain their existing `source_document`, `step_id`, `assistant_id`, `assistant_type` and `content_key` attributes.
+
+Whole-guide clicks are recorded before context collection and prompt serialization, so local validation failures have a matching attempt. Success means a generated guide passed validation and was offered for editor review; it does not mean the user saved or published it. A repair attempt belongs to the original click. These events contain no answers, guide content, data-source metadata or generated output.

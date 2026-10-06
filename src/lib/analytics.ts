@@ -106,11 +106,9 @@ export enum UserInteraction {
   FullScreenExit = 'full_screen_exit',
   FullScreenCopyLink = 'full_screen_copy_link',
 
-  // Access Control
-  NoAccess = 'no_access',
-
   // Kiosk Mode
   KioskDemoStarted = 'kiosk_demo_started',
+  KioskInteraction = 'kiosk_interaction',
 
   // Initial-state alignment ("implied 0th step") — Phase 1 auto-recovery
   AlignmentPromptShown = 'alignment_prompt_shown',
@@ -130,6 +128,10 @@ export enum UserInteraction {
   // Interactive-learning banner experiment
   InteractiveLearningBannerShown = 'interactive_learning_banner_shown',
   InteractiveLearningBannerDismissed = 'interactive_learning_banner_dismissed',
+
+  // Guide declares a minGrafanaVersion the running instance does not meet.
+  // No acted/dismissed pair — the notice offers nothing to act on.
+  GuideVersionUnsupportedShown = 'guide_version_unsupported_shown',
 }
 
 // ============================================================================

@@ -1,5 +1,15 @@
 import { readProxyDiagnostics } from './proxy-diagnostics';
 
+it.each([
+  [401, 'authentication-failed'],
+  [403, 'authorization-denied'],
+])('preserves the distinction between authentication and authorization (%i)', (upstreamStatus, reason) => {
+  expect(readProxyDiagnostics({ outcome: 'error', stage: 'app-platform', upstreamStatus, reason })).toMatchObject({
+    upstreamStatus,
+    reason,
+  });
+});
+
 it('accepts bounded proxy diagnostics and drops response bodies and arbitrary reason keys', () => {
   const result = readProxyDiagnostics({
     outcome: 'degraded',

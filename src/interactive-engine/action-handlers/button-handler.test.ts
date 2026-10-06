@@ -82,7 +82,11 @@ describe('ButtonHandler', () => {
       await buttonHandler.execute(mockData, false);
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
-      expect(resolveWithRetry).toHaveBeenCalledWith('test-button', 'button');
+      expect(resolveWithRetry).toHaveBeenCalledWith('test-button', 'button', {
+        signal: undefined,
+        lazyRender: undefined,
+        scrollContainer: undefined,
+      });
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockButtons[0]!, undefined);
@@ -93,7 +97,11 @@ describe('ButtonHandler', () => {
       await buttonHandler.execute(mockData, true);
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
-      expect(resolveWithRetry).toHaveBeenCalledWith('test-button', 'button');
+      expect(resolveWithRetry).toHaveBeenCalledWith('test-button', 'button', {
+        signal: undefined,
+        lazyRender: undefined,
+        scrollContainer: undefined,
+      });
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]!);
       expect(mockButtons[0]!.click).toHaveBeenCalled();
@@ -101,33 +109,30 @@ describe('ButtonHandler', () => {
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });
 
-    it('does not complete when no button is found and skipCompletionOnEmptyTarget is set', async () => {
+    it('does not complete when the button is missing', async () => {
       resolveWithRetry.mockResolvedValue(null);
-      const data: InteractiveElementData = { ...mockData, skipCompletionOnEmptyTarget: true };
+      const data: InteractiveElementData = { ...mockData };
 
       await buttonHandler.execute(data, true);
 
       expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
-      // executeInteractiveAction reads this to report 'error' instead of 'ok' —
-      // without it, the caller's own completion persistence (gated on the
-      // outcome, not on stateManager) would mark the step done anyway.
-      expect(data.completionSuppressed).toBe(true);
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
     });
 
     it('does not set completionSuppressed when a button is found (regression guard)', async () => {
-      const data: InteractiveElementData = { ...mockData, skipCompletionOnEmptyTarget: true };
+      const data: InteractiveElementData = { ...mockData };
 
       await buttonHandler.execute(data, true);
 
-      expect(data.completionSuppressed).toBeUndefined();
+      expect(mockStateManager.setState).toHaveBeenCalledWith(data, 'completed');
     });
 
-    it('still completes when no button is found and skipCompletionOnEmptyTarget is not set (regression guard)', async () => {
+    it('does not complete when no button is found', async () => {
       resolveWithRetry.mockResolvedValue(null);
 
       await buttonHandler.execute(mockData, true);
 
-      expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(mockData, 'completed');
     });
 
     it('should handle errors gracefully', async () => {

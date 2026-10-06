@@ -12,10 +12,92 @@ describe('validateCrossTabMessage', () => {
       phase: 'do',
       stepId: 's1',
       runId: 'run-1',
-      action: { targetAction: 'button', refTarget: 'Save' },
+      action: { targetAction: 'navigate', refTarget: '/dashboards', openGuide: 'bundled:guide' },
     });
     expect(validateCrossTabMessage(message)).toBe(message);
   });
+
+  it('rejects a step-command with a non-string openGuide', () => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 's1',
+      runId: 'run-1',
+      action: { targetAction: 'navigate', refTarget: '/dashboards', openGuide: 42 },
+    });
+
+    expect(validateCrossTabMessage(message)).toBeNull();
+  });
+
+  it.each([0, 1])('accepts composite retry index %s', (startIndex) => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 's1',
+      runId: 'r1',
+      startIndex,
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [
+          { targetAction: 'button', refTarget: '#one' },
+          { targetAction: 'button', refTarget: '#two' },
+        ],
+      },
+    });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it.each([-1, 0.5, 2, '1', null, NaN, Infinity])('rejects invalid composite retry index %s', (startIndex) => {
+    expect(
+      validateCrossTabMessage(
+        envelope({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 's1',
+          runId: 'r1',
+          startIndex,
+          action: {
+            targetAction: 'guided',
+            refTarget: '',
+            internalActions: [
+              { targetAction: 'button', refTarget: '#one' },
+              { targetAction: 'button', refTarget: '#two' },
+            ],
+          },
+        })
+      )
+    ).toBeNull();
+  });
+
+  it.each([undefined, []])('rejects a retry index without any composite substeps (%s)', (internalActions) => {
+    expect(
+      validateCrossTabMessage(
+        envelope({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 's1',
+          runId: 'r1',
+          startIndex: 0,
+          action: { targetAction: 'button', refTarget: '#one', internalActions },
+        })
+      )
+    ).toBeNull();
+  });
+
+  it('accepts a step-cancel with both run identifiers', () => {
+    const message = envelope({ kind: 'step-cancel', stepId: 's1', runId: 'r1' });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it.each([{ stepId: undefined }, { stepId: 1 }, { runId: undefined }, { runId: 1 }])(
+    'rejects malformed step-cancel identifiers %j',
+    (invalid) => {
+      expect(
+        validateCrossTabMessage(envelope({ kind: 'step-cancel', stepId: 's1', runId: 'r1', ...invalid }))
+      ).toBeNull();
+    }
+  );
 
   it('accepts a well-formed heartbeat', () => {
     const message = envelope({ kind: 'heartbeat', role: 'live' });

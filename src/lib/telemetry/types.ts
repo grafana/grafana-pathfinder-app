@@ -48,9 +48,12 @@ export const TELEMETRY_EVENTS = {
   proxyFailure: 'pathfinder_proxy_failure',
   settingsStoreResolved: 'pathfinder_settings_store_resolved',
   gcxCredentialDegraded: 'pathfinder_gcx_credential_degraded',
+  assignmentsUnavailable: 'pathfinder_assignments_unavailable',
+  assignmentTargetUnresolved: 'pathfinder_assignment_target_unresolved',
 } as const;
 
 export const TELEMETRY_MEASUREMENTS = {
+  startupSettings: 'pathfinder_startup_settings',
   recommender: 'pathfinder_recommender',
   contentFetch: 'pathfinder_content_fetch',
   step: 'pathfinder_step',

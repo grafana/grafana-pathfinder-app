@@ -1,15 +1,12 @@
 /**
- * Package Loader
+ * Bundled package file reader.
  *
- * Loads package content (content.json, manifest.json) from bundled sources.
- * Supports both the two-file package model and legacy single-file guides.
+ * Reads `content.json` and `manifest.json` out of `src/bundled-interactives/`
+ * through webpack's `require`, returning typed domain objects.
  *
- * Separation of concerns from docs-retrieval (Phase 4g):
- * - This module returns typed domain objects (ContentJson, ManifestJson) for
- *   the resolution pipeline (PackageResolver.resolve with loadContent: true).
- * - docs-retrieval/content-fetcher.ts handles the rendering pipeline fetch
- *   (fetchPackageContent, fetchPackageById) which returns RawContent for the renderer.
- * Both serve different contracts and remain intentionally separate.
+ * Tier 1 rather than inside `package-engine` because two Tier 2 engines need it —
+ * the resolution pipeline and the `bundled:` fetch tier in `docs-retrieval` — and
+ * a lateral import between them is a ratchet violation.
  *
  * @coupling Types: package.types.ts, Schemas: package.schema.ts
  */

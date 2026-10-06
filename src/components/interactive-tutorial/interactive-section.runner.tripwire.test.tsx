@@ -33,6 +33,10 @@
  */
 
 import React from 'react';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
+
+const mockMarkSkipped = jest.fn();
+jest.mock('../../lib/dom/selector-retry', () => ({ resolveWithRetry: jest.fn() }));
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 
 jest.mock('@grafana/ui', () => {
@@ -74,7 +78,16 @@ jest.mock('../../docs-retrieval', () => {
   return require('../../test-utils/interactive-section-harness').createDocsRetrievalMock();
 });
 jest.mock('./interactive-step', () => {
-  return require('../../test-utils/interactive-section-harness').createInteractiveStepMock();
+  const React = require('react');
+  const mocks = require('../../test-utils/interactive-section-harness').createInteractiveStepMock();
+  const Stub = mocks.InteractiveStep;
+  return {
+    ...mocks,
+    InteractiveStep: React.forwardRef(function SkippableStepStub(props: any, ref: any) {
+      React.useImperativeHandle(ref, () => ({ markSkipped: mockMarkSkipped }));
+      return React.createElement(Stub, props);
+    }),
+  };
 });
 jest.mock('./interactive-multi-step', () => {
   return require('../../test-utils/interactive-section-harness').createInteractiveMultiStepMock();
@@ -102,6 +115,10 @@ jest.mock('./interactive-conditional', () => {
 });
 
 import { testIds } from '../../constants/testIds';
+jest.mock('../../integrations/assistant-integration/AssistantBlockWrapper', () => ({
+  AssistantBlockWrapper: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+import { AssistantBlockWrapper } from '../../integrations/assistant-integration/AssistantBlockWrapper';
 import { InteractiveStep } from './interactive-step';
 import { DatasourceCheckStep as DatasourceCheckStepReal } from './datasource-check-step';
 import { InteractiveGuided as InteractiveGuidedReal } from './interactive-guided';
@@ -117,6 +134,7 @@ import {
   memoryStore,
   resetSectionHarness,
   setExecuteInteractiveActionOutcome,
+  setCheckRequirementsResult,
   silenceSectionWarnings,
 } from '../../test-utils/interactive-section-harness';
 
@@ -160,6 +178,36 @@ function recordEvents(names: string[]): { events: CapturedEvent[]; unsubscribe: 
 }
 
 describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
+  it('tracks Assistant-wrapped query completion and reset before the run step', async () => {
+    render(
+      <InteractiveSection id="runner" title="Query lesson" autoCollapse={false}>
+        <AssistantBlockWrapper
+          assistantId="query"
+          assistantType="query"
+          defaultValue="up"
+          blockType="interactive"
+          contentKey="guide"
+        >
+          <InteractiveStep stepId="enter-query" targetAction="formfill" refTarget="textarea" targetValue="up">
+            Enter query
+          </InteractiveStep>
+        </AssistantBlockWrapper>
+        <InteractiveStep stepId="run-query" targetAction="highlight" refTarget="button">
+          Run query
+        </InteractiveStep>
+      </InteractiveSection>
+    );
+
+    await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toHaveTextContent('2 steps'));
+    act(() => screen.getByTestId('harness-complete-enter-query').click());
+    await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toHaveTextContent('1 step'));
+    expect(screen.queryByTestId(resetBtn(SECTION_ID))).not.toBeInTheDocument();
+    act(() => screen.getByTestId('harness-complete-run-query').click());
+    await waitFor(() => expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeInTheDocument());
+    act(() => screen.getByTestId('harness-redo-enter-query').click());
+    await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toHaveTextContent('2 steps'));
+  });
+
   it('does not route an unknown action through either the show or do branch', async () => {
     render(
       <InteractiveSection id="runner" title="Unknown action" autoCollapse={false}>
@@ -433,4 +481,39 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
     it.todo('requirement-fix-fails-not-skippable: stoppedDueToRequirements=true, no further steps');
     it.todo('section-level requirements fail and cannot be fixed: handleDoSection returns immediately');
   });
+});
+
+it('does not skip or complete a skippable step when lazy discovery is cancelled', async () => {
+  mockMarkSkipped.mockClear();
+  jest
+    .mocked(resolveWithRetry)
+    .mockImplementation(
+      (_target, _action, options) =>
+        new Promise((_resolve, reject) =>
+          options!.signal!.addEventListener('abort', () => reject(options!.signal!.reason))
+        )
+    );
+  setCheckRequirementsResult({ pass: false, error: [{ canFix: true, fixType: 'lazy-scroll' }] });
+  render(
+    <InteractiveSection id="runner" title="Cancel discovery">
+      <InteractiveStep
+        stepId="lazy-cancel"
+        targetAction="button"
+        refTarget="#missing"
+        lazyRender
+        skippable
+        requirements="exists-reftarget"
+      >
+        Lazy target
+      </InteractiveStep>
+    </InteractiveSection>
+  );
+  await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toBeInTheDocument());
+  act(() => screen.getByTestId(doSectionBtn(SECTION_ID)).click());
+  await waitFor(() => expect(resolveWithRetry).toHaveBeenCalled());
+  await act(async () => screen.getByRole('button', { name: /cancel/i }).click());
+  await waitFor(() => expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument());
+  expect(mockMarkSkipped).not.toHaveBeenCalled();
+  expect(executeInteractiveActionCalls).toHaveLength(0);
+  expect(screen.queryByTestId(resetBtn(SECTION_ID))).not.toBeInTheDocument();
 });

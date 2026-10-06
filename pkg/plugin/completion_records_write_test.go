@@ -96,6 +96,13 @@ func doWrite(t *testing.T, app *App, r *http.Request) *httptest.ResponseRecorder
 	if app == nil {
 		app = newTestApp(t)
 	}
+
+	// Run the background assignment status write inline so no goroutine outlives
+	// the test and races the next test's package-level seams.
+	prevDispatch := assignmentStatusDispatchOverride
+	assignmentStatusDispatchOverride = func(run func()) { run() }
+	defer func() { assignmentStatusDispatchOverride = prevDispatch }()
+
 	rec := httptest.NewRecorder()
 	app.handleCreateCompletionRecord(rec, r)
 	return rec

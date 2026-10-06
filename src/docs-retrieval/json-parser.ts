@@ -747,6 +747,8 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string, stepCont
     refTarget: step.reftarget ?? step.refTarget,
     targetValue: step.targetvalue ?? step.targetValue,
     targetState: step.targetstate ?? step.targetState,
+    lazyRender: step.lazyRender,
+    scrollContainer: step.scrollContainer,
     requirements: step.requirements,
     targetComment: step.tooltip ? markdownToHtml(step.tooltip) : undefined,
   }));
@@ -791,6 +793,8 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
     refTarget: step.reftarget ?? step.refTarget,
     targetValue: step.targetvalue ?? step.targetValue,
     targetState: step.targetstate ?? step.targetState,
+    lazyRender: step.lazyRender,
+    scrollContainer: step.scrollContainer,
     requirements: step.requirements,
     // For guided blocks, prefer description (shown in steps panel), fall back to tooltip for backward compatibility
     targetComment: step.description
@@ -987,6 +991,7 @@ function convertInputBlock(block: JsonInputBlock, path: string, stepContext?: St
         defaultValue: block.defaultValue,
         required: block.required ?? false,
         pattern: block.pattern,
+        format: block.format,
         validationMessage: block.validationMessage,
         requirements,
         skippable: block.skippable ?? false,

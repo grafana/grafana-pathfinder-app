@@ -154,15 +154,15 @@ func (c *completionHTTPClient) ListPage(ctx context.Context, namespace, continue
 		return nil, err
 	}
 
-	records := make([]completionRecordSpec, 0, len(page.Specs))
-	for _, raw := range page.Specs {
+	records := make([]completionRecordSpec, 0, len(page.Items))
+	for _, item := range page.Items {
 		var spec completionRecordSpec
-		if err := json.Unmarshal(raw, &spec); err != nil {
+		if err := json.Unmarshal(item.Spec, &spec); err != nil {
 			return nil, fmt.Errorf("completion records: decode spec: %w", err)
 		}
 		records = append(records, spec)
 	}
-	return &completionRecordPage{Records: records, Continue: page.Continue}, nil
+	return &completionRecordPage{Records: records, Continue: page.Metadata.Continue}, nil
 }
 
 // Create POSTs one fully-stamped CompletionRecord to the namespace collection.

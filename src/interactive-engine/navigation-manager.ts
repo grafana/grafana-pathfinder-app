@@ -26,6 +26,7 @@ export interface NavigationOptions {
 }
 
 export interface CommentBoxOptions {
+  signal?: AbortSignal;
   showKeyboardHint?: boolean;
   stepTitle?: string;
   skipAnimations?: boolean;
@@ -67,6 +68,7 @@ const NAV_ITEM_SELECTOR = 'a[data-testid="data-testid Nav menu item"]';
 const MEGA_MENU_SELECTOR = '[data-testid="data-testid navigation mega-menu"]';
 
 export class NavigationManager {
+  private ownedHighlights = new Set<HTMLElement>();
   private activeCleanupHandlers: Array<() => void> = [];
 
   // Drift detection state for guided mode
@@ -87,6 +89,7 @@ export class NavigationManager {
 
     // Cleanup any active auto-cleanup handlers (ResizeObserver, event listeners, etc.)
     this.cleanupAutoHandlers();
+    this.ownedHighlights.clear();
 
     // Remove all existing highlight outlines and dot indicators
     document
@@ -102,13 +105,20 @@ export class NavigationManager {
     });
   }
 
+  clearOwnedHighlights(): void {
+    this.stopDriftDetection();
+    this.cleanupAutoHandlers();
+    this.ownedHighlights.forEach((element) => element.remove());
+    this.ownedHighlights.clear();
+  }
+
   /**
    * Show a centered comment for noop actions (informational steps without element interaction)
    * Used by multi-step sequences to display step instructions
    */
-  showNoopComment(comment: string): void {
+  showNoopComment(comment: string, onCancel?: () => void): void {
     // Clear any existing highlights first
-    this.clearAllHighlights();
+    this.clearOwnedHighlights();
 
     // Create a centered comment box
     const commentBox = document.createElement('div');
@@ -127,7 +137,7 @@ export class NavigationManager {
     logoContainer.className = 'interactive-comment-logo';
     const logo = document.createElement('img');
     logo.src = logoSvg;
-    logo.alt = 'Pathfinder';
+    logo.alt = 'Interactive learning';
     logoContainer.appendChild(logo);
 
     // Text content - sanitize the HTML
@@ -147,7 +157,16 @@ export class NavigationManager {
     commentBox.appendChild(content);
 
     // Add to document body (centered via CSS)
+    if (onCancel) {
+      const cancel = document.createElement('button');
+      cancel.className = 'interactive-comment-cancel-btn';
+      cancel.textContent = 'Cancel';
+      cancel.addEventListener('click', onCancel);
+      content.appendChild(cancel);
+      this.activeCleanupHandlers.push(() => cancel.removeEventListener('click', onCancel));
+    }
     document.body.appendChild(commentBox);
+    this.ownedHighlights.add(commentBox);
   }
 
   /**
@@ -280,15 +299,8 @@ export class NavigationManager {
           highlightStyle.setProperty('--highlight-height', `${elementRect.height + 8}px`);
         }
 
-        // Update comment box position (body-attached, position:fixed)
         if (this.driftDetectionComment) {
-          const highlightRect = this.calculateHighlightRect(elementRect, this.driftDetectionIsDotMode);
-
-          const commentHeight = this.driftDetectionComment.offsetHeight;
-          const { offsetX, offsetY } = this.calculateCommentPosition(elementRect, commentHeight);
-
-          this.driftDetectionComment.style.top = `${highlightRect.top + offsetY}px`;
-          this.driftDetectionComment.style.left = `${highlightRect.left + offsetX}px`;
+          this.positionCommentBox(this.driftDetectionComment, elementRect);
         }
       }
 
@@ -387,13 +399,10 @@ export class NavigationManager {
         // 1. Element has collapsed to 0,0 (disappeared)
         // 2. Element is at top-left corner (0,0) with no scroll offset
         // 3. Element has zero or near-zero dimensions (skip for dot mode - dots work with any dimensions)
-        const scrollTop = window.scrollY || document.documentElement.scrollTop;
-        const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
-        const isAtOrigin = rect.top === 0 && rect.left === 0 && scrollTop === 0 && scrollLeft === 0;
         const hasNoDimensions = rect.width < 1 || rect.height < 1;
 
         // Skip dimension check for dot mode - dots work even for very small elements
-        if (isAtOrigin || (!isDotMode && hasNoDimensions)) {
+        if (!isDotMode && hasNoDimensions) {
           // Element is in invalid state - hide highlight
           highlightElement.style.display = 'none';
           if (commentBox) {
@@ -423,15 +432,8 @@ export class NavigationManager {
           highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
         }
 
-        // Update comment box position (body-attached, position:fixed)
         if (commentBox) {
-          const highlightRect = this.calculateHighlightRect(rect, isDotMode);
-
-          const commentHeight = commentBox.offsetHeight;
-          const { offsetX, offsetY } = this.calculateCommentPosition(rect, commentHeight);
-
-          commentBox.style.top = `${highlightRect.top + offsetY}px`;
-          commentBox.style.left = `${highlightRect.left + offsetX}px`;
+          this.positionCommentBox(commentBox, rect);
         }
       }, INTERACTIVE_CONFIG.positionTracking.debounceMs);
     };
@@ -725,6 +727,7 @@ export class NavigationManager {
     // and DOM is stable. Highlight immediately for better responsiveness!
 
     // If selector targeted a hidden input (common in dropdowns), highlight the visible parent instead
+    options?.signal?.throwIfAborted();
     const highlightTarget = getVisibleHighlightTarget(element);
 
     // Position the outline around the target element using CSS custom properties
@@ -781,10 +784,14 @@ export class NavigationManager {
       highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
     }
 
+    if (!enableAutoCleanup) {
+      highlightElement.classList.add('interactive-highlight-persistent');
+    }
     // Clear old highlights RIGHT BEFORE adding new one for seamless transition
     this.clearAllHighlights();
 
     document.body.appendChild(highlightElement);
+    this.ownedHighlights.add(highlightElement);
 
     // Create comment box if comment is provided OR if any callback is provided
     // Comment box is always attached to body with absolute positioning
@@ -817,6 +824,7 @@ export class NavigationManager {
 
       // Always append to body (unified positioning)
       document.body.appendChild(commentBox);
+      this.ownedHighlights.add(commentBox);
     }
 
     // GUARDRAIL: Auto-remove highlight after fixed duration
@@ -1127,35 +1135,25 @@ export class NavigationManager {
       return commentBox;
     }
 
-    // MEASURE ACTUAL HEIGHT: Append off-screen temporarily to measure real dimensions
     commentBox.style.visibility = 'hidden';
     commentBox.style.position = 'absolute';
     commentBox.style.left = '-9999px';
     document.body.appendChild(commentBox);
-
-    // Get the actual rendered height
     const actualHeight = commentBox.offsetHeight;
-
-    // Remove it temporarily (we'll append it properly later)
     commentBox.remove();
     commentBox.style.visibility = '';
-    commentBox.style.position = '';
-    commentBox.style.left = '';
-
-    // NOW calculate position with the REAL height
-    // Calculate position offsets relative to highlight
-    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
-
-    // Convert to viewport coordinates (position:fixed overlay)
-    const fixedTop = highlightRect.top + offsetY;
-    const fixedLeft = highlightRect.left + offsetX;
-
     commentBox.style.position = 'fixed';
-    commentBox.style.top = `${fixedTop}px`;
-    commentBox.style.left = `${fixedLeft}px`;
-    commentBox.setAttribute('data-position', position);
+    this.positionCommentBox(commentBox, targetRect, actualHeight);
 
     return commentBox;
+  }
+
+  private positionCommentBox(commentBox: HTMLElement, targetRect: DOMRect, height = commentBox.offsetHeight): void {
+    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, height);
+    // Offsets use the padded target bounds, even when the highlight is a centered dot.
+    commentBox.style.top = `${targetRect.top - 4 + offsetY}px`;
+    commentBox.style.left = `${targetRect.left - 4 + offsetX}px`;
+    commentBox.setAttribute('data-position', position);
   }
 
   /**

@@ -165,3 +165,16 @@ describe('CodeBlockStep: a section reset', () => {
     expect(screen.getByTestId('probe')).toHaveTextContent('cleared');
   });
 });
+
+it('checks the authored editor target before enabling insertion', async () => {
+  mockClearAndInsertCode.mockClear();
+  mockClearAndInsertCode.mockResolvedValue({ success: true });
+  render(
+    <>
+      <div id="query-editor" />
+      <CodeBlockStep code="up" refTarget="#query-editor" requirements="exists-reftarget" stepId="editor-target-check" />
+    </>
+  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Insert' }, { timeout: 10000 }));
+  await waitFor(() => expect(mockClearAndInsertCode).toHaveBeenCalledWith('#query-editor', 'up'));
+});

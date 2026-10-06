@@ -1,5 +1,105 @@
 # Changelog
 
+## 2.20.1
+
+### Added
+
+- **Direct product tiles in kiosk catalogs**: Catalog authors can offer Open product tiles alongside guided setup, taking users directly to a Grafana product without starting a guide or showing learning progress. Publish catalogs using the new field only after their target instances run a supporting Pathfinder version. (#2042)
+
+### Fixed
+
+- **Kiosk navigation and return links**: URL-launched kiosks keep their shareable launch parameters and restore the catalog on refresh or browser Back/Forward. Explicit exit and Escape clear those parameters, while guide footer links return to the kiosk from sidebar and floating mode. (#2042)
+
+## 2.20.0
+
+### Added
+
+- **Assigned learning paths on My Paths**: Paths assigned to the signed-in user appear at the top of My Paths and are badged in the recommendations panel, with completion evaluated live and server-side from the user's own completion records. (#1957)
+
+- **Cloud E2E runs for unpublished local packages**: Run unpublished guides and prerequisites from a local checkout against platform-leased Grafana Cloud stacks, without a commit or CDN publication. (#2009)
+
+- **Runtime Grafana floor for guide manifests**: Guides can declare an optional `minGrafanaVersion`, surfacing a warning in the sidebar and floating/full-screen content surfaces when the running Grafana version is below that floor. Steps remain usable; missing or unreadable versions don't warn. (#1714)
+
+- **Configurable kiosk exit button label**: Catalog authors can override the kiosk exit button's visible label and accessible name through a top-level `exitButtonLabel` field, replacing the fixed "Back to Grafana" text. (#2031)
+
+- **Edit public guides as private copies**: Admins can choose Edit as private guide from an open public JSON guide's menu to customize an independent copy in the visual block editor, using the existing private-guide save and publish flow. The public original stays unchanged. (#1969)
+
+- **Customize private guide copies with Assistant**: Customize with Assistant asks about audience, desired outcome, and environment, then sends that context plus the guide to Assistant for a revised copy that opens in the block editor for review before saving. (#1972)
+
+### Fixed
+
+- **Guided tours through docking and navigation**: A guide-scoped session now retains its handler, running state, and cancellation across host replacements, so starting a tour in full screen and then docking or navigating no longer locks out new starts or aborts the run early. (#2039)
+
+- **Milestone toolbar on track-only guides**: Reading a guide reached through a Path Tracks track now keeps the milestone navigation and progress toolbar at the top, scoped to that track's own sequence, instead of losing it. (#2033)
+
+- **Startup chunk recovery and error attribution**: Startup imports retry without blocking plugin registration after a transient plugin CDN failure, and browser error capture now requires an actual Pathfinder asset or source path instead of misattributing unrelated Firefox and ResizeObserver errors. (#2026)
+
+- **Hardened guided execution and recovery**: Guided interactions keep their highlight visible until the run ends, recover a replaced target within a bounded window, and give each run cancellation and ownership through target discovery, delayed actions, and cross-tab execution; failed actions report an explicit outcome instead of a false completion. (#2018)
+
+- **Local-tier package checks before a full checkout scan**: Selecting a local-tier package validates the selected manifest first, so an unrelated symbolic or hard link elsewhere in the checkout produces the expected tier-mismatch skip instead of a configuration error. (#2037)
+
+- **Path guide list styling**: Restyled path guide list rows with more spacing and a colored panel per row, and removed the single-line description truncation. (#2021)
+
+- **Settings reads during Grafana startup**: Settings reads retry on transient 500, 502, 503, or 504 responses while a newly started Grafana instance's aggregated API comes up, preserving authoritative failures and the existing absent-resource fallback. (#2025)
+
+- **Forwarded interactive step properties**: `openGuide`, `formHint`, and `validateInput` fields parsed from top-level JSON guides now reach the runtime across direct React actions, section orchestration, controller and cross-tab commands, and live-tab execution; explicit `openGuide` takes precedence over the legacy `?doc=` URL fallback. (#1633)
+
+### Chore
+
+- **Fundamentals tab label**: Renamed the learning path cover page's main Tracks tab from "Foundations" to "Fundamentals". (#2034)
+
+- **French locale parity**: Brought the French catalog to full en-US key parity, filling empty stubs and translating remaining strings across the path cover page, My Learning tab, and Pathfinder settings. (#2036)
+
+- **Public documentation refresh**: Refreshed the public Interactive learning documentation with the Grafana Cloud disable/re-enable procedure and clarified organization scope, reload behavior, and the distinction between disabling Pathfinder and disabling recommendations. (#2024)
+
+### Removed
+
+- **"Interactive Learning" wordmark in the docs panel tab bar**: Removed the wordmark and its adjacent divider from the recommendations rail, added in #1447. It read as unpolished branding rather than useful chrome; the recommendations icon button next to it is unaffected. (#2020)
+
+## 2.19.0
+
+> Deployment prerequisite: the organization opt-out requires the companion backend `pathfinderEnabled` settings schema. Verify settings-reader permissions before Cloud rollout; failed or timed-out settings reads leave Pathfinder enabled. (#2008)
+
+### Added
+
+- **Learning-path tracks**: Choose a named track alongside the default Foundations sequence on a path's cover page, with its own ordered guides and progress. Authoring, validation, repository builds, statistics, and E2E guide-chain resolution support track-specific content. (#1927)
+
+- **Organization opt-out**: Administrators can disable Pathfinder from plugin configuration and restore Grafana Cloud's classic Help menu after reload. Learning progress is preserved, and configuration remains accessible for re-enabling Pathfinder. (#2008)
+
+- **JSON-authored kiosk pages**: Build themed landing pages with hero text, launch forms, copyable commands, dividers, and guide tiles. Validated website and data source inputs can carry into a guide, while incompatible cached guides still open without transferring values. Standard tiles show saved completion percentages and a checkmark at 100%. (#1999)
+
+- **Themed kiosk banners and stack-aware commands**: Add compact Grafana-themed hero banners and use `{{grafana.stackUrl}}` in command blocks to insert the hosting HTTPS origin as a shell-quoted argument. Local and HTTP instances retain the `your-stack` placeholder. (#2007)
+
+- **Terminal steps in guide tests**: The E2E runner connects sandboxes and dispatches commands through the guide's controls, including optional Skip actions. Command completion confirms dispatch, not a successful shell exit or expected output. (#1980)
+
+- **Shared Grafana feature controls**: Use Grafana's OpenFeature providers and feature-control UI on Grafana 13.2 and later, while retaining the existing provider on older versions. (#1990)
+
+### Fixed
+
+- **Kiosk command layout and completion**: Compact command bars provide theme-aware Bash highlighting and copy feedback without shifting the layout. Guide tiles read saved completion consistently, and focus recovery handles inactive windows and controls disabled during submission. (#2000)
+
+- **Guide-specific starting locations**: Opening a guide from a custom path's member list preserves the guide's own starting location and additional fields instead of inheriting the cover's values. (#2011)
+
+- **Fresh guided sequences**: Starting or retrying a guided sequence clears credit from the previous run, including sequences opened across tabs. (#2012)
+
+- **Milestone progress without a slug**: Milestones whose URLs have no slug now use the full URL to find stored completion instead of incorrectly showing zero progress. (#1948)
+
+- **Actionable guide-test failures**: Blocked Show me and Do it controls report the underlying click failure with screenshots and DOM evidence instead of an infrastructure timeout. Genuine hard deadlines also attempt to capture evidence before closing the page. (#2010)
+
+- **Reliable kiosk navigation and keyboard focus**: Keep focus inside the kiosk after dismissing a data source dropdown, preserve drafts, and open alternative guides at the correct application route. (#1999)
+
+- **Advanced Prometheus guide**: Select the saved data source, target query A in Explore, and run each lesson's expression without changing other query rows. Corrected examples and section coordination keep later lessons from completing prematurely. (#1985)
+
+### Chore
+
+- **Consistent milestone progress**: Cover pages, milestone toolbars, and My Learning use the same local completion calculation, preserving previously recorded milestone completion through a one-time backfill. (#1925)
+
+- **Stronger completion and kiosk regression coverage**: Derive conditional-step coverage from a shared registry and pin the bundled-catalog fallback when an unconfigured kiosk's selected catalog fails. (#1881, #1998)
+
+- **Focused agent context**: Limit always-loaded instructions, document known development pitfalls, and let review tooling load individual policy sections. (#2004, #2006)
+
+- **Remove unused sidebar test identifiers**: Remove test IDs left behind by the retired minimized sidebar component. (#1995)
+
 ## 2.18.3
 
 ### Added

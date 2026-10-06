@@ -5,14 +5,9 @@ export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
 export type CrossTabRole = 'controller' | 'live';
 
-// Derived by exclusion rather than restated: a field the engine reads off an
-// action must reach the live tab, and hand-listing the fields is what dropped
-// targetState on this wire three times over. Only `requirements` stays behind —
-// the controller gates them, the live tab replays. Fields added to
-// InternalAction therefore reach the wire by default rather than by remembering.
+// Derive by exclusion so new engine fields cannot silently disappear from the wire.
 export type CrossTabInternalAction = Omit<InternalAction, 'requirements'>;
 
-/** Narrow an engine action to what the wire carries. */
 export function toCrossTabInternalAction(action: InternalAction): CrossTabInternalAction {
   const { requirements, ...wire } = action;
   return wire;
@@ -84,10 +79,17 @@ export interface ControllerAuthFields {
 
 export interface StepCommandMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'step-command';
+  startIndex?: number;
   phase: 'show' | 'do';
   stepId: string;
   runId: string;
   action: CrossTabAction;
+}
+
+export interface StepCancelMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  kind: 'step-cancel';
+  stepId: string;
+  runId: string;
 }
 
 // Controller announces its session public key so the live tab can show a
@@ -176,6 +178,7 @@ export interface StepProgressMessage extends CrossTabEnvelope {
 
 export type CrossTabMessage =
   | StepCommandMessage
+  | StepCancelMessage
   | HeartbeatMessage
   | SidebarHandoffMessage
   | CheckRequirementsMessage
@@ -202,6 +205,7 @@ export type CrossTabPayload = CrossTabMessage extends infer M
 // sides MUST agree — this is the single source of truth they share.
 export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Set([
   'step-command',
+  'step-cancel',
   'check-requirements',
   'fix-requirement',
   'sidebar-handoff',
@@ -259,10 +263,22 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
   }
   const action = message.action;
   if (
+    message.startIndex !== undefined &&
+    (!Number.isInteger(message.startIndex) ||
+      (message.startIndex as number) < 0 ||
+      !Array.isArray(action.internalActions) ||
+      (message.startIndex as number) >= action.internalActions.length)
+  ) {
+    return false;
+  }
+  if (
     typeof action.refTarget !== 'string' ||
     typeof action.targetAction !== 'string' ||
     !KNOWN_TARGET_ACTIONS.has(action.targetAction) ||
-    !isOptionalTargetState(action.targetState)
+    !isOptionalTargetState(action.targetState) ||
+    (action.lazyRender !== undefined && typeof action.lazyRender !== 'boolean') ||
+    !isOptionalString(action.scrollContainer) ||
+    !isOptionalString(action.openGuide)
   ) {
     return false;
   }
@@ -281,7 +297,10 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
           isOptionalString(sub.refTarget) &&
           isOptionalString(sub.targetValue) &&
           isOptionalString(sub.targetComment) &&
-          isOptionalTargetState(sub.targetState)
+          isOptionalTargetState(sub.targetState) &&
+          (sub.lazyRender === undefined || typeof sub.lazyRender === 'boolean') &&
+          isOptionalString(sub.scrollContainer) &&
+          isOptionalString(sub.openGuide)
       )
     );
   }
@@ -443,6 +462,7 @@ function isValidPairingAccept(message: Record<string, unknown>): boolean {
 // Record over CrossTabMessage['kind'] makes a missing case a compile error.
 const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, unknown>) => boolean> = {
   'step-command': isValidStepCommand,
+  'step-cancel': (message) => typeof message.stepId === 'string' && typeof message.runId === 'string',
   heartbeat: isValidHeartbeat,
   'sidebar-handoff': isValidSidebarHandoff,
   'check-requirements': isValidCheckRequirements,

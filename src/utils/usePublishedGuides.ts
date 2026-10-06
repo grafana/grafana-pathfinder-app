@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { config } from '@grafana/runtime';
 import { fetchCustomGuideRepository, type CustomGuideRepositoryEntry } from '../lib/custom-guide-repository-client';
+import { getManifestMemberIds } from '../types/package.types';
 
 /** A single published custom guide or path/journey package from the catalogue. */
 export type PublishedGuide = CustomGuideRepositoryEntry;
@@ -22,12 +23,12 @@ function isPathManifest(guide: PublishedGuide): boolean {
   return guide.manifest?.type === 'path' || guide.manifest?.type === 'journey';
 }
 
-/** IDs referenced as a member of any published path/journey's milestones. */
+/** IDs referenced as a member of any published path/journey's milestones or tracks. */
 function collectReferencedIds(paths: PublishedGuide[]): Set<string> {
   const ids = new Set<string>();
   for (const path of paths) {
-    for (const milestoneId of path.manifest?.milestones ?? []) {
-      ids.add(milestoneId);
+    for (const memberId of getManifestMemberIds(path.manifest)) {
+      ids.add(memberId);
     }
   }
   return ids;

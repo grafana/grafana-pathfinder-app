@@ -341,3 +341,12 @@ describe('Grafana docs fallback failure attribution', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
+
+it('keeps an explicitly requested JSON guide instead of fetching an HTML fallback', async () => {
+  const url = 'https://grafana.com/docs/demo/content.json';
+  const body = JSON.stringify({ id: 'demo', title: 'Demo', blocks: [] });
+  (global.fetch as jest.Mock).mockResolvedValue(htmlResponse(body, url));
+  const result = await fetchRawHtml(url, {});
+  expect(result).toMatchObject({ html: body, finalUrl: url, isNativeJson: true });
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+});

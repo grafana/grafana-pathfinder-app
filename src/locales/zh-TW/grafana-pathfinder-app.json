@@ -55,7 +55,9 @@
     "settings": "設定",
     "showMoreTabs_one": "再顯示 {{count}} 個標籤頁",
     "showMoreTabs_other": "顯示更多 {{count}} 個標籤頁",
-    "switchToTab": "切換到 {{title}}"
+    "switchToTab": "切換到 {{title}}",
+    "beta": "Beta",
+    "classicHelpMenuSettings": "Classic Help menu settings"
   },
   "feedbackButton": {
     "ariaLabel": "對此外掛程式提供回饋",
@@ -113,5 +115,20 @@
     "streakTooltip": "連續學習 {{- days}} 天 — 繼續保持！",
     "streakTooltip_one": "連續學習 {{- days}} 天 — 繼續保持！",
     "streakTooltip_other": "連續學習 {{- days}} 天 — 繼續保持！"
+  },
+  "appConfig": {
+    "beta": "Beta",
+    "pathfinderEnabled": "Enable interactive learning",
+    "pathfinderEnabledDescription": "Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, interactive learning stays available.",
+    "pathfinderPreview": "Interactive learning",
+    "pathfinderPreviewDescription": "Interactive learning brings contextual help and interactive guides into Grafana.",
+    "pathfinderRemotelyDisabled": "Interactive learning is disabled remotely",
+    "pathfinderRemotelyDisabledDescription": "The remote switch currently prevents interactive learning from running. Your saved preference will apply when interactive learning is enabled remotely again.",
+    "pathfinderRevertDescription": "Turn this off to use Grafana’s classic Help menu after users reload. Your learning progress is kept."
+  },
+  "pathfinder": {
+    "disabled": "Interactive learning is disabled",
+    "disabledDescription": "Interactive learning is turned off for this organization.",
+    "openSettings": "Open interactive learning settings"
   }
 }

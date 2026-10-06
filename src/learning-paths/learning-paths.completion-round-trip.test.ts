@@ -89,7 +89,8 @@ describe('App Platform path progress — completion write → getPathProgress re
 
   it('reports 100% after both members are completed through the real write path', async () => {
     for (const member of MEMBERS) {
-      await markMilestoneDone(PATH_LAUNCH_URL, getMilestoneSlug(`backend-guide:${member}`));
+      const memberUrl = `backend-guide:${member}`;
+      await markMilestoneDone(PATH_LAUNCH_URL, getMilestoneSlug(memberUrl), memberUrl);
     }
 
     const result = await renderPaths();
@@ -101,7 +102,8 @@ describe('App Platform path progress — completion write → getPathProgress re
   });
 
   it('reports 50% when only one of the two members is completed', async () => {
-    await markMilestoneDone(PATH_LAUNCH_URL, getMilestoneSlug(`backend-guide:${MEMBERS[0]}`));
+    const memberUrl = `backend-guide:${MEMBERS[0]}`;
+    await markMilestoneDone(PATH_LAUNCH_URL, getMilestoneSlug(memberUrl), memberUrl);
 
     const result = await renderPaths();
 
@@ -128,7 +130,8 @@ describe('App Platform path progress — completion write → getPathProgress re
   });
 
   it('marks the completed member — and only that member — through getPathGuides', async () => {
-    await markMilestoneDone(PATH_LAUNCH_URL, getMilestoneSlug(`backend-guide:${MEMBERS[1]}`));
+    const memberUrl = `backend-guide:${MEMBERS[1]}`;
+    await markMilestoneDone(PATH_LAUNCH_URL, getMilestoneSlug(memberUrl), memberUrl);
 
     const result = await renderPaths();
 

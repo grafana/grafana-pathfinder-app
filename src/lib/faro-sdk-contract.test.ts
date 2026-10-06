@@ -8,6 +8,8 @@
  * and silently kill the analytics mirror. These tests fail loudly on an SDK
  * bump instead.
  */
+import { PathfinderErrorsInstrumentation } from './telemetry/browser-errors';
+import { filterPathfinderTelemetry } from './telemetry/filtering';
 import {
   BaseTransport,
   initializeFaro,
@@ -114,5 +116,75 @@ describe('faro-web-sdk session identity contract', () => {
       (item) => item.type === 'event' && (item.payload as { name?: string }).name === 'session_start'
     );
     expect(sessionStarts).toHaveLength(0);
+  });
+});
+
+describe('browser error capture through the installed Faro SDK', () => {
+  it('captures plugin failures while rejecting dashboard URL and wrapper-only attribution', () => {
+    const transport = new CaptureTransport();
+    const instrumentation = new PathfinderErrorsInstrumentation();
+    const faro = initializeFaro({
+      app: { name: 'pathfinder-browser-error-contract', version: '0.0.0' },
+      transports: [transport],
+      instrumentations: [instrumentation],
+      isolate: true,
+      globalObjectKey: 'pathfinderBrowserErrorContract',
+      batching: { enabled: false },
+      dedupe: false,
+      beforeSend: filterPathfinderTelemetry,
+    });
+    try {
+      const error = new Error('Plugin failure');
+      error.stack =
+        'Error: Plugin failure\n    at openGuide (https://example.org/public/plugins/grafana-pathfinder-app/1.js:10:5)';
+      window.dispatchEvent(new ErrorEvent('error', { error, message: error.message }));
+      window.dispatchEvent(
+        new ErrorEvent('error', {
+          message: 'ResizeObserver loop completed with undelivered notifications.',
+          filename: 'https://ops.grafana-ops.net/d/status?var-plugin_id=grafana-pathfinder-app',
+        })
+      );
+      const wrapperError = new Error('Permission denied to access property "apply"');
+      wrapperError.stack =
+        'Error: Permission denied\n    at apply (webpack://grafana-pathfinder-app/../node_modules/@grafana/faro-web-sdk/dist/esm/instrumentations/errors/registerOnerror.js:18:0)';
+      window.dispatchEvent(new ErrorEvent('error', { error: wrapperError }));
+      const frameless = new TypeError('Frameless plugin failure');
+      frameless.stack = 'TypeError: Frameless plugin failure';
+      window.dispatchEvent(
+        new ErrorEvent('error', {
+          error: frameless,
+          filename: 'https://example.org/public/plugins/grafana-pathfinder-app/2.js',
+          lineno: 12,
+          colno: 7,
+        })
+      );
+      window.dispatchEvent(
+        new ErrorEvent('error', {
+          error: frameless,
+          filename: 'https://example.org/public/build/grafana.js',
+        })
+      );
+      expect(transport.items).toHaveLength(2);
+      expect(transport.items[1]).toMatchObject({
+        type: 'exception',
+        payload: {
+          type: 'TypeError',
+          value: 'Frameless plugin failure',
+          stacktrace: {
+            frames: [
+              {
+                filename: 'https://example.org/public/plugins/grafana-pathfinder-app/2.js',
+                function: '?',
+                lineno: 12,
+                colno: 7,
+              },
+            ],
+          },
+        },
+      });
+      expect(transport.items[0]).toMatchObject({ type: 'exception', payload: { value: 'Plugin failure' } });
+    } finally {
+      faro.instrumentations.remove(instrumentation);
+    }
   });
 });

@@ -88,7 +88,10 @@ func appPlatformDiagnostic(err error, resource, operation string) *guideProxyDia
 			d.Reason = "token-exchange-failed"
 		}
 	}
-	if d.UpstreamStatus == 401 || d.UpstreamStatus == 403 {
+	switch d.UpstreamStatus {
+	case 401:
+		d.Reason = "authentication-failed"
+	case 403:
 		d.Reason = "authorization-denied"
 	}
 	return &d

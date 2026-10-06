@@ -1,4 +1,5 @@
 import {
+  recordAssignmentTargetsUnresolved,
   recordGuideRequest,
   recordGuideRender,
   recordContentFetch,
@@ -6,6 +7,7 @@ import {
   recordContentFetchFallback,
   recordCustomGuideCatalogueUnavailable,
   recordSettingsStoreResolved,
+  recordStartupSettings,
   recordPanelReady,
   recordRecommenderFallback,
   recordRecommenderRequest,
@@ -114,6 +116,14 @@ describe('measurement and event domain operations', () => {
       outcome: 'kind-not-served',
     });
   });
+
+  it('recordAssignmentTargetsUnresolved emits the count of unresolvable targets', () => {
+    recordAssignmentTargetsUnresolved(2);
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_assignment_target_unresolved', {
+      reason: 'unresolvable-target',
+      count: 2,
+    });
+  });
 });
 
 it('emits private guide diagnostics without private identifiers, bodies or messages', () => {
@@ -150,4 +160,13 @@ it('records the served kiosk tier and degradation without catalog content', () =
     tier: 'bundled',
     degraded: true,
   });
+});
+
+it('records bounded startup settings latency and fail-open outcome without identities', () => {
+  recordStartupSettings(3000, 'timeout');
+  expect(pushFaroMeasurement).toHaveBeenCalledWith(
+    'pathfinder_startup_settings',
+    { startup_settings_ms: 3000 },
+    { outcome: 'timeout' }
+  );
 });

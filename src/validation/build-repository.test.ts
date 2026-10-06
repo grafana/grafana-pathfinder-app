@@ -43,11 +43,43 @@ describe('buildRepository', () => {
   });
 
   it('should return empty repository for empty directory', () => {
-    const { repository, warnings, errors } = buildRepository(tmpDir);
+    const { repository, warnings, errors, duplicateIds } = buildRepository(tmpDir);
     expect(Object.keys(repository)).toHaveLength(0);
     expect(warnings.length).toBeGreaterThan(0);
     expect(errors).toHaveLength(0);
+    expect(duplicateIds).toEqual([]);
   });
+
+  it.each(['mismatched ID', 'missing content', 'invalid content'] as const)(
+    'indexes build errors by declared IDs and capabilities for a package with %s',
+    (failure) => {
+      const packageDir = path.join(tmpDir, 'renamed-directory');
+      writeJson(path.join(packageDir, 'manifest.json'), {
+        id: 'manifest-id',
+        type: 'guide',
+        provides: ['dashboard-ready'],
+      });
+      if (failure === 'mismatched ID') {
+        writeJson(path.join(packageDir, 'content.json'), { id: 'content-id', title: 'Mismatched content', blocks: [] });
+      } else if (failure === 'invalid content') {
+        fs.writeFileSync(path.join(packageDir, 'content.json'), '{');
+      }
+
+      const { repository, errors, errorsByReference } = buildRepository(tmpDir);
+
+      expect(repository).toEqual({});
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain('renamed-directory:');
+      expect([...errorsByReference.keys()].sort()).toEqual(
+        failure === 'mismatched ID'
+          ? ['content-id', 'dashboard-ready', 'manifest-id']
+          : ['dashboard-ready', 'manifest-id']
+      );
+      for (const messages of errorsByReference.values()) {
+        expect(messages).toEqual(errors);
+      }
+    }
+  );
 
   it('should skip content-only directories without manifest.json', () => {
     writeJson(path.join(tmpDir, 'welcome-to-grafana', 'content.json'), {
@@ -86,9 +118,10 @@ describe('buildRepository', () => {
       provides: ['datasource-configured'],
     });
 
-    const { repository, errors } = buildRepository(tmpDir);
+    const { repository, errors, duplicateIds } = buildRepository(tmpDir);
 
     expect(errors).toHaveLength(0);
+    expect(duplicateIds).toEqual([]);
     expect(Object.keys(repository)).toHaveLength(1);
 
     const entry = repository['prometheus-101'];
@@ -231,8 +264,22 @@ describe('buildRepository', () => {
       type: 'guide',
     });
 
-    const { errors } = buildRepository(tmpDir);
-    expect(errors.some((e) => e.includes('Duplicate package ID'))).toBe(true);
+    writeJson(path.join(tmpDir, 'pkg-c', 'content.json'), {
+      id: 'duplicate-id',
+      title: 'Package C',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'pkg-c', 'manifest.json'), {
+      id: 'duplicate-id',
+      type: 'guide',
+    });
+
+    const { errors, duplicateIds } = buildRepository(tmpDir);
+    expect(errors).toEqual([
+      'Duplicate package ID "duplicate-id" in pkg-b',
+      'Duplicate package ID "duplicate-id" in pkg-c',
+    ]);
+    expect(duplicateIds).toEqual(['duplicate-id']);
   });
 
   it('should warn on invalid manifest but still include content-only entry', () => {
@@ -435,6 +482,25 @@ describe('buildRepository', () => {
     const { repository, info, errors } = buildRepository(tmpDir);
     expect(errors).toHaveLength(0);
     expect(repository['guide-with-estimate']?.estimatedMinutes).toBe(15);
+    // Named, so it is not announced as a forwarded extension field.
+    expect(info).toEqual([]);
+  });
+
+  it('should carry minGrafanaVersion onto the entry as a named field', () => {
+    writeJson(path.join(tmpDir, 'guide-with-floor', 'content.json'), {
+      id: 'guide-with-floor',
+      title: 'Guide with a floor',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-floor', 'manifest.json'), {
+      id: 'guide-with-floor',
+      type: 'guide',
+      minGrafanaVersion: '13.2.0',
+    });
+
+    const { repository, info, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['guide-with-floor']?.minGrafanaVersion).toBe('13.2.0');
     // Named, so it is not announced as a forwarded extension field.
     expect(info).toEqual([]);
   });
@@ -854,7 +920,7 @@ describe('buildRepositoryCommand streams', () => {
       errorSpy.mockRestore();
     }
 
-    expect(JSON.parse(stdoutChunks.join(''))).toHaveProperty('noisy');
+    expect(JSON.parse(stdoutChunks.join(''))).toEqual(buildRepository(tmpDir).repository);
     expect(stdoutLines).toEqual([]);
     expect(stderrLines.join('\n')).toContain('noisy: forwarding 1 extension field(s): owningTeam');
   });

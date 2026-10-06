@@ -10,6 +10,7 @@ import type { RawContent } from '../../types/content.types';
 import type { LearningJourneyTab, PendingAlignment } from '../../types/content-panel.types';
 import {
   AlignmentPrompt,
+  GuideVersionNotice,
   LearningJourneyMilestoneToolbar,
   type MilestoneToolbarSurface,
 } from '../docs-panel/components';
@@ -118,6 +119,11 @@ export function FloatingPanelContent({
 
   const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
 
+  // The active track restore's identity — see LearningJourneyTab.activeTrackPathId's
+  // doc comment for why this is the manifest id, not a resolved URL.
+  const contentPathId = content.metadata.packageManifest?.id;
+  const coverPathId = typeof contentPathId === 'string' ? contentPathId : undefined;
+
   const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
 
   return (
@@ -136,6 +142,11 @@ export function FloatingPanelContent({
             />
           </div>
         )}
+        <GuideVersionNotice
+          manifests={[activeTab?.packageInfo?.packageManifest, content?.metadata.packageManifest]}
+          guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+          guideTitle={activeTab?.title}
+        />
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>
             <AlignmentPrompt
@@ -170,6 +181,12 @@ export function FloatingPanelContent({
             onGuideComplete?.();
           }}
           onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}
+          onActiveTrackChange={
+            activeTab
+              ? (trackId, milestones) => model.setActiveTrackId(activeTab.id, trackId, milestones, coverPathId)
+              : undefined
+          }
+          initialActiveTrackId={activeTab?.activeTrackPathId === coverPathId ? activeTab?.activeTrackId : undefined}
         />
       </div>
     </AlignmentPendingContext.Provider>

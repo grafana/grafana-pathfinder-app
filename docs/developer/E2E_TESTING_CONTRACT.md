@@ -59,7 +59,7 @@ The legacy selector excludes `interactive-step-completed-*` badges. These badges
 
 One `StepDriver` registry owns metadata inspection, product controls, execution, skip behavior, and completion rules. The registry uses `data-test-step-kind` keys.
 
-The runner supports `plain`, `multistep`, `guided`, and `codeblock`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
+The runner supports `plain`, `multistep`, `guided`, `codeblock`, `terminal`, and `terminal-connect`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
 
 Unsupported roots do not change the outcome when a guide also renders a supported root. The runner reports each unsupported kind and step ID.
 
@@ -68,6 +68,8 @@ A guide with only unsupported roots returns a skipped report before execution. T
 This report has `outcome: "skipped"` and no `errorCode`. It keeps the complete coverage inventory and gives an explicit reason.
 
 The CLI shows `Skipped (unsupported steps)` and exits with code 0. The skipped guide blocks guides that declare it as a prerequisite.
+
+The CLI also uses `skipped_unsupported_steps` for interactive local-source cloud guides without a verified passed browser step. For a claimed browser pass, this includes empty results, all-skipped results, and zero executed coverage. The report has `outcome: "skipped"` and an explicit message that the local source was not tested. The same console label, exit code, and prerequisite-blocking behavior apply. This status does not always mean that the guide contains an unsupported step kind. Prose-only guides follow the exception in [local-source cloud runs](E2E_TESTING.md#non-execution-results).
 
 Browser actions use only rendered DOM state. Raw guide JSON can identify authored interactive content, but it cannot control browser actions.
 
@@ -94,6 +96,31 @@ Codeblocks do not expose an automatic Fix control. The driver waits for requirem
 Older plugin builds without the new skippability attribute fall back to the rendered Skip control. Without the error test ID or error state, an insertion failure can report a completion timeout instead of the product error. Builds without tracked codeblock roots remain outside codeblock discovery.
 
 Contract tests live in `src/components/interactive-tutorial/code-block-step.contract.test.tsx`. Browser regression tests live in `tests/e2e-runner/codeblock-driver.spec.ts`.
+
+### Terminal runner contract
+
+Terminal roots retain their tracked kind and stable step ID. The root test IDs are `interactive-terminal-${stepId}` and `interactive-terminal-connect-${stepId}`.
+
+| Attribute                         | Meaning                                                              |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `data-test-terminal-status`       | Live connection status from the terminal context                     |
+| `data-test-terminal-unavailable`  | A disconnected terminal has an unmet availability or permission gate |
+| `data-test-terminal-checking`     | The Coda availability probe has not settled                          |
+| `data-test-terminal-gcx`          | Connection step requests credential provisioning                     |
+| `data-test-terminal-vm-requested` | Connection step specifies a VM template, app, or scenario            |
+| `data-test-skippable`             | Command step permits an authored Skip                                |
+
+The controls use `interactive-terminal-connect-button-${stepId}` and `interactive-terminal-exec-${stepId}`. `interactive-terminal-skip-${stepId}` is Skip on a blocked command step and Continue on a connected connection step. The runner never uses Copy or the gcx refusal controls as execution substitutes.
+
+Errors use `interactive-error-${stepId}`. Requirement and availability messages use `interactive-requirement-${stepId}`. Command dispatch errors and connection errors expose `data-test-step-state="error"`.
+
+After an action, success requires an attached root with `data-test-step-state="completed"` and `data-test-terminal-status="connected"`. An authored Skip requires explicit completion but does not require a connected terminal. Previously completed roots retain the existing `pre_completed` skip behavior.
+
+A command completion proves product dispatch only. It does not prove process exit, exit code zero, or expected output. The runner sends no extra shell commands and does not use the Coda exec API.
+
+The runner refuses `gcx: true` before connection because credential provisioning is outside this implementation. An explicit VM request also refuses an existing connection rather than silently accepting an unverified VM. This includes connected or connecting sessions started by earlier steps in the same run; a later VM-requesting step fails as an unmet prerequisite. A missing `data-test-terminal-status` fails with a plugin-contract diagnostic.
+
+Component tests in `terminal-step.test.tsx` and `terminal-connect-step.test.tsx` cover these attributes and controls. `tests/e2e-runner/terminal-driver.spec.ts` covers driver execution with browser DOM fixtures.
 
 ---
 
@@ -252,13 +279,11 @@ A cover-page layout or selector refactor must preserve these values or update th
 
 The path's rolled-up percentage is exposed declaratively on the table-of-contents root, alongside `testIds.learningPaths.tableOfContents`:
 
-- **`data-test-path-percent`**: the path's progress as an integer 0-100 — the mean of its resolvable milestones' own percentages (`docs/design/COMPLETION-MODEL.md`, decision 4). **Absent until the path's stored progress has been read.**
+- **`data-test-path-percent`**: the path's progress as an integer 0-100 — the mean of its resolvable milestones' own percentages (`docs/design/COMPLETION-MODEL.md`, decision 4). Always present.
 
 The attribute exists because the progress ring beside it is hidden at 0%, and 0% is the value a test most often needs to assert: it is what a reader who only paged through the path has earned. Reading the ring's rendered text would make "no progress" indistinguishable from "no ring".
 
-Its absence before the cover page has finished loading is deliberate: a test waits for the attribute to exist rather than reading a provisional value, so there is no "not loaded yet" value to confuse with a real 0.
-
-The gate is the cover page's own `progressLoaded`, which tracks its async read of stored milestone progress. Strictly that read is a **sufficient** signal rather than the necessary one: the percentage itself comes from `journeyProgressFromMilestones`, whose two reads are synchronous, so the rendered value is already correct at first paint. What `progressLoaded` buys is a defined point after mount at which the surface is settled — enough to keep a test off the first frame, where a percentage read alongside a still-initialising panel has repeatedly turned out to be a constant. If that async read is ever removed, give the attribute another gate rather than emitting it unconditionally.
+It used to be absent until the cover page's own `progressLoaded` state — tracking an async read of stored milestone progress — resolved. That async read is gone: `journeyProgressFromMilestones` and `journeyMilestonePercentages` now read the consolidated store synchronously, so the rendered value is correct at first paint and the attribute is emitted unconditionally. A test still waits for the table-of-contents root to attach before reading the attribute; there is no separate "not loaded yet" window to wait out.
 
 The guide-level equivalent is on the Mark complete footer, and there the gate **is** the necessary one:
 
