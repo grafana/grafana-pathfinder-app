@@ -197,7 +197,9 @@ plugin.init = function () {
     { pathfinderEnabled, controllerRequested, hasDoc: Boolean(docsParam) },
     {
       applySettings: (resolved) => {
-        linkInterceptionState.setInterceptionEnabled(resolved.interceptGlobalDocsLinks);
+        linkInterceptionState.setInterceptionEnabled(
+          getFeatureFlagValue('pathfinder.intercept-docs-links', false) || resolved.interceptGlobalDocsLinks
+        );
         setPackageResolverFactory(() =>
           import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(resolved))
         );

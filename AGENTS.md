@@ -16,13 +16,17 @@ Functional-first and pragmatic: small composable functions, immutable data and p
 
 Never paste a raw control byte, invisible Unicode formatting character, or bidirectional control into a tracked file — write an escape or build it with `String.fromCharCode`. A raw byte makes `grep -r` and `rg` skip the whole file silently. `src/validation/control-bytes.test.ts` and `src/validation/unicode-format-characters.test.ts` enforce this and explain the fix.
 
+### App Platform access
+
+Browser reads of App Platform resources (`/apis/<group>/...`) go through a plugin-backend proxy, never a direct `getBackendSrv()` read (403 for anonymous viewers, #1966). `src/validation/app-platform-transport.test.ts` enforces it; see `docs/design/BACKEND_PROXY_PATTERN.md`.
+
 ### Comments
 
 **Default to no comments.** Add one only for counterintuitive-but-correct code, hidden invariants the type system can't express, external-bug workarounds (with an upstream link), or security and correctness warnings. If it won't fit on one short line, rename or restructure instead. Every `eslint-disable` needs an explanation after `--`. **Trim on touch**: when editing a function, trim bad-shape comments in it and on adjacent declarations — never as a standalone sweep. The eight bad shapes (QC8) live in the `comment-hygiene` skill.
 
-### Writing style
+### Writing, issues, experiments
 
-All UI text and documentation uses **sentence case** per the [Grafana Writers' Toolkit](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/#capitalization) — capitalize the first word and proper nouns only, including headings, button labels, and menu items. Product and company names are proper nouns (**Grafana**, **Loki**, **Prometheus**, **Tempo**, **Mimir**, **Alloy**, **Grafana Cloud**, **Grafana Enterprise**, **Grafana Labs**); generic terms are not (dashboard, alert, data source, panel, query, plugin).
+Sentence-case UI text, never "Pathfinder" in user-facing copy (ESLint and `user-facing-name.test.ts` enforce it). Writing style, issue filing, `/techdebt`, `/create-experiment`, and `npx pathfinder-cli@...` rules: `docs/developer/WRITING_AND_FILING_CONVENTIONS.md`.
 
 ### File creation policy
 
@@ -82,19 +86,3 @@ Load files only when working in the relevant domain. The full routing table is *
 ## PR reviews
 
 Use `/review`. A PR whose author is not listed in `.github/community-pr-gate.json` goes through `/community-pr` first; that list is authoritative even where `.github/CODEOWNERS` differs.
-
-## Tech-debt audits
-
-Use `/techdebt <subsystem>` against a concrete target; add `--suggestive` for lower-confidence candidates.
-
-## A/B experiments
-
-Use `/create-experiment`. Only object-valued flags carrying a `variant` field emit exposure events; a boolean experiment flag silently produces no readout.
-
-## `npx` examples
-
-Namespace every `npx` example under `pathfinder-cli@...` (write `npx pathfinder-cli@... example`, never `npx pathfinder-example`) so we are not namesquatted.
-
-## Filing issues
-
-Fill out `.github/ISSUE_TEMPLATE/structured-issue.yml`, especially User impact / flow change and Acceptance criteria, and apply `needs-review` plus type, area, and severity labels. Report security issues via [Grafana's security reporting page](https://grafana.com/legal/report-a-security-issue/), not in this repository.

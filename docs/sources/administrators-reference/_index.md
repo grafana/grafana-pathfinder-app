@@ -20,14 +20,14 @@ You need the Admin role in the Grafana organization to change these settings.
 
 You can also open the sidebar's **More options** menu and select **Settings**. In Grafana Cloud, **Classic Help menu settings** opens the same page.
 
-The direct path on your Grafana instance is `/plugins/grafana-pathfinder-app?page=configuration`. This page remains accessible when Pathfinder is disabled.
+The direct path on your Grafana instance is `/plugins/grafana-pathfinder-app?page=configuration`. This page remains accessible when interactive learning is disabled.
 
 ## Disable Interactive learning in Grafana Cloud
 
 To restore Grafana's classic **Help** menu for everyone in the current Grafana organization:
 
 1. Open the plugin's **Configuration** tab.
-1. In the **Interactive learning** section, turn off **Enable Pathfinder**.
+1. In the **Interactive learning** section, turn off **Enable interactive learning**.
 1. Select **Save configuration**. The page reloads after a successful save.
 1. Ask users who already have Grafana open to reload their pages.
 
@@ -43,9 +43,9 @@ If the saved setting cannot be read when Grafana loads, Pathfinder can remain av
 
 ### Re-enable Interactive learning
 
-Return to the same **Configuration** page, turn on **Enable Pathfinder**, and select **Save configuration**. Users must reload Grafana to apply the change.
+Return to the same **Configuration** page, turn on **Enable interactive learning**, and select **Save configuration**. Users must reload Grafana to apply the change.
 
-Grafana Cloud also controls availability during the public preview. If the page displays **Pathfinder is disabled remotely**, turning on the local setting cannot override that restriction. Your saved preference applies when Grafana Cloud makes Pathfinder available again.
+Grafana Cloud also controls availability during the public preview. If the page displays **Interactive learning is disabled remotely**, turning on the local setting cannot override that restriction. Your saved preference applies when Grafana Cloud makes Pathfinder available again.
 
 ### Disable recommendations only
 
@@ -55,7 +55,7 @@ To keep guides available while stopping context-aware recommendation requests:
 1. Turn off **Enable context-aware recommendations**.
 1. Select **Save settings**.
 
-This is separate from **Enable Pathfinder**. Bundled guides remain available, and online browsers can fetch the public guide catalog and content. For details about data usage, refer to [Terms and conditions](../terms-and-conditions/).
+This is separate from **Enable interactive learning**. Bundled guides remain available, and online browsers can fetch the public guide catalog and content. For details about data usage, refer to [Terms and conditions](../terms-and-conditions/).
 
 ## Configure recommendations
 
@@ -77,7 +77,9 @@ Set **Auto-launch tutorial URL** to the URL of a guide or documentation page to 
 
 Turn on **Intercept documentation links globally** to open supported Grafana documentation links in Interactive learning. This feature is experimental.
 
-To open a link in a separate browser tab instead, hold **Ctrl** on Windows or Linux, hold **Cmd** on macOS, or middle-click the link.
+On Grafana Cloud, Grafana Labs can turn this feature on for your stack with a feature flag. When it does, the toggle shows as on and you can't change it. Your own setting is kept and applies again when the flag is turned off.
+
+To open a link in a separate browser tab instead, hold **Ctrl** on Windows or Linux, hold **Cmd** on macOS, or middle-click the link. Links also open in a separate tab when Grafana's own kiosk mode (`?kiosk` in the URL) is on, and when they point to a filtered or searched page, such as What's new filtered by product.
 
 ### Open the sidebar when Grafana loads
 

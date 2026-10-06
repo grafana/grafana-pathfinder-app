@@ -26,7 +26,8 @@ async function boot(
   dockedPlugin = 'grafana-pathfinder-app',
   surfaceReported?: boolean,
   panelMode = 'floating',
-  failedImports: Record<string, number> = {}
+  failedImports: Record<string, number> = {},
+  flags: Record<string, boolean> = {}
 ) {
   const settings = readFailed ? undefined : getConfigWithDefaults({ pathfinderEnabled: tenant });
   const root = { component: undefined as React.ComponentType | undefined };
@@ -51,6 +52,7 @@ async function boot(
     setPendingOpenSource: jest.fn(),
     recordStartupSettings: jest.fn(),
     onPathfinderSurfaceChange: jest.fn().mockReturnValue(jest.fn()),
+    setInterceptionEnabled: jest.fn(),
   };
   const modules: Record<string, unknown> = {
     react: React,
@@ -77,7 +79,7 @@ async function boot(
     },
     './docs-retrieval/content-fetcher/package-resolver-registry': effects,
     './lib/event-names': { PANEL_MODE_CHANGE_EVENT: 'test-panel-mode-change' },
-    './global-state/link-interception': { linkInterceptionState: { setInterceptionEnabled: jest.fn() } },
+    './global-state/link-interception': { linkInterceptionState: effects },
     'global-state/sidebar': { sidebarState: effects },
     './global-state/panel-mode': { panelModeManager: { getMode: () => panelMode } },
     './global-state/suggestion': { suggestionState: {} },
@@ -104,7 +106,7 @@ async function boot(
       getFeatureFlagValue: (key: string) =>
         key === 'pathfinder.enabled'
           ? remote
-          : key === 'pathfinder.frontend-telemetry' && surfaceReported !== undefined,
+          : (flags[key] ?? (key === 'pathfinder.frontend-telemetry' && surfaceReported !== undefined)),
       getNumberFlagValue: () => 1,
     },
     './utils/experiments/active-experiments': { getActiveExperiments: jest.fn() },
@@ -206,6 +208,22 @@ it('keeps the page-load decision after timeout, while late opt-out reaches confi
   } finally {
     jest.useRealTimers();
   }
+});
+
+it.each([
+  [false, false, false],
+  [false, true, true],
+  [true, false, true],
+])('intercepts docs links with flag=%s and tenant setting=%s: %s', async (flag, setting, expected) => {
+  const { plugin, effects } = await boot(true, true, false, undefined, undefined, undefined, undefined, undefined, {
+    'pathfinder.intercept-docs-links': flag,
+  });
+  plugin.init();
+
+  const [, , surfaceEffects] = effects.initializeConfiguredSurfaces.mock.calls[0];
+  surfaceEffects.applySettings(getConfigWithDefaults({ interceptGlobalDocsLinks: setting }));
+
+  expect(effects.setInterceptionEnabled).toHaveBeenCalledWith(expected);
 });
 
 it('does not clear another plugin’s docked entry', async () => {

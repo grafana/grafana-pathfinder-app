@@ -24,6 +24,7 @@ import { ConfirmModal } from '../../block-editor/NotificationModals';
 import { usePrivateGuideCopy } from '../hooks/usePrivateGuideCopy';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import { useIsAssistantAvailable } from '../../../integrations/assistant-integration';
+import { buildSidebarGuideLink } from '../../../utils/guide-share-link';
 import { CustomizeGuideModal } from './CustomizeGuideModal';
 
 const previewMenuItemClass = css({
@@ -70,6 +71,32 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
 
   const contentTab = activeTab && !isNonContentTab(activeTab) ? activeTab : null;
   const reloadContentTab = contentTab && onReloadActiveTab ? () => onReloadActiveTab(contentTab) : null;
+
+  const shareLink = contentTab ? buildSidebarGuideLink(contentTab) : null;
+
+  const handleCopyLinkClick = () => {
+    if (!shareLink) {
+      return;
+    }
+    navigator.clipboard
+      .writeText(shareLink)
+      .then(() => {
+        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+          action: 'copy_guide_link',
+          source: 'header_menu_copy_link',
+        });
+        getAppEvents().publish({
+          type: 'alert-success',
+          payload: [t('docsPanel.linkCopied', 'Link copied to clipboard')],
+        });
+      })
+      .catch(() => {
+        getAppEvents().publish({
+          type: 'alert-error',
+          payload: [t('docsPanel.linkCopyFailed', 'Could not copy the link')],
+        });
+      });
+  };
 
   const handleFeedbackClick = () => {
     const contentUrl = contentTab ? contentTab.content?.url || contentTab.baseUrl : undefined;
@@ -186,6 +213,13 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
         placement="bottom-end"
         overlay={
           <Menu>
+            {shareLink && (
+              <Menu.Item
+                label={t('docsPanel.copyLinkToGuide', 'Copy link to guide')}
+                icon="link"
+                onClick={handleCopyLinkClick}
+              />
+            )}
             {privateCopy.available && (
               <Menu.Item
                 label={t('docsPanel.editAsPrivateGuide', 'Edit as private guide')}
