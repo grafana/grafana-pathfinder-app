@@ -36,7 +36,8 @@ function isComboboxInput(field: Element): boolean {
 }
 
 // Select-style pickers clear their input once an option is chosen and render
-// the choice beside it, so read the nearest ancestor that holds only this field.
+// the choice beside it, as text or, for a compact data source picker, only as
+// a logo labelled "<name> logo". Read the nearest ancestor that holds only this field.
 function renderedSelection(field: Element): string[] {
   let container = field.parentElement;
   for (let depth = 0; container && depth < 3; depth++, container = container.parentElement) {
@@ -44,8 +45,14 @@ function renderedSelection(field: Element): string[] {
       return [];
     }
     const text = container.textContent?.trim();
-    if (text) {
-      return [text, ...Array.from(container.children, (child) => child.textContent?.trim() ?? '')];
+    const logos = Array.from(container.querySelectorAll('img[alt]'), (img) =>
+      img.getAttribute('alt')!.replace(/\s+logo$/i, '')
+    );
+    if (text || logos.length) {
+      return [
+        ...(text ? [text, ...Array.from(container.children, (child) => child.textContent?.trim() ?? '')] : []),
+        ...logos,
+      ];
     }
   }
   return [];

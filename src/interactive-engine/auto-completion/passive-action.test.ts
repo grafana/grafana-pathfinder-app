@@ -92,6 +92,19 @@ describe('formfill state', () => {
     expect(matchesFormfillState(formfill('input[aria-label="data source"]', 'TestData'))).toBe(true);
   });
 
+  it('reads a compact data source picker that shows only the selected type logo', () => {
+    document.body.innerHTML = `
+      <div><img alt="TestData logo" src="testdata.svg"><input role="combobox" aria-autocomplete="list" aria-label="data source" placeholder=""></div>`;
+    expect(matchesFormfillState(formfill('input[aria-label="data source"]', 'TestData'))).toBe(true);
+    expect(matchesFormfillState(formfill('input[aria-label="data source"]', 'Prometheus'))).toBe(false);
+  });
+
+  it('does not accept a different option whose label only starts with the target', () => {
+    document.body.innerHTML = `
+      <div><div>Random Walk Table</div><div><input role="combobox" aria-autocomplete="list" aria-label="scenario"></div></div>`;
+    expect(matchesFormfillState(formfill('input[aria-label="scenario"]', 'Random Walk'))).toBe(false);
+  });
+
   it('does not treat a plain input hint as a value', () => {
     document.body.innerHTML = '<input aria-label="title" placeholder="My dashboard" value="">';
     expect(matchesFormfillState(formfill('input[aria-label="title"]', 'My dashboard'))).toBe(false);
