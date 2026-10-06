@@ -34,8 +34,14 @@ function checkResolution(state, command) {
     return { resolved: false, why: `it was attributed to the environment (${reason}); verification is incomplete` };
   }
   const baseline = baselineFor(state, latest.id);
-  if (baseline?.status === 'completed' && baseline.result.exit_status !== 0 && !baseline.result.error) {
+  if (baseline?.status === 'completed' && baseline.result.match?.matched === true) {
     return { resolved: true, resolution: 'verified_baseline_failure' };
+  }
+  if (baseline?.status === 'completed') {
+    return {
+      resolved: false,
+      why: `its baseline run did not reproduce the failure (${baseline.result.match?.reason ?? baseline.result.error ?? 'no comparison'})`,
+    };
   }
   return { resolved: false, why: 'its baseline-failure claim is not verified yet' };
 }

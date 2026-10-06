@@ -24,6 +24,13 @@ import {
   waive,
 } from './testing.mjs';
 
+const BASELINE_CLAIM = {
+  resolution: 'baseline_failure',
+  reason: 'fails on main too',
+  signature: 'keeps both writes',
+  preserve_paths: ['src/a.test.ts'],
+};
+
 function stages(state) {
   return obligations(state).map(({ stage }) => stage);
 }
@@ -352,10 +359,14 @@ test('a failed check needs an evidence-backed resolution, and a passing baseline
   state = completeCommand(state, unitTests, ctx, { exit_status: 1 });
   const [resolution] = ready(state, 'check_resolution');
   assert.deepEqual(resolution.spec.allowed, ['observation', 'baseline_failure', 'environment']);
-  state = submit(state, resolution, { resolution: 'baseline_failure', reason: 'fails on main too' }, ctx);
+  state = submit(state, resolution, BASELINE_CLAIM, ctx);
   const baseline = ready(state, 'command').find(({ spec }) => spec.kind === 'baseline');
   assert.equal(baseline.spec.at, 'base');
-  state = completeCommand(state, baseline, ctx, { exit_status: 0 });
+  assert.equal(baseline.spec.signature, BASELINE_CLAIM.signature);
+  state = completeCommand(state, baseline, ctx, {
+    exit_status: 0,
+    match: { matched: false, reason: 'the same command passes at the base commit' },
+  });
   const [retry] = ready(state, 'check_resolution');
   assert.deepEqual(retry.spec.allowed, ['observation', 'environment']);
   assert.throws(() => submit(state, retry, { resolution: 'baseline_failure', reason: 'again' }, ctx), /must be one of/);
@@ -370,21 +381,61 @@ test('a verified baseline failure resolves a failed check without inventing a PR
   let state = drive(startSession(ctx), ctx, { command: 'stop' });
   const lint = ready(state, 'command').find(({ spec }) => spec.name === 'lint');
   state = completeCommand(state, lint, ctx, { exit_status: 1 });
-  state = submit(
-    state,
-    ready(state, 'check_resolution')[0],
-    { resolution: 'baseline_failure', reason: 'pre-existing' },
-    ctx
-  );
+  state = submit(state, ready(state, 'check_resolution')[0], BASELINE_CLAIM, ctx);
   state = completeCommand(
     state,
     ready(state, 'command').find(({ spec }) => spec.kind === 'baseline'),
     ctx,
-    { exit_status: 1 }
+    {
+      exit_status: 1,
+      match: { matched: true, reason: null },
+    }
   );
   state = drive(state, ctx);
   assert.deepEqual(obligations(state), []);
   assert.equal(renderSession(state).report.findings.length, 0);
+});
+
+test('a baseline that fails differently from the head never clears the check or approves the PR', () => {
+  const ctx = fakeContext();
+  let state = drive(startSession(ctx), ctx, { command: 'stop' });
+  const unitTests = ready(state, 'command').find(({ spec }) => spec.name === 'unit_tests');
+  state = completeCommand(state, unitTests, ctx, { exit_status: 1, failure_kind: 'assertion' });
+  state = submit(state, ready(state, 'check_resolution')[0], BASELINE_CLAIM, ctx);
+  state = completeCommand(
+    state,
+    ready(state, 'command').find(({ spec }) => spec.kind === 'baseline'),
+    ctx,
+    {
+      exit_status: 1,
+      failure_kind: 'setup',
+      match: { matched: false, reason: 'the head failed with a assertion failure but the base with a setup failure' },
+    }
+  );
+  state = drive(state, ctx, { check_resolution: 'stop' });
+  const [retry] = ready(state, 'check_resolution');
+  assert.deepEqual(retry.spec.allowed, ['observation', 'environment']);
+  assert.match(retry.spec.rejected_baseline.reason, /setup failure/);
+  assert.ok(obligations(state).some(({ message }) => /t\d+-command-unit-tests failed/.test(message)));
+  assert.doesNotMatch(renderSession(state).rendered, /Verdict: Approve/);
+});
+
+test('a baseline claim must name a failure signature and preserve only changed files', () => {
+  const ctx = fakeContext();
+  let state = drive(startSession(ctx), ctx, { command: 'stop' });
+  state = completeCommand(
+    state,
+    ready(state, 'command').find(({ spec }) => spec.name === 'lint'),
+    ctx,
+    { exit_status: 1 }
+  );
+  const [resolution] = ready(state, 'check_resolution');
+  assert.throws(() => submit(state, resolution, { resolution: 'baseline_failure', reason: 'x' }, ctx), /signature/);
+  assert.throws(() => submit(state, resolution, { ...BASELINE_CLAIM, signature: 'short' }, ctx), /at least 8/);
+  assert.throws(
+    () => submit(state, resolution, { ...BASELINE_CLAIM, preserve_paths: ['src/elsewhere.test.ts'] }, ctx),
+    /is not a changed file/
+  );
 });
 
 test('a check failure attributed to the PR becomes a canonical observation through policy', () => {

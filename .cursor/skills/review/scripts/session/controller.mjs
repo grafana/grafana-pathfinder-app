@@ -31,6 +31,7 @@ export function resolvePrior({ reviewer, head, prior, effects }) {
     supplied: Boolean(prior?.body),
     author: prior?.author ?? null,
     body_sha256: prior?.body ? sha256(prior.body) : null,
+    body_ref: prior?.body ? `artifacts/${sha256(prior.body)}.md` : null,
     provenance: prior?.body ? 'supervisor_supplied' : null,
     review_count: count,
   };
@@ -508,6 +509,8 @@ function stageResolutions(state) {
       exit_status: command.result.exit_status,
       stdout_ref: command.result.stdout_ref,
       stderr_ref: command.result.stderr_ref,
+      failure_kind: command.result.failure_kind ?? null,
+      changed_files: state.scope.files,
     };
     if (!latest) {
       const allowed =
@@ -527,13 +530,22 @@ function stageResolutions(state) {
           stage: command.spec.name,
           label: `baseline-${command.spec.name}`,
           prerequisites: [latest.id],
-          spec: { kind: 'baseline', source: latest.id, name: command.spec.name, argv: command.spec.argv, at: 'base' },
+          spec: {
+            kind: 'baseline',
+            source: latest.id,
+            head_command: command.id,
+            name: command.spec.name,
+            argv: command.spec.argv,
+            at: 'base',
+            signature: latest.result.signature,
+            preserve_paths: latest.result.preserve_paths,
+          },
         }),
       ];
     }
     if (
       baseline.status === 'completed' &&
-      baseline.result.exit_status === 0 &&
+      baseline.result.match?.matched !== true &&
       resolutions.length === latest.spec.attempt
     ) {
       return [
@@ -544,7 +556,13 @@ function stageResolutions(state) {
             ...spec,
             attempt: latest.spec.attempt + 1,
             allowed: ['observation', 'environment'],
-            rejected_baseline: { task: baseline.id, reason: 'the same command passes at the base commit' },
+            rejected_baseline: {
+              task: baseline.id,
+              reason:
+                baseline.result.match?.reason ??
+                baseline.result.error ??
+                'the baseline run did not reproduce the failure',
+            },
           },
         }),
       ];

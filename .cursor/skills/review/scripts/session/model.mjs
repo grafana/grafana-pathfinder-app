@@ -477,7 +477,7 @@ function validateEvidencePlan(task, result) {
 }
 
 function validateCheckResolution(task, result) {
-  onlyFields(result, ['resolution', 'observation', 'reason'], 'check_resolution result');
+  onlyFields(result, ['resolution', 'observation', 'reason', 'signature', 'preserve_paths'], 'check_resolution result');
   const allowed = task.spec.allowed;
   if (!allowed.includes(result.resolution)) {
     fail(`resolution must be one of ${allowed.join(', ')}`);
@@ -485,6 +485,26 @@ function validateCheckResolution(task, result) {
   if (result.resolution === 'observation') {
     const [observation] = validateObservations([result.observation], 'observation');
     return { resolution: 'observation', observation, observations: [observation] };
+  }
+  if (result.resolution === 'baseline_failure') {
+    const signature = text(result.signature, 'signature', 200);
+    if (signature.length < 8) {
+      fail('signature must be at least 8 characters of the failure output, such as a failing test name or error line');
+    }
+    const preserve = (result.preserve_paths ?? []).map((path) => {
+      validateRepoPath(path, 'preserve_paths');
+      if (!task.spec.changed_files.includes(path)) {
+        fail(`preserve_paths entry ${path} is not a changed file`);
+      }
+      return path;
+    });
+    return {
+      resolution: 'baseline_failure',
+      reason: text(result.reason, 'reason', 300),
+      signature,
+      preserve_paths: preserve,
+      observations: [],
+    };
   }
   return { resolution: result.resolution, reason: text(result.reason, 'reason', 300), observations: [] };
 }

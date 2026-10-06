@@ -6,6 +6,8 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { renderReviewReport } from '../review-report.mjs';
+
 const CLI = join(dirname(fileURLToPath(import.meta.url)), 'session.mjs');
 const ALWAYS_ON = [
   'security',
@@ -256,6 +258,77 @@ test('starting requires the checkout at the pinned head', () => {
   try {
     git(repo.dir, 'checkout', '-q', repo.base);
     assert.match(cli(startArgs(repo, sessions), { expectFailure: true }), /check out the PR head/);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(sessions, { recursive: true, force: true });
+  }
+});
+
+test('a fresh process resumes an incremental session with the original text of an opaque-ID prior blocker', () => {
+  const repo = fixtureRepo();
+  const sessions = mkdtempSync(join(tmpdir(), 'review-sessions-'));
+  try {
+    const invariant = 'Zebra-ledger invariant: every retried write keeps the caller-supplied idempotency key';
+    const prior = renderReviewReport({
+      pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/7',
+      pr_title: 'fix: add numbers',
+      reviewed_head: repo.base,
+      round: 1,
+      findings: [
+        {
+          id: 'q7x',
+          concern_id: 'correctness-and-reliability',
+          disposition: 'blocking',
+          severity: 'high',
+          title: 'Opaque blocker',
+          problem: invariant,
+          suggested_action: 'Thread the key through the retry wrapper.',
+        },
+      ],
+      deferred: [],
+      cleared: [],
+      stage_ledger: {
+        mode: 'full',
+        change_class: 'tests-only',
+        workers: { planned: 1, run: 1 },
+        skeptic_batches: { required: 0, run: 0 },
+        observations: { total: 1, through_policy: 1 },
+        security: { gate_triggered: false, specialist_ran: false },
+        checks: ['unit_tests', 'typecheck', 'lint'].map((name) => ({ name, status: 'pass', command: 'x' })),
+        efficacy: [],
+        skipped: [],
+      },
+    });
+    const priorPath = join(sessions, 'prior.md');
+    writeFileSync(priorPath, prior);
+    const started = cli([
+      ...startArgs(repo, sessions),
+      '--prior-review',
+      priorPath,
+      '--prior-review-author',
+      'reviewer-bot',
+      '--prior-review-count',
+      '1',
+    ]);
+    assert.equal(started.mode, 'incremental');
+    rmSync(priorPath);
+    const resumed = cli(['next', '--session', started.session_dir]);
+    const check = resumed.ready.find(({ role }) => role === 'prior_check');
+    const input = JSON.parse(readFileSync(join(dirname(check.brief), 'input.json'), 'utf8'));
+    assert.deepEqual(input.items[0].original, {
+      title: 'Opaque blocker',
+      problem: invariant,
+      requested_action: 'Thread the key through the retry wrapper.',
+      disposition: 'blocking',
+      severity: 'high',
+    });
+    assert.equal(readFileSync(input.prior_review_path, 'utf8'), prior);
+    rmSync(dirname(check.brief), { recursive: true });
+    rmSync(input.prior_review_path);
+    assert.match(
+      cli(['next', '--session', started.session_dir], { expectFailure: true }),
+      /cannot be reconstructed from IDs/
+    );
   } finally {
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(sessions, { recursive: true, force: true });

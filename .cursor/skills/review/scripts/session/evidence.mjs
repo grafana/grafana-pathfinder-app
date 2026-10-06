@@ -114,7 +114,47 @@ function assertReviewHead(repoDir, head) {
   }
 }
 
-export function executeCommandTask({ task, identity, sessionDir, store }) {
+export function compareBaselineFailure({ head, base, signature, headOutput, baseOutput }) {
+  const miss = (reason) => ({
+    matched: false,
+    reason,
+    head_kind: head.failure_kind ?? null,
+    base_kind: base.failure_kind ?? null,
+  });
+  if (base.error) {
+    return miss(`the baseline could not run: ${base.error}`);
+  }
+  if (base.exit_status === 0) {
+    return miss('the same command passes at the base commit');
+  }
+  if (!headOutput.includes(signature)) {
+    return miss('the signature does not appear in the head failure output');
+  }
+  if (!baseOutput.includes(signature)) {
+    return miss('the baseline failure output does not contain the signature');
+  }
+  if (head.failure_kind !== base.failure_kind) {
+    return miss(`the head failed with a ${head.failure_kind} failure but the base with a ${base.failure_kind} failure`);
+  }
+  if (base.failure_kind === 'unknown') {
+    return miss('neither failure could be classified, so the match is uncertain');
+  }
+  return { matched: true, reason: null, head_kind: head.failure_kind, base_kind: base.failure_kind };
+}
+
+function overlayFromHead(worktree, head, paths) {
+  return paths.map((path) => {
+    validateRepoPath(path, 'preserve path');
+    git(worktree, ['checkout', head, '--', path]);
+    return { path, action: 'kept_from_head' };
+  });
+}
+
+function outputOf(evidence, readArtifact) {
+  return `${readArtifact(evidence.stdout_ref)}\n${readArtifact(evidence.stderr_ref)}`;
+}
+
+export function executeCommandTask({ task, identity, sessionDir, store, readArtifact, headEvidence }) {
   const repoDir = identity.repo_dir;
   const kind = task.spec.kind;
   if (kind === 'check') {
@@ -128,13 +168,24 @@ export function executeCommandTask({ task, identity, sessionDir, store }) {
   try {
     addWorktree(repoDir, worktree, sha);
     const reverted = kind === 'efficacy' ? revertToBase(worktree, identity.base_sha, task.spec.revert_paths) : [];
-    evidence = { ...runArgv({ argv: task.spec.argv, cwd: worktree, store }), worktree_sha: sha, reverted };
+    const kept =
+      kind === 'baseline' ? overlayFromHead(worktree, identity.head_sha, task.spec.preserve_paths ?? []) : [];
+    evidence = { ...runArgv({ argv: task.spec.argv, cwd: worktree, store }), worktree_sha: sha, reverted, kept };
   } catch (error) {
     evidence = { error: error.message, worktree_sha: sha };
   } finally {
     if (existsSync(worktree)) {
       cleanup = removeWorktree(repoDir, worktree);
     }
+  }
+  if (kind === 'baseline') {
+    evidence.match = compareBaselineFailure({
+      head: headEvidence,
+      base: evidence,
+      signature: task.spec.signature,
+      headOutput: outputOf(headEvidence, readArtifact),
+      baseOutput: evidence.error ? '' : outputOf(evidence, readArtifact),
+    });
   }
   return { ...evidence, cleanup: cleanup ?? { removed: true, git_status: null, path: worktree } };
 }

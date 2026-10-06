@@ -162,6 +162,12 @@ function start(values) {
     }
   }
   createSessionDir(sessionDir);
+  if (identity.prior.body_ref) {
+    const saved = storeArtifact(sessionDir, readFileSync(absolute(priorPath, '--prior-review'), 'utf8'), 'md');
+    if (saved.ref !== identity.prior.body_ref) {
+      throw new Error('the prior review changed while the session started; start again');
+    }
+  }
   return withSession(sessionDir, (current) => {
     const [started] = sealEvents(current, [{ type: 'session_started', data: { identity } }]);
     const working = applyEvent(current, started);
@@ -227,6 +233,8 @@ function exec(sessionDir, values) {
       identity: state.identity,
       sessionDir,
       store: (content) => storeArtifact(sessionDir, content),
+      readArtifact: (ref) => readFileSync(join(sessionDir, ref), 'utf8'),
+      headEvidence: task.spec.kind === 'baseline' ? state.tasks[task.spec.head_command].result : null,
     });
     mutate(sessionDir, (current) => {
       if (current.tasks[task.id].status !== 'ready') {
