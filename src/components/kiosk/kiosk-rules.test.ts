@@ -8,7 +8,7 @@ jest.mock('../../lib/analytics', () => ({
 }));
 jest.mock('../../lib/logging', () => ({ logger: { warn: jest.fn() } }));
 jest.mock('../../lib/telemetry', () => ({ recordKioskCatalogLoaded: jest.fn() }));
-import { BUNDLED_KIOSK_RULES, DEFAULT_BANNER, DEFAULT_KIOSK_URL, loadKioskData } from './kiosk-rules';
+import { BUNDLED_KIOSK_RULES, DEFAULT_BANNER, DEFAULT_KIOSK_URL, loadKioskData, prepareKioskData } from './kiosk-rules';
 import demo from '../../../docs/examples/kiosk/dem.json';
 
 const defaultUrl = 'https://catalog.example.com/default.json';
@@ -363,3 +363,39 @@ it.each([undefined, '//evil.example', 'javascript:alert(1)'])(
     expect((await loadKioskData(defaultUrl)).warning).toBeDefined();
   }
 );
+
+it('prepares a catalog without recording a view and reuses it for the mounted session', async () => {
+  mockFetch.mockResolvedValue(response('Prefetched guide'));
+  const prepared = prepareKioskData(defaultUrl);
+  await prepared;
+  expect(recordKioskCatalogLoaded).not.toHaveBeenCalled();
+  expect(reportAppInteraction).not.toHaveBeenCalled();
+  const session = startKioskSession('initial');
+  try {
+    const data = await loadKioskData(
+      defaultUrl,
+      undefined,
+      undefined,
+      { sessionId: session.id, mode: 'instance' },
+      prepared
+    );
+    expect(data.rules[0]?.title).toBe('Prefetched guide');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.KioskCatalogLoaded,
+      expect.objectContaining({ kiosk_session_id: session.id })
+    );
+  } finally {
+    session.end();
+  }
+});
+
+it('does not record a prepared catalog after the view has been cancelled', async () => {
+  mockFetch.mockResolvedValue(response('Cancelled guide'));
+  const prepared = prepareKioskData(defaultUrl);
+  await prepared;
+  const controller = new AbortController();
+  controller.abort();
+  await expect(loadKioskData(defaultUrl, undefined, controller.signal, undefined, prepared)).rejects.toThrow();
+  expect(recordKioskCatalogLoaded).not.toHaveBeenCalled();
+});

@@ -5,13 +5,17 @@ import { testIds } from '../src/constants/testIds';
 import type { Page, BrowserContext } from '@playwright/test';
 
 const pluginPath = '/public/plugins/grafana-pathfinder-app/';
-const translationAssets = readdirSync(join(__dirname, '../dist'))
-  .filter((file) => file.endsWith('.js.map'))
-  .filter((file) => {
-    const map = JSON.parse(readFileSync(join(__dirname, '../dist', file), 'utf8')) as { sources: string[] };
-    return map.sources.some((source) => source.includes('@grafana/i18n/'));
-  })
-  .map((file) => file.replace(/\.map$/, ''));
+function assetsForModule(sourcePath: string) {
+  return readdirSync(join(__dirname, '../dist'))
+    .filter((file) => file.endsWith('.js.map'))
+    .filter((file) => {
+      const map = JSON.parse(readFileSync(join(__dirname, '../dist', file), 'utf8')) as { sources: string[] };
+      return map.sources.some((source) => source.includes(sourcePath));
+    })
+    .map((file) => file.replace(/\.map$/, ''));
+}
+const translationAssets = assetsForModule('@grafana/i18n/');
+const kioskAssets = assetsForModule('/kiosk/KioskOverlay.tsx');
 
 test.skip(translationAssets.length === 0, 'Requires a production build with source maps matching the running plugin');
 test.setTimeout(60_000);
@@ -134,4 +138,63 @@ test('pairs the controller with the live executor after loading on demand', asyn
     { timeout: 20_000 }
   );
   await controller.close();
+});
+
+test('fetches the kiosk catalog while the overlay chunk is still loading and reuses the result', async ({ page }) => {
+  expect(kioskAssets.length).toBeGreaterThan(0);
+  const catalogUrl = 'https://interactive-learning.grafana.net/kiosk-startup-test.json';
+  await settings(page, { kioskRulesUrl: catalogUrl });
+  let catalogRequests = 0;
+  await page.route(catalogUrl, (route) => {
+    catalogRequests++;
+    return route.fulfill({
+      json: {
+        rules: [
+          {
+            title: 'Preloaded guide',
+            url: 'bundled:welcome-to-grafana',
+            description: 'Ready to open',
+            type: 'interactive',
+          },
+        ],
+      },
+    });
+  });
+  let release!: () => void;
+  const overlayReady = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/public/plugins/grafana-pathfinder-app/*.js*', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (kioskAssets.some((asset) => pathname === `${pluginPath}${asset}`)) {
+      await overlayReady;
+    }
+    await route.continue();
+  });
+  try {
+    await page.goto('/?pathfinderKiosk=1', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => catalogRequests, { timeout: 20_000 }).toBe(1);
+    await expect(page.getByTestId(testIds.kioskMode.overlay)).not.toBeVisible();
+    release();
+    await expect(page.getByRole('button', { name: /Preloaded guide/ })).toBeVisible({ timeout: 20_000 });
+    expect(catalogRequests).toBe(1);
+  } finally {
+    release();
+  }
+});
+
+test('does not fetch a kiosk catalog when learning is disabled', async ({ page }) => {
+  const catalogUrl = 'https://interactive-learning.grafana.net/disabled-kiosk-test.json';
+  await settings(page, { pathfinderEnabled: false, kioskRulesUrl: catalogUrl });
+  let requests = 0;
+  await page.route(catalogUrl, (route) => {
+    requests++;
+    return route.abort();
+  });
+  const { pending } = trackTranslations(page);
+  await page.goto('/?pathfinderKiosk=1');
+  await page.waitForFunction(() => window.__pathfinderPluginConfig !== undefined);
+  await expect.poll(() => pending.size).toBe(0);
+  expect(requests).toBe(0);
+  await expect(page.getByTestId(testIds.kioskMode.overlay)).not.toBeVisible();
 });

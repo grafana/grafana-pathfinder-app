@@ -1,9 +1,8 @@
 import { resolveKioskCommand } from '../../lib/kiosk-command';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-bash';
+import { retryChunkImport } from '../../lib/retry-chunk-import';
 import { KioskLaunchError } from '../../lib/kiosk-launch-error';
 import { logger } from '../../lib/logging';
-import React, { useEffect, useId, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { Button, Field, Input, Combobox, Icon, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
@@ -14,7 +13,6 @@ import { KioskFormError, MAX_INPUT_LENGTH } from '../../lib/input-value';
 import { filterDatasourcesByType, toDatasourceOptions } from '../interactive-tutorial/datasource-options';
 import type { KioskRule } from './kiosk-rules';
 import { launchKioskGuide } from './launch-kiosk-guide';
-import { prepareKioskInputs } from './prepare-kiosk-inputs';
 import { KioskTile } from './KioskTile';
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -120,18 +118,6 @@ interface Props {
   onLaunch?: () => void;
 }
 
-function renderCommandTokens(tokens: ReturnType<typeof Prism.tokenize>): React.ReactNode {
-  return tokens.map((token, index) =>
-    typeof token === 'string' ? (
-      token
-    ) : (
-      <span key={index} className={`token ${token.type}`}>
-        {typeof token.content === 'string' ? token.content : renderCommandTokens(token.content)}
-      </span>
-    )
-  );
-}
-
 function Command({
   command,
   language = 'bash',
@@ -146,20 +132,32 @@ function Command({
   const styles = useStyles2(getStyles);
   const [status, setStatus] = useState('');
   const resolvedCommand = resolveKioskCommand(command, window.location.origin);
-  const highlighted = useMemo(
-    () =>
-      language === 'bash'
-        ? renderCommandTokens(Prism.tokenize(resolvedCommand, Prism.languages.bash))
-        : resolvedCommand,
-    [resolvedCommand, language]
-  );
+  const [highlighted, setHighlighted] = useState<{ command: string; tokens: React.ReactNode }>();
+  useEffect(() => {
+    if (language !== 'bash') {
+      return;
+    }
+    let cancelled = false;
+    void retryChunkImport(() => import('./highlight-kiosk-command'))
+      .then(({ highlightKioskCommand }) => {
+        if (!cancelled) {
+          setHighlighted({ command: resolvedCommand, tokens: highlightKioskCommand(resolvedCommand) });
+        }
+      })
+      .catch((error: unknown) => logger.exception(error, { source: 'Kiosk command highlighting' }));
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedCommand, language]);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(resetTimer.current), []);
   return (
     <div className={styles.commandContainer}>
       <div className={styles.command}>
         <span aria-hidden="true">$</span>
-        <code className={styles.commandCode}>{highlighted}</code>
+        <code className={styles.commandCode}>
+          {language === 'bash' && highlighted?.command === resolvedCommand ? highlighted.tokens : resolvedCommand}
+        </code>
         <Button
           variant="primary"
           className={styles.copyButton}
@@ -229,6 +227,8 @@ function LaunchForm({
         setBusy(true);
         setError('');
         try {
+          const { prepareKioskInputs } = await retryChunkImport(() => import('./prepare-kiosk-inputs'));
+          controller.signal.throwIfAborted();
           const prepared = await prepareKioskInputs(rule, mode, block.inputs, draft, controller.signal);
           if (!controller.signal.aborted) {
             if (prepared.inputTransfer === 'skipped') {

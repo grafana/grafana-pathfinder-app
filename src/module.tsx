@@ -49,7 +49,9 @@ document.addEventListener('pathfinder-suggest', earlySuggestListener);
 
 const startupLink = parsePathfinderDeepLink(window.location.search);
 if (startupLink.pathfinderKiosk && !startupLink.doc && !startupLink.controller) {
-  void ensurePluginTranslations().catch((error: unknown) => logger.exception(error, { source: 'Kiosk translations' }));
+  void ensurePluginTranslations()
+    .then(() => retryChunkImport(() => import('./components/kiosk/KioskOverlay')))
+    .catch((error: unknown) => logger.exception(error, { source: 'Kiosk preload' }));
 }
 
 // Initialize OpenFeature provider for dynamic feature flag evaluation

@@ -5,7 +5,10 @@ import { kioskState } from '../../global-state/kiosk';
 import { KioskModeManager } from './KioskModeManager';
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../../lib/telemetry/surface';
 import { loadTranslatedModule } from '../../lib/plugin-translations';
+import { prepareKioskData } from './kiosk-rules';
 import { sidebarState } from '../../global-state/sidebar';
+
+jest.mock('./kiosk-rules', () => ({ prepareKioskData: jest.fn(() => new Promise(() => {})) }));
 
 jest.mock('../../lib/plugin-translations', () => ({
   loadTranslatedModule: jest.fn(async (load: () => Promise<unknown>) => load()),
@@ -48,6 +51,7 @@ describe('KioskModeManager', () => {
     render(<KioskModeManager rulesUrl="https://example.com/rules.json" />);
     expect(reportPathfinderSurface).not.toHaveBeenCalled();
     expect(loadTranslatedModule).not.toHaveBeenCalled();
+    expect(prepareKioskData).not.toHaveBeenCalled();
   });
 
   it('reports the kiosk surface only when the overlay is actually opened', async () => {
@@ -122,4 +126,16 @@ describe('KioskModeManager', () => {
     expect(await screen.findByTestId('close-overlay')).toHaveTextContent('second');
     expect(reportPathfinderSurface).toHaveBeenCalledTimes(1);
   });
+});
+
+it('renders the view while the catalog is pending and aborts on close', async () => {
+  kioskState.set({ source: 'url', rulesUrl: 'selected' });
+  const { unmount } = render(<KioskModeManager rulesUrl="default" />);
+  await screen.findByTestId('close-overlay');
+  expect(prepareKioskData).toHaveBeenCalledWith('default', 'selected', expect.any(AbortSignal));
+  const signal = jest.mocked(prepareKioskData).mock.calls.at(-1)![2]!;
+  expect(signal.aborted).toBe(false);
+  unmount();
+  expect(signal.aborted).toBe(true);
+  kioskState.set(null);
 });

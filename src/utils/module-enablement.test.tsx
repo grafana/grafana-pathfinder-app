@@ -136,6 +136,7 @@ async function boot(
     './completion-records/completion-write-hook': effects,
     './components/floating-panel/FloatingPanelManager': { FloatingPanelManager: () => null },
     './lib/create-root-compat': effects,
+    './components/kiosk/KioskOverlay': { KioskOverlay: () => null },
     './components/App/App': { default: () => <div>Learning app</div>, __esModule: true },
     './components/App/PathfinderDisabled': {
       PathfinderDisabled: () => <div>Disabled</div>,
@@ -379,4 +380,28 @@ it('starts kiosk translations before asynchronous bootstrap without waiting for 
   expect(effects.ensurePluginTranslations.mock.invocationCallOrder[0]).toBeLessThan(
     effects.initializeOpenFeature.mock.invocationCallOrder[0]!
   );
+});
+
+it('preloads kiosk UI only after translation readiness without mounting a surface', async () => {
+  let ready!: () => void;
+  const translations = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const { requireModule, effects } = await boot(
+    true,
+    true,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    'sidebar',
+    {},
+    {},
+    { pathfinderKiosk: true },
+    translations
+  );
+  expect(requireModule).not.toHaveBeenCalledWith('./components/kiosk/KioskOverlay');
+  ready();
+  await waitFor(() => expect(requireModule).toHaveBeenCalledWith('./components/kiosk/KioskOverlay'));
+  expect(effects.createCompatRoot).not.toHaveBeenCalled();
 });

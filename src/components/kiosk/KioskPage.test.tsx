@@ -220,7 +220,7 @@ it('launches without inputs silently while logging bounded diagnostics', async (
   expect(JSON.stringify(jest.mocked(logger.warn).mock.calls)).not.toMatch(/private/i);
 });
 
-it('highlights Bash as inert code and supports plain text', () => {
+it('highlights Bash as inert code and supports plain text', async () => {
   const command = 'echo "<img src=x onerror=alert(1)>"';
   const { rerender } = render(
     <KioskPage
@@ -231,7 +231,7 @@ it('highlights Bash as inert code and supports plain text', () => {
     />
   );
   expect(document.querySelector('code')?.textContent).toBe(command);
-  expect(document.querySelector('code .token')).not.toBeNull();
+  await waitFor(() => expect(document.querySelector('code .token')).not.toBeNull());
   expect(document.querySelector('code img')).toBeNull();
   rerender(
     <KioskPage
