@@ -188,7 +188,7 @@ Opening a guide observes user actions without any assistance. The renderer-owned
 
 ### Components
 
-- **`auto-completion/passive-action.ts`** - Capture-phase `click`, `input`, `change`, and `mouseover` listeners plus navigation listeners. `matchesPassiveAction` rejects an event whose type the action cannot use before it resolves any element, ignores events inside the guide itself, and compares formfill values with `matchFormValue`.
+- **`auto-completion/passive-action.ts`** - Capture-phase `click`, `input`, `change`, and `mouseover` listeners plus navigation listeners. `matchesPassiveAction` rejects an event whose type the action cannot use before it resolves any element, ignores events inside the guide itself, and compares formfill values with `matchFormValue`. Shortly after each click, key, input or change, `matchesFormfillState` also reads what the formfill target currently shows — the typed value, a native select's option text, or, for a combobox, the selection a picker renders as its placeholder or beside its cleared input — so choosing the value from a dropdown counts the same as typing it.
 - **`action-detector.ts`** (in `src/lib/dom/`) - Analyzes DOM elements and events to determine action type. Shared with devtools and the selector generator.
 - **`auto-completion/action-matcher.ts`** - Regex and exact form value matching (`matchFormValue`).
 - **`auto-completion/resolve-target-element.ts`** - Resolves a step's target element for form validation.

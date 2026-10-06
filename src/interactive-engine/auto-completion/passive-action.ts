@@ -10,6 +10,79 @@ const MATCHING_EVENTS: Partial<Record<string, readonly string[]>> = {
   hover: ['mouseover'],
   formfill: ['input', 'change'],
 };
+const GUIDE_CONTENT = '.interactive-section, [data-pathfinder-guide], .interactive-step';
+const FORM_FIELDS = 'input, textarea, select';
+const SETTLE_MS = 150;
+
+function resolveTargets(action: ObservedAction): Element[] {
+  let elements: Element[] = [];
+  try {
+    elements = querySelectorAllEnhanced(resolveSelector(action.refTarget!)).elements;
+  } catch {
+    /* Button labels are not CSS selectors. */
+  }
+  if (!elements.length && action.targetAction === 'button') {
+    elements = findButtonByText(action.refTarget!);
+  }
+  return elements;
+}
+
+function isComboboxInput(field: Element): boolean {
+  return (
+    field.hasAttribute('aria-autocomplete') ||
+    field.getAttribute('role') === 'combobox' ||
+    field.parentElement?.getAttribute('role') === 'combobox'
+  );
+}
+
+// Select-style pickers clear their input once an option is chosen and render
+// the choice beside it, so read the nearest ancestor that holds only this field.
+function renderedSelection(field: Element): string[] {
+  let container = field.parentElement;
+  for (let depth = 0; container && depth < 3; depth++, container = container.parentElement) {
+    if (container.querySelectorAll(FORM_FIELDS).length > 1) {
+      return [];
+    }
+    const text = container.textContent?.trim();
+    if (text) {
+      return [text, ...Array.from(container.children, (child) => child.textContent?.trim() ?? '')];
+    }
+  }
+  return [];
+}
+
+export function formFieldValues(element: Element): string[] {
+  const field = element.matches(FORM_FIELDS) ? element : element.querySelector(FORM_FIELDS);
+  if (!(
+    field instanceof HTMLInputElement ||
+    field instanceof HTMLTextAreaElement ||
+    field instanceof HTMLSelectElement
+  )) {
+    return [];
+  }
+  const values = [field.value];
+  if (field instanceof HTMLSelectElement) {
+    values.push(...Array.from(field.selectedOptions, (option) => option.text));
+  } else if (isComboboxInput(field)) {
+    if (!field.value) {
+      values.push(field.placeholder);
+    }
+    values.push(...renderedSelection(field));
+  }
+  return values.map((value) => value.trim()).filter(Boolean);
+}
+
+export function matchesFormfillState(action: ObservedAction): boolean {
+  const expected = action.targetValue?.replace(/^@@CLEAR@@/, '');
+  if (action.targetAction !== 'formfill' || !action.refTarget || !expected) {
+    return false;
+  }
+  return resolveTargets(action).some(
+    (element) =>
+      !element.closest(GUIDE_CONTENT) &&
+      formFieldValues(element).some((value) => matchFormValue(value, expected).isMatch)
+  );
+}
 
 export function matchesPassiveAction(action: ObservedAction, event: Event): boolean {
   if (
@@ -20,19 +93,10 @@ export function matchesPassiveAction(action: ObservedAction, event: Event): bool
     return false;
   }
   const target = event.target;
-  if (target.closest('.interactive-section, [data-pathfinder-guide], .interactive-step')) {
+  if (target.closest(GUIDE_CONTENT)) {
     return false;
   }
-  const selector = resolveSelector(action.refTarget);
-  let elements: Element[] = [];
-  try {
-    elements = querySelectorAllEnhanced(selector).elements;
-  } catch {
-    /* Button labels are not CSS selectors. */
-  }
-  if (!elements.length && action.targetAction === 'button') {
-    elements = findButtonByText(action.refTarget);
-  }
+  const elements = resolveTargets(action);
   const matched = elements.find((element) => element === target || element.contains(target));
   if (!matched) {
     return false;
@@ -66,9 +130,19 @@ export function matchesPassiveAction(action: ObservedAction, event: Event): bool
   }
 }
 
-export function observePassiveActions(onEvent: (event: Event) => void): () => void {
+export function observePassiveActions(onEvent: (event: Event) => void, onSettled?: () => void): () => void {
   const values = new WeakMap<Element, string>();
+  let settling: ReturnType<typeof setTimeout> | undefined;
+  const settle = () => {
+    if (onSettled) {
+      clearTimeout(settling);
+      settling = setTimeout(onSettled, SETTLE_MS);
+    }
+  };
   const listener = (event: Event) => {
+    if (event.type !== 'mouseover') {
+      settle();
+    }
     const target = event.target;
     if (
       (event.type === 'input' || event.type === 'change') &&
@@ -85,7 +159,12 @@ export function observePassiveActions(onEvent: (event: Event) => void): () => vo
   };
   const events = ['click', 'input', 'change', 'mouseover'];
   events.forEach((event) => document.addEventListener(event, listener, true));
-  return () => events.forEach((event) => document.removeEventListener(event, listener, true));
+  document.addEventListener('keydown', settle, true);
+  return () => {
+    clearTimeout(settling);
+    events.forEach((event) => document.removeEventListener(event, listener, true));
+    document.removeEventListener('keydown', settle, true);
+  };
 }
 
 export function matchesPassiveNavigation(action: ObservedAction): boolean {

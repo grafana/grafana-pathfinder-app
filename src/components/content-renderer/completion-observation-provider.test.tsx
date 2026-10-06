@@ -215,3 +215,45 @@ it('fails closed on timeout, deduplicates unresolved requests, and clears timers
   expect(jest.getTimerCount()).toBe(0);
   jest.useRealTimers();
 });
+
+it('completes a formfill step when the reader picks the value from a dropdown', async () => {
+  const done = jest.fn();
+  function FormStep() {
+    useObservedCompletion({
+      stepId: 'pick-scenario',
+      executing: false,
+      eligible: true,
+      onComplete: done,
+      actions: [{ targetAction: 'formfill', refTarget: 'input[aria-label="scenario"]', targetValue: 'Random Walk' }],
+      analytics: { location: 'test', targetAction: 'formfill', stepMeta: { stepId: 'pick-scenario' } },
+    });
+    return null;
+  }
+  render(
+    <>
+      <div>
+        <div id="selection">Choose</div>
+        <div>
+          <input role="combobox" aria-autocomplete="list" aria-label="scenario" />
+        </div>
+      </div>
+      <div role="listbox">
+        <div
+          role="option"
+          onClick={() => {
+            document.querySelector('#selection')!.textContent = 'Random Walk';
+          }}
+        >
+          Random Walk
+        </div>
+      </div>
+      <CompletionObservationProvider contentKey="guide">
+        <FormStep />
+      </CompletionObservationProvider>
+    </>
+  );
+  expect(done).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('option'));
+  await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+  expect(markStepCompleted).toHaveBeenCalledWith('pick-scenario', undefined, 'observed', 'guide');
+});

@@ -4,7 +4,11 @@ import { render, type RenderOptions } from '@testing-library/react';
 import { CompletionCoordinator, type ObservationCheck } from '../global-state/observation/coordinator';
 import { CompletionObservationContext } from '../global-state/observation/context';
 import { checkPostconditions } from '../requirements-manager/requirements-checker.utils';
-import { matchesPassiveAction, observePassiveActions } from '../interactive-engine/auto-completion/passive-action';
+import {
+  matchesFormfillState,
+  matchesPassiveAction,
+  observePassiveActions,
+} from '../interactive-engine/auto-completion/passive-action';
 
 const checkAsTheSidebarDoes: ObservationCheck = async (conditions, step) => {
   const action = step.actions[0];
@@ -25,8 +29,9 @@ export function createCoordinatorWrapper(check: ObservationCheck = checkAsTheSid
     const [coordinator] = useState(() => new CompletionCoordinator(check));
     useEffect(() => {
       coordinator.start();
-      const stopObserving = observePassiveActions((event) =>
-        coordinator.observe((action) => matchesPassiveAction(action, event))
+      const stopObserving = observePassiveActions(
+        (event) => coordinator.observe((action) => matchesPassiveAction(action, event)),
+        () => coordinator.observe(matchesFormfillState)
       );
       return () => {
         stopObserving();

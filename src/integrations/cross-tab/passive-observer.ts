@@ -1,6 +1,7 @@
 import { nextRequiredAction, advanceActionProgress } from '../../global-state/observation/action-progress';
 import { onContextChange } from '../../lib/context-event-bus';
 import {
+  matchesFormfillState,
   matchesPassiveAction,
   observePassiveActions,
   matchesPassiveNavigation,
@@ -118,10 +119,13 @@ export function createPassiveObserver(
     };
     const context = onContextChange(changed);
     document.addEventListener('visibilitychange', changed);
-    const events = observePassiveActions((event) => {
-      observe((action) => matchesPassiveAction(action, event));
-      changed();
-    });
+    const events = observePassiveActions(
+      (event) => {
+        observe((action) => matchesPassiveAction(action, event));
+        changed();
+      },
+      () => observe(matchesFormfillState)
+    );
     const navigation = observePassiveNavigation(() => {
       observe(matchesPassiveNavigation);
       changed();

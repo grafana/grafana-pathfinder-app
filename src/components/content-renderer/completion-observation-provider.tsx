@@ -20,6 +20,7 @@ import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel, useControllerConnected } from '../../global-state/controller-channel';
 import {
+  matchesFormfillState,
   matchesPassiveAction,
   observePassiveActions,
   matchesPassiveNavigation,
@@ -115,9 +116,12 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
     });
     const observe =
       mode === 'interactive'
-        ? observePassiveActions((event) => {
-            coordinator.observe((action) => matchesPassiveAction(action, event));
-          })
+        ? observePassiveActions(
+            (event) => {
+              coordinator.observe((action) => matchesPassiveAction(action, event));
+            },
+            () => coordinator.observe(matchesFormfillState)
+          )
         : () => {};
     const visibleCheck = () => {
       if (mode === 'controller' || document.visibilityState !== 'hidden') {

@@ -96,3 +96,35 @@ it('rejects an older generation whose signature arrives after the replacement', 
   expect(post).toHaveBeenCalledWith(expect.objectContaining({ subscriptionId: 'new', index: 0 }));
   observer.stop();
 });
+
+it('reports a dropdown pick in the live tab once the field settles', () => {
+  document.body.innerHTML = `
+    <div><div id="selection">Choose</div><div><input role="combobox" aria-autocomplete="list" aria-label="scenario"></div></div>
+    <div role="option" id="option">Random Walk</div>`;
+  const post = jest.fn();
+  const observer = createPassiveObserver(post);
+  observer.update(
+    message({
+      steps: [
+        {
+          id: 'scenario',
+          cursor: 0,
+          actions: [
+            { targetAction: 'formfill', refTarget: 'input[aria-label="scenario"]', targetValue: 'Random Walk' },
+          ],
+        },
+      ],
+    })
+  );
+  const option = document.querySelector<HTMLElement>('#option')!;
+  option.addEventListener('click', () => {
+    document.querySelector('#selection')!.textContent = 'Random Walk';
+  });
+  option.click();
+  expect(post).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'observation-evidence' }));
+  jest.advanceTimersByTime(200);
+  expect(post).toHaveBeenCalledWith(
+    expect.objectContaining({ kind: 'observation-evidence', id: 'scenario', index: 0 })
+  );
+  observer.stop();
+});

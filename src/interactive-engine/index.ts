@@ -70,6 +70,7 @@ export type {
 export { detectModalActive, getVisibleModalRects, startModalWatch, stopModalWatch } from './modal-watcher';
 
 export {
+  matchesFormfillState,
   matchesPassiveAction,
   observePassiveActions,
   matchesPassiveNavigation,

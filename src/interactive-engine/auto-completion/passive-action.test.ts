@@ -1,4 +1,4 @@
-import { matchesPassiveAction } from './passive-action';
+import { matchesFormfillState, matchesPassiveAction, observePassiveActions } from './passive-action';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 
 jest.mock('../../lib/dom', () => ({
@@ -71,4 +71,67 @@ it('treats input and change for the same edit as one observed action', () => {
   stop();
   eventOn(input, 'click');
   expect(events).toHaveBeenCalledTimes(2);
+});
+
+describe('formfill state', () => {
+  const formfill = (refTarget: string, targetValue: string) => ({ targetAction: 'formfill', refTarget, targetValue });
+
+  it('reads the choice a select renders beside its cleared input', () => {
+    document.body.innerHTML = `
+      <div class="value-container">
+        <div>Random Walk</div>
+        <div data-value=""><input role="combobox" aria-autocomplete="list" aria-label="scenario" value=""></div>
+      </div>`;
+    expect(matchesFormfillState(formfill('input[aria-label="scenario"]', 'Random Walk'))).toBe(true);
+    expect(matchesFormfillState(formfill('input[aria-label="scenario"]', 'CSV Content'))).toBe(false);
+  });
+
+  it('reads a picker that shows its selection as the input placeholder', () => {
+    document.body.innerHTML =
+      '<input aria-autocomplete="list" aria-label="data source" placeholder="TestData" value="">';
+    expect(matchesFormfillState(formfill('input[aria-label="data source"]', 'TestData'))).toBe(true);
+  });
+
+  it('does not treat a plain input hint as a value', () => {
+    document.body.innerHTML = '<input aria-label="title" placeholder="My dashboard" value="">';
+    expect(matchesFormfillState(formfill('input[aria-label="title"]', 'My dashboard'))).toBe(false);
+  });
+
+  it('reads native select options and typed values', () => {
+    document.body.innerHTML = `
+      <select aria-label="unit"><option value="ms">Milliseconds</option><option value="s" selected>Seconds</option></select>
+      <input aria-label="name" value="walker=jack">`;
+    expect(matchesFormfillState(formfill('select[aria-label="unit"]', 'Seconds'))).toBe(true);
+    expect(matchesFormfillState(formfill('input[aria-label="name"]', 'walker=jack'))).toBe(true);
+  });
+
+  it('never reads a field inside the guide or a clear-only value', () => {
+    document.body.innerHTML = '<div class="interactive-step"><input aria-label="inside" value="TestData"></div>';
+    expect(matchesFormfillState(formfill('input[aria-label="inside"]', 'TestData'))).toBe(false);
+    document.body.innerHTML = '<input aria-label="cleared" value="">';
+    expect(matchesFormfillState(formfill('input[aria-label="cleared"]', '@@CLEAR@@'))).toBe(false);
+  });
+
+  it('settles once after clicks and keys, but not after mouse movement', () => {
+    jest.useFakeTimers();
+    try {
+      document.body.innerHTML = '<button id="option">Random Walk</button>';
+      const settled = jest.fn();
+      const stop = observePassiveActions(() => {}, settled);
+      const option = document.querySelector('#option')!;
+      eventOn(option, 'mouseover');
+      jest.advanceTimersByTime(500);
+      expect(settled).not.toHaveBeenCalled();
+      eventOn(option);
+      option.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+      jest.advanceTimersByTime(500);
+      expect(settled).toHaveBeenCalledTimes(1);
+      stop();
+      eventOn(option);
+      jest.advanceTimersByTime(500);
+      expect(settled).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
