@@ -1,12 +1,13 @@
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 
 import type { CompletionFact } from './types';
-import { guideIdentityAnalyticsProperties } from './completion-identity';
-export { guideIdentityAnalyticsProperties } from './completion-identity';
+import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from './completion-identity';
+export { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from './completion-identity';
 
 export function completionAnalyticsProperties(fact: CompletionFact): Record<string, string | number> {
   return {
     ...guideIdentityAnalyticsProperties(fact),
+    ...pathAnalyticsProperties(fact.pathIdentity),
     guide_category: fact.guideCategory,
     completion_source: fact.source,
     completion_percentage: fact.completionPercent,
@@ -15,7 +16,7 @@ export function completionAnalyticsProperties(fact: CompletionFact): Record<stri
       completable_block_count: fact.guideStats.completableBlockCount,
       section_count: fact.guideStats.sectionCount,
       guide_stats_version: fact.guideStats.version,
-      percentage_rule_version: 'block-position-v1',
+      block_progress_rule_version: 'block-position-v1',
     }),
     ...(fact.durationMs !== undefined && { duration_ms: fact.durationMs }),
   };

@@ -22,6 +22,7 @@ function fact(overrides: Partial<CompletionFact> = {}): CompletionFact {
     completionPercent: 100,
     source: 'objectives',
     completedAt: '2026-09-30T00:00:00.000Z',
+    sourceConfirmed: true,
     ...overrides,
   };
 }
@@ -33,6 +34,7 @@ describe('completion analytics — guide identity', () => {
       guideSource: 'bundled',
       guideId: 'prometheus-101',
       guideTitle: 'Prometheus 101',
+      sourceConfirmed: true,
       ...overrides,
     });
 
@@ -93,6 +95,47 @@ describe('completion analytics — guide identity', () => {
       guide_id: 'e2e-test',
       guide_title: 'E2E',
     });
+  });
+});
+
+describe('completion analytics — unconfirmed sources', () => {
+  it.each(['bundled', 'interactive-tutorials', 'online-cdn'])(
+    'sends no id or title when %s was only a default',
+    (guideSource) => {
+      const properties = completionAnalyticsProperties(fact({ guideSource, sourceConfirmed: false }));
+      expect(properties).toMatchObject({ guide_source: 'unresolved', guide_visibility: 'private' });
+      expect(properties).not.toHaveProperty('guide_id');
+      expect(properties).not.toHaveProperty('guide_title');
+    }
+  );
+
+  it('treats a fact with no confirmation as unconfirmed', () => {
+    expect(completionAnalyticsProperties(fact({ sourceConfirmed: undefined }))).toMatchObject({
+      guide_source: 'unresolved',
+      guide_visibility: 'private',
+    });
+  });
+});
+
+describe('completion analytics — containing path', () => {
+  const milestone = (pathIdentity: CompletionFact['pathIdentity']) =>
+    completionAnalyticsProperties(fact({ guideCategory: 'learning-journey', guideId: 'install', pathIdentity }));
+
+  it('sends the path id of a confirmed public path', () => {
+    expect(
+      milestone({ guideSource: 'interactive-tutorials', guideId: 'linux-server-integration', sourceConfirmed: true })
+    ).toMatchObject({ path_id: 'linux-server-integration' });
+  });
+
+  it.each([
+    ['a private path', { guideSource: 'app-platform', guideId: 'acme-path', sourceConfirmed: true }],
+    ['an unconfirmed path', { guideSource: 'interactive-tutorials', guideId: 'acme-path', sourceConfirmed: false }],
+  ])('sends no path id for %s', (_label, pathIdentity) => {
+    expect(milestone(pathIdentity)).not.toHaveProperty('path_id');
+  });
+
+  it('sends no path id outside a path', () => {
+    expect(completionAnalyticsProperties(fact())).not.toHaveProperty('path_id');
   });
 });
 
@@ -176,7 +219,7 @@ describe('completion analytics — event properties', () => {
       completable_block_count: 0,
       section_count: 0,
       guide_stats_version: 1,
-      percentage_rule_version: 'block-position-v1',
+      block_progress_rule_version: 'block-position-v1',
     });
     expect(properties).not.toHaveProperty('guide_id');
     expect(properties).not.toHaveProperty('guide_title');

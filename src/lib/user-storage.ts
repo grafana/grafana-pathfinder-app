@@ -1141,10 +1141,14 @@ export const interactiveStepStorage = {
     contentKey: string,
     sectionId: string,
     completedIds: Set<string>,
-    skippedIds: ReadonlySet<string> = new Set()
+    skippedIds: ReadonlySet<string> = new Set(),
+    unloadedSkipsClearedDuringLoad?: ReadonlySet<string>
   ): Promise<void> {
+    const storedSkipped = readSkippedSteps(contentKey, sectionId);
+    const keepsStoredSkip = (id: string) =>
+      unloadedSkipsClearedDuringLoad !== undefined && storedSkipped.has(id) && !unloadedSkipsClearedDuringLoad.has(id);
     const skipped = new Set(
-      [...readSkippedSteps(contentKey, sectionId), ...skippedIds].filter((id) => completedIds.has(id))
+      [...storedSkipped, ...skippedIds].filter((id) => completedIds.has(id) || keepsStoredSkip(id))
     );
     // Skip annotations must be visible before a completion notification can record its source.
     writeSkippedSteps(contentKey, sectionId, skipped);

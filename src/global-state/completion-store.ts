@@ -208,7 +208,13 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
       }
       const bySteps = stepsFor(contentKey, sectionId);
       const hadClears = cleared !== undefined && cleared.size > 0;
-      const skipped = interactiveStepStorage.getSkipped(contentKey, sectionId);
+      let skipped: ReadonlySet<string>;
+      try {
+        skipped = interactiveStepStorage.getSkipped(contentKey, sectionId);
+      } catch (error) {
+        logger.warn('[completion-store] skipped-step read failed', { contentKey, sectionId, error });
+        skipped = new Set();
+      }
       let changed = false;
       stored.forEach((stepId) => {
         // The user explicitly cleared this ID since hydration started;
@@ -378,7 +384,14 @@ function persistSection(contentKey: string, sectionId: string): void {
     if (completedIds.size === 0) {
       interactiveStepStorage.clear(contentKey, sectionId);
     } else {
-      interactiveStepStorage.setCompleted(contentKey, sectionId, completedIds, skippedIds);
+      const loading = hydrationClears.get(`${contentKey}::${sectionId}`);
+      interactiveStepStorage.setCompleted(
+        contentKey,
+        sectionId,
+        completedIds,
+        skippedIds,
+        loading instanceof Set ? loading : undefined
+      );
     }
   }
   refreshGuidePercentage(contentKey);

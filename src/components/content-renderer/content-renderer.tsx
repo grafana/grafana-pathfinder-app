@@ -31,6 +31,7 @@ import {
   useGuideResponses,
   isJourneyCoverPage,
   getCurrentMilestone,
+  resolveSurfaceCompletionIdentity,
 } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
@@ -508,10 +509,20 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   // decision 2). A path's cover page is the one thing it is absent from, and
   // that is not the deleted predicate: a table of contents is neither a guide
   // nor a milestone, and marking it complete would record a guide nobody read.
+  const completionIdentity = useMemo(
+    () =>
+      resolveSurfaceCompletionIdentity({
+        contentUrl: content.url,
+        currentUrl: content.url,
+        metadata: content.metadata,
+      }),
+    [content.url, content.metadata]
+  );
   const afterContent = isCoverPage ? null : (
     <MarkCompleteFooter
       context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
       contentUrl={content.url}
+      completionIdentity={completionIdentity}
       onMarkComplete={triggerGuideCompleteFromMark}
       onContinue={onContinueToNextMilestone}
     />

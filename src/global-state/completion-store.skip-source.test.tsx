@@ -125,3 +125,47 @@ it('reads legacy completion arrays without fabricating historical skip reasons',
   expect(peekGuidePercentage(GUIDE)).toBe(100);
   expect(getGuideCompletionSource(GUIDE)).toBe('objectives');
 });
+
+it('keeps skip attribution for steps that complete before saved progress loads', async () => {
+  await completeWithSkip();
+  resetCompletionStoreForTests();
+  publish();
+  let resolveStored: (ids: Set<string>) => void = () => undefined;
+  jest
+    .spyOn(interactiveStepStorage, 'getCompleted')
+    .mockImplementationOnce(() => new Promise((resolve) => (resolveStored = resolve)));
+  function Probe() {
+    const { reason } = useStepCompletion('first', SECTION);
+    return <span>{reason ?? 'loading'}</span>;
+  }
+  render(<Probe />);
+
+  act(() => markStepCompleted('last', SECTION, 'objectives'));
+  await act(async () => resolveStored(new Set(['first', 'last'])));
+
+  expect(await screen.findByText('skipped')).toBeInTheDocument();
+  expect(getGuideCompletionSource(GUIDE)).toBe('skipped');
+  resetCompletionStoreForTests();
+  expect(getGuideCompletionSource(GUIDE)).toBe('skipped');
+});
+
+it('drops the skip attribution of a step reset while saved progress loads', async () => {
+  await completeWithSkip();
+  resetCompletionStoreForTests();
+  publish();
+  let resolveStored: (ids: Set<string>) => void = () => undefined;
+  jest
+    .spyOn(interactiveStepStorage, 'getCompleted')
+    .mockImplementationOnce(() => new Promise((resolve) => (resolveStored = resolve)));
+  function Probe() {
+    const { completed } = useStepCompletion('first', SECTION);
+    return <span>{completed ? 'done' : 'open'}</span>;
+  }
+  render(<Probe />);
+
+  act(() => resetStep('first', SECTION));
+  act(() => markStepCompleted('last', SECTION, 'objectives'));
+  await act(async () => resolveStored(new Set(['first', 'last'])));
+
+  expect(getGuideCompletionSource(GUIDE)).toBe('objectives');
+});

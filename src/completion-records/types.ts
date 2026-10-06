@@ -50,7 +50,13 @@ export interface CompletionFact extends CompletionKey {
   durationMs?: number;
   /** Live rendered-guide counts for analytics; not part of the durable write body. */
   guideStats?: GuideStatsSummary;
+  /** Analytics only: `guideSource` was resolved, not a default. */
+  sourceConfirmed?: boolean;
+  /** Analytics only: the learning path a milestone belongs to. */
+  pathIdentity?: PathAnalyticsIdentity;
 }
+
+export type PathAnalyticsIdentity = CompletionKey & { sourceConfirmed: boolean };
 
 /** A fact whose `kind` is pinned to 'guide' — the only shape `recordGuideCompletion` accepts. */
 export type GuideCompletionFact = CompletionFact & { kind: 'guide' };

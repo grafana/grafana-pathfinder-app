@@ -27,6 +27,8 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
+import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from '../../completion-records';
+import type { AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
@@ -45,6 +47,7 @@ export type MarkCompleteContext = 'guide' | 'milestone';
 
 export interface MarkCompleteFooterProps {
   context: MarkCompleteContext;
+  completionIdentity?: AnalyticsCompletionIdentity;
   /**
    * The rendered content's URL. Not itself the storage key — a journey's
    * `content.url` carries a `/content.json` suffix the rest of the progress
@@ -71,7 +74,13 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 }
 
-export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onContinue }: MarkCompleteFooterProps) {
+export function MarkCompleteFooter({
+  context,
+  contentUrl,
+  completionIdentity,
+  onMarkComplete,
+  onContinue,
+}: MarkCompleteFooterProps) {
   const styles = useStyles2(getStyles);
   // Carries the resolved key alongside the mark and is tagged with the guide
   // both were read for, so a guide change re-arms the control by derivation
@@ -191,6 +200,10 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       onMarkComplete?.();
 
       reportAppInteraction(UserInteraction.MarkCompleteClicked, {
+        ...(completionIdentity && {
+          ...guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity }),
+          ...pathAnalyticsProperties(completionIdentity.pathIdentity),
+        }),
         interaction_location: 'content_footer',
         completion_context: context,
         completion_percentage_before: percentage,
@@ -219,7 +232,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       setCelebrating(false);
       onContinue?.();
     }, CELEBRATION_MS);
-  }, [contentKey, marked, context, percentage, contentUrl, onMarkComplete, onContinue]);
+  }, [contentKey, completionIdentity, marked, context, percentage, contentUrl, onMarkComplete, onContinue]);
 
   const displayPercentage = marked ? 100 : percentage;
   const label =
