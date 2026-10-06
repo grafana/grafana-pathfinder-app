@@ -14,7 +14,7 @@ if [[ "${PATHFINDER_SKIP_BUILD:-0}" != 1 ]]; then
   npm run build
   case $(docker info --format '{{.Architecture}}') in
     arm64|aarch64) mage build:linuxARM64 ;;
-    amd64|x86_64) mage build:linuxAMD64 ;;
+    amd64|x86_64) mage build:linux ;;
     *) echo 'Unsupported Docker architecture' >&2; exit 1 ;;
   esac
 fi
