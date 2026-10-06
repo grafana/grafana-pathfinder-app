@@ -32,6 +32,7 @@ import {
   isJourneyCoverPage,
   getCurrentMilestone,
   resolveSurfaceCompletionIdentity,
+  type SurfaceCompletionInput,
 } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
@@ -133,6 +134,7 @@ interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
   onGuideComplete?: (source?: CompletionSource, contentKey?: string) => void;
+  completionSurface?: Pick<SurfaceCompletionInput, 'baseUrl' | 'currentUrl'>;
   /**
    * Advance to the next milestone, for the milestone form of the Mark complete
    * control. Surfaces that cannot navigate — or that are on the last milestone
@@ -182,6 +184,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
   onGuideComplete,
+  completionSurface,
   onContinueToNextMilestone,
   onActiveTrackChange,
   initialActiveTrackId,
@@ -509,14 +512,18 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   // decision 2). A path's cover page is the one thing it is absent from, and
   // that is not the deleted predicate: a table of contents is neither a guide
   // nor a milestone, and marking it complete would record a guide nobody read.
+  const { baseUrl: completionBaseUrl, currentUrl: completionCurrentUrl } = completionSurface ?? {
+    currentUrl: content.url,
+  };
   const completionIdentity = useMemo(
     () =>
       resolveSurfaceCompletionIdentity({
+        baseUrl: completionBaseUrl,
         contentUrl: content.url,
-        currentUrl: content.url,
+        currentUrl: completionCurrentUrl,
         metadata: content.metadata,
       }),
-    [content.url, content.metadata]
+    [completionBaseUrl, completionCurrentUrl, content.url, content.metadata]
   );
   const afterContent = isCoverPage ? null : (
     <MarkCompleteFooter

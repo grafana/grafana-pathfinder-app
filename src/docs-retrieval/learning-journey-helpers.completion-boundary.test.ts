@@ -1257,6 +1257,27 @@ describe('mark-complete click identity matches the recorded completion', () => {
     expect(click).toMatchObject({ guideSource: 'bundled', guideId: 'install', sourceConfirmed: false });
   });
 
+  it('confirms a bundled guide whose manifest carries the bundled loader repository', async () => {
+    const click = await expectClickMatchesRecord({
+      baseUrl: 'bundled:reading',
+      contentUrl: 'bundled:reading/content.json',
+      currentUrl: 'bundled:reading',
+      metadata: { title: '', packageManifest: { id: 'reading', type: 'guide', repository: 'bundled' } },
+      guideTitle: 'Reading',
+    });
+    expect(click).toMatchObject({ guideSource: 'bundled', guideId: 'reading', sourceConfirmed: true });
+  });
+
+  it('does not confirm a bundled launch whose manifest names another repository', async () => {
+    const click = await expectClickMatchesRecord({
+      baseUrl: 'bundled:reading',
+      contentUrl: 'bundled:reading/content.json',
+      metadata: { title: '', packageManifest: { id: 'reading', repository: 'interactive-tutorials' } },
+      guideTitle: 'Reading',
+    });
+    expect(click).toMatchObject({ guideSource: 'interactive-tutorials', sourceConfirmed: false });
+  });
+
   it('carries no guide identity for a path or journey manifest, as the writer records no guide', async () => {
     for (const type of ['path', 'journey']) {
       emitted = [];

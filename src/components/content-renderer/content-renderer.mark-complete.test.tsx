@@ -293,6 +293,12 @@ describe('mark-complete guide identity', () => {
   it.each([
     ['bundled:reading/content.json', { title: 'Reading' }, 'reading', 'bundled'],
     [
+      'bundled:reading/content.json',
+      { title: 'Reading', packageManifest: { id: 'reading', type: 'guide', repository: 'bundled' } },
+      'reading',
+      'bundled',
+    ],
+    [
       'https://grafana.com/docs/example/finish/content.json',
       {
         title: 'Finish',
@@ -319,6 +325,29 @@ describe('mark-complete guide identity', () => {
       expect(markCompleteEvents()[0]?.[1]).not.toHaveProperty('guide_title');
     }
   );
+
+  it("takes the milestone from the surface's tab URLs, as the completion writer does", async () => {
+    const content = makeContent({
+      url: 'https://grafana.com/docs/example/finish/content.json',
+      metadata: {
+        title: 'Finish',
+        repository: 'online-cdn',
+        learningJourney: { baseUrl: 'https://grafana.com/docs/example/' },
+      } as RawContent['metadata'],
+    });
+    window.__DocsPluginActiveTabUrl = content.url;
+    render(
+      <ContentRenderer
+        content={content}
+        completionSurface={{
+          baseUrl: 'https://grafana.com/docs/example/',
+          currentUrl: 'https://grafana.com/docs/example/configure/',
+        }}
+      />
+    );
+    await clickWhenReady();
+    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'configure', guide_source: 'online-cdn' });
+  });
 
   it.each(['app-platform', 'remote-repo:private-company'])('omits private identifiers for %s', async (repository) => {
     const content = makeContent({

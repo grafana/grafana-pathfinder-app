@@ -33,7 +33,6 @@ import {
   resolveStandaloneGuideCompletionIdentity,
   resolveJourneyCompletionIdentity,
   manifestGuideId,
-  manifestGuideSource,
   normalizeGuideId,
   type PathAnalyticsIdentity,
 } from '../completion-records';
@@ -697,14 +696,12 @@ function isPathOrJourneyManifest(packageManifest?: Record<string, unknown>): boo
 }
 
 function bundledGuideAnalyticsIdentity(guideId: string, context?: CompletionContext): AnalyticsCompletionIdentity {
-  return {
-    ...resolveBundledGuideCompletionIdentity({
-      packageManifest: context?.packageManifest,
-      repository: context?.repository,
-      guideId,
-    }),
-    sourceConfirmed: Boolean(context?.repository) || !manifestGuideSource(context?.packageManifest),
-  };
+  const identity = resolveBundledGuideCompletionIdentity({
+    packageManifest: context?.packageManifest,
+    repository: context?.repository,
+    guideId,
+  });
+  return { ...identity, sourceConfirmed: Boolean(context?.repository) || identity.guideSource === 'bundled' };
 }
 
 function standaloneGuideAnalyticsIdentity(guideId: string, context?: CompletionContext): AnalyticsCompletionIdentity {
