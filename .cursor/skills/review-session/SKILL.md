@@ -34,7 +34,7 @@ Every command prints JSON with `ready` tasks, `obligations`, and `capability_lim
 - `executor: root`: you do this task. Read its `brief`, write the JSON result to its `result` path, and run its `record` command.
 - `executor: agent`: start a new Agent for each task with the prompt `Read <brief> and follow it exactly.` Dispatch independent ready tasks concurrently. Give each skeptic task its own Agent; never reuse an agent across independent skeptic roles. When the agent finishes, run the task's `record` command with `--agent-id` set to the agent ID from the Agent tool result. If the result shows no agent ID, pass `--no-agent-identity` instead.
 
-If `record` rejects a result, send the error to the same agent and ask it to correct its result file. Do not edit an agent's result yourself. If a task cannot run, record it with `--blocked "<reason>"`.
+If `record` rejects a result, it exits 2 and prints `correction`, which quotes the validator error verbatim and names a new version path. Send that text unchanged to the same agent, then record the new file with the printed `record` command. Do not edit an agent's result yourself. Any guidance beyond the correction is coaching: record it first with `coach --session <dir> --task <id> --text-file <abs-file>`, then send its `send_verbatim` text unchanged. If a task cannot run, record it with `--blocked "<reason>"`.
 
 A stage may be skipped only on the user's explicit instruction. Record it with `waive --session <dir> --stage <stage> --reason "<reason>" --consent "<the user's words>"`. A worker can never grant a waiver.
 

@@ -30,6 +30,12 @@ When a prior review is supplied, the controller saves its exact body as a conten
 
 If a prior blocker was not verified fixed but the shared policy now disposes it as something other than blocking, `status` lists it under `convergence`. This is a flag for the reader, not a new rule. The shared policy still decides the disposition from the restated facts.
 
+`record` keeps the submitted result file byte for byte as a content-addressed artifact and puts its `ref`, `sha256`, and submitted path in the event (`raw_result`). The validated, normalized form is the event's `result`, with its own `result_hash`. A rejected result is kept the same way, in a `result_rejected` event with the validator error. `record` then exits 2 and prints a ready `correction` that quotes the error verbatim and names a new version path (`result.v2.json`, then `.v3.json`); a correction never overwrites an earlier version. Anything the supervisor adds beyond that correction is coaching, recorded first with `coach` as a `coaching_recorded` event that holds the exact text. `status` lists coaching events and checks every recorded raw artifact against its hash; `finalize` refuses a session whose raw artifacts were altered or removed.
+
+Skeptic input is built from an allowlist of claim fields (`CLAIM_FIELDS` in `skeptic-claim.mjs`): finding and concern IDs, kind, title, evidence, why it matters, files, origin, impact, reversibility, scope effect, `breaks_shipped_path`, and `induced`. Severity, confidence, suggested action, and timing are withheld. Which task and agent reported a finding, which refs synthesis merged into it, and revision reasons go into the skeptic task's `spec.provenance` in the event log, never into `input.json`. As defence in depth, `record` rejects a producer, prior-check, check-resolution, or synthesis observation whose claim text states something about the review rather than the code, such as reviewer counts, agreement, or a recommendation to block. That check is narrow. Schema validation cannot make arbitrary prose persuasion-proof; the allowlist and the separate provenance record are the primary control, and a post-run audit of what each skeptic saw remains necessary.
+
+The contract-specialist brief carries the full packet schema from `contract-evolution-policy.mjs`, every field, enum, and `sources` entry shape, with valid examples; `schema.json` holds a valid example packet.
+
 Recording the same result twice is a no-op. A different result for a completed task needs `--revise <reason>`. It is accepted only for observer, specialist, root-overflow, and skeptic tasks, and only before anything downstream consumes the result. The superseded observations stay in the log.
 
 The task graph, in order:
@@ -113,4 +119,5 @@ For the pilot, use 10 adjudicated cases with two fresh-context runs per arm. Use
 - A baseline match checks the failure kind and one failing-result line, not the whole failure. Two different failures of the same test can still match.
 - Revert classification reads output signatures. A test runner with an unfamiliar output format is classified `inconclusive_error`, never as a behavioral failure.
 - Evidence cutoffs use commit dates. A commit pushed after the cutoff with an older date passes the cutoff check.
+- The meta-claim check on observation text matches known shapes of review talk. Prose that persuades without them passes, so audit skeptic inputs after a run.
 - Optional findings from round 1 do not carry into an incremental round unless they were deferred. This is the existing state-marker behaviour, not a new rule.
