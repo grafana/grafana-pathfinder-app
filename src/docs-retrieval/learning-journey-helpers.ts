@@ -1,3 +1,6 @@
+import { summarizeGuideBlockIndex } from '../lib/guide-stats/summary';
+import { getGuideIndex } from '../global-state/active-guide-index';
+import type { CompletionSource, CompletionFact } from '../completion-records/types';
 // Learning Journey Helper Functions
 // Extracted from docs-fetcher.ts but focused on metadata operations only
 // No DOM processing - just data manipulation and navigation logic
@@ -20,9 +23,7 @@ import {
 import { sanitizeContentKey } from '../global-state/content-key';
 import { resolvePathMemberPercentages, type PathMember } from '../global-state/path-member-join';
 import { dispatchProgress } from '../global-state/progress-events';
-import { meanOfMemberPercentages, summarizeGuideBlockIndex } from '../lib/guide-stats';
-import { getGuideIndex } from '../global-state/active-guide-index';
-import type { CompletionSource, CompletionFact } from '../completion-records/types';
+import { meanOfMemberPercentages } from '../lib/guide-stats';
 import { markGuideCompleted, findPathByUrl } from '../lib/guide-completion-bridge';
 import {
   recordGuideCompletion,
