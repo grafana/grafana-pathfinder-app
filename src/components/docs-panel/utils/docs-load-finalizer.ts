@@ -67,6 +67,31 @@ export interface DocsLoadSuccessPatchInput {
   pendingAlignment?: PendingAlignment;
 }
 
+/** An `api:` open titles the tab with the resource id; take `spec.title` only while it still is. */
+export function titleFromBackendGuide(tab: LearningJourneyTab, fetchedContent: RawContent): string | undefined {
+  const fetched = fetchedContent.metadata.title?.trim();
+  if (!fetched) {
+    return undefined;
+  }
+  const resourceName = backendGuideResourceName(tab.baseUrl) ?? backendGuideResourceName(fetchedContent.url);
+  if (!resourceName || tab.title !== resourceName || fetched === resourceName) {
+    return undefined;
+  }
+  return fetched;
+}
+
+function backendGuideResourceName(url: string | undefined): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+  const prefix = url.startsWith('backend-guide:') ? 'backend-guide:' : url.startsWith('api:') ? 'api:' : '';
+  if (!prefix) {
+    return undefined;
+  }
+  const name = url.slice(prefix.length).trim();
+  return name || undefined;
+}
+
 export function buildDocsLoadSuccessPatch({
   tab,
   requestedUrl,
@@ -75,9 +100,11 @@ export function buildDocsLoadSuccessPatch({
   pendingAlignment,
 }: DocsLoadSuccessPatchInput): Partial<LearningJourneyTab> {
   const learningJourney = fetchedContent.metadata.learningJourney;
+  const title = titleFromBackendGuide(tab, fetchedContent);
 
   return {
     content: fetchedContent,
+    ...(title ? { title } : {}),
     baseUrl: tab.baseUrl || fetchedContent.url,
     currentUrl: fetchedContent.url || requestedUrl,
     type:

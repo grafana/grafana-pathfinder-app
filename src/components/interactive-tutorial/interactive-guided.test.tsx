@@ -1220,6 +1220,44 @@ describe('InteractiveGuided — successor ownership', () => {
     }
   );
 
+  it('cancels immediately when dismissed after a navigation the host outlived', async () => {
+    let finishFirst!: (result: string) => void;
+    let signal!: AbortSignal;
+    mockExecuteGuidedStep
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishFirst = resolve;
+          })
+      )
+      .mockImplementationOnce((_a, _i, _n, _t, _c, options) => {
+        signal = options.signal;
+        return new Promise((resolve) => signal.addEventListener('abort', () => resolve('cancelled'), { once: true }));
+      });
+    const props = {
+      stepId: 'outlived-navigation',
+      internalActions: [
+        { targetAction: 'highlight' as const, refTarget: 'a[href="/dashboards"]' },
+        { targetAction: 'noop' as const, targetComment: 'Second step' },
+      ],
+    };
+    const view = render(<InteractiveGuided {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      window.history.pushState(null, '', '/dashboards');
+      finishFirst('completed');
+    });
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      view.unmount();
+    });
+    expect(signal.aborted).toBe(true);
+    const next = acquireGuidedRun();
+    expect(next).not.toBeNull();
+    next?.release();
+  });
+
   it('uses the successor completion callback after navigation', async () => {
     let finishFirst!: (result: string) => void;
     mockExecuteGuidedStep

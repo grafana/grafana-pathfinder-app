@@ -65,7 +65,7 @@ function ErrorFallback({ error, onReset }: { error: Error | null; onReset: () =>
       <div className={styles.content}>
         <h3 className={styles.title}>Something went wrong</h3>
         <p className={styles.message}>
-          The Pathfinder plugin encountered an error. You can try again or refresh the page.
+          The interactive learning plugin encountered an error. You can try again or refresh the page.
         </p>
         {error && <code className={styles.errorCode}>{error.message}</code>}
         <div className={styles.actions}>

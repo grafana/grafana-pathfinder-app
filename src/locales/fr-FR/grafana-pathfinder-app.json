@@ -188,17 +188,17 @@
   },
   "appConfig": {
     "beta": "Bêta",
-    "pathfinderEnabled": "Activer Pathfinder",
-    "pathfinderEnabledDescription": "Les modifications s’appliquent lorsque les utilisateurs rechargent Grafana et que leurs paramètres se chargent correctement. Si les paramètres ne peuvent pas être lus, Pathfinder reste disponible.",
+    "pathfinderEnabled": "Activer l’apprentissage interactif",
+    "pathfinderEnabledDescription": "Les modifications s’appliquent lorsque les utilisateurs rechargent Grafana et que leurs paramètres se chargent correctement. Si les paramètres ne peuvent pas être lus, l’apprentissage interactif reste disponible.",
     "pathfinderPreview": "Apprentissage interactif",
-    "pathfinderPreviewDescription": "Pathfinder apporte une aide contextuelle et des guides interactifs dans Grafana.",
-    "pathfinderRemotelyDisabled": "Pathfinder est désactivé à distance",
-    "pathfinderRemotelyDisabledDescription": "Une désactivation à distance empêche actuellement Pathfinder de fonctionner. Votre préférence enregistrée s’appliquera lorsque Pathfinder sera de nouveau activé à distance.",
+    "pathfinderPreviewDescription": "L’apprentissage interactif apporte une aide contextuelle et des guides interactifs dans Grafana.",
+    "pathfinderRemotelyDisabled": "L’apprentissage interactif est désactivé à distance",
+    "pathfinderRemotelyDisabledDescription": "Une désactivation à distance empêche actuellement l’apprentissage interactif de fonctionner. Votre préférence enregistrée s’appliquera lorsque l’apprentissage interactif sera de nouveau activé à distance.",
     "pathfinderRevertDescription": "Désactivez cette option pour utiliser le menu Aide classique de Grafana une fois la page rechargée par les utilisateurs. Votre progression d’apprentissage est conservée."
   },
   "pathfinder": {
-    "disabled": "Pathfinder est désactivé",
-    "disabledDescription": "Pathfinder est désactivé pour cette organisation.",
-    "openSettings": "Ouvrir les paramètres de Pathfinder"
+    "disabled": "L’apprentissage interactif est désactivé",
+    "disabledDescription": "L’apprentissage interactif est désactivé pour cette organisation.",
+    "openSettings": "Ouvrir les paramètres de l’apprentissage interactif"
   }
 }

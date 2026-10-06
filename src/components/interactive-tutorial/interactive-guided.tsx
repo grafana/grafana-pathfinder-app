@@ -288,7 +288,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       const host = hostRef.current;
       session.attach(host);
       return () => {
-        session.detach(host, handoffRef.current || window.location.href !== mountedLocation);
+        session.detach(host, handoffRef.current || session.hasNavigatedSince(mountedLocation));
       };
     }, [session]);
 
@@ -440,6 +440,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           try {
             for (let i = startIndex; i < internalActions.length; i++) {
               await session.waitForHost(run.signal);
+              session.markActionStart();
               const action = internalActions[i];
               setCurrentStepIndex(i);
               setCurrentStepStatus('waiting');

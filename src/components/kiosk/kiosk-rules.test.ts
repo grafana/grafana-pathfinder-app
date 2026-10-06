@@ -31,7 +31,9 @@ it('uses the override first and does not fetch the default', async () => {
 
 it('uses the configured default when no override is supplied', async () => {
   mockFetch.mockResolvedValue(response('Default kiosk'));
-  expect((await loadKioskData(defaultUrl)).rules[0]?.title).toBe('Default kiosk');
+  const result = await loadKioskData(defaultUrl);
+  expect(result.rules[0]?.title).toBe('Default kiosk');
+  expect(result.warning).toBeUndefined();
   expect(mockFetch).toHaveBeenCalledWith(defaultUrl, expect.anything());
 });
 
@@ -60,7 +62,7 @@ it.each(['https://evil.example.com/custom.json', 'javascript:alert(1)', 'not-a-u
     mockFetch.mockResolvedValue(response('Default kiosk'));
     const result = await loadKioskData(defaultUrl, override);
     expect(result.rules[0]?.title).toBe('Default kiosk');
-    expect(result.warning).toContain('default kiosk');
+    expect(result.warning).toBe('The requested kiosk could not be loaded. Showing the configured default kiosk.');
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(mockFetch).toHaveBeenCalledWith(defaultUrl, expect.anything());
   }
@@ -85,22 +87,43 @@ it.each([
   mockFetch.mockImplementationOnce(fail).mockResolvedValueOnce(response('Default kiosk'));
   const result = await loadKioskData(defaultUrl, overrideUrl);
   expect(result.rules[0]?.title).toBe('Default kiosk');
-  expect(result.warning).toBeDefined();
+  expect(result.warning).toBe('The requested kiosk could not be loaded. Showing the configured default kiosk.');
   expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([overrideUrl, defaultUrl]);
 });
 
-it('uses bundled guides when all catalogs fail and deduplicates matching URLs', async () => {
+it('names both requested and configured failures when all catalogs fail', async () => {
   mockFetch.mockRejectedValue(new Error('offline'));
   const result = await loadKioskData(defaultUrl, overrideUrl);
   expect(result.rules).toBe(BUNDLED_KIOSK_RULES);
   expect(result.banner).toBe(DEFAULT_BANNER);
-  expect(result.warning).toContain('bundled');
-  mockFetch.mockClear();
-  await loadKioskData(defaultUrl, defaultUrl);
+  expect(result.warning).toBe(
+    'The requested kiosk and the configured default kiosk could not be loaded. Showing bundled guides.'
+  );
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([overrideUrl, defaultUrl, DEFAULT_KIOSK_URL]);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledTimes(1);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('bundled', true);
+});
+
+it('does not blame the skipped configured tier when matching requested and configured URLs fail', async () => {
+  mockFetch.mockRejectedValue(new Error('offline'));
+  const result = await loadKioskData(defaultUrl, defaultUrl);
+  expect(result.rules).toBe(BUNDLED_KIOSK_RULES);
+  expect(result.banner).toBe(DEFAULT_BANNER);
+  expect(result.warning).toBe('The requested kiosk could not be loaded. Showing bundled guides.');
   expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([defaultUrl, DEFAULT_KIOSK_URL]);
-  mockFetch.mockClear();
-  await loadKioskData(DEFAULT_KIOSK_URL, DEFAULT_KIOSK_URL);
-  expect(mockFetch).toHaveBeenCalledTimes(1);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledTimes(1);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('bundled', true);
+});
+
+it('reports only the requested failure when every catalog URL matches', async () => {
+  mockFetch.mockRejectedValue(new Error('offline'));
+  const result = await loadKioskData(DEFAULT_KIOSK_URL, DEFAULT_KIOSK_URL);
+  expect(result.rules).toBe(BUNDLED_KIOSK_RULES);
+  expect(result.banner).toBe(DEFAULT_BANNER);
+  expect(result.warning).toBe('The requested kiosk could not be loaded. Showing bundled guides.');
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([DEFAULT_KIOSK_URL]);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledTimes(1);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('bundled', true);
 });
 
 it('uses bundled guides without a network request or warning when nothing is configured', async () => {
@@ -119,9 +142,83 @@ it('recovers through the generic catalog after override and configured default f
     .mockResolvedValueOnce(response('Generic kiosk'));
   const result = await loadKioskData(defaultUrl, overrideUrl);
   expect(result.rules[0]?.title).toBe('Generic kiosk');
-  expect(result.warning).toBe('The configured kiosk could not be loaded. Showing the generic learning kiosk.');
+  expect(result.warning).toBe(
+    'The requested kiosk and the configured default kiosk could not be loaded. Showing the generic learning kiosk.'
+  );
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledTimes(1);
   expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('generic', true);
   expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([overrideUrl, defaultUrl, DEFAULT_KIOSK_URL]);
+});
+
+it('names a rejected selection and failed configured catalog when the generic catalog serves', async () => {
+  mockFetch.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(response('Generic kiosk'));
+  const result = await loadKioskData(defaultUrl, 'https://untrusted.example/rules.json');
+  expect(result.rules[0]?.title).toBe('Generic kiosk');
+  expect(result.warning).toBe(
+    'The requested kiosk and the configured default kiosk could not be loaded. Showing the generic learning kiosk.'
+  );
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([defaultUrl, DEFAULT_KIOSK_URL]);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledTimes(1);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('generic', true);
+});
+
+it('names a rejected selection and failed configured catalog when bundled guides serve', async () => {
+  mockFetch.mockRejectedValue(new Error('offline'));
+  const result = await loadKioskData(defaultUrl, 'https://untrusted.example/rules.json');
+  expect(result.rules).toBe(BUNDLED_KIOSK_RULES);
+  expect(result.banner).toBe(DEFAULT_BANNER);
+  expect(result.warning).toBe(
+    'The requested kiosk and the configured default kiosk could not be loaded. Showing bundled guides.'
+  );
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([defaultUrl, DEFAULT_KIOSK_URL]);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledTimes(1);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('bundled', true);
+});
+
+it('reports only the requested failure when matching URLs fall back to the generic catalog', async () => {
+  mockFetch.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(response('Generic kiosk'));
+  const result = await loadKioskData(defaultUrl, defaultUrl);
+  expect(result.rules[0]?.title).toBe('Generic kiosk');
+  expect(result.warning).toBe('The requested kiosk could not be loaded. Showing the generic learning kiosk.');
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([defaultUrl, DEFAULT_KIOSK_URL]);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledTimes(1);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('generic', true);
+});
+
+it('reports only the configured failure when configured and generic catalogs fail without a selection', async () => {
+  mockFetch.mockRejectedValue(new Error('offline'));
+  const result = await loadKioskData(defaultUrl);
+  expect(result.rules).toBe(BUNDLED_KIOSK_RULES);
+  expect(result.banner).toBe(DEFAULT_BANNER);
+  expect(result.warning).toBe('The configured kiosk could not be loaded. Showing bundled guides.');
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([defaultUrl, DEFAULT_KIOSK_URL]);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledTimes(1);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('bundled', true);
+});
+
+it('reports only the configured failure when its URL matches the skipped generic catalog', async () => {
+  mockFetch.mockRejectedValue(new Error('offline'));
+  const result = await loadKioskData(DEFAULT_KIOSK_URL);
+  expect(result.rules).toBe(BUNDLED_KIOSK_RULES);
+  expect(result.banner).toBe(DEFAULT_BANNER);
+  expect(result.warning).toBe('The configured kiosk could not be loaded. Showing bundled guides.');
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([DEFAULT_KIOSK_URL]);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledTimes(1);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('bundled', true);
+});
+
+it('names requested and configured failures when the configured URL matches the skipped generic catalog', async () => {
+  const trustedSelection = 'https://interactive-learning.grafana.net/custom.json';
+  mockFetch.mockRejectedValue(new Error('offline'));
+  const result = await loadKioskData(DEFAULT_KIOSK_URL, trustedSelection);
+  expect(result.rules).toBe(BUNDLED_KIOSK_RULES);
+  expect(result.banner).toBe(DEFAULT_BANNER);
+  expect(result.warning).toBe(
+    'The requested kiosk and the configured default kiosk could not be loaded. Showing bundled guides.'
+  );
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([trustedSelection, DEFAULT_KIOSK_URL]);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledTimes(1);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('bundled', true);
 });
 
 it('supports legacy arrays, defaults the type, and drops unsafe tiles', async () => {

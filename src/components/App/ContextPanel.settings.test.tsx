@@ -36,7 +36,7 @@ beforeEach(() => {
 it('waits for authoritative settings and preserves the scene and open content on later hydration', () => {
   const { rerender } = render(<MemoizedContextPanel />);
   expect(construct).not.toHaveBeenCalled();
-  expect(screen.getByText('Loading Pathfinder settings')).toBeInTheDocument();
+  expect(screen.getByText('Loading interactive learning settings')).toBeInTheDocument();
 
   const first = getConfigWithDefaults({ enableLiveSessions: true });
   hook.mockReturnValue({ config: first, isResolved: true });

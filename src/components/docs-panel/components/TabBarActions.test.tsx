@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TabBarActions } from './TabBarActions';
 import { currentPlatform } from '../../../lib/platform';
 import { testIds } from '../../../constants/testIds';
@@ -159,6 +159,66 @@ describe('TabBarActions', () => {
       fireEvent.click(screen.getByTestId(testIds.docsPanel.myLearningTab));
 
       expect(mockPush).toHaveBeenCalledWith(PLUGIN_BASE_URL);
+    });
+  });
+
+  describe('Copy link to guide', () => {
+    const writeText = jest.fn();
+    const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    const guideTab = () =>
+      makeTab({ type: 'interactive', baseUrl: 'bundled:welcome-to-grafana', currentUrl: 'bundled:welcome-to-grafana' });
+
+    beforeEach(() => {
+      writeText.mockReset().mockResolvedValue(undefined);
+      Object.assign(navigator, { clipboard: { writeText } });
+    });
+
+    it('is the first menu item for a selected guide tab', () => {
+      render(<TabBarActions activeTab={guideTab()} />);
+      openMenu();
+      expect(screen.getAllByRole('menuitem')[0]).toHaveTextContent('Copy link to guide');
+    });
+
+    it.each(['recommendations', 'devtools', 'editor'])('is hidden on the %s tab', (type) => {
+      render(<TabBarActions activeTab={makeTab({ type })} />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: 'Copy link to guide' })).not.toBeInTheDocument();
+    });
+
+    it('is hidden when no tab is active or the URL cannot be shared', () => {
+      const { unmount } = render(<TabBarActions />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: 'Copy link to guide' })).not.toBeInTheDocument();
+      unmount();
+      render(
+        <TabBarActions activeTab={makeTab({ baseUrl: 'http://localhost:1/x', currentUrl: 'http://localhost:1/x' })} />
+      );
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: 'Copy link to guide' })).not.toBeInTheDocument();
+    });
+
+    it('copies a sidebar-mode link and confirms with a notice', async () => {
+      render(<TabBarActions activeTab={guideTab()} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link to guide' }));
+      await waitFor(() =>
+        expect(mockPublish).toHaveBeenCalledWith({ type: 'alert-success', payload: ['Link copied to clipboard'] })
+      );
+      const copied = new URL(writeText.mock.calls[0][0]);
+      expect(copied.pathname).toBe(PLUGIN_BASE_URL);
+      expect(copied.searchParams.get('doc')).toBe('bundled:welcome-to-grafana');
+      expect(copied.searchParams.get('panelMode')).toBe('sidebar');
+      expect(copied.searchParams.get('source')).toBe('shared_link');
+    });
+
+    it('shows an error notice when the clipboard write fails', async () => {
+      writeText.mockRejectedValue(new Error('denied'));
+      render(<TabBarActions activeTab={guideTab()} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link to guide' }));
+      await waitFor(() =>
+        expect(mockPublish).toHaveBeenCalledWith({ type: 'alert-error', payload: ['Could not copy the link'] })
+      );
     });
   });
 

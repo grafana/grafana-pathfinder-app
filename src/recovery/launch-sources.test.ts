@@ -32,6 +32,7 @@ const ALL_LAUNCH_SOURCES = [
   // Needs alignment check
   'home_page',
   'url_param',
+  'shared_link',
   'learning-hub',
   'command_palette',
   'command_palette_help',
