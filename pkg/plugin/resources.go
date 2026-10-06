@@ -17,6 +17,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/custom-guide", a.handleCustomGuide)
 	mux.HandleFunc("/pathfinder-settings", a.handlePathfinderSettings)
 	mux.HandleFunc("/health", a.handleHealth)
+	a.registerSpikeProgressRoutes(mux) // DO NOT MERGE: spike kit, see SPIKE.md
 }
 
 // handleHealth returns the plugin health status.
