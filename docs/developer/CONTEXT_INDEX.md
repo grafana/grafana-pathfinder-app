@@ -34,6 +34,7 @@ Load these files **only when working in the relevant domain**.
 - `testingStrategy.mdc` — Writing or reviewing tests
 - `docs/design/PR_REVIEW.md` — PR review standards: pattern catalog (R1-R21, F1-F6, QC1-QC7, G1-G7), reviewer and evolution-packet schemas, comment prefixes, and the final `ReviewReport` schema the renderer consumes
 - `REVIEW_SESSION.md` — Experimental `/review-session` controller: session lifecycle, host bridge, evidence accounting, evaluation kit, known limits
+- `REVIEW_SESSION_EVALUATION.md` — Paused evaluation of `/review-session` against `/review`: what ran, repairs, provisional results, open items
 - `E2E_TESTING_CONTRACT.md` — E2E testing, `data-test-*` attributes
 - `E2E_TESTING.md` — E2E guide test runner: CLI reference, package-aware testing (guides, paths/journeys), milestone expansion and dependency planning, report selection metadata, options, troubleshooting, error classification, environment variables
 - `COMPLETION_RECORDS_CLOUD_CHECKLIST.md` — Manual operator checklist for the completion-records cloud round trip: capability preflight, durable record, retry idempotency, whole-path threshold. Deliberately not automated
