@@ -1,4 +1,5 @@
 import { test, expect, control, onlyVM, resource } from './harness';
+import { stripVTControlCharacters } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { testIds } from '../../src/constants/testIds';
 
@@ -124,7 +125,15 @@ for (const mode of ['tcp', 'microvm-ws']) {
     expect((await control()).counts.created).toBe(1);
     const probe = `test $(wc -c < ${file}) -eq 1 && printf '\\117\\116\\103\\105\\n'`;
     const input = page.getByRole('textbox', { name: 'Terminal input' });
-    await input.fill(`${probe}\n`);
+    await input.fill(probe);
+    await expect
+      .poll(() =>
+        stripVTControlCharacters(output)
+          .replace(/[\r\n]/g, '')
+          .includes(probe)
+      )
+      .toBe(true);
+    await input.press('Enter');
     await expectOutput('ONCE');
     const panel = page.getByTestId(testIds.codaTerminal.panel);
     await panel.getByRole('button', { name: 'Terminal actions' }).click();
