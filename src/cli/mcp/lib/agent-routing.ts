@@ -154,9 +154,9 @@ export const PATHFINDER_DOMAINS: readonly string[] = [
  * route elsewhere instead of opening a fresh authoring artifact.
  */
 export const PATHFINDER_NOT_FOR: readonly string[] = [
-  'read-only documentation lookups',
+  'read-only documentation lookups (finding an existing guide is the exception: use `pathfinder_find_guides`)',
   'dashboard queries',
-  'general Grafana questions',
+  'general Grafana questions that are not a request to find or author a guide',
   'troubleshooting an existing Grafana setup',
   // Slice 3 disambiguation: "write a Prometheus query" is NOT Pathfinder;
   // "write a tutorial about Prometheus queries" IS. The noun in the user's
