@@ -21,7 +21,7 @@ import type {
 } from '../types/learning-paths.types';
 
 import { invalidateEmittedCompletion } from '../completion-records';
-import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { reportAppInteraction, UserInteraction, type ResetScope } from '../lib/analytics';
 import { StorageEvents } from '../lib/event-names';
 import { getMilestoneSlug } from '../lib/learning-journey-url';
 import { logger } from '../lib/logging';
@@ -203,12 +203,18 @@ async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Pr
   });
 }
 
-function reportPathReset(interactionLocation: string, pathId?: string): void {
+function reportPathReset(
+  resetScope: Extract<ResetScope, 'path' | 'assignment'>,
+  interactionLocation: string,
+  pathId?: string,
+  guidesCleared?: number
+): void {
   const curatedPathId = getPathsData().paths.some((path) => path.id === pathId) ? pathId : undefined;
   reportAppInteraction(UserInteraction.ResetProgressClick, {
-    reset_scope: 'path',
+    reset_scope: resetScope,
     interaction_location: interactionLocation,
     ...(curatedPathId && { path_id: curatedPathId }),
+    ...(guidesCleared !== undefined && { guides_cleared: guidesCleared }),
   });
 }
 
@@ -573,7 +579,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (!path) {
         return;
       }
-      reportPathReset('learning_path_card_restart', path.id);
+      reportPathReset('path', 'learning_path_card_restart', path.id);
 
       // Guard-invalidation member ids beyond `path.guides`, which for a
       // URL-based path can still be empty here — the dynamic milestone fetch
@@ -667,7 +673,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (guides.length === 0) {
         return;
       }
-      reportPathReset('learning_path_assignment_reset_modal');
+      reportPathReset('assignment', 'learning_path_assignment_reset_modal', undefined, guides.length);
       const guideIds = guides.map((guide) => guide.id);
       const path = paths.find((p) => p.id === pathId);
 

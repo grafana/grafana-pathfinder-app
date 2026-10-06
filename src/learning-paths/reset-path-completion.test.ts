@@ -573,7 +573,7 @@ describe('reset analytics', () => {
     expect(resetEvents()).toEqual([
       [
         UserInteraction.ResetProgressClick,
-        { reset_scope: 'path', interaction_location: 'learning_path_assignment_reset_modal' },
+        { reset_scope: 'assignment', interaction_location: 'learning_path_assignment_reset_modal', guides_cleared: 2 },
       ],
     ]);
   });
