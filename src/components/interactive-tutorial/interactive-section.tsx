@@ -4,17 +4,13 @@ import { usePathfinderPluginConfig } from '../../hooks';
 import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef } from 'react';
 import { Button } from '@grafana/ui';
 
-import {
-  useInteractiveElements,
-  ActionMonitor,
-  outcomeFromLoopExit,
-  type LoopExitReason,
-} from '../../interactive-engine';
+import { useInteractiveElements, outcomeFromLoopExit, type LoopExitReason } from '../../interactive-engine';
 import { useStepChecker, stripTabLocalRequirements } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { logger } from '../../lib/logging';
 import { setFaroUserActionAttributes, USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../../lib/faro';
+import { CompletionWaitingStatus } from './completion-waiting-status';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
 import { InteractiveMultiStep, resetMultiStepCounter } from './interactive-multi-step';
 import { InteractiveGuided, resetGuidedCounter } from './interactive-guided';
@@ -250,6 +246,14 @@ export function InteractiveSection({
     executionControllerRef.current?.abort();
     // The running loop will detect this and break
   }, []);
+  useEffect(
+    () => () => {
+      if (executionControllerRef.current) {
+        handleSectionCancel();
+      }
+    },
+    [handleSectionCancel, sectionId]
+  );
 
   // Use executeInteractiveAction directly (no wrapper needed)
   // Section-level blocking is managed separately at the section level
@@ -712,11 +716,6 @@ export function InteractiveSection({
         '[Section] Starting section run, reset userScrolled=false, isProgrammatic=TRUE (will stay true during execution)'
       );
 
-      // Force-disable action monitor during section execution to prevent auto-completion conflicts
-      // Using forceDisable() to bypass reference counting during automated execution
-      const actionMonitor = ActionMonitor.getInstance();
-      actionMonitor.forceDisable();
-
       // Clear any existing highlights before starting section execution
       const { NavigationManager } = await import('../../interactive-engine');
       const navigationManager = new NavigationManager();
@@ -771,27 +770,23 @@ export function InteractiveSection({
                 if (!sectionRecheckResult.pass) {
                   // Section requirements still not met after fix attempt
                   logger.warn('Section requirements could not be fixed, stopping execution');
-                  ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
                   setIsRunning(false);
                   return;
                 }
               } catch (fixError) {
                 logger.warn('Failed to fix section requirements', { error: fixError });
-                ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
                 setIsRunning(false);
                 return;
               }
             } else {
               // No fix available for section requirements
               logger.warn('Section requirements not met and no fix available, stopping execution');
-              ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
               setIsRunning(false);
               return;
             }
           }
         } catch (error) {
           logger.warn('Section requirements check failed', { error });
-          ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
           setIsRunning(false);
           return;
         }
@@ -841,7 +836,6 @@ export function InteractiveSection({
               // PAUSE: this step is one only the user can perform, so stop
               // automated execution. They click its own button, then "Resume".
               if (stepInfo.isGuided || stepInfo.pausesSectionRun) {
-                ActionMonitor.getInstance().forceEnable(); // Re-enable monitor for guided mode
                 // (cursor is already at `i` via the prior COMPLETE_STEP dispatches)
                 setIsRunning(false); // Stop the automated loop
                 stopSectionBlocking(sectionId); // Remove blocking overlay
@@ -1012,12 +1006,14 @@ export function InteractiveSection({
                 if (completionCoordinator?.has(observationId)) {
                   completionCoordinator.request(observationId);
                   setCurrentlyExecutingStep(null);
-                  stopSectionBlocking(sectionId);
-                  if (!(await completionCoordinator.waitForCompletion(observationId, controller.signal))) {
-                    break;
-                  }
-                  if (i < stepComponents.length - 1 && !controller.signal.aborted) {
-                    startSectionBlocking(sectionId, dummyData, handleSectionCancel);
+                  if (completionCoordinator.waiting(observationId)) {
+                    stopSectionBlocking(sectionId);
+                    if (!(await completionCoordinator.waitForCompletion(observationId, controller.signal))) {
+                      break;
+                    }
+                    if (i < stepComponents.length - 1 && !controller.signal.aborted) {
+                      startSectionBlocking(sectionId, dummyData, handleSectionCancel);
+                    }
                   }
                 } else {
                   markStepCompleted(stepInfo.stepId, sectionId, 'manual');
@@ -1059,9 +1055,6 @@ export function InteractiveSection({
           } catch (error) {
             logger.error('Error running section sequence', { error });
           } finally {
-            // Re-enable action monitor after section execution completes
-            ActionMonitor.getInstance().forceEnable();
-
             // Stop section-level blocking
             stopSectionBlocking(sectionId);
             setIsRunning(false);
@@ -1484,10 +1477,11 @@ export function InteractiveSection({
             </Button>
           </div>
         ) : stepsCompleted && hasSectionObjectives && !isCompletedByObjectives ? (
-          <div role="status">
-            Waiting for completion{' '}
-            <Button onClick={() => completionCoordinator?.retry(objectiveId)}>Check completion</Button>
-          </div>
+          <CompletionWaitingStatus
+            id={sectionId}
+            unmet={completionCoordinator?.unmet(objectiveId)}
+            onCheck={() => completionCoordinator?.retry(objectiveId)}
+          />
         ) : sectionKind === 'awaiting-ack' ? (
           /* Acknowledgement gate (issue #842) — surfaces only when every
              interactive step is done (or the section is 100% passive) AND

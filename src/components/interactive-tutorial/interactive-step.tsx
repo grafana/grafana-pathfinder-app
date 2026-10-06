@@ -18,6 +18,7 @@ import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { isGrafanaDrivingHandoffNeeded } from '../../global-state/panel-mode';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
+import { CompletionWaitingStatus } from './completion-waiting-status';
 import { resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
@@ -40,6 +41,7 @@ interface InteractiveStepStateInput {
   hasError: boolean;
   isChecking: boolean;
   isEnabled: boolean;
+  isWaiting?: boolean;
 }
 
 export function deriveInteractiveStepState(input: InteractiveStepStateInput): StepStateValue {
@@ -51,6 +53,9 @@ export function deriveInteractiveStepState(input: InteractiveStepStateInput): St
   }
   if (input.hasError) {
     return STEP_STATES.ERROR;
+  }
+  if (input.isWaiting) {
+    return STEP_STATES.WAITING;
   }
   if (input.isChecking) {
     return STEP_STATES.CHECKING;
@@ -271,6 +276,7 @@ export const InteractiveStep = forwardRef<
       resetTrigger,
       onStepComplete: notifyStepComplete,
       onComplete: notifyComplete,
+      analytics: { location: 'interactive_step_auto', targetAction, refTarget, stepMeta: analyticsStepMeta },
     });
     const { complete: persistCompletion, onStepComplete, onComplete } = observation;
     // Single source of truth: the completion store. For section-managed
@@ -309,7 +315,7 @@ export const InteractiveStep = forwardRef<
       isEligibleForChecking: isPartOfSection ? isEligibleForChecking : isEligibleForChecking && !isCompleted,
       skippable,
       stepIndex, // Pass document-wide step index for sequence awareness
-      lazyRender: observation.managed ? false : lazyRender,
+      lazyRender,
       scrollContainer, // CSS selector for scroll container
       disabled, // Pass through for auto-completion suppression
       sectionId, // Lets the checker write skip / objectives transitions to the store
@@ -361,18 +367,18 @@ export const InteractiveStep = forwardRef<
     // when eligible, even if they were previously "completed". This handles the case where
     // a previous step is reset and re-completed.
     useEffect(() => {
-      if (!observation.managed && isNoopAction && isEligibleForChecking && !disabled) {
+      if (isNoopAction && isEligibleForChecking && !disabled) {
         // Notify parent section of completion (idempotent - section ignores if already complete)
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
+        if (notifyStepComplete && stepId) {
+          notifyStepComplete(stepId);
         }
 
         // Call the original onComplete callback if provided
-        if (onComplete) {
-          onComplete();
+        if (notifyComplete) {
+          notifyComplete();
         }
       }
-    }, [observation.managed, isNoopAction, isEligibleForChecking, disabled, stepId, onStepComplete, onComplete]);
+    }, [isNoopAction, isEligibleForChecking, disabled, stepId, notifyStepComplete, notifyComplete]);
 
     const shouldShowExplanation = isPartOfSection
       ? !isNoopAction && (!isEligibleForChecking || (requirements && !checker.isEnabled && !lazyScrollAvailable))
@@ -406,7 +412,7 @@ export const InteractiveStep = forwardRef<
       }
 
       const resolveFormTarget = () => {
-        const nextElement = resolveTargetElement({ targetAction, refTarget, targetValue: currentTargetValue });
+        const nextElement = resolveTargetElement({ targetAction, refTarget });
         setFormTargetElement((previousElement) => (previousElement === nextElement ? previousElement : nextElement));
       };
 
@@ -506,8 +512,8 @@ export const InteractiveStep = forwardRef<
 
       try {
         // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
-        if (completeEarly && !observation.managed) {
-          persistCompletion();
+        if (completeEarly) {
+          persistCompletion('manual', true);
           if (onStepComplete && stepId) {
             onStepComplete(stepId);
           }
@@ -570,7 +576,7 @@ export const InteractiveStep = forwardRef<
         }
 
         // NEW: If NOT completeEarly, mark complete after action (normal flow)
-        if (!completeEarly || observation.managed) {
+        if (!completeEarly) {
           persistCompletion();
 
           // Notify parent if we have the callback (section coordination)
@@ -629,7 +635,7 @@ export const InteractiveStep = forwardRef<
           setPostVerifyError('Connect a live Grafana tab to run this step.');
           return false;
         }
-        const completeOnDispatch = phase === 'do' && completeEarly && !observation.managed;
+        const completeOnDispatch = phase === 'do' && completeEarly;
         const runId = crypto.randomUUID();
         const completion = completeOnDispatch ? undefined : controllerChannel.awaitStepResult(stepId, runId, 30_000);
         controllerChannel.post({
@@ -652,7 +658,7 @@ export const InteractiveStep = forwardRef<
           },
         });
         if (completeOnDispatch) {
-          persistCompletion();
+          persistCompletion('manual', true);
           onStepComplete?.(stepId);
           onComplete?.();
           return true;
@@ -858,7 +864,7 @@ export const InteractiveStep = forwardRef<
         if (!succeeded) {
           return;
         }
-        if (completeEarly && !observation.managed) {
+        if (completeEarly) {
           return;
         }
         persistCompletion();
@@ -892,7 +898,6 @@ export const InteractiveStep = forwardRef<
       disabled,
       isDoRunning,
       completeEarly,
-      observation.managed,
       isCompletedWithObjectives,
       finalIsEnabled,
       lazyRender,
@@ -1006,10 +1011,17 @@ export const InteractiveStep = forwardRef<
           hasError: Boolean(postVerifyError || lazyScrollError),
           isChecking: checker.isChecking,
           isEnabled: finalIsEnabled,
+          isWaiting: observation.waiting,
         })}
         data-test-fix-type={checker.fixType || 'none'}
         data-test-requirements-state={
-          checker.isChecking ? 'checking' : finalIsEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+          checker.isChecking
+            ? 'checking'
+            : finalIsEnabled || (observation.waiting && rawChecker.isEnabled)
+              ? 'met'
+              : checker.explanation
+                ? 'unmet'
+                : 'unknown'
         }
         data-test-form-state={
           targetAction === 'formfill'
@@ -1043,12 +1055,7 @@ export const InteractiveStep = forwardRef<
         </div>
 
         {observation.waiting && (
-          <div role="status">
-            Waiting for completion{' '}
-            <button type="button" onClick={observation.retry}>
-              Check completion
-            </button>
-          </div>
+          <CompletionWaitingStatus id={renderedStepId} unmet={observation.unmet} onCheck={observation.retry} />
         )}
         <div className="interactive-step-actions">
           <div className="interactive-step-action-buttons">

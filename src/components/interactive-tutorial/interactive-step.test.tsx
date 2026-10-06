@@ -957,7 +957,9 @@ it('gates successful assistance and completeEarly through the observed objective
   await waitFor(() => expect(assist).toBeEnabled());
   fireEvent.click(assist);
   await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
-  await screen.findByText('Waiting for completion');
+  expect(await screen.findByTestId('interactive-completion-waiting-assisted-objective-gate')).toHaveTextContent(
+    'Waiting for completion'
+  );
   expect(completed).not.toHaveBeenCalled();
   await act(async () => {
     satisfied = true;
@@ -966,4 +968,26 @@ it('gates successful assistance and completeEarly through the observed objective
   await waitFor(() => expect(completed).toHaveBeenCalledTimes(1));
   expect(saved).toHaveBeenCalledTimes(1);
   coordinator.stop();
+});
+
+it('completes a section noop step under the coordinator once it is eligible', async () => {
+  const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+  const { CompletionObservationContext } = await import('../../global-state/observation/context');
+  const coordinator = new CompletionCoordinator(async () => false);
+  const onStepComplete = jest.fn();
+  render(
+    <CompletionObservationContext.Provider value={coordinator}>
+      <InteractiveStep
+        stepId="section-info-step-1"
+        sectionId="section-info"
+        targetAction="noop"
+        refTarget=""
+        isEligibleForChecking
+        onStepComplete={onStepComplete}
+      >
+        Read this first
+      </InteractiveStep>
+    </CompletionObservationContext.Provider>
+  );
+  await waitFor(() => expect(onStepComplete).toHaveBeenCalledWith('section-info-step-1'));
 });

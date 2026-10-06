@@ -51,13 +51,6 @@ jest.mock('../../interactive-engine', () => ({
     expandParentNavigationSection: jest.fn(async () => undefined),
   })),
   useSequentialStepState: () => undefined,
-  ActionMonitor: {
-    getInstance: () => ({
-      enable: jest.fn(),
-      forceEnable: jest.fn(),
-      forceDisable: jest.fn(),
-    }),
-  },
   outcomeFromLoopExit: jest.fn((reason: unknown) => reason),
 }));
 

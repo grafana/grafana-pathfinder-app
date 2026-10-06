@@ -70,7 +70,8 @@ const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
  *
  * The vocabulary is enforced one layer later, and not silently:
  * `condition-validator` walks both fields and warns, `validate --strict`
- * promotes that warning to an error at the authoring gates, interactive blocks retain unexecutable objectives, and the runtime refuses to complete a step
+ * promotes that warning to an error at the authoring gates, `json-parser`
+ * drops an unexecutable objective, and the runtime refuses to complete a step
  * on any non-`satisfied` verdict — so an unrecognised `verify` fails that one
  * step's verification instead of erasing the guide around it.
  */
@@ -454,7 +455,7 @@ export const JsonGuidedBlockSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      'Persist the guided block at its final completion signal. For a final button or highlight action, click activation causes completion to persist during capture, before the application click handler runs. A final action without click activation persists after its result. Cancellation, timeout, or error does not persist completion.'
+      'Persist the guided block at its final completion signal. For a final button or highlight action, click activation causes completion to persist during capture, before the application click handler runs. A final action without click activation persists after its result. Cancellation, timeout, or error does not persist completion. Authored objectives still gate completion.'
     ),
   ...AuthorAnnotatedSchema.shape,
 });

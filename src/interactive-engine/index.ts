@@ -48,15 +48,6 @@ export {
   findInteractiveParent,
   canHaveFocus,
   canBeTabbed,
-  matchesStepAction,
-  matchesElementBounds,
-  isNonFocusableInteractive,
-  ActionMatcher,
-  ActionMonitor,
-  getActionMonitor,
-  // Auto-detection hooks
-  useAutoDetection,
-  useSingleActionDetection,
   resolveTargetElement,
   // Regex pattern matching utilities
   isRegexPattern,
@@ -69,11 +60,6 @@ export {
 } from './auto-completion';
 export type {
   DetectedAction,
-  StepActionConfig,
-  DetectedActionEvent,
-  ActionToDetect,
-  MatchResult,
-  UseAutoDetectionOptions,
   FormfillMatchResult,
   FormValidationState,
   FormValidationResult,

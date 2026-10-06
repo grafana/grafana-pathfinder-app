@@ -28,9 +28,19 @@ interface Entry {
   step: ObservationStep;
   cursor: number;
   requested?: ObservationReason;
+  early?: boolean;
+  unmet?: string;
   checkCommand?: boolean;
   committed: boolean;
   revision: number;
+}
+
+interface HeldRequest {
+  reason: ObservationReason;
+  early: boolean;
+  stepId: string;
+  sectionId?: string;
+  expires: number;
 }
 
 export type ObservationCheck = (
@@ -41,6 +51,37 @@ export type ObservationCheck = (
 
 function hasObjectives(input: ConditionInput | undefined): boolean {
   return Array.isArray(input) ? input.length > 0 : !!input;
+}
+
+function completionGate(step: ObservationStep, early: boolean | undefined): ConditionInput | undefined {
+  if (hasObjectives(step.objectives)) {
+    return step.objectives;
+  }
+  return early ? undefined : step.verify;
+}
+
+// A request outlives the coordinator that took it: an assisted run can finish
+// after its host unmounted, or after a full-screen handoff swapped renderers.
+const HELD_REQUEST_TTL_MS = 30_000;
+const heldRequests = new Map<string, HeldRequest>();
+
+const liveCoordinators = new Set<CompletionCoordinator>();
+
+function holdRequest(step: ObservationStep, reason: ObservationReason, early: boolean) {
+  heldRequests.set(step.id, {
+    reason,
+    early,
+    stepId: step.stepId,
+    sectionId: step.sectionId,
+    expires: Date.now() + HELD_REQUEST_TTL_MS,
+  });
+  liveCoordinators.forEach((coordinator) => coordinator.claim(step.id));
+}
+
+function takeHeldRequest(id: string): HeldRequest | undefined {
+  const held = heldRequests.get(id);
+  heldRequests.delete(id);
+  return held && held.expires > Date.now() ? held : undefined;
 }
 
 export function isPassiveCondition(conditions: ConditionInput): boolean {
@@ -109,14 +150,17 @@ export class CompletionCoordinator {
       this.abortController = new AbortController();
     }
     this.active = true;
+    liveCoordinators.add(this);
     this.recheck();
   }
   stop() {
     this.active = false;
+    liveCoordinators.delete(this);
     this.abortController.abort();
     this.entries.forEach((entry) => {
       entry.revision++;
     });
+    this.changed();
   }
 
   register(step: ObservationStep) {
@@ -133,6 +177,10 @@ export class CompletionCoordinator {
     }
     entry.step = step;
     this.entries.set(step.id, entry);
+    const held = takeHeldRequest(step.id);
+    if (held && !step.completed) {
+      this.arm(entry, held.reason, held.early);
+    }
     this.changed();
     this.recheck();
     return () => {
@@ -140,6 +188,9 @@ export class CompletionCoordinator {
         entry.revision++;
         this.entries.delete(step.id);
         this.dormant.set(step.id, { step: entry.step, cursor: entry.cursor });
+        if (entry.requested && !entry.committed && !entry.step.completed) {
+          holdRequest(entry.step, entry.requested, !!entry.early);
+        }
         this.changed();
       }
     };
@@ -182,6 +233,11 @@ export class CompletionCoordinator {
   }
 
   resetScope(stepId: string | undefined, sectionId: string | undefined) {
+    heldRequests.forEach((held, id) => {
+      if (held.sectionId === sectionId && (stepId === undefined || held.stepId === stepId)) {
+        heldRequests.delete(id);
+      }
+    });
     this.dormant.forEach((entry, id) => {
       if (entry.step.sectionId === sectionId && (stepId === undefined || entry.step.stepId === stepId)) {
         this.dormant.delete(id);
@@ -199,8 +255,10 @@ export class CompletionCoordinator {
     this.abortController = new AbortController();
     if (id === undefined) {
       this.dormant.clear();
+      heldRequests.clear();
     } else {
       this.dormant.delete(id);
+      heldRequests.delete(id);
     }
     this.generation++;
     this.restoredCursors = {};
@@ -210,6 +268,8 @@ export class CompletionCoordinator {
       }
       entry.cursor = 0;
       entry.requested = undefined;
+      entry.early = undefined;
+      entry.unmet = undefined;
       entry.checkCommand = false;
       entry.committed = false;
       entry.revision++;
@@ -235,7 +295,7 @@ export class CompletionCoordinator {
         const entry = this.entries.get(id);
         if (entry?.committed || entry?.step.completed) {
           finish(true);
-        } else if (signal.aborted) {
+        } else if (signal.aborted || !entry || !this.active) {
           finish(false);
         }
       };
@@ -248,6 +308,11 @@ export class CompletionCoordinator {
   waiting(id: string) {
     const entry = this.entries.get(id);
     return !!entry?.requested && !entry.committed && !entry.step.completed;
+  }
+
+  unmet(id: string) {
+    const entry = this.entries.get(id);
+    return entry && !entry.committed && !entry.step.completed ? entry.unmet : undefined;
   }
 
   cursor(id: string) {
@@ -303,21 +368,45 @@ export class CompletionCoordinator {
     this.recheck();
   }
 
-  request(id: string, reason: ObservationReason = 'manual') {
+  request(id: string, reason: ObservationReason = 'manual', early = false) {
     const entry = this.entries.get(id);
-    if (!entry || entry.committed || entry.step.completed) {
+    if (!entry) {
+      const dormant = this.dormant.get(id);
+      if (dormant && (reason === 'skipped' || !hasObjectives(completionGate(dormant.step, early)))) {
+        this.dormant.delete(id);
+        dormant.step.commit(reason);
+      } else if (dormant) {
+        holdRequest(dormant.step, reason, early);
+      }
       return;
     }
-    if (reason === 'skipped') {
+    if (entry.committed || entry.step.completed) {
+      return;
+    }
+    this.arm(entry, reason, early);
+    this.recheck();
+  }
+
+  claim(id: string) {
+    const entry = this.entries.get(id);
+    const held = entry && !entry.step.completed ? takeHeldRequest(id) : undefined;
+    if (entry && held) {
+      this.arm(entry, held.reason, held.early);
+      this.recheck();
+    }
+  }
+
+  private arm(entry: Entry, reason: ObservationReason, early: boolean) {
+    if (reason === 'skipped' || !hasObjectives(completionGate(entry.step, early))) {
       this.commit(entry, reason);
       return;
     }
     if (!entry.requested) {
       entry.requested = reason;
+      entry.early = early;
       entry.checkCommand = reason === 'manual';
       this.changed();
     }
-    this.recheck();
   }
 
   retry(id: string) {
@@ -355,7 +444,7 @@ export class CompletionCoordinator {
     this.dirty = false;
     const work = [...this.entries.values()];
     const checks = new Map<string, Promise<boolean>>();
-    const check = async (conditions: ConditionInput, step: ObservationStep) => {
+    const firstUnmet = async (conditions: ConditionInput, step: ObservationStep) => {
       for (const token of conditionTokens(conditions)) {
         const implicitTarget = token.includes('reftarget') ? step.actions[0] : undefined;
         const key = JSON.stringify([token, implicitTarget]);
@@ -365,10 +454,10 @@ export class CompletionCoordinator {
           checks.set(key, result);
         }
         if (!(await result)) {
-          return false;
+          return token;
         }
       }
-      return true;
+      return undefined;
     };
     const worker = async () => {
       while (this.active && work.length) {
@@ -384,7 +473,11 @@ export class CompletionCoordinator {
           continue;
         }
         const objectiveGate = hasObjectives(step.objectives);
-        const conditions = objectiveGate ? step.objectives : entry.requested ? step.verify : undefined;
+        const conditions = objectiveGate
+          ? step.objectives
+          : entry.requested
+            ? completionGate(step, entry.early)
+            : undefined;
         if (!objectiveGate && !entry.requested) {
           continue;
         }
@@ -393,8 +486,12 @@ export class CompletionCoordinator {
         }
         entry.checkCommand = false;
         const invalidBlank = Array.isArray(conditions) && conditions.some((token) => !token.trim());
-        const passed =
-          !invalidBlank && (conditionTokens(conditions).length ? await check(conditions!, step) : !objectiveGate);
+        const unmet =
+          invalidBlank || (!conditionTokens(conditions).length && objectiveGate)
+            ? ''
+            : conditionTokens(conditions).length
+              ? await firstUnmet(conditions!, step)
+              : undefined;
         if (
           !this.active ||
           this.entries.get(step.id) !== entry ||
@@ -403,8 +500,11 @@ export class CompletionCoordinator {
         ) {
           continue;
         }
-        if (passed) {
+        if (unmet === undefined) {
           this.commit(entry, objectiveGate ? 'objectives' : entry.requested!);
+        } else if (entry.unmet !== unmet) {
+          entry.unmet = unmet;
+          this.changed();
         }
       }
     };

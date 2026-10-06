@@ -498,6 +498,10 @@ function isValidPairingAccept(message: Record<string, unknown>): boolean {
 // validated field-by-field against this table before dispatch. Each new
 // message kind adds its case here on the branch that introduces it; the
 // Record over CrossTabMessage['kind'] makes a missing case a compile error.
+// The live tab only matches subscribed actions, so inert verbs that a step can
+// still contain are accepted here without widening KNOWN_TARGET_ACTIONS.
+const OBSERVABLE_TARGET_ACTIONS: ReadonlySet<string> = new Set([...KNOWN_TARGET_ACTIONS, 'noop', 'popout']);
+
 function isValidObservationSubscription(message: Record<string, unknown>): boolean {
   return (
     isBoundedString(message.subscriptionId, 128) &&
@@ -521,7 +525,7 @@ function isValidObservationSubscription(message: Record<string, unknown>): boole
           (action) =>
             isRecord(action) &&
             typeof action.targetAction === 'string' &&
-            KNOWN_TARGET_ACTIONS.has(action.targetAction) &&
+            OBSERVABLE_TARGET_ACTIONS.has(action.targetAction) &&
             (action.refTarget === undefined || isBoundedString(action.refTarget, 4096)) &&
             (action.targetValue === undefined || isBoundedString(action.targetValue, 16384))
         )

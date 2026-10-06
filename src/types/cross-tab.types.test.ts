@@ -353,3 +353,53 @@ describe('condition array transport', () => {
     ).toBeNull();
   });
 });
+
+describe('observation message validation', () => {
+  const subscription = (steps: unknown) =>
+    envelope({
+      kind: 'observation-subscribe',
+      generation: 1,
+      subscriptionId: 'sub-1',
+      guideKey: 'bundled:guide',
+      revision: 0,
+      steps,
+    });
+
+  it('accepts pending steps that still contain inert noop and popout actions', () => {
+    const message = subscription([
+      { id: 'info', cursor: 0, actions: [{ targetAction: 'noop' }] },
+      { id: 'dock', cursor: 0, actions: [{ targetAction: 'popout', targetValue: 'floating' }] },
+      { id: 'save', cursor: 0, actions: [{ targetAction: 'button', refTarget: 'Save' }] },
+    ]);
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it.each([
+    ['an unknown action verb', [{ id: 's', cursor: 0, actions: [{ targetAction: 'execute' }] }]],
+    ['a cursor past the last action', [{ id: 's', cursor: 2, actions: [{ targetAction: 'button', refTarget: 'a' }] }]],
+    ['a negative cursor', [{ id: 's', cursor: -1, actions: [{ targetAction: 'button', refTarget: 'a' }] }]],
+    ['too many steps', Array.from({ length: 257 }, (_, i) => ({ id: `s${i}`, cursor: 0, actions: [] }))],
+  ])('rejects a subscription with %s', (_name, steps) => {
+    expect(validateCrossTabMessage(subscription(steps))).toBeNull();
+  });
+
+  it('bounds cancel, change and evidence identifiers', () => {
+    expect(validateCrossTabMessage(envelope({ kind: 'observation-cancel', subscriptionId: 'sub-1' }))).not.toBeNull();
+    expect(
+      validateCrossTabMessage(envelope({ kind: 'observation-cancel', subscriptionId: 'x'.repeat(129) }))
+    ).toBeNull();
+    expect(
+      validateCrossTabMessage(envelope({ kind: 'observation-change', subscriptionId: 'sub-1', guideKey: 'g' }))
+    ).not.toBeNull();
+    const evidence = { kind: 'observation-evidence', subscriptionId: 'sub-1', guideKey: 'g', id: 'step' };
+    expect(validateCrossTabMessage(envelope({ ...evidence, index: 0 }))).not.toBeNull();
+    expect(validateCrossTabMessage(envelope({ ...evidence, index: 256 }))).toBeNull();
+    expect(validateCrossTabMessage(envelope({ ...evidence, index: 1.5 }))).toBeNull();
+  });
+
+  it('accepts only a boolean passive flag on check-requirements', () => {
+    const check = { kind: 'check-requirements', requestId: 'r1', stepId: 's1', requirements: ['exists-reftarget'] };
+    expect(validateCrossTabMessage(envelope({ ...check, passive: true }))).not.toBeNull();
+    expect(validateCrossTabMessage(envelope({ ...check, passive: 'yes' }))).toBeNull();
+  });
+});

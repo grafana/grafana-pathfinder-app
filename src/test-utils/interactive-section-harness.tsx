@@ -308,13 +308,6 @@ export function createInteractiveEngineMock() {
       verifyStepResult: jest.fn(async () => true),
       checkRequirementsFromData: stableCheckRequirementsFromData,
     }),
-    ActionMonitor: {
-      getInstance: () => ({
-        enable: jest.fn(),
-        forceEnable: jest.fn(),
-        forceDisable: jest.fn(),
-      }),
-    },
     NavigationManager: jest.fn().mockImplementation(() => ({
       clearAllHighlights: jest.fn(),
       fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
@@ -451,7 +444,6 @@ export function createConstantsMock() {
 export function createInteractiveConfigMock() {
   return {
     getInteractiveConfig: jest.fn(() => ({
-      autoDetection: { enabled: false },
       delays: { section: { baseInterval: 0, showPhaseIterations: 0, betweenStepsIterations: 0 } },
     })),
     INTERACTIVE_CONFIG: {

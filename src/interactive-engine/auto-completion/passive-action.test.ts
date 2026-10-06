@@ -1,9 +1,11 @@
 import { matchesPassiveAction } from './passive-action';
+import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 
 jest.mock('../../lib/dom', () => ({
-  querySelectorAllEnhanced: (selector: string) => ({ elements: [...document.querySelectorAll(selector)] }),
-  findButtonByText: (text: string) =>
-    [...document.querySelectorAll('button')].filter((element) => element.textContent === text),
+  querySelectorAllEnhanced: jest.fn((selector: string) => ({ elements: [...document.querySelectorAll(selector)] })),
+  findButtonByText: jest.fn((text: string) =>
+    [...document.querySelectorAll('button')].filter((element) => element.textContent === text)
+  ),
 }));
 jest.mock('../../lib/dom/selector-resolver', () => ({ resolveSelector: (selector: string) => selector }));
 
@@ -22,6 +24,17 @@ it('matches a child of the target button, but never a nearby unrelated element',
   const action = { targetAction: 'button', refTarget: '#save' };
   expect(matchesPassiveAction(action, eventOn(document.querySelector('span')!))).toBe(true);
   expect(matchesPassiveAction(action, eventOn(document.querySelector('#other')!))).toBe(false);
+});
+
+it('rejects an event the action cannot use before resolving any elements', () => {
+  document.body.innerHTML = '<button id="save">Save</button>';
+  jest.mocked(querySelectorAllEnhanced).mockClear();
+  jest.mocked(findButtonByText).mockClear();
+  const save = document.querySelector('#save')!;
+  expect(matchesPassiveAction({ targetAction: 'button', refTarget: 'Save' }, eventOn(save, 'mouseover'))).toBe(false);
+  expect(matchesPassiveAction({ targetAction: 'noop', refTarget: '#save' }, eventOn(save))).toBe(false);
+  expect(querySelectorAllEnhanced).not.toHaveBeenCalled();
+  expect(findButtonByText).not.toHaveBeenCalled();
 });
 
 it('requires the authored form value and a real value-change event', () => {

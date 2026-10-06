@@ -374,6 +374,7 @@ export function installLiveTabExecutor(
         refTarget: message.refTarget ?? '',
         targetValue: message.targetValue,
         stepId: message.stepId,
+        ...(message.passive && { maxRetries: 0, lazyRender: false }),
       });
       transport.post({ kind: 'requirement-result', requestId: message.requestId, stepId: message.stepId, result });
     } catch (error) {

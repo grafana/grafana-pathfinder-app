@@ -19,6 +19,7 @@ import { testIds } from '../../constants/testIds';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
+import { CompletionWaitingStatus } from './completion-waiting-status';
 import { resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
@@ -75,6 +76,7 @@ interface MultiStepUiStateInput {
   hasError: boolean;
   isChecking: boolean;
   isEnabled: boolean;
+  isWaiting?: boolean;
 }
 
 export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateValue {
@@ -89,6 +91,9 @@ export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateV
   }
   if (input.isCompleted) {
     return STEP_STATES.COMPLETED;
+  }
+  if (input.isWaiting) {
+    return STEP_STATES.WAITING;
   }
   if (input.isChecking) {
     return STEP_STATES.CHECKING;
@@ -227,6 +232,12 @@ export const InteractiveMultiStep = forwardRef<
       resetTrigger,
       onStepComplete: notifyStepComplete,
       onComplete: notifyComplete,
+      analytics: {
+        location: 'interactive_multi_step_auto',
+        targetAction: 'multistep',
+        refTarget: renderedStepId,
+        stepMeta: analyticsStepMeta,
+      },
     });
     const { complete: persistCompletion, onStepComplete, onComplete } = observation;
     const persistReset = useCallback(() => {
@@ -296,7 +307,7 @@ export const InteractiveMultiStep = forwardRef<
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
-      lazyRender: observation.managed ? false : internalActions[0]?.lazyRender,
+      lazyRender: internalActions[0]?.lazyRender,
       scrollContainer: internalActions[0]?.scrollContainer,
       disabled, // Pass through for auto-completion suppression
       sectionId, // Lets the checker write skip / objectives transitions to the store
@@ -371,12 +382,12 @@ export const InteractiveMultiStep = forwardRef<
           if (controller.signal.aborted) {
             return false;
           }
-          if (completeEarly && !observation.managed) {
+          if (completeEarly) {
             await waitForReactUpdates();
             if (controller.signal.aborted) {
               return false;
             }
-            persistCompletion();
+            persistCompletion('manual', true);
             if (onStepComplete && stepId) {
               onStepComplete(stepId);
             }
@@ -532,7 +543,7 @@ export const InteractiveMultiStep = forwardRef<
             }
 
             // NEW: If NOT completeEarly, mark complete after actions (normal flow)
-            if (!completeEarly || observation.managed) {
+            if (!completeEarly) {
               // All internal actions completed successfully
               persistCompletion();
 
@@ -576,7 +587,6 @@ export const InteractiveMultiStep = forwardRef<
         isCompletedWithObjectives,
         isExecuting,
         completeEarly,
-        observation.managed,
         stepId,
         internalActions,
         executeInteractiveAction,
@@ -734,6 +744,7 @@ export const InteractiveMultiStep = forwardRef<
       hasError: Boolean(executionError),
       isChecking: checker.isChecking,
       isEnabled: checker.isEnabled,
+      isWaiting: observation.waiting,
     });
 
     // Generate button title/tooltip based on current state
@@ -776,18 +787,13 @@ export const InteractiveMultiStep = forwardRef<
         data-test-substep-index={isExecuting ? currentActionIndex : undefined}
         data-test-substep-total={internalActions.length}
         data-test-requirements-state={
-          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+          checker.isChecking ? 'checking' : rawChecker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
         }
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
           {observation.waiting && (
-            <div role="status">
-              Waiting for completion{' '}
-              <button type="button" onClick={observation.retry}>
-                Check completion
-              </button>
-            </div>
+            <CompletionWaitingStatus id={renderedStepId} unmet={observation.unmet} onCheck={observation.retry} />
           )}
           {children}
         </div>

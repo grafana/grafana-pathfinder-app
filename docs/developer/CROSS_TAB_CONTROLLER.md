@@ -76,7 +76,8 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
   Simple actions wait up to 30 seconds; composite actions wait up to 15 minutes.
   A negative acknowledgement is an action failure, distinct from an acknowledgement
   timeout. Explicit `completeEarly` Do it actions complete on dispatch without an
-  acknowledgement waiter, timeout cancellation, or post-verification gate.
+  acknowledgement waiter, timeout cancellation, or post-verification gate;
+  authored objectives still gate that completion.
 - `step-progress` — `{ stepId, runId, index, total }`, live → controller, reports which
   internal action a composite is replaying so the controller can animate per-step
   progress while it runs on the live tab. `runId` prevents a late reply from a

@@ -4,8 +4,19 @@ import { resolveSelector } from '../../lib/dom/selector-resolver';
 import { querySelectorAllEnhanced, findButtonByText } from '../../lib/dom';
 import { matchFormValue } from './action-matcher';
 
+const MATCHING_EVENTS: Partial<Record<string, readonly string[]>> = {
+  button: ['click'],
+  highlight: ['click'],
+  hover: ['mouseover'],
+  formfill: ['input', 'change'],
+};
+
 export function matchesPassiveAction(action: ObservedAction, event: Event): boolean {
-  if (!(event.target instanceof Element) || !action.refTarget) {
+  if (
+    !(event.target instanceof Element) ||
+    !action.refTarget ||
+    !MATCHING_EVENTS[action.targetAction]?.includes(event.type)
+  ) {
     return false;
   }
   const target = event.target;

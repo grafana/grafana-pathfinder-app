@@ -13,6 +13,7 @@ export const STEP_STATES = {
   COMPLETED: 'completed',
   ERROR: 'error',
   CANCELLED: 'cancelled',
+  WAITING: 'waiting',
   REQUIREMENTS_UNMET: 'requirements-unmet', // Used by InteractiveStep, InteractiveMultiStep, InteractiveGuided
 } as const;
 

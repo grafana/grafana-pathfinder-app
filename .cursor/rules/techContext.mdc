@@ -132,23 +132,13 @@ Do NOT read `architecture.dot` unless you're working on cross-component changes 
 - Retry logic: 3 attempts with 200ms delay
 - Fail-open: Unknown requirements pass with warning
 
-### 5. Auto-Detection System (Opt-in Feature)
+### 5. Passive Completion (Always On)
 
-**ActionMonitor** (Singleton):
-- Registers global DOM listeners (click, input, hover)
-- Filters non-interactive elements (`action-detector`)
-- Emits `user-action-detected` events
-
-**Interactive Components Subscribe**:
-- Only when: enabled, eligible, not completed
-- Match action via `action-matcher.ts`:
-  1. Try coordinate-based matching (with 16px padding)
-  2. Fallback to selector-based matching
-- On match: Auto-complete step + track analytics
-
-**Disabled During Section Execution**:
-- Prevents conflicts with automated sequences
-- Re-enabled when section completes
+**`CompletionCoordinator`** (one per renderer, `src/global-state/observation/`):
+- Registers every guided, multistep, and interactive block in the active branch
+- Checks objectives independently of sequential eligibility; objectives gate observed and assisted completion alike
+- Observes ordered user actions through `passive-action.ts` matchers; no evidence while any block executes
+- An assisted request with no gate commits at once; a gated request waits and survives a host unmount
 
 ### 6. Global Interaction Blocking (Section Execution Safety)
 

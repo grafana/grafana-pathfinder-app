@@ -321,3 +321,114 @@ it('waits for persisted progress before recording existing outcomes again', asyn
   expect(item.commit).not.toHaveBeenCalled();
   coordinator.stop();
 });
+
+describe('assisted completion requests', () => {
+  it('commits an ungated request at once, even while the run is still executing', () => {
+    const coordinator = new CompletionCoordinator(jest.fn());
+    const item = step({ id: 'ungated', executing: true });
+    coordinator.register(item);
+    coordinator.request(item.id);
+    expect(item.commit).toHaveBeenCalledWith('manual');
+  });
+
+  it('lets an early request skip verify but never objectives', async () => {
+    const coordinator = new CompletionCoordinator(async () => false);
+    const verified = step({ id: 'early-verify', verify: ['on-page:/done'] });
+    const gated = step({ id: 'early-objective', objectives: ['has-datasources'] });
+    coordinator.register(verified);
+    coordinator.register(gated);
+    coordinator.start();
+    coordinator.request(verified.id, 'manual', true);
+    coordinator.request(gated.id, 'manual', true);
+    await settle();
+    expect(verified.commit).toHaveBeenCalledWith('manual');
+    expect(gated.commit).not.toHaveBeenCalled();
+    expect(coordinator.waiting(gated.id)).toBe(true);
+    coordinator.reset();
+    coordinator.stop();
+  });
+
+  it('commits through the dormant step when the host unmounted before an ungated request', () => {
+    const coordinator = new CompletionCoordinator(jest.fn());
+    const item = step({ id: 'unmounted-host' });
+    const unregister = coordinator.register(item);
+    unregister();
+    coordinator.request(item.id);
+    coordinator.request(item.id);
+    expect(item.commit).toHaveBeenCalledTimes(1);
+    expect(item.commit).toHaveBeenCalledWith('manual');
+  });
+
+  it('re-arms a gated request on the successor host, including in another coordinator', async () => {
+    let satisfied = false;
+    const first = new CompletionCoordinator(async () => satisfied);
+    const original = step({ id: 'handed-off', verify: ['on-page:/done'] });
+    const unregister = first.register(original);
+    first.start();
+    first.request(original.id);
+    await settle();
+    unregister();
+    first.stop();
+
+    satisfied = true;
+    const second = new CompletionCoordinator(async () => satisfied);
+    const successor = step({ id: 'handed-off', verify: ['on-page:/done'] });
+    second.start();
+    second.register(successor);
+    await settle();
+    expect(successor.commit).toHaveBeenCalledWith('manual');
+    expect(original.commit).not.toHaveBeenCalled();
+    second.stop();
+  });
+
+  it('does not re-arm a request that a reset cleared', async () => {
+    const coordinator = new CompletionCoordinator(async () => true);
+    const item = step({ id: 'reset-request', verify: ['on-page:/done'] });
+    const unregister = coordinator.register(item);
+    coordinator.request(item.id);
+    unregister();
+    coordinator.reset(item.id);
+    const successor = step({ id: 'reset-request', verify: ['on-page:/done'] });
+    coordinator.register(successor);
+    coordinator.start();
+    await settle();
+    expect(successor.commit).not.toHaveBeenCalled();
+    coordinator.stop();
+  });
+
+  it('reports the first unmet condition while waiting', async () => {
+    const coordinator = new CompletionCoordinator(async ([token]) => token === 'has-datasources');
+    const item = step({ id: 'unmet', objectives: ['has-datasources', 'on-page:/explore'] });
+    coordinator.register(item);
+    coordinator.start();
+    coordinator.request(item.id);
+    await settle();
+    expect(coordinator.unmet(item.id)).toBe('on-page:/explore');
+    coordinator.reset();
+    coordinator.stop();
+  });
+});
+
+describe('waitForCompletion', () => {
+  it('settles false when the waiting step unregisters', async () => {
+    const coordinator = new CompletionCoordinator(async () => false);
+    const item = step({ id: 'branch-flip', objectives: ['has-datasources'] });
+    const unregister = coordinator.register(item);
+    coordinator.start();
+    const result = coordinator.waitForCompletion(item.id, new AbortController().signal);
+    unregister();
+    await expect(result).resolves.toBe(false);
+    coordinator.reset();
+    coordinator.stop();
+  });
+
+  it('settles false when the coordinator stops', async () => {
+    const coordinator = new CompletionCoordinator(async () => false);
+    const item = step({ id: 'stopped', objectives: ['has-datasources'] });
+    coordinator.register(item);
+    coordinator.start();
+    const result = coordinator.waitForCompletion(item.id, new AbortController().signal);
+    coordinator.stop();
+    await expect(result).resolves.toBe(false);
+  });
+});

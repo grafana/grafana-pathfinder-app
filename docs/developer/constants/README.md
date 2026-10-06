@@ -31,7 +31,6 @@ The constants directory is organized into specialized files that separate concer
   - `requirements` - Heartbeat monitoring for fragile prerequisites
   - `cleanup` - Smart auto-cleanup for highlights based on viewport
   - `settling` - Event-driven detection for animations and transitions
-  - `autoDetection` - Step completion auto-detection configuration
   - `positionTracking` - Drift detection and position correction
   - `highlighting` - Timing alignment with CSS animations for dot indicators and bounding boxes
   - `guided` - Hover dwell timing and retry intervals

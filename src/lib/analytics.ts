@@ -63,7 +63,6 @@ export enum UserInteraction {
   DoItButtonClick = 'do_it_button_click',
   DoSectionButtonClick = 'do_section_button_click',
   StepAutoCompleted = 'step_auto_completed',
-  StepAutoCompleteFailed = 'step_auto_complete_failed',
   ResetProgressClick = 'reset_progress_click',
   MarkCompleteClicked = 'mark_complete_clicked',
 

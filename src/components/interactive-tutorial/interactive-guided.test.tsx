@@ -18,6 +18,8 @@ import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
+import { CompletionCoordinator } from '../../global-state/observation/coordinator';
+import { CompletionObservationContext } from '../../global-state/observation/context';
 
 const mockInteractiveMode = jest.fn(() => 'interactive');
 const mockControllerChannel = jest.fn();
@@ -84,7 +86,6 @@ jest.mock('../../constants', () => ({
 }));
 jest.mock('../../constants/interactive-config', () => ({
   getInteractiveConfig: jest.fn(() => ({
-    autoDetection: { enabled: false },
     guided: { stepTimeout: 120000, hoverDwell: 500 },
     delays: {},
   })),
@@ -120,6 +121,7 @@ jest.mock('../../global-state/completion-store', () => ({
     mockStoredCompleted = true;
   }),
   resetStep: jest.fn(),
+  readStepCompletion: jest.fn(async () => false),
   STANDALONE_SECTION_ID: '__standalone__',
 }));
 
@@ -141,6 +143,7 @@ jest.mock('../../requirements-manager', () => ({
   validateInteractiveRequirements: jest.fn(),
   useGuideRequirements: () => ({ checkRequirements: mockActionRequirements }),
   dispatchFix: (...args: unknown[]) => mockDispatchFix(...args),
+  getPostVerifyExplanation: (condition: string) => condition,
 }));
 
 // ─── Track call order for waitForReactUpdates vs executeGuidedStep ───────────
@@ -175,7 +178,6 @@ jest.mock('../../interactive-engine', () => ({
     ensureNavigationOpen: jest.fn().mockResolvedValue(undefined),
     ensureElementVisible: jest.fn().mockResolvedValue(undefined),
   })),
-  matchesStepAction: jest.fn().mockReturnValue(false),
 }));
 
 // ─── Mock panel-mode (full-screen -> sidebar handoff) ────────────────────────
@@ -1396,5 +1398,132 @@ describe('InteractiveGuided — successor ownership', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('InteractiveGuided — under the completion coordinator', () => {
+  function coordinated(check: () => Promise<boolean> = async () => false) {
+    const coordinator = new CompletionCoordinator(check);
+    coordinator.start();
+    const Wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CompletionObservationContext.Provider value={coordinator}>{children}</CompletionObservationContext.Provider>
+    );
+    return { coordinator, Wrapper };
+  }
+
+  afterEach(() => {
+    new CompletionCoordinator(jest.fn()).reset();
+  });
+
+  it('persists a completeEarly final click during capture when completion collapses the host', async () => {
+    const { coordinator, Wrapper } = coordinated();
+    const actionOrder: string[] = [];
+    mockExecuteGuidedStep.mockImplementation(async (_action, _index, _total, _timeout, onActionCompleted) => {
+      actionOrder.push('listener started');
+      onActionCompleted();
+      return 'completed';
+    });
+    function AutoCollapseHarness() {
+      const [isExpanded, setIsExpanded] = React.useState(true);
+      return isExpanded ? (
+        <InteractiveGuided
+          stepId="managed-complete-early"
+          sectionId="section"
+          completeEarly={true}
+          onStepComplete={() => {
+            actionOrder.push('completion persisted');
+            setIsExpanded(false);
+          }}
+          internalActions={[{ targetAction: 'highlight', refTarget: '#install' }]}
+        />
+      ) : null;
+    }
+
+    render(<AutoCollapseHarness />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(actionOrder).toEqual(['listener started', 'completion persisted']);
+    });
+    coordinator.stop();
+  });
+
+  it('persists a completion reported after the final click unmounted the host', async () => {
+    const { coordinator, Wrapper } = coordinated();
+    const target = document.createElement('button');
+    target.id = 'managed-padding-target';
+    document.body.append(target);
+    jest
+      .mocked(querySelectorAllEnhanced)
+      .mockReturnValue({ elements: [target], usedFallback: false, originalSelector: '#managed-padding-target' });
+    jest
+      .spyOn(target, 'getBoundingClientRect')
+      .mockReturnValue({ left: 100, right: 200, top: 100, bottom: 140, width: 100, height: 40 } as DOMRect);
+    const navigation = {
+      ensureNavigationOpen: jest.fn(),
+      ensureElementVisible: jest.fn(),
+      expandParentNavigationSection: jest.fn(),
+      clearOwnedHighlights: jest.fn(),
+      highlightWithComment: jest.fn(),
+      showNoopComment: jest.fn(),
+    };
+    const realHandler = new RealGuidedHandler({} as any, navigation as any, async () => {});
+    mockExecuteGuidedStep.mockImplementation(realHandler.executeGuidedStep.bind(realHandler));
+    const onStepComplete = jest.fn();
+    const view = render(
+      <InteractiveGuided
+        stepId="managed-padding-complete"
+        sectionId="section"
+        onStepComplete={onStepComplete}
+        internalActions={[{ targetAction: 'highlight', refTarget: '#managed-padding-target' }]}
+      />,
+      { wrapper: Wrapper }
+    );
+    target.onclick = () => view.unmount();
+    try {
+      fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+      await waitFor(() => expect(navigation.highlightWithComment).toHaveBeenCalled());
+      await act(async () => {
+        document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 95, clientY: 110 }));
+      });
+      await waitFor(() => expect(onStepComplete).toHaveBeenCalledTimes(1));
+    } finally {
+      realHandler.cancel();
+      target.remove();
+      jest
+        .mocked(querySelectorAllEnhanced)
+        .mockReturnValue({ elements: [], usedFallback: false, originalSelector: '' });
+      coordinator.stop();
+    }
+  });
+
+  it('reports waiting, not requirements-unmet, while an objective gates a finished run', async () => {
+    let satisfied = false;
+    const { coordinator, Wrapper } = coordinated(async () => satisfied);
+    mockExecuteGuidedStep.mockResolvedValue('completed');
+    const onComplete = jest.fn();
+    render(
+      <InteractiveGuided
+        stepId="managed-gated"
+        objectives={['has-datasources']}
+        onComplete={onComplete}
+        internalActions={[{ targetAction: 'noop' }]}
+      />,
+      { wrapper: Wrapper }
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    const step = screen.getByTestId(testIds.interactive.step('managed-gated'));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'waiting'));
+    expect(step).toHaveAttribute('data-test-requirements-state', 'met');
+    expect(screen.getByTestId(testIds.interactive.completionWaiting('managed-gated'))).toBeInTheDocument();
+    expect(onComplete).not.toHaveBeenCalled();
+
+    satisfied = true;
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(testIds.interactive.checkCompletionButton('managed-gated')));
+    });
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    coordinator.stop();
   });
 });

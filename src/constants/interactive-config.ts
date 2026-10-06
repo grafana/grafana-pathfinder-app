@@ -98,13 +98,6 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
     useScrollEvents: true, // Listen for scroll completion
     fallbackTimeouts: true, // Keep timeouts as fallbacks
   },
-  // Auto-detection configuration for step completion
-  autoDetection: {
-    enabled: true,
-    verificationDelay: 200, // Delay before running post-verification checks (ms)
-    feedbackDuration: 1500, // Duration to show auto-completion feedback (ms)
-    eventTypes: ['click', 'input', 'change', 'mouseenter'] as const, // DOM events to monitor
-  },
   // Position tracking configuration for highlight drift detection
   positionTracking: {
     driftThreshold: 5, // Pixels of center drift before triggering position correction
@@ -172,10 +165,6 @@ export function getInteractiveConfig(pluginConfig?: PathfinderPluginConfig) {
         watchWindowMs: defaults.requirements.heartbeat.watchWindowMs,
         onlyForFragile: defaults.requirements.heartbeat.onlyForFragile,
       },
-    },
-    autoDetection: {
-      ...defaults.autoDetection,
-      enabled: true,
     },
     delays: {
       ...defaults.delays,

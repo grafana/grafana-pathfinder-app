@@ -329,6 +329,9 @@ export async function runGuidedSubstepLoop(
       await captureLoopArtifacts();
       throw new Error('Guided step was cancelled');
     }
+    if (state === 'waiting') {
+      return { completed: false };
+    }
     if (state !== 'executing') {
       await captureLoopArtifacts();
       throw new Error(`Unexpected guided step state: ${state}`);

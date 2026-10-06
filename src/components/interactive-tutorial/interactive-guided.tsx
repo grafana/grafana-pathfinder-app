@@ -33,6 +33,7 @@ import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai
 import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
+import { CompletionWaitingStatus } from './completion-waiting-status';
 import { resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
@@ -139,6 +140,7 @@ interface GuidedUiStateInput {
   wasCancelled: boolean;
   isChecking: boolean;
   isEnabled: boolean;
+  isWaiting?: boolean;
 }
 
 export function deriveGuidedUiState(input: GuidedUiStateInput): StepStateValue {
@@ -156,6 +158,9 @@ export function deriveGuidedUiState(input: GuidedUiStateInput): StepStateValue {
   }
   if (input.isCompleted) {
     return STEP_STATES.COMPLETED;
+  }
+  if (input.isWaiting) {
+    return STEP_STATES.WAITING;
   }
   if (input.isChecking) {
     return STEP_STATES.CHECKING;
@@ -264,6 +269,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       resetTrigger,
       onStepComplete: notifyStepComplete,
       onComplete: notifyComplete,
+      analytics: {
+        location: 'interactive_guided_auto',
+        targetAction: 'guided',
+        refTarget: renderedStepId,
+        stepMeta: analyticsStepMeta,
+      },
     });
     const { complete: persistCompletion, onStepComplete, onComplete } = observation;
     const persistReset = useCallback(() => {
@@ -349,7 +360,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       skippable,
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
-      lazyRender: observation.managed ? false : internalActions[0]?.lazyRender,
+      lazyRender: internalActions[0]?.lazyRender,
       scrollContainer: internalActions[0]?.scrollContainer,
       disabled, // Pass through for auto-completion suppression
       sectionId, // Lets the checker write skip / objectives transitions to the store
@@ -808,6 +819,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       wasCancelled,
       isChecking: checker.isChecking,
       isEnabled: checker.isEnabled,
+      isWaiting: observation.waiting,
     });
 
     return (
@@ -821,19 +833,14 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         data-test-substep-index={isExecuting ? currentStepIndex : undefined}
         data-test-substep-total={internalActions.length}
         data-test-requirements-state={
-          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+          checker.isChecking ? 'checking' : rawChecker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
         }
       >
         {/* Title and description - always shown */}
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
           {observation.waiting && (
-            <div role="status">
-              Waiting for completion{' '}
-              <button type="button" onClick={observation.retry}>
-                Check completion
-              </button>
-            </div>
+            <CompletionWaitingStatus id={renderedStepId} unmet={observation.unmet} onCheck={observation.retry} />
           )}
           {children}
         </div>

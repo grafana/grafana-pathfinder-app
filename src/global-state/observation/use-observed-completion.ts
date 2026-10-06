@@ -4,7 +4,12 @@ import type { ObservationReason, ObservedAction, ObservationStep } from './coord
 import { markStepCompleted, useStepCompletion, readStepCompletion } from '../completion-store';
 import { getContentKey } from '../content-key';
 import type { ConditionInput } from '../../types/requirements.types';
-import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import {
+  buildInteractiveStepProperties,
+  reportAppInteraction,
+  UserInteraction,
+  type StepContext,
+} from '../../lib/analytics';
 
 interface Options {
   stepId: string;
@@ -17,6 +22,7 @@ interface Options {
   resetTrigger?: number;
   onStepComplete?: (id: string) => void;
   onComplete?: () => void;
+  analytics: { location: string; targetAction: string; refTarget?: string; stepMeta: StepContext };
 }
 const noopSubscribe = () => () => {};
 const zero = () => 0;
@@ -37,11 +43,21 @@ export function useObservedCompletion(options: Options) {
       markStepCompleted(stepId, sectionId, reason, contentKey);
       latest.current.onStepComplete?.(stepId);
       latest.current.onComplete?.();
-      if (reason !== 'skipped') {
-        reportAppInteraction(UserInteraction.StepAutoCompleted, {
-          completion_method: reason === 'observed' ? 'auto_detected' : reason === 'manual' ? 'assisted' : 'objectives',
-          interaction_location: 'guide_completion_observer',
-        });
+      if (reason === 'observed') {
+        const { analytics, actions } = latest.current;
+        reportAppInteraction(
+          UserInteraction.StepAutoCompleted,
+          buildInteractiveStepProperties(
+            {
+              target_action: analytics.targetAction,
+              ref_target: analytics.refTarget ?? stepId,
+              interaction_location: analytics.location,
+              completion_method: 'auto_detected',
+              ...(actions.length > 1 && { internal_actions_count: actions.length }),
+            },
+            analytics.stepMeta
+          )
+        );
       }
     },
     [contentKey, stepId, sectionId]
@@ -68,9 +84,9 @@ export function useObservedCompletion(options: Options) {
   }, [coordinator, id, resetTrigger]);
   useSyncExternalStore(coordinator?.subscribe ?? noopSubscribe, coordinator?.snapshot ?? zero, zero);
   const complete = useCallback(
-    (reason: ObservationReason = 'manual') => {
+    (reason: ObservationReason = 'manual', early = false) => {
       if (coordinator) {
-        coordinator.request(id, reason);
+        coordinator.request(id, reason, early);
       } else if (!latest.current.onStepComplete) {
         markStepCompleted(stepId, sectionId, reason, contentKey);
       }
@@ -100,6 +116,7 @@ export function useObservedCompletion(options: Options) {
     retry,
     managed: coordinator !== null,
     waiting: coordinator?.waiting(id) ?? false,
+    unmet: coordinator?.unmet(id),
     complete,
     onStepComplete,
     onComplete,

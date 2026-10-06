@@ -158,6 +158,8 @@ export const testIds = {
     requirementRetryButton: (stepId: string) => `interactive-requirement-retry-${stepId}`,
     requirementSkipButton: (stepId: string) => `interactive-requirement-skip-${stepId}`,
     stepCompleted: (stepId: string) => `interactive-step-completed-${stepId}`,
+    completionWaiting: (stepId: string) => `interactive-completion-waiting-${stepId}`,
+    checkCompletionButton: (stepId: string) => `interactive-check-completion-${stepId}`,
     errorMessage: (stepId: string) => `interactive-error-${stepId}`,
     formChecking: (stepId: string) => `interactive-form-checking-${stepId}`,
     formHintWarning: (stepId: string) => `interactive-form-hint-${stepId}`,
@@ -236,7 +238,6 @@ export const testIds = {
     codaTerminalToggle: 'config-coda-terminal-toggle',
     // Interactive Features
     interactiveFeatures: {
-      toggle: 'config-interactive-auto-detection-toggle',
       debounce: 'config-interactive-debounce-input',
       requirementsTimeout: 'config-interactive-requirements-timeout',
       guidedTimeout: 'config-interactive-guided-timeout',

@@ -4,6 +4,7 @@ import { CompletionObservationProvider } from './completion-observation-provider
 import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import { markStepCompleted } from '../../global-state/completion-store';
 import { StorageEvents } from '../../lib/event-names';
+import { CompletionCoordinator } from '../../global-state/observation/coordinator';
 
 const mockCheck = jest.fn();
 const mockListen = jest.fn(() => () => {});
@@ -29,6 +30,7 @@ jest.mock('../../global-state/completion-store', () => ({
 jest.mock('../../lib/context-event-bus', () => ({ onContextChange: () => () => {} }));
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
+  buildInteractiveStepProperties: (properties: object) => properties,
   UserInteraction: { StepAutoCompleted: 'auto' },
 }));
 jest.mock('../../lib/dom', () => ({
@@ -56,11 +58,16 @@ function Step({
       { targetAction: 'button', refTarget: '#first' },
       { targetAction: 'button', refTarget: '#last' },
     ],
+    analytics: { location: 'test', targetAction: 'multistep', stepMeta: { stepId: 'step' } },
   });
   return (
     <button onClick={() => observation.complete()}>{observation.waiting ? 'Waiting for completion' : 'Assist'}</button>
   );
 }
+
+afterEach(() => {
+  new CompletionCoordinator(jest.fn()).reset();
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
