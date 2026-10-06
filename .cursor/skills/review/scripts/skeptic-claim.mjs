@@ -16,24 +16,35 @@ export const CLAIM_FIELDS = [
 const CLAIM_TEXT_FIELDS = ['title', 'why_it_matters'];
 
 const COUNT = String.raw`(?:\d+|two|three|four|five|six|seven|eight|nine|ten|several|multiple|many|all|both|every|each)`;
-const PRODUCER = String.raw`(?:reviewers?|workers?|agents?|subagents?|producers?|specialists?|observers?|skeptics?)`;
+// Review-role nouns only: "worker", "observer", and "agent" are common code nouns and are left out on purpose.
+const REVIEWER = String.raw`(?:reviewers?|skeptics?|specialists?|producers?|verifiers?)`;
 const REPORTED = String.raw`(?:reported|flagged|found|raised|confirmed|identified|noted|corroborated)`;
 
 const META_CLAIM_PATTERNS = [
   new RegExp(String.raw`\b(?:independently|separately)\s+${REPORTED}\b`, 'i'),
   new RegExp(String.raw`\b${REPORTED}\s+(?:independently|separately)\b`, 'i'),
-  new RegExp(String.raw`\b${COUNT}\s+(?:of\s+(?:the\s+)?(?:\d+\s+)?)?(?:independent\s+|other\s+)?${PRODUCER}\b`, 'i'),
-  new RegExp(String.raw`\b${PRODUCER}\s+(?:all\s+)?(?:agree|agreed|concur|concurred)\b`, 'i'),
-  /\b(?:consensus|unanimous(?:ly)?)\b/i,
-  /\broot\s+(?:dedupe|dedup|synthesis|recommends?|recommended|suggests?|believes|thinks|considers|concluded|judges?)\b/i,
+  new RegExp(String.raw`\b${COUNT}\s+(?:of\s+(?:the\s+)?(?:\d+\s+)?)?(?:independent\s+|other\s+)?${REVIEWER}\b`, 'i'),
   new RegExp(
-    String.raw`\b${PRODUCER}\s+(?:reported|flagged|recommends?|recommended|says|said|believes|concluded|rated)\b`,
+    String.raw`\b(?:${REVIEWER}|workers?|agents?|observers?|subagents?)\s+(?:all\s+)?(?:agree|agreed|concur|concurred)\b`,
     'i'
   ),
+  new RegExp(
+    String.raw`\b${REPORTED}\s+by\s+(?:both|all|several|multiple|\d+|two|three|four|five)\s+(?:of\s+the\s+)?(?:${REVIEWER}|workers?|agents?|observers?|subagents?)\b`,
+    'i'
+  ),
+  /\b(?:reached|reach|by|in)\s+consensus\b|\bconsensus\s+(?:among|of|between|across)\b|\bconsensus\s+(?:finding|view|verdict|that)\b|\bunanimous(?:ly)?\b/i,
+  /\broot\s+(?:dedupe|dedup|synthesis|recommends?|recommended|suggests?|believes|thinks|considers|concluded|judges?)\b/i,
+  new RegExp(
+    String.raw`\b${REVIEWER}\s+(?:reported|flagged|recommends?|recommended|says|said|believes|concluded|rated)\b`,
+    'i'
+  ),
+  /\bother\s+(?:skeptic|reviewer|verifier)s?\b/i,
+  /\b(?:everyone|everybody|all|each)\s+(?:who|that)\s+(?:reviewed|looked)\b/i,
+  /\balready\s+(?:been\s+)?(?:verified|confirmed)\b/i,
+  /\bnote\s+to\s+(?:the\s+)?(?:verifier|skeptic|reviewer)\b|\bexpected\s+verdict\b/i,
   /\brecommend(?:s|ed|ing)?\s+(?:blocking|approval|approving|merging|requesting changes)\b/i,
   /\b(?:should|must)\s+(?:block\s+(?:the\s+)?(?:merge|pr)|be\s+(?:a\s+)?(?:merge[- ])?blocker|request\s+changes)\b/i,
-  /\b(?:merge|release)[- ]block(?:ing|er)\b/i,
-  /\bblocks?\s+(?:the\s+)?merge\b/i,
+  /\b(?:merge|release)[- ]blocker\b/i,
 ];
 
 function claimTexts(claim) {
