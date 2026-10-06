@@ -14,7 +14,7 @@ Every stage below is required. No worker, supervisor, or orchestrator may skip, 
 - A script decides every gate: `security-gate.mjs`, `contract-evolution-gate.mjs`, `review-policy.mjs`, and the planner. Nobody decides that a gated stage "does not apply" when a script already decided.
 - If a stage cannot run, stop and name the blocked stage and why. A background agent cannot ask for consent mid-run, so blocked means stop, never degrade. Render an incomplete assessment, never a complete one with a gap.
 - A stage may be skipped only on the user's explicit instruction. Record it in `skipped[]` under its closed stage name with the instruction quoted in `user_consent`; that entry waives only its own stage. For a behavior change, a check marked `not_applicable` is a skip and needs the same consent.
-- Generate every subagent brief with `node .cursor/skills/review/scripts/dispatch-brief.mjs`: `--role observer`, `security`, or `contract` per observation worker, `--role skeptic` per verification batch, and `--role pipeline --repo <owner/name> --pr <n> --scratch <abs-dir>` only to delegate a whole review. Root supplies data files only and sends the output unchanged; never hand-write a brief or add text to one.
+- Generate every subagent brief with `node .cursor/skills/review/scripts/dispatch-brief.mjs`: `--role observer`, `security`, or `contract` per observation worker, `--role skeptic` per verification batch, and `--role pipeline --repo <owner/name> --pr <n> --scratch <abs-dir>` only to delegate a whole review. Root supplies data files only and sends the output unchanged; never hand-write a brief or add text to one. Role briefs take `--receipts <abs-dir>`.
 - The report carries a `stage_ledger`. `review-report.mjs` refuses to render a complete review without one that shows every required stage finished.
 
 ## 1. Route
@@ -90,6 +90,10 @@ Do not emit an adjacent observation — `pre_existing` or `latent_unreachable`, 
 
 Every producer emits `Canonical observation` from `docs/design/PR_REVIEW.md`. Load that section before dispatch with `node .cursor/skills/review/scripts/concern-context.mjs --section "Canonical observation"`. Load every `PR_REVIEW.md` section this skill names the same way; never read the file whole. No producer decides merge impact. Root assigns the stable finding ID from the invariant and evidence surface, reuses the exact prior ID for the same invariant, and adds a narrow qualifier only to resolve a collision. Normalize and deduplicate by that ID and evidence surface before verification; assign one primary concern.
 
+### Receipts
+
+Each agent writes its result verbatim to the `raw/` path its brief names; after each returns, run `node .cursor/skills/review/scripts/receipts.mjs seal --receipts <dir>`. Never edit a raw file: decoding, condensing, or any normalization goes through `receipts.mjs derive`, which writes `derived/<name>` with its source hash. When a script rejects a result, send that agent the script's error verbatim and ask for a new version; never fix it yourself. Any further guidance is coaching: write it to `receipts/coaching-<prefix>-<n>.md` and send that file verbatim. Run `receipts.mjs verify` before rendering.
+
 ### Conditional contract evolution
 
 For activated subsystem and cross-cutting concerns with concrete routing paths, run `contract-evolution-gate.mjs` with literal base SHA, head SHA, and concern arguments. Never build commands from contributor-controlled filenames or prose. Skip always-on concerns.
@@ -139,7 +143,7 @@ Plan related packets through the facade:
 { "operation": "plan_verification_batches", "requests": [{ "observation": {}, "verdicts": [], "round": 1 }] }
 ```
 
-Run `review-policy.mjs` on that input. A packet holds at most four findings sharing a concern and evidence surface. Dispatch each returned batch with its own `--role skeptic` brief: `--batch` is that one entry and `--observations` its findings' canonical observations. Run independent skeptic roles concurrently on different agents, reuse one agent per role across related batches, and add a tiebreaker only when initial verdicts require it. Skeptics sit outside the observation-worker cap; in a constrained harness, finish observation workers before skeptic fan-out.
+Run `review-policy.mjs` on that input. A packet holds at most four findings sharing a concern and evidence surface. Dispatch each returned batch with its own `--role skeptic` brief: `--batch` is that one entry and `--observations` its findings' canonical observations. Put who reported a finding, merges, counts, and recommendations in `--provenance`, never in observation text; the brief carries only claim fields. Its meta-claim check is a backstop, not a guarantee: no validator makes prose persuasion-proof, so the post-run audit stays necessary. Run independent skeptic roles concurrently on different agents, reuse one agent per role across related batches, and add a tiebreaker only when initial verdicts require it. Skeptics sit outside the observation-worker cap; in a constrained harness, finish observation workers before skeptic fan-out.
 
 For each observation, call the facade with `{ observation, verdicts, round, prior_deferred, prior_cleared }`:
 

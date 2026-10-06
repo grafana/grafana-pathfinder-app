@@ -18,6 +18,73 @@ const REVERSIBILITY = new Set(['reversible', 'partially_reversible', 'irreversib
 const SOURCE_KINDS = new Set(['anchor', 'commit', 'issue', 'pr']);
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 
+const list = (values) => [...values].map((value) => `\`${value}\``).join(', ');
+
+export const CONTRACT_SOURCE_EXAMPLES = [
+  { kind: 'pr', id: 1234, sha: 'abcdef1', selection_reason: 'Introduced the contract this change touches.' },
+  { kind: 'anchor', selection_reason: 'The concern contract anchor in docs/design/CONCERN_DETAILS.md.' },
+  { kind: 'commit', sha: '1234567890abcdef', selection_reason: 'A later fix to the same owner.' },
+  { kind: 'issue', id: 1300, selection_reason: 'A follow-up issue linked from that PR review.' },
+];
+
+export const CONTRACT_PACKET_EXAMPLE = {
+  concern_id: 'example-concern',
+  origin_or_contract_anchor: 'src/example/owner.ts: exampleOwner is the only writer',
+  recent_semantic_changes: [{ pr: 1234, sha: 'abcdef1', timestamp: 1700000000, summary: 'Added exampleOwner.' }],
+  current_contract_owner: 'none found',
+  new_contract_delta: 'A second module now writes the same value.',
+  competing_owners_or_representations: ['src/example/other.ts: otherWriter'],
+  verdict: 'contract_missing',
+  history_status: 'complete',
+  use_ordinal: 'first',
+  same_bug_count: 0,
+  has_recorded_anchor: false,
+  anchor_violated: false,
+  branching_conditions: [],
+  sources: CONTRACT_SOURCE_EXAMPLES.slice(0, 2),
+  finding: {
+    finding_id: 'example-concern-no-owner',
+    title: 'Two modules write the same value with no recorded owner',
+    evidence: ['src/example/other.ts:10 writes the value that src/example/owner.ts:5 also writes.'],
+    why_it_matters: 'The two writers can drift.',
+    suggested_action: 'Name one owner in the concern contract anchor.',
+    reversibility: 'reversible',
+    applies_to_files: ['src/example/other.ts'],
+  },
+};
+
+const json = (value) => JSON.stringify(value);
+
+export const CONTRACT_PACKET_SCHEMA = [
+  '### Contract evolution packet schema',
+  '',
+  '`contract-evolution-policy.mjs` checks `packet` against exactly these rules. A rejected packet gets the validator error back word for word.',
+  '',
+  '- `concern_id`, `origin_or_contract_anchor`, `current_contract_owner`, `new_contract_delta`: non-empty strings. `concern_id` is the gated concern, lowercase letters, digits, and dashes.',
+  `- \`verdict\`: one of ${list(VERDICTS)}.`,
+  `- \`history_status\`: one of ${list(HISTORY_STATUSES)}.`,
+  `- \`use_ordinal\`: one of ${list(ORDINALS)}.`,
+  '- `recent_semantic_changes`: array of `{ "pr": <integer>, "sha": "<7 to 40 hex characters>", "timestamp": <integer Unix seconds, as in the gate output>, "summary": "<non-empty string>" }`.',
+  '- `competing_owners_or_representations`, `branching_conditions`: arrays.',
+  `- \`sources\`: array. Each entry is \`{ "kind": ${[...SOURCE_KINDS].map((kind) => `"${kind}"`).join(' | ')}, "selection_reason": "<non-empty string>" }\`, plus \`"id": <integer>\` when \`kind\` is \`pr\` or \`issue\`, and \`"sha": "<7 to 40 hex characters>"\` when \`kind\` is \`pr\` or \`commit\`. Other shapes, such as \`{ "id", "reason" }\`, are rejected.`,
+  '- `has_recorded_anchor`, `anchor_violated`: booleans. `anchor_violated: true` needs `has_recorded_anchor: true`.',
+  '- `same_bug_count`: integer, 0 or more.',
+  `- \`finding\`: required when the verdict is \`contract_missing\` or \`contract_branching\`, or when \`insufficient_history\` applies (that verdict, or \`history_status\` other than \`complete\` with no recorded anchor; for a clean verdict there the adapter writes a low finding if you omit it). Omit it for a clean verdict with complete history or a recorded anchor. Shape: \`finding_id\` (letters, digits, dots, dashes, underscores; at most 80), \`title\`, \`why_it_matters\`, \`suggested_action\` (non-empty strings), \`evidence\` (non-empty array of non-empty strings), \`applies_to_files\` (array of non-empty strings), \`reversibility\` (one of ${list(REVERSIBILITY)}).`,
+  '- `timing` (optional): `first_round`, `prior_unresolved`, `since_prior_head`, or `late`; the default is `first_round`.',
+  '',
+  'Valid `sources` entries (invented values):',
+  '',
+  '```json',
+  ...CONTRACT_SOURCE_EXAMPLES.map(json),
+  '```',
+  '',
+  'A valid packet (the values are invented and say nothing about this PR):',
+  '',
+  '```json',
+  JSON.stringify(CONTRACT_PACKET_EXAMPLE, null, 2),
+  '```',
+].join('\n');
+
 function requireArray(packet, field) {
   if (!Array.isArray(packet[field])) {
     throw new Error(`${field} must be an array`);
