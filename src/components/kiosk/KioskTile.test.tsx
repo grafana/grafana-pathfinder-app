@@ -65,6 +65,8 @@ describe('KioskTile', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    sidebarState.setIsSidebarMounted(false);
+    sidebarState.consumePendingOpenSource();
     window.open = mockOpen;
     Object.defineProperty(globalThis, 'crypto', {
       value: { randomUUID: mockRandomUUID },
@@ -101,7 +103,7 @@ describe('KioskTile', () => {
     if (mode === 'instance') {
       expect(window.__pathfinderKioskSessionId).toBe(session.id);
       expect(window.__pathfinderKioskName).toBe('customer-onboarding');
-      expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto-open' });
+      expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'sidebar_toggle', action: 'open' });
     }
     session.end();
     delete window.__pathfinderKioskSessionId;
@@ -256,10 +258,33 @@ describe('KioskTile', () => {
         expect.objectContaining({ url: rule.url, preparedContent: prepared.preparedContent, source: 'kiosk_session' })
       );
       expect(new URL(mockPush.mock.calls[0][0], window.location.origin).searchParams.has('doc')).toBe(false);
+      expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'sidebar_toggle', action: 'open' });
     } finally {
       document.removeEventListener(REQUEST_FLOATING_GUIDE_EVENT, listener);
       jest.mocked(isExtensionSidebarOwnedByOther).mockReturnValue(false);
     }
+  });
+
+  it('sets kiosk attribution when a prepared guide actually opens the sidebar', () => {
+    panelModeManager.setModeTransient('sidebar');
+    const prepared: PreparedGuideLaunch = {
+      url: rule.url,
+      title: rule.title,
+      type: 'docs',
+      source: 'kiosk_session',
+      requiresGrafanaUi: true,
+      preparedContent: {
+        url: rule.url,
+        content: '{}',
+        type: 'interactive',
+        metadata: { title: rule.title },
+        lastFetched: '',
+        countingSource: { kind: 'pre-inlining', guideJson: '{}' },
+      },
+    };
+    launchKioskGuide(rule, 'instance', jest.fn(), prepared);
+    expect(sidebarState.getIsSidebarMounted()).toBe(true);
+    expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto-open' });
   });
 
   it('keeps the current route when no page is specified and forwards learning journeys', () => {

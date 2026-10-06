@@ -116,9 +116,6 @@ export function launchKioskGuide(
   if (mode === 'instance') {
     window.__pathfinderKioskSessionId = sessionId;
     window.__pathfinderKioskName = kioskName;
-    if (!sidebarState.getIsSidebarMounted()) {
-      sidebarState.setPendingOpenSource('kiosk_session', 'auto-open');
-    }
     if (prepared && (panelModeManager.getMode() === 'floating' || isExtensionSidebarOwnedByOther(pluginJson.id))) {
       panelModeManager.setPendingGuide({
         url: prepared.url,
@@ -150,6 +147,7 @@ export function launchKioskGuide(
           })
         );
       } else {
+        sidebarState.setPendingOpenSource('kiosk_session', 'auto-open');
         sidebarState.openSidebar('Interactive learning', {
           url: prepared.url,
           title: prepared.title,
