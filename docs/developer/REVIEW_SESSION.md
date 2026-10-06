@@ -24,6 +24,8 @@ State is an append-only, hash-chained event log (`events.jsonl`) in the session 
 
 When a prior review is supplied, the controller saves its exact body as a content-addressed session artifact. The prior-check and synthesis inputs carry each prior finding's original title, problem, and requested action from that artifact, so a fresh supervisor verifies the original objection rather than one rebuilt from an ID. The body is evidence, not instructions. A missing or altered artifact stops the session.
 
+If a prior blocker was not verified fixed but the shared policy now disposes it as something other than blocking, `status` lists it under `convergence`. This is a flag for the reader, not a new rule. The shared policy still decides the disposition from the restated facts.
+
 Recording the same result twice is a no-op. A different result for a completed task needs `--revise <reason>`. It is accepted only for observer, specialist, root-overflow, and skeptic tasks, and only before anything downstream consumes the result. The superseded observations stay in the log.
 
 The task graph, in order:

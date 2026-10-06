@@ -4,7 +4,7 @@ import test from 'node:test';
 import { advanceReviewPolicy } from '../review-policy.mjs';
 import { renderReviewReport } from '../review-report.mjs';
 import { recordResult, recordWaiver } from './controller.mjs';
-import { deriveStageLedger, obligations, renderSession } from './finalize.mjs';
+import { deriveStageLedger, obligations, renderSession, sessionStatus } from './finalize.mjs';
 import {
   ALWAYS_ON,
   applyDrafts,
@@ -611,6 +611,7 @@ test('a valid same-reviewer prior state starts an incremental round that verifie
   assert.deepEqual(state.reconciliation.input.verified_fixed_ids, ['add-test']);
   assert.equal(state.policy['lost-write'].decision.disposition, 'blocking');
   assert.match(renderSession(state).rendered, /"round":3/);
+  assert.deepEqual(sessionStatus(state).convergence, []);
 });
 
 test('invalid, truncated, foreign, and non-ancestor prior state each fall back to a full review', () => {
@@ -701,4 +702,42 @@ test('round three drops new optional work exactly as the facade does', () => {
   });
   assert.equal(state.identity.round, 3);
   assert.deepEqual(state.policy[optional.finding_id], { status: 'dropped', reason: 'round-three-optional' });
+});
+
+test('a prior blocker restated without a verified fix but disposed as non-blocking is flagged', () => {
+  const ctx = fakeContext();
+  const prior = { body: priorReview({ blocking: ['lost-write'], round: 1 }), author: 'reviewer-bot', count: 1 };
+  let state = startSession(ctx, { prior });
+  const check = ready(state, 'prior_check')[0];
+  state = submit(
+    state,
+    check,
+    {
+      items: [
+        {
+          id: 'lost-write',
+          concern_id: 'correctness-and-reliability',
+          kind: 'blocking',
+          status: 'unresolved',
+          evidence: ['unchanged'],
+        },
+      ],
+      observations: [observation({ timing: 'prior_unresolved', severity: 'low', impact: 'none' })],
+    },
+    ctx
+  );
+  state = drive(state, ctx, {
+    routeOverrides: {
+      concerns: [{ id: 'correctness-and-reliability', context: [] }],
+      concern_gaps: ALWAYS_ON.filter((id) => id !== 'correctness-and-reliability').map((id) => ({
+        id,
+        reason: 'untouched',
+      })),
+    },
+  });
+  assert.equal(state.policy['lost-write'].decision.disposition, 'follow_up');
+  assert.match(
+    sessionStatus(state).convergence[0],
+    /prior blocker lost-write .* was not verified fixed but is now follow_up \(no-current-harm\)/
+  );
 });

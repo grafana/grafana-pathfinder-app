@@ -263,6 +263,25 @@ export function renderSession(state) {
   return { report, open, rendered: renderReviewReport(report) };
 }
 
+export function priorBlockerChanges(state) {
+  const prior = state.identity?.prior.state?.blocking_findings ?? [];
+  const check = onlyTask(state, 'prior_check')?.result;
+  return prior.flatMap(({ id, concern_id: concernId }) => {
+    const item = check?.items.find((candidate) => candidate.id === id && candidate.kind === 'blocking');
+    if (item?.status !== 'unresolved' || !state.policy) {
+      return [];
+    }
+    const result = state.policy[id];
+    const now = result?.status === 'final' ? result.decision.disposition : (result?.status ?? 'missing');
+    if (now === 'blocking') {
+      return [];
+    }
+    return [
+      `prior blocker ${id} (${concernId}) was not verified fixed but is now ${now}${(result?.decision?.reason ?? result?.reason) ? ` (${result?.decision?.reason ?? result.reason})` : ''}; compare the restated facts with the prior review before accepting the change`,
+    ];
+  });
+}
+
 export function sessionStatus(state) {
   const open = obligations(state);
   const tasks = state.order.map((id) => state.tasks[id]);
@@ -278,6 +297,7 @@ export function sessionStatus(state) {
       `${task.id}: the reverted test failed with a ${task.result.failure_kind} failure, not a behavior assertion; the ledger still records fails_without_fix`
   );
   return {
+    convergence: priorBlockerChanges(state),
     session_id: state.identity?.session_id,
     revision: state.revision,
     mode: state.identity?.mode,
