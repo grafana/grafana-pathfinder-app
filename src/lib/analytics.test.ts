@@ -361,6 +361,8 @@ describe('step events: block progress properties', () => {
 
     expect(props).toMatchObject({
       block_position: 2,
+      block_progress_rule_version: 'block-position-v1',
+      guide_stats_version: 1,
       total_block_count: 6,
       completable_block_count: 2,
       section_count: 1,
@@ -428,6 +430,8 @@ describe('step events: block progress properties', () => {
     publish();
 
     expect(getGuideBlockCountProperties(GUIDE_KEY)).toEqual({
+      block_progress_rule_version: 'block-position-v1',
+      guide_stats_version: 1,
       total_block_count: 6,
       completable_block_count: 2,
       section_count: 1,

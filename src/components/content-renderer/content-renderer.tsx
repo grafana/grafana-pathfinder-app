@@ -29,6 +29,7 @@ import {
   useGuideResponses,
   isJourneyCoverPage,
   getCurrentMilestone,
+  resolveSurfaceGuideCompletionIdentity,
 } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
@@ -515,6 +516,11 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     <MarkCompleteFooter
       context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
       contentUrl={content.url}
+      guideIdentity={resolveSurfaceGuideCompletionIdentity({
+        contentUrl: content.url,
+        currentUrl: content.url,
+        metadata: content.metadata,
+      })}
       onMarkComplete={triggerGuideCompleteFromMark}
       onContinue={onContinueToNextMilestone}
     />

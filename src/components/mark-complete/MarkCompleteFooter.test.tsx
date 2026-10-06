@@ -105,6 +105,9 @@ describe('MarkCompleteFooter', () => {
     expect(onMarkComplete).toHaveBeenCalledTimes(1);
     expect(reportAppInteraction).toHaveBeenCalledTimes(1);
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
+      guide_source: 'other',
+      guide_visibility: 'private',
+      percentage_rule_version: 'block-position-v1',
       interaction_location: 'content_footer',
       completion_context: 'guide',
       completion_percentage_before: 25,
@@ -129,9 +132,14 @@ describe('MarkCompleteFooter', () => {
       await clickWhenReady();
 
       expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
+        guide_source: 'other',
+        guide_visibility: 'private',
+        percentage_rule_version: 'block-position-v1',
         interaction_location: 'content_footer',
         completion_context: 'guide',
         completion_percentage_before: 25,
+        block_progress_rule_version: 'block-position-v1',
+        guide_stats_version: 1,
         total_block_count: 3,
         completable_block_count: 1,
         section_count: 1,
@@ -145,6 +153,9 @@ describe('MarkCompleteFooter', () => {
       await clickWhenReady();
 
       expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
+        guide_source: 'other',
+        guide_visibility: 'private',
+        percentage_rule_version: 'block-position-v1',
         interaction_location: 'content_footer',
         completion_context: 'guide',
         completion_percentage_before: 25,

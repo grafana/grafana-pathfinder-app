@@ -180,20 +180,13 @@ When the guide has a frozen block index (`getGuideIndex` in `src/global-state/ac
 | `completable_block_count` | Counted blocks that can emit completion evidence.                                                                                                                                                                                                  |
 | `section_count`           | Section containers in the guide — the index's `sectionCount`, the same figure as the manifest stamp's `sectionCount` and the library survey in `docs/design/COMPLETION-MODEL.md`. A section with no counted blocks cannot move the percentage.     |
 
-All four are omitted when there is no index for the content key (HTML docs never have one) or the step has no position (an anonymous standalone step, or a block whose runtime id a `snippet-ref` shifts). The index is looked up under `getContentKey()`, the key the completion store credits steps under; `source_document` is the same value before that key's sanitization. `mark_complete_clicked` carries `total_block_count`, `completable_block_count` and `section_count` under the same rule, and no guide identity.
+All four are omitted when there is no index for the content key (HTML docs never have one) or the step has no position (an anonymous standalone step, or a block whose runtime id a `snippet-ref` shifts). The index is looked up under `getContentKey()`, the key the completion store credits steps under; `source_document` is the same value before that key's sanitization. `mark_complete_clicked` carries `total_block_count`, `completable_block_count` and `section_count` under the same index rule. It also carries `guide_id`, `guide_source` and `guide_visibility` using the terminal-completion identity and privacy helper: public guides and milestones have their canonical guide id; App Platform, remote and unresolved sources omit the id. The click never sends a title or containing path id. A milestone uses its own slug, not the parent manifest id.
 
-### Reproducing the guide percentage
+### Measuring guide progress
 
-For one reader and one `source_document`:
+`block_progress_rule_version: block-position-v1` names the formula for the new block properties; `guide_stats_version` identifies the counting rules used by the live index. Step events retain the legacy step-position `completion_percentage`, tagged `percentage_rule_version: step-position-v1`. The footer's live `completion_percentage_before` is tagged `percentage_rule_version: block-position-v1`. These markers do not reclassify stored percentages in older events.
 
-```text
-position = max(block_position) over step_auto_completed, step_skipped and do_it_button_click rows
-           (guided step_auto_completed rows only where internal_step_number = internal_actions_count)
-percent  = 100                                                if mark_complete_clicked exists or position = total_block_count
-         = min(99, floor(100 × position / total_block_count))  otherwise
-```
-
-That is the app's own rule (`guideProgressAtPosition` in `src/lib/guide-stats/progress.ts`), but the stream only approximates its input. `do_it_button_click` is sent before the action runs, so a failed Do it over-credits. Evidence with no completion event under-credits: Do section runs, Show me–only steps, steps completed by objectives, and section acknowledgements, which credit the section's last counted block. `mark_complete_clicked.completion_percentage_before` is the app's live figure at the moment of the click; use it to check the estimate.
+The step stream cannot reconstruct exact guide progress. `do_it_button_click` fires before execution and may fail; Do section, Show me-only steps, already-satisfied objectives and section acknowledgements do not all emit completion signals. A maximum over click positions can therefore both over-credit and under-credit. Use `completion_percentage_before` as a live observation at mark time and terminal completion events as terminal observations. An authoritative incremental-progress event from the shared completion store, including reset and restoration semantics, remains a separate follow-up.
 
 **Binary-only guides** are those with `completable_block_count` 0 and `section_count` 0. Nothing but Mark complete can evidence them, so they read 0% or 100% and nothing in between. In the completion model's survey that is 256 of the 308 guides with no completable block; the other 52 have sections, and "Mark section as complete" gives them intermediate percentages.
 
@@ -208,7 +201,7 @@ That is the app's own rule (`guideProgressAtPosition` in `src/lib/guide-stats/pr
 | `after_failure`      | A Skip after the step was tried and failed: multistep and guided execution errors and timeouts, a failed challenge check or setup, a data check that found no data or errored, and gcx setup that failed or fell back to a pasted token. |
 | `section_run_auto`   | A Do section run skipping a skippable step whose requirements failed and could not be fixed.                                                                                                                                             |
 
-A skipped step credits the guide percentage like a completed one, so `step_skipped` rows belong in the position maximum above. Input blocks are the exception: they have no step id (`step_id` is `unknown`) and record nothing. `data_check_skipped` and `gcx_setup_skipped` still fire as before, gaining only the block properties every step event carries; each skip that sends one also sends `step_skipped`. Block-editor previews are not filtered out, as with every other step event.
+A skipped step credits the guide percentage like a completed one. It is evidence of progress, but does not make the incomplete stream an exact progress ledger. Input blocks are the exception: they have no step id (`step_id` is `unknown`) and record nothing. `data_check_skipped` and `gcx_setup_skipped` still fire as before, gaining only the block properties every step event carries; each skip that sends one also sends `step_skipped`. Block-editor previews are not filtered out, as with every other step event.
 
 ### Percentage properties by plugin version
 

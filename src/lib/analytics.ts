@@ -16,6 +16,7 @@ import { pushFaroUserAction } from './telemetry/bridge';
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
 import { furthestEvidencedPosition } from './guide-stats/progress';
+import { GUIDE_STATS_VERSION } from './guide-stats/summary';
 import type { GuideBlockIndex } from './guide-stats/block-index';
 import { getGuideIndex } from '../global-state/active-guide-index';
 import { getContentKey } from '../global-state/content-key';
@@ -689,27 +690,32 @@ export function buildInteractiveStepProperties(
     content_type: AnalyticsContentType.InteractiveGuide,
     ...(stepIndex !== undefined && { current_step: stepIndex + 1 }),
     ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
-    ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+    ...(completionPercentage !== undefined && {
+      completion_percentage: completionPercentage,
+      percentage_rule_version: 'step-position-v1',
+    }),
     ...(sectionId && { section_id: sectionId }),
     ...(sectionTitle && { section_title: sectionTitle }),
     ...getStepBlockProperties(stepId),
   };
 }
 
-function blockCountProperties(index: GuideBlockIndex): Record<string, number> {
+function blockCountProperties(index: GuideBlockIndex): Record<string, string | number> {
   return {
+    block_progress_rule_version: 'block-position-v1',
+    guide_stats_version: GUIDE_STATS_VERSION,
     total_block_count: index.totalBlockCount,
     completable_block_count: index.completableBlockCount,
     section_count: index.sectionCount,
   };
 }
 
-export function getGuideBlockCountProperties(contentKey: string): Record<string, number> {
+export function getGuideBlockCountProperties(contentKey: string): Record<string, string | number> {
   const active = getGuideIndex(contentKey);
   return active ? blockCountProperties(active.index) : {};
 }
 
-function getStepBlockProperties(stepId: string | undefined): Record<string, number> {
+function getStepBlockProperties(stepId: string | undefined): Record<string, string | number> {
   if (!stepId) {
     return {};
   }
