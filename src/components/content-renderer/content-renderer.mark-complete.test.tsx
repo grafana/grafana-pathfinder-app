@@ -182,9 +182,9 @@ describe('ContentRenderer — the universal Mark complete control', () => {
   });
 
   it.each([
-    ['guide', makeContent()],
-    ['milestone', makeMilestone()],
-  ])('reports one %s click with that discriminator', async (discriminator, content) => {
+    ['guide', makeContent(), { content_type: 'docs' }],
+    ['milestone', makeMilestone(), { content_type: 'learning-journey', current_milestone: 1, total_milestones: 1 }],
+  ])('reports one %s click with that discriminator', async (discriminator, content, contentProperties) => {
     window.__DocsPluginActiveTabUrl = content.url;
     render(<ContentRenderer content={content} onGuideComplete={jest.fn()} />);
 
@@ -200,6 +200,7 @@ describe('ContentRenderer — the universal Mark complete control', () => {
           interaction_location: 'content_footer',
           completion_context: discriminator,
           completion_percentage_before: 0,
+          ...contentProperties,
         },
       ],
     ]);

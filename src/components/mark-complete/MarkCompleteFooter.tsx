@@ -29,7 +29,13 @@ import { t } from '@grafana/i18n';
 
 import { guideIdentityAnalyticsProperties } from '../../completion-records/completion-identity';
 import type { CompletionKey } from '../../completion-records/types';
-import { getGuideBlockCountProperties, reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import {
+  getGuideBlockCountProperties,
+  reportAppInteraction,
+  tabTypeToContentType,
+  UserInteraction,
+} from '../../lib/analytics';
+import type { ContentType } from '../../types/content.types';
 import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
@@ -55,6 +61,9 @@ export interface MarkCompleteFooterProps {
    * re-resolves the key even when the footer is not remounted.
    */
   contentUrl?: string;
+  contentType?: ContentType;
+  currentMilestone?: number;
+  totalMilestones?: number;
   /**
    * The surface's completion emitter — the same callback the auto-complete
    * route fires when a guide reaches 100%. Deduplicated by the caller, so a
@@ -78,6 +87,9 @@ export function MarkCompleteFooter({
   context,
   contentUrl,
   guideIdentity,
+  contentType,
+  currentMilestone,
+  totalMilestones,
   onMarkComplete,
   onContinue,
 }: MarkCompleteFooterProps) {
@@ -209,6 +221,9 @@ export function MarkCompleteFooter({
         interaction_location: 'content_footer',
         completion_context: context,
         completion_percentage_before: percentage,
+        content_type: tabTypeToContentType(contentType),
+        ...(context === 'milestone' && currentMilestone !== undefined && { current_milestone: currentMilestone }),
+        ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
         ...getGuideBlockCountProperties(contentKey),
       });
       void guideCompletionMarkStorage.set(contentKey, true).catch((error) => {
@@ -235,7 +250,19 @@ export function MarkCompleteFooter({
       setCelebrating(false);
       onContinue?.();
     }, CELEBRATION_MS);
-  }, [contentKey, guideIdentity, marked, context, percentage, contentUrl, onMarkComplete, onContinue]);
+  }, [
+    contentKey,
+    guideIdentity,
+    marked,
+    context,
+    percentage,
+    contentUrl,
+    contentType,
+    currentMilestone,
+    totalMilestones,
+    onMarkComplete,
+    onContinue,
+  ]);
 
   const displayPercentage = marked ? 100 : percentage;
   const label =

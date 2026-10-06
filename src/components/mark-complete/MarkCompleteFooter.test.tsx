@@ -111,8 +111,39 @@ describe('MarkCompleteFooter', () => {
       interaction_location: 'content_footer',
       completion_context: 'guide',
       completion_percentage_before: 25,
+      content_type: 'docs',
     });
     await waitFor(() => expect(markStorage.set).toHaveBeenCalledWith('guide-key', true));
+  });
+
+  it("carries the content type and, on a milestone, the reader's position in the path", async () => {
+    render(
+      <MarkCompleteFooter
+        context="milestone"
+        contentType="learning-journey"
+        currentMilestone={2}
+        totalMilestones={5}
+        onMarkComplete={jest.fn()}
+      />
+    );
+
+    await clickWhenReady();
+
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.MarkCompleteClicked,
+      expect.objectContaining({ content_type: 'learning-journey', current_milestone: 2, total_milestones: 5 })
+    );
+  });
+
+  it('sends no milestone position for a standalone guide', async () => {
+    render(<MarkCompleteFooter context="guide" contentType="interactive" currentMilestone={2} totalMilestones={5} />);
+
+    await clickWhenReady();
+
+    const properties = jest.mocked(reportAppInteraction).mock.calls[0]![1];
+    expect(properties).toMatchObject({ content_type: 'interactive-guide' });
+    expect(properties).not.toHaveProperty('current_milestone');
+    expect(properties).not.toHaveProperty('total_milestones');
   });
 
   describe('block counts', () => {
@@ -140,6 +171,7 @@ describe('MarkCompleteFooter', () => {
         completion_percentage_before: 25,
         block_progress_rule_version: 'block-position-v1',
         guide_stats_version: 1,
+        content_type: 'docs',
         total_block_count: 3,
         completable_block_count: 1,
         section_count: 1,
@@ -159,6 +191,7 @@ describe('MarkCompleteFooter', () => {
         interaction_location: 'content_footer',
         completion_context: 'guide',
         completion_percentage_before: 25,
+        content_type: 'docs',
       });
     });
   });

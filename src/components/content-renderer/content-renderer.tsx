@@ -521,6 +521,9 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
         currentUrl: content.url,
         metadata: content.metadata,
       })}
+      contentType={content.type}
+      currentMilestone={journey?.currentMilestone}
+      totalMilestones={journey?.totalMilestones}
       onMarkComplete={triggerGuideCompleteFromMark}
       onContinue={onContinueToNextMilestone}
     />
