@@ -63,11 +63,12 @@ it.each([403, 503])('keeps Pathfinder enabled when settings return HTTP %s', asy
 });
 
 it.each([
-  ['?orgId=1&render=1&kiosk=1', true],
-  ['?render=1', true],
-  ['?render=0', false],
-  ['?kiosk=1', false],
+  ['render', true],
+  ['password', false],
+  ['oauth_grafana_com', false],
+  ['apikey', false],
   ['', false],
-])('detects image-renderer sessions from %p', (search, expected) => {
-  expect(isImageRendererSession(search)).toBe(expected);
+  [undefined, false],
+])('detects image-renderer sessions from authenticatedBy=%p', (authenticatedBy, expected) => {
+  expect(isImageRendererSession(authenticatedBy)).toBe(expected);
 });

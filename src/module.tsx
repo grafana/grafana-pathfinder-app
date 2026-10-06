@@ -1,4 +1,5 @@
 import { AppPlugin, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
+import { config } from '@grafana/runtime';
 import React, { lazy, Suspense, useEffect } from 'react';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
@@ -80,7 +81,7 @@ const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAuto
 const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
 
 const pathfinderAvailability = await resolvePathfinderAvailability(
-  getFeatureFlagValue('pathfinder.enabled', true) && !isImageRendererSession(window.location.search),
+  getFeatureFlagValue('pathfinder.enabled', true) && !isImageRendererSession(config.bootData.user?.authenticatedBy),
   readPathfinderStartupPreference
 );
 const pathfinderEnabled = pathfinderAvailability === 'enabled';

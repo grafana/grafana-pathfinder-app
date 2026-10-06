@@ -14,8 +14,8 @@ export function getPathfinderStartupDecision() {
 
 export type PathfinderAvailability = 'enabled' | 'disabled';
 
-export function isImageRendererSession(search: string): boolean {
-  return new URLSearchParams(search).get('render') === '1';
+export function isImageRendererSession(authenticatedBy: string | undefined): boolean {
+  return authenticatedBy === 'render';
 }
 
 export async function resolvePathfinderAvailability(

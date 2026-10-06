@@ -27,7 +27,8 @@ async function boot(
   surfaceReported?: boolean,
   panelMode = 'floating',
   failedImports: Record<string, number> = {},
-  flags: Record<string, boolean> = {}
+  flags: Record<string, boolean> = {},
+  authenticatedBy = 'password'
 ) {
   const settings = readFailed ? undefined : getConfigWithDefaults({ pathfinderEnabled: tenant });
   const root = { component: undefined as React.ComponentType | undefined };
@@ -53,6 +54,7 @@ async function boot(
     recordStartupSettings: jest.fn(),
     onPathfinderSurfaceChange: jest.fn().mockReturnValue(jest.fn()),
     setInterceptionEnabled: jest.fn(),
+    readPathfinderStartupPreference: jest.fn(async () => (read ? await read : settings)),
   };
   const modules: Record<string, unknown> = {
     react: React,
@@ -62,6 +64,7 @@ async function boot(
       },
       PluginExtensionPoints: { CommandPalette: 'command-palette' },
     },
+    '@grafana/runtime': { config: { bootData: { user: { authenticatedBy } } } },
     '@grafana/ui': { LoadingPlaceholder: () => null },
     '@grafana/i18n': { initPluginTranslations: async () => {} },
     './lib/analytics': { reportAppInteraction: jest.fn(), UserInteraction: {}, bindExperimentsProvider: jest.fn() },
@@ -70,7 +73,7 @@ async function boot(
     './plugin.json': { id: 'grafana-pathfinder-app' },
     './utils/configured-bootstrap': effects,
     './hooks/usePathfinderPluginConfig': {
-      readPathfinderStartupPreference: async () => (read ? await read : settings),
+      readPathfinderStartupPreference: effects.readPathfinderStartupPreference,
       waitForPathfinderPluginConfig: async () => (read ? await read : settings),
     },
     './utils/pathfinder-enablement': {
@@ -178,14 +181,33 @@ it.each([true, undefined])('registers learning surfaces when remote enabled and 
   );
 });
 
-it('stays dormant in an image-renderer session even when enabled', async () => {
+it('stays dormant without reading settings in an image-renderer session', async () => {
+  const { plugin, effects } = await boot(
+    true,
+    true,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'render'
+  );
+  plugin.init();
+  expect(effects.readPathfinderStartupPreference).not.toHaveBeenCalled();
+  expect(plugin.addComponent).not.toHaveBeenCalled();
+  expect(plugin.addLink).not.toHaveBeenCalled();
+  expect(effects.initializeConfiguredSurfaces).not.toHaveBeenCalled();
+});
+
+it('keeps the docked sidebar when a person opens a render=1 URL in a normal session', async () => {
   window.history.replaceState(null, '', '/d/abc/home?render=1&kiosk=1');
   try {
-    const { plugin, effects } = await boot(true, true);
-    plugin.init();
-    expect(plugin.addComponent).not.toHaveBeenCalled();
-    expect(plugin.addLink).not.toHaveBeenCalled();
-    expect(effects.initializeConfiguredSurfaces).not.toHaveBeenCalled();
+    const { plugin, effects } = await boot(true, true, false, undefined, undefined, undefined, 'sidebar');
+    expect(effects.readPathfinderStartupPreference).toHaveBeenCalledTimes(1);
+    expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+    expect(effects.clearExtensionSidebarDocked).not.toHaveBeenCalled();
   } finally {
     window.history.replaceState(null, '', '/');
   }
