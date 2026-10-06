@@ -180,6 +180,16 @@ const pathfinderFeatureFlags = {
     defaultValue: false,
     trackingKey: 'coda_terminal',
   },
+  /**
+   * Forces global docs-link interception on, OR'd with the tenant's
+   * `interceptGlobalDocsLinks` setting — it can turn the feature on, never off.
+   */
+  'pathfinder.intercept-docs-links': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'intercept_docs_links',
+  },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 
 // Helper to get typed keys from the flag definitions
