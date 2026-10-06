@@ -25,7 +25,7 @@ export function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardPro
   const isEarned = !!badge.earnedAt;
   const isLegacy = badge.isLegacy;
   const requirementText = isLegacy
-    ? 'This badge was earned in a previous version of Pathfinder'
+    ? 'This badge was earned in a previous version of interactive learning'
     : getBadgeRequirementText(badge);
 
   const iconWrapperClass = isLegacy

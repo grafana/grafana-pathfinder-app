@@ -95,6 +95,23 @@ describe('useAutoOpenListener surface ownership (#1450)', () => {
     expect(floatingModel.openDocsPage).toHaveBeenCalledTimes(1);
     expect(sidebarModel.openDocsPage).not.toHaveBeenCalled();
   });
+
+  it.each<[PanelMode, PanelMode, boolean]>([
+    ['floating', 'floating', true],
+    ['floating', 'sidebar', false],
+  ])('in %s mode, a %s listener cancels the event: %s', (mode, surface, cancelled) => {
+    setMode(mode);
+    renderHook(() => useAutoOpenListener(makeModel(), surface));
+
+    let notCancelled = true;
+    act(() => {
+      notCancelled = document.dispatchEvent(
+        new CustomEvent('pathfinder-auto-open-docs', { cancelable: true, detail: DOC })
+      );
+    });
+
+    expect(!notCancelled).toBe(cancelled);
+  });
 });
 
 /**

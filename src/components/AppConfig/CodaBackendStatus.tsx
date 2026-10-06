@@ -114,8 +114,8 @@ export function CodaBackendStatus({ enabled, className }: { enabled: boolean; cl
         <Alert severity="info" title="This Grafana is too old for the terminal" className={className}>
           <Text variant="body">
             Detecting the <code>{CODA_PLUGIN_ID}</code> plugin needs Grafana 13.1 or later. The plugin may well be
-            installed and working — Pathfinder cannot tell on this version, so terminal blocks stay hidden from the
-            block editor.
+            installed and working — interactive learning cannot tell on this version, so terminal blocks stay hidden
+            from the block editor.
           </Text>
         </Alert>
       );

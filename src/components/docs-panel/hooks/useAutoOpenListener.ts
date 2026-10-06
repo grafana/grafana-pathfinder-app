@@ -24,6 +24,8 @@
  *     this forgeable event)
  *   - Routing predicate: `/learning-journeys/` or `/learning-paths/` pathname
  *   - Source coercion via `coerceLaunchSource`
+ *   - The owning surface cancels the event, so a `cancelable` dispatcher (link
+ *     interception) learns synchronously whether anyone took the launch
  */
 import * as React from 'react';
 import { guideLaunchStore } from '../../../global-state/guide-launch';
@@ -56,6 +58,8 @@ export function useAutoOpenListener(model: DocsPanelModelOperations, surface: Pa
       if (panelModeManager.getMode() !== surface) {
         return;
       }
+
+      event.preventDefault();
 
       const customEvent = event as CustomEvent<{
         url: string;

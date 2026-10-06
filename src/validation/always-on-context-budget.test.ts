@@ -13,7 +13,7 @@ import { load } from 'js-yaml';
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const SKILL_SOURCE_DIR = '.cursor/skills';
 
-const AGENTS_MD_MAX_BYTES = 8000;
+const AGENTS_MD_MAX_BYTES = 9000;
 const SKILL_DESCRIPTION_MAX_CHARS = 400;
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n/;
@@ -55,8 +55,9 @@ describe('Always-on context budget', () => {
           '  - a mechanical rule: the enforcing test failure message, which explains the fix',
           '  - a workflow: a skill under .cursor/skills/',
           '  - domain reference: a doc routed from docs/developer/CONTEXT_INDEX.md',
-          'Then leave at most one line in AGENTS.md pointing at it. Raise the budget only when',
-          'a rule genuinely applies to every agent and cannot live anywhere else.',
+          'Then leave at most one line in AGENTS.md pointing at it. The budget is a ceiling with',
+          'headroom over a target of ~7000 bytes, so concurrent PRs can each add a line without',
+          'breaking main. Raise it only when a rule genuinely applies to every agent.',
         ].join('\n')
       );
     }

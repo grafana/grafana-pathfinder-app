@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-import { test, expect } from '../fixtures';
+import { test, expect } from './fixtures';
 import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/e2e/e2e-runner-contract';
 import type { TestResultsData } from '../../src/cli/e2e/e2e-reporter';
 import { installScopedBearerTokenRoute } from './auth/scoped-bearer-token';

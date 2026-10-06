@@ -6,6 +6,7 @@
  */
 
 import { reportInteraction } from '@grafana/runtime';
+import { parseKioskName } from './kiosk-attribution';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
 // Bridge, not the Faro adapter: analytics is entry-eager and a direct
@@ -109,6 +110,7 @@ export enum UserInteraction {
   // Kiosk Mode
   KioskDemoStarted = 'kiosk_demo_started',
   KioskInteraction = 'kiosk_interaction',
+  KioskCatalogLoaded = 'kiosk_catalog_loaded',
 
   // Initial-state alignment ("implied 0th step") — Phase 1 auto-recovery
   AlignmentPromptShown = 'alignment_prompt_shown',
@@ -258,16 +260,6 @@ export function tabTypeToContentType(tabType: string | undefined): AnalyticsCont
   return (tabType && TAB_TYPE_TO_CONTENT_TYPE[tabType]) || AnalyticsContentType.Docs;
 }
 
-/**
- * Reports a user interaction event to Grafana analytics (Rudder Stack)
- *
- * All events automatically include:
- * - plugin_version: The current plugin version from plugin.json
- * - feature_flags: JSON object containing current feature flag state (except for FeatureFlagEvaluated events)
- *
- * @param type - The type of interaction from UserInteraction enum
- * @param properties - Additional properties to attach to the event
- */
 export function reportAppInteraction(
   type: UserInteraction,
   properties: Record<string, string | number | boolean> = {}
@@ -275,34 +267,34 @@ export function reportAppInteraction(
   try {
     const interactionName = createInteractionName(type);
 
-    // Skip experiment enrichment for FeatureFlagEvaluated events to avoid recursion
-    // (those events already contain the flag info in their properties)
+    // Evaluating experiments while reporting their evaluation would recurse.
     const shouldEnrichWithExperiments = type !== UserInteraction.FeatureFlagEvaluated;
     const activeExperiments = shouldEnrichWithExperiments ? getExperimentsForAnalytics() : null;
     const experiments = activeExperiments && activeExperiments.length > 0 ? activeExperiments : null;
     const variant = experiments ? rollUpVariant(experiments) : null;
 
-    const kioskSessionId = window.__pathfinderKioskSessionId;
+    const kioskSessionId = properties.kiosk_session_id ?? window.__pathfinderKioskSessionId;
+    const kioskName =
+      parseKioskName(properties.kiosk_name) ??
+      (kioskSessionId === window.__pathfinderKioskSessionId
+        ? parseKioskName(window.__pathfinderKioskName)
+        : undefined) ??
+      'unknown';
 
     const enrichedProperties: Record<string, unknown> = {
       plugin_version: packageJson.version,
       ...properties,
       ...(variant && { variant }),
       ...(experiments && { experiments }),
-      ...(kioskSessionId && { kiosk_session_id: kioskSessionId }),
+      ...(kioskSessionId && { kiosk_session_id: kioskSessionId, kiosk_name: kioskName }),
     };
 
     try {
       reportInteraction(interactionName, enrichedProperties);
     } finally {
-      // Mirrors every analytics event into Faro as a User Action (same name,
-      // copied properties) so the two pipelines can be cross-checked against
-      // each other. The finally keeps the mirror alive when reportInteraction
-      // itself throws — a lost RudderStack event is exactly the divergence the
-      // mirror exists to surface. pushFaroUserAction never throws.
-      // `experiments` is carried once per session (lib/telemetry/session)
-      // instead of on every mirrored action; RudderStack keeps it.
+      // Preserve the Faro mirror even when RudderStack reporting throws.
       const faroProperties = { ...enrichedProperties };
+      // Faro carries experiments once per session.
       delete faroProperties.experiments;
       const privateGuide = Object.values(faroProperties).some(
         (value) =>
@@ -319,10 +311,7 @@ export function reportAppInteraction(
           }
         }
       }
-      // RudderStack properties are never redacted (first-party, same policy
-      // as identity), but the Faro mirror is the final URL boundary for this
-      // path — normalize by the `*_url` naming convention every call site
-      // already follows, so query/fragment data never reaches Faro raw.
+      // Strip URL queries and fragments at the final Faro boundary.
       for (const key of Object.keys(faroProperties)) {
         const value = faroProperties[key];
         if (typeof value === 'string' && /url$/i.test(key)) {
