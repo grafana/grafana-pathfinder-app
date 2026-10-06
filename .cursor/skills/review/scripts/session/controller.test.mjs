@@ -29,6 +29,7 @@ const BASELINE_CLAIM = {
   reason: 'fails on main too',
   signature: 'keeps both writes',
   preserve_paths: ['src/a.test.ts'],
+  preserve_reason: 'the test was added by this PR and must exist at base',
 };
 
 function stages(state) {
@@ -435,6 +436,14 @@ test('a baseline claim must name a failure signature and preserve only changed f
   assert.throws(
     () => submit(state, resolution, { ...BASELINE_CLAIM, preserve_paths: ['src/elsewhere.test.ts'] }, ctx),
     /is not a changed file/
+  );
+  assert.throws(
+    () => submit(state, resolution, { ...BASELINE_CLAIM, preserve_paths: ['src/a.ts'] }, ctx),
+    /not a test file or fixture; the baseline keeps the base implementation/
+  );
+  assert.throws(
+    () => submit(state, resolution, { ...BASELINE_CLAIM, preserve_reason: undefined }, ctx),
+    /preserve_reason/
   );
 });
 

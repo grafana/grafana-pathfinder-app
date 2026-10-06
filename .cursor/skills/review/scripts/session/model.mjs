@@ -47,6 +47,7 @@ const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const CONCERN_PATTERN = /^[a-z0-9-]+$/;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const MAX_TEXT = 2000;
+const TEST_INPUT = /(?:^|\/)(?:__tests__|__fixtures__|testdata|fixtures)\/|\.(?:test|spec)\.[cm]?[jt]sx?$|_test\.go$/;
 
 export function sha256(value) {
   return createHash('sha256')
@@ -477,7 +478,11 @@ function validateEvidencePlan(task, result) {
 }
 
 function validateCheckResolution(task, result) {
-  onlyFields(result, ['resolution', 'observation', 'reason', 'signature', 'preserve_paths'], 'check_resolution result');
+  onlyFields(
+    result,
+    ['resolution', 'observation', 'reason', 'signature', 'preserve_paths', 'preserve_reason'],
+    'check_resolution result'
+  );
   const allowed = task.spec.allowed;
   if (!allowed.includes(result.resolution)) {
     fail(`resolution must be one of ${allowed.join(', ')}`);
@@ -496,6 +501,9 @@ function validateCheckResolution(task, result) {
       if (!task.spec.changed_files.includes(path)) {
         fail(`preserve_paths entry ${path} is not a changed file`);
       }
+      if (!TEST_INPUT.test(path)) {
+        fail(`preserve_paths entry ${path} is not a test file or fixture; the baseline keeps the base implementation`);
+      }
       return path;
     });
     return {
@@ -503,6 +511,7 @@ function validateCheckResolution(task, result) {
       reason: text(result.reason, 'reason', 300),
       signature,
       preserve_paths: preserve,
+      preserve_reason: preserve.length > 0 ? text(result.preserve_reason, 'preserve_reason', 300) : null,
       observations: [],
     };
   }

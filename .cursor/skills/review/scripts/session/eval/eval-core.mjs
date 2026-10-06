@@ -384,7 +384,8 @@ export function scoreRuns({ runs, mapping, adjudications, keys, cases }) {
         }
       }
     }
-    const incomplete = pairedRuns.filter((run) => !run.complete).length;
+    const renderedIncomplete = pairedRuns.filter((run) => !run.complete).length;
+    const unverified = pairedRuns.filter((run) => run.complete && run.provenance?.status !== 'verified').length;
     const costed = pairedRuns.filter((run) => run.cost.complete);
     report.arms[arm] = {
       runs: armRuns.length,
@@ -395,7 +396,8 @@ export function scoreRuns({ runs, mapping, adjudications, keys, cases }) {
       known_defect_disposition_recall: ratio(recall.known_defect.correct_disposition, recall.known_defect.total),
       architectural_recall: ratio(recall.architectural.detected, recall.architectural.total),
       architectural_disposition_recall: ratio(recall.architectural.correct_disposition, recall.architectural.total),
-      incomplete_run_rate: ratio(incomplete, pairedRuns.length),
+      incomplete_run_rate: ratio(renderedIncomplete + unverified, pairedRuns.length),
+      incomplete_runs: { rendered_incomplete: renderedIncomplete, unverified_provenance: unverified },
       unadjudicated_findings: unadjudicatedFindings,
       median_total_tokens: median(costed.map((run) => run.cost.tokens)),
       runs_missing_cost: pairedRuns.length - costed.length,

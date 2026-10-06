@@ -104,9 +104,43 @@ test('keeping the head test at base separates a PR regression from a pre-existin
   }
 });
 
+const TWO_TESTS =
+  "import assert from 'node:assert/strict';\nimport test from 'node:test';\nimport { add, ordered } from './add.mjs';\ntest('adds two numbers', () => assert.equal(add(1, 2), 3));\ntest('preserves ordering', () => assert.deepEqual(ordered([2, 1]), [1, 2]));\n";
+
+test('a baseline that fails a different test does not match, even when the signature appears in its output', () => {
+  const { run, cleanup } = fixture(
+    {
+      'src/add.mjs': 'export const add = (a, b) => a + b;\nexport const ordered = (xs) => xs;\n',
+      'src/add.test.mjs': TWO_TESTS,
+    },
+    {
+      'src/add.mjs': 'export const add = (a, b) => a - b;\nexport const ordered = (xs) => [...xs].sort();\n',
+      'src/add.test.mjs': TWO_TESTS,
+    }
+  );
+  try {
+    const head = run({ kind: 'check', argv: ARGV });
+    assert.equal(head.failure_kind, 'assertion');
+    const baseline = run(
+      { kind: 'baseline', argv: ARGV, at: 'base', signature: 'adds two numbers', preserve_paths: [] },
+      head
+    );
+    assert.equal(baseline.failure_kind, 'assertion', 'both commits fail an assertion');
+    assert.deepEqual(
+      { matched: baseline.match.matched, reason: baseline.match.reason },
+      {
+        matched: false,
+        reason: 'the signature names no failing result in the baseline output; base may fail for a different reason',
+      }
+    );
+  } finally {
+    cleanup();
+  }
+});
+
 test('baseline comparison refuses unrelated or uncertain failures', () => {
   const head = { exit_status: 1, failure_kind: 'assertion' };
-  const compare = (base, headOutput = 'x adds two numbers', baseOutput = 'adds two numbers') =>
+  const compare = (base, headOutput = '✖ adds two numbers (1ms)', baseOutput = '✖ adds two numbers (2ms)') =>
     compareBaselineFailure({ head, base, signature: 'adds two numbers', headOutput, baseOutput }).reason;
   assert.match(
     compare({ exit_status: 1, failure_kind: 'setup' }),
@@ -114,18 +148,26 @@ test('baseline comparison refuses unrelated or uncertain failures', () => {
   );
   assert.match(compare({ exit_status: 0 }), /passes at the base/);
   assert.match(compare({ error: 'worktree failed' }), /could not run/);
-  assert.match(compare({ exit_status: 1, failure_kind: 'assertion' }, 'other output'), /does not appear in the head/);
   assert.match(
-    compare({ exit_status: 1, failure_kind: 'assertion' }, undefined, 'Cannot find module'),
-    /does not contain/
+    compare({ exit_status: 1, failure_kind: 'assertion' }, '✔ adds two numbers'),
+    /no failing result in the head/
   );
+  assert.match(
+    compare({ exit_status: 1, failure_kind: 'assertion' }, '✖ failing tests:\nadds two numbers'),
+    /no failing result in the head/
+  );
+  assert.match(
+    compare({ exit_status: 1, failure_kind: 'assertion' }, undefined, '✔ adds two numbers\n✖ preserves ordering'),
+    /no failing result in the baseline output/
+  );
+  assert.equal(compare({ exit_status: 1, failure_kind: 'assertion' }), null);
   assert.equal(
     compareBaselineFailure({
       head: { failure_kind: 'unknown' },
       base: { exit_status: 1, failure_kind: 'unknown' },
       signature: 'adds two numbers',
-      headOutput: 'adds two numbers',
-      baseOutput: 'adds two numbers',
+      headOutput: '✖ adds two numbers',
+      baseOutput: '✖ adds two numbers',
     }).matched,
     false
   );

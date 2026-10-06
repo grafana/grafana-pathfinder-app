@@ -276,6 +276,20 @@ test('a report without state is recorded as unverified and never scored', () => 
   assert.deepEqual(report.arms['review-session'].incomplete_run_rate, { numerator: 1, denominator: 1, value: 1 });
 });
 
+test('a complete-looking report without provenance counts as an incomplete run', () => {
+  const stripped = RENDERED.replace(/\n<!-- pathfinder-review-state:.*-->\n/, '\n');
+  assert.doesNotMatch(stripped, /pathfinder-review-state/);
+  const base = scenario({ sessionRendered: stripped });
+  const run = base.runs[1];
+  assert.equal(run.complete, true, 'the rendered verdict alone looks complete');
+  assert.equal(run.provenance.status, 'unverified');
+  const report = scoreRuns(base);
+  assert.deepEqual(report.arms['review-session'].incomplete_run_rate, { numerator: 1, denominator: 1, value: 1 });
+  assert.deepEqual(report.arms['review-session'].incomplete_runs, { rendered_incomplete: 0, unverified_provenance: 1 });
+  assert.equal(report.arms['review-session'].scored_runs, 0);
+  assert.deepEqual(report.arms.review.incomplete_run_rate, { numerator: 0, denominator: 1, value: 0 });
+});
+
 test('unpaired cases are reported separately and excluded from the comparison', () => {
   const base = scenario();
   const extra = buildRunRecord({

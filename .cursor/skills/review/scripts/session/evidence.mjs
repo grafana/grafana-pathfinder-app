@@ -114,6 +114,18 @@ function assertReviewHead(repoDir, head) {
   }
 }
 
+const FAILING_TEST_LINE = /^\s*(?:✖|✕|●|not ok\b|--- FAIL:)/;
+const SUMMARY_LINE = /^\s*✖ failing tests:?\s*$/;
+const ERROR_LINE = /\berror\b|Error:|\[build failed\]|\[setup failed\]|undefined:|cannot use|too many arguments/i;
+
+export function failingResults(output, kind) {
+  const lines = output.split('\n');
+  if (kind === 'assertion') {
+    return lines.filter((line) => FAILING_TEST_LINE.test(line) && !SUMMARY_LINE.test(line));
+  }
+  return kind === 'setup' ? lines.filter((line) => ERROR_LINE.test(line)) : [];
+}
+
 export function compareBaselineFailure({ head, base, signature, headOutput, baseOutput }) {
   const miss = (reason) => ({
     matched: false,
@@ -127,17 +139,19 @@ export function compareBaselineFailure({ head, base, signature, headOutput, base
   if (base.exit_status === 0) {
     return miss('the same command passes at the base commit');
   }
-  if (!headOutput.includes(signature)) {
-    return miss('the signature does not appear in the head failure output');
-  }
-  if (!baseOutput.includes(signature)) {
-    return miss('the baseline failure output does not contain the signature');
-  }
   if (head.failure_kind !== base.failure_kind) {
     return miss(`the head failed with a ${head.failure_kind} failure but the base with a ${base.failure_kind} failure`);
   }
   if (base.failure_kind === 'unknown') {
     return miss('neither failure could be classified, so the match is uncertain');
+  }
+  const headFailing = failingResults(headOutput, head.failure_kind).filter((line) => line.includes(signature));
+  if (headFailing.length === 0) {
+    return miss('the signature names no failing result in the head output');
+  }
+  const baseFailing = failingResults(baseOutput, base.failure_kind).filter((line) => line.includes(signature));
+  if (baseFailing.length === 0) {
+    return miss('the signature names no failing result in the baseline output; base may fail for a different reason');
   }
   return { matched: true, reason: null, head_kind: head.failure_kind, base_kind: base.failure_kind };
 }
