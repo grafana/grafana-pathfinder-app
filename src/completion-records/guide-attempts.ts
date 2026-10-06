@@ -10,9 +10,11 @@
 
 import { collectKeysByPrefix } from '../lib/storage/key-utils';
 import { StorageKeys, buildVersionedContentStorageKey } from '../lib/storage-keys';
+import { getFeatureFlagValue } from '../utils/openfeature';
 
 import { bundledGuideIdReadVariants, normalizeGuideId } from './completion-identity';
 import { createCompletionEventId } from './completion-write-storage';
+import { progressRecordsCapability } from './progress-records-capability';
 import type { AttemptMode, CompletionKey } from './types';
 
 export type { AttemptMode } from './types';
@@ -218,12 +220,19 @@ export function clearAllAttempts(): void {
   }
 }
 
+const PROGRESS_RECORDS_FLAG = 'pathfinder.progress-records';
+
 /**
- * The mode a new attempt is minted in. Always `analytics` until the plugin can
- * accept attempt-keyed writes; the records mode is wired in a later change.
+ * The mode a new attempt is minted in, fixed for the attempt's life. `records`
+ * needs the `pathfinder.progress-records` flag on AND a plugin backend that
+ * advertises attempt upserts; anything else, including a capability not yet
+ * known, is `analytics`, whose wire body is the original create-only one.
  */
 export function resolveAttemptMode(): AttemptMode {
-  return 'analytics';
+  if (progressRecordsCapability() !== 'yes') {
+    return 'analytics';
+  }
+  return getFeatureFlagValue(PROGRESS_RECORDS_FLAG, false) ? 'records' : 'analytics';
 }
 
 export function __resetAttemptsForTests(): void {

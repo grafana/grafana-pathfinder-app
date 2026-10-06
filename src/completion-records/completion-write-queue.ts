@@ -2,6 +2,8 @@ import { logger } from '../lib/logging';
 
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
 import { liftEmittedCompletionGuard } from './completion-recorder';
+import { reopenAttempt } from './guide-attempts';
+import type { ProgressRecordsCapability } from './progress-records-capability';
 import { reportCompletionWriteDegradation } from './completion-write-telemetry';
 import { DRAIN_BUDGET_PER_PASS, MAX_RETENTION_MS } from './completion-write-timing';
 import { createCompletionEventId, type CompletionWriteStorage, type QueuedWrite } from './completion-write-storage';
@@ -21,6 +23,18 @@ export interface WriteQueueDeps {
   maxRetentionMs?: number;
   /** Fired after POST /completion-records returns success. Not fired on enqueue. */
   onCreated?: () => void;
+  /**
+   * Whether the backend accepts partial attempt writes, read at send time.
+   * `no` drops a queued partial; `unknown` holds it. Defaults to `yes`.
+   */
+  partialsSupported?: () => ProgressRecordsCapability;
+  /** Debounce for a partial with nothing to inherit. Defaults to PARTIAL_DEBOUNCE_MS. */
+  partialDebounceMs?: number;
+}
+
+export interface EnqueueOptions {
+  /** Storage id to use instead of a fresh one (attempt items are `${attemptId}-${percent}`). */
+  id?: string;
 }
 
 export interface ProcessResult {
@@ -32,7 +46,7 @@ export interface ProcessResult {
 
 export interface WriteQueue {
   /** `true` when the record was persisted durably, so it survives a reload. */
-  enqueue(body: CompletionWriteBody): boolean;
+  enqueue(body: CompletionWriteBody, options?: EnqueueOptions): boolean;
   processDue(): Promise<ProcessResult>;
   size(): number;
   isDisarmed(): boolean;
@@ -50,6 +64,19 @@ export interface WriteQueue {
 const DEFAULT_MAX_SIZE = 100;
 const DEFAULT_BASE_BACKOFF_MS = 1000;
 const DEFAULT_MAX_BACKOFF_MS = 5 * 60 * 1000;
+/** How long a partial waits for later progress to supersede it before it is sent. */
+export const PARTIAL_DEBOUNCE_MS = 10_000;
+/** How long a partial is held while the backend's capability is still unknown. */
+const CAPABILITY_WAIT_MS = 5_000;
+
+/** The queue id of one attempt write. Same-percent writes from two tabs share it. */
+export function attemptWriteId(attemptId: string, percent: number): string {
+  return `${attemptId}-${percent}`;
+}
+
+function isPartialAttemptItem(item: QueuedWrite): boolean {
+  return item.body.attemptId !== undefined && item.body.completionPercent < 100;
+}
 
 export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   const now = deps.now;
@@ -63,6 +90,8 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   const drainBudget = deps.drainBudget ?? DRAIN_BUDGET_PER_PASS;
   const maxRetentionMs = deps.maxRetentionMs ?? MAX_RETENTION_MS;
   const onCreated = deps.onCreated;
+  const partialsSupported = deps.partialsSupported ?? (() => 'yes' as const);
+  const partialDebounceMs = deps.partialDebounceMs ?? PARTIAL_DEBOUNCE_MS;
 
   let items: QueuedWrite[] = [];
   let disarmed = false;
@@ -79,8 +108,19 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   // permanently unrecordable for the rest of this browser profile. A
   // terminal (4xx) drop is deliberately excluded: that record WAS considered
   // and rejected, so the guard staying set is correct.
+  //
+  // Only a completion (100%) ever set the guard. A lost partial is just
+  // progress that a later write will carry again, so it touches neither the
+  // guard nor the attempt. A lost attempt completion also reopens its attempt,
+  // so the re-completion is recorded under the same attempt id.
   function liftGuardFor(item: QueuedWrite): void {
+    if (item.body.completionPercent < 100) {
+      return;
+    }
     liftEmittedCompletionGuard(item.body.guideSource, item.body.guideId);
+    if (item.body.attemptId !== undefined) {
+      reopenAttempt({ guideSource: item.body.guideSource, guideId: item.body.guideId }, item.body.attemptId);
+    }
   }
 
   function isExpired(item: QueuedWrite): boolean {
@@ -137,7 +177,29 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     return Math.max(0, Math.min(maxBackoffMs, Math.round(base + jitter)));
   }
 
-  function enqueue(body: CompletionWriteBody): boolean {
+  // Queued attempt items are immutable; a newer one supersedes older ones.
+  // Lower-percent items of the same attempt that are not in flight are removed,
+  // and a new partial inherits the earliest due time among them (or waits the
+  // debounce when there were none), so a burst of progress sends once. A 100%
+  // item is due now. Removal is by id, so a late response for a removed item
+  // can never delete a newer one. Superseding is an optimisation: the server
+  // never lowers progress, so a race that leaves an older item is harmless.
+  function supersede(body: CompletionWriteBody): number | null {
+    let inherited: number | null = null;
+    const attemptId = body.attemptId;
+    if (attemptId === undefined) {
+      return inherited;
+    }
+    for (const older of items.filter(
+      (i) => i.body.attemptId === attemptId && i.id !== inFlightId && i.body.completionPercent < body.completionPercent
+    )) {
+      inherited = inherited === null ? older.nextAttemptAt : Math.min(inherited, older.nextAttemptAt);
+      remove(older);
+    }
+    return inherited;
+  }
+
+  function enqueue(body: CompletionWriteBody, options: EnqueueOptions = {}): boolean {
     // A structural-404 disarm suppresses network drains for the session but must
     // NOT stop persistence: later facts still enqueue and survive to the next
     // load, where they drain once the route exists. Never gate enqueue on it.
@@ -162,7 +224,24 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
       }
     }
     const createdAt = now();
-    const item = { id: nextId(), body, attempts: 0, createdAt, nextAttemptAt: createdAt };
+    let nextAttemptAt = createdAt;
+    if (body.attemptId !== undefined) {
+      const attemptId = body.attemptId;
+      // An equal or higher item already queued carries this progress.
+      if (
+        body.completionPercent < 100 &&
+        items.some((i) => i.body.attemptId === attemptId && i.body.completionPercent >= body.completionPercent)
+      ) {
+        return true;
+      }
+      const inherited = supersede(body);
+      if (body.completionPercent < 100) {
+        nextAttemptAt = inherited ?? createdAt + partialDebounceMs;
+      }
+    }
+    const id = options.id ?? nextId();
+    items = items.filter((i) => i.id !== id);
+    const item = { id, body, attempts: 0, createdAt, nextAttemptAt };
     items.push(item);
     return storage.put(item);
   }
@@ -209,6 +288,22 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         logger.warn('completion write: dropped record past retention horizon', { id: item.id });
         reportCompletionWriteDegradation('expired-drop');
         continue;
+      }
+      if (isPartialAttemptItem(item)) {
+        const supported = partialsSupported();
+        if (supported === 'no') {
+          // The backend can't take partials (for example a plugin rollback).
+          // Drop rather than retry: the completion still records on its own.
+          remove(item);
+          logger.info('completion write: dropped a partial the backend does not support', { id: item.id });
+          reportCompletionWriteDegradation('partial-unsupported-drop');
+          continue;
+        }
+        if (supported === 'unknown') {
+          item.nextAttemptAt = now() + CAPABILITY_WAIT_MS;
+          storage.put(item);
+          continue;
+        }
       }
       if (!storage.renewLease(now())) {
         return { nextDelayMs: computeNextDelay(), disarmed: false };

@@ -190,6 +190,27 @@ The flag is read each time an event would fire, so a flip takes effect without a
 
 ---
 
+### `pathfinder.progress-records`
+
+**Type**: Boolean
+
+**Purpose**: Saves guide progress as it happens. With the flag on, a new guide attempt is minted in `records` mode, and its partial percentages are written to one durable CompletionRecord per attempt, raised in place until the guide is complete.
+
+**Default**: `false`
+
+**Behavior**:
+
+- **`true`**: a new attempt uses `records` mode when the installed plugin backend also reports `progressRecords: true` on `/completion-records/capability`. Partial progress is queued (debounced 10 seconds), and the completion at 100% updates the same record.
+- **`false`**: attempts use `analytics` mode. The request body is the original create-only completion.
+
+The mode is fixed when an attempt is minted, so flipping the flag mid-attempt does not change that attempt's record naming. Turning the flag off stops new `records` attempts; existing partial records are harmless, because `/completion-records/my` counts only completed records.
+
+**Enable it in an environment only after** the CompletionRecord schema with an optional `completedAt` is deployed there and a plugin build with attempt upserts is installed. A partial sent to an old schema is retried (`503 schema-not-ready`), not lost. Implementation: `src/completion-records/guide-attempts.ts` (`resolveAttemptMode`) and `src/completion-records/completion-write-queue.ts`.
+
+**Tracking key**: `progress_records`
+
+---
+
 ### `pathfinder.highlighted-guide-experiment`
 
 **Type**: Object (`HighlightedGuideConfig`)

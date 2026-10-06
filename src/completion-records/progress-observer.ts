@@ -14,10 +14,14 @@ import { subscribeProgressEvent, type ProgressEventDetail } from '../global-stat
 
 import { hasEmittedGuideCompletion } from './completion-recorder';
 import { getOrMintAttempt, raiseHighWater, readAttempt, resolveAttemptMode } from './guide-attempts';
-import { lookupGuideIdentity } from './guide-identity-registry';
+import { lookupGuideIdentity, type RegisteredGuideIdentity } from './guide-identity-registry';
 import { reportGuideProgress, thresholdToReport } from './progress-analytics';
 
 let unsubscribe: (() => void) | null = null;
+
+/** Receives each raised partial of a `records`-mode attempt (the durable write queue). */
+export type AttemptProgressSink = (identity: RegisteredGuideIdentity, attemptId: string, percent: number) => void;
+let progressSink: AttemptProgressSink | null = null;
 
 function onProgress(detail: ProgressEventDetail): void {
   try {
@@ -52,6 +56,10 @@ function onProgress(detail: ProgressEventDetail): void {
     if (!minted && !raised) {
       return;
     }
+    // Only a real increase is written; the mode was fixed when the attempt was minted.
+    if (raised && attempt.mode === 'records') {
+      progressSink?.(identity, attempt.attemptId, percentage);
+    }
     const threshold = thresholdToReport(previous, percentage, minted);
     if (threshold !== null) {
       reportGuideProgress(identity, attempt.attemptId, percentage, threshold);
@@ -61,8 +69,15 @@ function onProgress(detail: ProgressEventDetail): void {
   }
 }
 
-/** Idempotent. Installed by `armCompletionWriteHook`, before any of its early returns. */
-export function installProgressObserver(): void {
+/**
+ * Idempotent. Installed by `armCompletionWriteHook`, before any of its early
+ * returns. `sink` receives partials of `records`-mode attempts; the latest one
+ * passed wins.
+ */
+export function installProgressObserver(sink?: AttemptProgressSink): void {
+  if (sink) {
+    progressSink = sink;
+  }
   if (unsubscribe) {
     return;
   }
@@ -72,4 +87,5 @@ export function installProgressObserver(): void {
 export function __resetProgressObserverForTests(): void {
   unsubscribe?.();
   unsubscribe = null;
+  progressSink = null;
 }

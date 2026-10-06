@@ -142,6 +142,7 @@ describe('openfeature', () => {
         expect(pathfinderFeatureFlags['pathfinder.coda-terminal'].trackingKey).toBe('coda_terminal');
         expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].trackingKey).toBe('intercept_docs_links');
         expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].trackingKey).toBe('progress_analytics');
+        expect(pathfinderFeatureFlags['pathfinder.progress-records'].trackingKey).toBe('progress_records');
       });
     });
 
@@ -168,6 +169,19 @@ describe('openfeature', () => {
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].valueType).toBe('boolean');
         expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].defaultValue).toBe(true);
+      });
+    });
+
+    it('pathfinder.progress-records must default to false so partial writes stay off until enabled', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.progress-records'].valueType).toBe('boolean');
+        expect(pathfinderFeatureFlags['pathfinder.progress-records'].defaultValue).toBe(false);
       });
     });
 
