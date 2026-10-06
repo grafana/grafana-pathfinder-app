@@ -9,6 +9,7 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { PATHFINDER_PARAMS, stripPathfinderParams } from '../../utils/pathfinder-search-params';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { getKioskSessionId } from '../../lib/kiosk-analytics';
 import type { KioskRule } from './kiosk-rules';
 import { parseKioskWebUrl } from '../../security/kiosk-url';
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
@@ -90,7 +91,7 @@ export function launchKioskGuide(
     }
     stripPathfinderParams(url);
   }
-  const sessionId = crypto.randomUUID();
+  const sessionId = getKioskSessionId() ?? crypto.randomUUID();
 
   reportAppInteraction(UserInteraction.KioskDemoStarted, {
     kiosk_session_id: sessionId,
@@ -109,8 +110,8 @@ export function launchKioskGuide(
     url.searchParams.set('type', 'learning-journey');
   }
   if (mode === 'instance') {
+    window.__pathfinderKioskSessionId = sessionId;
     if (prepared && (panelModeManager.getMode() === 'floating' || isExtensionSidebarOwnedByOther(pluginJson.id))) {
-      window.__pathfinderKioskSessionId = sessionId;
       panelModeManager.setPendingGuide({
         url: prepared.url,
         title: prepared.title,
@@ -129,7 +130,6 @@ export function launchKioskGuide(
     panelModeManager.setModeTransient('sidebar');
     locationService.push(`${url.pathname}${url.search}${url.hash}`);
     if (prepared) {
-      window.__pathfinderKioskSessionId = sessionId;
       const launchKey = guideLaunchStore.stage({
         url: prepared.url,
         preparedContent: prepared.preparedContent,

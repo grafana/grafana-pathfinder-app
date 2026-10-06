@@ -1,4 +1,4 @@
-import { reportKioskInteraction } from '../../lib/kiosk-analytics';
+import { reportKioskInteraction, startKioskSession } from '../../lib/kiosk-analytics';
 import { KioskPage } from './KioskPage';
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -60,7 +60,8 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
 
   useEffect(() => {
     const controller = new AbortController();
-    loadKioskData(rulesUrl, overrideUrl, controller.signal)
+    const session = startKioskSession();
+    loadKioskData(rulesUrl, overrideUrl, controller.signal, { sessionId: session.id, mode })
       .then((data) => {
         if (!controller.signal.aborted) {
           setResult({ rulesUrl, overrideUrl, data });
@@ -75,8 +76,11 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
           });
         }
       });
-    return () => controller.abort();
-  }, [rulesUrl, overrideUrl]);
+    return () => {
+      controller.abort();
+      session.end();
+    };
+  }, [rulesUrl, overrideUrl, mode]);
 
   const handleExit = useCallback(
     (method: 'button' | 'escape') => {

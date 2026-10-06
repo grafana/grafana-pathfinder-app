@@ -1,6 +1,12 @@
-import { KioskCatalogSchema, KioskExitButtonLabelSchema, type KioskPage } from '../../types/kiosk-page.schema';
+import {
+  KioskCatalogSchema,
+  KioskExitButtonLabelSchema,
+  type KioskMode,
+  type KioskPage,
+} from '../../types/kiosk-page.schema';
 import { logger } from '../../lib/logging';
 import { recordKioskCatalogLoaded, type KioskCatalogTier } from '../../lib/telemetry';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import defaultKiosk from './default-kiosk.json';
 import { parseKioskWebUrl, validateKioskOverride } from '../../security/kiosk-url';
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
@@ -146,7 +152,8 @@ export async function fetchKioskData(
 export async function loadKioskData(
   defaultUrl: string,
   overrideUrl?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  session?: { sessionId: string; mode: KioskMode }
 ): Promise<KioskData & { warning?: string }> {
   signal?.throwIfAborted();
   const failed = new Set<KioskCatalogTier>();
@@ -159,6 +166,11 @@ export async function loadKioskData(
   const finish = (data: KioskData, tier: KioskCatalogTier) => {
     signal?.throwIfAborted();
     recordKioskCatalogLoaded(tier, failed.size > 0);
+    reportAppInteraction(UserInteraction.KioskCatalogLoaded, {
+      tier,
+      degraded: failed.size > 0,
+      ...(session && { kiosk_session_id: session.sessionId, launch_mode: session.mode }),
+    });
     if (failed.size === 0) {
       return data;
     }

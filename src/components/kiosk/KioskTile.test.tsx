@@ -1,6 +1,7 @@
 import { config } from '@grafana/runtime';
 import { sidebarState } from '../../global-state/sidebar';
 import { launchKioskGuide } from './launch-kiosk-guide';
+import { startKioskSession } from '../../lib/kiosk-analytics';
 import { REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
@@ -82,6 +83,25 @@ describe('KioskTile', () => {
     expect(openedUrl.searchParams.get('kiosk_session')).toBe('00000000-0000-4000-a000-000000000001');
     expect(mockOpen.mock.calls[0][1]).toBe('_blank');
     expect(mockOpen.mock.calls[0][2]).toBe('noopener,noreferrer');
+  });
+
+  it.each(['instance', 'presentation'] as const)('carries the opening session through a %s launch', (mode) => {
+    const session = startKioskSession();
+    mockRandomUUID.mockReturnValueOnce('00000000-0000-4000-a000-000000000002');
+    window.__pathfinderKioskSessionId = 'previous-guide';
+    launchKioskGuide(rule, mode, session.end);
+    const destination = mode === 'instance' ? mockPush.mock.calls[0][0] : mockOpen.mock.calls[0][0];
+    expect(new URL(destination, window.location.origin).searchParams.get('kiosk_session')).toBe(session.id);
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.KioskDemoStarted,
+      expect.objectContaining({ kiosk_session_id: session.id })
+    );
+    if (mode === 'instance') {
+      expect(window.__pathfinderKioskSessionId).toBe(session.id);
+    }
+    session.end();
+    delete window.__pathfinderKioskSessionId;
+    mockRandomUUID.mockReset().mockReturnValue('00000000-0000-4000-a000-000000000001');
   });
 
   it('fires KioskDemoStarted analytics event before opening the tab', () => {

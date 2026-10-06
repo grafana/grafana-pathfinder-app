@@ -1,5 +1,24 @@
 import { reportAppInteraction, UserInteraction } from './analytics';
 
+let kioskSessionId: string | undefined;
+
+export function startKioskSession(): { id: string; end: () => void } {
+  const id = crypto.randomUUID();
+  kioskSessionId = id;
+  return {
+    id,
+    end: () => {
+      if (kioskSessionId === id) {
+        kioskSessionId = undefined;
+      }
+    },
+  };
+}
+
+export function getKioskSessionId(): string | undefined {
+  return kioskSessionId;
+}
+
 type KioskInteraction =
   | { component: 'kiosk'; action: 'exit'; method: 'button' | 'escape' }
   | { component: 'input'; action: 'change' | 'invalid'; inputType: 'text' | 'datasource'; inputIndex: number }
@@ -13,6 +32,7 @@ export function reportKioskInteraction(
   interaction: KioskInteraction
 ) {
   reportAppInteraction(UserInteraction.KioskInteraction, {
+    ...(kioskSessionId && { kiosk_session_id: kioskSessionId }),
     launch_mode: mode,
     ...(blockIndex !== undefined && { block_index: blockIndex }),
     component: interaction.component,

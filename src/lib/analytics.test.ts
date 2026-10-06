@@ -72,6 +72,14 @@ describe('reportAppInteraction', () => {
     expect(properties).not.toHaveProperty('kiosk_session_id');
   });
 
+  it('preserves an explicit kiosk session over a previous guide session in both pipelines', () => {
+    window.__pathfinderKioskSessionId = 'previous-guide';
+    reportAppInteraction(UserInteraction.KioskDemoStarted, { kiosk_session_id: 'current-kiosk' });
+    const expected = expect.objectContaining({ kiosk_session_id: 'current-kiosk' });
+    expect(mockReportInteraction).toHaveBeenCalledWith('pathfinder_kiosk_demo_started', expected);
+    expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_kiosk_demo_started', expected);
+  });
+
   it('omits kiosk_session_id when window global is empty string', () => {
     (window as any).__pathfinderKioskSessionId = '';
 
