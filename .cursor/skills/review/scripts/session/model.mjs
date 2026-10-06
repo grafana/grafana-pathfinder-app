@@ -707,10 +707,11 @@ export function validateIntent(intent) {
   if (typeof intent.body !== 'string' || intent.body.length > 65536) {
     fail('intent body must be a string of at most 65536 characters (the PR description; it may be empty)');
   }
-  if (intent.evidence_cutoff !== undefined && Number.isNaN(Date.parse(intent.evidence_cutoff))) {
+  const cutoff = intent.evidence_cutoff ?? null;
+  if (cutoff !== null && (typeof cutoff !== 'string' || Number.isNaN(Date.parse(cutoff)))) {
     fail('intent evidence_cutoff must be an ISO date');
   }
-  return { title, body: intent.body, evidence_cutoff: intent.evidence_cutoff ?? null };
+  return { title, body: intent.body, evidence_cutoff: cutoff };
 }
 
 export function emptyState() {

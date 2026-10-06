@@ -22,6 +22,7 @@ const OPTIONS = {
   head: { type: 'string' },
   reviewer: { type: 'string' },
   title: { type: 'string' },
+  'intent-file': { type: 'string' },
   'repo-dir': { type: 'string' },
   'sessions-dir': { type: 'string' },
   'prior-review': { type: 'string' },
@@ -124,6 +125,17 @@ function mutate(sessionDir, build) {
   return { state, output };
 }
 
+function readIntent(path) {
+  if (path === undefined) {
+    return null;
+  }
+  try {
+    return JSON.parse(readFileSync(absolute(path, '--intent-file'), 'utf8'));
+  } catch (error) {
+    throw new Error(`--intent-file must be a JSON file with the PR title and body: ${error.message}`);
+  }
+}
+
 function start(values) {
   const repoDir = absolute(values['repo-dir'], '--repo-dir');
   const sessionsDir = absolute(values['sessions-dir'], '--sessions-dir');
@@ -137,11 +149,16 @@ function start(values) {
     throw new Error('--base must be an ancestor of --head (use the merge base with the target branch)');
   }
   const priorPath = values['prior-review'];
+  const intent = readIntent(values['intent-file']);
+  if (intent && values.title !== undefined && values.title !== intent.title) {
+    throw new Error('--title and the intent file title differ; pass one PR title');
+  }
   const identity = buildIdentity(
     {
       repo: values.repo,
       pr: Number(values.pr),
-      pr_title: values.title,
+      pr_title: values.title ?? intent?.title,
+      intent,
       base_sha: values.base,
       head_sha: head,
       reviewer: values.reviewer,

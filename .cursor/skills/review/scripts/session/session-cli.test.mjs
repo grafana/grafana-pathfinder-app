@@ -338,3 +338,29 @@ test('a fresh process resumes an incremental session with the original text of a
     rmSync(sessions, { recursive: true, force: true });
   }
 });
+
+test('start takes the PR title and body from an intent file and hands them to the briefs', () => {
+  const repo = fixtureRepo();
+  const sessions = mkdtempSync(join(tmpdir(), 'review-sessions-'));
+  try {
+    const intentPath = join(sessions, 'intent.json');
+    writeFileSync(intentPath, JSON.stringify({ title: 'fix: add numbers', body: 'Extends add to sum numbers.' }));
+    const args = startArgs(repo, sessions).filter(
+      (arg, index, all) => arg !== '--title' && all[index - 1] !== '--title'
+    );
+    const view = cli([...args, '--intent-file', intentPath]);
+    const route = view.ready.find(({ role }) => role === 'route');
+    assert.equal(
+      JSON.parse(readFileSync(join(dirname(route.brief), 'input.json'), 'utf8')).pr_intent.body,
+      'Extends add to sum numbers.'
+    );
+    writeFileSync(intentPath, JSON.stringify({ title: 'another title', body: '' }));
+    assert.match(
+      cli([...startArgs(repo, sessions), '--intent-file', intentPath], { expectFailure: true }),
+      /--title and the intent file title differ/
+    );
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(sessions, { recursive: true, force: true });
+  }
+});

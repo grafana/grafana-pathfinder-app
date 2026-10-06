@@ -16,12 +16,12 @@ This bridge supports Claude Code with the Agent, Bash, Read, and Write tools. If
 ## Start
 
 1. Make an isolated worktree at the PR head and symlink `node_modules` from the main checkout. Commands run there.
-2. Read the head SHA, the title, and the base. The base is `git merge-base origin/main <head>`.
+2. Read the head SHA and the base. The base is `git merge-base origin/main <head>`. Write the PR title and description, unedited, to an intent file outside the repository: `{ "title": "<pr title>", "body": "<pr description>" }`. Add `"evidence_cutoff": "<ISO date>"` only when the user names one.
 3. For a re-review, find the latest review by this same reviewer. Save its body to a file. Count all prior review submissions.
 4. Start, with a sessions directory outside the repository (for example, your scratchpad):
 
 ```bash
-node .cursor/skills/review/scripts/session/session.mjs start --repo <owner/name> --pr <n> --base <base-sha> --head <head-sha> --reviewer <your-login> --title "<pr title>" --repo-dir <abs-worktree> --sessions-dir <abs-dir> [--prior-review <body-file> --prior-review-author <login> --prior-review-count <n>]
+node .cursor/skills/review/scripts/session/session.mjs start --repo <owner/name> --pr <n> --base <base-sha> --head <head-sha> --reviewer <your-login> --intent-file <abs-intent-file> --repo-dir <abs-worktree> --sessions-dir <abs-dir> [--prior-review <body-file> --prior-review-author <login> --prior-review-count <n>]
 ```
 
 The controller decides full or incremental mode and the round. It falls back to a full review when the prior state is invalid, truncated, from another reviewer, or not an ancestor of the head. Running `start` again with the same inputs resumes the same session.
