@@ -36,13 +36,12 @@
  * violationKey), a second violation structurally identical to a grandfathered
  * one — same file, same method, same url expression — collapses onto that
  * existing key and stays silently grandfathered; the exposure is bounded to
- * the two files in the baseline, and shrinks to nothing as #1975 is paid down.
+ * the remaining file in the baseline, and shrinks to nothing as #1975 is paid down.
  *
- * Landed with two pre-existing violations grandfathered into
- * ALLOWED_DIRECT_APP_PLATFORM_READS below — the same failure mode as
- * incident 5857, still unfixed on main. Paying those down is tracked in
+ * One pre-existing violation remains grandfathered in
+ * ALLOWED_DIRECT_APP_PLATFORM_READS below for the editor's guide list. Paying it down is tracked in
  * https://github.com/grafana/grafana-pathfinder-app/issues/1975; no new
- * violation can land on top of them.
+ * violation can land on top of it.
  */
 
 import * as fs from 'fs';
@@ -66,25 +65,9 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Baseline grandfathered when this ratchet landed. Both entries are real,
- * pre-existing defects — the same failure mode as incident 5857 — not
- * tolerated design choices; each silently returns an empty guide list to an
- * anonymous viewer instead of failing visibly. Pay down separately, one PR
- * per entry (see #1975): fixing either removes its own entry here, and the
- * ratchet enforces that by failing on a stale entry that no longer matches
- * a real violation.
+ * The remaining editor-only collection read needs a full-resource proxy (#1975).
  */
 const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [
-  {
-    violation: 'context-engine/context.init.ts — GET collectionUrl(namespace)',
-    reason:
-      'Pre-existing defect (not a design choice): fetches the interactive-guides collection directly at ' +
-      "plugin start, but nothing reads the response — the call's original purpose needs to be established " +
-      'before it is deleted or re-pointed at a proxy. Same failure mode as incident 5857 — an anonymous ' +
-      "viewer's read fails the storage layer's delegated service-token check and 403s — except here the " +
-      '403 is swallowed as "endpoint not rolled out yet," so the failure is invisible.',
-    tracking: '#1975',
-  },
   {
     violation: 'utils/fetchBackendGuides.ts — GET collectionUrl(namespace)',
     reason:
