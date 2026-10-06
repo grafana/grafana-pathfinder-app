@@ -270,7 +270,7 @@ const PILOT_REVERT_RUNS = [
   ['2009-session-t015-thrown-error.txt', 1, 'inconclusive_error', /exit 1 with no recognised/],
   ['2009-session-t016-missing-module.txt', 1, 'inconclusive_setup', /Test suite failed to run/],
   ['2009-session-t019-thrown-and-tothrow.txt', 1, 'fails_on_behavior', /^expect\(received\)\.toThrow\(expected\)/],
-  ['2009-review-g-received-typeerror.txt', 1, 'fails_on_behavior', /^Received message:/],
+  ['2009-review-g-received-typeerror.txt', 1, 'inconclusive_error', /is not a function/],
   ['2009-review-h-missing-module.txt', 1, 'inconclusive_setup', /Cannot find module '\.\/local-cloud-preflight'/],
 ];
 
@@ -355,4 +355,26 @@ test('an efficacy revert of a file named like pathspec magic reverts only that f
   } finally {
     cleanup();
   }
+});
+
+test('a toThrow failure whose received message is a missing binding is an error, not a behavioral detection', () => {
+  const frame = (received) =>
+    [
+      '  ● local cloud › rejects an unknown guide',
+      '',
+      '    expect(received).toThrow(expected)',
+      '',
+      '    Expected substring: "unknown guide"',
+      `    Received message:   "${received}"`,
+      '',
+      'Tests:       1 failed, 3 passed, 4 total',
+    ].join('\n');
+  const missing = classifyRevertRun({
+    exit_status: 1,
+    output: frame('(0 , _mod.resolveLocalCloudGuide) is not a function'),
+  });
+  assert.equal(missing.result, 'inconclusive_error');
+  assert.match(missing.evidence, /is not a function/);
+  const real = classifyRevertRun({ exit_status: 1, output: frame('Guide "x" is not in the selected graph') });
+  assert.equal(real.result, 'fails_on_behavior');
 });
