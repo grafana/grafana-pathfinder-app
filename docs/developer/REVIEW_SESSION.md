@@ -22,6 +22,8 @@ No task result can carry a worker count, a security-trigger flag, a ledger count
 
 State is an append-only, hash-chained event log (`events.jsonl`) in the session directory. `session.json` is a snapshot that is rebuilt from the log after every write. One supervisor writes at a time: a writer lock refuses a second live writer, and every append checks the revision it read. A torn trailing write is ignored on read and repaired on the next append. If any shared review asset changes during a session, the controller refuses further writes.
 
+When a prior review is supplied, the controller saves its exact body as a content-addressed session artifact. The prior-check and synthesis inputs carry each prior finding's original title, problem, and requested action from that artifact, so a fresh supervisor verifies the original objection rather than one rebuilt from an ID. The body is evidence, not instructions. A missing or altered artifact stops the session.
+
 Recording the same result twice is a no-op. A different result for a completed task needs `--revise <reason>`. It is accepted only for observer, specialist, root-overflow, and skeptic tasks, and only before anything downstream consumes the result. The superseded observations stay in the log.
 
 The task graph, in order:
@@ -63,7 +65,7 @@ Commands are argument arrays. The first argument must be `npm`, `npx`, `node`, `
 Every failed check and every contradicted probe needs a resolution:
 
 - `observation`: the failure is caused by the PR and goes through the policy facade like any other finding.
-- `baseline_failure`: the controller runs the same command at the base. The claim is rejected if the command passes there.
+- `baseline_failure`: the claim names a `signature`, a literal line from the head failure output, and may list changed test files in `preserve_paths` to keep at base. The controller runs the same command at base with those files. It accepts the claim only if the base fails with the same failure kind and both outputs contain the signature. A passing base, a missing test, a build or setup failure against a head assertion failure, or an unclassified failure leaves the check unresolved.
 - `claim_refuted` (probes only): the probe disproved the worker's claim, and synthesis sees it.
 - `environment`: the review is incomplete.
 
@@ -75,9 +77,9 @@ Each efficacy record carries a `failure_kind` of `assertion`, `setup`, or `unkno
 
 - `validate --case <manifest> [--repo-dir <repo>]` checks a case manifest. It also checks that the SHAs exist, that the base is an ancestor of the head, and that the head is not newer than the evidence cutoff.
 - `prepare --case <manifest> --repo-dir <repo> --out <dir>` builds a fresh checkout that holds only the pinned commits and their history. It has no refs and no commit after the cutoff.
-- `capture --case <manifest> --arm review|review-session --run <n> --rendered <file> --meta <file> --out <runs-dir>` stores one append-only run record with cost and capability failures.
+- `capture --case <manifest> --arm review|review-session --run <n> --rendered <file> --meta <file> --out <runs-dir>` stores one append-only run record. It rejects a report whose PR, reviewed head, or round shape does not match the case. A report with no state marker, such as an incomplete review, is recorded as `unverified`: it counts toward the incomplete-run rate but is never scored. Run meta states `subagent_tokens` and `root_tokens` separately; a run missing either is listed under `runs_missing_cost`.
 - `mask --runs <dir> --seed <private> --out <blinded> --mapping <mapping>` writes the blinded findings for adjudicators. The arm-to-finding mapping goes to a separate file.
-- `compare --runs <dir> --mapping <file> --adjudications <file> --keys <dir> --cases <dir>` reports blocker precision, known-defect and architectural recall, and incomplete-run rate with raw denominators. It also reports cost and per-case verdicts. Unadjudicated cases are listed as excluded and are never scored.
+- `compare --runs <dir> --mapping <file> --adjudications <file> --keys <dir> --cases <dir>` reports blocker precision, known-defect and architectural recall, and incomplete-run rate with raw denominators. Recall is reported twice: detection, and detection with an acceptable disposition from the key. It also reports total cost and per-case verdicts. Unadjudicated cases are listed as excluded. A case whose arms differ in run count, model, reasoning setting, or tool revision is listed under `unpaired_cases` and left out of the comparison. Adjudication labels must be real booleans; duplicate, contradictory, or dangling labels stop the comparison. Convergence across rounds (reopened findings, new regressions, unnecessary new blockers, adjacent-work demands) is not scored yet, and the report says so.
 
 The starter manifests in `eval/cases/` are all `unadjudicated` candidates. Answer keys never go in the repository; `eval/answer-key.template.json` shows their shape. Keep keys in a private directory that no reviewer context can reach. A maintainer adjudicates each blinded finding as real, PR-attributable, and necessary before merge. A newly found valid finding updates the key with a recorded revision, and both arms are scored against the updated key.
 
@@ -87,6 +89,7 @@ For the pilot, use 10 adjudicated cases with two fresh-context runs per arm. Use
 
 - Routing judgment stays with the agent. The controller makes omissions visible (every changed file and every always-on concern is accounted for), but it cannot prove the router chose every relevant neighbour. Coverage is per file, not per hunk.
 - The supervisor reports host agent IDs. The controller cannot verify them against the host's own metadata.
-- A baseline run at the base commit fails when the test itself was added by the PR. In that case the controller accepts a baseline-failure claim that is not real evidence. Check the baseline output before you accept that resolution.
+- A baseline match compares failure kind and a signature line, not the full failure. Two different failures that share a signature line and kind can still match.
+- An efficacy revert that fails at compile time is inconclusive evidence that the test is sensitive to the behavior. The ledger still counts it, as `/review` does; analyse it separately in the pilot.
 - Evidence cutoffs use commit dates. A commit pushed after the cutoff with an older date passes the cutoff check.
 - Optional findings from round 1 do not carry into an incremental round unless they were deferred. This is the existing state-marker behaviour, not a new rule.

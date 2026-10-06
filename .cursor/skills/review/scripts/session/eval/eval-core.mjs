@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { parseReviewState } from '../../review-report.mjs';
+import { parseRenderedReview } from '../rendered.mjs';
 
 export const ARMS = ['review', 'review-session'];
 export const CASE_CATEGORIES = [
@@ -17,9 +17,6 @@ export const CASE_CATEGORIES = [
 export const ADJUDICATION_STATUSES = ['unadjudicated', 'in_progress', 'adjudicated'];
 const SHA = /^[0-9a-f]{40}$/;
 const CASE_ID = /^[a-z0-9][a-z0-9-]{2,63}$/;
-const FINDING_LINE =
-  /^\d+\. \[(blocking|follow_up|suggestion|nit)\] \*\*([A-Za-z0-9][A-Za-z0-9._-]{0,79}) — (.+)\*\* \(([^)]*)\)$/;
-
 function fail(message) {
   throw new Error(message);
 }
@@ -100,31 +97,48 @@ export function validateCaseAgainstHistory(manifest, { headCommittedAt, baseIsAn
   return problems;
 }
 
-export function parseRenderedFindings(rendered) {
-  const findings = [];
-  const lines = rendered.split('\n');
-  lines.forEach((line, index) => {
-    const match = line.match(FINDING_LINE);
-    if (!match) {
-      return;
+function runProvenance(caseManifest, parsed) {
+  const expectedUrl = `https://github.com/${caseManifest.repo}/pull/${caseManifest.pr}`;
+  if (parsed.pr_url !== expectedUrl) {
+    fail(`the report reviews ${parsed.pr_url ?? 'no PR'}, not ${expectedUrl}`);
+  }
+  if (!parsed.state) {
+    return {
+      status: 'unverified',
+      reason: parsed.complete
+        ? 'the report has no valid review state marker'
+        : 'an incomplete report carries no state marker, so its head cannot be verified',
+    };
+  }
+  if (parsed.state.reviewed_head !== caseManifest.head_sha) {
+    fail(`the report reviews head ${parsed.state.reviewed_head}, not the case head ${caseManifest.head_sha}`);
+  }
+  if (caseManifest.prior_review === null && parsed.state.round !== 1) {
+    fail(`the case has no prior review, but the report is round ${parsed.state.round}`);
+  }
+  if (caseManifest.prior_review !== null && parsed.state.round < 2) {
+    fail('the case has a prior review, but the report is round 1; the arm ran without its prior state');
+  }
+  return { status: 'verified', reason: null };
+}
+
+function readCost(meta) {
+  const parts = ['subagent_tokens', 'root_tokens'];
+  const known = parts.filter((field) => Number.isFinite(meta[field]));
+  for (const field of parts) {
+    if (meta[field] !== undefined && meta[field] !== null && !Number.isFinite(meta[field])) {
+      fail(`run meta ${field} must be a number or null`);
     }
-    const [, disposition, id, title, meta] = match;
-    const [severity, concernId] = meta.split(' · ');
-    findings.push({
-      id,
-      disposition,
-      severity,
-      concern_id: concernId,
-      title,
-      problem: (lines[index + 1] ?? '').trim(),
-    });
-  });
-  const verdict = rendered.match(/^Verdict: (.+)$/m)?.[1] ?? null;
+  }
   return {
-    verdict,
-    complete: verdict !== null && verdict !== 'Review Incomplete',
-    state: parseReviewState(rendered),
-    findings,
+    subagent_tokens: meta.subagent_tokens ?? null,
+    root_tokens: meta.root_tokens ?? null,
+    tokens: known.length === parts.length ? meta.subagent_tokens + meta.root_tokens : null,
+    complete: known.length === parts.length,
+    evidence_ms: meta.evidence_ms ?? null,
+    wall_ms: Date.parse(meta.ended_at) - Date.parse(meta.started_at),
+    retries: meta.retries ?? 0,
+    round_executions: meta.round_executions ?? 1,
   };
 }
 
@@ -140,22 +154,20 @@ export function buildRunRecord({ caseManifest, arm, runIndex, rendered, meta }) 
       fail(`run meta must state ${field}`);
     }
   }
-  const parsed = parseRenderedFindings(rendered);
+  const parsed = parseRenderedReview(rendered);
+  const provenance = runProvenance(caseManifest, parsed);
   return {
     case_id: caseManifest.case_id,
     arm,
     run_index: runIndex,
-    reviewed_head: caseManifest.head_sha,
+    reviewed_head: provenance.status === 'verified' ? parsed.state.reviewed_head : null,
+    round: parsed.state?.round ?? null,
+    provenance,
     rendered_sha256: createHash('sha256').update(rendered).digest('hex'),
     verdict: parsed.verdict,
     complete: parsed.complete,
     findings: parsed.findings,
-    cost: {
-      tokens: meta.tokens ?? null,
-      wall_ms: Date.parse(meta.ended_at) - Date.parse(meta.started_at),
-      retries: meta.retries ?? 0,
-      round_executions: meta.round_executions ?? 1,
-    },
+    cost: readCost(meta),
     capability_failures: meta.capability_failures ?? [],
     environment: {
       model: meta.model,
@@ -195,21 +207,55 @@ export function maskRuns(runs, seed) {
   return { blinded: entries.map(({ blind }) => blind), mapping: entries.map(({ mapping }) => mapping) };
 }
 
-export function validateAdjudication(entry) {
-  const fields = ['blind_id', 'real', 'pr_attributable', 'necessary_before_merge', 'adjudicator', 'reason'];
-  for (const field of fields) {
-    if (entry[field] === undefined) {
-      fail(`adjudication ${entry.blind_id ?? '?'} must state ${field}`);
+const LABELS = ['real', 'pr_attributable', 'necessary_before_merge'];
+
+export function validateAdjudications(entries, { mapping, keys }) {
+  if (!Array.isArray(entries)) {
+    fail('adjudications must be an array');
+  }
+  const mapped = new Map(mapping.map((entry) => [entry.blind_id, entry]));
+  const seen = new Set();
+  return entries.map((entry, index) => {
+    const at = `adjudication ${entry?.blind_id ?? `#${index + 1}`}`;
+    if (!entry || typeof entry !== 'object') {
+      fail(`${at} must be an object`);
     }
-  }
-  if (
-    entry.matches_key_item !== undefined &&
-    entry.matches_key_item !== null &&
-    typeof entry.matches_key_item !== 'string'
-  ) {
-    fail('matches_key_item must be a key item id or null');
-  }
-  return entry;
+    const target = mapped.get(entry.blind_id);
+    if (!target) {
+      fail(`${at} names no blinded finding`);
+    }
+    if (seen.has(entry.blind_id)) {
+      fail(`${at} appears more than once`);
+    }
+    seen.add(entry.blind_id);
+    for (const label of LABELS) {
+      if (typeof entry[label] !== 'boolean') {
+        fail(`${at} ${label} must be true or false, not ${JSON.stringify(entry[label])}`);
+      }
+    }
+    for (const field of ['adjudicator', 'reason']) {
+      if (typeof entry[field] !== 'string' || entry[field].trim().length === 0) {
+        fail(`${at} must state ${field}`);
+      }
+    }
+    if (!entry.real && (entry.pr_attributable || entry.necessary_before_merge)) {
+      fail(`${at} is contradictory: a finding that is not real cannot be PR-attributable or necessary before merge`);
+    }
+    const matched = entry.matches_key_item ?? null;
+    if (matched !== null) {
+      if (typeof matched !== 'string') {
+        fail(`${at} matches_key_item must be a key item id or null`);
+      }
+      if (!entry.real) {
+        fail(`${at} is contradictory: a finding that is not real cannot match an answer-key item`);
+      }
+      const key = keys[target.case_id];
+      if (key && !key.items.some((item) => item.id === matched)) {
+        fail(`${at} matches ${matched}, which is not an item in the ${target.case_id} answer key`);
+      }
+    }
+    return { ...entry, matches_key_item: matched };
+  });
 }
 
 export function validateAnswerKey(key) {
@@ -236,26 +282,76 @@ function ratio(numerator, denominator) {
   return { numerator, denominator, value: denominator === 0 ? null : numerator / denominator };
 }
 
+function pairingIssues(runs, manifest) {
+  const issues = [];
+  const byArm = Object.fromEntries(ARMS.map((arm) => [arm, runs.filter((run) => run.arm === arm)]));
+  if (byArm.review.length !== byArm['review-session'].length) {
+    issues.push(`run counts differ: ${ARMS.map((arm) => `${arm} ${byArm[arm].length}`).join(', ')}`);
+  }
+  for (const field of ['model', 'reasoning', 'tool_revision']) {
+    const values = new Set(runs.map((run) => run.environment[field]));
+    if (values.size > 1) {
+      issues.push(`${field} differs across runs: ${[...values].join(', ')}`);
+    }
+  }
+  if (runs.length === 0) {
+    issues.push(`no runs for ${manifest.case_id}`);
+  }
+  return issues;
+}
+
 export function scoreRuns({ runs, mapping, adjudications, keys, cases }) {
-  const byBlind = new Map(adjudications.map((entry) => [validateAdjudication(entry).blind_id, entry]));
+  const checked = validateAdjudications(adjudications, { mapping, keys });
+  const byBlind = new Map(checked.map((entry) => [entry.blind_id, entry]));
   const blindFor = new Map(
     mapping.map((entry) => [
       `${entry.case_id}\x1f${entry.arm}\x1f${entry.run_index}\x1f${entry.finding_id}`,
       entry.blind_id,
     ])
   );
-  const status = new Map(cases.map((manifest) => [manifest.case_id, manifest.adjudication_status]));
-  const report = { arms: {}, excluded_unadjudicated: [], per_case: [] };
+  const report = { arms: {}, excluded_unadjudicated: [], unpaired_cases: [], unverified_runs: [], per_case: [] };
+  const scoredCases = new Set();
+  for (const manifest of cases) {
+    if (manifest.adjudication_status !== 'adjudicated') {
+      report.excluded_unadjudicated.push(manifest.case_id);
+      continue;
+    }
+    const caseRuns = runs.filter((run) => run.case_id === manifest.case_id);
+    const issues = pairingIssues(caseRuns, manifest);
+    if (issues.length > 0) {
+      report.unpaired_cases.push({ case_id: manifest.case_id, issues });
+      continue;
+    }
+    scoredCases.add(manifest.case_id);
+    report.per_case.push({
+      case_id: manifest.case_id,
+      verdicts: Object.fromEntries(
+        ARMS.map((arm) => [arm, caseRuns.filter((run) => run.arm === arm).map((run) => run.verdict)])
+      ),
+    });
+  }
+  for (const run of runs.filter((candidate) => candidate.provenance?.status !== 'verified')) {
+    report.unverified_runs.push({
+      case_id: run.case_id,
+      arm: run.arm,
+      run_index: run.run_index,
+      reason: run.provenance?.reason ?? 'no provenance',
+    });
+  }
   for (const arm of ARMS) {
     const armRuns = runs.filter((run) => run.arm === arm);
-    const scored = armRuns.filter((run) => status.get(run.case_id) === 'adjudicated');
+    const pairedRuns = armRuns.filter((run) => scoredCases.has(run.case_id));
+    const scored = pairedRuns.filter((run) => run.provenance?.status === 'verified');
     let blockers = 0;
     let validBlockers = 0;
     let unadjudicatedFindings = 0;
-    const recalled = { known_defect: [0, 0], architectural: [0, 0] };
+    const recall = {
+      known_defect: { detected: 0, correct_disposition: 0, total: 0 },
+      architectural: { detected: 0, correct_disposition: 0, total: 0 },
+    };
     for (const run of scored) {
       const key = validateAnswerKey(keys[run.case_id]);
-      const matched = new Set();
+      const detected = new Map();
       for (const finding of run.findings) {
         const verdict = byBlind.get(blindFor.get(`${run.case_id}\x1f${arm}\x1f${run.run_index}\x1f${finding.id}`));
         if (!verdict) {
@@ -264,49 +360,52 @@ export function scoreRuns({ runs, mapping, adjudications, keys, cases }) {
         }
         if (finding.disposition === 'blocking') {
           blockers += 1;
-          if (verdict.real && verdict.pr_attributable && verdict.necessary_before_merge) {
+          if (verdict.real === true && verdict.pr_attributable === true && verdict.necessary_before_merge === true) {
             validBlockers += 1;
           }
         }
-        if (verdict.matches_key_item) {
-          matched.add(verdict.matches_key_item);
+        if (verdict.matches_key_item !== null) {
+          detected.set(verdict.matches_key_item, [
+            ...(detected.get(verdict.matches_key_item) ?? []),
+            finding.disposition,
+          ]);
         }
       }
-      for (const kind of Object.keys(recalled)) {
-        const items = key.items.filter((item) => item.kind === kind);
-        recalled[kind][0] += items.filter((item) => matched.has(item.id)).length;
-        recalled[kind][1] += items.length;
+      for (const [kind, tally] of Object.entries(recall)) {
+        for (const item of key.items.filter((candidate) => candidate.kind === kind)) {
+          tally.total += 1;
+          const dispositions = detected.get(item.id) ?? [];
+          if (dispositions.length > 0) {
+            tally.detected += 1;
+          }
+          if (dispositions.some((disposition) => item.acceptable_dispositions.includes(disposition))) {
+            tally.correct_disposition += 1;
+          }
+        }
       }
     }
-    const incomplete = armRuns.filter((run) => !run.complete).length;
+    const incomplete = pairedRuns.filter((run) => !run.complete).length;
+    const costed = pairedRuns.filter((run) => run.cost.complete);
     report.arms[arm] = {
       runs: armRuns.length,
+      paired_runs: pairedRuns.length,
       scored_runs: scored.length,
       blocker_precision: ratio(validBlockers, blockers),
-      known_defect_recall: ratio(...recalled.known_defect),
-      architectural_recall: ratio(...recalled.architectural),
-      incomplete_run_rate: ratio(incomplete, armRuns.length),
+      known_defect_recall: ratio(recall.known_defect.detected, recall.known_defect.total),
+      known_defect_disposition_recall: ratio(recall.known_defect.correct_disposition, recall.known_defect.total),
+      architectural_recall: ratio(recall.architectural.detected, recall.architectural.total),
+      architectural_disposition_recall: ratio(recall.architectural.correct_disposition, recall.architectural.total),
+      incomplete_run_rate: ratio(incomplete, pairedRuns.length),
       unadjudicated_findings: unadjudicatedFindings,
-      median_tokens: median(armRuns.map((run) => run.cost.tokens).filter((value) => Number.isFinite(value))),
-      median_wall_ms: median(armRuns.map((run) => run.cost.wall_ms)),
+      median_total_tokens: median(costed.map((run) => run.cost.tokens)),
+      runs_missing_cost: pairedRuns.length - costed.length,
+      median_wall_ms: median(pairedRuns.map((run) => run.cost.wall_ms)),
       capability_failures: armRuns.flatMap((run) => run.capability_failures),
     };
   }
-  for (const manifest of cases) {
-    if (manifest.adjudication_status !== 'adjudicated') {
-      report.excluded_unadjudicated.push(manifest.case_id);
-      continue;
-    }
-    report.per_case.push({
-      case_id: manifest.case_id,
-      verdicts: Object.fromEntries(
-        ARMS.map((arm) => [
-          arm,
-          runs.filter((run) => run.case_id === manifest.case_id && run.arm === arm).map((run) => run.verdict),
-        ])
-      ),
-    });
-  }
+  report.not_scored = [
+    'convergence across rounds: reopened findings, new regressions, unnecessary new blockers, and adjacent-work demands',
+  ];
   return report;
 }
 
