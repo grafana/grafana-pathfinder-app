@@ -100,6 +100,13 @@ describe('SERVER_INSTRUCTIONS', () => {
     expect(SERVER_INSTRUCTIONS).toMatch(/noop/i);
   });
 
+  it('routes guide discovery to pathfinder_find_guides and scopes the authoring_start rule to authoring', () => {
+    expect(SERVER_INSTRUCTIONS).toMatch(/pathfinder_find_guides/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/For authoring, always call `pathfinder_authoring_start` first/);
+    expect(SERVER_INSTRUCTIONS).not.toMatch(/(^|\n)Always call `pathfinder_authoring_start`/);
+    expect(PATHFINDER_NOT_FOR.join(' ')).toMatch(/pathfinder_find_guides/);
+  });
+
   it('declares when NOT to use the server so MCP-aware clients route elsewhere', () => {
     expect(SERVER_INSTRUCTIONS).toMatch(/when not to use|do not use|belongs elsewhere|not for/i);
   });

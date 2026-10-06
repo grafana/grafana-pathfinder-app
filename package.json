@@ -48,6 +48,7 @@
     "stats:check": "node dist/cli/cli/index.js build-stats src/bundled-interactives --check",
     "snippets:build": "node dist/cli/cli/index.js build-snippets",
     "schema:export": "node dist/cli/cli/index.js schema --all",
+    "eval:guide-search": "npm run build:cli && node scripts/guide-search-eval/evaluate.js",
     "check": "node scripts/check.js",
     "prepare": "husky"
   },

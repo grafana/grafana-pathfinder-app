@@ -58,7 +58,10 @@ beforeEach(() => {
 it('validates and saves before returning the exact prepared payload', async () => {
   const prepared = await prepareKioskInputs(rule, 'instance', [input], draft, signal());
   expect(prepared).toEqual({ launch: result().launch, inputTransfer: 'saved' });
-  expect(prepareGuideLaunch).toHaveBeenCalledWith(rule.url, expect.objectContaining({ requireResolvedSnippets: true }));
+  expect(prepareGuideLaunch).toHaveBeenCalledWith(
+    rule.url,
+    expect.objectContaining({ requireResolvedSnippets: true, source: 'kiosk_session' })
+  );
   expect(guideResponseStorage.mergeResponses).toHaveBeenCalledWith('packages-demo-content.json', {
     appUrl: 'https://example.com',
   });

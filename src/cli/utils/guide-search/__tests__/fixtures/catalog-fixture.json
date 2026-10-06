@@ -1,0 +1,552 @@
+{
+  "alert-history-tour": {
+    "path": "alert-history-tour/",
+    "type": "guide",
+    "title": "Tour the alert history page",
+    "description": "See which rules fired and when.",
+    "category": "take-action",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "targeting": {
+      "match": {
+        "urlPrefix": "/alerting/history"
+      }
+    }
+  },
+  "alert-rules-basics": {
+    "path": "alert-rules-basics/",
+    "type": "guide",
+    "title": "Configure alert rules",
+    "description": "Create your first alert rule from a query.",
+    "category": "take-action",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "targeting": {
+      "match": {
+        "urlPrefixIn": ["/alerting", "/alerts-and-incidents"]
+      }
+    },
+    "startingLocation": "/alerting/new"
+  },
+  "alert-silences": {
+    "path": "alert-silences/",
+    "type": "guide",
+    "title": "Silence noisy notifications",
+    "description": "Mute alerts during planned maintenance windows.",
+    "category": "take-action",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "cardinality-reduce": {
+    "path": "cardinality-reduce/",
+    "type": "guide",
+    "title": "Reduce series cardinality",
+    "description": "Lower telemetry costs by dropping unused labels.",
+    "category": "data-availability",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "connection-picker": {
+    "path": "connection-picker/",
+    "type": "guide",
+    "title": "Pick a connection type",
+    "description": "Choose how to send telemetry to your stack.",
+    "category": "data-availability",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "targeting": {
+      "match": {
+        "urlRegex": "^/connections/?$"
+      }
+    }
+  },
+  "filler-01": {
+    "path": "filler-01/",
+    "type": "guide",
+    "title": "Build a dashboard from telemetry",
+    "description": "A short walkthrough about dashboard and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-02": {
+    "path": "filler-02/",
+    "type": "guide",
+    "title": "Share a dashboard link",
+    "description": "A short walkthrough about dashboard and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-03": {
+    "path": "filler-03/",
+    "type": "guide",
+    "title": "Organize dashboard folders",
+    "description": "A short walkthrough about dashboard and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-04": {
+    "path": "filler-04/",
+    "type": "guide",
+    "title": "Add a dashboard variable",
+    "description": "A short walkthrough about dashboard and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-05": {
+    "path": "filler-05/",
+    "type": "guide",
+    "title": "Annotate telemetry events",
+    "description": "A short walkthrough about telemetry and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-06": {
+    "path": "filler-06/",
+    "type": "guide",
+    "title": "Correlate telemetry signals",
+    "description": "A short walkthrough about telemetry and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-07": {
+    "path": "filler-07/",
+    "type": "guide",
+    "title": "Export telemetry to storage",
+    "description": "A short walkthrough about telemetry and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-08": {
+    "path": "filler-08/",
+    "type": "guide",
+    "title": "Search telemetry with Explore",
+    "description": "A short walkthrough about telemetry and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-09": {
+    "path": "filler-09/",
+    "type": "guide",
+    "title": "Set dashboard permissions",
+    "description": "A short walkthrough about dashboard and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-10": {
+    "path": "filler-10/",
+    "type": "guide",
+    "title": "Review telemetry retention",
+    "description": "A short walkthrough about telemetry and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-11": {
+    "path": "filler-11/",
+    "type": "guide",
+    "title": "Compare telemetry across stacks",
+    "description": "A short walkthrough about telemetry and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "filler-12": {
+    "path": "filler-12/",
+    "type": "guide",
+    "title": "Schedule dashboard reports",
+    "description": "A short walkthrough about dashboard and telemetry.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "ingest-logs-configure": {
+    "path": "ingest-logs-configure/",
+    "type": "guide",
+    "title": "Configure log pipelines",
+    "description": "Parse and label incoming log lines.",
+    "category": "data-availability",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "startingLocation": "/a/example-collector-app/pipelines"
+  },
+  "ingest-logs-install": {
+    "path": "ingest-logs-install/",
+    "type": "guide",
+    "title": "Install the log collector",
+    "description": "Download and start the collector on a host.",
+    "category": "data-availability",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "ingest-logs-lj": {
+    "path": "ingest-logs-lj/",
+    "type": "path",
+    "title": "Ship logs with the collector",
+    "description": "Step-by-step guide: Ship logs with the collector.",
+    "category": "data-availability",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "milestones": ["ingest-logs-install", "ingest-logs-configure", "shared-verify-data"],
+    "startingLocation": "/a/example-collector-app"
+  },
+  "ingest-metrics-install": {
+    "path": "ingest-metrics-install/",
+    "type": "guide",
+    "title": "Install the metrics collector",
+    "description": "Scrape and forward metrics from a host.",
+    "category": "data-availability",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "ingest-metrics-lj": {
+    "path": "ingest-metrics-lj/",
+    "type": "path",
+    "title": "Ship metrics with the collector",
+    "description": "Step-by-step guide: Ship metrics with the collector.",
+    "category": "data-availability",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "milestones": ["ingest-metrics-install", "shared-verify-data"],
+    "startingLocation": "/connections/add-new-connection"
+  },
+  "postgresql-connect": {
+    "path": "postgresql-connect/",
+    "type": "guide",
+    "title": "Connect a PostgreSQL database",
+    "description": "Add a PostgreSQL data source and run a query.",
+    "category": "data-availability",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "targeting": {
+      "match": {
+        "urlPrefix": "/connections/datasources/postgres"
+      }
+    }
+  },
+  "regex-broken": {
+    "path": "regex-broken/",
+    "type": "guide",
+    "title": "Broken pattern guide",
+    "description": "Targeted with a pattern that does not compile.",
+    "category": "general",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "targeting": {
+      "match": {
+        "or": [
+          {
+            "urlRegex": "("
+          },
+          {
+            "urlPrefix": "/broken-fallback"
+          }
+        ]
+      }
+    }
+  },
+  "regex-hostile": {
+    "path": "regex-hostile/",
+    "type": "guide",
+    "title": "Hostile pattern guide",
+    "description": "Targeted with a catastrophic-backtracking pattern.",
+    "category": "general",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "targeting": {
+      "match": {
+        "urlRegex": "^/(a+)+$"
+      }
+    }
+  },
+  "regex-too-long": {
+    "path": "regex-too-long/",
+    "type": "guide",
+    "title": "Long pattern guide",
+    "description": "Targeted with an over-long pattern.",
+    "category": "general",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "targeting": {
+      "match": {
+        "urlRegex": "^/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx$"
+      }
+    }
+  },
+  "sample-dashboard-tour": {
+    "path": "sample-dashboard-tour/",
+    "type": "guide",
+    "title": "Tour the sample dashboard",
+    "description": "Walk through panels on a bundled sample dashboard.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "local"
+    }
+  },
+  "self-managed-welcome": {
+    "path": "self-managed-welcome/",
+    "type": "guide",
+    "title": "Welcome to self-managed Grafana",
+    "description": "Start here on a self-managed instance.",
+    "category": "onboarding",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "targeting": {
+      "match": {
+        "and": [
+          {
+            "urlRegex": "^/?$"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    }
+  },
+  "shared-verify-data": {
+    "path": "shared-verify-data/",
+    "type": "guide",
+    "title": "Verify incoming data",
+    "description": "Check that telemetry arrives in Explore.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "usage-optimizer-lj": {
+    "path": "usage-optimizer-lj/",
+    "type": "path",
+    "title": "Tune spend with the usage optimizer",
+    "description": "Review usage and act on cost recommendations.",
+    "category": "take-action",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "milestones": ["usage-optimizer-review"],
+    "targeting": {
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/example-usage-app"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    }
+  },
+  "usage-optimizer-review": {
+    "path": "usage-optimizer-review/",
+    "type": "guide",
+    "title": "Review usage recommendations",
+    "description": "Apply the recommended changes to reduce spend.",
+    "category": "take-action",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "widgets-a": {
+    "path": "widgets-a/",
+    "type": "guide",
+    "title": "Arrange widgets",
+    "description": "Arrange widgets on a board.",
+    "category": "general",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "widgets-b": {
+    "path": "widgets-b/",
+    "type": "guide",
+    "title": "Arrange widgets",
+    "description": "Arrange widgets on a board.",
+    "category": "general",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "widgets-path": {
+    "path": "widgets-path/",
+    "type": "path",
+    "title": "Arrange widgets",
+    "description": "Arrange widgets on a board.",
+    "category": "general",
+    "author": {
+      "name": "fixture",
+      "team": "fixture"
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "milestones": ["widgets-a"]
+  }
+}
