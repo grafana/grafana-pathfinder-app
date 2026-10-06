@@ -11,6 +11,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { JsonGuide } from './types';
 import { prepareGitHubPR, openGitHub, type PRCreationResult } from './utils/github-pr';
+import { copyTextToClipboard } from '../../lib/clipboard';
 
 /**
  * Generate a PR description template with instructions for the reviewer
@@ -296,9 +297,11 @@ export function GitHubPRModal({ isOpen, guide, onClose }: GitHubPRModalProps) {
                 size="sm"
                 icon="copy"
                 onClick={() => {
-                  navigator.clipboard.writeText(data.json).catch(() => {
-                    // If this also fails, show the JSON in a prompt
-                    window.prompt('Copy this JSON:', data.json.substring(0, 1000) + '...');
+                  copyTextToClipboard(data.json).then((copied) => {
+                    if (!copied) {
+                      // If this also fails, show the JSON in a prompt
+                      window.prompt('Copy this JSON:', data.json.substring(0, 1000) + '...');
+                    }
                   });
                 }}
               >
@@ -346,7 +349,11 @@ export function GitHubPRModal({ isOpen, guide, onClose }: GitHubPRModalProps) {
               icon="copy"
               onClick={() => {
                 const template = getPRDescriptionTemplate(data.guideId, guide.title);
-                navigator.clipboard.writeText(template);
+                copyTextToClipboard(template).then((copied) => {
+                  if (!copied) {
+                    window.prompt('Copy this PR description:', template);
+                  }
+                });
               }}
               tooltip="Copy PR description"
             >
