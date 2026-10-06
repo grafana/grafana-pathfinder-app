@@ -23,7 +23,7 @@
     "test": "jest --watch --onlyChanged",
     "test:ci": "jest --passWithNoTests --maxWorkers 4",
     "test:coverage": "jest --coverage",
-    "test:review-contract": "node --test .cursor/skills/review/scripts/*.test.mjs",
+    "test:review-contract": "node --test .cursor/skills/review/scripts/*.test.mjs .cursor/skills/review/scripts/session/*.test.mjs",
     "test:scripts": "bash scripts/tests/run.sh",
     "test:governance": "jest src/validation/architecture.test.ts src/validation/import-graph.test.ts src/validation/security-lint-config.test.ts src/validation/control-bytes.test.ts src/validation/unicode-format-characters.test.ts src/validation/eslint-disable-justifications.test.ts",
     "test:coverage:watch": "jest --coverage --watch",
