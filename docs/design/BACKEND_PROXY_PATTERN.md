@@ -740,6 +740,40 @@ and cancellations are excluded. Internal logs retain trusted
 stack and trace context; diagnostic responses never include tokens or upstream bodies.
 An empty successful LIST is not classified as an authorization failure.
 
+### 11.1 Attempt upserts (incremental progress)
+
+A write body that carries `attemptId` is one guide attempt's progress, not a one-off completion.
+The handler is in `pkg/plugin/completion_records_attempt.go`. A body without `attemptId` takes the
+create-only path above, unchanged.
+
+- **One record per attempt.** The name is `hash(userID ‖ 0x00 ‖ "attempt" ‖ 0x00 ‖ attemptId)`. It
+  is scoped to the verified user like the create name, and disjoint from every create name.
+- **Read, then write.** The plugin GETs the record. A JSON `Status` with `reason: NotFound` means
+  create it; any other 404 is structural and passes through as for a create. A 409 on the create
+  means another write won the race, so it reads again.
+- **Never lower progress.** A stored percent at or above the incoming one is a `200` no-op. That
+  covers replays, retries and out-of-order arrivals.
+- **Optimistic concurrency.** Otherwise it PUTs the full object it read, minus
+  `metadata.managedFields`, at the `resourceVersion` it read. A stale version is a 409; the plugin
+  reads and retries, up to 3 tries, then answers `503 completion-write-contended` (retried).
+- **Completion fields at 100% only.** A partial stores no `completedAt`, `source: objectives` and
+  `durationSeconds: 0`. The write that reaches 100% sets all three.
+- **Schema skew.** A `422` on a partial means the CRD still requires `completedAt`; it answers
+  `503 schema-not-ready` (retried), never a terminal 4xx. A `422` on a completion stays terminal.
+- **Foreign record.** A stored record for another user or guide is `409 attempt-conflict`
+  (terminal; the client drops it).
+- **One token.** GET, create and PUT share one on-behalf-of token per inbound request.
+
+Responses add `200` (updated or no-op) to the create path's `201`. Assignment satisfaction runs only
+for a write at 100%. `capability.progressRecords: true` advertises that the build accepts attempt
+bodies; it says nothing about the caller's permissions.
+
+**Read side.** `/completion-records/my` counts only records with a `completedAt` as completions,
+so legacy records, which always have one, collate as before. `inProgress[]` (always present)
+lists, per guide, the latest partial when it is newer than the guide's latest completion. "Newer"
+compares last-updated times: the `grafana.app/updatedTimestamp` annotation when present, else
+`spec.recordedAt`.
+
 ## Mechanically enforced: reads proxied, writes direct
 
 The read/write split this document describes — a GET must go through a plugin-backend proxy,
