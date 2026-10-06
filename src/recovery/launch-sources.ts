@@ -37,6 +37,7 @@ export type LaunchSource =
   // Needs alignment check
   | 'home_page'
   | 'url_param'
+  | 'kiosk_session'
   | 'shared_link'
   // Deep-link surface (`?doc=foo&source=learning-hub`). Also doubles as a
   // routing flag in the auto-launch handlers (`source === 'learning-hub'`
@@ -105,6 +106,7 @@ export const ALIGNED_BY_CONSTRUCTION_SOURCES: ReadonlySet<LaunchSource> = new Se
 export const NEEDS_ALIGNMENT_CHECK_SOURCES: ReadonlySet<LaunchSource> = new Set<LaunchSource>([
   'home_page',
   'url_param',
+  'kiosk_session',
   'shared_link',
   'learning-hub',
   'command_palette',

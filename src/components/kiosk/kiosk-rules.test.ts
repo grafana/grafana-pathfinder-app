@@ -1,5 +1,11 @@
 import { logger } from '../../lib/logging';
 import { recordKioskCatalogLoaded } from '../../lib/telemetry';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { getKioskName, startKioskSession } from '../../lib/kiosk-analytics';
+jest.mock('../../lib/analytics', () => ({
+  reportAppInteraction: jest.fn(),
+  UserInteraction: { KioskCatalogLoaded: 'kiosk_catalog_loaded' },
+}));
 jest.mock('../../lib/logging', () => ({ logger: { warn: jest.fn() } }));
 jest.mock('../../lib/telemetry', () => ({ recordKioskCatalogLoaded: jest.fn() }));
 import { BUNDLED_KIOSK_RULES, DEFAULT_BANNER, DEFAULT_KIOSK_URL, loadKioskData } from './kiosk-rules';
@@ -15,6 +21,41 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockFetch.mockReset();
   global.fetch = mockFetch;
+});
+
+afterEach(() => {
+  expect(jest.mocked(reportAppInteraction).mock.calls).toEqual(
+    jest
+      .mocked(recordKioskCatalogLoaded)
+      .mock.calls.map(([tier, degraded]) => [
+        UserInteraction.KioskCatalogLoaded,
+        expect.objectContaining({ tier, degraded }),
+      ])
+  );
+});
+
+it('reports the catalog outcome with the opening session and no catalog contents', async () => {
+  mockFetch.mockResolvedValue(response('Private catalog title'));
+  await loadKioskData(defaultUrl, overrideUrl, undefined, { sessionId: 'opening-session', mode: 'instance' });
+  expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskCatalogLoaded, {
+    tier: 'override',
+    kiosk_name: 'custom',
+    degraded: false,
+    kiosk_session_id: 'opening-session',
+    launch_mode: 'instance',
+  });
+});
+
+it('names the served fallback catalog instead of the failed requested kiosk', async () => {
+  const session = startKioskSession('dem');
+  mockFetch.mockRejectedValue(new Error('unavailable'));
+  await loadKioskData(defaultUrl, undefined, undefined, { sessionId: session.id, mode: 'instance' });
+  expect(getKioskName()).toBe('default');
+  expect(reportAppInteraction).toHaveBeenCalledWith(
+    UserInteraction.KioskCatalogLoaded,
+    expect.objectContaining({ tier: 'bundled', degraded: true, kiosk_name: 'default' })
+  );
+  session.end();
 });
 
 it('uses the override first and does not fetch the default', async () => {

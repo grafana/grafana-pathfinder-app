@@ -218,7 +218,7 @@ Live values are computed when the event fires. Stored values are read back from 
 
 ## Kiosk catalogs and launches
 
-`pathfinder_kiosk_catalog_loaded` records the served `tier` (`override`, `configured`, `generic`, or `bundled`) and whether loading `degraded`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason; rejected rule logs name the invalid field without its value.
+`pathfinder_kiosk_catalog_loaded` is sent to RudderStack through `reportAppInteraction` and mirrored as a Faro user action. The existing Faro event remains available for operational queries. It records the served `tier` (`override`, `configured`, `generic`, or `bundled`) and whether loading `degraded`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason; rejected rule logs name the invalid field without its value.
 
 `KioskDemoStarted` includes `launch_mode` (`instance` or `presentation`). Since URL-selected kiosks were added, `target_instance` is the current origin for instance launches and the catalog target (or current origin) for presentation launches. Filter by `launch_mode = presentation` for booth-demo comparisons; older events lack this field. Catalog URLs, rule content, and raw failure messages are not added to catalog telemetry.
 
@@ -231,6 +231,12 @@ Structured kiosk controls emit `kiosk_interaction`, mirrored to Faro through the
 | `command`     | `copy`                                                                    | `outcome`: `success` or `error`                                        |
 
 Explicit exits emit the same event with `component=kiosk`, `action=exit`, and `method=button` or `escape`. Launching a guide is not counted as an exit, and dismissing a child dropdown is not counted either.
+
+Opening a kiosk catalog creates an in-memory `kiosk_session_id`, shared by catalog-loaded events, interactions, and guide launches from that opening. Closing or replacing the catalog ends that kiosk session; reopening creates a new ID. Guide launches pass the ID to the destination, where subsequent guide analytics inherit it. Explicit event IDs take precedence over a previously launched guide's ID. IDs are not persisted in browser storage.
+
+Kiosk guide opens use `source=kiosk_session` on sidebar-open analytics and the guide launch source, rather than `url_param`. A later unrelated open retains its own source even if guide events still carry kiosk session attribution.
+
+`kiosk_name` identifies the catalog actually served and is carried through catalog loading, kiosk controls, guide launch, and subsequent session-attributed analytics. It is a lowercase path slug derived from the catalog URL: `/kiosk/dem/rules.json` becomes `dem`, and `/catalogs/customer-onboarding.json` becomes `customer-onboarding`. A `rules.json` URL uses its parent directory; other URLs use the final path segment with `.json` removed. Names allow 1–64 ASCII letters, digits, underscores, or hyphens, beginning with a letter or digit. Hostnames, credentials, query strings, fragments, and encoded path text are excluded. Unsupported names use `custom`; bundled catalogs use `default`; legacy session links with no name use `unknown`. The name travels in `kiosk_name` alongside `kiosk_session` in the guide deep link; both are stripped after consumption. This adds a catalog path identifier to analytics, not the catalog title or full URL.
 
 All carry `launch_mode`; page controls also carry zero-based `block_index`. `fallback` means the guide opened without transferring inputs because its declarations or variable usage were incompatible. This is silent for visitors. `ready` means destination validation and input persistence succeeded; it does not assert that the guide rendered. Existing `KioskDemoStarted` and guide-render telemetry cover the subsequent launch. Alternative cards and links use that same launch event. Input engagement is measured on the first change, not focus or each keystroke. Unmounted/aborted forms do not emit a terminal outcome.
 

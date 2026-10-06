@@ -53,6 +53,7 @@ describe('reportAppInteraction', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete (window as any).__pathfinderKioskSessionId;
+    delete window.__pathfinderKioskName;
   });
 
   it('includes kiosk_session_id when window global is set', () => {
@@ -76,6 +77,38 @@ describe('reportAppInteraction', () => {
     expect(mockReportInteraction).toHaveBeenCalledTimes(1);
     const properties = mockReportInteraction.mock.calls[0][1];
     expect(properties).not.toHaveProperty('kiosk_session_id');
+  });
+
+  it('preserves an explicit kiosk session over a previous guide session in both pipelines', () => {
+    window.__pathfinderKioskSessionId = 'previous-guide';
+    reportAppInteraction(UserInteraction.KioskDemoStarted, { kiosk_session_id: 'current-kiosk' });
+    const expected = expect.objectContaining({ kiosk_session_id: 'current-kiosk' });
+    expect(mockReportInteraction).toHaveBeenCalledWith('pathfinder_kiosk_demo_started', expected);
+    expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_kiosk_demo_started', expected);
+  });
+
+  it('includes the kiosk name on the panel-open event in both pipelines', () => {
+    window.__pathfinderKioskSessionId = 'current-session';
+    window.__pathfinderKioskName = 'customer-onboarding';
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'auto-open', source: 'kiosk_session' });
+    const expected = expect.objectContaining({
+      action: 'auto-open',
+      source: 'kiosk_session',
+      kiosk_session_id: 'current-session',
+      kiosk_name: 'customer-onboarding',
+    });
+    expect(mockReportInteraction).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', expected);
+    expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', expected);
+  });
+
+  it('does not attribute an explicit new session to a stale kiosk name', () => {
+    window.__pathfinderKioskSessionId = 'previous-session';
+    window.__pathfinderKioskName = 'previous-kiosk';
+    reportAppInteraction(UserInteraction.KioskDemoStarted, { kiosk_session_id: 'new-session' });
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_kiosk_demo_started',
+      expect.objectContaining({ kiosk_name: 'unknown' })
+    );
   });
 
   it('omits kiosk_session_id when window global is empty string', () => {
