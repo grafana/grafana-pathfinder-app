@@ -602,3 +602,40 @@ rewriting the URL.
 ### VM stuck provisioning, SSH failures, quota problems
 
 These are backend concerns. See the `grafana-coda-app` repo's `docs/API.md` and `docs/SECURITY.md`.
+
+## Local terminal journey regression tests
+
+`npm run test:coda` runs the built Pathfinder and Coda plugins in real Grafana with
+Grafana Live, the production relay and OpenSSH. The Coda API and VM lifecycle are
+simulated locally; no AWS credentials, cloud VMs or staging account are needed.
+Only the static guide content is supplied by the browser test. Coda requests,
+SSH, terminal execution and `coda-exit-zero` checks use the real plugins.
+
+Requires Docker Compose, Python 3, OpenSSL, ssh-keygen, Go and Mage, plus dependencies
+installed in both checkouts and Chromium installed with `npx playwright install chromium`.
+Use the Coda app checkout containing its lifecycle harness:
+
+```sh
+CODA_HARNESS_ROOT=/absolute/path/to/grafana-coda-app npm run test:coda
+```
+
+The command builds both plugins, generates disposable local credentials, runs the
+guide through TCP and MicroVM-style ingress, and removes its Docker stack even on
+failure. Each journey checks connection, command completion, server-side exit-zero
+requirements, recovery with the same VM and no command replay, and cleanup through
+product APIs. Logical VMs share one disposable guest; this does not test real cloud
+provisioning or VM isolation.
+
+The shared fixture and safe reporter are copied verbatim into ignored
+`tests/coda/.harness/` so they resolve this checkout's Playwright installation. Do
+not edit or commit those copies. Results go to `artifacts/lifecycle/results.json`;
+provenance stays in the Coda checkout's `artifacts/lifecycle/provenance.json`. Never
+publish raw traces, harness state or Docker logs. For prebuilt plugins, set both
+`PATHFINDER_SKIP_BUILD=1` and `CODA_HARNESS_SKIP_BUILD=1`.
+
+Coda's **Pathfinder terminal journey** CI job builds its PR against the public
+Pathfinder commit pinned in `tests/harness/pins.json`. Refresh that pin in Coda when
+changing this journey. Pathfinder's ordinary PR CI excludes `tests/coda/` because
+it has no access to the private Coda build; a normal Pathfinder CI pass does not
+prove this integration passed. This arrangement uses one simulator without adding
+cross-repository credentials to public PR jobs.

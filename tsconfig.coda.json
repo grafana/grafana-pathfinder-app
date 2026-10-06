@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "rootDir": ".", "paths": {}, "types": ["node"], "noEmit": true },
+  "include": ["playwright.coda.config.ts", "tests/coda/**/*.ts"]
+}

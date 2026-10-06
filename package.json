@@ -21,6 +21,7 @@
     "dev:backend": "mage -v build:linux && npm run dev",
     "peerjs-server": "node scripts/peerjs-server.js",
     "test": "jest --watch --onlyChanged",
+    "test:coda": "bash scripts/coda/run.sh",
     "test:ci": "jest --passWithNoTests --maxWorkers 4",
     "test:coverage": "jest --coverage",
     "test:review-contract": "node --test .cursor/skills/review/scripts/*.test.mjs",

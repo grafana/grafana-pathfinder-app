@@ -23,3 +23,6 @@ pkg/
 # Other generated or temporary files
 .cache/
 .temp/
+
+/tests/coda/.harness/
+/artifacts/lifecycle/

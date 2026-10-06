@@ -79,3 +79,6 @@ src/**/*.js.map
 /.env.local
 /.env.*.local
 /.planning/
+
+/tests/coda/.harness/
+/artifacts/lifecycle/
