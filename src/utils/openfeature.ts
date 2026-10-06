@@ -190,6 +190,17 @@ const pathfinderFeatureFlags = {
     defaultValue: false,
     trackingKey: 'intercept_docs_links',
   },
+  /**
+   * Kill switch for the `guide_progress` and `guide_completed` analytics
+   * events. Only stops the events: guide attempts are still tracked locally,
+   * and completion records are unaffected.
+   */
+  'pathfinder.progress-analytics': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: true,
+    trackingKey: 'progress_analytics',
+  },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 
 // Helper to get typed keys from the flag definitions

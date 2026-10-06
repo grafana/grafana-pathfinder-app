@@ -42,6 +42,7 @@ import {
 } from '../../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
+import { useGuideIdentityRegistration } from '../../content-renderer/useGuideIdentityRegistration';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
@@ -137,6 +138,18 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   // out of storage during render, so this re-render is what keeps it from
   // painting a stale fill once evidence lands while the tab stays mounted.
   useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
+
+  const surfaceCompletionInput = stableContent
+    ? {
+        baseUrl: activeTab?.baseUrl,
+        contentUrl: stableContent.url,
+        currentUrl: activeTab?.currentUrl,
+        contentType: stableContent.type,
+        metadata: stableContent.metadata,
+        guideTitle: activeTab?.title,
+      }
+    : null;
+  useGuideIdentityRegistration(stableContent?.url, surfaceCompletionInput);
 
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
@@ -475,16 +488,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onContentReady={() => {
                         restoreScrollPosition();
                       }}
-                      onGuideComplete={() =>
-                        recordGuideCompletionForSurface({
-                          baseUrl: activeTab?.baseUrl,
-                          contentUrl: stableContent.url,
-                          currentUrl: activeTab?.currentUrl,
-                          contentType: stableContent.type,
-                          metadata: stableContent.metadata,
-                          guideTitle: activeTab?.title,
-                        })
-                      }
+                      onGuideComplete={() => {
+                        if (surfaceCompletionInput) {
+                          recordGuideCompletionForSurface(surfaceCompletionInput);
+                        }
+                      }}
                       onContinueToNextMilestone={
                         model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
                       }

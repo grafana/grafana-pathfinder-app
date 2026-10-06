@@ -1,7 +1,7 @@
 import { logger } from '../lib/logging';
 
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
-import { invalidateEmittedCompletion } from './completion-recorder';
+import { liftEmittedCompletionGuard } from './completion-recorder';
 import { reportCompletionWriteDegradation } from './completion-write-telemetry';
 import { DRAIN_BUDGET_PER_PASS, MAX_RETENTION_MS } from './completion-write-timing';
 import { createCompletionEventId, type CompletionWriteStorage, type QueuedWrite } from './completion-write-storage';
@@ -80,7 +80,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   // terminal (4xx) drop is deliberately excluded: that record WAS considered
   // and rejected, so the guard staying set is correct.
   function liftGuardFor(item: QueuedWrite): void {
-    invalidateEmittedCompletion(item.body.guideSource, item.body.guideId);
+    liftEmittedCompletionGuard(item.body.guideSource, item.body.guideId);
   }
 
   function isExpired(item: QueuedWrite): boolean {

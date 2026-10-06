@@ -6,6 +6,7 @@ import { config } from '@grafana/runtime';
 import { Icon, useStyles2 } from '@grafana/ui';
 
 import { ContentRenderer } from '../content-renderer/content-renderer';
+import { useGuideIdentityRegistration } from '../content-renderer/useGuideIdentityRegistration';
 import { fetchUnifiedContent, recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
@@ -185,29 +186,33 @@ function GuideReaderInner({
     };
   }, [handleClose]);
 
+  const surfaceCompletionInput = content
+    ? {
+        contentUrl: content.url,
+        currentUrl: content.url,
+        contentType: content.type,
+        metadata: content.metadata,
+        guideTitle: content.metadata?.title,
+      }
+    : null;
+  useGuideIdentityRegistration(content?.url, surfaceCompletionInput);
+
   const contentClassName = content
     ? `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`
     : '';
 
-  const body = content ? (
-    <div ref={contentRef}>
-      <ContentRenderer
-        content={content}
-        containerRef={contentRef}
-        className={contentClassName}
-        onContentReady={handleContentReady}
-        onGuideComplete={() =>
-          recordGuideCompletionForSurface({
-            contentUrl: content.url,
-            currentUrl: content.url,
-            contentType: content.type,
-            metadata: content.metadata,
-            guideTitle: content.metadata?.title,
-          })
-        }
-      />
-    </div>
-  ) : null;
+  const body =
+    surfaceCompletionInput && content ? (
+      <div ref={contentRef}>
+        <ContentRenderer
+          content={content}
+          containerRef={contentRef}
+          className={contentClassName}
+          onContentReady={handleContentReady}
+          onGuideComplete={() => recordGuideCompletionForSurface(surfaceCompletionInput)}
+        />
+      </div>
+    ) : null;
 
   return createPortal(
     <div

@@ -171,6 +171,25 @@ The flag and the setting are a plain OR, applied once settings resolve in `src/m
 
 ---
 
+### `pathfinder.progress-analytics`
+
+**Type**: Boolean
+
+**Purpose**: Remote kill switch for the guide progress analytics events, `pathfinder_guide_progress` and `pathfinder_guide_completed` (RudderStack, mirrored to Faro).
+
+**Default**: `true` (the events fire if the flag is not set, and if MTFF is unreachable)
+
+**Behavior**:
+
+- **`true`**: `guide_progress` fires at an attempt's first real progress and when it crosses 25%, 50% and 75% — at most four times per attempt. `guide_completed` fires when a bundled or standalone guide's completion is durably accepted.
+- **`false`**: neither event fires. Guide attempts are still tracked on the device, and completion records and their request body are unaffected.
+
+The flag is read each time an event would fire, so a flip takes effect without a reload once the provider has the new value. Implementation: `src/completion-records/progress-analytics.ts`.
+
+**Tracking key**: `progress_analytics`
+
+---
+
 ### `pathfinder.highlighted-guide-experiment`
 
 **Type**: Object (`HighlightedGuideConfig`)

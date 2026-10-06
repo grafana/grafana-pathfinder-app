@@ -14,6 +14,12 @@ jest.mock('../../lib/telemetry/facade', () => ({
 jest.mock('../../docs-retrieval', () => ({
   fetchUnifiedContent: jest.fn(),
   recordGuideCompletionForSurface: jest.fn(),
+  resolveSurfaceGuideIdentity: jest.fn(() => null),
+}));
+
+// The real hook pulls @grafana/runtime in through completion-records.
+jest.mock('../content-renderer/useGuideIdentityRegistration', () => ({
+  useGuideIdentityRegistration: jest.fn(),
 }));
 
 // Feature provider needs no real OpenFeature client for this test.

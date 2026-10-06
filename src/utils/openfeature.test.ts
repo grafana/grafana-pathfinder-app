@@ -141,6 +141,7 @@ describe('openfeature', () => {
         );
         expect(pathfinderFeatureFlags['pathfinder.coda-terminal'].trackingKey).toBe('coda_terminal');
         expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].trackingKey).toBe('intercept_docs_links');
+        expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].trackingKey).toBe('progress_analytics');
       });
     });
 
@@ -154,6 +155,19 @@ describe('openfeature', () => {
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].valueType).toBe('boolean');
         expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].defaultValue).toBe(false);
+      });
+    });
+
+    it('pathfinder.progress-analytics is a boolean kill switch that defaults to true', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].valueType).toBe('boolean');
+        expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].defaultValue).toBe(true);
       });
     });
 

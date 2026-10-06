@@ -32,6 +32,13 @@ export type CompletionSource = 'objectives' | 'manual' | 'skipped';
 export type CompletionCategory = 'interactive' | 'documentation' | 'learning-journey';
 
 /**
+ * `records` attempts send partial progress and carry their id on the wire;
+ * `analytics` attempts only feed product analytics. Fixed when the attempt is
+ * minted, so a flag flip mid-attempt cannot change how it is named.
+ */
+export type AttemptMode = 'records' | 'analytics';
+
+/**
  * A single terminal-completion fact handed to the recorder. Carries the
  * client-supplied fields only; the recorder attaches nothing server-side.
  */
@@ -40,12 +47,15 @@ export interface CompletionFact extends CompletionKey {
   guideTitle: string;
   guideCategory: CompletionCategory;
   pathId?: string;
-  /** 0..100. Terminal completions are ~100 (partial-progress never reaches here). */
+  /** Always 100: the recorder carries terminal facts only. An attempt's partial progress never passes through it. */
   completionPercent: number;
   source: CompletionSource;
   /** ISO 8601, client-observed time of completion. */
   completedAt: string;
   durationMs?: number;
+  /** Set by the recorder on an attempt-eligible guide completion. Not sent on the wire. */
+  attemptId?: string;
+  attemptMode?: AttemptMode;
 }
 
 /** A fact whose `kind` is pinned to 'guide' — the only shape `recordGuideCompletion` accepts. */

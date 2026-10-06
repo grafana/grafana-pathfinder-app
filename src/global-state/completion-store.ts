@@ -42,7 +42,7 @@ import { guideProgress, type CompletionEvidence } from '../lib/guide-stats';
 
 import { evictAllGuideIndexes, evictGuideIndex, getGuideIndex } from './active-guide-index';
 import { getContentKey } from './content-key';
-import { dispatchProgress, type ProgressReason } from './progress-events';
+import { dispatchProgress, type ProgressOrigin, type ProgressReason } from './progress-events';
 
 /** Synthetic section ID for steps that are not inside an `<InteractiveSection>`. */
 export const STANDALONE_SECTION_ID = '__standalone__';
@@ -223,12 +223,12 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
       if (changed) {
         bumpSectionVersion(contentKey, sectionId);
         notify(contentKey);
-        persistSection(contentKey, sectionId);
+        persistSection(contentKey, sectionId, 'load');
       }
       // Reconcile storage with the filtered cache. Without this, the
       // cleared IDs would persist in storage and reappear on next reload.
       if (hadClears) {
-        persistSection(contentKey, sectionId);
+        persistSection(contentKey, sectionId, 'load');
       }
     })
     .catch((error) => {
@@ -352,7 +352,7 @@ function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
   return { percent: progress.percent, complete: progress.complete, evidenced: progress.position > 0 };
 }
 
-function persistSection(contentKey: string, sectionId: string): void {
+function persistSection(contentKey: string, sectionId: string, origin?: ProgressOrigin): void {
   const bySteps = stepsFor(contentKey, sectionId);
   const completedIds = new Set<string>();
   bySteps.forEach((entry, stepId) => {
@@ -376,7 +376,7 @@ function persistSection(contentKey: string, sectionId: string): void {
       interactiveStepStorage.setCompleted(contentKey, sectionId, completedIds);
     }
   }
-  refreshGuidePercentage(contentKey);
+  refreshGuidePercentage(contentKey, origin);
   // Tail-reset / partial-reset coverage for the legacy
   // `interactive-progress-cleared` event. The manual reset paths
   // (handleResetSection, useContentReset, block-editor preview reset)
@@ -408,7 +408,7 @@ function persistSection(contentKey: string, sectionId: string): void {
  * percentage agrees with, so no clamp is needed here: `guideProgressAtPosition`
  * already clamps a non-finite or over-range position.
  */
-function refreshGuidePercentage(contentKey: string): void {
+function refreshGuidePercentage(contentKey: string, origin?: ProgressOrigin): void {
   const progress = computeGuideProgress(contentKey);
   if (progress === undefined) {
     return;
@@ -418,18 +418,19 @@ function refreshGuidePercentage(contentKey: string): void {
   // throwaway entries that displace real readers' progress. Nothing durable
   // to wait for, so the announcement goes out now.
   if (isPreviewContentKey(contentKey)) {
-    announceGuidePercentage(contentKey, progress);
+    announceGuidePercentage(contentKey, progress, origin);
     return;
   }
-  void persistAndAnnounceGuidePercentage(contentKey, progress);
+  void persistAndAnnounceGuidePercentage(contentKey, progress, origin);
 }
 
-function announceGuidePercentage(contentKey: string, progress: GuidePercentage): void {
+function announceGuidePercentage(contentKey: string, progress: GuidePercentage, origin?: ProgressOrigin): void {
   dispatchProgress({
     kind: 'guide',
     contentKey,
     percentage: progress.percent,
     hasProgress: progress.evidenced,
+    ...(origin && { origin }),
   });
 }
 
@@ -442,7 +443,11 @@ function announceGuidePercentage(contentKey: string, progress: GuidePercentage):
  * write landed would let a subscriber that reads storage on notification see
  * the number this call replaced.
  */
-async function persistAndAnnounceGuidePercentage(contentKey: string, progress: GuidePercentage): Promise<void> {
+async function persistAndAnnounceGuidePercentage(
+  contentKey: string,
+  progress: GuidePercentage,
+  origin?: ProgressOrigin
+): Promise<void> {
   try {
     await interactiveCompletionStorage.set(contentKey, progress.percent);
   } catch (error) {
@@ -450,16 +455,17 @@ async function persistAndAnnounceGuidePercentage(contentKey: string, progress: G
     // took, and a reader recomputing from evidence would otherwise stay stale.
     logger.warn('Failed to persist guide percentage', { error });
   }
-  announceGuidePercentage(contentKey, progress);
+  announceGuidePercentage(contentKey, progress, origin);
 }
 
 /**
  * Public entry point for callers that update progress outside the
  * step-write path (e.g. a section acknowledgement), where `persistSection`
- * is never called and would otherwise leave the percentage stale.
+ * is never called and would otherwise leave the percentage stale. Pass
+ * `'change'` only for a write the reader just made; omit it for a reset.
  */
-export function refreshAndNotifyGuideProgress(contentKey: string): void {
-  refreshGuidePercentage(contentKey);
+export function refreshAndNotifyGuideProgress(contentKey: string, origin?: ProgressOrigin): void {
+  refreshGuidePercentage(contentKey, origin);
   notify(contentKey);
 }
 
@@ -482,7 +488,7 @@ export function refreshGuidePercentageOnLoad(contentKey: string): void {
   if (collectEvidence(contentKey).length === 0) {
     return;
   }
-  refreshAndNotifyGuideProgress(contentKey);
+  refreshAndNotifyGuideProgress(contentKey, 'load');
 }
 
 export interface UseStepCompletionResult {
@@ -521,7 +527,7 @@ export function markStepCompleted(stepId: string, sectionId: string | undefined,
   }
   bySteps.set(stepId, { completed: true, reason, completedAt: Date.now() });
   bumpSectionVersion(contentKey, resolvedSection);
-  persistSection(contentKey, resolvedSection);
+  persistSection(contentKey, resolvedSection, 'change');
   notify(contentKey);
   // Step-level progress event. Section-managed steps additionally fire
   // a kind:'section' event from `interactive-section.tsx` when the
@@ -731,7 +737,7 @@ export function reconcileSection(sectionId: string, roster: readonly string[]): 
   }
   orphaned.forEach((stepId) => bySteps.delete(stepId));
   bumpSectionVersion(contentKey, sectionId);
-  persistSection(contentKey, sectionId);
+  persistSection(contentKey, sectionId, 'load');
   notify(contentKey);
 }
 
@@ -906,7 +912,7 @@ export function markStepsCompleted(
   });
   if (changed) {
     bumpSectionVersion(contentKey, sectionId);
-    persistSection(contentKey, sectionId);
+    persistSection(contentKey, sectionId, 'change');
     notify(contentKey);
     // Per-step events keep `interactive-conditional` and other
     // `kind: 'step'` listeners reactive after objectives-based and

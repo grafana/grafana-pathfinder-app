@@ -13,6 +13,7 @@ import { reportCompletionWriteDegradation } from './completion-write-telemetry';
 // Real, unmocked — the durable guard these cases prove gets lifted/kept is
 // completion-recorder.ts's real dedupe guard over real (jsdom) localStorage.
 import { completionEmittedStorage } from '../lib/user-storage';
+import { getOrMintAttempt, readAttempt } from './guide-attempts';
 
 const GUARD_KEY = 'guide:bundled:g1';
 
@@ -165,6 +166,25 @@ describe('write queue — enqueue and eviction', () => {
     q.enqueue(body({ guideId: 'c' })); // evicts 'a'
 
     expect(completionEmittedStorage.isEmitted('guide:bundled:a')).toBe(false);
+  });
+
+  it('leaves the guide attempt in place when it lifts the guard for an evicted record', async () => {
+    await completionEmittedStorage.markEmitted('guide:bundled:a');
+    const { attempt } = getOrMintAttempt({ guideSource: 'bundled', guideId: 'a' }, () => 'analytics');
+
+    const ids = ['a', 'b', 'c'];
+    const q = createWriteQueue({
+      now: () => 0,
+      send: makeSender([{ kind: 'created' }]).send,
+      maxSize: 2,
+      nextId: () => ids.shift()!,
+    });
+    q.enqueue(body({ guideId: 'a' }));
+    q.enqueue(body({ guideId: 'b' }));
+    q.enqueue(body({ guideId: 'c' })); // evicts 'a'
+
+    expect(completionEmittedStorage.isEmitted('guide:bundled:a')).toBe(false);
+    expect(readAttempt({ guideSource: 'bundled', guideId: 'a' })).toEqual(attempt);
   });
 });
 
@@ -769,6 +789,18 @@ describe('write queue — retention horizon (retry-retention-horizon)', () => {
     await q.processDue();
 
     expect(completionEmittedStorage.isEmitted(GUARD_KEY)).toBe(false);
+  });
+
+  it('leaves the guide attempt in place when it lifts the guard for an expired record', async () => {
+    await completionEmittedStorage.markEmitted(GUARD_KEY);
+    const { attempt } = getOrMintAttempt({ guideSource: 'bundled', guideId: 'g1' }, () => 'analytics');
+
+    const q = createWriteQueue({ now: () => NOW + THIRTY_DAYS + 1, send: makeSender([{ kind: 'created' }]).send });
+    q.enqueue(body({ guideId: 'g1', completedAt: new Date(NOW).toISOString() }));
+    await q.processDue();
+
+    expect(completionEmittedStorage.isEmitted(GUARD_KEY)).toBe(false);
+    expect(readAttempt({ guideSource: 'bundled', guideId: 'g1' })).toEqual(attempt);
   });
 });
 

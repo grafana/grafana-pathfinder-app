@@ -35,6 +35,7 @@ jest.mock('../../../lib/analytics', () => ({
 
 jest.mock('../../../docs-retrieval', () => ({
   recordGuideCompletionForSurface: jest.fn(),
+  resolveSurfaceGuideIdentity: jest.fn(() => null),
   journeyProgressFromMilestones: jest.fn(() => 0),
   // Pure logic, no `@grafana/runtime`/storage imports — see
   // `active-milestone-sequence.ts`'s own doc comment.
@@ -80,6 +81,9 @@ jest.mock('../../SelectorDebugPanel', () => ({
       Open
     </button>
   ),
+}));
+jest.mock('../../content-renderer/useGuideIdentityRegistration', () => ({
+  useGuideIdentityRegistration: jest.fn(),
 }));
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));

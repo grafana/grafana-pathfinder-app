@@ -30,6 +30,12 @@ jest.mock('../content-renderer/content-renderer', () => ({
 
 jest.mock('../../docs-retrieval', () => ({
   recordGuideCompletionForSurface: jest.fn(),
+  resolveSurfaceGuideIdentity: jest.fn(() => null),
+}));
+
+// The real hook pulls @grafana/runtime in through completion-records.
+jest.mock('../content-renderer/useGuideIdentityRegistration', () => ({
+  useGuideIdentityRegistration: jest.fn(),
 }));
 
 jest.mock('../docs-panel/link-handler.hook', () => ({

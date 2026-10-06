@@ -31,6 +31,7 @@ import {
   resolveJourneyCompletionIdentity,
   manifestGuideId,
   normalizeGuideId,
+  type RegisteredGuideIdentity,
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
@@ -618,14 +619,20 @@ export async function getJourneyCompletionPercentageAsync(journeyBaseUrl: string
   return journeyCompletionStorage.get(journeyBaseUrl);
 }
 
+export interface JourneyCompletionOptions {
+  /** Defaults to `true`; `false` when milestone-driven, since a milestone never creates an attempt. */
+  attemptEligible?: boolean;
+}
+
 export function setJourneyCompletionPercentage(
   journeyBaseUrl: string,
   percentage: number,
-  context?: CompletionContext
+  context?: CompletionContext,
+  options: JourneyCompletionOptions = {}
 ): void {
   const guideId = persistJourneyCompletionPercentage(journeyBaseUrl, percentage);
   if (guideId) {
-    recordBundledGuideCompletion(guideId, context);
+    recordBundledGuideCompletion(guideId, context, options.attemptEligible ?? true);
   }
 }
 
@@ -683,54 +690,76 @@ export async function setJourneyCompletionPercentageAsync(
   }
 }
 
-function recordBundledGuideCompletion(guideId: string, context?: CompletionContext): void {
+// Journey-shaped packages complete via markMilestoneDone's journey trigger; a
+// guide-kind fact for one would double-count it.
+function isPathOrJourneyManifest(context?: CompletionContext): boolean {
   const manifestType = context?.packageManifest?.type;
-  if (manifestType === 'path' || manifestType === 'journey') {
-    return;
+  return manifestType === 'path' || manifestType === 'journey';
+}
+
+function bundledGuideIdentity(guideId: string, context?: CompletionContext): RegisteredGuideIdentity | null {
+  if (isPathOrJourneyManifest(context)) {
+    return null;
   }
   const identity = resolveBundledGuideCompletionIdentity({
     packageManifest: context?.packageManifest,
     repository: context?.repository,
     guideId,
   });
-  recordGuideCompletion({
-    kind: 'guide',
+  return {
     ...identity,
     guideTitle: context?.guideTitle ?? guideId,
     guideCategory: 'interactive',
     pathId: context?.pathId,
-    completionPercent: 100,
-    source: 'objectives',
-    completedAt: new Date().toISOString(),
-  });
+  };
 }
 
-export function recordStandaloneGuideCompletion(context: CompletionContext): void {
-  // Journey-shaped packages complete via markMilestoneDone's journey trigger;
-  // a guide-kind fact here would double-count them (same guard as the bundled path).
-  const manifestType = context.packageManifest?.type;
-  if (manifestType === 'path' || manifestType === 'journey') {
-    return;
+function standaloneGuideIdentity(context: CompletionContext): RegisteredGuideIdentity | null {
+  if (isPathOrJourneyManifest(context)) {
+    return null;
   }
   const guideId = manifestGuideId(context.packageManifest);
   if (!guideId) {
-    return;
+    return null;
   }
   const identity = resolveStandaloneGuideCompletionIdentity({
     packageManifest: context.packageManifest,
     repository: context.repository,
     guideId,
   });
-  recordGuideCompletion({
-    kind: 'guide',
+  return {
     ...identity,
     guideTitle: context.guideTitle ?? guideId,
     guideCategory: 'interactive',
     pathId: context.pathId,
-    completionPercent: 100,
-    source: 'objectives',
-    completedAt: new Date().toISOString(),
-  });
+  };
+}
+
+function recordGuideIdentityCompletion(identity: RegisteredGuideIdentity, attemptEligible = true): void {
+  recordGuideCompletion(
+    {
+      kind: 'guide',
+      ...identity,
+      completionPercent: 100,
+      source: 'objectives',
+      completedAt: new Date().toISOString(),
+    },
+    { attemptEligible }
+  );
+}
+
+function recordBundledGuideCompletion(guideId: string, context?: CompletionContext, attemptEligible = true): void {
+  const identity = bundledGuideIdentity(guideId, context);
+  if (identity) {
+    recordGuideIdentityCompletion(identity, attemptEligible);
+  }
+}
+
+export function recordStandaloneGuideCompletion(context: CompletionContext): void {
+  const identity = standaloneGuideIdentity(context);
+  if (identity) {
+    recordGuideIdentityCompletion(identity);
+  }
 }
 
 /**
@@ -788,13 +817,7 @@ export function resolveActiveMilestoneSlug(input: {
   return slug && input.journeyBaseUrl ? slug : undefined;
 }
 
-/**
- * The single surface-neutral completion emitter. Wired by each content-owning
- * component (DocsPanelContentArea, FloatingPanelContent, GuideReaderOverlay) so
- * every surface routes terminal completion through the same decision, rather
- * than each surface re-deciding (or forgetting to emit).
- */
-export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): void {
+function planSurfaceCompletion(input: SurfaceCompletionInput) {
   const { baseUrl, contentUrl, currentUrl, metadata, guideTitle } = input;
   // Two distinct keys: the surface base a tab happens to be pinned at, and the
   // journey's resolved cover URL that milestone progress is stored under.
@@ -816,6 +839,36 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
     repository: metadata?.repository,
     guideTitle,
   };
+  return { surfaceBase, journeyBase, slug, willMarkMilestone, completionContext };
+}
+
+/**
+ * The attempt-eligible guide identity {@link recordGuideCompletionForSurface}
+ * would record for this content, or `null` when it would record none that is
+ * eligible: a milestone, a path or journey manifest, or a guide with no
+ * manifest identity. Pure; surfaces register it so live progress can be keyed
+ * on the same identity the completion is.
+ */
+export function resolveSurfaceGuideIdentity(input: SurfaceCompletionInput): RegisteredGuideIdentity | null {
+  const { surfaceBase, willMarkMilestone, completionContext } = planSurfaceCompletion(input);
+  if (willMarkMilestone) {
+    return null;
+  }
+  if (surfaceBase?.startsWith('bundled:')) {
+    return bundledGuideIdentity(guideIdFromBundledJourneyBase(surfaceBase), completionContext);
+  }
+  return standaloneGuideIdentity(completionContext);
+}
+
+/**
+ * The single surface-neutral completion emitter. Wired by each content-owning
+ * component (DocsPanelContentArea, FloatingPanelContent, GuideReaderOverlay) so
+ * every surface routes terminal completion through the same decision, rather
+ * than each surface re-deciding (or forgetting to emit).
+ */
+export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): void {
+  const { metadata } = input;
+  const { surfaceBase, journeyBase, slug, willMarkMilestone, completionContext } = planSurfaceCompletion(input);
   if (surfaceBase?.startsWith('bundled:')) {
     if (willMarkMilestone) {
       setMilestoneCompletionPercentage(surfaceBase, 100);
@@ -827,7 +880,7 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
     void markMilestoneDone(
       journeyBase,
       slug,
-      currentUrl!,
+      input.currentUrl!,
       metadata?.learningJourney?.milestones?.filter((m) => !m.isLocked).map((m) => m.url),
       completionContext
     );
@@ -850,7 +903,9 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
     // list and overwrite whatever real percentage was already stored here.
     if (metadata?.learningJourney?.milestones) {
       const freshJourneyProgress = journeyProgressFromMilestones(journeyBase, metadata.learningJourney.milestones);
-      setJourneyCompletionPercentage(journeyBase, freshJourneyProgress, completionContext);
+      setJourneyCompletionPercentage(journeyBase, freshJourneyProgress, completionContext, {
+        attemptEligible: false,
+      });
     }
   } else if (!surfaceBase?.startsWith('bundled:')) {
     recordStandaloneGuideCompletion(completionContext);

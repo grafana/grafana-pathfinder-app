@@ -221,6 +221,8 @@ jest.mock('../../hooks', () => ({}));
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
 import {
+  getJourneyProgress,
+  setJourneyCompletionPercentage,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
   getNextMilestoneIdFromContent,
@@ -479,5 +481,39 @@ describe('CombinedLearningJourneyPanel.openDocsPage — prepared (one-fetch) lau
 
     const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
     expect(tab).toMatchObject({ activeTrackId: 'ops', activeTrackPathId: 'path-1' });
+  });
+});
+
+describe('CombinedLearningJourneyPanel.loadTab — learning-journey completion seam', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('records journey completion as never attempt-eligible', async () => {
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(false);
+    (getJourneyProgress as jest.Mock).mockReturnValue(100);
+    mockFetchContent.mockResolvedValue({
+      content: {
+        content: '<p>cover</p>',
+        metadata: { title: 'Journey', learningJourney: { baseUrl: 'bundled:journey' } },
+        type: 'learning-journey',
+        url: 'bundled:journey',
+        lastFetched: '2026-07-28T00:00:00.000Z',
+      },
+    });
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [{ ...makeTab('journey-tab'), type: 'learning-journey' as const, title: 'Journey' }],
+      activeTabId: 'journey-tab',
+    });
+
+    await panel.loadTab('journey-tab', 'bundled:journey');
+
+    expect(setJourneyCompletionPercentage).toHaveBeenCalledWith(
+      'bundled:journey',
+      100,
+      expect.objectContaining({ guideTitle: 'Journey' }),
+      { attemptEligible: false }
+    );
   });
 });

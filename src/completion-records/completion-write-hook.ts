@@ -16,6 +16,7 @@ import {
   type CompletionWriteStorage,
 } from './completion-write-storage';
 import { reportCompletionWriteDegradation } from './completion-write-telemetry';
+import { installProgressObserver } from './progress-observer';
 import type { CompletionFact } from './types';
 
 export interface WriteHookDeps {
@@ -167,7 +168,8 @@ class CompletionWriteController {
 
   // Clamp descriptive/identifier fields at emission to the backend's byte bounds
   // (stripping control characters) so an oversized value can't fill the queue
-  // and then be terminally rejected.
+  // and then be terminally rejected. `attemptId`/`attemptMode` deliberately stay
+  // off the wire: the body is byte-identical to what released plugins accept.
   private toBody(fact: CompletionFact): CompletionWriteBody {
     return {
       guideSource: normalizeField(fact.guideSource, MAX_ID_BYTES),
@@ -227,6 +229,8 @@ class CompletionWriteController {
 let controller: CompletionWriteController | null = null;
 
 export function armCompletionWriteHook(overrides?: Partial<WriteHookDeps>): void {
+  // Progress analytics need no user/org identity, so this precedes both early returns.
+  installProgressObserver();
   if (controller) {
     return;
   }

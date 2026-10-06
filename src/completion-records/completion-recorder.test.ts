@@ -12,6 +12,7 @@
  *     `invalidateEmittedCompletion`/`invalidateAllEmittedCompletions` are the
  *     only way to lift it — the reset-then-re-mark and duplicate-write fixes
  */
+import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { logger } from '../lib/logging';
 import {
   recordGuideCompletion,
@@ -19,12 +20,22 @@ import {
   onCompletionRecorded,
   invalidateEmittedCompletion,
   invalidateAllEmittedCompletions,
+  liftEmittedCompletionGuard,
+  hasEmittedGuideCompletion,
   __resetRecorderForTests,
 } from './completion-recorder';
+import { getOrMintAttempt, readAttempt } from './guide-attempts';
 import type { CompletionFact, CompletionListener, GuideCompletionFact, JourneyCompletionFact } from './types';
 
 let mockOwner: string | null = 'user-1:org-1';
-jest.mock('./completion-write-storage', () => ({ currentCompletionQueueOwnerKey: () => mockOwner }));
+jest.mock('./completion-write-storage', () => ({
+  ...jest.requireActual('./completion-write-storage'),
+  currentCompletionQueueOwnerKey: () => mockOwner,
+}));
+jest.mock('../lib/analytics', () => ({
+  ...jest.requireActual('../lib/analytics'),
+  reportAppInteraction: jest.fn(),
+}));
 
 const persistedEmitted = new Map<string, true>();
 
@@ -77,6 +88,8 @@ beforeEach(() => {
   mockOwner = 'user-1:org-1';
   __resetRecorderForTests();
   persistedEmitted.clear();
+  localStorage.clear();
+  (reportAppInteraction as jest.Mock).mockClear();
 });
 
 describe('completion recorder — emitter seam', () => {
@@ -362,7 +375,7 @@ describe('completion recorder startup recovery', () => {
     const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
     try {
       const facts = Array.from({ length: 101 }, (_, index) => guideFact({ guideId: `guide-${index}` }));
-      facts.forEach(recordGuideCompletion);
+      facts.forEach((fact) => recordGuideCompletion(fact));
       const seen: CompletionFact[] = [];
       onCompletionRecorded(acceptInto(seen));
       expect(seen).toEqual(facts.slice(0, 100));
@@ -439,5 +452,157 @@ describe('completion recorder startup recovery', () => {
     const seen: CompletionFact[] = [];
     onCompletionRecorded(acceptInto(seen));
     expect(seen).toEqual([]);
+  });
+});
+
+describe('completion recorder: guide attempts', () => {
+  const KEY = { guideSource: 'bundled', guideId: 'intro' };
+
+  function guideCompletedEvents(): unknown[] {
+    return (reportAppInteraction as jest.Mock).mock.calls
+      .filter(([type]) => type === UserInteraction.GuideCompleted)
+      .map(([, properties]) => properties);
+  }
+
+  it('mints an attempt for an eligible guide that goes straight to 100, and attaches it to the fact', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.attemptId).toMatch(/^[0-9a-f]{32}$/);
+    expect(seen[0]!.attemptMode).toBe('analytics');
+    expect(readAttempt(KEY)?.attemptId).toBe(seen[0]!.attemptId);
+  });
+
+  it('keeps attempt eligibility for a completion buffered before the write hook starts', () => {
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+    recordGuideCompletion(guideFact({ guideId: 'milestone' }));
+    // Buffered facts mint nothing until they are replayed.
+    expect(readAttempt(KEY)).toBeNull();
+
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    expect(seen).toHaveLength(2);
+    expect(seen[0]!.attemptId).toMatch(/^[0-9a-f]{32}$/);
+    expect(readAttempt(KEY)).toMatchObject({ attemptId: seen[0]!.attemptId, closed: true });
+    expect(seen[1]).not.toHaveProperty('attemptId');
+  });
+
+  it('neither mints nor attaches an attempt for a fact that is not eligible', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact());
+    recordJourneyCompletion(journeyFact({ guideId: 'linux-journey' }));
+
+    expect(seen.map((fact) => 'attemptId' in fact)).toEqual([false, false]);
+    expect(Object.keys(localStorage)).toEqual([]);
+    expect(guideCompletedEvents()).toEqual([]);
+  });
+
+  it('does not mint for a guide whose completion was recorded before the upgrade', () => {
+    persistedEmitted.set('guide:bundled:intro', true);
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+
+    expect(seen).toHaveLength(0);
+    expect(readAttempt(KEY)).toBeNull();
+  });
+
+  it('leaves the attempt open when nobody accepts, and reuses its id on the re-emit', () => {
+    const seen: CompletionFact[] = [];
+    let accept = false;
+    onCompletionRecorded((fact) => {
+      seen.push(fact);
+      return accept;
+    });
+
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+    expect(readAttempt(KEY)).toMatchObject({ closed: false });
+    expect(guideCompletedEvents()).toEqual([]);
+
+    accept = true;
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+
+    expect(seen).toHaveLength(2);
+    expect(seen[1]!.attemptId).toBe(seen[0]!.attemptId);
+  });
+
+  it('reuses the attempt live progress already started', () => {
+    const { attempt } = getOrMintAttempt(KEY, () => 'analytics');
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+
+    expect(seen[0]!.attemptId).toBe(attempt.attemptId);
+  });
+
+  it('closes the attempt at 100 on acceptance and reports guide_completed once', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact({ pathId: 'linux-path' }), { attemptEligible: true });
+    recordGuideCompletion(guideFact({ pathId: 'linux-path' }), { attemptEligible: true });
+
+    expect(readAttempt(KEY)).toMatchObject({ attemptId: seen[0]!.attemptId, closed: true, highWater: 100 });
+    expect(guideCompletedEvents()).toEqual([
+      {
+        guide_source: 'bundled',
+        guide_id: 'intro',
+        path_id: 'linux-path',
+        percent: 100,
+        attempt_id: seen[0]!.attemptId,
+        source: 'objectives',
+      },
+    ]);
+  });
+
+  it('invalidateEmittedCompletion forgets the attempt, so a re-completion gets a new id', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+    invalidateEmittedCompletion('bundled', 'intro');
+    expect(readAttempt(KEY)).toBeNull();
+
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+    expect(seen).toHaveLength(2);
+    expect(seen[1]!.attemptId).not.toBe(seen[0]!.attemptId);
+  });
+
+  it('invalidateAllEmittedCompletions forgets every attempt', () => {
+    onCompletionRecorded(acceptInto([]));
+    recordGuideCompletion(guideFact({ guideId: 'a' }), { attemptEligible: true });
+    recordGuideCompletion(guideFact({ guideId: 'b' }), { attemptEligible: true });
+
+    invalidateAllEmittedCompletions();
+
+    expect(readAttempt({ guideSource: 'bundled', guideId: 'a' })).toBeNull();
+    expect(readAttempt({ guideSource: 'bundled', guideId: 'b' })).toBeNull();
+  });
+
+  it('liftEmittedCompletionGuard lifts the guard and leaves the attempt in place', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+    expect(hasEmittedGuideCompletion('bundled', 'intro')).toBe(true);
+
+    liftEmittedCompletionGuard('bundled', 'intro');
+
+    expect(hasEmittedGuideCompletion('bundled', 'intro')).toBe(false);
+    expect(readAttempt(KEY)).toMatchObject({ attemptId: seen[0]!.attemptId });
+  });
+
+  it('hasEmittedGuideCompletion reads the legacy /content.json spelling too', () => {
+    persistedEmitted.set('guide:bundled:intro/content.json', true);
+
+    expect(hasEmittedGuideCompletion('bundled', 'intro')).toBe(true);
   });
 });
