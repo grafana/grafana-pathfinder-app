@@ -130,6 +130,8 @@ function CompleteEarlyHarness({ skippable = false }: { skippable?: boolean }) {
   return (
     <InteractiveMultiStep
       stepId="multi-step"
+      stepIndex={2}
+      totalSteps={5}
       completeEarly={true}
       skippable={skippable}
       onComplete={forceRender}
@@ -230,7 +232,7 @@ describe('InteractiveMultiStep — completeEarly lifecycle', () => {
     expect(reportStepSkipped).toHaveBeenCalledTimes(1);
     expect(reportStepSkipped).toHaveBeenCalledWith(
       { targetAction: 'multistep', interactionLocation: 'interactive_multi_step', skipReason: 'after_failure' },
-      expect.objectContaining({ stepId: 'multi-step' })
+      expect.objectContaining({ stepId: 'multi-step', stepIndex: 2, totalSteps: 5 })
     );
   });
 
@@ -247,7 +249,7 @@ describe('InteractiveMultiStep — completeEarly lifecycle', () => {
     expect(reportStepSkipped).toHaveBeenCalledTimes(1);
     expect(reportStepSkipped).toHaveBeenCalledWith(
       { targetAction: 'multistep', interactionLocation: 'interactive_multi_step', skipReason: 'user' },
-      expect.objectContaining({ stepId: 'multi-step' })
+      expect.objectContaining({ stepId: 'multi-step', stepIndex: 2, totalSteps: 5 })
     );
   });
 });

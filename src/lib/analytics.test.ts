@@ -471,4 +471,33 @@ describe('reportStepSkipped', () => {
       })
     );
   });
+
+  it('carries the block properties when the skipped step is in a published guide index', () => {
+    setActiveTabUrl('bundled:skip-guide');
+    publishGuideIndex({
+      contentKey: 'bundled:skip-guide',
+      index: computeGuideBlockIndex([
+        { type: 'markdown' },
+        { type: 'interactive', id: 'skip-me' },
+        { type: 'markdown' },
+      ]),
+      denominatorSource: 'live-pre-inlining',
+    });
+
+    reportStepSkipped(
+      { targetAction: 'button', interactionLocation: 'interactive_step', skipReason: 'user' },
+      { stepId: 'skip-me', stepIndex: 0, totalSteps: 1 }
+    );
+
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_step_skipped',
+      expect.objectContaining({
+        block_position: 2,
+        total_block_count: 3,
+        completable_block_count: 1,
+        section_count: 0,
+        block_progress_rule_version: 'block-position-v1',
+      })
+    );
+  });
 });

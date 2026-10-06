@@ -165,6 +165,9 @@ export enum AnalyticsLinkType {
   RelatedJourneyExternal = 'related_journey_external',
 }
 
+export const STEP_PERCENTAGE_RULE_VERSION = 'step-position-v1';
+export const BLOCK_PROGRESS_RULE_VERSION = 'block-position-v1';
+
 // ============================================================================
 // CORE ANALYTICS FUNCTIONS
 // ============================================================================
@@ -692,7 +695,7 @@ export function buildInteractiveStepProperties(
     ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
     ...(completionPercentage !== undefined && {
       completion_percentage: completionPercentage,
-      percentage_rule_version: 'step-position-v1',
+      percentage_rule_version: STEP_PERCENTAGE_RULE_VERSION,
     }),
     ...(sectionId && { section_id: sectionId }),
     ...(sectionTitle && { section_title: sectionTitle }),
@@ -702,7 +705,7 @@ export function buildInteractiveStepProperties(
 
 function blockCountProperties(index: GuideBlockIndex): Record<string, string | number> {
   return {
-    block_progress_rule_version: 'block-position-v1',
+    block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
     guide_stats_version: GUIDE_STATS_VERSION,
     total_block_count: index.totalBlockCount,
     completable_block_count: index.completableBlockCount,
@@ -759,7 +762,7 @@ export function reportStepSkipped(
  *
  * @returns Step context properties or empty object if not in an interactive document
  */
-export function getCurrentStepContext(): Record<string, number> {
+export function getCurrentStepContext(): Record<string, string | number> {
   try {
     const stepIndex = window.__DocsPluginCurrentStepIndex;
     const totalSteps = window.__DocsPluginTotalSteps;
@@ -773,7 +776,10 @@ export function getCurrentStepContext(): Record<string, number> {
     return {
       current_step: stepIndex + 1, // 1-indexed for analytics
       total_document_steps: totalSteps,
-      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+      ...(completionPercentage !== undefined && {
+        completion_percentage: completionPercentage,
+        percentage_rule_version: STEP_PERCENTAGE_RULE_VERSION,
+      }),
     };
   } catch {
     return {};

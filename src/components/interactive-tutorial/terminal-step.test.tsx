@@ -187,7 +187,7 @@ describe('TerminalStep', () => {
     if (skippable) {
       expect(skip).toBeVisible();
       fireEvent.click(skip!);
-      expect(markStepCompleted).toHaveBeenCalledWith('optional-unavailable', undefined, 'manual');
+      expect(markStepCompleted).toHaveBeenCalledWith('optional-unavailable', undefined, 'skipped');
       expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
       expect(mockReportStepSkipped).toHaveBeenCalledWith(
         { targetAction: 'terminal', interactionLocation: 'terminal_step', skipReason: 'requirements_unmet' },
@@ -214,7 +214,7 @@ describe('TerminalStep', () => {
     mockCheckerOverrides = { isEnabled: false, explanation: 'Missing prerequisite', canSkip: true };
     render(<TerminalStep stepId="unmet" command="echo hello" skippable />);
     fireEvent.click(screen.getByTestId(testIds.interactive.terminalSkipButton('unmet')));
-    expect(markStepCompleted).toHaveBeenCalledWith('unmet', undefined, 'manual');
+    expect(markStepCompleted).toHaveBeenCalledWith('unmet', undefined, 'skipped');
     expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
     expect(mockReportStepSkipped).toHaveBeenCalledWith(
       { targetAction: 'terminal', interactionLocation: 'terminal_step', skipReason: 'requirements_unmet' },

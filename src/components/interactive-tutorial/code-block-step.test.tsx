@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, renderHook, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CodeBlockStep } from './code-block-step';
 import {
   STANDALONE_SECTION_ID,
@@ -101,6 +101,7 @@ describe('CodeBlockStep: step_skipped', () => {
       { targetAction: 'code-block', interactionLocation: 'code_block_step', skipReason: 'requirements_unmet' },
       expect.objectContaining({ stepId: 'code-skip' })
     );
+    expect(renderHook(() => useStepCompletion('code-skip')).result.current.reason).toBe('skipped');
   }, 20000);
 });
 

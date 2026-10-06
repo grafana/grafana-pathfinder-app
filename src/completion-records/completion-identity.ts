@@ -14,8 +14,7 @@
  * scheme leaves the completion path entirely.
  */
 
-import { LOCAL_BUNDLED_GUIDE_IDS } from '../constants/local-bundled-guides';
-import type { CompletionFact, CompletionKey } from './types';
+import type { CompletionKey } from './types';
 
 /**
  * The package launch shape appends this to a bundled guide's id (the package
@@ -190,32 +189,4 @@ export function resolveJourneyCompletionIdentity(input: ResolveGuideCompletionId
     repository: input.repository,
     fallbackId: input.guideId,
   });
-}
-
-// Privacy boundary: only these sources may send a guide identifier or title to RudderStack.
-const PUBLIC_GUIDE_SOURCES = new Set(['bundled', 'interactive-tutorials', 'online-cdn']);
-
-export function guideIdentityAnalyticsProperties({
-  kind,
-  guideSource,
-  guideId,
-  guideTitle,
-}: Pick<CompletionFact, 'kind' | 'guideSource' | 'guideId'> & { guideTitle?: string }): Record<string, string> {
-  const [idProperty, titleProperty] =
-    kind === 'journey' ? ['journey_id', 'journey_title'] : ['guide_id', 'guide_title'];
-  if (guideSource === 'bundled' && LOCAL_BUNDLED_GUIDE_IDS.has(guideId)) {
-    return { guide_source: guideSource, guide_visibility: 'private', [idProperty]: guideId };
-  }
-  if (!PUBLIC_GUIDE_SOURCES.has(guideSource)) {
-    return {
-      guide_source: guideSource === 'app-platform' ? guideSource : 'other',
-      guide_visibility: 'private',
-    };
-  }
-  return {
-    guide_source: guideSource,
-    guide_visibility: 'public',
-    [idProperty]: guideId,
-    ...(guideTitle !== undefined && { [titleProperty]: guideTitle }),
-  };
 }

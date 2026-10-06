@@ -97,6 +97,8 @@ const TEST_IDS = {
 
 const baseProps = {
   stepId: 'check-1',
+  stepIndex: 3,
+  totalSteps: 6,
   variableName: 'metricsDatasource',
   query: 'up',
   datasourceFilter: 'prometheus',
@@ -502,7 +504,7 @@ describe('skipping', () => {
       expect(reportStepSkipped).toHaveBeenCalledTimes(1);
       expect(reportStepSkipped).toHaveBeenCalledWith(
         { targetAction: 'datasource-check', interactionLocation: 'data_check_step', skipReason },
-        expect.objectContaining({ stepId: 'check-1' })
+        expect.objectContaining({ stepId: 'check-1', stepIndex: 3, totalSteps: 6 })
       );
     }
 

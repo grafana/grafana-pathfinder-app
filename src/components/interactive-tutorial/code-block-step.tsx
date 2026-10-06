@@ -21,6 +21,7 @@ import { css } from '@emotion/css';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { clearAndInsertCode, useInteractiveElements } from '../../interactive-engine';
 import { STEP_STATES, type StepStateValue } from './step-states';
+import type { ProgressReason } from '../../global-state/progress-events';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { panelModeManager, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
 import { CodeBlock } from '../../docs-retrieval';
@@ -214,24 +215,27 @@ export const CodeBlockStep = forwardRef<
       }
     }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep and persistReset are stable but including checker rebuilds every render
 
-    const markComplete = useCallback(() => {
-      if (isCompleted) {
-        return;
-      }
-      if (isStandalone) {
-        markStepCompleted(renderedStepId, sectionId, 'manual');
-      }
-      if (onStepComplete && renderedStepId) {
-        onStepComplete(renderedStepId);
-      }
-      onComplete?.();
-    }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
+    const markComplete = useCallback(
+      (reason: ProgressReason = 'manual') => {
+        if (isCompleted) {
+          return;
+        }
+        if (isStandalone) {
+          markStepCompleted(renderedStepId, sectionId, reason);
+        }
+        if (onStepComplete && renderedStepId) {
+          onStepComplete(renderedStepId);
+        }
+        onComplete?.();
+      },
+      [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]
+    );
 
     const handleSkip = useCallback(() => {
       if (isCompleted) {
         return;
       }
-      markComplete();
+      markComplete('skipped');
       reportStepSkipped(
         { targetAction: 'code-block', interactionLocation: 'code_block_step', skipReason: 'requirements_unmet' },
         analyticsStepMeta

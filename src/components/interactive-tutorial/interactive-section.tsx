@@ -78,6 +78,7 @@ import {
   calculateStepCompletion,
   AnalyticsContentType,
   createInteractionName,
+  STEP_PERCENTAGE_RULE_VERSION,
 } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
@@ -1077,6 +1078,7 @@ export function InteractiveSection({
               current_step: documentStepIndex + 1, // 1-indexed for analytics
               ...(documentCompletionPercentage !== undefined && {
                 completion_percentage: documentCompletionPercentage,
+                percentage_rule_version: STEP_PERCENTAGE_RULE_VERSION,
               }),
               // Completion status
               canceled: wasCanceled,

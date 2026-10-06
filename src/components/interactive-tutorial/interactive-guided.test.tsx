@@ -871,6 +871,8 @@ describe('InteractiveGuided — skip recovery', () => {
       return (
         <InteractiveGuided
           stepId="skippable-timeout"
+          stepIndex={1}
+          totalSteps={4}
           skippable={true}
           onComplete={forceRender}
           internalActions={[{ targetAction: 'noop' }]}
@@ -897,7 +899,7 @@ describe('InteractiveGuided — skip recovery', () => {
     expect(reportStepSkipped).toHaveBeenCalledTimes(1);
     expect(reportStepSkipped).toHaveBeenCalledWith(
       { targetAction: 'guided', interactionLocation: 'interactive_guided', skipReason: 'after_failure' },
-      expect.objectContaining({ stepId: 'skippable-timeout' })
+      expect.objectContaining({ stepId: 'skippable-timeout', stepIndex: 1, totalSteps: 4 })
     );
   });
 

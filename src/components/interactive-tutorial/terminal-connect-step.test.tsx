@@ -422,6 +422,7 @@ describe('with gcx', () => {
       { targetAction: 'terminal-connect', interactionLocation: 'terminal_connect_step', skipReason: 'after_failure' },
       expect.objectContaining({ stepId: STEP_ID })
     );
+    expect(mockMarkStepCompleted).toHaveBeenCalledWith(STEP_ID, undefined, 'skipped');
   });
 
   it('reports a gcx skip taken before any setup attempt as a user skip', () => {

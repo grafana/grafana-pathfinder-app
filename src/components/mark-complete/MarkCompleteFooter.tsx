@@ -27,15 +27,12 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
-import { guideIdentityAnalyticsProperties } from '../../completion-records/completion-identity';
-import type { CompletionKey } from '../../completion-records/types';
 import {
+  BLOCK_PROGRESS_RULE_VERSION,
   getGuideBlockCountProperties,
   reportAppInteraction,
-  tabTypeToContentType,
   UserInteraction,
 } from '../../lib/analytics';
-import type { ContentType } from '../../types/content.types';
 import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
@@ -53,7 +50,6 @@ export type MarkCompleteContext = 'guide' | 'milestone';
 
 export interface MarkCompleteFooterProps {
   context: MarkCompleteContext;
-  guideIdentity?: CompletionKey;
   /**
    * The rendered content's URL. Not itself the storage key — a journey's
    * `content.url` carries a `/content.json` suffix the rest of the progress
@@ -61,7 +57,6 @@ export interface MarkCompleteFooterProps {
    * re-resolves the key even when the footer is not remounted.
    */
   contentUrl?: string;
-  contentType?: ContentType;
   currentMilestone?: number;
   totalMilestones?: number;
   /**
@@ -86,8 +81,6 @@ function prefersReducedMotion(): boolean {
 export function MarkCompleteFooter({
   context,
   contentUrl,
-  guideIdentity,
-  contentType,
   currentMilestone,
   totalMilestones,
   onMarkComplete,
@@ -212,16 +205,10 @@ export function MarkCompleteFooter({
       onMarkComplete?.();
 
       reportAppInteraction(UserInteraction.MarkCompleteClicked, {
-        ...guideIdentityAnalyticsProperties({
-          kind: 'guide',
-          guideSource: guideIdentity?.guideSource ?? 'other',
-          guideId: guideIdentity?.guideId ?? '',
-        }),
-        percentage_rule_version: 'block-position-v1',
         interaction_location: 'content_footer',
         completion_context: context,
         completion_percentage_before: percentage,
-        content_type: tabTypeToContentType(contentType),
+        block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
         ...(context === 'milestone' && currentMilestone !== undefined && { current_milestone: currentMilestone }),
         ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
         ...getGuideBlockCountProperties(contentKey),
@@ -252,12 +239,10 @@ export function MarkCompleteFooter({
     }, CELEBRATION_MS);
   }, [
     contentKey,
-    guideIdentity,
     marked,
     context,
     percentage,
     contentUrl,
-    contentType,
     currentMilestone,
     totalMilestones,
     onMarkComplete,

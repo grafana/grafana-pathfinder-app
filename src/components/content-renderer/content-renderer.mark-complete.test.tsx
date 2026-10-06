@@ -182,9 +182,9 @@ describe('ContentRenderer — the universal Mark complete control', () => {
   });
 
   it.each([
-    ['guide', makeContent(), { content_type: 'docs' }],
-    ['milestone', makeMilestone(), { content_type: 'learning-journey', current_milestone: 1, total_milestones: 1 }],
-  ])('reports one %s click with that discriminator', async (discriminator, content, contentProperties) => {
+    ['guide', makeContent(), {}],
+    ['milestone', makeMilestone(), { current_milestone: 1, total_milestones: 1 }],
+  ])('reports one %s click with that discriminator', async (discriminator, content, milestoneProperties) => {
     window.__DocsPluginActiveTabUrl = content.url;
     render(<ContentRenderer content={content} onGuideComplete={jest.fn()} />);
 
@@ -194,13 +194,11 @@ describe('ContentRenderer — the universal Mark complete control', () => {
       [
         UserInteraction.MarkCompleteClicked,
         {
-          guide_source: 'other',
-          guide_visibility: 'private',
-          percentage_rule_version: 'block-position-v1',
           interaction_location: 'content_footer',
           completion_context: discriminator,
           completion_percentage_before: 0,
-          ...contentProperties,
+          block_progress_rule_version: 'block-position-v1',
+          ...milestoneProperties,
         },
       ],
     ]);
@@ -288,60 +286,5 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     });
 
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('mark-complete guide identity', () => {
-  it.each([
-    ['bundled:reading/content.json', { title: 'Reading' }, 'reading', 'bundled'],
-    [
-      'https://grafana.com/docs/example/finish/content.json',
-      {
-        title: 'Finish',
-        repository: 'online-cdn',
-        packageManifest: { id: 'parent-path' },
-        learningJourney: { baseUrl: 'https://grafana.com/docs/example/' },
-      },
-      'finish',
-      'online-cdn',
-    ],
-  ])(
-    'attributes a mark on %s to the same guide identity as terminal completion',
-    async (url, metadata, guideId, guideSource) => {
-      const content = makeContent({ url: url as string, metadata: metadata as RawContent['metadata'] });
-      window.__DocsPluginActiveTabUrl = content.url;
-      render(<ContentRenderer content={content} />);
-      await clickWhenReady();
-      expect(markCompleteEvents()[0]?.[1]).toMatchObject({
-        guide_id: guideId,
-        guide_source: guideSource,
-        guide_visibility: 'public',
-      });
-      expect(markCompleteEvents()[0]?.[1]).not.toHaveProperty('guide_title');
-    }
-  );
-
-  it.each(['app-platform', 'remote-repo:private-company'])('omits private identifiers for %s', async (repository) => {
-    const content = makeContent({
-      url: 'backend-guide:private-guide',
-      metadata: { title: 'Private title', repository, packageManifest: { id: 'private-guide' } },
-    });
-    window.__DocsPluginActiveTabUrl = content.url;
-    render(<ContentRenderer content={content} />);
-    await clickWhenReady();
-    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_visibility: 'private' });
-    expect(JSON.stringify(markCompleteEvents()[0]?.[1])).not.toMatch(/private-guide|Private title|private-company/);
-  });
-
-  it('does not guess a published source for an unresolved manifest', async () => {
-    const content = makeContent({
-      url: 'https://customer.example/internal',
-      metadata: { title: 'Private title', packageManifest: { id: 'private-guide' } },
-    });
-    window.__DocsPluginActiveTabUrl = content.url;
-    render(<ContentRenderer content={content} />);
-    await clickWhenReady();
-    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_source: 'other', guide_visibility: 'private' });
-    expect(markCompleteEvents()[0]?.[1]).not.toHaveProperty('guide_id');
   });
 });

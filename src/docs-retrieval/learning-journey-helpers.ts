@@ -30,7 +30,6 @@ import {
   resolveStandaloneGuideCompletionIdentity,
   resolveJourneyCompletionIdentity,
   manifestGuideId,
-  manifestGuideSource,
   normalizeGuideId,
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
@@ -787,33 +786,6 @@ export function resolveActiveMilestoneSlug(input: {
 }): string | undefined {
   const slug = input.currentUrl ? getMilestoneSlug(input.currentUrl) : '';
   return slug && input.journeyBaseUrl ? slug : undefined;
-}
-
-export function resolveSurfaceGuideCompletionIdentity(input: SurfaceCompletionInput) {
-  const { metadata } = input;
-  const surfaceBase = input.baseUrl || input.contentUrl || '';
-  const repository =
-    metadata?.repository ??
-    (surfaceBase.startsWith('backend-guide:') ? 'app-platform' : manifestGuideSource(metadata?.packageManifest)) ??
-    (surfaceBase.startsWith('bundled:') ? 'bundled' : 'other');
-  const milestoneSlug = resolveActiveMilestoneSlug({
-    currentUrl: input.currentUrl ?? input.contentUrl,
-    journeyBaseUrl: metadata?.learningJourney?.baseUrl ?? metadata?.trackMemberBaseUrl,
-  });
-  if (milestoneSlug) {
-    return resolveMilestoneCompletionIdentity({
-      repository,
-      packageManifest: metadata?.packageManifest,
-      milestoneSlug,
-    });
-  }
-  const guideId =
-    manifestGuideId(metadata?.packageManifest) ??
-    (surfaceBase.startsWith('bundled:') ? normalizeGuideId(surfaceBase.slice('bundled:'.length)) : undefined);
-  if (!guideId) {
-    return undefined;
-  }
-  return resolveStandaloneGuideCompletionIdentity({ repository, packageManifest: metadata?.packageManifest, guideId });
 }
 
 /**

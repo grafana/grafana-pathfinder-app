@@ -31,6 +31,7 @@ import {
   useCodaTerminalGate,
 } from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
+import type { ProgressReason } from '../../global-state/progress-events';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
@@ -181,18 +182,22 @@ export const TerminalConnectStep = forwardRef<
       sectionId,
     });
 
-    const markComplete = useCallback(() => {
-      if (isCompleted) {
-        return;
-      }
-      if (isStandalone) {
-        markStepCompleted(renderedStepId, sectionId, 'manual');
-      }
-      if (onStepComplete && renderedStepId) {
-        onStepComplete(renderedStepId);
-      }
-      onComplete?.();
-    }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
+    const completeStep = useCallback(
+      (reason: ProgressReason) => {
+        if (isCompleted) {
+          return;
+        }
+        if (isStandalone) {
+          markStepCompleted(renderedStepId, sectionId, reason);
+        }
+        if (onStepComplete && renderedStepId) {
+          onStepComplete(renderedStepId);
+        }
+        onComplete?.();
+      },
+      [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]
+    );
+    const markComplete = useCallback(() => completeStep('manual'), [completeStep]);
 
     const {
       state: gcxState,
@@ -238,7 +243,7 @@ export const TerminalConnectStep = forwardRef<
           analyticsStepMeta
         )
       );
-      markComplete();
+      completeStep('skipped');
       reportStepSkipped(
         {
           targetAction: 'terminal-connect',
@@ -247,7 +252,7 @@ export const TerminalConnectStep = forwardRef<
         },
         analyticsStepMeta
       );
-    }, [gcxState, markComplete, analyticsStepMeta]);
+    }, [gcxState, completeStep, analyticsStepMeta]);
 
     const persistReset = useCallback(() => {
       if (isStandalone) {
