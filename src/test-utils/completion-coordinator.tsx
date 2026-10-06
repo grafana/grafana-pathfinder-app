@@ -3,30 +3,37 @@ import { render, type RenderOptions } from '@testing-library/react';
 
 import { CompletionCoordinator, type ObservationCheck } from '../global-state/observation/coordinator';
 import { CompletionObservationContext } from '../global-state/observation/context';
-import { checkPostconditions } from '../requirements-manager/requirements-checker.utils';
+import { useGuideRequirements } from '../requirements-manager/guide-requirements-context';
 import {
   matchesFormfillState,
   matchesPassiveAction,
   observePassiveActions,
 } from '../interactive-engine/auto-completion/passive-action';
 
-const checkAsTheSidebarDoes: ObservationCheck = async (conditions, step) => {
-  const action = step.actions[0];
-  const result = await checkPostconditions({
-    requirements: conditions,
-    stepId: step.stepId,
-    targetAction: action?.targetAction,
-    refTarget: action?.refTarget,
-    targetValue: action?.targetValue,
-    lazyRender: false,
-    maxRetries: 0,
-  });
-  return result.verdict === 'satisfied';
-};
+function checkAsTheSidebarDoes(
+  checkPostconditions: ReturnType<typeof useGuideRequirements>['checkPostconditions']
+): ObservationCheck {
+  return async (conditions, step) => {
+    const action = step.actions[0];
+    const result = await checkPostconditions({
+      requirements: conditions,
+      stepId: step.stepId,
+      targetAction: action?.targetAction,
+      refTarget: action?.refTarget,
+      targetValue: action?.targetValue,
+      lazyRender: false,
+      maxRetries: 0,
+    });
+    return result.verdict === 'satisfied';
+  };
+}
 
-export function createCoordinatorWrapper(check: ObservationCheck = checkAsTheSidebarDoes) {
+export function createCoordinatorWrapper(check?: ObservationCheck) {
   return function CoordinatorWrapper({ children }: PropsWithChildren) {
-    const [coordinator] = useState(() => new CompletionCoordinator(check));
+    const { checkPostconditions } = useGuideRequirements();
+    const [coordinator] = useState(
+      () => new CompletionCoordinator(check ?? checkAsTheSidebarDoes(checkPostconditions))
+    );
     useEffect(() => {
       coordinator.start();
       const stopObserving = observePassiveActions(
