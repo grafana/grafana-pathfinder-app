@@ -35,6 +35,7 @@ function reportBadgeUnlocked(badgeId: string): void {
     badge_id: badgeId,
     badge_title: badge?.title || badgeId,
     trigger_type: badge?.trigger?.type || 'unknown',
+    ...(badge?.trigger?.type === 'path-completed' && { path_id: badge.trigger.pathId }),
   });
 }
 

@@ -216,7 +216,17 @@ describe('awardBadge', () => {
       badge_id: 'penguin-wrangler',
       badge_title: 'penguin-wrangler-title',
       trigger_type: 'path-completed',
+      path_id: 'linux-server-integration',
     });
+  });
+
+  it('sends no path id for a badge that is not path-completed', async () => {
+    learningProgressAwardBadgeMock.mockResolvedValue(true);
+    getBadgeByIdMock.mockReturnValue({ id: 'first-steps', title: 'First steps', trigger: { type: 'guide-completed' } });
+
+    await awardBadge('first-steps');
+
+    expect(reportAppInteractionMock.mock.calls[0]![1]).not.toHaveProperty('path_id');
   });
 
   it('reports nothing when the badge was already earned', async () => {

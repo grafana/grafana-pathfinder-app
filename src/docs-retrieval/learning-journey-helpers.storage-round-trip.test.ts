@@ -163,8 +163,8 @@ describe('URL-path badge analytics', () => {
       badge_id: 'penguin-wrangler',
       badge_title: 'Penguin Wrangler',
       trigger_type: 'path-completed',
+      path_id: 'linux-server-integration',
     });
-    expect(badgeUnlockedCalls()[0]![1]).not.toHaveProperty('path_id');
     expect(badgeUnlockedCalls()[0]![1]).not.toHaveProperty('journey_id');
   });
 
