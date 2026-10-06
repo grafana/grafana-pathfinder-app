@@ -233,6 +233,35 @@ describe('handlePathfinderDeepLink', () => {
     expect(window.location.search).toBe('');
   });
 
+  it.each(['dem', 'customer-onboarding'])(
+    'attributes a kiosk deep link to its session and %s catalog',
+    async (name) => {
+      setSearch(`?doc=bundled:welcome&kiosk_session=session-new&kiosk_name=${name}`);
+      handlePathfinderDeepLink(mkDeps());
+      await flushPromises();
+      expect(mockSetPendingOpenSource).toHaveBeenCalledWith('kiosk_session', 'auto-open');
+      expect(window.__pathfinderKioskSessionId).toBe('session-new');
+      expect(window.__pathfinderKioskName).toBe(name);
+    }
+  );
+
+  it('does not reuse an old kiosk name for a legacy or invalid-name session link', async () => {
+    window.__pathfinderKioskName = 'previous-kiosk';
+    setSearch('?doc=bundled:welcome&kiosk_session=new&kiosk_name=private%20title');
+    handlePathfinderDeepLink(mkDeps());
+    await flushPromises();
+    expect(window.__pathfinderKioskName).toBe('unknown');
+    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('kiosk_session', 'auto-open');
+  });
+
+  it('preserves ordinary open attribution after a kiosk session', async () => {
+    window.__pathfinderKioskSessionId = 'previous';
+    setSearch('?doc=bundled:welcome&source=shared_link');
+    handlePathfinderDeepLink(mkDeps());
+    await flushPromises();
+    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('shared_link', 'auto-open');
+  });
+
   it('leaves kiosk launch links to the kiosk handler even when panelMode is supplied', () => {
     const deps = mkDeps();
     setSearch('?pathfinderKiosk=1&panelMode=fullscreen');
