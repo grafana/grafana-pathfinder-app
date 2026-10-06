@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { reviewSection } from './inputs.mjs';
+import { reviewSection, TOOL_ROOT } from './inputs.mjs';
 import { liveRefs, onlyTask } from './controller.mjs';
 
 const OBSERVATION_TEMPLATE = {
@@ -46,6 +46,7 @@ function header(state, task, paths) {
     '',
     `Session: ${identity.session_id}. PR: https://github.com/${identity.repo}/pull/${identity.pr}.`,
     `Checkout: ${identity.repo_dir}, pinned at head ${identity.head_sha}. Base: ${identity.base_sha}. Review range: ${range.from}...${range.to} (${identity.mode} review, round ${identity.round}).`,
+    `Review tooling: ${TOOL_ROOT}. Repository paths in this brief such as \`docs/design/CONCERNS.md\` are relative to it; read the reviewed code only through the checkout.`,
     '',
     'Rules:',
     '- Do only this task. Do not run the review pipeline, any other role, the policy or report scripts, or anything that publishes to GitHub.',

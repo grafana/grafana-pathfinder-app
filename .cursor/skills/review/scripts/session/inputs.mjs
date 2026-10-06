@@ -9,7 +9,7 @@ import { extractSections } from '../review-section.mjs';
 import { computeSecurityGate } from '../security-gate.mjs';
 import { sha256 } from './model.mjs';
 
-const TOOL_ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
+export const TOOL_ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
 
 export const SHARED_INPUTS = [
   'docs/design/CONCERNS.md',

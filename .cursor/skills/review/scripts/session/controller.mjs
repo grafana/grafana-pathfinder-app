@@ -384,14 +384,16 @@ function stageCommands(state) {
     working = applyDraft(working, draft);
     drafts.push(draft);
   };
-  for (const check of plan.result.checks.filter(({ argv }) => argv)) {
-    push({
-      role: 'command',
-      stage: check.name,
-      label: check.name,
-      prerequisites: [plan.id],
-      spec: { kind: 'check', source: plan.id, name: check.name, argv: check.argv, at: 'head' },
-    });
+  for (const check of plan.result.checks.filter(({ runs }) => runs)) {
+    for (const [run, argv] of check.runs.entries()) {
+      push({
+        role: 'command',
+        stage: check.name,
+        label: check.runs.length > 1 ? `${check.name}-${run + 1}` : check.name,
+        prerequisites: [plan.id],
+        spec: { kind: 'check', source: plan.id, name: check.name, run, argv, at: 'head' },
+      });
+    }
   }
   for (const [index, entry] of plan.result.efficacy.entries()) {
     if (!entry.argv) {

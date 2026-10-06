@@ -432,7 +432,14 @@ function validateEvidencePlan(task, result) {
     if (check.status === 'not_applicable') {
       return { name: check.name, status: 'not_applicable', reason: text(check.reason, `${at}.reason`, 300) };
     }
-    return { name: check.name, argv: validateArgv(check.argv, `${at}.argv`) };
+    if (check.argv !== undefined && check.runs !== undefined) {
+      fail(`${at} takes argv or runs, not both`);
+    }
+    const runs = check.runs ?? [check.argv];
+    if (!Array.isArray(runs) || runs.length === 0 || runs.length > 4) {
+      fail(`${at}.runs must hold one to four argument arrays`);
+    }
+    return { name: check.name, runs: runs.map((argv, run) => validateArgv(argv, `${at}.runs[${run}]`)) };
   });
   const missing = requiredCheckNames(task.spec.change_class).filter((name) => !names.has(name));
   if (missing.length > 0) {

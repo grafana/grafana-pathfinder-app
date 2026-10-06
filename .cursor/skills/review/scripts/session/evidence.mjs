@@ -7,8 +7,8 @@ import { sha256, validateArgv, validateRepoPath } from './model.mjs';
 const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
 const MAX_OUTPUT = 32 * 1024 * 1024;
 const SETUP_FAILURE =
-  /Test suite failed to run|Cannot find module|SyntaxError|error TS\d+|Jest encountered an unexpected token|ERR_MODULE_NOT_FOUND/;
-const ASSERTION_FAILURE = /Tests:\s+\d+ failed|✕|AssertionError|Expected:|# fail [1-9]/;
+  /Test suite failed to run|Cannot find module|SyntaxError|error TS\d+|Jest encountered an unexpected token|ERR_MODULE_NOT_FOUND|\[build failed\]|\[setup failed\]/;
+const ASSERTION_FAILURE = /Tests:\s+\d+ failed|✕|AssertionError|Expected:|# fail [1-9]|--- FAIL:/;
 
 function git(cwd, args) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: MAX_OUTPUT });

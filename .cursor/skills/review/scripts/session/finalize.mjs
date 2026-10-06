@@ -74,7 +74,9 @@ export function obligations(state) {
   }
   const route = onlyTask(state, 'route');
   if (!route || route.status !== 'completed') {
-    add('route', 'routing has not completed');
+    if (!route) {
+      add('route', 'routing has not been created');
+    }
     return open;
   }
   if (!state.plan) {
@@ -117,18 +119,19 @@ function deriveChecks(state) {
     if (check.status === 'not_applicable') {
       return [{ name: check.name, status: 'not_applicable', reason: check.reason }];
     }
-    const command = tasksWhere(
+    const commands = tasksWhere(
       state,
       (task) => task.role === 'command' && task.spec.kind === 'check' && task.spec.name === check.name
-    )[0];
-    if (command?.status !== 'completed' || command.result.error) {
+    );
+    if (commands.length === 0 || commands.some((command) => command.status !== 'completed' || command.result.error)) {
       return [];
     }
+    const text = check.runs.map(commandString).join(' && ');
     return [
       {
         name: check.name,
-        status: command.result.exit_status === 0 ? 'pass' : 'fail',
-        command: commandString(check.argv).slice(0, 300),
+        status: commands.every((command) => command.result.exit_status === 0) ? 'pass' : 'fail',
+        command: text.length > 300 ? `${text.slice(0, 299)}…` : text,
       },
     ];
   });
