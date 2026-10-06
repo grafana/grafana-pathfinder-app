@@ -84,7 +84,7 @@ function dependencyAuditLines(state) {
   }
   const cutoff = state.identity.intent?.evidence_cutoff;
   return [
-    `Dependency manifests changed: ${manifests.join(', ')}. Audit only the packages this PR adds or changes in them, not the whole tree. Record the advisory source and the date of its data.${cutoff ? ` The evidence cutoff is ${cutoff}; advisory data dated after it cannot support a finding.` : ''}`,
+    `Dependency manifests changed, listed in \`dependency_manifests\` in the input. Audit only the packages this PR adds or changes in them, not the whole tree. Record the advisory source and the date of its data.${cutoff ? ` The evidence cutoff is ${cutoff}; advisory data dated after it cannot support a finding.` : ''}`,
     '',
   ];
 }
@@ -92,7 +92,7 @@ function dependencyAuditLines(state) {
 function contractIntentLines(concernIds) {
   return [
     `The PR description is in \`pr_intent\`. For ${concernIds.join(', ')}, check whether it states that the change follows, extends, or replaces the established contract.`,
-    'When a gate fired for an existing capability and the description does not say, or a PR that establishes or replaces a contract does not update that concern contract anchor in `docs/design/CONCERN_DETAILS.md`, return a documentation-drift observation in `observations`: kind defect, impact none, concern_id the gated concern, evidence citing the description or the anchor. Report other stale documentation you notice the same way.',
+    'When a gate fired for an existing capability and the description does not say, or a PR that establishes or replaces a contract does not update that concern contract anchor in `docs/design/CONCERN_DETAILS.md`, return a documentation-drift observation in `observations`: kind defect, impact none, concern_id the gated concern, evidence citing the description or the anchor.',
     '',
   ];
 }
@@ -107,7 +107,7 @@ function observeSteps() {
     '5. Classify origin, reachability, impact, timing, scope effect, reversibility, and induced scope from evidence.',
     '6. Report invariant mismatches, rollback hazards, contract drift, or missing verification tied to changed semantics.',
     '',
-    'When changed behavior leaves agent guidance or a design doc describing the old behavior, report documentation drift as a canonical observation (kind defect, impact none) when the update belongs in this PR.',
+    'Documentation drift: only when changed subsystems, scripts, skills, routes, flags, or architecture can stale agent guidance. Emit a no-impact defect when guidance belongs in this PR.',
     '',
     ...EVIDENCE_RULES,
     'Prefer one precise observation over speculative variants. Do not emit a pre_existing or latent_unreachable observation below high severity, and do not emit optional advice that widens the changed surface. No producer decides merge impact.',
@@ -345,7 +345,7 @@ function roleBrief(state, task, ctx) {
             : 'For this change class, not_applicable on a check needs the user’s consent; the supervisor records that as a waiver, never you.',
           ...(task.spec.surfaces?.go
             ? [
-                `Go changed (${task.spec.surfaces.go_paths.join(', ')}): go_build, go_lint, and go_test are required and cannot be not_applicable. If you omit one, the controller runs \`go build ./...\`, \`npm run lint:go\`, or \`go test ./pkg/...\`.`,
+                `Go changed (the paths are \`surfaces.go_paths\` in the input): go_build, go_lint, and go_test are required and cannot be not_applicable. If you omit one, the controller runs \`go build ./...\`, \`npm run lint:go\`, or \`go test ./pkg/...\`.`,
               ]
             : []),
         ],
@@ -379,9 +379,9 @@ function roleBrief(state, task, ctx) {
           ''
         );
       }
-      if (task.role === 'security_specialist' || concernIds.includes('security')) {
-        lines.push(...dependencyAuditLines(state));
-      }
+      const auditLines =
+        task.role === 'security_specialist' || concernIds.includes('security') ? dependencyAuditLines(state) : [];
+      lines.push(...auditLines);
       if (contractIds.length > 0) {
         lines.push(
           'For each contract-evolution entry, return a contract packet in contract_packets. The controller runs the adapter.',
@@ -408,6 +408,7 @@ function roleBrief(state, task, ctx) {
           pr_intent: intentInput(state.identity),
           changed_files: ownedChangedFiles(state, task),
           diff_manifest: diffManifest(shards, ctx.taskDir),
+          ...(auditLines.length > 0 ? { dependency_manifests: state.scope.surfaces.dependency_manifests } : {}),
         },
         schema:
           task.role === 'root_overflow'

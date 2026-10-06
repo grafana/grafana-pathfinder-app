@@ -144,12 +144,21 @@ test('the dependency audit is asked for only when a dependency manifest changed'
       const state = drive(startSession(ctx, { intent: { ...INTENT, evidence_cutoff: '2026-09-30' } }), ctx, {
         security_specialist: 'stop',
       });
-      return read(state, ready(state, 'security_specialist')[0], ctx).brief;
+      return read(state, ready(state, 'security_specialist')[0], ctx);
     };
     const withManifest = specialistBrief(['package.json', 'src/a.ts']);
-    assert.match(withManifest, /Dependency manifests changed: package\.json\. Audit only the packages this PR adds/);
-    assert.match(withManifest, /evidence cutoff is 2026-09-30; advisory data dated after it cannot support a finding/);
-    assert.doesNotMatch(specialistBrief(['src/a.ts']), /Dependency manifests changed/);
+    assert.match(
+      withManifest.brief,
+      /Dependency manifests changed, listed in `dependency_manifests` in the input\. Audit only the packages this PR adds/
+    );
+    assert.doesNotMatch(withManifest.brief, /package\.json/);
+    assert.deepEqual(withManifest.input.dependency_manifests, ['package.json']);
+    assert.match(
+      withManifest.brief,
+      /evidence cutoff is 2026-09-30; advisory data dated after it cannot support a finding/
+    );
+    assert.doesNotMatch(specialistBrief(['src/a.ts']).brief, /Dependency manifests changed/);
+    assert.equal(specialistBrief(['src/a.ts']).input.dependency_manifests, undefined);
   });
 });
 
@@ -160,11 +169,31 @@ test('the evidence-plan brief names the Go checks only when Go changed', () => {
       const state = drive(startSession(ctx), ctx, { evidence_plan: 'stop' });
       return read(state, ready(state, 'evidence_plan')[0], ctx).brief;
     };
+    const goBrief = planBrief(['pkg/plugin/app.go']);
     assert.match(
-      planBrief(['pkg/plugin/app.go']),
-      /Go changed \(pkg\/plugin\/app\.go\): go_build, go_lint, and go_test/
+      goBrief,
+      /Go changed \(the paths are `surfaces\.go_paths` in the input\): go_build, go_lint, and go_test/
     );
+    assert.doesNotMatch(goBrief, /pkg\/plugin\/app\.go/);
     assert.doesNotMatch(planBrief(['src/a.ts']), /go_build/);
+  });
+});
+
+test('observers carry the same conditional documentation-drift rule as the /review skill', () => {
+  const skillRule = readFileSync(join(import.meta.dirname, '../../SKILL.md'), 'utf8')
+    .split('\n')
+    .find((line) => line.startsWith('- Documentation drift: '))
+    .slice(2);
+  withBriefs((read) => {
+    const ctx = fakeContext();
+    const state = drive(startSession(ctx), ctx, { additions: [observation()], skeptic: 'stop' });
+    const observer = state.order.map((id) => state.tasks[id]).find((task) => task.role === 'observer');
+    const text = read(state, observer, ctx).brief;
+    assert.ok(text.includes(skillRule), text);
+    assert.doesNotMatch(text, /describing the old behavior|Report other stale documentation/);
+    const { ctx: gatedCtx, state: gated } = gatedSession();
+    const specialist = read(gated, ready(gated, 'contract_specialist')[0], gatedCtx).brief;
+    assert.doesNotMatch(specialist, /Report other stale documentation/);
   });
 });
 
