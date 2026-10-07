@@ -134,7 +134,7 @@ describe('useGuidePreviewProgress — listener contract', () => {
     act(() => {
       window.dispatchEvent(
         new CustomEvent('pathfinder:progress', {
-          detail: { kind: 'section', sectionId: 'section-a', completed: true },
+          detail: { kind: 'section', contentKey: PROGRESS_KEY, sectionId: 'section-a', completed: true },
         })
       );
     });

@@ -52,9 +52,9 @@ async function renderWithSections(onGuideComplete: jest.Mock): Promise<void> {
   });
 }
 
-function completeSection(sectionId: string) {
+function completeSection(sectionId: string, contentKey: string = GUIDE_URL) {
   act(() => {
-    dispatchProgress({ kind: 'section', sectionId, completed: true });
+    dispatchProgress({ kind: 'section', contentKey, sectionId, completed: true });
     jest.advanceTimersByTime(SETTLE_MS);
   });
 }
@@ -94,11 +94,33 @@ describe('ContentRenderer — the automatic section route and reset', () => {
     expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
   });
 
+  it('ignores sections from another guide, including ones whose ids match its own', async () => {
+    const onGuideComplete = jest.fn();
+    await renderWithSections(onGuideComplete);
+    const previewKey = 'block-editor://preview/other-guide';
+
+    for (const sectionId of [...SECTION_IDS, 'preview-section-1']) {
+      completeSection(sectionId, previewKey);
+    }
+    expect(onGuideComplete).not.toHaveBeenCalled();
+
+    SECTION_IDS.forEach((sectionId) => completeSection(sectionId));
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
+  });
+
+  it('matches its own guide key regardless of a trailing slash', async () => {
+    const onGuideComplete = jest.fn();
+    await renderWithSections(onGuideComplete);
+    SECTION_IDS.forEach((sectionId) => completeSection(sectionId, GUIDE_URL.replace(/\/+$/, '')));
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+  });
+
   it('reports skipped when automatic completion includes a restored skipped step', async () => {
     await interactiveStepStorage.setCompleted(GUIDE_URL, 'section-1', new Set(['step-1']), new Set(['step-1']));
     const onGuideComplete = jest.fn();
     await renderWithSections(onGuideComplete);
-    SECTION_IDS.forEach(completeSection);
+    SECTION_IDS.forEach((sectionId) => completeSection(sectionId));
     expect(onGuideComplete).toHaveBeenCalledWith('skipped', GUIDE_URL);
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
   });

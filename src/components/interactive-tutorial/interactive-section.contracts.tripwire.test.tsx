@@ -92,6 +92,7 @@ jest.mock('./interactive-conditional', () => {
 
 import { testIds } from '../../constants/testIds';
 import { InteractiveStep } from './interactive-step';
+import { GuideContentKeyContext } from './guide-content-key-context';
 import { InteractiveSection, resetInteractiveCounters, STEP_TYPE_LOOKUP } from './interactive-section';
 import { STEP_TYPE_SCHEMAS } from './step-type-registry';
 import { INTERACTIVE_STEP_COMPONENT_TYPES } from './section-child-classifier';
@@ -340,6 +341,34 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
       }
     });
 
+    it('tags the section event with the owning renderer key, not the ambient one', async () => {
+      const { events, unsubscribe } = recordSectionEvents();
+      try {
+        render(
+          <GuideContentKeyContext.Provider value="block-editor://preview/owner">
+            <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+              <InteractiveStep targetAction="highlight" refTarget=".a">
+                Step
+              </InteractiveStep>
+            </InteractiveSection>
+          </GuideContentKeyContext.Provider>
+        );
+        await waitFor(() => expect(screen.getByTestId(completeBtn(STEP_ID))).toBeInTheDocument());
+        act(() => {
+          screen.getByTestId(completeBtn(STEP_ID)).click();
+        });
+
+        await waitFor(() => {
+          const evt = events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section');
+          expect(evt!.detail).toEqual(
+            expect.objectContaining({ kind: 'section', contentKey: 'block-editor://preview/owner' })
+          );
+        });
+      } finally {
+        unsubscribe();
+      }
+    });
+
     it('dispatches pathfinder:progress (kind: section) with { sectionId } exactly once per completion', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
@@ -352,7 +381,12 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         await waitFor(() => {
           const sectionEvents = events.filter((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section');
           expect(sectionEvents).toHaveLength(1);
-          expect(sectionEvents[0]!.detail).toEqual({ kind: 'section', sectionId: SECTION_ID, completed: true });
+          expect(sectionEvents[0]!.detail).toEqual({
+            kind: 'section',
+            contentKey: expect.any(String),
+            sectionId: SECTION_ID,
+            completed: true,
+          });
         });
       } finally {
         unsubscribe();

@@ -40,6 +40,8 @@ export type ProgressEventDetail =
     }
   | {
       kind: 'section';
+      /** Progress key of the guide that owns the section, never the ambient active key. */
+      contentKey: string;
       sectionId: string;
       completed: boolean;
       percentage?: number;

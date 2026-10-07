@@ -257,7 +257,12 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
           (e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section' && e.detail.completed
         );
         expect(sectionCompletions).toHaveLength(1);
-        expect(sectionCompletions[0]!.detail).toEqual({ kind: 'section', sectionId: SECTION_ID, completed: true });
+        expect(sectionCompletions[0]!.detail).toEqual({
+          kind: 'section',
+          contentKey: expect.any(String),
+          sectionId: SECTION_ID,
+          completed: true,
+        });
 
         // Final persisted completion set covers all 3 steps.
         const persisted = memoryStore.get(`section-steps::${NON_PREVIEW_KEY}::${SECTION_ID}`) as

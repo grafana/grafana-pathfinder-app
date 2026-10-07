@@ -50,11 +50,11 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
       // matches this preview hook's progress key. Reads `getContentKey()`
       // lazily because the hook isn't necessarily mounted under the same
       // active tab.
-      if (
-        (detail.kind === 'step' || detail.kind === 'section') &&
-        detail.completed === true &&
-        getContentKey() === progressKey
-      ) {
+      // A section event names its owning guide, so it is matched on that key
+      // rather than the ambient one.
+      if (detail.kind === 'section' && detail.completed && detail.contentKey === progressKey) {
+        setHasProgress(true);
+      } else if (detail.kind === 'step' && detail.completed && getContentKey() === progressKey) {
         setHasProgress(true);
       }
     });

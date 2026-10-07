@@ -75,6 +75,7 @@ import {
 } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { GuideContentKeyContext } from '../interactive-tutorial/guide-content-key-context';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import {
   evictGuideIndex,
@@ -180,6 +181,8 @@ export const ContentRenderer = React.memo(function ContentRenderer(props: Conten
   );
 });
 
+const stripTrailingSlashes = (key: string): string => key.replace(/\/+$/, '');
+
 const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
@@ -194,6 +197,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
   const guideCompleteCalledRef = useRef(false);
+  const ownerContentKey = resolveGuideContentKey(content.url);
 
   // Text selection tracking for assistant integration
   const selectionState = useTextSelection(activeRef);
@@ -318,7 +322,10 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     };
 
     const handleSectionComplete = (event: Event) => {
-      const { sectionId } = (event as CustomEvent).detail;
+      const { sectionId, contentKey } = (event as CustomEvent).detail;
+      if (stripTrailingSlashes(contentKey) !== stripTrailingSlashes(resolveGuideContentKey(effectContentUrl))) {
+        return;
+      }
       completedSectionsRef.current.add(sectionId);
 
       // CRITICAL: Don't trigger completion until content has settled
@@ -412,7 +419,9 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     // based on the discriminant.
     const unsubscribeProgress = subscribeProgressEvent((detail) => {
       if (detail.kind === 'section' && detail.completed) {
-        handleSectionComplete(new CustomEvent('section', { detail: { sectionId: detail.sectionId } }));
+        handleSectionComplete(
+          new CustomEvent('section', { detail: { sectionId: detail.sectionId, contentKey: detail.contentKey } })
+        );
       } else if (detail.kind === 'step' && detail.completed) {
         handleStepComplete();
       } else if (detail.kind === 'guide') {
@@ -538,26 +547,28 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   );
 
   return (
-    <GuideResponseProvider guideId={guideId}>
-      <GuideRequirementsProvider guideId={guideId}>
-        <ContentWithVariables
-          processedContent={processedContent}
-          countingSource={content.countingSource}
-          contentType={content.type}
-          baseUrl={content.url}
-          title={content.metadata.title}
-          isNativeJson={content.isNativeJson ?? false}
-          onContentReady={onContentReady}
-          activeRef={activeRef}
-          className={className}
-          selectionState={selectionState}
-          documentContext={documentContext}
-          beforeContent={beforeContent}
-          afterContent={afterContent}
-          fullScreenFallbackLocation={fullScreenFallbackLocation}
-        />
-      </GuideRequirementsProvider>
-    </GuideResponseProvider>
+    <GuideContentKeyContext.Provider value={ownerContentKey}>
+      <GuideResponseProvider guideId={guideId}>
+        <GuideRequirementsProvider guideId={guideId}>
+          <ContentWithVariables
+            processedContent={processedContent}
+            countingSource={content.countingSource}
+            contentType={content.type}
+            baseUrl={content.url}
+            title={content.metadata.title}
+            isNativeJson={content.isNativeJson ?? false}
+            onContentReady={onContentReady}
+            activeRef={activeRef}
+            className={className}
+            selectionState={selectionState}
+            documentContext={documentContext}
+            beforeContent={beforeContent}
+            afterContent={afterContent}
+            fullScreenFallbackLocation={fullScreenFallbackLocation}
+          />
+        </GuideRequirementsProvider>
+      </GuideResponseProvider>
+    </GuideContentKeyContext.Provider>
   );
 });
 
