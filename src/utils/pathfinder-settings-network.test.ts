@@ -80,15 +80,18 @@ describe('settings read recovery', () => {
     const rejected = expect(
       saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { tutorialUrl: 'new' } })
     ).rejects.toMatchObject({ status });
+    const settingsReads = () =>
+      fetchMock.mock.calls.map(([request]) => request).filter(({ url }) => !url.endsWith('/settings'));
     await jest.advanceTimersByTimeAsync(1999);
-    expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(2);
+    expect(settingsReads()).toHaveLength(2);
     await jest.advanceTimersByTimeAsync(1);
     await rejected;
-    expect(
-      fetchMock.mock.calls
-        .filter(([request]) => request.url.endsWith('/pathfinder-settings'))
-        .map(([request]) => request.params?.attempt)
-    ).toEqual([undefined, 2, 3]);
+    const url = '/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings';
+    expect(settingsReads().map((request) => [request.url, request.params])).toEqual([
+      [url, undefined],
+      [url, { attempt: 2 }],
+      [url, { attempt: 3 }],
+    ]);
     expect(fetchMock.mock.calls.every(([request]) => request.method === 'GET')).toBe(true);
   });
 

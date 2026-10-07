@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
 func TestGuideProxyDiagnosticReasons(t *testing.T) {
@@ -145,6 +147,8 @@ func (l *diagnosticLogger) Warn(msg string, fields ...interface{}) {
 	l.capturingLogger.Warn(msg, fields...)
 	l.fields = fields
 }
+
+func (l *diagnosticLogger) FromContext(context.Context) log.Logger { return l }
 
 func TestProxyFailureLogDoesNotExposeUpstreamError(t *testing.T) {
 	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}

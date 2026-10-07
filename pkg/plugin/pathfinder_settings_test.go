@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
 func TestSettingsProxyCallerAndResourceVersion(t *testing.T) {
@@ -147,6 +148,46 @@ func TestReadAttemptIsBounded(t *testing.T) {
 		r := httptest.NewRequest(http.MethodGet, "/pathfinder-settings?"+query, nil)
 		if got := readAttempt(r); got != want {
 			t.Errorf("%q: got %d, want %d", query, got, want)
+		}
+	}
+}
+
+func TestSettingsProxyLogsRetriesUnderSeparateEvent(t *testing.T) {
+	keys := jwksBody(testSigningKeyID, testSigningKey())
+	stack := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == auth.SigningKeysPath {
+			_, _ = w.Write(keys)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer stack.Close()
+	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"token":"obo-token"}}`))
+	}))
+	defer exchange.Close()
+	exchanger, err := auth.New("cap-token", exchange.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for target, want := range map[string]map[string]interface{}{
+		"/pathfinder-settings":           {"event": "pathfinder_proxy_failure", "upstream_status": 503},
+		"/pathfinder-settings?attempt=2": {"event": "pathfinder_proxy_retry_failure", "upstream_status": 503, "attempt": 2},
+	} {
+		logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+		app := &App{logger: logger, oboExchanger: exchanger}
+		recorder := httptest.NewRecorder()
+		app.handlePathfinderSettings(recorder, customGuideRequestWithConfig(t, target, "user:1", map[string]string{sdkconfig.AppURL: stack.URL}))
+		if recorder.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s: status %d %s", target, recorder.Code, recorder.Body.String())
+		}
+		fields := map[string]interface{}{}
+		for i := 0; i < len(logger.fields); i += 2 {
+			fields[logger.fields[i].(string)] = logger.fields[i+1]
+		}
+		_, hasAttempt := fields["attempt"]
+		if fields["event"] != want["event"] || fields["upstream_status"] != want["upstream_status"] || fields["attempt"] != want["attempt"] || hasAttempt != (want["attempt"] != nil) {
+			t.Errorf("%s: unexpected fields %#v", target, fields)
 		}
 	}
 }
