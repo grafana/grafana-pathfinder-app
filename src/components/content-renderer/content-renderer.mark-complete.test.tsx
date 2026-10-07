@@ -183,26 +183,36 @@ describe('ContentRenderer — the universal Mark complete control', () => {
   });
 
   it.each([
-    ['guide', makeContent(), {}],
-    ['milestone', makeMilestone(), { guide_source: 'unresolved', guide_visibility: 'private' }],
-  ])('reports one %s click with that discriminator', async (discriminator, content, identityProperties) => {
-    window.__DocsPluginActiveTabUrl = content.url;
-    render(<ContentRenderer content={content} onGuideComplete={jest.fn()} />);
+    ['guide', makeContent(), {}, {}],
+    [
+      'milestone',
+      makeMilestone(),
+      { guide_source: 'unresolved', guide_visibility: 'private' },
+      { current_milestone: 1, total_milestones: 1 },
+    ],
+  ])(
+    'reports one %s click with that discriminator',
+    async (discriminator, content, identityProperties, milestoneProperties) => {
+      window.__DocsPluginActiveTabUrl = content.url;
+      render(<ContentRenderer content={content} onGuideComplete={jest.fn()} />);
 
-    await clickWhenReady();
+      await clickWhenReady();
 
-    expect(markCompleteEvents()).toEqual([
-      [
-        UserInteraction.MarkCompleteClicked,
-        {
-          ...identityProperties,
-          interaction_location: 'content_footer',
-          completion_context: discriminator,
-          completion_percentage_before: 0,
-        },
-      ],
-    ]);
-  });
+      expect(markCompleteEvents()).toEqual([
+        [
+          UserInteraction.MarkCompleteClicked,
+          {
+            ...identityProperties,
+            interaction_location: 'content_footer',
+            completion_context: discriminator,
+            completion_percentage_before: 0,
+            block_progress_rule_version: 'block-position-v1',
+            ...milestoneProperties,
+          },
+        ],
+      ]);
+    }
+  );
 
   it('reports a URL-typed standalone tutorial as a guide, matching how its completion is recorded', async () => {
     // `determineContentType` types any /tutorials/ URL as a journey, but with

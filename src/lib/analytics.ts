@@ -16,6 +16,11 @@ import { pushFaroUserAction } from './telemetry/bridge';
 // directly even from this entry-eager module.
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
+import { furthestEvidencedPosition } from './guide-stats/progress';
+import { GUIDE_STATS_VERSION } from './guide-stats/summary';
+import type { GuideBlockIndex } from './guide-stats/block-index';
+import { getGuideIndex } from '../global-state/active-guide-index';
+import { getContentKey } from '../global-state/content-key';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 import type { LearningJourneyTabType } from '../types/content-panel.types';
 
@@ -65,6 +70,7 @@ export enum UserInteraction {
   DoSectionButtonClick = 'do_section_button_click',
   StepAutoCompleted = 'step_auto_completed',
   StepAutoCompleteFailed = 'step_auto_complete_failed',
+  StepSkipped = 'step_skipped',
   ResetProgressClick = 'reset_progress_click',
   MarkCompleteClicked = 'mark_complete_clicked',
 
@@ -162,6 +168,9 @@ export enum AnalyticsLinkType {
   RelatedJourney = 'related_journey',
   RelatedJourneyExternal = 'related_journey_external',
 }
+
+export const STEP_PERCENTAGE_RULE_VERSION = 'step-position-v1';
+export const BLOCK_PROGRESS_RULE_VERSION = 'block-position-v1';
 
 export type ResetScope = 'guide' | 'path' | 'assignment' | 'all';
 
@@ -669,24 +678,73 @@ export function buildInteractiveStepProperties(
   stepContext: StepContext
 ): Record<string, string | number | boolean> {
   const { stepId, stepIndex, totalSteps, sectionId, sectionTitle } = stepContext;
-
-  // Get source document info
-  const docInfo = getSourceDocument(stepId);
-
-  // Calculate completion percentage
   const completionPercentage = calculateStepCompletion(stepIndex, totalSteps);
 
-  // Build complete properties object
   return {
-    ...docInfo,
+    ...getSourceDocument(stepId),
     ...baseProperties,
     content_type: AnalyticsContentType.InteractiveGuide,
-    ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
+    ...(stepIndex !== undefined && { current_step: stepIndex + 1 }),
     ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
-    ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+    ...(completionPercentage !== undefined && {
+      completion_percentage: completionPercentage,
+      percentage_rule_version: STEP_PERCENTAGE_RULE_VERSION,
+    }),
     ...(sectionId && { section_id: sectionId }),
     ...(sectionTitle && { section_title: sectionTitle }),
+    ...getStepBlockProperties(stepId),
   };
+}
+
+function blockCountProperties(index: GuideBlockIndex): Record<string, string | number> {
+  return {
+    block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
+    guide_stats_version: GUIDE_STATS_VERSION,
+    total_block_count: index.totalBlockCount,
+    completable_block_count: index.completableBlockCount,
+    section_count: index.sectionCount,
+  };
+}
+
+export function getGuideBlockCountProperties(contentKey: string): Record<string, string | number> {
+  const active = getGuideIndex(contentKey);
+  return active ? blockCountProperties(active.index) : {};
+}
+
+function getStepBlockProperties(stepId: string | undefined): Record<string, string | number> {
+  if (!stepId) {
+    return {};
+  }
+  const active = getGuideIndex(getContentKey());
+  if (!active) {
+    return {};
+  }
+  const blockPosition = furthestEvidencedPosition(active.index, [{ kind: 'do-it', blockId: stepId }]);
+  if (blockPosition === 0) {
+    return {};
+  }
+  return { block_position: blockPosition, ...blockCountProperties(active.index) };
+}
+
+export type StepSkipReason = 'user' | 'requirements_unmet' | 'section_run_auto' | 'after_failure';
+
+interface StepSkip {
+  targetAction: string;
+  interactionLocation: string;
+  skipReason: StepSkipReason;
+}
+
+export function reportStepSkipped(
+  { targetAction, interactionLocation, skipReason }: StepSkip,
+  stepContext: StepContext
+): void {
+  reportAppInteraction(
+    UserInteraction.StepSkipped,
+    buildInteractiveStepProperties(
+      { target_action: targetAction, interaction_location: interactionLocation, skip_reason: skipReason },
+      stepContext
+    )
+  );
 }
 
 /**
@@ -697,7 +755,7 @@ export function buildInteractiveStepProperties(
  *
  * @returns Step context properties or empty object if not in an interactive document
  */
-export function getCurrentStepContext(): Record<string, number> {
+export function getCurrentStepContext(): Record<string, string | number> {
   try {
     const stepIndex = window.__DocsPluginCurrentStepIndex;
     const totalSteps = window.__DocsPluginTotalSteps;
@@ -711,7 +769,10 @@ export function getCurrentStepContext(): Record<string, number> {
     return {
       current_step: stepIndex + 1, // 1-indexed for analytics
       total_document_steps: totalSteps,
-      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+      ...(completionPercentage !== undefined && {
+        completion_percentage: completionPercentage,
+        percentage_rule_version: STEP_PERCENTAGE_RULE_VERSION,
+      }),
     };
   } catch {
     return {};
