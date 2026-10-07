@@ -259,7 +259,7 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
         expect(sectionCompletions).toHaveLength(1);
         expect(sectionCompletions[0]!.detail).toEqual({
           kind: 'section',
-          contentKey: expect.any(String),
+          contentKey: '',
           sectionId: SECTION_ID,
           completed: true,
         });

@@ -383,7 +383,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
           expect(sectionEvents).toHaveLength(1);
           expect(sectionEvents[0]!.detail).toEqual({
             kind: 'section',
-            contentKey: expect.any(String),
+            contentKey: '',
             sectionId: SECTION_ID,
             completed: true,
           });

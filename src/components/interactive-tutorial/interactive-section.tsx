@@ -490,7 +490,7 @@ export function InteractiveSection({
         hasEmittedGuideCompletionRef.current = true;
         dispatchProgress({
           kind: 'section',
-          contentKey: ownerContentKey ?? getContentKey(),
+          contentKey: ownerContentKey ?? '',
           sectionId,
           completed: true,
         });
