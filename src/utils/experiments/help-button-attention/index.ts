@@ -1,4 +1,4 @@
-import { createExperiments, type ExperimentConfig } from '@grafana-experiments/sdk';
+import { type ExperimentConfig } from '@grafana-experiments/sdk';
 import { config, reportExperimentView } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
@@ -10,7 +10,7 @@ import {
 } from '../../../constants/help-button-experiment';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import { StorageKeys } from '../../../lib/storage-keys';
-import { getPathfinderFaro } from '../../../lib/telemetry/faro-adapter';
+import { createPathfinderExperiments } from '../../../lib/telemetry/experiments';
 import { isPathfinderOpen, onPathfinderSurfaceChange } from '../../../lib/telemetry/surface';
 import { getFeatureFlagClient } from '../../openfeature';
 import { findHelpButton, observeHelpButton } from './controller';
@@ -29,8 +29,7 @@ export function isHelpButtonExperimentConfig(value: unknown): value is Experimen
 }
 
 export async function startHelpButtonExperiment(): Promise<() => void> {
-  const faro = getPathfinderFaro();
-  if (!faro || !config.namespace || !config.bootData.user.isSignedIn || config.analytics?.enabled === false) {
+  if (!config.namespace || !config.bootData.user.isSignedIn || config.analytics?.enabled === false) {
     return () => {};
   }
   const contextKey = `${config.namespace}:${config.bootData.user.id}`;
@@ -48,10 +47,9 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
   if (isDismissed()) {
     return () => {};
   }
-  const sdk = createExperiments({
+  const sdk = createPathfinderExperiments({
     scope: 'grafana-pathfinder-app',
     client: getFeatureFlagClient(),
-    faro: { instance: faro },
     recordFlagValue: false,
     contextKey,
     isEnabled: () =>
@@ -64,7 +62,7 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
     reportExposure: ({ experiment_id, experiment_group, variant }) =>
       reportExperimentView(experiment_id, experiment_group, variant),
     reportAnalytics: (name, properties) => {
-      const assignment = sdk.getActiveAssignments().find((entry) => entry.experiment_id === HELP_BUTTON_EXPERIMENT_ID);
+      const assignment = sdk?.getActiveAssignments().find((entry) => entry.experiment_id === HELP_BUTTON_EXPERIMENT_ID);
       if (assignment) {
         reportAppInteraction(
           name === HELP_BUTTON_DISMISS_EVENT
@@ -84,6 +82,9 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
       [HELP_BUTTON_DISMISS_EVENT]: { version: 1, properties: {} },
     },
   });
+  if (!sdk) {
+    return () => {};
+  }
   const experiment = sdk.defineExperiment({
     id: HELP_BUTTON_EXPERIMENT_ID,
     flagKey: HELP_BUTTON_EXPERIMENT_FLAG,
