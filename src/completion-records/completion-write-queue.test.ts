@@ -5,6 +5,10 @@
  * client module out of this suite entirely.
  */
 jest.mock('./completion-write-telemetry', () => ({ reportCompletionWriteDegradation: jest.fn() }));
+jest.mock('./completion-write-storage', () => ({
+  ...jest.requireActual('./completion-write-storage'),
+  currentCompletionQueueOwnerKey: () => 'user-7:org-3',
+}));
 
 import { createWriteQueue as createRawWriteQueue, type WriteQueueDeps } from './completion-write-queue';
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';

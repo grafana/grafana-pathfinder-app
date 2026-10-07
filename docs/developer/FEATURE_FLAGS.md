@@ -207,7 +207,9 @@ The flag does not cancel requests already in flight. Each tab uses its locally a
 
 Capability discovery makes no requests while this flag is false. The controller checks the local flag every five seconds until enabled. Unknown capability retries with exponential backoff and jitter, capped at five minutes. Invalid capability responses remain unknown and do not remove queued partials.
 
-Local attempts still persist under `grafana-pathfinder-app-guide-attempt-` when both progress flags are false. These device-local keys do not use user-storage synchronization. The separate analytics flag controls remote events. See [Telemetry](TELEMETRY.md#guide-progress-events).
+Local attempts still persist under `grafana-pathfinder-app-guide-attempt-` when both progress flags are false. Each key includes the current user and organization, matching the write queue owner. Resets affect only that owner's attempts. These device-local keys do not use user-storage synchronization. Without a valid owner, attempts do not persist or use records mode.
+
+Old unscoped attempt keys remain unused because their owner is unknown. The app neither adopts nor deletes them during an owner's reset. The separate analytics flag controls remote events. See [Telemetry](TELEMETRY.md#guide-progress-events).
 
 **Before enabling the flag:**
 

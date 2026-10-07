@@ -7,6 +7,12 @@ jest.mock('../utils/openfeature', () => ({
   getFeatureFlagValue: jest.fn(() => true),
 }));
 
+let mockOwner = 'user-7:org-3';
+jest.mock('./completion-write-storage', () => ({
+  ...jest.requireActual('./completion-write-storage'),
+  currentCompletionQueueOwnerKey: () => mockOwner,
+}));
+
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { completionEmittedStorage } from '../lib/user-storage';
 import { dispatchProgress, type ProgressOrigin } from '../global-state/progress-events';
@@ -48,6 +54,7 @@ function thresholds(): unknown[] {
 }
 
 beforeEach(() => {
+  mockOwner = 'user-7:org-3';
   localStorage.clear();
   reportMock.mockClear();
   flagMock.mockReset();
@@ -113,6 +120,20 @@ describe('progress observer — what it ignores', () => {
 });
 
 describe('progress observer — attempts and analytics', () => {
+  it("records a new owner's lower percentage instead of inheriting the previous high-water mark", () => {
+    progress(70, 'change');
+    const first = readAttempt(KEY)!;
+    mockOwner = 'user-8:org-3';
+    progress(30, 'change');
+    const second = readAttempt(KEY)!;
+    expect(second.attemptId).not.toBe(first.attemptId);
+    expect(second.highWater).toBe(30);
+    expect(progressEvents()).toHaveLength(2);
+    expect(progressEvents()[1]).toMatchObject({ percent: 30, attempt_id: second.attemptId });
+    mockOwner = 'user-7:org-3';
+    expect(readAttempt(KEY)).toEqual(first);
+  });
+
   it('mints an attempt on the first real change and reports it at threshold 0', () => {
     progress(5, 'change');
 

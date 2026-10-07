@@ -4,6 +4,10 @@
  * an item is lost, and the send-time capability check for partials.
  */
 jest.mock('./completion-write-telemetry', () => ({ reportCompletionWriteDegradation: jest.fn() }));
+jest.mock('./completion-write-storage', () => ({
+  ...jest.requireActual('./completion-write-storage'),
+  currentCompletionQueueOwnerKey: () => 'user-7:org-3',
+}));
 
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
 import {

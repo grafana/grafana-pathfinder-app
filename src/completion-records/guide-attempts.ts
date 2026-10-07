@@ -1,12 +1,5 @@
-/**
- * Device-local guide attempt lifecycle.
- *
- * An attempt is one pass through a guide, from the first real progress to the
- * terminal completion. It is keyed by guide identity `(guideSource, guideId)` —
- * the same pair the recorder guard, the reset path and the durable record use —
- * never by content key. Raw localStorage only: an attempt is per device by
- * design, so it must never route through the user-storage sync layer.
- */
+// Attempts are device-local and owner-scoped; never synchronize them through user storage.
+// Legacy unscoped entries have unknown ownership and must never be adopted.
 
 import { logger } from '../lib/logging';
 import { collectKeysByPrefix } from '../lib/storage/key-utils';
@@ -14,7 +7,7 @@ import { StorageKeys, buildVersionedContentStorageKey } from '../lib/storage-key
 import { getFeatureFlagValue } from '../utils/openfeature';
 
 import { bundledGuideIdReadVariants, normalizeGuideId } from './completion-identity';
-import { createCompletionEventId } from './completion-write-storage';
+import { createCompletionEventId, currentCompletionQueueOwnerKey } from './completion-write-storage';
 import { progressRecordsCapability } from './progress-records-capability';
 import type { AttemptMode, CompletionKey } from './types';
 
@@ -49,14 +42,26 @@ let coordinationFailed = false;
 const resetListeners = new Set<(key: AttemptKey | null) => void>();
 
 export function onAttemptReset(listener: (key: AttemptKey | null) => void): () => void {
-  resetListeners.add(listener);
+  const owner = currentCompletionQueueOwnerKey();
+  const scopedListener = (key: AttemptKey | null) => {
+    if (owner && owner === currentCompletionQueueOwnerKey()) {
+      listener(key);
+    }
+  };
+  resetListeners.add(scopedListener);
   return () => {
-    resetListeners.delete(listener);
+    resetListeners.delete(scopedListener);
   };
 }
 
 /** All production mint/reset operations share an origin-wide Web Lock. Callbacks stay synchronous. */
-export function withAttemptLock(work: () => void): void {
+export function withAttemptLock(callback: () => void): void {
+  const owner = currentCompletionQueueOwnerKey();
+  const work = () => {
+    if (owner === currentCompletionQueueOwnerKey()) {
+      callback();
+    }
+  };
   if (coordinationFailed || typeof navigator === 'undefined' || !navigator.locks?.request) {
     work();
     return;
@@ -84,11 +89,17 @@ export function withAttemptLock(work: () => void): void {
 // Failed writes shadow stale storage without changing an existing attempt's identity.
 const memory = new Map<string, GuideAttempt>();
 
-function storageKeyFor(guideSource: string, guideId: string): string {
-  return buildVersionedContentStorageKey(StorageKeys.GUIDE_ATTEMPT_PREFIX, `${guideSource}:${guideId}`);
+function ownerPrefix(): string | null {
+  const owner = currentCompletionQueueOwnerKey();
+  return owner ? `${StorageKeys.GUIDE_ATTEMPT_PREFIX}owner:${owner}:` : null;
 }
 
-function canonicalKey(key: AttemptKey): string {
+function storageKeyFor(guideSource: string, guideId: string): string | null {
+  const prefix = ownerPrefix();
+  return prefix ? buildVersionedContentStorageKey(prefix, `${guideSource}:${guideId}`) : null;
+}
+
+function canonicalKey(key: AttemptKey): string | null {
   return storageKeyFor(key.guideSource, normalizeGuideId(key.guideId));
 }
 
@@ -128,7 +139,10 @@ function parseAttempt(raw: string | null): GuideAttempt | null {
   }
 }
 
-function readAt(storageKey: string): GuideAttempt | null {
+function readAt(storageKey: string | null): GuideAttempt | null {
+  if (!storageKey) {
+    return null;
+  }
   const shadow = memory.get(storageKey);
   if (shadow) {
     return shadow;
@@ -140,8 +154,11 @@ function readAt(storageKey: string): GuideAttempt | null {
   }
 }
 
-/** `true` when the attempt reached localStorage; `false` when it fell back to memory. */
-function writeAt(storageKey: string, attempt: GuideAttempt): boolean {
+/** False means the attempt is not durable (unowned or memory-only). */
+function writeAt(storageKey: string | null, attempt: GuideAttempt): boolean {
+  if (!storageKey) {
+    return false;
+  }
   try {
     localStorage.setItem(storageKey, JSON.stringify(attempt));
     memory.delete(storageKey);
@@ -157,12 +174,7 @@ export function readAttempt(key: AttemptKey): GuideAttempt | null {
   return readAt(canonicalKey(key));
 }
 
-/**
- * The guide's attempt, minting one only when none exists. A closed attempt is
- * returned as-is — closing is not the same as clearing.
- *
- * Production callers must hold withAttemptLock. Rereading also detects a competing legacy tab.
- */
+/** Callers must hold withAttemptLock; closed attempts remain until reset. */
 export function getOrMintAttempt(
   key: AttemptKey,
   resolveMode: () => AttemptMode,
@@ -184,7 +196,9 @@ export function getOrMintAttempt(
   };
   if (!writeAt(storageKey, candidate)) {
     const fallback: GuideAttempt = { ...candidate, mode: 'analytics' };
-    memory.set(storageKey, fallback);
+    if (storageKey) {
+      memory.set(storageKey, fallback);
+    }
     return { attempt: fallback, minted: true };
   }
   const stored = readAt(storageKey);
@@ -236,6 +250,9 @@ export function clearAttempt(key: AttemptKey): void {
   }
   for (const guideId of bundledGuideIdReadVariants(key.guideId)) {
     const storageKey = storageKeyFor(key.guideSource, guideId);
+    if (!storageKey) {
+      continue;
+    }
     memory.delete(storageKey);
     try {
       localStorage.removeItem(storageKey);
@@ -245,14 +262,22 @@ export function clearAttempt(key: AttemptKey): void {
   }
 }
 
-/** Forget every guide's attempt. Backs "Reset all learning progress". */
+/** Forget the current owner's attempts only. Backs "Reset all learning progress". */
 export function clearAllAttempts(): void {
+  const prefix = ownerPrefix();
+  if (!prefix) {
+    return;
+  }
   for (const listener of resetListeners) {
     listener(null);
   }
-  memory.clear();
+  for (const storageKey of memory.keys()) {
+    if (storageKey.startsWith(prefix)) {
+      memory.delete(storageKey);
+    }
+  }
   try {
-    for (const storageKey of collectKeysByPrefix(localStorage, StorageKeys.GUIDE_ATTEMPT_PREFIX)) {
+    for (const storageKey of collectKeysByPrefix(localStorage, prefix)) {
       localStorage.removeItem(storageKey);
     }
   } catch {
@@ -262,14 +287,10 @@ export function clearAllAttempts(): void {
 
 const PROGRESS_RECORDS_FLAG = 'pathfinder.progress-records';
 
-/**
- * The mode a new attempt is minted in, fixed for the attempt's life. `records`
- * needs the `pathfinder.progress-records` flag on AND a plugin backend that
- * advertises attempt upserts; anything else, including a capability not yet
- * known, is `analytics`, whose wire body is the original create-only one.
- */
+/** Mode is fixed at mint time; unknown capability must preserve the legacy completion path. */
 export function resolveAttemptMode(): AttemptMode {
   if (
+    !currentCompletionQueueOwnerKey() ||
     coordinationFailed ||
     typeof navigator === 'undefined' ||
     !navigator.locks?.request ||

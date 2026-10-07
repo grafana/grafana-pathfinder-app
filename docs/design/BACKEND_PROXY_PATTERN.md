@@ -821,6 +821,10 @@ Cleanup requires authorized operator access, not a new browser-facing deletion r
 If writer quiescence or safe cleanup is unavailable, retain the partial-aware reader and disable partial writes instead.
 Disabling the frontend flag alone does not remove stored partials or stop stale tabs.
 
+Accepted limitation: a completion can commit without its response reaching the browser.
+If its queued retry reaches a legacy writer after a downgrade, that writer can create a duplicate completion.
+Cross-version retry deduplication is out of scope.
+
 ### Partial-record retention
 
 Abandoned partial records currently persist without expiry. Each attempt adds a record to the namespace's 50,000-record collation budget.

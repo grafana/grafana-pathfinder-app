@@ -1,5 +1,11 @@
 import { StorageKeys } from '../lib/storage-keys';
 
+let mockOwner: string | null = 'user-7:org-3';
+jest.mock('./completion-write-storage', () => ({
+  ...jest.requireActual('./completion-write-storage'),
+  currentCompletionQueueOwnerKey: () => mockOwner,
+}));
+
 import {
   clearAllAttempts,
   clearAttempt,
@@ -14,7 +20,8 @@ import {
 } from './guide-attempts';
 
 const KEY = { guideSource: 'bundled', guideId: 'intro' };
-const STORAGE_KEY = `${StorageKeys.GUIDE_ATTEMPT_PREFIX}13:bundled:intro`;
+const OWNER_PREFIX = `${StorageKeys.GUIDE_ATTEMPT_PREFIX}owner:user-7:org-3:`;
+const STORAGE_KEY = `${OWNER_PREFIX}13:bundled:intro`;
 const ID_A = 'a'.repeat(32);
 const ID_B = 'b'.repeat(32);
 
@@ -28,12 +35,13 @@ function stored(attempt: Partial<GuideAttempt> = {}): GuideAttempt {
 
 beforeEach(() => {
   jest.restoreAllMocks();
+  mockOwner = 'user-7:org-3';
   localStorage.clear();
   __resetAttemptsForTests();
 });
 
 describe('guide attempts', () => {
-  it('stores an attempt under {prefix}{len}:{guideSource}:{guideId}', () => {
+  it('stores an attempt under {prefix}owner:{owner}:{len}:{guideSource}:{guideId}', () => {
     getOrMintAttempt(KEY, () => 'analytics', { nextId: ids(ID_A), now: () => 5 });
 
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual(stored({ startedAt: 5 }));
@@ -105,7 +113,7 @@ describe('guide attempts', () => {
   });
 
   it('clears the attempt under the legacy /content.json spelling too', () => {
-    const legacyKey = `${StorageKeys.GUIDE_ATTEMPT_PREFIX}26:bundled:intro/content.json`;
+    const legacyKey = `${OWNER_PREFIX}26:bundled:intro/content.json`;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stored()));
     localStorage.setItem(legacyKey, JSON.stringify(stored()));
 
@@ -205,6 +213,61 @@ describe('guide attempts', () => {
     clearAttempt(KEY);
 
     expect(readAttempt(KEY)).toBeNull();
+  });
+
+  it.each(['user-8:org-3', 'user-7:org-4'])('isolates attempts from %s', (otherOwner) => {
+    getOrMintAttempt(KEY, () => 'records', { nextId: ids(ID_A) });
+    raiseHighWater(KEY, 70);
+    closeAttempt(KEY, ID_A);
+    mockOwner = otherOwner;
+    expect(readAttempt(KEY)).toBeNull();
+    expect(getOrMintAttempt(KEY, () => 'analytics', { nextId: ids(ID_B) })).toMatchObject({
+      minted: true,
+      attempt: { attemptId: ID_B, highWater: 0, closed: false, mode: 'analytics' },
+    });
+    expect(raiseHighWater(KEY, 30).raised).toBe(true);
+    closeAttempt(KEY, ID_A);
+    expect(readAttempt(KEY)?.closed).toBe(false);
+    mockOwner = 'user-7:org-3';
+    expect(readAttempt(KEY)).toMatchObject({ attemptId: ID_A, highWater: 70, closed: true, mode: 'records' });
+  });
+
+  it.each([clearAttempt, clearAllAttempts])('%p resets only the current owner, including memory fallbacks', (reset) => {
+    getOrMintAttempt(KEY, () => 'analytics', { nextId: ids(ID_A) });
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota');
+    });
+    raiseHighWater(KEY, 70);
+    mockOwner = 'user-8:org-3';
+    getOrMintAttempt(KEY, () => 'analytics', { nextId: ids(ID_B) });
+    reset(KEY);
+    expect(readAttempt(KEY)).toBeNull();
+    mockOwner = 'user-7:org-3';
+    expect(readAttempt(KEY)).toMatchObject({ attemptId: ID_A, highWater: 70 });
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toMatchObject({ attemptId: ID_A });
+  });
+
+  it('does not adopt or delete unscoped legacy attempts with unknown ownership', () => {
+    const legacyKey = `${StorageKeys.GUIDE_ATTEMPT_PREFIX}13:bundled:intro`;
+    localStorage.setItem(legacyKey, JSON.stringify(stored({ closed: true, highWater: 100 })));
+    expect(readAttempt(KEY)).toBeNull();
+    expect(getOrMintAttempt(KEY, () => 'analytics', { nextId: ids(ID_B) }).attempt.attemptId).toBe(ID_B);
+    clearAllAttempts();
+    expect(localStorage.getItem(legacyKey)).not.toBeNull();
+    expect(readAttempt(KEY)).toBeNull();
+  });
+
+  it('does not persist, adopt, or clear attempts without an authenticated owner', () => {
+    getOrMintAttempt(KEY, () => 'records', { nextId: ids(ID_A) });
+    mockOwner = null;
+    expect(readAttempt(KEY)).toBeNull();
+    expect(getOrMintAttempt(KEY, () => 'records', { nextId: ids(ID_B) }).attempt.mode).toBe('analytics');
+    expect(readAttempt(KEY)).toBeNull();
+    clearAllAttempts();
+    clearAttempt(KEY);
+    expect(Object.keys(localStorage)).toEqual([STORAGE_KEY]);
+    mockOwner = 'user-7:org-3';
+    expect(readAttempt(KEY)?.attemptId).toBe(ID_A);
   });
 
   it('mints with a 32-hex id by default', () => {
