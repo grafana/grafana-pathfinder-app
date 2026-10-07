@@ -114,21 +114,33 @@ interface MockedBootDataUser {
 }
 
 const mockedConfig = {
-  buildInfo: { env: 'production', version: '13.1.0', edition: undefined as string | undefined },
+  buildInfo: {
+    env: 'production',
+    version: '13.1.0',
+    versionString: 'Grafana Cloud' as string | undefined,
+    edition: undefined as string | undefined,
+  },
   bootData: {
-    settings: { buildInfo: { versionString: 'Grafana Cloud' } },
     user: {
       email: 'x@y.z',
       orgRole: 'Admin',
       orgName: 'Acme Corp',
       analytics: { identifier: 'abc' },
     } as MockedBootDataUser,
-  } as { settings: { buildInfo: { versionString: string } }; user: MockedBootDataUser } | undefined,
+  } as { user: MockedBootDataUser } | undefined,
   analytics: { enabled: true } as { enabled: boolean } | undefined,
-  featureToggles: {} as { faroSessionReplay?: boolean },
 };
 
 jest.mock('@grafana/runtime', () => ({ config: mockedConfig }));
+jest.mock('../utils/current-user-role', () => ({
+  currentUser: () => ({ role: mockedConfig.bootData?.user.orgRole }),
+  ensureCurrentUser: async () => undefined,
+}));
+
+const mockReadGrafanaFeatureToggle = jest.fn((_name: string): boolean | undefined => false);
+jest.mock('../utils/openfeature', () => ({
+  readGrafanaFeatureToggle: (name: string) => mockReadGrafanaFeatureToggle(name),
+}));
 
 // stampFaroUser() is fire-and-forget inside initFaro() — flush the
 // microtask queue so its `await hashUserData(...)` resolves before assertions.
@@ -166,13 +178,12 @@ beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
   sessionStorage.clear();
-  mockedConfig.buildInfo = { env: 'production', version: '13.1.0', edition: undefined };
+  mockedConfig.buildInfo = { env: 'production', version: '13.1.0', versionString: 'Grafana Cloud', edition: undefined };
   mockedConfig.bootData = {
-    settings: { buildInfo: { versionString: 'Grafana Cloud' } },
     user: { email: 'x@y.z', orgRole: 'Admin', orgName: 'Acme Corp', analytics: { identifier: 'abc' } },
   };
   mockedConfig.analytics = { enabled: true };
-  mockedConfig.featureToggles = {};
+  mockReadGrafanaFeatureToggle.mockReturnValue(false);
   mockSessionMeta = { id: 'session-1', attributes: {} };
 });
 
@@ -214,12 +225,12 @@ describe('isGrafanaCloud', () => {
   });
 
   it('returns false for a non-cloud versionString', () => {
-    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+    mockedConfig.buildInfo.versionString = 'Grafana Enterprise';
     expect(isGrafanaCloud()).toBe(false);
   });
 
-  it('returns false when bootData is missing entirely', () => {
-    mockedConfig.bootData = undefined;
+  it('returns false when the version string is missing', () => {
+    mockedConfig.buildInfo.versionString = undefined;
     expect(isGrafanaCloud()).toBe(false);
   });
 });
@@ -508,7 +519,7 @@ describe('initFaro', () => {
   });
 
   it('does not initialize when the instance is not Grafana Cloud', async () => {
-    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+    mockedConfig.buildInfo.versionString = 'Grafana Enterprise';
     const faro = freshFaro();
     await faro.initFaro();
     expect(mockInitializeFaro).not.toHaveBeenCalled();
@@ -569,7 +580,7 @@ describe('initFaro', () => {
   it('skips the cloud/analytics checks under the dev-build local override', async () => {
     mockedConfig.buildInfo.env = 'development';
     localStorage.setItem('pathfinder.faro.local', 'true');
-    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+    mockedConfig.buildInfo.versionString = 'Grafana Enterprise';
     mockedConfig.analytics = { enabled: false };
     const faro = freshFaro();
     await faro.initFaro();
@@ -631,7 +642,7 @@ describe('initFaro', () => {
   });
 
   it('uses the OSS identity placeholders (not the recommender hash) outside Grafana Cloud', async () => {
-    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+    mockedConfig.buildInfo.versionString = 'Grafana Enterprise';
     localStorage.setItem('pathfinder.faro.local', 'true');
     mockedConfig.buildInfo.env = 'development';
     const faro = freshFaro();
@@ -641,7 +652,7 @@ describe('initFaro', () => {
   });
 
   it('does not stamp a user when init is skipped (outside Grafana Cloud)', async () => {
-    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+    mockedConfig.buildInfo.versionString = 'Grafana Enterprise';
     const faro = freshFaro();
     await faro.initFaro();
     await flushMicrotasks();
@@ -1116,7 +1127,7 @@ describe('withFaroUserAction', () => {
   });
 
   it('stays a passthrough when init was skipped (outside Grafana Cloud)', async () => {
-    mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
+    mockedConfig.buildInfo.versionString = 'Grafana Enterprise';
     const faro = freshFaro();
     await faro.initFaro();
 
@@ -1640,8 +1651,8 @@ describe('session replay activation', () => {
   });
 
   it.each([
-    ['self-hosted or OSS Grafana', () => (mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana OSS')],
-    ['Grafana Enterprise', () => (mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise')],
+    ['self-hosted or OSS Grafana', () => (mockedConfig.buildInfo.versionString = 'Grafana OSS')],
+    ['Grafana Enterprise', () => (mockedConfig.buildInfo.versionString = 'Grafana Enterprise')],
     ['a Cloud stack with analytics opted out', () => (mockedConfig.analytics = { enabled: false })],
   ])('never records on %s', async (_label, applyConfig) => {
     applyConfig();
@@ -1836,24 +1847,27 @@ describe('session replay activation', () => {
   });
 });
 
-// Core ships its own rrweb recorder behind a private-preview toggle. Two on one
-// page compound rrweb's global insertRule proxy on Emotion's hot path, so the
-// decision to yield is made here rather than left to whoever sets the flags.
+// Two rrweb recorders on one page compound the global insertRule proxy on
+// Emotion's hot path, so the decision to yield is made here.
 describe('resolveSessionReplayOptions', () => {
   const resolve = (enabled: boolean, rate = 1) => freshFaro().resolveSessionReplayOptions(enabled, rate);
 
   it('records when the flag is on and core is not recording', () => {
     expect(resolve(true)).toEqual({ sessionReplay: true, sessionReplaySamplingRate: 1 });
+    expect(mockReadGrafanaFeatureToggle).toHaveBeenCalledWith('faroSessionReplay');
   });
 
   it('yields to core rather than running a second recorder', () => {
-    mockedConfig.featureToggles = { faroSessionReplay: true };
+    mockReadGrafanaFeatureToggle.mockReturnValue(true);
     expect(resolve(true).sessionReplay).toBe(false);
   });
 
-  it('leaves the flag in charge when the toggle is not surfaced to the frontend', () => {
-    mockedConfig.featureToggles = {};
-    expect(resolve(true).sessionReplay).toBe(true);
+  it('does not record when core replay state cannot be resolved', () => {
+    mockReadGrafanaFeatureToggle.mockReturnValue(undefined);
+    expect(resolve(true).sessionReplay).toBe(false);
+  });
+
+  it('leaves the flag in charge when core is known not to record', () => {
     expect(resolve(false).sessionReplay).toBe(false);
   });
 

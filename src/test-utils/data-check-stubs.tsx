@@ -60,3 +60,11 @@ export const DATASOURCE_LIST = [
   { uid: 'loki-1', name: 'Loki', type: 'loki' },
   { uid: 'mysql-1', name: 'Reporting', type: 'mysql' },
 ];
+
+export const dataSourceListStub = {
+  loading: false,
+  useDataSourceList: () => ({
+    dataSources: dataSourceListStub.loading ? [] : DATASOURCE_LIST,
+    loading: dataSourceListStub.loading,
+  }),
+};

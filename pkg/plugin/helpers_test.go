@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
@@ -34,12 +35,27 @@ func withSigningKeysURL(t *testing.T, keysURL string) {
 }
 
 // newTestApp builds a minimal App for tests that only exercise resource
-// handlers — no Coda client, no settings, just a logger. It has NO on-behalf-of
+// handlers — no settings, just a logger and empty caches. It has NO on-behalf-of
 // exchanger, which models an unprovisioned stack; tests that need the App
 // Platform proxies to resolve a real client use newTestAppWithOBO.
 func newTestApp(t *testing.T) *App {
 	t.Helper()
-	return &App{logger: log.DefaultLogger}
+	return &App{
+		logger:                 log.DefaultLogger,
+		completions:            newCompletionCache(),
+		packageRecommendations: &packageRecommendationsCache{},
+	}
+}
+
+// newInstanceApp builds an App through NewApp, as the SDK instance manager does
+// once per plugin instance.
+func newInstanceApp(t *testing.T) *App {
+	t.Helper()
+	inst, err := NewApp(context.Background(), backend.AppInstanceSettings{})
+	if err != nil {
+		t.Fatalf("NewApp: %v", err)
+	}
+	return inst.(*App)
 }
 
 // capturingLogger records every log line's level and message so a test can

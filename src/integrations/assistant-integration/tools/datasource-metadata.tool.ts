@@ -14,9 +14,12 @@ import {
   type ToolOutput,
   type JSONSchema,
 } from '@grafana/assistant';
-import { getDataSourceSrv } from '@grafana/runtime';
-import type { DataSourceInstanceSettings } from '@grafana/data';
 import { assertExhaustive } from '../../../lib/assert-exhaustive';
+import {
+  getDataSourceApi,
+  listDataSources,
+  type DataSourceListItem,
+} from '../../../lib/datasource/datasource-registry';
 
 import {
   type DatasourceMetadataArtifact,
@@ -71,10 +74,7 @@ const validateInput = (input: unknown): ToolInput => {
 /**
  * Find the best matching datasource based on input parameters
  */
-const findDatasource = (
-  datasources: DataSourceInstanceSettings[],
-  input: ToolInput
-): DataSourceInstanceSettings | null => {
+const findDatasource = (datasources: DataSourceListItem[], input: ToolInput): DataSourceListItem | null => {
   // If specific UID provided, find that datasource
   if (input.datasourceUid) {
     return datasources.find((ds) => ds.uid === input.datasourceUid) || null;
@@ -104,14 +104,11 @@ const findDatasource = (
 
 /**
  * Fetch metadata based on datasource type
- * Note: We use 'any' cast for the datasource because @grafana/runtime returns a type
- * that's incompatible with @grafana/data's DataSourceApi due to nested type differences.
- * This is a known issue with Grafana's package structure.
  */
 const fetchMetadataForDatasource = async (
-  dsSettings: DataSourceInstanceSettings
+  dsSettings: DataSourceListItem
 ): Promise<{ metadata: DatasourceMetadata; summary: string }> => {
-  const ds = (await getDataSourceSrv().get(dsSettings.uid)) as any;
+  const ds = await getDataSourceApi(dsSettings.uid);
   const normalizedType = getNormalizedDatasourceType(dsSettings.type);
 
   switch (normalizedType) {
@@ -170,7 +167,7 @@ const fetchMetadataForDatasource = async (
  * Format metadata for human-readable output
  */
 const formatMetadataForDisplay = (
-  dsSettings: DataSourceInstanceSettings,
+  dsSettings: DataSourceListItem,
   metadata: DatasourceMetadata,
   summary: string
 ): string => {
@@ -239,8 +236,7 @@ export const createDatasourceMetadataTool = (
 ): InlineToolRunnable => {
   return createTool(
     async (input: ToolInput, _options: ToolInvokeOptions): Promise<ToolOutput> => {
-      // Get all datasources
-      const allDatasources = getDataSourceSrv().getList();
+      const allDatasources = await listDataSources();
 
       // Find the target datasource
       const dsSettings = findDatasource(allDatasources, input);

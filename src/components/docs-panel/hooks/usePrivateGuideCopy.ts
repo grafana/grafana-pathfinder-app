@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { JsonGuide } from '../../../types/json-guide.types';
-import { currentUserIsAdmin } from '../../../utils/current-user-role';
+import { currentUserIsAdmin, useCurrentUserIsAdmin } from '../../../utils/current-user-role';
 import { hasEditorDraft, replaceEditorDraft } from '../../block-editor/editor-draft';
 import { notify } from '../../block-editor/notify';
 import { canCopyPublicGuide } from '../utils/private-guide-eligibility';
 
 export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, openEditor?: () => void) {
   const tabId = tab?.id;
+  const isAdmin = useCurrentUserIsAdmin();
   const [operation, setOperation] = useState<{
     tabId: string;
     isPreparing: boolean;
@@ -90,7 +91,7 @@ export function usePrivateGuideCopy(tab: LearningJourneyTab | null | undefined, 
   };
 
   return {
-    available: Boolean(openEditor) && canCopyPublicGuide(tab, currentUserIsAdmin()),
+    available: Boolean(openEditor) && canCopyPublicGuide(tab, isAdmin),
     isPreparing: operation?.tabId === tabId && operation?.isPreparing === true,
     needsConfirmation: Boolean(pending),
     customization: operation?.tabId === tabId ? operation?.customization : undefined,

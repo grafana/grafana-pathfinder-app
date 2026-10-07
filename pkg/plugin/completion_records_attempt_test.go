@@ -459,20 +459,20 @@ func TestAttemptWrite_UnchangedCompletionRepairsAssignmentsAndCache(t *testing.T
 	if err := store.Create(context.Background(), testNamespace, completionRecordObject{Metadata: completionRecordObjectMeta{Name: name}, Spec: spec}); err != nil {
 		t.Fatal(err)
 	}
-	completionCacheMu.Lock()
-	completionCacheInit()
-	generation := completionGenerations[testNamespace]
-	completionCacheMu.Unlock()
+	app := newTestApp(t)
+	app.completions.mu.Lock()
+	generation := app.completions.generations[testNamespace]
+	app.completions.mu.Unlock()
 	// A replay's timestamp must not replace the stored completion used for assignment matching.
 	spec.CompletedAt = "2020-01-01T00:00:00Z"
 	w := httptest.NewRecorder()
-	newTestApp(t).handleCompletionAttemptWrite(w, completionRequest(t, "/completion-records", "user:1"), store, testNamespace, "user:1", "att-1", spec)
+	app.handleCompletionAttemptWrite(w, completionRequest(t, "/completion-records", "user:1"), store, testNamespace, "user:1", "att-1", spec)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status=%d", w.Code)
 	}
-	completionCacheMu.Lock()
-	invalidated := completionGenerations[testNamespace] > generation
-	completionCacheMu.Unlock()
+	app.completions.mu.Lock()
+	invalidated := app.completions.generations[testNamespace] > generation
+	app.completions.mu.Unlock()
 	if !invalidated {
 		t.Fatal("unchanged completion did not invalidate cache")
 	}

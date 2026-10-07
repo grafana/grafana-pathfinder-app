@@ -331,6 +331,53 @@ func (c *appPlatformListClient) get(ctx context.Context, groupVersion, namespace
 	return body, nil
 }
 
+func (c *appPlatformListClient) getPath(ctx context.Context, groupVersion, namespace, resource, name string, query url.Values, maxBytes int64) (body json.RawMessage, err error) {
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "get", err) }()
+	return c.fetchPath(ctx, groupVersion, namespace, resource, name, query, maxBytes)
+}
+
+// fetchPath is getPath without the proxy-failure log, for best-effort reads.
+func (c *appPlatformListClient) fetchPath(ctx context.Context, groupVersion, namespace, resource, name string, query url.Values, maxBytes int64) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
+	defer cancel()
+	token, err := c.sharedObjectToken(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource)
+	if name != "" {
+		endpoint += "/" + url.PathEscape(name)
+	}
+	if len(query) > 0 {
+		endpoint += "?" + query.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set(auth.AccessTokenHeader, token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, &appPlatformUpstreamError{status: resp.StatusCode, msg: fmt.Sprintf("app platform upstream status %d", resp.StatusCode)}
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("invalid app platform upstream response")}
+	}
+	if !json.Valid(body) {
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("invalid app platform upstream response")}
+	}
+	return json.RawMessage(body), nil
+}
+
 // replace PUTs a full object over a named one. The object must carry the
 // metadata.resourceVersion it was read at; a stale one comes back as a 409.
 func (c *appPlatformListClient) replace(ctx context.Context, groupVersion, namespace, resource, name string, obj []byte, maxBytes int64) (err error) {

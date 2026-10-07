@@ -37,7 +37,7 @@ const (
 	// TTL-expired re-attempts are suppressed for this long so a sustained
 	// outage doesn't re-trigger a full-namespace LIST on every sequential
 	// request. Only failures positively classified as namespace-global enter this
-	// shared negative cache — see getCompletionIndex.
+	// shared negative cache — see completionCache.get.
 	completionFailureCooldown = 30 * time.Second
 
 	// completionRetryAfterSeconds is the Retry-After hint on a cold 503.
@@ -151,7 +151,7 @@ type completionCacheEntry struct {
 
 	// stale marks an entry a write has superseded: too old to serve on the TTL
 	// fast path, but still worth keeping as the fallback when the refresh it
-	// forces fails. See invalidateCompletionIndex.
+	// forces fails. See completionCache.invalidate.
 	stale bool
 }
 
@@ -182,18 +182,31 @@ type completionCacheStats struct {
 	refreshFailures int
 }
 
-// All maps below are keyed by the trusted-context namespace (never
-// caller-supplied), so on hosted Grafana the key space is one entry per
-// process — the maps need no eviction.
-var (
-	completionCacheMu      sync.Mutex
-	completionCacheEntries map[string]*completionCacheEntry
-	completionFlights      map[string]*completionRefreshFlight
-	completionLastForced   map[string]time.Time
-	completionLastFailure  map[string]completionFailure
-	completionStats        map[string]*completionCacheStats
-	completionGenerations  map[string]uint64
+// completionCache is one App instance's read cache. Its maps are keyed by the
+// trusted-context namespace (never caller-supplied), so on hosted Grafana the
+// key space is one entry per instance — the maps need no eviction.
+type completionCache struct {
+	mu          sync.Mutex
+	entries     map[string]*completionCacheEntry
+	flights     map[string]*completionRefreshFlight
+	lastForced  map[string]time.Time
+	lastFailure map[string]completionFailure
+	stats       map[string]*completionCacheStats
+	generations map[string]uint64
+}
 
+func newCompletionCache() *completionCache {
+	return &completionCache{
+		entries:     map[string]*completionCacheEntry{},
+		flights:     map[string]*completionRefreshFlight{},
+		lastForced:  map[string]time.Time{},
+		lastFailure: map[string]completionFailure{},
+		stats:       map[string]*completionCacheStats{},
+		generations: map[string]uint64{},
+	}
+}
+
+var (
 	// completionListerOverride injects a fake lister in tests. nil selects the
 	// real per-request HTTP client. Config resolution (feature toggle, app
 	// URL, namespace) is checked BEFORE this override so the structural-
@@ -206,49 +219,16 @@ var (
 	completionCreatorOverride completionRecordCreator
 )
 
-func completionCacheInit() {
-	if completionCacheEntries == nil {
-		completionCacheEntries = map[string]*completionCacheEntry{}
-	}
-	if completionFlights == nil {
-		completionFlights = map[string]*completionRefreshFlight{}
-	}
-	if completionLastForced == nil {
-		completionLastForced = map[string]time.Time{}
-	}
-	if completionLastFailure == nil {
-		completionLastFailure = map[string]completionFailure{}
-	}
-	if completionStats == nil {
-		completionStats = map[string]*completionCacheStats{}
-	}
-	if completionGenerations == nil {
-		completionGenerations = map[string]uint64{}
-	}
-}
-
-func completionStatsFor(namespace string) *completionCacheStats {
-	s := completionStats[namespace]
+func (c *completionCache) statsFor(namespace string) *completionCacheStats {
+	s := c.stats[namespace]
 	if s == nil {
 		s = &completionCacheStats{}
-		completionStats[namespace] = s
+		c.stats[namespace] = s
 	}
 	return s
 }
 
-// resetCompletionRecordsCache clears all cached state. Test-only.
-func resetCompletionRecordsCache() {
-	completionCacheMu.Lock()
-	defer completionCacheMu.Unlock()
-	completionCacheEntries = nil
-	completionFlights = nil
-	completionLastForced = nil
-	completionLastFailure = nil
-	completionStats = nil
-	completionGenerations = nil
-}
-
-// invalidateCompletionIndex stales a namespace's collated read cache so the
+// invalidate stales a namespace's collated read cache so the
 // next GET /completion-records/my refreshes from upstream. Called after a
 // successful write so the new record surfaces promptly rather than after the
 // TTL. The failure cooldown is cleared too: a successful create is fresh proof
@@ -257,24 +237,23 @@ func resetCompletionRecordsCache() {
 // bookkeeping is left intact.
 //
 // The entry is marked stale rather than deleted, and that distinction is the
-// whole point: getCompletionIndex serves a warm-but-stale index when a refresh
+// whole point: get serves a warm-but-stale index when a refresh
 // fails, so deleting here would throw that fallback away on every write —
 // turning the next upstream blip into a cold 503 for a reader who could have
 // had a slightly-stale 200. Marking it skips the TTL fast path (which is what
 // actually forces the refresh — the generation bump only coalesces in-flight
 // refreshes) while leaving the fallback intact.
-func invalidateCompletionIndex(namespace string) {
-	completionCacheMu.Lock()
-	defer completionCacheMu.Unlock()
-	completionCacheInit()
-	completionGenerations[namespace]++
-	if entry := completionCacheEntries[namespace]; entry != nil {
-		completionCacheEntries[namespace] = &completionCacheEntry{index: entry.index, stale: true}
+func (c *completionCache) invalidate(namespace string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.generations[namespace]++
+	if entry := c.entries[namespace]; entry != nil {
+		c.entries[namespace] = &completionCacheEntry{index: entry.index, stale: true}
 	}
-	delete(completionLastFailure, namespace)
+	delete(c.lastFailure, namespace)
 }
 
-// getCompletionIndex returns the collated index for a namespace, refreshing at
+// get returns the collated index for a namespace, refreshing at
 // most once per TTL (or immediately when a rate-limit-permitted forced refresh
 // is requested). On refresh failure it serves a warm (stale) index when one
 // exists; a cold failure returns (nil, err). After a namespace-global failure
@@ -282,26 +261,25 @@ func invalidateCompletionIndex(namespace string) {
 // classified as namespace-global enter that shared negative cache — caller A's
 // denied token or failed token mint must not become a cached error served to
 // caller B. Concurrent refreshes single-flight.
-func getCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, forced bool, logger log.Logger) (*completionIndex, error) {
-	completionCacheMu.Lock()
-	completionCacheInit()
+func (c *completionCache) get(ctx context.Context, namespace string, lister completionRecordLister, forced bool, logger log.Logger) (*completionIndex, error) {
+	c.mu.Lock()
 
-	entry := completionCacheEntries[namespace]
-	stats := completionStatsFor(namespace)
+	entry := c.entries[namespace]
+	stats := c.statsFor(namespace)
 
 	effectiveForced := false
 	if forced {
-		last, seen := completionLastForced[namespace]
+		last, seen := c.lastForced[namespace]
 		if !seen || timeNow().Sub(last) >= completionForcedRefreshInterval {
 			effectiveForced = true
-			completionLastForced[namespace] = timeNow()
+			c.lastForced[namespace] = timeNow()
 		}
 	}
 
 	if entry != nil && !entry.stale && !effectiveForced && timeNow().Sub(entry.index.asOf) < completionCacheTTL {
 		stats.hits++
 		idx := entry.index
-		completionCacheMu.Unlock()
+		c.mu.Unlock()
 		return idx, nil
 	}
 	stats.misses++
@@ -311,22 +289,22 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 	// the stale index when warm, or replay the sticky error when cold, until
 	// the cooldown elapses. A rate-limit-permitted ?refresh=1 bypasses this.
 	if !effectiveForced {
-		if fail, ok := completionLastFailure[namespace]; ok && timeNow().Sub(fail.at) < completionFailureCooldown {
+		if fail, ok := c.lastFailure[namespace]; ok && timeNow().Sub(fail.at) < completionFailureCooldown {
 			if entry != nil {
 				stats.staleServes++
 				idx := entry.index
-				completionCacheMu.Unlock()
+				c.mu.Unlock()
 				return idx, nil
 			}
 			err := fail.err
-			completionCacheMu.Unlock()
+			c.mu.Unlock()
 			return nil, err
 		}
 	}
 
-	generation := completionGenerations[namespace]
-	if fl := completionFlights[namespace]; fl != nil && fl.generation == generation {
-		completionCacheMu.Unlock()
+	generation := c.generations[namespace]
+	if fl := c.flights[namespace]; fl != nil && fl.generation == generation {
+		c.mu.Unlock()
 		select {
 		case <-fl.done:
 			return fl.index, fl.err
@@ -336,8 +314,8 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 	}
 
 	fl := &completionRefreshFlight{done: make(chan struct{}), generation: generation}
-	completionFlights[namespace] = fl
-	completionCacheMu.Unlock()
+	c.flights[namespace] = fl
+	c.mu.Unlock()
 
 	// Detach from the caller's cancellation so a canceled request (panel
 	// closed mid-flight) doesn't abort a refresh other waiters depend on,
@@ -346,9 +324,9 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 	idx, pages, err := buildCompletionIndex(fetchCtx, namespace, lister, logger)
 	cancel()
 
-	completionCacheMu.Lock()
-	stats = completionStatsFor(namespace)
-	if completionGenerations[namespace] != fl.generation {
+	c.mu.Lock()
+	stats = c.statsFor(namespace)
+	if c.generations[namespace] != fl.generation {
 		// Fenced off by a concurrent write: this result serves its own waiters but
 		// must not repopulate the cache. It is still counted, or the per-namespace
 		// vital signs (§9) stop reconciling against stats.misses exactly when the
@@ -364,20 +342,20 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 			}
 			fl.err = err
 		}
-		if completionFlights[namespace] == fl {
-			delete(completionFlights, namespace)
+		if c.flights[namespace] == fl {
+			delete(c.flights, namespace)
 		}
-		completionCacheMu.Unlock()
+		c.mu.Unlock()
 		close(fl.done)
 		return fl.index, fl.err
 	}
 	if err == nil {
 		stats.refreshes++
-		if _, hadFailure := completionLastFailure[namespace]; hadFailure {
+		if _, hadFailure := c.lastFailure[namespace]; hadFailure {
 			logger.Info("completion index recovered", "namespace", namespace)
 		}
-		completionCacheEntries[namespace] = &completionCacheEntry{index: idx}
-		delete(completionLastFailure, namespace)
+		c.entries[namespace] = &completionCacheEntry{index: idx}
+		delete(c.lastFailure, namespace)
 		fl.index = idx
 		logger.Debug("completion index refreshed",
 			"namespace", namespace, "pages", pages, "users", len(idx.byUser),
@@ -387,7 +365,7 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 		stats.refreshFailures++
 		namespaceGlobal := isNamespaceGlobalCompletionError(err)
 		if namespaceGlobal {
-			completionLastFailure[namespace] = completionFailure{at: timeNow(), err: err}
+			c.lastFailure[namespace] = completionFailure{at: timeNow(), err: err}
 		}
 		// Refresh attempts are throttled by TTL + cooldown, so this logs state
 		// transitions, not every request.
@@ -404,10 +382,10 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 			fl.err = err
 		}
 	}
-	if completionFlights[namespace] == fl {
-		delete(completionFlights, namespace)
+	if c.flights[namespace] == fl {
+		delete(c.flights, namespace)
 	}
-	completionCacheMu.Unlock()
+	c.mu.Unlock()
 	close(fl.done)
 
 	return fl.index, fl.err
@@ -675,7 +653,7 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	forced := r.URL.Query().Get("refresh") == "1"
-	idx, err := getCompletionIndex(r.Context(), namespace, lister, forced, a.ctxLogger(r.Context()))
+	idx, err := a.completions.get(r.Context(), namespace, lister, forced, a.ctxLogger(r.Context()))
 	if idx == nil {
 		// Cold failure: no cache to fall back on.
 		if isTerminalCompletionError(err) {
@@ -730,7 +708,7 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 
 	// Reuse the cache (never a per-call forced LIST): a usable index — fresh or
 	// stale-on-error — means the CRUD API answered recently.
-	idx, err := getCompletionIndex(r.Context(), namespace, lister, false, a.ctxLogger(r.Context()))
+	idx, err := a.completions.get(r.Context(), namespace, lister, false, a.ctxLogger(r.Context()))
 	if idx == nil {
 		if isTerminalCompletionError(err) {
 			a.writeJSON(w, completionCapability{Available: false, Reason: reasonBackendUnavailable, Diagnostics: appPlatformDiagnostic(err, "completionrecords", "list")}, http.StatusOK)

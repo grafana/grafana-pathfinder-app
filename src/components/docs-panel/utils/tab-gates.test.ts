@@ -6,28 +6,29 @@ jest.mock('@grafana/runtime', () => ({
   config: { bootData: { user: { id: 1, orgRole: 'Viewer', isGrafanaAdmin: false } } },
 }));
 
+let mockPlatform = 'oss';
+jest.mock('../../../lib/platform', () => ({ currentPlatform: () => mockPlatform }));
+
 import { config } from '@grafana/runtime';
-import { didGateClose, isCurrentUserEditor, resolveTabGates } from './tab-gates';
+import { didGateClose, resolveTabGates } from './tab-gates';
 
 const mockUser = (user: Record<string, unknown>) => {
   (config as any).bootData.user = user;
 };
 
-describe('isCurrentUserEditor', () => {
-  it.each([
-    ['Editor', false, true],
-    ['Admin', false, true],
-    ['Viewer', true, true],
-    ['Viewer', false, false],
-  ])('orgRole %s / isGrafanaAdmin %s → %s', (orgRole, isGrafanaAdmin, expected) => {
-    mockUser({ id: 1, orgRole, isGrafanaAdmin });
-    expect(isCurrentUserEditor()).toBe(expected);
-  });
-});
-
 describe('resolveTabGates', () => {
   beforeEach(() => {
     mockUser({ id: 1, orgRole: 'Viewer', isGrafanaAdmin: false });
+    mockPlatform = 'oss';
+  });
+
+  it('keeps the editor gate open while a Cloud role is still unknown, so restore does not strip tabs', () => {
+    mockPlatform = 'cloud';
+    expect(resolveTabGates({}).allowEditor).toBe(true);
+  });
+
+  it('closes the editor gate for a known non-editor role', () => {
+    expect(resolveTabGates({}).allowEditor).toBe(false);
   });
 
   it('allows Dev Tools only when both the tenant gate and this user opted in', () => {

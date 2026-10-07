@@ -6,12 +6,15 @@
  */
 
 import { createTool, type InlineToolRunnable, type ToolInvokeOptions, type ToolOutput } from '@grafana/assistant';
-import { config, locationService, getBackendSrv, getDataSourceSrv } from '@grafana/runtime';
+import { config, locationService } from '@grafana/runtime';
 
 import type { GrafanaContextArtifact, DatasourceInfo } from './types';
 import { getDetectedDatasourceType, getDetectedVisualizationType } from '../../../context-engine';
+import { listDataSources } from '../../../lib/datasource/datasource-registry';
 import { logger } from '../../../lib/logging';
 import { currentPlatform } from '../../../lib/platform';
+import { fetchDashboardSummary } from '../../../lib/grafana-api';
+import { currentUser } from '../../../utils/current-user-role';
 
 /**
  * Tool input schema - no input required
@@ -29,7 +32,7 @@ type ToolInput = Record<string, never>;
  */
 const getGrafanaVersion = (): string => {
   try {
-    return config.bootData.settings.buildInfo.version || 'Unknown';
+    return config.buildInfo.version || 'Unknown';
   } catch {
     return 'Unknown';
   }
@@ -46,16 +49,7 @@ const getCurrentTheme = (): 'dark' | 'light' => {
   }
 };
 
-/**
- * Get user role
- */
-const getUserRole = (): string => {
-  try {
-    return config.bootData.user.orgRole || 'Viewer';
-  } catch {
-    return 'Viewer';
-  }
-};
+const getUserRole = (): string => currentUser().role || 'Viewer';
 
 /**
  * Get search params as a record
@@ -79,30 +73,20 @@ const getSearchParams = (): Record<string, string> => {
 const fetchDashboardInfo = async (
   currentPath: string
 ): Promise<{ uid: string; title: string; folder?: string } | undefined> => {
-  try {
-    const pathMatch = currentPath.match(/\/d\/([^\/]+)/);
-    if (pathMatch) {
-      const dashboardUid = pathMatch[1];
-      const dashboardInfo = await getBackendSrv().get(`/api/dashboards/uid/${dashboardUid}`);
-      return {
-        uid: dashboardInfo.dashboard?.uid,
-        title: dashboardInfo.dashboard?.title,
-        folder: dashboardInfo.meta?.folderTitle,
-      };
-    }
-    return undefined;
-  } catch (error) {
-    logger.warn('[GrafanaContextTool] Failed to fetch dashboard info', { error });
+  const uid = currentPath.match(/\/d\/([^\/]+)/)?.[1];
+  const dashboardInfo = uid ? await fetchDashboardSummary(uid) : null;
+  if (!dashboardInfo?.uid) {
     return undefined;
   }
+  return { uid: dashboardInfo.uid, title: dashboardInfo.title ?? '', folder: dashboardInfo.folderTitle };
 };
 
 /**
  * Get all datasources as simplified info
  */
-const getDatasourcesInfo = (): DatasourceInfo[] => {
+const getDatasourcesInfo = async (): Promise<DatasourceInfo[]> => {
   try {
-    const datasources = getDataSourceSrv().getList();
+    const datasources = await listDataSources();
     return datasources.map((ds) => ({
       uid: ds.uid,
       name: ds.name,
@@ -211,7 +195,7 @@ export const createGrafanaContextTool = (
         grafanaVersion: getGrafanaVersion(),
         platform: currentPlatform(),
         theme: getCurrentTheme(),
-        datasources: getDatasourcesInfo(),
+        datasources: await getDatasourcesInfo(),
         dashboard,
         activeDatasourceType,
         activeVisualizationType,

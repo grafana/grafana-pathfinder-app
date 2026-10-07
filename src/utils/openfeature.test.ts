@@ -473,6 +473,74 @@ describe('openfeature', () => {
     });
   });
 
+  describe('readGrafanaFeatureToggle', () => {
+    const read = (
+      featureToggles: Record<string, boolean> | undefined,
+      details: Record<string, unknown> | Error,
+      options: { noProvider?: boolean } = {}
+    ) => {
+      let result: boolean | undefined;
+      let getBooleanDetails: jest.Mock | undefined;
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        getBooleanDetails = jest.fn(() => {
+          if (details instanceof Error) {
+            throw details;
+          }
+          return details;
+        });
+        const noopProvider = { name: 'noop' };
+        const sdk = {
+          ...mockOF,
+          NOOP_PROVIDER: noopProvider,
+          OpenFeature: {
+            ...mockOF.OpenFeature,
+            getProvider: jest.fn(() => (options.noProvider ? noopProvider : { name: 'ofrep' })),
+            getClient: jest.fn(() => ({ ...mockOF.mockClient, getBooleanDetails })),
+          },
+        };
+        jest.doMock('@openfeature/web-sdk', () => sdk);
+        jest.doMock('@openfeature/react-sdk', () => createMockReactSdk());
+        require('@grafana/runtime').config.featureToggles = featureToggles;
+
+        result = require('./openfeature').readGrafanaFeatureToggle('someCoreFlag');
+      });
+      return { result, getBooleanDetails: getBooleanDetails! };
+    };
+
+    it('is true when the boot toggle is on, without evaluating', () => {
+      const { result, getBooleanDetails } = read({ someCoreFlag: true }, { value: false });
+      expect(result).toBe(true);
+      expect(getBooleanDetails).not.toHaveBeenCalled();
+    });
+
+    it('takes the OpenFeature answer when the boot toggle is not on', () => {
+      expect(read({}, { value: true }).result).toBe(true);
+      expect(read({ other: true }, { value: false }).result).toBe(false);
+    });
+
+    it('evaluates on the pathfinder domain with a false default', () => {
+      const { getBooleanDetails } = read({}, { value: true });
+      expect(getBooleanDetails).toHaveBeenCalledWith('someCoreFlag', false);
+    });
+
+    it('is false when OpenFeature cannot answer but the boot toggles are populated', () => {
+      expect(read({ other: true }, { value: false, errorCode: 'FLAG_NOT_FOUND' }).result).toBe(false);
+    });
+
+    it('is unknown when OpenFeature cannot answer and the boot toggles are empty', () => {
+      expect(read({}, { value: false, errorCode: 'FLAG_NOT_FOUND' }).result).toBeUndefined();
+      expect(read(undefined, { value: false, errorCode: 'PROVIDER_NOT_READY' }).result).toBeUndefined();
+      expect(read({}, new Error('client unavailable')).result).toBeUndefined();
+    });
+
+    it('does not evaluate against the no-op provider', () => {
+      const { result, getBooleanDetails } = read({}, { value: true }, { noProvider: true });
+      expect(result).toBeUndefined();
+      expect(getBooleanDetails).not.toHaveBeenCalled();
+    });
+  });
+
   describe('evaluateFeatureFlag', () => {
     it('should evaluate boolean flag (tracking happens via hook added at init)', async () => {
       await jest.isolateModulesAsync(async () => {

@@ -5,9 +5,17 @@
  * to its peers and the router stays small.
  */
 
-import { config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
-import { fetchDataSources, fetchPlugins, fetchDashboardsByName } from '../../lib/grafana-api';
+import { hasPermission } from '@grafana/runtime';
+import { getDataSourceApi, listDataSources } from '../../lib/datasource/datasource-registry';
+import { fetchDataSources, fetchPluginPresence, fetchDashboardsByName } from '../../lib/grafana-api';
 import type { CheckResultError } from '../../types/requirements.types';
+import {
+  currentUser,
+  currentUserIsAdmin,
+  currentUserIsEditor,
+  ensureCurrentUser,
+  isCurrentUserRoleKnown,
+} from '../../utils/current-user-role';
 
 /**
  * Permission checking via Grafana's hasPermission helper.
@@ -39,12 +47,22 @@ export async function hasPermissionCheck(check: string): Promise<CheckResultErro
  */
 export async function hasRoleCheck(check: string): Promise<CheckResultError> {
   try {
-    const user = config.bootData?.user;
-    if (!user) {
+    await ensureCurrentUser();
+    const user = currentUser();
+    if (!user.available) {
       return {
         requirement: check,
         pass: false,
         error: 'User information not available',
+        context: null,
+      };
+    }
+    if (!isCurrentUserRoleKnown()) {
+      return {
+        verdict: 'unavailable',
+        requirement: check,
+        pass: false,
+        error: 'Your Grafana role could not be read',
         context: null,
       };
     }
@@ -55,17 +73,16 @@ export async function hasRoleCheck(check: string): Promise<CheckResultError> {
     switch (requiredRole) {
       case 'admin':
       case 'grafana-admin':
-        hasRole = user.isGrafanaAdmin === true || user.orgRole === 'Admin';
+        hasRole = currentUserIsAdmin();
         break;
       case 'editor':
-        hasRole = user.orgRole === 'Editor' || user.orgRole === 'Admin' || user.isGrafanaAdmin === true;
+        hasRole = currentUserIsEditor();
         break;
       case 'viewer':
-        hasRole = !!user.orgRole; // Any role satisfies viewer requirement
+        hasRole = !!user.role;
         break;
       default:
-        // For custom roles, do case-insensitive comparison
-        hasRole = user.orgRole?.toLowerCase() === requiredRole;
+        hasRole = user.role?.toLowerCase() === requiredRole;
     }
 
     return {
@@ -73,9 +90,9 @@ export async function hasRoleCheck(check: string): Promise<CheckResultError> {
       pass: hasRole,
       error: hasRole
         ? undefined
-        : `User role '${user.orgRole || 'none'}' does not meet requirement '${requiredRole}' (isGrafanaAdmin: ${user.isGrafanaAdmin})`,
+        : `User role '${user.role || 'none'}' does not meet requirement '${requiredRole}' (isGrafanaAdmin: ${user.isGrafanaAdmin})`,
       context: {
-        orgRole: user.orgRole,
+        orgRole: user.role,
         isGrafanaAdmin: user.isGrafanaAdmin,
         requiredRole,
         userId: user.id,
@@ -97,10 +114,9 @@ export async function hasRoleCheck(check: string): Promise<CheckResultError> {
  */
 export async function hasDataSourceCheck(check: string): Promise<CheckResultError> {
   try {
-    const dataSourceSrv = getDataSourceSrv();
     const dsRequirement = check.replace('has-datasource:', '').toLowerCase();
 
-    const dataSources = dataSourceSrv.getList();
+    const dataSources = await listDataSources();
     let found = false;
     let matchType = '';
 
@@ -156,20 +172,15 @@ export async function hasDataSourceCheck(check: string): Promise<CheckResultErro
 export async function hasPluginCheck(check: string): Promise<CheckResultError> {
   try {
     const pluginId = check.replace('has-plugin:', '');
-    const plugins = await fetchPlugins({ throwOnError: true });
-    const pluginExists = plugins.some((plugin) => plugin.id === pluginId);
+    const { installed } = await fetchPluginPresence(pluginId);
 
     return {
       requirement: check,
-      pass: pluginExists,
-      error: pluginExists ? undefined : `Plugin '${pluginId}' is not installed or enabled`,
+      pass: installed,
+      error: installed ? undefined : `Plugin '${pluginId}' is not installed or enabled`,
       context: {
         searched: pluginId,
-        totalPlugins: plugins.length,
-        suggestion:
-          plugins.length > 0
-            ? `Check your Grafana plugin management page - ${plugins.length} plugins are available`
-            : 'No plugins found - check your Grafana installation',
+        suggestion: installed ? undefined : 'Check your Grafana plugin management page',
       },
     };
   } catch (error) {
@@ -238,17 +249,18 @@ export async function isAdminCheck(check: string): Promise<CheckResultError> {
  */
 export async function isLoggedInCheck(check: string): Promise<CheckResultError> {
   try {
-    const user = config.bootData?.user;
-    const isLoggedIn = !!user && !!user.isSignedIn;
+    const user = currentUser();
+    const hasUser = user.available;
+    const isLoggedIn = hasUser && user.isSignedIn;
 
     return {
       requirement: check,
       pass: isLoggedIn,
       error: isLoggedIn ? undefined : 'User is not logged in',
       context: {
-        hasUser: !!user,
-        isSignedIn: user?.isSignedIn,
-        userId: user?.id,
+        hasUser,
+        isSignedIn: hasUser ? user.isSignedIn : undefined,
+        userId: user.id,
       },
     };
   } catch (error) {
@@ -267,8 +279,9 @@ export async function isLoggedInCheck(check: string): Promise<CheckResultError> 
  */
 export async function isEditorCheck(check: string): Promise<CheckResultError> {
   try {
-    const user = config.bootData?.user;
-    if (!user) {
+    await ensureCurrentUser();
+    const user = currentUser();
+    if (!user.available) {
       return {
         requirement: check,
         pass: false,
@@ -276,16 +289,23 @@ export async function isEditorCheck(check: string): Promise<CheckResultError> {
         context: null,
       };
     }
-
-    // Editor or higher (Admin, Grafana Admin)
-    const isEditor = user.orgRole === 'Editor' || user.orgRole === 'Admin' || user.isGrafanaAdmin === true;
+    if (!isCurrentUserRoleKnown()) {
+      return {
+        verdict: 'unavailable',
+        requirement: check,
+        pass: false,
+        error: 'Your Grafana role could not be read',
+        context: null,
+      };
+    }
+    const isEditor = currentUserIsEditor();
 
     return {
       requirement: check,
       pass: isEditor,
-      error: isEditor ? undefined : `User role '${user.orgRole || 'none'}' does not have editor permissions`,
+      error: isEditor ? undefined : `User role '${user.role || 'none'}' does not have editor permissions`,
       context: {
-        orgRole: user.orgRole,
+        orgRole: user.role,
         isGrafanaAdmin: user.isGrafanaAdmin,
         userId: user.id,
       },
@@ -330,35 +350,29 @@ export async function hasDatasourcesCheck(check: string): Promise<CheckResultErr
 export async function pluginEnabledCheck(check: string): Promise<CheckResultError> {
   try {
     const pluginId = check.replace('plugin-enabled:', '');
-    const plugins = await fetchPlugins({ throwOnError: true });
+    const { installed, enabled } = await fetchPluginPresence(pluginId);
 
-    // Find the specific plugin
-    const plugin = plugins.find((p) => p.id === pluginId);
-
-    if (!plugin) {
+    if (!installed) {
       return {
         requirement: check,
         pass: false,
         error: `Plugin '${pluginId}' not found`,
         context: {
           searched: pluginId,
-          totalPlugins: plugins.length,
           suggestion: `Plugin '${pluginId}' is not installed. Install it first, then enable it.`,
         },
       };
     }
 
-    const isEnabled = plugin.enabled;
-
     return {
       requirement: check,
-      pass: isEnabled,
-      error: isEnabled ? undefined : `Plugin '${pluginId}' is installed but not enabled`,
+      pass: enabled,
+      error: enabled ? undefined : `Plugin '${pluginId}' is installed but not enabled`,
       context: {
         searched: pluginId,
         pluginFound: true,
-        isEnabled: plugin.enabled,
-        suggestion: isEnabled
+        isEnabled: enabled,
+        suggestion: enabled
           ? undefined
           : `Plugin '${pluginId}' is installed but disabled. Enable it in Grafana plugin settings.`,
       },
@@ -379,20 +393,15 @@ export async function pluginEnabledCheck(check: string): Promise<CheckResultErro
  */
 export async function dashboardExistsCheck(check: string): Promise<CheckResultError> {
   try {
-    const dashboards = await getBackendSrv().get('/api/search', {
-      type: 'dash-db',
-      limit: 1, // We just need to know if any exist
-      deleted: false,
-    });
-
-    const hasDashboards = dashboards && dashboards.length > 0;
+    const dashboards = await fetchDashboardsByName('', { throwOnError: true });
+    const hasDashboards = dashboards.length > 0;
 
     return {
       requirement: check,
       pass: hasDashboards,
       error: hasDashboards ? undefined : 'No dashboards found in the system',
       context: {
-        dashboardCount: dashboards?.length || 0,
+        dashboardCount: dashboards.length,
       },
     };
   } catch (error) {
@@ -410,6 +419,14 @@ export async function dashboardExistsCheck(check: string): Promise<CheckResultEr
  * Data source connection test. Stronger than `hasDataSourceCheck` — verifies
  * the data source's health endpoint reports OK, not just that it's listed.
  */
+function describeTestFailure(error: unknown): string {
+  const message = (error as { message?: unknown } | null)?.message;
+  if (!(error instanceof Error) && typeof message === 'string' && message) {
+    return message;
+  }
+  return String(error);
+}
+
 export async function datasourceConfiguredCheck(check: string): Promise<CheckResultError> {
   try {
     const dsRequirement = check.replace('datasource-configured:', '').toLowerCase();
@@ -461,11 +478,11 @@ export async function datasourceConfiguredCheck(check: string): Promise<CheckRes
     }
 
     try {
-      // Grafana returns 400 (which throws) when the health check fails, so the
-      // non-OK branch below only covers unexpected 200-with-error payloads.
-      const healthResult = await getBackendSrv().get(`/api/datasources/uid/${targetDataSource.uid}/health`);
+      // Backend data sources reject when the health check fails, so the non-OK
+      // branch below only covers data sources that resolve with an error status.
+      const healthResult = await (await getDataSourceApi(targetDataSource.uid)).testDatasource();
 
-      const isConfigured = healthResult?.status === 'OK';
+      const isConfigured = healthResult?.status === 'success' || healthResult?.status === 'OK';
 
       return {
         requirement: check,
@@ -488,11 +505,12 @@ export async function datasourceConfiguredCheck(check: string): Promise<CheckRes
       };
     } catch (testError) {
       // If test fails, it might still be configured but unreachable
+      const testErrorText = describeTestFailure(testError);
       return {
         verdict: 'unavailable',
         requirement: check,
         pass: false,
-        error: `Data source configuration test failed: ${testError}`,
+        error: `Data source configuration test failed: ${testErrorText}`,
         context: {
           searched: dsRequirement,
           testedDataSource: {
@@ -500,7 +518,7 @@ export async function datasourceConfiguredCheck(check: string): Promise<CheckRes
             name: targetDataSource.name,
             type: targetDataSource.type,
           },
-          testError: String(testError),
+          testError: testErrorText,
           suggestion: `Test API call failed for '${targetDataSource.name}'. Check data source permissions and connectivity.`,
         },
       };

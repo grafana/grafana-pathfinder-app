@@ -8,6 +8,7 @@ import type { KioskRule } from './kiosk-rules';
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({ prepareGuideLaunch: jest.fn() }));
 jest.mock('../../lib/user-storage', () => ({ guideResponseStorage: { mergeResponses: jest.fn() } }));
 jest.mock('../interactive-tutorial/datasource-options', () => ({ filterDatasourcesByType: jest.fn(() => []) }));
+jest.mock('../../lib/datasource/datasource-registry', () => ({ listDataSources: jest.fn(() => Promise.resolve([])) }));
 
 const rule: KioskRule = {
   title: 'Demo',

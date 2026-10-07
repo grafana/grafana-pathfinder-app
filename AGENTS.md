@@ -70,7 +70,7 @@ Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-intera
 
 ### Backend (`pkg/`)
 
-The Go backend is an **App Platform proxy** and nothing else — no database, no streaming. Load `docs/design/BACKEND_PROXY_PATTERN.md` before touching `pkg/`; it is the canonical pattern and holds the identity trust boundary. `/package-recommendations` is an anonymous, process-wide cached CDN fetch: per-user data must never enter its cache. Sandbox VMs and terminals live in [`grafana-coda-app`](https://github.com/grafana/grafana-coda-app); see `.cursor/rules/coda.mdc`.
+The Go backend is an **App Platform proxy** and nothing else — no database, no streaming. Load `docs/design/BACKEND_PROXY_PATTERN.md` before touching `pkg/`; it is the canonical pattern and holds the identity trust boundary. `/package-recommendations` is an anonymous, per-instance cached CDN fetch: per-user data must never enter its cache. Sandbox VMs and terminals live in [`grafana-coda-app`](https://github.com/grafana/grafana-coda-app); see `.cursor/rules/coda.mdc`.
 
 ## On-demand context
 

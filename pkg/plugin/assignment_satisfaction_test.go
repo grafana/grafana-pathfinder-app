@@ -336,7 +336,6 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resetPackageRecommendationsCache()
 			withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 			withFetcherOverride(t, func(context.Context, string, int64) ([]byte, error) {
 				return nil, errors.New("package index unavailable")

@@ -4,9 +4,9 @@
  * Fetches services, operations, and tags from Tempo datasources.
  */
 
-import { getBackendSrv } from '@grafana/runtime';
 import type { DataSourceApi } from '@grafana/data';
 import type { TracingMetadata } from '../types';
+import { getDataSourceResource } from '../../../../lib/datasource/datasource-registry';
 import { logger } from '../../../../lib/logging';
 
 /**
@@ -34,7 +34,7 @@ const MAX_ITEMS = 30;
  */
 const fetchTags = async (ds: TempoDatasource): Promise<string[]> => {
   try {
-    const response = await getBackendSrv().get(`/api/datasources/uid/${ds.uid}/resources/api/v2/search/tags`);
+    const response = await getDataSourceResource<{ scopes?: unknown; tagNames?: unknown }>(ds, 'api/v2/search/tags');
 
     if (response && Array.isArray(response.scopes)) {
       // Extract tag names from all scopes
@@ -68,9 +68,7 @@ const fetchTags = async (ds: TempoDatasource): Promise<string[]> => {
  */
 const fetchTagValues = async (ds: TempoDatasource, tagName: string): Promise<string[]> => {
   try {
-    const response = await getBackendSrv().get(
-      `/api/datasources/uid/${ds.uid}/resources/api/v2/search/tag/${tagName}/values`
-    );
+    const response = await getDataSourceResource<{ tagValues?: unknown }>(ds, `api/v2/search/tag/${tagName}/values`);
 
     if (response && Array.isArray(response.tagValues)) {
       return response.tagValues.map((tv: { value: string }) => tv.value).slice(0, MAX_ITEMS);

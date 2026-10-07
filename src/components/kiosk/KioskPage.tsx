@@ -11,6 +11,7 @@ import type { KioskPage as Page, KioskPageBlock, KioskMode } from '../../types/k
 import { reportKioskInteraction } from '../../lib/kiosk-analytics';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { KioskFormError, MAX_INPUT_LENGTH } from '../../lib/input-value';
+import { useDataSourceList } from '../interactive-tutorial/use-data-source-list';
 import { filterDatasourcesByType, toDatasourceOptions } from '../interactive-tutorial/datasource-options';
 import type { KioskRule } from './kiosk-rules';
 import { launchKioskGuide } from './launch-kiosk-guide';
@@ -208,6 +209,7 @@ function LaunchForm({
   const [busy, setBusy] = useState(false);
   const request = useRef<AbortController | null>(null);
   const changedInputs = useRef(new Set<number>());
+  const { dataSources } = useDataSourceList(block.inputs.some((input) => input.inputType === 'datasource'));
   const reportChange = (inputIndex: number, inputType: 'text' | 'datasource') => {
     if (!changedInputs.current.has(inputIndex)) {
       changedInputs.current.add(inputIndex);
@@ -289,7 +291,7 @@ function LaunchForm({
               <Combobox
                 id={`${id}-${input.variableName}`}
                 disabled={busy}
-                options={toDatasourceOptions(filterDatasourcesByType(input.datasourceFilter))}
+                options={toDatasourceOptions(filterDatasourcesByType(dataSources, input.datasourceFilter))}
                 value={draft[input.variableName] ?? null}
                 onChange={(option) => {
                   reportChange(inputIndex, 'datasource');

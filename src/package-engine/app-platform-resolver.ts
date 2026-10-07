@@ -26,7 +26,7 @@ import { observeGuideRequest, finishGuideLoad } from '../lib/telemetry/guide-loa
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
-import { isBackendApiAvailable, guideReadUrl } from '../utils/interactive-guides-api';
+import { isBackendApiRuledOut, guideReadUrl } from '../utils/interactive-guides-api';
 import { logger } from '../lib/logging';
 
 import { ManifestJsonObjectSchema } from '../types/package.schema';
@@ -277,10 +277,7 @@ export class AppPlatformPackageResolver implements PackageResolver {
       });
     }
 
-    // GAP gate: when the aggregation toggle is off the interactiveguides API
-    // isn't served here, so decline (composite resolver falls through) rather
-    // than issue a doomed request.
-    if (!isBackendApiAvailable()) {
+    if (isBackendApiRuledOut()) {
       return decline(packageId, 'not-found', 'App Platform backend is not available on this instance', {
         source: 'app-platform',
         stage: 'resolve',
