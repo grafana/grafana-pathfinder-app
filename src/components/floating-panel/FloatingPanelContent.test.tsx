@@ -65,6 +65,7 @@ jest.mock('@grafana/ui', () => ({
 const { recordGuideCompletionForSurface } = jest.requireMock('../../docs-retrieval');
 const { useLinkClickHandler } = jest.requireMock('../docs-panel/link-handler.hook');
 const { LearningJourneyMilestoneToolbar } = jest.requireMock('../docs-panel/components');
+const { usePublishSurfaceContentKey } = jest.requireMock('../../hooks');
 
 function content(overrides: Record<string, unknown> = {}): any {
   return {
@@ -114,6 +115,27 @@ beforeEach(() => {
   recordGuideCompletionForSurface.mockClear();
   useLinkClickHandler.mockClear();
   LearningJourneyMilestoneToolbar.mockClear();
+  usePublishSurfaceContentKey.mockClear();
+});
+
+describe('FloatingPanelContent content key publication', () => {
+  it("publishes the active tab's currentUrl", () => {
+    render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith('https://example.com/remote-guide/content.json');
+  });
+
+  it('falls back to baseUrl when the tab has no currentUrl', () => {
+    render(<FloatingPanelContent content={content()} activeTab={activeTab({ currentUrl: '' })} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith('https://example.com/remote-guide');
+  });
+
+  it('publishes nothing when no content is loaded', () => {
+    render(<FloatingPanelContent content={null} activeTab={activeTab()} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith(undefined);
+  });
 });
 
 describe('FloatingPanelContent completion emission', () => {

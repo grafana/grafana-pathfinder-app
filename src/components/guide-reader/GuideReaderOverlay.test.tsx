@@ -4,6 +4,7 @@ import { GuideReaderOverlay } from './GuideReaderOverlay';
 import { testIds } from '../../constants/testIds';
 import { fetchUnifiedContent } from '../../docs-retrieval';
 import { recordGuideRender } from '../../lib/telemetry/facade';
+import { getActiveTabUrl } from '../../global-state/content-key';
 import type { ContentFetchResult, RawContent } from '../../types/content.types';
 
 jest.mock('../../lib/telemetry/facade', () => ({
@@ -71,7 +72,7 @@ describe('GuideReaderOverlay', () => {
     expect(recordGuideRender).not.toHaveBeenCalled();
   });
 
-  it('publishes the rendered guide key (the sidebar tab spelling) and clears it on unmount', async () => {
+  it('publishes the rendered guide key (the sidebar tab spelling) and releases it on unmount', async () => {
     window.__DocsPluginActiveTabUrl = 'https://grafana.com/docs/stale/';
     mockFetchContent.mockResolvedValue({ content: { url: 'bundled:intro', type: 'interactive' } } as any);
 
@@ -80,7 +81,8 @@ describe('GuideReaderOverlay', () => {
 
     expect(window.__DocsPluginActiveTabUrl).toBe('bundled:intro');
     unmount();
-    expect(window.__DocsPluginActiveTabUrl).toBe('');
+    window.__DocsPluginActiveTabUrl = 'https://grafana.com/docs/sidebar/';
+    expect(getActiveTabUrl()).toBe('https://grafana.com/docs/sidebar/');
   });
 
   it('provides controller mode to the rendered content', async () => {

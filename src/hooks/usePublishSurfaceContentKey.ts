@@ -10,6 +10,10 @@ import { getActiveTabUrl, setActiveTabUrl } from '../global-state/content-key';
  * Pass the sidebar's spelling (`currentUrl || baseUrl`). A layout effect, for
  * the same reason as `useGlobalActiveTabExposure`: children restore progress in
  * passive effects and must see this key.
+ *
+ * Cleanup clears only the typed state: the sidebar writes only the window
+ * global and can legitimately hold this same key, so clearing the global
+ * would erase the sidebar's key on a surface-to-sidebar handoff.
  */
 export function usePublishSurfaceContentKey(contentKey: string | undefined): void {
   useLayoutEffect(() => {
@@ -23,13 +27,8 @@ export function usePublishSurfaceContentKey(contentKey: string | undefined): voi
       // frozen window globals in sandboxed embeds
     }
     return () => {
-      try {
-        if (getActiveTabUrl() === contentKey) {
-          setActiveTabUrl(undefined);
-          window.__DocsPluginActiveTabUrl = '';
-        }
-      } catch {
-        // frozen window globals in sandboxed embeds
+      if (getActiveTabUrl() === contentKey) {
+        setActiveTabUrl(undefined);
       }
     };
   }, [contentKey]);

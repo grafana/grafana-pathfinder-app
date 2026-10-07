@@ -102,10 +102,21 @@ describe('surface content key ownership', () => {
     expect(onGuideComplete).not.toHaveBeenCalled();
   });
 
-  it('clears the published key on unmount', () => {
+  it('releases its typed key on unmount so the sidebar global takes over', () => {
     const { unmount } = render(<Surface contentKey={B} content={makeContent(B)} onGuideComplete={jest.fn()} />);
     expect(window.__DocsPluginActiveTabUrl).toBe(B);
+    window.__DocsPluginActiveTabUrl = A;
+    expect(getContentKey()).toBe(B);
     unmount();
-    expect(window.__DocsPluginActiveTabUrl).toBe('');
+    expect(window.__DocsPluginActiveTabUrl).toBe(A);
+    expect(getContentKey()).toBe(A);
+  });
+
+  it('keeps a sidebar global holding the same key after unmount', () => {
+    const { unmount } = render(<Surface contentKey={B} content={makeContent(B)} onGuideComplete={jest.fn()} />);
+    window.__DocsPluginActiveTabUrl = B;
+    unmount();
+    expect(window.__DocsPluginActiveTabUrl).toBe(B);
+    expect(getContentKey()).toBe(B);
   });
 });
