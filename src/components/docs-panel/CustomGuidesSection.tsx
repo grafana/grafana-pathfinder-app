@@ -13,7 +13,9 @@ import { testIds } from '../../constants/testIds';
 import { resolvePackageMilestones } from '../../docs-retrieval';
 import type { Milestone } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
+import type { ResolvedAssignment } from '../../types/learning-paths.types';
 import type { PublishedGuide } from '../../utils/usePublishedGuides';
+import { AssignmentBadges } from '../LearningPaths/AssignmentBadges';
 
 interface CustomGuidesSectionProps {
   /** Full flat list — rendered unchanged when no path/journey manifests exist (RFC §7.3). */
@@ -26,9 +28,11 @@ interface CustomGuidesSectionProps {
   expanded: boolean;
   onToggleExpanded: () => void;
   openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
+  /** The caller's unsatisfied assignments; a matching path card is badged and opens on its track. */
+  assignments?: ResolvedAssignment[];
 }
 
-function packageInfoForPath(path: PublishedGuide, resolvedMilestones?: Milestone[]): PackageOpenInfo {
+function packageInfoForPath(path: PublishedGuide, resolvedMilestones?: Milestone[], trackId?: string): PackageOpenInfo {
   return {
     packageId: path.id,
     // The catalogue manifest is slim and carries no `id` (it lives on the
@@ -39,6 +43,7 @@ function packageInfoForPath(path: PublishedGuide, resolvedMilestones?: Milestone
     // Custom guides are not the recommender, whose URL-filtered list is
     // aligned-by-construction and so skips the alignment prompt (issue #1681).
     launchSource: 'custom_guide',
+    ...(trackId && { trackId }),
   };
 }
 
@@ -56,6 +61,7 @@ export function CustomGuidesSection({
   expanded,
   onToggleExpanded,
   openDocsPage,
+  assignments = [],
 }: CustomGuidesSectionProps) {
   const styles = useStyles2(getStyles);
   const [expandedMembers, setExpandedMembers] = useState<Record<string, Milestone[] | 'loading' | undefined>>({});
@@ -164,6 +170,7 @@ export function CustomGuidesSection({
                   const isMembersExpanded = members !== undefined;
                   const title = pathTitle(path);
                   const isJourney = path.manifest?.type === 'journey';
+                  const assignment = assignments.find((a) => a.targetId === path.id);
 
                   return (
                     <Card
@@ -175,15 +182,20 @@ export function CustomGuidesSection({
                         <div className={styles.cardHeader}>
                           <div className={styles.cardTitleSection}>
                             <h3 className={styles.recommendationCardTitle}>{title}</h3>
-                            <span className={styles.customGuideTag}>
-                              {isJourney
-                                ? t('contextPanel.customJourneyTag', 'Journey')
-                                : t('contextPanel.customPathTag', 'Path')}
-                            </span>
+                            <div className={styles.cardTagRow}>
+                              <span className={styles.customGuideTag}>
+                                {isJourney
+                                  ? t('contextPanel.customJourneyTag', 'Journey')
+                                  : t('contextPanel.customPathTag', 'Path')}
+                              </span>
+                              {assignment && <AssignmentBadges assignment={assignment} />}
+                            </div>
                           </div>
                           <div className={styles.cardActions}>
                             <button
-                              onClick={() => openCustomGuide(path, title, packageInfoForPath(path))}
+                              onClick={() =>
+                                openCustomGuide(path, title, packageInfoForPath(path, undefined, assignment?.trackId))
+                              }
                               className={styles.startButton}
                               data-testid={testIds.contextPanel.customGuidePathStartButton(index)}
                             >

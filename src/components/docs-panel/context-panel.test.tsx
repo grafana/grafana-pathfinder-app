@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { RecommendationsSection } from './context-panel';
 import { PLUGIN_BASE_URL } from '../../constants';
 import { testIds } from '../../constants/testIds';
@@ -753,5 +753,88 @@ describe('suggested path assignment badges', () => {
     expect(card).not.toHaveTextContent('Assigned');
     expect(card).not.toHaveTextContent('Overdue');
     expect(card).not.toHaveTextContent('Today');
+  });
+
+  describe('track routing', () => {
+    const trackedPath = {
+      title: 'Grafana Foundations',
+      url: '',
+      contentUrl: 'backend-guide:grafana-foundations-lp',
+      type: 'package' as const,
+      manifest: { id: 'grafana-foundations-lp', type: 'path' },
+    };
+    const trackedAssignment = () =>
+      assignment({ targetId: 'grafana-foundations-lp', title: 'Grafana Foundations', trackId: 'engineer' });
+
+    it('opens a suggested path on its assigned track', () => {
+      const openDocsPage = jest.fn();
+      renderSuggested({
+        recommendations: [trackedPath],
+        assignments: [trackedAssignment()],
+        openDocsPage,
+      });
+
+      fireEvent.click(screen.getByTestId(testIds.contextPanel.recommendationStartButton(0)));
+
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'backend-guide:grafana-foundations-lp',
+        'Grafana Foundations',
+        expect.objectContaining({ packageId: 'grafana-foundations-lp', trackId: 'engineer' })
+      );
+    });
+
+    it('opens a suggested path without a track when it has no assignment', () => {
+      const openDocsPage = jest.fn();
+      renderSuggested({ recommendations: [trackedPath], assignments: [], openDocsPage });
+
+      fireEvent.click(screen.getByTestId(testIds.contextPanel.recommendationStartButton(0)));
+
+      expect(openDocsPage.mock.calls[0][2]).not.toHaveProperty('trackId');
+    });
+
+    it('badges a featured path and opens it on its assigned track', () => {
+      const openDocsPage = jest.fn();
+      renderSuggested({
+        recommendations: [],
+        featuredRecommendations: [trackedPath],
+        assignments: [trackedAssignment()],
+        openDocsPage,
+      });
+
+      const card = screen.getByTestId('featured-recommendation-card-0');
+      expect(card).toHaveTextContent('Assigned');
+
+      fireEvent.click(within(card).getByRole('button', { name: /Start/i }));
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'backend-guide:grafana-foundations-lp',
+        'Grafana Foundations',
+        expect.objectContaining({ trackId: 'engineer' })
+      );
+    });
+
+    it('opens an other-docs path on its assigned track', () => {
+      const openDocsPage = jest.fn();
+      const filler = [1, 2, 3, 4].map((n) => ({
+        title: `Filler ${n}`,
+        url: `https://grafana.com/docs/filler-${n}/`,
+        type: 'docs-page' as const,
+      }));
+      renderSuggested({
+        recommendations: [...filler, trackedPath],
+        otherDocsExpanded: true,
+        assignments: [trackedAssignment()],
+        openDocsPage,
+      });
+
+      fireEvent.click(
+        within(screen.getByTestId(testIds.contextPanel.otherDocItem(0))).getByText('Grafana Foundations')
+      );
+
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'backend-guide:grafana-foundations-lp',
+        'Grafana Foundations',
+        expect.objectContaining({ trackId: 'engineer' })
+      );
+    });
   });
 });
