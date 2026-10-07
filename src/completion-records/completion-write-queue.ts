@@ -28,6 +28,7 @@ export interface WriteQueueDeps {
    * `no` drops a queued partial; `unknown` holds it. Defaults to `yes`.
    */
   partialsSupported?: () => ProgressRecordsCapability;
+  partialsEnabled?: () => boolean;
   /** Debounce for a partial with nothing to inherit. Defaults to PARTIAL_DEBOUNCE_MS. */
   partialDebounceMs?: number;
 }
@@ -91,6 +92,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   const maxRetentionMs = deps.maxRetentionMs ?? MAX_RETENTION_MS;
   const onCreated = deps.onCreated;
   const partialsSupported = deps.partialsSupported ?? (() => 'yes' as const);
+  const partialsEnabled = deps.partialsEnabled ?? (() => true);
   const partialDebounceMs = deps.partialDebounceMs ?? PARTIAL_DEBOUNCE_MS;
 
   let items: QueuedWrite[] = [];
@@ -290,6 +292,10 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         continue;
       }
       if (isPartialAttemptItem(item)) {
+        if (!partialsEnabled()) {
+          remove(item);
+          continue;
+        }
         const supported = partialsSupported();
         if (supported === 'no') {
           // The backend can't take partials (for example a plugin rollback).
@@ -328,7 +334,9 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
 
       if (outcome.kind === 'created') {
         remove(item);
-        onCreated?.();
+        if (!isPartialAttemptItem(item)) {
+          onCreated?.();
+        }
         continue;
       }
       if (outcome.kind === 'route-missing' || outcome.kind === 'forbidden') {

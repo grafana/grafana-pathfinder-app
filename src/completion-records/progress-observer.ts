@@ -9,6 +9,7 @@
  */
 
 import { logger } from '../lib/logging';
+import { getFeatureFlagValue } from '../utils/openfeature';
 import { isPreviewContentKey } from '../global-state/completion-store';
 import { subscribeProgressEvent, type ProgressEventDetail } from '../global-state/progress-events';
 
@@ -57,7 +58,7 @@ function onProgress(detail: ProgressEventDetail): void {
       return;
     }
     // Only a real increase is written; the mode was fixed when the attempt was minted.
-    if (raised && attempt.mode === 'records') {
+    if (raised && attempt.mode === 'records' && getFeatureFlagValue('pathfinder.progress-records', false)) {
       progressSink?.(identity, attempt.attemptId, percentage);
     }
     const threshold = thresholdToReport(previous, percentage, minted);

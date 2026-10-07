@@ -45,9 +45,7 @@ const defaultDeps: AttemptDeps = {
 
 const ATTEMPT_ID_RE = /^[0-9a-f]{32}$/;
 
-// Fallback for a profile whose localStorage throws (private mode, quota). An
-// attempt held here dies with the page, so it must never be named on the wire.
-// An entry is a failed write and shadows the stale stored value until a write succeeds or a clear.
+// Failed writes shadow stale storage without changing an existing attempt's identity.
 const memory = new Map<string, GuideAttempt>();
 
 function storageKeyFor(guideSource: string, guideId: string): string {
@@ -113,7 +111,7 @@ function writeAt(storageKey: string, attempt: GuideAttempt): boolean {
     memory.delete(storageKey);
     return true;
   } catch {
-    memory.set(storageKey, { ...attempt, mode: 'analytics' });
+    memory.set(storageKey, attempt);
     return false;
   }
 }
@@ -151,7 +149,9 @@ export function getOrMintAttempt(
     mode: resolveMode(),
   };
   if (!writeAt(storageKey, candidate)) {
-    return { attempt: memory.get(storageKey) ?? { ...candidate, mode: 'analytics' }, minted: true };
+    const fallback: GuideAttempt = { ...candidate, mode: 'analytics' };
+    memory.set(storageKey, fallback);
+    return { attempt: fallback, minted: true };
   }
   const stored = readAt(storageKey);
   if (!stored) {

@@ -175,7 +175,7 @@ describe('progress observer — attempts and analytics', () => {
     progress(30, 'change');
     progress(60, 'change');
 
-    expect(flagMock).toHaveBeenCalledWith('pathfinder.progress-analytics', true);
+    expect(flagMock).toHaveBeenCalledWith('pathfinder.progress-analytics', false);
     expect(progressEvents()).toEqual([]);
     expect(readAttempt(KEY)).toMatchObject({ highWater: 60 });
   });

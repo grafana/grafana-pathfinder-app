@@ -348,7 +348,7 @@ func TestAttemptWrite_StoredRecordForAnotherUserOrGuideIsConflict(t *testing.T) 
 
 func TestAttemptWrite_OldSchemaRejectingAPartialIsRetryable(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
-	invalid := &appPlatformUpstreamError{status: http.StatusUnprocessableEntity, msg: "spec.completedAt: Required value"}
+	invalid := &appPlatformUpstreamError{status: http.StatusUnprocessableEntity, body: []byte(`{"kind":"Status","reason":"Invalid","details":{"causes":[{"field":"spec.completedAt","reason":"FieldValueRequired"}]}}`)}
 
 	store := newFakeAttemptStore()
 	store.createErr = invalid
@@ -362,6 +362,127 @@ func TestAttemptWrite_OldSchemaRejectingAPartialIsRetryable(t *testing.T) {
 	store.createErr = invalid
 	if rec := doAttemptWrite(t, store, 100, "att-2"); rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("100%%: status = %d, want the terminal 422", rec.Code)
+	}
+}
+
+func TestAttemptWrite_OnlyMissingCompletedAtIsSchemaNotReady(t *testing.T) {
+	for _, body := range []string{
+		`{"kind":"Status","reason":"Invalid","details":{"causes":[{"field":"spec.guideId","reason":"FieldValueRequired"}]}}`,
+		`{"kind":"Status","reason":"Invalid","details":{"causes":[{"field":"spec.completedAt","reason":"FieldValueInvalid"}]}}`,
+		`{"kind":"Status","reason":"Invalid","details":{"causes":[{"field":"spec.completedAt","reason":"FieldValueRequired"},{"field":"spec.guideId","reason":"FieldValueInvalid"}]}}`,
+		`{"kind":"Status","reason":"Invalid"}`, `broken`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			withFrozenTime(t, time.Unix(1_700_000_000, 0))
+			store := newFakeAttemptStore()
+			store.createErr = &appPlatformUpstreamError{status: http.StatusUnprocessableEntity, body: []byte(body)}
+			if got := doAttemptWrite(t, store, 40, "att-1"); got.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status=%d, want 422", got.Code)
+			}
+		})
+	}
+}
+
+type deleteBeforeReplace struct{ *fakeAttemptStore }
+
+func (s *deleteBeforeReplace) Replace(ctx context.Context, ns, name string, obj map[string]any) error {
+	s.mu.Lock()
+	delete(s.objects, name)
+	s.mu.Unlock()
+	return &appPlatformUpstreamError{status: http.StatusNotFound, body: []byte(`{"kind":"Status","reason":"NotFound"}`)}
+}
+
+func TestAttemptWrite_RecreatesAfterConcurrentDeletion(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	store := newFakeAttemptStore()
+	doAttemptWrite(t, store, 20, "att-1")
+	withCreator(t, &deleteBeforeReplace{store})
+	got := doWrite(t, nil, writeRequest(t, testAttemptUser, attemptBody(60, "att-1"), testGrafanaConfig()))
+	if got.Code != http.StatusCreated || store.creates != 2 {
+		t.Fatalf("status=%d creates=%d", got.Code, store.creates)
+	}
+	if got := store.spec(t, completionAttemptRecordName(testAttemptUser, "att-1"))["completionPercent"]; got != float64(60) {
+		t.Fatalf("percent=%v", got)
+	}
+}
+
+func TestAttemptWrite_ReplaceStructural404RemainsTerminal(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	store := newFakeAttemptStore()
+	doAttemptWrite(t, store, 20, "att-1")
+	store.replaceErrs = []error{&appPlatformUpstreamError{status: http.StatusNotFound, body: []byte("route missing")}}
+	if got := doAttemptWrite(t, store, 60, "att-1"); got.Code != http.StatusNotFound {
+		t.Fatalf("status=%d", got.Code)
+	}
+	if store.replaces != 1 {
+		t.Fatalf("replaces=%d", store.replaces)
+	}
+}
+
+func TestAttemptRetryReturnsStoredCompletion(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	store := newFakeAttemptStore()
+	doAttemptWrite(t, store, 100, "att-1")
+	name := completionAttemptRecordName(testAttemptUser, "att-1")
+	stored, err := store.Get(context.Background(), testNamespace, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	incoming := stored.Spec
+	incoming.CompletedAt = "2026-01-01T00:00:00Z"
+	incoming.Source = "objectives"
+	outcome, persisted, err := upsertCompletionAttempt(httptest.NewRequest(http.MethodPost, "/", nil), store, testNamespace, name, incoming)
+	if err != nil || outcome != attemptUnchanged || persisted.CompletedAt != stored.Spec.CompletedAt || persisted.Source != "manual" {
+		t.Fatalf("outcome=%v persisted=%+v err=%v", outcome, persisted, err)
+	}
+}
+
+func TestAttemptWrite_UnchangedCompletionRepairsAssignmentsAndCache(t *testing.T) {
+	path := pathWithGuides(t)
+	target := asg("user:1", path.ID, "", "onboarding", "2026-09-01T00:00:00Z")
+	target.Name = "assignment-1"
+	target.ResourceVersion = "42"
+	patched := make(chan bool, 1)
+	lister := singlePageAssignmentLister(target)
+	lister.updateStatus = func(_ context.Context, _, _, _ string, satisfied bool) error {
+		patched <- satisfied
+		return nil
+	}
+	withAssignmentLister(t, lister)
+	done := completionsFor(path, "2026-09-14T15:00:00Z")
+	withLister(t, singlePageLister(done[:len(done)-1]...))
+	just := done[len(done)-1]
+	store := newFakeAttemptStore()
+	name := completionAttemptRecordName("user:1", "att-1")
+	spec := completionRecordWriteSpec{UserID: "user:1", GuideID: just.GuideID, GuideSource: just.GuideSource,
+		CompletedAt: just.CompletedAt, CompletionPercent: 100, Source: "manual"}
+	if err := store.Create(context.Background(), testNamespace, completionRecordObject{Metadata: completionRecordObjectMeta{Name: name}, Spec: spec}); err != nil {
+		t.Fatal(err)
+	}
+	completionCacheMu.Lock()
+	completionCacheInit()
+	generation := completionGenerations[testNamespace]
+	completionCacheMu.Unlock()
+	// A replay's timestamp must not replace the stored completion used for assignment matching.
+	spec.CompletedAt = "2020-01-01T00:00:00Z"
+	w := httptest.NewRecorder()
+	newTestApp(t).handleCompletionAttemptWrite(w, completionRequest(t, "/completion-records", "user:1"), store, testNamespace, "user:1", "att-1", spec)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+	completionCacheMu.Lock()
+	invalidated := completionGenerations[testNamespace] > generation
+	completionCacheMu.Unlock()
+	if !invalidated {
+		t.Fatal("unchanged completion did not invalidate cache")
+	}
+	select {
+	case satisfied := <-patched:
+		if !satisfied {
+			t.Fatal("assignment not satisfied")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("unchanged completion did not repair assignment")
 	}
 }
 
@@ -578,6 +699,17 @@ func TestCollation_PartialNewerThanCompletionShows(t *testing.T) {
 	got := inProgress["user:1"]
 	if len(got) != 1 || got[0].CompletionPercent != 60 || got[0].LastUpdatedAt != "2026-10-05T10:00:00Z" {
 		t.Fatalf("inProgress = %+v, want the latest partial (60)", got)
+	}
+}
+
+func TestCollation_AmbiguousPartialTimeRemainsHidden(t *testing.T) {
+	for _, updated := range []string{"2026-10-01T10:00:00Z", "invalid", ""} {
+		_, inProgress := collateCompletions([]completionRecordSpec{
+			doneRec("g", "2026-10-01T10:00:00Z"), partialRec("g", 40, updated),
+		})
+		if len(inProgress["user:1"]) != 0 {
+			t.Fatalf("updated=%q: %+v", updated, inProgress)
+		}
 	}
 }
 

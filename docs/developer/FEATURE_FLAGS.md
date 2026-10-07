@@ -177,7 +177,7 @@ The flag and the setting are a plain OR, applied once settings resolve in `src/m
 
 **Purpose**: Remote kill switch for the guide progress analytics events, `pathfinder_guide_progress` and `pathfinder_guide_completed` (RudderStack, mirrored to Faro).
 
-**Default**: `true` (the events fire if the flag is not set, and if MTFF is unreachable)
+**Default**: `false` (no progress analytics events when the flag is absent or MTFF is unreachable)
 
 **Behavior**:
 
@@ -201,11 +201,26 @@ The flag is read each time an event would fire, so a flip takes effect without a
 **Behavior**:
 
 - **`true`**: a new attempt uses `records` mode when the installed plugin backend also reports `progressRecords: true` on `/completion-records/capability`. Partial progress is queued (debounced 10 seconds), and the completion at 100% updates the same record.
-- **`false`**: attempts use `analytics` mode. The request body is the original create-only completion.
+- **`false`**: new attempts use `analytics` mode and send the original create-only completion body. Existing records-mode attempts keep their identity for the final 100% write. The observer stops new partials, and the queue removes unsent partials before transmission.
 
-The mode is fixed when an attempt is minted, so flipping the flag mid-attempt does not change that attempt's record naming. Turning the flag off stops new `records` attempts; existing partial records are harmless, because `/completion-records/my` counts only completed records.
+The flag does not cancel requests already in flight. Each tab uses its locally available flag value. Stale tabs can continue partial writes until they receive the disabled value or reload.
 
-**Enable it in an environment only after** the CompletionRecord schema with an optional `completedAt` is deployed there and a plugin build with attempt upserts is installed. A partial sent to an old schema is retried (`503 schema-not-ready`), not lost. Implementation: `src/completion-records/guide-attempts.ts` (`resolveAttemptMode`) and `src/completion-records/completion-write-queue.ts`.
+Capability discovery makes no requests while this flag is false. The controller checks the local flag every five seconds until enabled. Unknown capability retries with exponential backoff and jitter, capped at five minutes. Invalid capability responses remain unknown and do not remove queued partials.
+
+Local attempts still persist under `grafana-pathfinder-app-guide-attempt-` when both progress flags are false. These device-local keys do not use user-storage synchronization. The separate analytics flag controls remote events. See [Telemetry](TELEMETRY.md#guide-progress-events).
+
+**Before enabling the flag:**
+
+1. Deploy the CompletionRecord schema with optional `completedAt`.
+2. Deploy partial-aware collation and attempt upserts to every serving plugin replica.
+3. Verify GET, create, and update through the deployed plugin's OBO flow as a Viewer.
+4. Verify that partial progress followed by 100% produces one record and satisfies an assignment.
+
+Viewer verification remains a rollout prerequisite, not a proven capability. A 403 still disarms the session's write queue and retains all items until retry or the 30-day expiry. There is no create-only fallback for failed attempt updates.
+
+**Do not roll back the plugin by disabling the flag alone.** Older readers count existing partials as completions. Follow the [rollback procedure](../design/BACKEND_PROXY_PATTERN.md#rollout-and-rollback-of-attempt-records), including writer quiescence and partial-record cleanup.
+
+Implementation: `src/completion-records/guide-attempts.ts`, `progress-records-capability.ts`, and `completion-write-queue.ts`.
 
 **Tracking key**: `progress_records`
 

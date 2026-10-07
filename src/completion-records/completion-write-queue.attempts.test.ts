@@ -261,6 +261,31 @@ it('a lost attempt completion lifts the guard and reopens the attempt', () => {
   invalidateEmittedCompletion('bundled', 'g1');
 });
 
+it('drops restored partials while disabled without dropping completions', async () => {
+  const { storage } = makeStorage();
+  const first = createWriteQueue({ now: () => 0, send: jest.fn(), storage });
+  first.enqueue(body(40), { id: attemptWriteId(ATTEMPT, 40) });
+  first.enqueue(body(100, { attemptId: 'b'.repeat(32) }));
+  const send = jest.fn(async (): Promise<WriteOutcome> => ({ kind: 'created' }));
+  const restored = createWriteQueue({ now: () => PARTIAL_DEBOUNCE_MS, send, storage, partialsEnabled: () => false });
+  await restored.processDue();
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({ completionPercent: 100 }), expect.any(String));
+  expect(restored.size()).toBe(0);
+});
+
+it('notifies completion listeners only for a completion', async () => {
+  const onCreated = jest.fn();
+  const t = setup({ onCreated });
+  t.queue.enqueue(body(40));
+  t.advance(PARTIAL_DEBOUNCE_MS);
+  await t.queue.processDue();
+  expect(onCreated).not.toHaveBeenCalled();
+  t.queue.enqueue(body(100));
+  await t.queue.processDue();
+  expect(onCreated).toHaveBeenCalledTimes(1);
+});
+
 it('leaves bodies without an attempt exactly as before', async () => {
   const t = setup();
   const { attemptId: _omitted, ...legacy } = body(100);

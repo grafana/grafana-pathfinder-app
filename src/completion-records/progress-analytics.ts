@@ -15,7 +15,7 @@ const PROGRESS_ANALYTICS_FLAG = 'pathfinder.progress-analytics';
 const CROSSING_THRESHOLDS = [75, 50, 25] as const;
 
 function isEnabled(): boolean {
-  return getFeatureFlagValue(PROGRESS_ANALYTICS_FLAG, true);
+  return getFeatureFlagValue(PROGRESS_ANALYTICS_FLAG, false);
 }
 
 function definedOnly(properties: Record<string, string | number | boolean | undefined>) {

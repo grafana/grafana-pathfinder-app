@@ -57,6 +57,25 @@ If none apply, the free channels cover you. When in doubt, ask: _if this silentl
 
 Span helpers (`withFaroUserAction`, `setFaroUserActionAttributes`), explicit error pushes (`pushFaroError` from error boundaries), and view setters (`setFaroView`/`setFaroViewName`) may be used directly from components.
 
+## Guide progress events
+
+`pathfinder.progress-analytics` defaults to false, including when MTFF is unreachable.
+When enabled, `reportAppInteraction` sends these events to RudderStack and mirrors them to Faro through the existing consent and environment gates:
+
+- `pathfinder_guide_progress`: first real progress and subsequent 25%, 50%, or 75% crossings, at most four events per attempt.
+- `pathfinder_guide_completed`: terminal completion accepted into the durable local queue, not proof of a successful backend write.
+
+Both events carry `guide_source`, `guide_id`, optional `path_id`, `percent`, and `attempt_id`.
+Progress also carries `threshold`. Completion also carries `source`.
+The random attempt ID correlates events within a device-local attempt. It is not a user ID, but it is a high-cardinality correlation field.
+These events do not include guide titles, guide content, or credentials. Event enablement requires privacy review of the identity and correlation fields.
+Sent events cannot be recalled by disabling the flag.
+
+Device-local attempts persist under `grafana-pathfinder-app-guide-attempt-`, even when both progress flags are false.
+The value contains a random ID, start timestamp, completion state, highest percentage, and mode.
+These keys do not use user-storage synchronization. Resetting guide progress removes the corresponding attempt.
+The separate `pathfinder.progress-records` flag controls partial-record writes and capability discovery, not these analytics events.
+
 ## Privacy invariants
 
 Privacy protection is split between enforced normalization and caller discipline:

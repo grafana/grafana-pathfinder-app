@@ -756,16 +756,19 @@ create-only path above, unchanged.
 - **Optimistic concurrency.** Otherwise it PUTs the full object it read, minus
   `metadata.managedFields`, at the `resourceVersion` it read. A stale version is a 409; the plugin
   reads and retries, up to 3 tries, then answers `503 completion-write-contended` (retried).
+  A PUT `404` with a `NotFound` Status also restarts the loop, so a concurrent deletion permits recreation.
+  A structural `404` remains a route failure.
 - **Completion fields at 100% only.** A partial stores no `completedAt`, `source: objectives` and
   `durationSeconds: 0`. The write that reaches 100% sets all three.
-- **Schema skew.** A `422` on a partial means the CRD still requires `completedAt`; it answers
-  `503 schema-not-ready` (retried), never a terminal 4xx. A `422` on a completion stays terminal.
+- **Schema skew.** A partial's `422` maps to `503 schema-not-ready` only for an `Invalid` Status whose causes all require `spec.completedAt`.
+  Other validation errors remain terminal, including malformed Status bodies and every `422` on a completion.
 - **Foreign record.** A stored record for another user or guide is `409 attempt-conflict`
   (terminal; the client drops it).
 - **One token.** GET, create and PUT share one on-behalf-of token per inbound request.
 
-Responses add `200` (updated or no-op) to the create path's `201`. Assignment satisfaction runs only
-for a write at 100%. `capability.progressRecords: true` advertises that the build accepts attempt
+Responses add `200` (updated or no-op) to the create path's `201`.
+A completed record triggers cache invalidation and assignment synchronization even on a no-op retry.
+Synchronization uses the stored completion fields, not a replay's timestamp or source. `capability.progressRecords: true` advertises that the build accepts attempt
 bodies; it says nothing about the caller's permissions.
 
 **Read side.** `/completion-records/my` counts only records with a `completedAt` as completions,
@@ -773,6 +776,50 @@ so legacy records, which always have one, collate as before. `inProgress[]` (alw
 lists, per guide, the latest partial when it is newer than the guide's latest completion. "Newer"
 compares last-updated times: the `grafana.app/updatedTimestamp` annotation when present, else
 `spec.recordedAt`.
+
+### Rollout and rollback of attempt records
+
+The records and analytics flags both default to false. Local attempt tracking still persists on the device.
+The records flag controls partial transmission, not backend authorization or existing durable records.
+
+Before enabling partial writes:
+
+1. Deploy the schema that permits an absent `completedAt`.
+2. Deploy partial-aware collation and attempt upserts to every serving plugin replica.
+3. Verify Viewer GET, create, and update rights through the deployed plugin's OBO flow.
+4. Verify one record across partial progress and completion, including assignment satisfaction.
+
+A capability response advertises build support, not Viewer update rights. A Viewer 403 still disarms the session queue.
+The queue retains items for later retry, subject to its 30-day expiry. Enablement must wait for live Viewer evidence.
+
+**CAUTION: Do not restore an older reader while partial records exist.** Older collation counts these records as completions.
+A new annotation cannot protect an older reader that ignores it.
+
+Before a plugin rollback:
+
+1. Disable `pathfinder.progress-records`.
+2. Stop writes at the deployment boundary, including requests from stale tabs.
+3. Wait for in-flight writes to finish.
+4. Back up the namespace's CompletionRecords with their names, UIDs, and resource versions.
+5. List all pages and identify unfinished records by absent or empty `spec.completedAt`.
+6. Delete only those records, with UID and resource-version preconditions from the inspected objects.
+7. If a precondition fails, read the record again before deciding whether it remains unfinished.
+8. Verify that no unfinished records remain.
+9. Restore the older plugin and resume writes.
+
+Cleanup requires authorized operator access, not a new browser-facing deletion route.
+If writer quiescence or safe cleanup is unavailable, retain the partial-aware reader and disable partial writes instead.
+Disabling the frontend flag alone does not remove stored partials or stop stale tabs.
+
+### Partial-record retention
+
+Abandoned partial records currently persist without expiry. Each attempt adds a record to the namespace's 50,000-record collation budget.
+The queue's 30-day expiry applies to unsent items, not stored records.
+
+Retention follow-up: define a stale-attempt age and owner before broad enablement.
+The cleanup design must use paginated discovery, last-update timestamps, dry-run counts, backups, and conditional deletion.
+Acceptance requires that a concurrent completion survives cleanup and that completed records remain unchanged.
+Capacity monitoring must report the total record count and warn before the collation budget is exhausted.
 
 ## Mechanically enforced: reads proxied, writes direct
 

@@ -1,4 +1,5 @@
 import { logger } from '../lib/logging';
+import { getFeatureFlagValue } from '../utils/openfeature';
 
 import { discardPendingCompletions, onCompletionRecorded } from './completion-recorder';
 import {
@@ -19,8 +20,7 @@ import { reportCompletionWriteDegradation } from './completion-write-telemetry';
 import type { RegisteredGuideIdentity } from './guide-identity-registry';
 import { installProgressObserver } from './progress-observer';
 import {
-  loadProgressRecordsCapability,
-  onProgressRecordsCapabilityResolved,
+  watchProgressRecordsCapability,
   progressRecordsCapability,
   type ProgressRecordsCapability,
 } from './progress-records-capability';
@@ -38,7 +38,7 @@ export interface WriteHookDeps {
   /** Whether the backend accepts partial attempt writes. */
   progressRecords: () => ProgressRecordsCapability;
   /** Starts resolving progressRecords; calls back once it is yes or no. */
-  loadProgressRecords: (onResolved: () => void) => void;
+  loadProgressRecords: (onResolved: () => void) => void | (() => void);
 }
 
 const publishedListeners = new Set<() => void>();
@@ -71,19 +71,14 @@ const defaultDeps: WriteHookDeps = {
   setTimer: (fn, ms) => setTimeout(fn, ms),
   clearTimer: (handle) => clearTimeout(handle),
   progressRecords: progressRecordsCapability,
-  loadProgressRecords: (onResolved) => {
-    const unsubscribe = onProgressRecordsCapabilityResolved(() => {
-      unsubscribe();
-      onResolved();
-    });
-    void loadProgressRecordsCapability();
-  },
+  loadProgressRecords: watchProgressRecordsCapability,
 };
 
 class CompletionWriteController {
   private readonly queue: WriteQueue | null;
   private unsubscribe: (() => void) | null = null;
   private unsubscribeStorage: (() => void) | null = null;
+  private stopCapabilityWatch: (() => void) | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private timerFireAt: number | null = null;
   private draining = false;
@@ -100,6 +95,7 @@ class CompletionWriteController {
           storage: deps.storage(ownerKey),
           onCreated: notifyCompletionPublished,
           partialsSupported: deps.progressRecords,
+          partialsEnabled: () => getFeatureFlagValue('pathfinder.progress-records', false),
         })
       : null;
   }
@@ -112,7 +108,7 @@ class CompletionWriteController {
     this.unsubscribe = onCompletionRecorded((fact) => this.onFact(fact));
     this.unsubscribeStorage = this.queue.subscribe(() => this.scheduleDrain(0));
     // Held partials wait on this; drain once it is known.
-    this.deps.loadProgressRecords(() => this.scheduleDrain(0));
+    this.stopCapabilityWatch = this.deps.loadProgressRecords(() => this.scheduleDrain(0)) ?? null;
     // Unconditional: the queue no longer scans storage when constructed, so its
     // in-memory size is always 0 here and says nothing about what a previous
     // load persisted. This first drain is what reconciles them — under the
@@ -135,7 +131,7 @@ class CompletionWriteController {
    */
   enqueueAttemptProgress(identity: RegisteredGuideIdentity, attemptId: string, percent: number): void {
     try {
-      if (this.disposed || !this.queue) {
+      if (this.disposed || !this.queue || !getFeatureFlagValue('pathfinder.progress-records', false)) {
         return;
       }
       if (!isValidIdentifier(identity.guideSource) || !isValidIdentifier(identity.guideId)) {
@@ -176,6 +172,8 @@ class CompletionWriteController {
     this.unsubscribe = null;
     this.unsubscribeStorage?.();
     this.unsubscribeStorage = null;
+    this.stopCapabilityWatch?.();
+    this.stopCapabilityWatch = null;
     this.disposed = true;
   }
 

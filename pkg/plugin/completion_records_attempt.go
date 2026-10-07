@@ -3,6 +3,7 @@ package plugin
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -82,12 +83,12 @@ const (
 )
 
 // upsertCompletionAttempt runs the GET → create/PUT loop for one attempt.
-func upsertCompletionAttempt(r *http.Request, store completionRecordUpdater, namespace, name string, incoming completionRecordWriteSpec) (attemptOutcome, error) {
+func upsertCompletionAttempt(r *http.Request, store completionRecordUpdater, namespace, name string, incoming completionRecordWriteSpec) (attemptOutcome, completionRecordWriteSpec, error) {
 	ctx := r.Context()
 	for try := 0; try < completionAttemptMaxTries; try++ {
 		stored, err := store.Get(ctx, namespace, name)
 		if err != nil {
-			return 0, err
+			return 0, incoming, err
 		}
 		if stored == nil {
 			obj := completionRecordObject{
@@ -98,30 +99,31 @@ func upsertCompletionAttempt(r *http.Request, store completionRecordUpdater, nam
 			}
 			err := store.Create(ctx, namespace, obj)
 			if err == nil {
-				return attemptCreated, nil
+				return attemptCreated, incoming, nil
 			}
 			if isAlreadyExistsUpstream(err) {
-				continue // another write created it first; read it and update
+				continue
 			}
-			return 0, err
+			return 0, incoming, err
 		}
 
 		if stored.Spec.UserID != incoming.UserID || stored.Spec.GuideSource != incoming.GuideSource || stored.Spec.GuideID != incoming.GuideID {
-			return 0, errAttemptIdentityMismatch
+			return 0, incoming, errAttemptIdentityMismatch
 		}
 		if stored.Spec.CompletionPercent >= incoming.CompletionPercent {
-			return attemptUnchanged, nil
+			return attemptUnchanged, stored.Spec, nil
 		}
 
 		if err := store.Replace(ctx, namespace, name, mergeAttemptUpdate(stored, incoming)); err != nil {
-			if isAlreadyExistsUpstream(err) {
-				continue // stale resourceVersion; read again
+			status, _ := upstreamStatusOf(err)
+			if isAlreadyExistsUpstream(err) || (status == http.StatusNotFound && upstreamStatusReasonOf(err) == "NotFound") {
+				continue // Re-read after a concurrent update or deletion, not a structural 404.
 			}
-			return 0, err
+			return 0, incoming, err
 		}
-		return attemptUpdated, nil
+		return attemptUpdated, incoming, nil
 	}
-	return 0, errAttemptContended
+	return 0, incoming, errAttemptContended
 }
 
 var errAttemptIdentityMismatch = errors.New("completion attempt: stored record belongs to another user or guide")
@@ -165,7 +167,7 @@ func (a *App) handleCompletionAttemptWrite(w http.ResponseWriter, r *http.Reques
 
 	name := completionAttemptRecordName(userID, attemptID)
 	incoming := attemptWriteSpec(spec)
-	outcome, err := upsertCompletionAttempt(r, store, namespace, name, incoming)
+	outcome, persisted, err := upsertCompletionAttempt(r, store, namespace, name, incoming)
 	logger := a.ctxLogger(r.Context())
 	switch {
 	case err == nil:
@@ -192,30 +194,49 @@ func (a *App) handleCompletionAttemptWrite(w http.ResponseWriter, r *http.Reques
 	if outcome == attemptCreated {
 		status = http.StatusCreated
 	}
-	if outcome != attemptUnchanged {
+	if outcome != attemptUnchanged || persisted.CompletedAt != "" {
 		invalidateCompletionIndex(namespace)
-		if incoming.CompletionPercent >= 100 {
-			a.writeSatisfiedAssignments(r, userID, completionRecordSpec{
-				UserID:            incoming.UserID,
-				GuideID:           incoming.GuideID,
-				GuideSource:       incoming.GuideSource,
-				GuideTitle:        incoming.GuideTitle,
-				GuideCategory:     incoming.GuideCategory,
-				PathID:            incoming.PathID,
-				Source:            incoming.Source,
-				CompletedAt:       incoming.CompletedAt,
-				CompletionPercent: incoming.CompletionPercent,
-			})
-		}
+	}
+	if persisted.CompletedAt != "" {
+		a.writeSatisfiedAssignments(r, userID, completionRecordSpec{
+			UserID:            persisted.UserID,
+			GuideID:           persisted.GuideID,
+			GuideSource:       persisted.GuideSource,
+			GuideTitle:        persisted.GuideTitle,
+			GuideCategory:     persisted.GuideCategory,
+			PathID:            persisted.PathID,
+			Source:            persisted.Source,
+			CompletedAt:       persisted.CompletedAt,
+			CompletionPercent: persisted.CompletionPercent,
+		})
 	}
 	logger.Debug("completion attempt written", "namespace", namespace, "name", name,
 		"percent", incoming.CompletionPercent, "outcome", outcome)
 	a.writeJSON(w, map[string]string{"name": name}, status)
 }
 
-// isSchemaNotReady reports an upstream 422 Invalid: the only way a valid
-// partial is rejected is an old CRD that still requires completedAt.
 func isSchemaNotReady(err error) bool {
-	status, ok := upstreamStatusOf(err)
-	return ok && status == http.StatusUnprocessableEntity
+	var upstream *appPlatformUpstreamError
+	if !errors.As(err, &upstream) || upstream.status != http.StatusUnprocessableEntity {
+		return false
+	}
+	var status struct {
+		Kind    string `json:"kind"`
+		Reason  string `json:"reason"`
+		Details struct {
+			Causes []struct {
+				Field  string `json:"field"`
+				Reason string `json:"reason"`
+			} `json:"causes"`
+		} `json:"details"`
+	}
+	if json.Unmarshal(upstream.body, &status) != nil || status.Kind != "Status" || status.Reason != "Invalid" || len(status.Details.Causes) == 0 {
+		return false
+	}
+	for _, cause := range status.Details.Causes {
+		if cause.Field != "spec.completedAt" || cause.Reason != "FieldValueRequired" {
+			return false
+		}
+	}
+	return true
 }

@@ -27,6 +27,8 @@ import {
 import { getOrMintAttempt, readAttempt } from './guide-attempts';
 import type { CompletionFact, CompletionListener, GuideCompletionFact, JourneyCompletionFact } from './types';
 
+jest.mock('../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(() => true) }));
+
 let mockOwner: string | null = 'user-1:org-1';
 jest.mock('./completion-write-storage', () => ({
   ...jest.requireActual('./completion-write-storage'),

@@ -35,7 +35,7 @@ import {
   type WriteHookDeps,
 } from './completion-write-hook';
 import { PARTIAL_DEBOUNCE_MS } from './completion-write-queue';
-import { readAttempt, resolveAttemptMode } from './guide-attempts';
+import { closeAttempt, raiseHighWater, readAttempt, resolveAttemptMode } from './guide-attempts';
 import { registerGuideIdentity, __resetGuideIdentityRegistryForTests } from './guide-identity-registry';
 import { __resetProgressObserverForTests } from './progress-observer';
 import {
@@ -82,11 +82,14 @@ describe('resolveAttemptMode', () => {
 });
 
 describe('loadProgressRecordsCapability', () => {
+  beforeEach(() => setFlag(true));
+
   it.each([
     [{ available: true, progressRecords: true }, 'yes'],
     [{ available: true }, 'no'],
     [{ available: false, reason: 'backend-unavailable' }, 'no'],
-    [{ unexpected: 'shape' }, 'no'],
+    [{ unexpected: 'shape' }, 'unknown'],
+    [{ available: true, progressRecords: true, futureField: true }, 'unknown'],
   ])('reads %j as %s', async (data, expected) => {
     mockFetch.mockReturnValue(of({ data }));
     await expect(loadProgressRecordsCapability()).resolves.toBe(expected);
@@ -224,6 +227,50 @@ describe('records mode end to end', () => {
         'source',
       ].sort()
     );
+  });
+
+  it.each(['raiseHighWater', 'closeAttempt'])('keeps the wire identity when %s cannot persist', async (operation) => {
+    arm('yes');
+    progress(20);
+    clock += PARTIAL_DEBOUNCE_MS;
+    await runTimer();
+    const attempt = readAttempt(KEY)!;
+    expect(sent[0]!.body.attemptId).toBe(attempt.attemptId);
+    const original = Storage.prototype.setItem;
+    const spy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key.includes('guide-attempt-')) {
+        throw new Error('quota');
+      }
+      original.call(this, key, value);
+    });
+    try {
+      if (operation === 'raiseHighWater') {
+        raiseHighWater(KEY, 40);
+      } else {
+        closeAttempt(KEY, attempt.attemptId);
+      }
+      recordGuideCompletion(guideFact(), { attemptEligible: true });
+      await runTimer();
+      expect(sent.at(-1)!.body).toMatchObject({ completionPercent: 100, attemptId: attempt.attemptId });
+      expect(readAttempt(KEY)!.mode).toBe('records');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('stops new and already queued partials when disabled, but completes the same attempt', async () => {
+    arm('yes');
+    progress(20);
+    const attempt = readAttempt(KEY)!;
+    setFlag(false);
+    progress(50);
+    clock += PARTIAL_DEBOUNCE_MS;
+    await runTimer();
+    expect(sent).toEqual([]);
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+    await runTimer();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.body).toMatchObject({ completionPercent: 100, attemptId: attempt.attemptId });
   });
 
   it('keeps an attempt in the mode it was minted in when the flag flips', async () => {

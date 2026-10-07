@@ -159,7 +159,7 @@ describe('openfeature', () => {
       });
     });
 
-    it('pathfinder.progress-analytics is a boolean kill switch that defaults to true', () => {
+    it('pathfinder.progress-analytics is a boolean kill switch that defaults to false', () => {
       jest.isolateModules(() => {
         const mockOF = createMockOpenFeature();
         const mockReact = createMockReactSdk();
@@ -168,7 +168,7 @@ describe('openfeature', () => {
 
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].valueType).toBe('boolean');
-        expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].defaultValue).toBe(true);
+        expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].defaultValue).toBe(false);
       });
     });
 

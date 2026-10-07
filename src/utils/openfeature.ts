@@ -198,7 +198,7 @@ const pathfinderFeatureFlags = {
   'pathfinder.progress-analytics': {
     valueType: 'boolean',
     values: [true, false],
-    defaultValue: true,
+    defaultValue: false,
     trackingKey: 'progress_analytics',
   },
   /**
