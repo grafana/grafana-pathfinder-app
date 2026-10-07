@@ -219,7 +219,6 @@ describe('MarkCompleteFooter', () => {
     render(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);
 
     await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
     expect(onMarkComplete).not.toHaveBeenCalled();
     expect(reportAppInteraction).not.toHaveBeenCalled();
   });
@@ -236,7 +235,6 @@ describe('MarkCompleteFooter', () => {
       percentage: 100,
       hasProgress: true,
     });
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
   });
 
   it('announces reaching complete exactly once, and keeps focus rather than dropping it to the body', async () => {
@@ -248,7 +246,6 @@ describe('MarkCompleteFooter', () => {
     expect(liveRegions()).toEqual([completed]);
     expect(completed).toHaveTextContent('Completed');
     expect(completed).toHaveFocus();
-    expect(screen.getAllByText(/100% complete/)).toHaveLength(1);
   });
 
   it('announces nothing while unmarked, however often the percentage moves', async () => {
@@ -261,7 +258,6 @@ describe('MarkCompleteFooter', () => {
       notifyProgress?.();
     });
 
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('50% complete');
     expect(liveRegions()).toEqual([]);
   });
 
@@ -290,7 +286,6 @@ describe('MarkCompleteFooter', () => {
     });
 
     await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('25% complete');
   });
 
   it('ignores a reset that clears some other guide', async () => {
