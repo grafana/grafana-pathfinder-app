@@ -146,5 +146,10 @@
     "disabled": "Interactive learning is disabled",
     "disabledDescription": "Interactive learning is turned off for this organization.",
     "openSettings": "Open interactive learning settings"
+  },
+  "helpButtonHint": {
+    "message": "Vyzkoušejte interaktivní učení",
+    "dismiss": "Zavřít tip k učení",
+    "learn": "Učit se"
   }
 }
