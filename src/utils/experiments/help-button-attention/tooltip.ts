@@ -91,8 +91,16 @@ export function showHelpButtonTooltip(
   });
   container.append(icon, message, close);
   document.body.append(container);
-  const descriptions = anchor.getAttribute('aria-describedby')?.split(/\s+/).filter(Boolean) ?? [];
-  anchor.setAttribute('aria-describedby', [...descriptions, descriptionId].join(' '));
+  const describe = () => {
+    const descriptions = anchor.getAttribute('aria-describedby')?.split(/\s+/).filter(Boolean) ?? [];
+    if (!descriptions.includes(descriptionId)) {
+      anchor.setAttribute('aria-describedby', [...descriptions, descriptionId].join(' '));
+    }
+  };
+  describe();
+  // Grafana's Tooltip replaces the anchor's aria-describedby whenever it opens or closes.
+  const described = new MutationObserver(describe);
+  described.observe(anchor, { attributes: true, attributeFilter: ['aria-describedby'] });
   const position = () => {
     const rect = anchor.getBoundingClientRect();
     const width = container.getBoundingClientRect().width;
@@ -118,12 +126,13 @@ export function showHelpButtonTooltip(
     }
   };
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' && !event.defaultPrevented) {
       dismiss();
     }
   };
   close.addEventListener('click', dismiss);
-  document.addEventListener('keydown', onKeyDown);
+  container.addEventListener('keydown', onKeyDown);
+  anchor.addEventListener('keydown', onKeyDown);
   window.addEventListener('resize', position);
   window.addEventListener('scroll', position, true);
   const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(position);
@@ -138,8 +147,10 @@ export function showHelpButtonTooltip(
   return () => {
     cancelAnimationFrame(frame);
     resize?.disconnect();
+    described.disconnect();
     close.removeEventListener('click', dismiss);
-    document.removeEventListener('keydown', onKeyDown);
+    container.removeEventListener('keydown', onKeyDown);
+    anchor.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('resize', position);
     window.removeEventListener('scroll', position, true);
     const remaining = anchor

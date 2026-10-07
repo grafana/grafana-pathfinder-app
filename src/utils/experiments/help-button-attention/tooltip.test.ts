@@ -34,7 +34,7 @@ it.each(['close', 'escape'])('dismisses with %s, restores focus and removes only
   if (method === 'close') {
     close.click();
   } else {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    close.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   }
   expect(dismiss).toHaveBeenCalledTimes(1);
   expect(click).not.toHaveBeenCalled();
@@ -43,6 +43,50 @@ it.each(['close', 'escape'])('dismisses with %s, restores focus and removes only
   expect(document.querySelector('[data-testid="help-button-learning-hint"]')).toBeNull();
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   expect(dismiss).toHaveBeenCalledTimes(1);
+});
+
+it('ignores Escape pressed elsewhere or already handled, and dismisses from the Help button', () => {
+  const anchor = document.createElement('button');
+  const elsewhere = document.createElement('input');
+  document.body.append(anchor, elsewhere);
+  const dismiss = jest.fn();
+  cleanup = showHelpButtonTooltip(
+    anchor,
+    createTheme(),
+    { message: 'Try interactive learning', dismiss: 'Dismiss learning hint' },
+    dismiss
+  );
+  elsewhere.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  const handled = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+  handled.preventDefault();
+  anchor.dispatchEvent(handled);
+  expect(dismiss).not.toHaveBeenCalled();
+  anchor.focus();
+  anchor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  expect(dismiss).toHaveBeenCalledTimes(1);
+  expect(document.activeElement).toBe(anchor);
+});
+
+it("restores its description after Grafana's tooltip replaces aria-describedby", async () => {
+  const anchor = document.createElement('button');
+  document.body.append(anchor);
+  cleanup = showHelpButtonTooltip(
+    anchor,
+    createTheme(),
+    { message: 'Try interactive learning', dismiss: 'Dismiss learning hint' },
+    jest.fn()
+  );
+  const hintId = anchor.getAttribute('aria-describedby')!;
+  anchor.setAttribute('aria-describedby', 'core-tooltip');
+  await Promise.resolve();
+  expect(anchor.getAttribute('aria-describedby')).toBe(`core-tooltip ${hintId}`);
+  anchor.removeAttribute('aria-describedby');
+  await Promise.resolve();
+  expect(anchor.getAttribute('aria-describedby')).toBe(hintId);
+  cleanup();
+  await Promise.resolve();
+  expect(anchor.hasAttribute('aria-describedby')).toBe(false);
 });
 
 it('keeps its pointer aligned when the toolbar moves without resizing', () => {
