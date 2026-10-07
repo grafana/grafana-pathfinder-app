@@ -75,12 +75,12 @@ A new path that replays stored evidence — cross-device resume, sync, migration
 
 ### 3. Content key and identity
 
-The event names a **content key** (a URL or path), not a guide. The key is ambient: `getContentKey()` in `src/global-state/content-key.ts` prefers the active tab URL (published by `useGlobalActiveTabExposure` in a layout effect) and falls back to the renderer's `__DocsPluginContentKey`. `resolveGuideContentKey` lets a block-editor preview URL win.
+The event names a **content key** (a URL or path), not a guide. The key is ambient: `getContentKey()` in `src/global-state/content-key.ts` prefers the active tab URL and falls back to the renderer's `__DocsPluginContentKey`. `resolveGuideContentKey` lets a block-editor preview URL win. The sidebar publishes it through `useGlobalActiveTabExposure`; the floating, full-screen and guide-reader surfaces publish their own guide's key in the sidebar's spelling (`currentUrl || baseUrl`) through `usePublishSurfaceContentKey` (`src/hooks/`). Both run in a layout effect.
 
 Only the surface rendering a guide holds the manifest that turns a key into an identity. Each surface calls `useGuideIdentityRegistration(content.url, surfaceCompletionInput)` (`src/components/content-renderer/`), which:
 
 - resolves the identity through `resolveSurfaceGuideIdentity` — the **same** derivation `recordGuideCompletionForSurface` uses, so live progress and the terminal record key on one identity;
-- resolves the content key in a passive effect, relying on the active tab URL already being published by a layout effect;
+- resolves the content key in a passive effect, relying on the surface's key already being published by a layout effect;
 - registers into `src/completion-records/guide-identity-registry.ts`: the latest mounted surface wins, and its cleanup restores the previous owner without removing another surface's registration.
 
 `resolveSurfaceGuideIdentity` returns `null` — no attempt — for milestones, path and journey manifests, and guides with no manifest identity. Milestones and journeys are not attempt-eligible.
@@ -101,7 +101,7 @@ An attempt's **mode is fixed at mint**. It is `records` only when there is a que
 `ContentRenderer` (`src/components/content-renderer/content-renderer.tsx`) fires `onGuideComplete(source, contentKey)` once per content, from the first of:
 
 - every interactive section in its container completed;
-- a `kind: 'guide'` event at 100% whose key matches the active tab URL;
+- a `kind: 'guide'` event at 100% whose key matches the renderer's own `resolveGuideContentKey(content.url)`;
 - the Mark complete control.
 
 A reset re-arms it. Each surface forwards to `recordGuideCompletionForSurface` (`src/docs-retrieval/learning-journey-helpers.ts`), the single surface-neutral router. It decides milestone versus bundled versus standalone guide, and calls the recorder with `attemptEligible` true only for an ordinary guide. Journey refreshes pass `attemptEligible: false`.
@@ -151,8 +151,7 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 
 - [ ] Build one `SurfaceCompletionInput` and pass it to both `useGuideIdentityRegistration` and `recordGuideCompletionForSurface` (via `onGuideComplete`). `onGuideComplete` is optional on `ContentRenderer`; omitting it silently records nothing.
 - [ ] Call the registration hook unconditionally, above any early return.
-- [ ] Make sure the content key the store writes under is this surface's guide. The key is ambient (active tab URL first), so a surface rendering a guide that is not the active tab needs explicit handling.
-- [ ] Keep the active tab URL published in a layout effect before registration's passive effect runs.
+- [ ] Publish this surface's content key with `usePublishSurfaceContentKey`, in the sidebar's spelling, so the store writes under this surface's guide and not the sidebar's. The hook's layout effect runs before registration's passive effect.
 - [ ] Keep `ContentRenderer`'s `key` stable per content; a remount re-arms terminal completion.
 - [ ] Mirror an existing surface test: `DocsPanelContentArea.test.tsx`, `FloatingPanelContent.test.tsx`, `GuideReaderOverlay.test.tsx`.
 
