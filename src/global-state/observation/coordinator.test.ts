@@ -469,3 +469,23 @@ it("resets only its own guide's held requests", async () => {
   expect(rearmed.commit).toHaveBeenCalledWith('manual');
   successor.stop();
 });
+
+it("clears every guide's held requests on an all-guides reset", async () => {
+  const first = new CompletionCoordinator(async () => false);
+  const held = step({ id: 'guide-c/step', guideKey: 'guide-c', verify: ['on-page:/done'] });
+  const unregister = first.register(held);
+  first.request(held.id);
+  unregister();
+
+  const other = new CompletionCoordinator(async () => true);
+  other.register(step({ id: 'guide-a/step-2', guideKey: 'guide-a' }));
+  other.reset(undefined, 'all');
+
+  const successor = new CompletionCoordinator(async () => true);
+  const reopened = step({ id: 'guide-c/step', guideKey: 'guide-c', verify: ['on-page:/done'] });
+  successor.start();
+  successor.register(reopened);
+  await settle();
+  expect(reopened.commit).not.toHaveBeenCalled();
+  successor.stop();
+});

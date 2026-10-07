@@ -258,13 +258,13 @@ export class CompletionCoordinator {
     });
   }
 
-  reset(id?: string) {
+  reset(id?: string, scope: 'guide' | 'all' = 'guide') {
     this.abortController.abort();
     this.abortController = new AbortController();
     if (id === undefined) {
       const guides = new Set([...this.entries.values(), ...this.dormant.values()].map(({ step }) => step.guideKey));
       heldRequests.forEach((held, key) => {
-        if (guides.has(held.guideKey)) {
+        if (scope === 'all' || guides.has(held.guideKey)) {
           heldRequests.delete(key);
         }
       });

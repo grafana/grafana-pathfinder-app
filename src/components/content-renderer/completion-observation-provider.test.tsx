@@ -4,7 +4,7 @@ import { CompletionObservationProvider } from './completion-observation-provider
 import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import { markStepCompleted } from '../../global-state/completion-store';
 import { StorageEvents } from '../../lib/event-names';
-import { resetHeldRequestsForTests } from '../../global-state/observation/coordinator';
+import { CompletionCoordinator, resetHeldRequestsForTests } from '../../global-state/observation/coordinator';
 
 const mockCheck = jest.fn();
 const mockListen = jest.fn(() => () => {});
@@ -297,4 +297,39 @@ it('frees a check slot once a hung check times out', async () => {
   } finally {
     jest.useRealTimers();
   }
+});
+
+it("drops other guides' held requests when all progress is reset", async () => {
+  const commitElsewhere = jest.fn();
+  const elsewhere = {
+    id: 'elsewhere/step',
+    guideKey: 'elsewhere',
+    stepId: 'step',
+    actions: [{ targetAction: 'button', refTarget: '#save' }],
+    verify: ['on-page:/done'],
+    eligible: true,
+    executing: false,
+    completed: false,
+    commit: commitElsewhere,
+  };
+  const left = new CompletionCoordinator(async () => false);
+  const unregister = left.register(elsewhere);
+  left.request(elsewhere.id);
+  unregister();
+
+  render(
+    <CompletionObservationProvider contentKey="guide">
+      <Step onComplete={jest.fn()} />
+    </CompletionObservationProvider>
+  );
+  act(() => {
+    window.dispatchEvent(new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: '*' } }));
+  });
+
+  const reopened = new CompletionCoordinator(async () => true);
+  reopened.start();
+  reopened.register({ ...elsewhere });
+  await act(async () => {});
+  expect(commitElsewhere).not.toHaveBeenCalled();
+  reopened.stop();
 });

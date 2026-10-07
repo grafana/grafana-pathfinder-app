@@ -152,7 +152,9 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
     window.addEventListener('storage', restoreHandoff);
     const handleReset = (event: Event) => {
       const key = (event as CustomEvent<{ contentKey?: string }>).detail?.contentKey;
-      if (!key || key === '*' || key === resolveGuideContentKey(contentKey)) {
+      if (!key || key === '*') {
+        coordinator.reset(undefined, 'all');
+      } else if (key === resolveGuideContentKey(contentKey)) {
         coordinator.reset();
       }
     };
