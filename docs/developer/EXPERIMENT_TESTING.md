@@ -23,6 +23,11 @@ Use a signed-in Cloud QA stack with analytics and Pathfinder frontend telemetry 
 `{ "variant": "glow" }`, `{ "variant": "tooltip" }`, or `{ "variant": "excluded" }`, then reload with the sidebar closed.
 On older Grafana hosts without local feature-control support, use a remote QA targeting rule.
 
+For a quick visual check without remote assignment, open `?featureControl=true&pathfinderHelpPreview=glow`
+(or `control` / `tooltip`). Preview mode forces the variant through the SDK's development override,
+sends no exposure or outcome telemetry, keeps dismissals in memory only, and shows a floating picker
+to switch variants and reset. It does not verify assignment or attribution; use the flag override for that.
+
 Disable **Open panel on launch** in the test stack's plugin configuration before this test,
 and set `pathfinder.auto-open-sidebar` to `false`. The plugin setting and feature flag are
 independent auto-open triggers: overriding the flag alone does not disable the plugin setting.
@@ -47,7 +52,7 @@ In all three active arms, verify exactly one `experiment_viewed` for the SDK ses
 Control must have the original button styles. Glow must pulse continuously on a slow four-second cycle, remain highlighted,
 retain keyboard focus, and stop after click or opening through another route. Reopening and route
 changes must not restart the nudge. Check light/dark themes and reduced motion (static from the start).
-The tooltip must disappear on Help click or another opening route. Close and Escape must dismiss
+The tooltip must disappear on Help click or another opening route. Close, and Escape with focus on the hint or Help, must dismiss
 only the tooltip, preserving subsequent Help-click attribution; dismissal survives a tab reload.
 Mobile dropdowns, hidden buttons, excluded/malformed/missing flags, and analytics-disabled sessions
 must produce neither a nudge nor an exposure. Exposing the toolbar after it mounts late should work.

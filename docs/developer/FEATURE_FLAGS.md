@@ -283,7 +283,7 @@ Enrollment also re-stamps the Faro session `experiments` attribute, because `ini
 Object flag, default `{ "variant": "excluded" }`. `control` leaves the Help button unchanged;
 `glow` adds a halo using Grafana's theme-aware orange palette, pulses continuously on a slow four-second cycle.
 `tooltip` combines the same button glow with a subtly pulsing, graduation-cap-marked dismissible “Try interactive learning” hint below the button.
-Reduced-motion users receive the static highlight. Closing the hint or pressing Escape hides only
+Reduced-motion users receive the static highlight. Closing the hint, or pressing Escape while focus is on the hint or the Help button, hides only
 the hint; the subsequent Help click remains attributable. Opening any Pathfinder surface or clicking
 Help dismisses the treatment for the current tab, scoped by namespace and signed-in user.
 
@@ -319,7 +319,9 @@ properties as the click. A RudderStack dashboard needs staging models for these 
 
 Retirement removes the flag registry entry, `help-button-attention/`, its bootstrap call, the shared
 constants and dismissal key, the click event and mirror option (if unused elsewhere), the narrow
-Faro filter exception and getter, these documentation sections, and the remote flag/experiment.
+Faro filter exception and getter, the closed-surface experiment note in `TELEMETRY.md`, these documentation
+sections, and the remote flag/experiment. If no other experiment uses it, also remove `@grafana-experiments/sdk`
+and `src/lib/telemetry/experiments.ts`.
 
 ## Backend aggregation toggles (not MTFF)
 

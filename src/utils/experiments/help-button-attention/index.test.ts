@@ -94,6 +94,7 @@ afterEach(async () => {
   stop?.();
   stop = undefined;
   document.body.replaceChildren();
+  window.history.replaceState(null, '', '/');
   await OpenFeature.clearProviders();
   jest.useRealTimers();
   jest.restoreAllMocks();
@@ -155,6 +156,23 @@ it.each([{ variant: 'excluded' }, { variant: 'unknown' }, {}, null, false])(
     expect(reportAppInteraction).not.toHaveBeenCalled();
   }
 );
+
+it.each([
+  ['?featureControl=true&pathfinderHelpPreview=tooltip', true],
+  ['?pathfinderHelpPreview=tooltip', false],
+])('previews a forced variant without telemetry only under feature control (%s)', async (search, previewed) => {
+  window.history.replaceState(null, '', `/${search}`);
+  await flag({ variant: 'excluded' });
+  stop = await startHelpButtonExperiment();
+  await settle();
+  expect(button.classList.contains('test-glow')).toBe(previewed);
+  expect(Boolean(document.querySelector('[data-testid="help-button-learning-hint"]'))).toBe(previewed);
+  expect(Boolean(document.querySelector('[data-testid="help-experiment-preview"]'))).toBe(previewed);
+  button.click();
+  expect(reportExperimentView).not.toHaveBeenCalled();
+  expect(reportAppInteraction).not.toHaveBeenCalled();
+  expect(mockPushEvent).not.toHaveBeenCalled();
+});
 
 it('does not turn a missing flag into control', async () => {
   await OpenFeature.setProviderAndWait('help-button-test', new TypedInMemoryProvider({}));
