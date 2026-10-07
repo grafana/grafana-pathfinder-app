@@ -20,12 +20,15 @@ export {
   manifestGuideId,
   manifestGuideSource,
   normalizeGuideId,
+  guideIdentityAnalyticsProperties,
+  pathAnalyticsProperties,
 } from './completion-identity';
 export type {
   ResolveCompletionIdentityInput,
   ResolveMilestoneCompletionIdentityInput,
   ResolveGuideCompletionIdentityInput,
 } from './completion-identity';
+export type { PathAnalyticsIdentity } from './types';
 export { armCompletionWriteHook, discardQueuedCompletionWrites } from './completion-write-hook';
 export type {
   CompletionKey,

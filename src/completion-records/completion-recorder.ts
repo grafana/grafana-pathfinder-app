@@ -1,5 +1,6 @@
 import { logger } from '../lib/logging';
-import { completionEmittedStorage } from '../lib/user-storage';
+import { completionEmittedStorage, completionReportedStorage } from '../lib/user-storage';
+import { reportCompletionAnalytics } from './completion-analytics';
 import { bundledGuideIdReadVariants } from './completion-identity';
 import { currentCompletionQueueOwnerKey } from './completion-write-storage';
 
@@ -28,8 +29,27 @@ function synchronizePendingOwner(): string | null {
 // Only durable acceptance marks a completion emitted across reloads.
 const emitted = new Set<string>();
 
+const reported = new Set<string>();
+
 function dedupeKey(kind: CompletionKind, guideSource: string, guideId: string): string {
   return `${kind}:${guideSource}:${guideId}`;
+}
+
+function reportOnce(fact: CompletionFact, key: string, variants: readonly string[]): void {
+  try {
+    const alreadyReported = variants.some((id) => {
+      const variantKey = dedupeKey(fact.kind, fact.guideSource, id);
+      return reported.has(variantKey) || completionReportedStorage.isEmitted(variantKey);
+    });
+    if (alreadyReported) {
+      return;
+    }
+    reported.add(key);
+    void completionReportedStorage.markEmitted(key);
+    reportCompletionAnalytics(fact);
+  } catch (error) {
+    logger.warn('Failed to report completion analytics', { error });
+  }
 }
 
 /** `true` when at least one listener durably accepted the fact. */
@@ -50,7 +70,7 @@ function emit(fact: CompletionFact): boolean {
  * Record a terminal guide completion. Covers bundled/standalone-interactive
  * guides reaching 100% and the milestone-as-guide bridge. Never blocks, never
  * throws on the completion path. Idempotent per `(kind, guideSource, guideId)`,
- * durably — see `invalidateEmittedCompletion` for the only way to lift it.
+ * durably.
  */
 export function recordGuideCompletion(fact: GuideCompletionFact): void {
   record(fact);
@@ -79,6 +99,7 @@ function record(fact: CompletionFact): void {
       emitted.add(key);
       return;
     }
+    reportOnce(fact, key, variants);
     if (listeners.size === 0 && owner) {
       if (!pending.has(key) && pending.size >= MAX_PENDING_COMPLETIONS) {
         logger.warn('completion write: startup buffer is full');
@@ -112,16 +133,24 @@ export function onCompletionRecorded(listener: CompletionListener): () => void {
 }
 
 // Legacy /content.json identities remain valid until their durable records are retired.
-export function invalidateEmittedCompletion(guideSource: string, guideId: string): void {
-  const variants = bundledGuideIdReadVariants(guideId);
+function identityKeys(guideSource: string, guideId: string): string[] {
   const kinds: readonly CompletionKind[] = ['guide', 'journey'];
-  for (const kind of kinds) {
-    for (const id of variants) {
-      const key = dedupeKey(kind, guideSource, id);
-      pending.delete(key);
-      emitted.delete(key);
-      void completionEmittedStorage.clear(key);
-    }
+  return kinds.flatMap((kind) => bundledGuideIdReadVariants(guideId).map((id) => dedupeKey(kind, guideSource, id)));
+}
+
+export function liftDurableCompletionGuard(guideSource: string, guideId: string): void {
+  for (const key of identityKeys(guideSource, guideId)) {
+    pending.delete(key);
+    emitted.delete(key);
+    void completionEmittedStorage.clear(key);
+  }
+}
+
+export function invalidateEmittedCompletion(guideSource: string, guideId: string): void {
+  liftDurableCompletionGuard(guideSource, guideId);
+  for (const key of identityKeys(guideSource, guideId)) {
+    reported.delete(key);
+    void completionReportedStorage.clear(key);
   }
 }
 
@@ -132,12 +161,15 @@ export function discardPendingCompletions(): void {
 export function invalidateAllEmittedCompletions(): void {
   discardPendingCompletions();
   emitted.clear();
+  reported.clear();
   void completionEmittedStorage.clearAll();
+  void completionReportedStorage.clearAll();
 }
 
 export function __resetRecorderForTests(): void {
   pending.clear();
   pendingOwner = null;
   emitted.clear();
+  reported.clear();
   listeners.clear();
 }

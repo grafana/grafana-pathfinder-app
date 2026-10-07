@@ -1,3 +1,5 @@
+import type { CompletionSource } from '../../completion-records/types';
+
 import { handleKioskLinkClick } from '../../utils/kiosk-navigation';
 import { getGuideResponseId } from '../../lib/guide-response-id';
 import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBoundary';
@@ -29,6 +31,8 @@ import {
   useGuideResponses,
   isJourneyCoverPage,
   getCurrentMilestone,
+  resolveSurfaceCompletionIdentity,
+  type SurfaceCompletionInput,
 } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
@@ -65,6 +69,7 @@ import {
 import { substituteVariables } from '../../utils/variable-substitution';
 import {
   STANDALONE_SECTION_ID,
+  getGuideCompletionSource,
   isBlockEditorPreviewUrl,
   refreshGuidePercentageOnLoad,
 } from '../../global-state/completion-store';
@@ -128,7 +133,8 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
 interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
-  onGuideComplete?: () => void;
+  onGuideComplete?: (source?: CompletionSource, contentKey?: string) => void;
+  completionSurface?: Pick<SurfaceCompletionInput, 'baseUrl' | 'currentUrl'>;
   /**
    * Advance to the next milestone, for the milestone form of the Mark complete
    * control. Surfaces that cannot navigate — or that are on the last milestone
@@ -178,6 +184,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
   onGuideComplete,
+  completionSurface,
   onContinueToNextMilestone,
   onActiveTrackChange,
   initialActiveTrackId,
@@ -207,32 +214,26 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
 
   const markCompleteRearmedRef = useRef(false);
 
-  // The one gate every completion route passes through — the automatic
-  // section/step routes below and the Mark complete control at the foot of the
-  // content alike — so a guide records exactly one completion however it was
-  // finished, and a click followed by an auto-complete does not record twice.
-  // Emitting also spends any pending re-arm: whichever route gets here first
-  // is the one completion, so a later click cannot re-open a gate that has
-  // already closed on this guide.
-  const triggerGuideComplete = useCallback(() => {
-    if (guideCompleteCalledRef.current) {
-      return;
-    }
-    guideCompleteCalledRef.current = true;
-    markCompleteRearmedRef.current = false;
-    onGuideCompleteRef.current?.();
-  }, []);
+  // The first terminal trigger owns the completion cause until a reset.
+  const triggerGuideComplete = useCallback(
+    (source?: CompletionSource) => {
+      if (guideCompleteCalledRef.current) {
+        return;
+      }
+      guideCompleteCalledRef.current = true;
+      markCompleteRearmedRef.current = false;
+      const contentKey = resolveGuideContentKey(content.url);
+      onGuideCompleteRef.current?.(source ?? getGuideCompletionSource(contentKey), contentKey);
+    },
+    [content.url]
+  );
 
-  // The Mark complete route's own entry to that gate. A reset arms this route
-  // and only this route, so the reader's next click records once; the gate
-  // closes again inside `triggerGuideComplete`, leaving the automatic routes
-  // exactly the state they would have seen without the reset.
   const triggerGuideCompleteFromMark = useCallback(() => {
     if (markCompleteRearmedRef.current) {
       markCompleteRearmedRef.current = false;
       guideCompleteCalledRef.current = false;
     }
-    triggerGuideComplete();
+    triggerGuideComplete('manual');
   }, [triggerGuideComplete]);
 
   // Reset tracking state when content changes (new guide = fresh start)
@@ -511,10 +512,24 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   // decision 2). A path's cover page is the one thing it is absent from, and
   // that is not the deleted predicate: a table of contents is neither a guide
   // nor a milestone, and marking it complete would record a guide nobody read.
+  const { baseUrl: completionBaseUrl, currentUrl: completionCurrentUrl } = completionSurface ?? {
+    currentUrl: content.url,
+  };
+  const completionIdentity = useMemo(
+    () =>
+      resolveSurfaceCompletionIdentity({
+        baseUrl: completionBaseUrl,
+        contentUrl: content.url,
+        currentUrl: completionCurrentUrl,
+        metadata: content.metadata,
+      }),
+    [completionBaseUrl, completionCurrentUrl, content.url, content.metadata]
+  );
   const afterContent = isCoverPage ? null : (
     <MarkCompleteFooter
       context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
       contentUrl={content.url}
+      completionIdentity={completionIdentity}
       onMarkComplete={triggerGuideCompleteFromMark}
       onContinue={onContinueToNextMilestone}
     />
