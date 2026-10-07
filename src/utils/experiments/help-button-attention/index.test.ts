@@ -101,7 +101,7 @@ it.each(['control', 'glow', 'tooltip'])(
     stop = await startHelpButtonExperiment();
     await settle();
     expect(reportExperimentView).toHaveBeenCalledWith(HELP_BUTTON_EXPERIMENT_ID, 'closed-help-toolbar', variant);
-    expect(button.classList.contains('test-glow')).toBe(variant === 'glow');
+    expect(button.classList.contains('test-glow')).toBe(variant !== 'control');
     button.click();
     expect(document.querySelector('[data-testid="help-button-learning-hint"]')).toBeNull();
     expect(reportAppInteraction).toHaveBeenCalledWith(

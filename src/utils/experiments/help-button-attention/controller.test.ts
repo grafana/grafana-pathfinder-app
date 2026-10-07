@@ -115,7 +115,7 @@ it.each(['control', 'glow', 'tooltip'] as const)(
     await frame();
     await frame();
     expect(runtime.activate).toHaveBeenCalledTimes(1);
-    expect(button.classList.contains('glow')).toBe(variant === 'glow');
+    expect(button.classList.contains('glow')).toBe(variant !== 'control');
     button.click();
     button.click();
     expect(runtime.reportClick).toHaveBeenCalledTimes(1);
@@ -211,11 +211,12 @@ it('dismisses just the tooltip and still attributes a later Help click', async (
   await frame();
   await frame();
   expect(runtime.showTooltip).toHaveBeenCalledTimes(1);
-  expect(button.className).toBe('');
+  expect(button).toHaveClass('glow');
   runtime.showTooltip.mock.calls[0]![1]();
   await frame();
   expect(runtime.removeTooltip).toHaveBeenCalledTimes(1);
   expect(runtime.dismissTooltip).toHaveBeenCalledTimes(1);
+  expect(button).toHaveClass('glow');
   expect(runtime.showTooltip).toHaveBeenCalledTimes(1);
   expect(runtime.reportClick).not.toHaveBeenCalled();
   button.click();

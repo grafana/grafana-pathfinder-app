@@ -1,5 +1,5 @@
-import { css } from '@emotion/css';
-import type { GrafanaTheme2 } from '@grafana/data';
+import { css, keyframes } from '@emotion/css';
+import { colorManipulator, type GrafanaTheme2 } from '@grafana/data';
 
 export function showHelpButtonTooltip(
   anchor: HTMLButtonElement,
@@ -8,6 +8,21 @@ export function showHelpButtonTooltip(
   onDismiss: () => void
 ): () => void {
   const container = document.createElement('div');
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.setAttribute('width', '18');
+  icon.setAttribute('height', '18');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.setAttribute('focusable', 'false');
+  icon.style.flexShrink = '0';
+  icon.style.color = theme.colors.warning.text;
+  const iconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  iconPath.setAttribute('fill', 'currentColor');
+  iconPath.setAttribute(
+    'd',
+    'M21.49,10.19l-1-.55h0l-9-5-.11,0a1.06,1.06,0,0,0-.19-.06l-.19,0-.18,0a1.17,1.17,0,0,0-.2.06l-.11,0-9,5a1,1,0,0,0,0,1.74L4,12.76V17.5a3,3,0,0,0,3,3h8a3,3,0,0,0,3-3V12.76l2-1.12V14.5a1,1,0,0,0,2,0V11.06A1,1,0,0,0,21.49,10.19ZM16,17.5a1,1,0,0,1-1,1H7a1,1,0,0,1-1-1V13.87l4.51,2.5.15.06.09,0a1,1,0,0,0,.25,0h0a1,1,0,0,0,.25,0l.09,0a.47.47,0,0,0,.15-.06L16,13.87Zm-5-3.14L4.06,10.5,11,6.64l6.94,3.86Z'
+  );
+  icon.append(iconPath);
   const message = document.createElement('span');
   const close = document.createElement('button');
   const descriptionId = `help-button-hint-${crypto.randomUUID()}`;
@@ -18,6 +33,12 @@ export function showHelpButtonTooltip(
   close.type = 'button';
   close.setAttribute('aria-label', labels.dismiss);
   close.textContent = '\u00d7';
+  const pulse = keyframes({
+    '0%, 100%': { boxShadow: theme.shadows.z2 },
+    '50%': {
+      boxShadow: `${theme.shadows.z2}, 0 0 0 1px ${colorManipulator.alpha(theme.colors.warning.main, 0.25)}, 0 0 10px ${colorManipulator.alpha(theme.colors.warning.main, 0.12)}`,
+    },
+  });
   container.className = css({
     position: 'fixed',
     zIndex: theme.zIndex.tooltip,
@@ -31,6 +52,10 @@ export function showHelpButtonTooltip(
     border: `1px solid ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,
     boxShadow: theme.shadows.z2,
+    animation: `${pulse} 4s ease-in-out infinite`,
+    '&:hover, &:focus-within': { animation: 'none' },
+    '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+    '@media (forced-colors: active)': { animation: 'none' },
     fontFamily: theme.typography.fontFamily,
     fontSize: theme.typography.bodySmall.fontSize,
     lineHeight: theme.typography.bodySmall.lineHeight,
@@ -64,7 +89,7 @@ export function showHelpButtonTooltip(
       '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 1 },
     },
   });
-  container.append(message, close);
+  container.append(icon, message, close);
   document.body.append(container);
   const descriptions = anchor.getAttribute('aria-describedby')?.split(/\s+/).filter(Boolean) ?? [];
   anchor.setAttribute('aria-describedby', [...descriptions, descriptionId].join(' '));

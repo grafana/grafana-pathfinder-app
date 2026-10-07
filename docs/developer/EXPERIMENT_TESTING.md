@@ -10,7 +10,7 @@ Open Grafana with `?featureControl=true` (for example, append it to the current 
 | --------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `pathfinder.highlighted-guide-experiment`           | `excluded` / `control` / `treatment`        | Both `control` and `treatment` keep Pathfinder visible — they differ only in which `guideId` is auto-opened + featured.    |
 | `pathfinder.interactive-learning-banner-experiment` | `excluded` / `control` / `treatment`        | `treatment` shows a dismissible explanatory banner on the context page and above opened guides. `control` renders nothing. |
-| `pathfinder.help-button-nudge-experiment`           | `excluded` / `control` / `glow` / `tooltip` | Orange highlight or dismissible learning hint on the closed desktop Help button; control is unchanged.                     |
+| `pathfinder.help-button-nudge-experiment`           | `excluded` / `control` / `glow` / `tooltip` | Orange highlight alone or with a dismissible learning hint on the closed desktop Help button; control is unchanged.        |
 
 See [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md) for the full flag shapes and variant tables.
 

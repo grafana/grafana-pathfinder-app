@@ -100,7 +100,7 @@ export function observeHelpButton(options: Options): () => void {
     }
     if (state.status === 'active') {
       button.addEventListener('click', onClick, true);
-      if (state.variant === 'glow') {
+      if (state.variant === 'glow' || state.variant === 'tooltip') {
         const nextClass = options.getClassName();
         if (className !== nextClass) {
           if (className) {

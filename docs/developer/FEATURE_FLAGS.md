@@ -282,7 +282,7 @@ Enrollment also re-stamps the Faro session `experiments` attribute, because `ini
 
 Object flag, default `{ "variant": "excluded" }`. `control` leaves the Help button unchanged;
 `glow` adds a halo using Grafana's theme-aware orange palette, pulses continuously on a slow four-second cycle.
-`tooltip` displays a dismissible “Try interactive learning” hint below the button.
+`tooltip` combines the same button glow with a subtly pulsing, graduation-cap-marked dismissible “Try interactive learning” hint below the button.
 Reduced-motion users receive the static highlight. Closing the hint or pressing Escape hides only
 the hint; the subsequent Help click remains attributable. Opening any Pathfinder surface or clicking
 Help dismisses the treatment for the current tab, scoped by namespace and signed-in user.
