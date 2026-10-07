@@ -163,6 +163,8 @@ export enum AnalyticsLinkType {
   RelatedJourneyExternal = 'related_journey_external',
 }
 
+export type ResetScope = 'guide' | 'path' | 'assignment' | 'all';
+
 // ============================================================================
 // CORE ANALYTICS FUNCTIONS
 // ============================================================================
