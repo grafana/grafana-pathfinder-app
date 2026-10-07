@@ -14,14 +14,13 @@ import {
 import {
   journeyCompletionStorage,
   milestoneCompletionStorage,
-  learningProgressStorage,
   interactiveCompletionStorage,
 } from '../lib/user-storage';
 import { sanitizeContentKey } from '../global-state/content-key';
 import { resolvePathMemberPercentages, type PathMember } from '../global-state/path-member-join';
 import { dispatchProgress } from '../global-state/progress-events';
 import { meanOfMemberPercentages } from '../lib/guide-stats';
-import { markGuideCompleted, findPathByUrl } from '../lib/guide-completion-bridge';
+import { awardBadge, markGuideCompleted, findPathByUrl } from '../lib/guide-completion-bridge';
 import {
   recordGuideCompletion,
   recordJourneyCompletion,
@@ -1010,7 +1009,7 @@ export async function markMilestoneDone(
 
       const path = findPathByUrl(journeyBaseUrl);
       if (path?.badgeId) {
-        await learningProgressStorage.awardBadge(path.badgeId);
+        await awardBadge(path.badgeId);
       }
 
       // The `journey_completed` trigger, keyed on the journey identity and

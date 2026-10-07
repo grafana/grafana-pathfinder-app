@@ -40,7 +40,6 @@ jest.mock('../lib/user-storage', () => ({
     // path exercised sets this explicitly.
     getCompletedSync: (...a: unknown[]) => milestoneGetCompletedSyncMock(...a),
   },
-  learningProgressStorage: { awardBadge: (...a: unknown[]) => awardBadgeMock(...a) },
   // The recorder's durable dedupe guard. A plain in-memory fake here (rather
   // than the real storage) matches this file's existing "real recorder,
   // mocked storage" split — the recorder's own tests cover the guard itself.
@@ -77,6 +76,7 @@ jest.mock('../lib/guide-completion-bridge', () => {
   return {
     __esModule: true,
     markGuideCompleted: (...a: unknown[]) => markGuideCompletedMock(...a),
+    awardBadge: (...a: unknown[]) => awardBadgeMock(...a),
     findPathByUrl: (url: string) =>
       (getPathsDataMock().paths as Array<{ url?: string }>).find((path) => matchesPathUrl(path, url)),
   };
