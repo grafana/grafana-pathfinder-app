@@ -142,7 +142,7 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
       reportClick: (target: HelpToolbarTarget) => sdk.reportAnalytics(HELP_BUTTON_CLICK_EVENT, { target }),
       openLearning: () => {
         if (findHelpButton(helpLabel, false)?.getAttribute('aria-expanded') === 'true') {
-          findHelpButton(helpLabel, false)?.click();
+          sidebarState.requestCloseSidebar();
           return;
         }
         sidebarState.setPendingOpenSource('help_button_learn');

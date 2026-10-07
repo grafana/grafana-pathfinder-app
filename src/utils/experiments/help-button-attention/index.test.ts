@@ -40,6 +40,7 @@ jest.mock('../../../global-state/sidebar', () => ({
     setPendingOpenSource: jest.fn(),
     openSidebar: jest.fn(),
     closeSidebar: jest.fn(),
+    requestCloseSidebar: jest.fn(),
     getIsSidebarMounted: jest.fn(() => false),
   },
 }));
@@ -221,7 +222,8 @@ it('opens interactive learning from Learn, attributes it, and keeps the button f
   const closeHelp = jest.fn();
   button.addEventListener('click', closeHelp);
   learn()!.click();
-  expect(closeHelp).toHaveBeenCalledTimes(1);
+  expect(sidebarState.requestCloseSidebar).toHaveBeenCalledTimes(1);
+  expect(closeHelp).not.toHaveBeenCalled();
   button.setAttribute('aria-expanded', 'false');
   expect(sidebarState.openSidebar).toHaveBeenCalledTimes(1);
   expect(learn()?.dataset.attention).toBe('false');
