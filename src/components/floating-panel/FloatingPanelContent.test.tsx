@@ -38,6 +38,11 @@ jest.mock('../content-renderer/useGuideIdentityRegistration', () => ({
   useGuideIdentityRegistration: jest.fn(),
 }));
 
+// The hooks barrel pulls @grafana/runtime in through user-storage.
+jest.mock('../../hooks', () => ({
+  usePublishSurfaceContentKey: jest.fn(),
+}));
+
 jest.mock('../docs-panel/link-handler.hook', () => ({
   useLinkClickHandler: jest.fn(),
 }));

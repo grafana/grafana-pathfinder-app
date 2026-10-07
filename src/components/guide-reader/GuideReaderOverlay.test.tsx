@@ -71,6 +71,18 @@ describe('GuideReaderOverlay', () => {
     expect(recordGuideRender).not.toHaveBeenCalled();
   });
 
+  it('publishes the rendered guide key (the sidebar tab spelling) and clears it on unmount', async () => {
+    window.__DocsPluginActiveTabUrl = 'https://grafana.com/docs/stale/';
+    mockFetchContent.mockResolvedValue({ content: { url: 'bundled:intro', type: 'interactive' } } as any);
+
+    const { unmount } = render(<GuideReaderOverlay doc="bundled:intro" />);
+    await screen.findByTestId('mock-content');
+
+    expect(window.__DocsPluginActiveTabUrl).toBe('bundled:intro');
+    unmount();
+    expect(window.__DocsPluginActiveTabUrl).toBe('');
+  });
+
   it('provides controller mode to the rendered content', async () => {
     mockFetchContent.mockResolvedValue({ content: { url: 'backend-guide:x', type: 'interactive' } } as any);
 
