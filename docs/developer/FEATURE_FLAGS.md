@@ -293,7 +293,7 @@ missing namespaces, disabled analytics, and unavailable Pathfinder Faro instance
 The DOM adapter depends on Grafana's question-circle icon test ID, localized Help label, and
 expanded-state contract; unsupported markup fails closed.
 
-This experiment uses `@grafana-experiments/sdk@0.2.0` with Pathfinder's existing OpenFeature client
+This experiment uses `@grafana-experiments/sdk@0.3.0` with Pathfinder's existing OpenFeature client
 and isolated Faro instance. It deliberately has **no `trackingKey`**: the SDK owns the single
 `experiment_viewed` denominator through `reportExperimentView` and Faro. Experiment ID:
 `pathfinder-help-button-nudge-v1`; group: `closed-help-toolbar`. SDK exposure deduplication is per
