@@ -4,7 +4,7 @@ import { CompletionObservationProvider } from './completion-observation-provider
 import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import { markStepCompleted } from '../../global-state/completion-store';
 import { StorageEvents } from '../../lib/event-names';
-import { CompletionCoordinator } from '../../global-state/observation/coordinator';
+import { resetHeldRequestsForTests } from '../../global-state/observation/coordinator';
 
 const mockCheck = jest.fn();
 const mockListen = jest.fn(() => () => {});
@@ -66,7 +66,7 @@ function Step({
 }
 
 afterEach(() => {
-  new CompletionCoordinator(jest.fn()).reset();
+  resetHeldRequestsForTests();
 });
 
 beforeEach(() => {
@@ -256,4 +256,45 @@ it('completes a formfill step when the reader picks the value from a dropdown', 
   fireEvent.click(screen.getByRole('option'));
   await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
   expect(markStepCompleted).toHaveBeenCalledWith('pick-scenario', undefined, 'observed', 'guide');
+});
+
+it('frees a check slot once a hung check times out', async () => {
+  jest.useFakeTimers();
+  try {
+    mockCheck.mockImplementation(({ requirements }: { requirements: string[] }) =>
+      requirements[0] === 'has-datasources'
+        ? Promise.resolve({ pass: true, verdict: 'satisfied' })
+        : new Promise(() => {})
+    );
+    const done = jest.fn();
+    function ObjectiveStep({ stepId, objective }: { stepId: string; objective: string }) {
+      useObservedCompletion({
+        stepId,
+        objectives: [objective],
+        executing: false,
+        eligible: true,
+        onComplete: objective === 'has-datasources' ? done : undefined,
+        actions: [{ targetAction: 'noop' }],
+        analytics: { location: 'test', targetAction: 'noop', stepMeta: { stepId } },
+      });
+      return null;
+    }
+    render(
+      <CompletionObservationProvider contentKey="guide">
+        {['on-page:/a', 'on-page:/b', 'on-page:/c', 'on-page:/d'].map((objective) => (
+          <ObjectiveStep key={objective} stepId={objective} objective={objective} />
+        ))}
+        <ObjectiveStep stepId="ready" objective="has-datasources" />
+      </CompletionObservationProvider>
+    );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(4100);
+    });
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(5100);
+    });
+    expect(done).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
 });

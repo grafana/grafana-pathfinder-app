@@ -65,6 +65,7 @@ export function useObservedCompletion(options: Options) {
   const registration: ObservationStep = {
     ...options,
     id,
+    guideKey: contentKey,
     completed,
     commit,
     readCompleted: () => readStepCompletion(stepId, sectionId, contentKey),

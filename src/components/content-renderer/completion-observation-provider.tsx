@@ -36,6 +36,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
   const connected = useControllerConnected();
   const coordinator = useMemo(() => {
     const inFlight = new Map<string, Promise<boolean>>();
+    const overdue = new Set<string>();
     return new CompletionCoordinator(async (conditions, step, signal) => {
       const action = step.actions[0];
       const options = {
@@ -71,10 +72,13 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       const key = JSON.stringify([conditions, step.actions[0]]);
       let pending = inFlight.get(key);
       if (!pending) {
-        if (inFlight.size >= 4) {
+        if (inFlight.size - overdue.size >= 4) {
           return false;
         }
-        pending = evaluate().finally(() => inFlight.delete(key));
+        pending = evaluate().finally(() => {
+          inFlight.delete(key);
+          overdue.delete(key);
+        });
         inFlight.set(key, pending);
       }
       let onAbort = () => {};
@@ -96,6 +100,9 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       } finally {
         clearTimeout(timer);
         signal.removeEventListener('abort', onAbort);
+        if (inFlight.get(key) === pending) {
+          overdue.add(key);
+        }
       }
     });
   }, [checkPostconditions, mode, channel]);

@@ -13,6 +13,7 @@ export type ObservationReason = 'objectives' | 'observed' | 'manual' | 'skipped'
 
 export interface ObservationStep {
   id: string;
+  guideKey?: string;
   stepId: string;
   sectionId?: string;
   actions: ObservedAction[];
@@ -39,6 +40,7 @@ interface Entry {
 interface HeldRequest {
   reason: ObservationReason;
   skipVerify: boolean;
+  guideKey?: string;
   stepId: string;
   sectionId?: string;
   expires: number;
@@ -72,11 +74,16 @@ function holdRequest(step: ObservationStep, reason: ObservationReason, skipVerif
   heldRequests.set(step.id, {
     reason,
     skipVerify,
+    guideKey: step.guideKey,
     stepId: step.stepId,
     sectionId: step.sectionId,
     expires: Date.now() + HELD_REQUEST_TTL_MS,
   });
   liveCoordinators.forEach((coordinator) => coordinator.claim(step.id));
+}
+
+export function resetHeldRequestsForTests() {
+  heldRequests.clear();
 }
 
 function takeHeldRequest(id: string): HeldRequest | undefined {
@@ -255,8 +262,13 @@ export class CompletionCoordinator {
     this.abortController.abort();
     this.abortController = new AbortController();
     if (id === undefined) {
+      const guides = new Set([...this.entries.values(), ...this.dormant.values()].map(({ step }) => step.guideKey));
+      heldRequests.forEach((held, key) => {
+        if (guides.has(held.guideKey)) {
+          heldRequests.delete(key);
+        }
+      });
       this.dormant.clear();
-      heldRequests.clear();
     } else {
       this.dormant.delete(id);
       heldRequests.delete(id);

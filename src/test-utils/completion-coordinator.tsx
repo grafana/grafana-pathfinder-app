@@ -1,7 +1,11 @@
 import React, { useEffect, useState, type PropsWithChildren } from 'react';
 import { render, type RenderOptions } from '@testing-library/react';
 
-import { CompletionCoordinator, type ObservationCheck } from '../global-state/observation/coordinator';
+import {
+  CompletionCoordinator,
+  resetHeldRequestsForTests,
+  type ObservationCheck,
+} from '../global-state/observation/coordinator';
 import { CompletionObservationContext } from '../global-state/observation/context';
 import { useGuideRequirements } from '../requirements-manager/guide-requirements-context';
 import {
@@ -56,5 +60,5 @@ export function renderWithCoordinator(ui: React.ReactElement, options?: RenderOp
 }
 
 export function clearHeldCompletionRequests() {
-  new CompletionCoordinator(async () => false).reset();
+  resetHeldRequestsForTests();
 }

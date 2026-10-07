@@ -449,3 +449,23 @@ it('lets a request retry after the completion callback throws', () => {
   coordinator.request(item.id);
   expect(commit).toHaveBeenCalledTimes(2);
 });
+
+it("resets only its own guide's held requests", async () => {
+  const first = new CompletionCoordinator(async () => false);
+  const held = step({ id: 'guide-b/step', guideKey: 'guide-b', verify: ['on-page:/done'] });
+  const unregister = first.register(held);
+  first.request(held.id);
+  unregister();
+
+  const other = new CompletionCoordinator(async () => true);
+  other.register(step({ id: 'guide-a/step', guideKey: 'guide-a' }));
+  other.reset();
+
+  const successor = new CompletionCoordinator(async () => true);
+  const rearmed = step({ id: 'guide-b/step', guideKey: 'guide-b', verify: ['on-page:/done'] });
+  successor.start();
+  successor.register(rearmed);
+  await settle();
+  expect(rearmed.commit).toHaveBeenCalledWith('manual');
+  successor.stop();
+});
