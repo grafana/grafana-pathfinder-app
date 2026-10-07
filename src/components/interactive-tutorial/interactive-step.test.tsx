@@ -8,6 +8,12 @@ import { TEST_PAIRING } from '../../test-utils/fake-cross-tab-transport';
 import { createPairingAcceptProof } from '../../lib/pairing-manager';
 import { testIds } from '../../constants/testIds';
 import { resetCompletionStoreForTests } from '../../global-state/completion-store';
+import { reportStepSkipped } from '../../lib/analytics';
+
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportStepSkipped: jest.fn(),
+}));
 
 describe('executeWithLazyScroll: step outcome propagation', () => {
   afterEach(() => {
@@ -995,4 +1001,76 @@ it('completes a section noop step under the coordinator once it is eligible', as
 
 afterEach(() => {
   clearHeldCompletionRequests();
+});
+
+describe('InteractiveStep: step_skipped', () => {
+  beforeEach(() => {
+    jest.mocked(reportStepSkipped).mockClear();
+  });
+
+  afterEach(() => {
+    resetCompletionStoreForTests();
+  });
+
+  it('reports one user skip however often Skip is clicked, then stops offering it', async () => {
+    render(
+      <InteractiveStep stepId="user-skip" targetAction="highlight" refTarget="#anything" skippable>
+        Example
+      </InteractiveStep>
+    );
+
+    const skip = screen.getByTestId(testIds.interactive.skipButton('user-skip'));
+    await waitFor(() => expect(skip).toBeEnabled());
+    fireEvent.click(skip);
+    fireEvent.click(skip);
+
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.step('user-skip'))).toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      )
+    );
+    expect(screen.queryByTestId(testIds.interactive.skipButton('user-skip'))).not.toBeInTheDocument();
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'highlight', interactionLocation: 'interactive_step', skipReason: 'user' },
+      expect.objectContaining({ stepId: 'user-skip' })
+    );
+  });
+
+  it('reports a skip past failed requirements as requirements_unmet', async () => {
+    render(
+      <InteractiveStep
+        stepId="requirements-skip"
+        targetAction="highlight"
+        refTarget="#anything"
+        requirements="on-page:/pathfinder-step-skipped-never-here"
+        skippable
+      >
+        Example
+      </InteractiveStep>
+    );
+
+    const skip = await screen.findByTestId(testIds.interactive.requirementSkipButton('requirements-skip'));
+    fireEvent.click(skip);
+
+    await waitFor(() => expect(reportStepSkipped).toHaveBeenCalledTimes(1));
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'highlight', interactionLocation: 'interactive_step', skipReason: 'requirements_unmet' },
+      expect.objectContaining({ stepId: 'requirements-skip' })
+    );
+  });
+
+  it('reports nothing on render or re-render', async () => {
+    const step = () => (
+      <InteractiveStep stepId="render-only" targetAction="highlight" refTarget="#anything" skippable>
+        Example
+      </InteractiveStep>
+    );
+    const { rerender } = render(step());
+    rerender(step());
+
+    await waitFor(() => expect(screen.getByTestId(testIds.interactive.skipButton('render-only'))).toBeEnabled());
+    expect(reportStepSkipped).not.toHaveBeenCalled();
+  });
 });

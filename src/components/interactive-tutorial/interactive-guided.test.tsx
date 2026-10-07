@@ -23,6 +23,7 @@ import {
   createCoordinatorWrapper,
   renderWithCoordinator as render,
 } from '../../test-utils/completion-coordinator';
+import { reportStepSkipped } from '../../lib/analytics';
 
 const mockInteractiveMode = jest.fn(() => 'interactive');
 const mockControllerChannel = jest.fn();
@@ -77,6 +78,7 @@ jest.mock('../../lib/analytics', () => ({
   createInteractionName: (name: string) => name,
   UserInteraction: { DoItButtonClick: 'do_it', StepAutoCompleted: 'auto' },
   buildInteractiveStepProperties: jest.fn(() => ({})),
+  reportStepSkipped: jest.fn(),
 }));
 
 jest.mock('../../lib/logging', () => ({
@@ -878,6 +880,8 @@ describe('InteractiveGuided — skip recovery', () => {
       return (
         <InteractiveGuided
           stepId="skippable-timeout"
+          stepIndex={1}
+          totalSteps={4}
           skippable={true}
           onComplete={forceRender}
           internalActions={[{ targetAction: 'noop' }]}
@@ -894,12 +898,85 @@ describe('InteractiveGuided — skip recovery', () => {
       expect(step).toHaveAttribute('data-test-step-state', 'error');
     });
 
+    jest.mocked(reportStepSkipped).mockClear();
     fireEvent.click(screen.getByTestId(testIds.interactive.requirementSkipButton('skippable-timeout')));
 
     await waitFor(() => {
       expect(step).toHaveAttribute('data-test-step-state', 'completed');
     });
     expect(screen.queryByTestId(testIds.interactive.errorMessage('skippable-timeout'))).not.toBeInTheDocument();
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'guided', interactionLocation: 'interactive_guided', skipReason: 'after_failure' },
+      expect.objectContaining({ stepId: 'skippable-timeout', stepIndex: 1, totalSteps: 4 })
+    );
+  });
+
+  it('reports skipping a cancelled tour as a user skip', async () => {
+    mockExecuteGuidedStep.mockResolvedValue('cancelled');
+    jest.mocked(reportStepSkipped).mockClear();
+
+    function CancelledHarness() {
+      const [, forceRender] = React.useReducer((value) => value + 1, 0);
+      return (
+        <InteractiveGuided
+          stepId="cancelled-skip"
+          skippable={true}
+          onComplete={forceRender}
+          internalActions={[{ targetAction: 'noop' }]}
+        />
+      );
+    }
+
+    render(<CancelledHarness />);
+    const step = screen.getByTestId(testIds.interactive.step('cancelled-skip'));
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'cancelled');
+    });
+    fireEvent.click(screen.getByRole('button', { name: /skip entirely/i }));
+
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'completed');
+    });
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'guided', interactionLocation: 'interactive_guided', skipReason: 'user' },
+      expect.objectContaining({ stepId: 'cancelled-skip' })
+    );
+  });
+
+  it('reports a skip from the idle state as a user skip', async () => {
+    jest.mocked(reportStepSkipped).mockClear();
+
+    function IdleHarness() {
+      const [, forceRender] = React.useReducer((value) => value + 1, 0);
+      return (
+        <InteractiveGuided
+          stepId="idle-skip"
+          skippable={true}
+          onComplete={forceRender}
+          internalActions={[{ targetAction: 'noop' }]}
+        />
+      );
+    }
+
+    render(<IdleHarness />);
+    fireEvent.click(screen.getByTestId(testIds.interactive.skipButton('idle-skip')));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(testIds.interactive.step('idle-skip'))).toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      );
+    });
+    expect(screen.queryByTestId(testIds.interactive.skipButton('idle-skip'))).not.toBeInTheDocument();
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'guided', interactionLocation: 'interactive_guided', skipReason: 'user' },
+      expect.objectContaining({ stepId: 'idle-skip' })
+    );
   });
 
   it('records a skipped completion for a section-managed step', async () => {
@@ -932,6 +1009,10 @@ describe('InteractiveGuided — skip recovery', () => {
     await waitFor(() => {
       expect(step).toHaveAttribute('data-test-step-state', 'completed');
     });
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'guided', interactionLocation: 'interactive_guided', skipReason: 'after_failure' },
+      expect.objectContaining({ stepId: 'section-timeout', sectionId: 'section' })
+    );
   });
 });
 

@@ -377,6 +377,7 @@ export function createAlignmentContextMock() {
 export function createAnalyticsMock() {
   return {
     reportAppInteraction: jest.fn(),
+    reportStepSkipped: jest.fn(),
     createInteractionName: jest.fn((type: string) => `pathfinder_${type}`),
     UserInteraction: {
       DoSectionButtonClick: 'do_section_button_click',

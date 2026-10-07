@@ -9,6 +9,12 @@ import { execInSession } from '../../integrations/coda/coda-api';
 import { checkPostconditions, checkRequirements } from '../../requirements-manager';
 import { useStepCompletion } from '../../global-state/completion-store';
 import type { ConditionInput, StepStatus } from '../../types/requirements.types';
+import { reportStepSkipped } from '../../lib/analytics';
+
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportStepSkipped: jest.fn(),
+}));
 
 const { useStepChecker: realUseStepChecker } = jest.requireActual<
   typeof import('../../requirements-manager/step-checker.hook')
@@ -823,11 +829,47 @@ describe('ChallengeBlock', () => {
         stepId: 'ch-std-skip',
         successCriteria: 'has-dashboard-named:My Dashboard',
       };
-      render(<ChallengeBlock {...skipProps} />);
+      jest.mocked(reportStepSkipped).mockClear();
+      render(<ChallengeBlock {...skipProps} stepIndex={1} totalSteps={3} />);
       fireEvent.click(screen.getByRole('button', { name: /skip/i }));
 
       expect(mockMarkSkipped).toHaveBeenCalled();
       expect(disconnect).not.toHaveBeenCalled();
+      expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+      expect(reportStepSkipped).toHaveBeenCalledWith(
+        { targetAction: 'challenge', interactionLocation: 'challenge_block', skipReason: 'user' },
+        expect.objectContaining({ stepId: 'ch-std-skip', stepIndex: 1, totalSteps: 3 })
+      );
+    });
+
+    it('reports a skip after a failed check as after_failure', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+      mockedCheckPostconditions.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: false,
+        error: [{ requirement: 'has-dashboard-named:My Dashboard', pass: false, error: 'No dashboard' }],
+      });
+      jest.mocked(reportStepSkipped).mockClear();
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          skippable
+          stepId="ch-std-failed-skip"
+          successCriteria="has-dashboard-named:My Dashboard"
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+      await waitFor(() => expect(screen.getByRole('button', { name: /check again/i })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+      expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+      expect(reportStepSkipped).toHaveBeenCalledWith(
+        { targetAction: 'challenge', interactionLocation: 'challenge_block', skipReason: 'after_failure' },
+        expect.objectContaining({ stepId: 'ch-std-failed-skip' })
+      );
     });
 
     it('skip in standard mode resets to ready rather than idle when completion is cleared', () => {

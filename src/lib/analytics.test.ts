@@ -4,9 +4,15 @@ import {
   bindExperimentsProvider,
   setupScrollTracking,
   clearScrollTrackingCache,
+  buildInteractiveStepProperties,
+  getGuideBlockCountProperties,
+  reportStepSkipped,
 } from './analytics';
 import { reportInteraction } from '@grafana/runtime';
 import { pushFaroUserAction } from './telemetry/bridge';
+import { computeGuideBlockIndex, guideProgress, type CountableBlock } from './guide-stats';
+import { evictAllGuideIndexes, publishGuideIndex } from '../global-state/active-guide-index';
+import { resetContentKeyForTests, setActiveTabUrl } from '../global-state/content-key';
 
 jest.mock('@grafana/runtime', () => ({
   reportInteraction: jest.fn(),
@@ -345,5 +351,186 @@ describe('setupScrollTracking PanelScroll content_type', () => {
     expect(props.page_type).toBe('recommendations');
     expect(props.content_type).toBe('');
     cleanup();
+  });
+});
+
+describe('step events: block progress properties', () => {
+  const GUIDE_KEY = 'bundled:block-progress-guide';
+  const blocks: CountableBlock[] = [
+    { type: 'markdown' },
+    { type: 'interactive', id: 'open-menu' },
+    { type: 'section', id: 'explore', blocks: [{ type: 'markdown' }, { type: 'multistep' }] },
+    { type: 'conditional', whenTrue: [{ type: 'interactive' }], whenFalse: [{ type: 'markdown' }] },
+    { type: 'markdown' },
+  ];
+  const index = computeGuideBlockIndex(blocks, {
+    resolveStepId: (_block, { parentSectionId, index: childIndex }) => `rt:${parentSectionId}:${childIndex}`,
+  });
+  const [branchChildStepId] = [...index.branchChildPositions.keys()];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetContentKeyForTests();
+    setActiveTabUrl(GUIDE_KEY);
+  });
+
+  afterEach(() => {
+    evictAllGuideIndexes();
+    resetContentKeyForTests();
+    delete window.__DocsPluginActiveTabUrl;
+  });
+
+  function publish(contentKey = GUIDE_KEY) {
+    publishGuideIndex({ contentKey, index, denominatorSource: 'live-pre-inlining' });
+  }
+
+  it('adds the counted position and the guide counts when the active guide has an index', () => {
+    publish();
+
+    const props = buildInteractiveStepProperties(
+      { target_action: 'button' },
+      { stepId: 'rt:__standalone__:1', stepIndex: 0, totalSteps: 2 }
+    );
+
+    expect(props).toMatchObject({
+      block_position: 2,
+      block_progress_rule_version: 'block-position-v1',
+      guide_stats_version: 1,
+      total_block_count: 6,
+      completable_block_count: 2,
+      section_count: 1,
+    });
+  });
+
+  it('leaves completion_percentage as the step position over total_document_steps', () => {
+    publish();
+
+    const props = buildInteractiveStepProperties({}, { stepId: 'rt:__standalone__:1', stepIndex: 0, totalSteps: 4 });
+
+    expect(props.completion_percentage).toBe(25);
+    expect(props.current_step).toBe(1);
+    expect(props.total_document_steps).toBe(4);
+  });
+
+  it('credits a conditional branch child at its conditional, and an author id through positionsById', () => {
+    publish();
+
+    expect(buildInteractiveStepProperties({}, { stepId: branchChildStepId }).block_position).toBe(5);
+    expect(buildInteractiveStepProperties({}, { stepId: 'open-menu' }).block_position).toBe(2);
+  });
+
+  it('reports the same position the completion evidence rule credits for every addressable step', () => {
+    publish();
+    const stepIds = [
+      ...index.positionsByStepId.keys(),
+      ...index.branchChildPositions.keys(),
+      ...index.positionsById.keys(),
+    ];
+
+    for (const stepId of stepIds) {
+      const credited = guideProgress(index, [{ kind: 'do-it', blockId: stepId }]).position;
+      expect(buildInteractiveStepProperties({}, { stepId }).block_position).toBe(credited);
+    }
+  });
+
+  it.each([
+    ['the step has no position in the index', () => publish(), 'standalone-step-1'],
+    ['the active guide has no index', () => undefined, 'rt:__standalone__:1'],
+    ['the index belongs to another content key', () => publish('bundled:another-guide'), 'rt:__standalone__:1'],
+    ['the step has no id', () => publish(), undefined],
+  ])('omits every block property when %s', (_case, arrange, stepId) => {
+    arrange();
+
+    const props = buildInteractiveStepProperties({}, { stepId, stepIndex: 0, totalSteps: 2 });
+
+    expect(props).not.toHaveProperty('block_position');
+    expect(props).not.toHaveProperty('total_block_count');
+    expect(props).not.toHaveProperty('completable_block_count');
+    expect(props).not.toHaveProperty('section_count');
+  });
+
+  it('looks the index up under the content key the completion store resolves, including the legacy global', () => {
+    resetContentKeyForTests();
+    window.__DocsPluginActiveTabUrl = GUIDE_KEY;
+    publish();
+
+    expect(buildInteractiveStepProperties({}, { stepId: 'rt:__standalone__:1' }).block_position).toBe(2);
+  });
+
+  it('exposes the guide counts for a content key, and nothing without an index', () => {
+    expect(getGuideBlockCountProperties(GUIDE_KEY)).toEqual({});
+
+    publish();
+
+    expect(getGuideBlockCountProperties(GUIDE_KEY)).toEqual({
+      block_progress_rule_version: 'block-position-v1',
+      guide_stats_version: 1,
+      total_block_count: 6,
+      completable_block_count: 2,
+      section_count: 1,
+    });
+  });
+});
+
+describe('reportStepSkipped', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetContentKeyForTests();
+  });
+
+  afterEach(() => {
+    evictAllGuideIndexes();
+    resetContentKeyForTests();
+  });
+
+  it('reports step_skipped with the same step properties as the other step events', () => {
+    setActiveTabUrl('bundled:skip-guide');
+    reportStepSkipped(
+      { targetAction: 'button', interactionLocation: 'interactive_step', skipReason: 'requirements_unmet' },
+      { stepId: 'step-a', stepIndex: 1, totalSteps: 4, sectionId: 'intro', sectionTitle: 'Intro' }
+    );
+
+    expect(mockReportInteraction).toHaveBeenCalledTimes(1);
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_step_skipped',
+      expect.objectContaining({
+        ...buildInteractiveStepProperties(
+          {},
+          { stepId: 'step-a', stepIndex: 1, totalSteps: 4, sectionId: 'intro', sectionTitle: 'Intro' }
+        ),
+        target_action: 'button',
+        interaction_location: 'interactive_step',
+        skip_reason: 'requirements_unmet',
+      })
+    );
+  });
+
+  it('carries the block properties when the skipped step is in a published guide index', () => {
+    setActiveTabUrl('bundled:skip-guide');
+    publishGuideIndex({
+      contentKey: 'bundled:skip-guide',
+      index: computeGuideBlockIndex([
+        { type: 'markdown' },
+        { type: 'interactive', id: 'skip-me' },
+        { type: 'markdown' },
+      ]),
+      denominatorSource: 'live-pre-inlining',
+    });
+
+    reportStepSkipped(
+      { targetAction: 'button', interactionLocation: 'interactive_step', skipReason: 'user' },
+      { stepId: 'skip-me', stepIndex: 0, totalSteps: 1 }
+    );
+
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_step_skipped',
+      expect.objectContaining({
+        block_position: 2,
+        total_block_count: 3,
+        completable_block_count: 1,
+        section_count: 0,
+        block_progress_rule_version: 'block-position-v1',
+      })
+    );
   });
 });

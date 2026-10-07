@@ -4,7 +4,13 @@ import { Button } from '@grafana/ui';
 
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { getPostVerifyExplanation, useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+  type StepSkipReason,
+} from '../../lib/analytics';
 import { logger } from '../../lib/logging';
 import { recordStepExecution, type StepOutcome } from '../../lib/telemetry';
 import type { InteractiveStepProps } from '../../types/component-props.types';
@@ -916,6 +922,34 @@ export const InteractiveStep = forwardRef<
       revalidate,
     ]);
 
+    const markSkipped = checker.markSkipped;
+    const handleSkip = useCallback(
+      async (skipReason: StepSkipReason) => {
+        if (!markSkipped || isCompletedWithObjectives) {
+          return;
+        }
+        await markSkipped();
+        reportStepSkipped({ targetAction, interactionLocation: 'interactive_step', skipReason }, analyticsStepMeta);
+        persistCompletion('skipped');
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+        if (onComplete) {
+          onComplete();
+        }
+      },
+      [
+        markSkipped,
+        isCompletedWithObjectives,
+        targetAction,
+        analyticsStepMeta,
+        persistCompletion,
+        onStepComplete,
+        stepId,
+        onComplete,
+      ]
+    );
+
     // Handle individual step reset (redo functionality)
     const handleStepRedo = useCallback(async () => {
       if (disabled || isDoRunning || isShowRunning) {
@@ -1121,20 +1155,7 @@ export const InteractiveStep = forwardRef<
             {/* Noop actions don't need skip - they're just informational */}
             {skippable && !isNoopAction && !isCompletedWithObjectives && (
               <Button
-                onClick={async () => {
-                  if (checker.markSkipped) {
-                    await checker.markSkipped();
-
-                    // Notify parent section of step completion (skipped counts as completed)
-                    if (onStepComplete && stepId) {
-                      onStepComplete(stepId);
-                    }
-
-                    if (onComplete) {
-                      onComplete();
-                    }
-                  }
-                }}
+                onClick={() => handleSkip('user')}
                 disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="secondary"
@@ -1306,20 +1327,7 @@ export const InteractiveStep = forwardRef<
                   <button
                     className="interactive-requirement-skip-btn"
                     data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
-                    onClick={async () => {
-                      if (checker.markSkipped) {
-                        await checker.markSkipped();
-
-                        // Notify parent section of step completion (skipped counts as completed)
-                        if (onStepComplete && stepId) {
-                          onStepComplete(stepId);
-                        }
-
-                        if (onComplete) {
-                          onComplete();
-                        }
-                      }
-                    }}
+                    onClick={() => handleSkip('requirements_unmet')}
                   >
                     Skip
                   </button>

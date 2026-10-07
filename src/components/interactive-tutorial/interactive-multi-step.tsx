@@ -7,7 +7,13 @@ import { getAppEvents } from '@grafana/runtime';
 
 import { useInteractiveElements } from '../../interactive-engine';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+  type StepSkipReason,
+} from '../../lib/analytics';
 import { logger } from '../../lib/logging';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
@@ -214,7 +220,7 @@ export const InteractiveMultiStep = forwardRef<
     const [isExecuting, setIsExecuting] = useState(false);
 
     // Completion lives in the store.
-    const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
+    const { completed: storedCompleted, reason: storedReason } = useStepCompletion(renderedStepId, sectionId);
     const isStandalone = !notifyStepComplete;
     // `reason` flows into the unified `pathfinder:progress` event so
     // downstream consumers can distinguish a normal completion
@@ -736,6 +742,30 @@ export const InteractiveMultiStep = forwardRef<
     // setExecutionError is a stable React setter, isCancelledRef is a ref
     // — neither needs to appear in the deps array.
 
+    const markSkipped = checker.markSkipped;
+    const handleSkip = useCallback(
+      async (skipReason: StepSkipReason) => {
+        if (!markSkipped || storedReason === 'skipped') {
+          return;
+        }
+        await markSkipped();
+        setExecutionError(null);
+        setFailedStepIndex(-1);
+        persistCompletion('skipped');
+        reportStepSkipped(
+          { targetAction: 'multistep', interactionLocation: 'interactive_multi_step', skipReason },
+          analyticsStepMeta
+        );
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+        if (onComplete) {
+          onComplete();
+        }
+      },
+      [markSkipped, storedReason, persistCompletion, analyticsStepMeta, onStepComplete, stepId, onComplete]
+    );
+
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
     const uiState = deriveMultiStepUiState({
       isCompleted: isCompletedWithObjectives,
@@ -817,18 +847,7 @@ export const InteractiveMultiStep = forwardRef<
               </Button>
               {skippable && (
                 <Button
-                  onClick={async () => {
-                    if (checker.markSkipped) {
-                      await checker.markSkipped();
-                      persistCompletion('skipped');
-                      if (onStepComplete && stepId) {
-                        onStepComplete(stepId);
-                      }
-                      if (onComplete) {
-                        onComplete();
-                      }
-                    }
-                  }}
+                  onClick={() => handleSkip('user')}
                   disabled={disabled || isAnyActionRunning}
                   size="sm"
                   variant="secondary"
@@ -979,20 +998,7 @@ export const InteractiveMultiStep = forwardRef<
                 )}
               {skippable && (
                 <Button
-                  onClick={async () => {
-                    if (checker.markSkipped) {
-                      await checker.markSkipped();
-                      setExecutionError(null);
-                      setFailedStepIndex(-1);
-                      persistCompletion('skipped');
-                      if (onStepComplete && stepId) {
-                        onStepComplete(stepId);
-                      }
-                      if (onComplete) {
-                        onComplete();
-                      }
-                    }
-                  }}
+                  onClick={() => handleSkip('after_failure')}
                   size="sm"
                   variant="secondary"
                   className="interactive-guided-skip-btn"
