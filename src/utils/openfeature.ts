@@ -67,7 +67,7 @@ export const DEFAULT_HIGHLIGHTED_GUIDE_CONFIG: HighlightedGuideConfig = {
 const pathfinderFeatureFlags = {
   'pathfinder.help-button-nudge-experiment': {
     valueType: 'object',
-    values: ['excluded', 'control', 'glow', 'tooltip'].map((variant) => ({ variant })),
+    values: ['excluded', 'control', 'learn', 'learn_hint'].map((variant) => ({ variant })),
     defaultValue: { variant: 'excluded' },
   },
   /**

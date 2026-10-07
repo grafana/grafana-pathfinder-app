@@ -1,28 +1,40 @@
 import type { Experiment } from '@grafana-experiments/sdk';
 
+export type HelpToolbarTarget = 'help' | 'learn';
+
+export interface LearnButton {
+  element: HTMLButtonElement;
+  setAttention: (attention: boolean) => void;
+  remove: () => void;
+}
+
 interface Options {
   experiment: Experiment;
   helpLabel: string;
-  getClassName: () => string;
   isOpen: () => boolean;
   subscribeToOpen: (listener: () => void) => () => void;
-  isDismissed: () => boolean;
-  dismiss: () => void;
-  reportClick: () => void;
-  showTooltip: (button: HTMLButtonElement, dismiss: () => void) => () => void;
+  isEnrolled: () => boolean;
+  markEnrolled: () => void;
+  isAttentionDismissed: () => boolean;
+  dismissAttention: () => void;
+  reportClick: (target: HelpToolbarTarget) => void;
+  openLearning: () => void;
+  showLearnButton: (help: HTMLButtonElement, onClick: () => void) => LearnButton;
+  showTooltip: (anchor: HTMLButtonElement, dismiss: () => void) => () => void;
   isTooltipDismissed: () => boolean;
   dismissTooltip: () => void;
 }
 
-export function findHelpButton(helpLabel: string): HTMLButtonElement | undefined {
+export function findHelpButton(helpLabel: string, requireClosed = true): HTMLButtonElement | undefined {
   const buttons = Array.from(document.querySelectorAll('[data-testid="icon-question-circle"]'))
     .map((icon) => icon.closest('button'))
     .filter((button): button is HTMLButtonElement => {
+      const expanded = button?.getAttribute('aria-expanded');
       if (
         !button ||
         button.disabled ||
         button.getAttribute('aria-label') !== helpLabel ||
-        button.getAttribute('aria-expanded') !== 'false'
+        (requireClosed ? expanded !== 'false' : expanded !== 'false' && expanded !== 'true')
       ) {
         return false;
       }
@@ -44,7 +56,7 @@ export function observeHelpButton(options: Options): () => void {
   let stopped = false;
   let frame: number | undefined;
   let button: HTMLButtonElement | undefined;
-  let className: string | undefined;
+  let learn: LearnButton | undefined;
   let pending: AbortController | undefined;
   let attempted: HTMLButtonElement | undefined;
   let removeTooltip: (() => void) | undefined;
@@ -52,37 +64,54 @@ export function observeHelpButton(options: Options): () => void {
     removeTooltip?.();
     removeTooltip = undefined;
   };
+  const removeLearn = () => {
+    hideTooltip();
+    learn?.remove();
+    learn = undefined;
+  };
+  const findTarget = () =>
+    document.visibilityState === 'visible' ? findHelpButton(options.helpLabel, !options.isEnrolled()) : undefined;
 
   const detach = () => {
-    hideTooltip();
-    if (button) {
-      if (className) {
-        button.classList.remove(className);
-      }
-      button.removeEventListener('click', onClick, true);
-    }
+    removeLearn();
+    button?.removeEventListener('click', onHelpClick, true);
     button = undefined;
-    className = undefined;
   };
-  const onClick = () => {
-    if (document.visibilityState !== 'visible' || options.isOpen() || button !== findHelpButton(options.helpLabel)) {
-      return;
+  const endAttention = () => {
+    if (!options.isAttentionDismissed()) {
+      options.dismissAttention();
     }
-    options.reportClick();
-    options.dismiss();
-    stop();
+    hideTooltip();
+    learn?.setAttention(false);
+  };
+  const toolbarClick = (target: HelpToolbarTarget) => {
+    if (!options.isAttentionDismissed() && !options.isOpen()) {
+      options.reportClick(target);
+    }
+    endAttention();
+  };
+  const onHelpClick = () => {
+    if (document.visibilityState === 'visible' && !options.isOpen() && button === findTarget()) {
+      toolbarClick('help');
+    }
+  };
+  const onLearnClick = () => {
+    toolbarClick('learn');
+    options.openLearning();
   };
   const update = () => {
     frame = undefined;
     if (stopped) {
       return;
     }
-    if (options.isOpen() || options.isDismissed()) {
-      options.dismiss();
+    if (options.isOpen()) {
+      endAttention();
+    }
+    if (!options.isEnrolled() && options.isAttentionDismissed()) {
       stop();
       return;
     }
-    const next = document.visibilityState === 'visible' ? findHelpButton(options.helpLabel) : undefined;
+    const next = findTarget();
     if (next !== button) {
       pending?.abort();
       pending = undefined;
@@ -99,58 +128,49 @@ export function observeHelpButton(options: Options): () => void {
       return;
     }
     if (state.status === 'active') {
-      button.addEventListener('click', onClick, true);
-      if (state.variant === 'glow' || state.variant === 'tooltip') {
-        const nextClass = options.getClassName();
-        if (className !== nextClass) {
-          if (className) {
-            button.classList.remove(className);
-          }
-          className = nextClass;
-        }
-        if (!button.classList.contains(className)) {
-          button.classList.add(className);
-        }
+      options.markEnrolled();
+      button.addEventListener('click', onHelpClick, true);
+      if (state.variant === 'control') {
+        return;
       }
-      if (state.variant === 'tooltip' && !options.isTooltipDismissed() && !removeTooltip) {
-        removeTooltip = options.showTooltip(button, () => {
+      if (!learn || !learn.element.isConnected || learn.element.nextElementSibling !== button) {
+        removeLearn();
+        learn = options.showLearnButton(button, onLearnClick);
+      }
+      const attention = !options.isAttentionDismissed();
+      learn.setAttention(attention);
+      if (state.variant === 'learn_hint' && attention && !options.isTooltipDismissed() && !removeTooltip) {
+        removeTooltip = options.showTooltip(learn.element, () => {
           options.dismissTooltip();
           hideTooltip();
         });
       }
-    } else {
-      hideTooltip();
-      if (className) {
-        button.classList.remove(className);
-        className = undefined;
-      }
-      button.removeEventListener('click', onClick, true);
-      if (pending || attempted === button) {
-        return;
-      }
-      attempted = button;
-      const activation = new AbortController();
-      pending = activation;
-      void options.experiment
-        .activate({ signal: activation.signal })
-        .then(() => {
-          if (pending === activation) {
-            pending = undefined;
-            schedule();
-          }
-        })
-        .catch(() => {
-          if (pending === activation) {
-            pending = undefined;
-          }
-        });
+      return;
     }
+    removeLearn();
+    button.removeEventListener('click', onHelpClick, true);
+    if (pending || attempted === button) {
+      return;
+    }
+    attempted = button;
+    const activation = new AbortController();
+    pending = activation;
+    void options.experiment
+      .activate({ signal: activation.signal })
+      .then(() => {
+        if (pending === activation) {
+          pending = undefined;
+          schedule();
+        }
+      })
+      .catch(() => {
+        if (pending === activation) {
+          pending = undefined;
+        }
+      });
   };
   const schedule = () => {
-    if (
-      pending &&
-      (document.visibilityState !== 'visible' || options.isOpen() || button !== findHelpButton(options.helpLabel))
-    ) {
+    if (pending && (document.visibilityState !== 'visible' || options.isOpen() || button !== findTarget())) {
       pending.abort();
     }
     if (!stopped && frame === undefined) {
@@ -160,11 +180,9 @@ export function observeHelpButton(options: Options): () => void {
   const observer = new MutationObserver(schedule);
   const unsubscribeOpen = options.subscribeToOpen(() => {
     if (options.isOpen()) {
-      options.dismiss();
-      stop();
-    } else {
-      schedule();
+      endAttention();
     }
+    schedule();
   });
   const unsubscribeExperiment = options.experiment.subscribe(() => {
     if (options.experiment.getSnapshot().status === 'inactive') {

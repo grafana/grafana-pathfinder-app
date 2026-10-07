@@ -1,13 +1,13 @@
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
 
-export type HelpPreviewVariant = 'control' | 'glow' | 'tooltip';
+export type HelpPreviewVariant = 'control' | 'learn' | 'learn_hint';
 
 export function getHelpPreviewVariant(): HelpPreviewVariant | undefined {
   const params = new URLSearchParams(window.location.search);
   const variant = params.get('pathfinderHelpPreview');
   return params.get('featureControl') === 'true' &&
-    (variant === 'control' || variant === 'glow' || variant === 'tooltip')
+    (variant === 'control' || variant === 'learn' || variant === 'learn_hint')
     ? variant
     : undefined;
 }
@@ -51,8 +51,8 @@ export function showHelpPreviewControls(
   select.setAttribute('aria-label', 'Preview variant');
   for (const [value, text] of [
     ['control', 'Control'],
-    ['glow', 'Glow'],
-    ['tooltip', 'Glow and learning hint'],
+    ['learn', 'Learn button'],
+    ['learn_hint', 'Learn button and hint'],
   ]) {
     const option = document.createElement('option');
     option.value = value!;

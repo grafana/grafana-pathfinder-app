@@ -9,6 +9,7 @@ import {
   HELP_BUTTON_EXPERIMENT_ID,
   HELP_BUTTON_CLICK_EVENT,
 } from '../../../constants/help-button-experiment';
+import { sidebarState } from '../../../global-state/sidebar';
 import { startHelpButtonExperiment } from './index';
 
 const mockPushEvent = jest.fn();
@@ -34,13 +35,16 @@ jest.mock('@grafana/i18n', () => ({
   t: (key: string, fallback: string, values?: { ns?: string }) =>
     key === 'navigation.help.aria-label' && values?.ns === 'grafana' ? mockCoreHelpLabel : fallback,
 }));
-jest.mock('./styles', () => ({ getHelpButtonAttentionStyle: () => 'test-glow' }));
+jest.mock('../../../global-state/sidebar', () => ({
+  sidebarState: { setPendingOpenSource: jest.fn(), openSidebar: jest.fn() },
+}));
 jest.mock('@grafana/runtime', () => ({
   config: { namespace: 'stacks-123', bootData: { user: { id: 42, isSignedIn: true } }, analytics: { enabled: true } },
   reportExperimentView: jest.fn(),
 }));
 
 let stop: (() => void) | undefined;
+const learn = () => document.querySelector<HTMLButtonElement>('[data-testid="help-button-learn"]');
 let button: HTMLButtonElement;
 async function settle() {
   for (let i = 0; i < 8; i++) {
@@ -103,21 +107,21 @@ afterEach(async () => {
 it("matches Grafana's translated Help label in non-English locales", async () => {
   mockCoreHelpLabel = 'Hilfe';
   button.setAttribute('aria-label', 'Hilfe');
-  await flag({ variant: 'glow' });
+  await flag({ variant: 'learn' });
   stop = await startHelpButtonExperiment();
   await settle();
-  expect(reportExperimentView).toHaveBeenCalledWith(HELP_BUTTON_EXPERIMENT_ID, 'closed-help-toolbar', 'glow');
-  expect(button.classList.contains('test-glow')).toBe(true);
+  expect(reportExperimentView).toHaveBeenCalledWith(HELP_BUTTON_EXPERIMENT_ID, 'closed-help-toolbar', 'learn');
+  expect(learn()?.nextElementSibling).toBe(button);
 });
 
-it.each(['control', 'glow', 'tooltip'])(
-  'uses the real SDK for one %s exposure and attributed click',
+it.each(['control', 'learn', 'learn_hint'])(
+  'uses the real SDK for one %s exposure and attributed Help click',
   async (variant) => {
     await flag({ variant });
     stop = await startHelpButtonExperiment();
     await settle();
     expect(reportExperimentView).toHaveBeenCalledWith(HELP_BUTTON_EXPERIMENT_ID, 'closed-help-toolbar', variant);
-    expect(button.classList.contains('test-glow')).toBe(variant !== 'control');
+    expect(Boolean(learn())).toBe(variant !== 'control');
     button.click();
     expect(document.querySelector('[data-testid="help-button-learning-hint"]')).toBeNull();
     expect(reportAppInteraction).toHaveBeenCalledWith(
@@ -126,6 +130,7 @@ it.each(['control', 'glow', 'tooltip'])(
         experiment_help_button_nudge: variant,
         exposure_id: expect.any(String),
         event_id: expect.any(String),
+        toolbar_target: 'help',
       }),
       { mirrorToFaro: false }
     );
@@ -139,7 +144,8 @@ it.each(['control', 'glow', 'tooltip'])(
     stop();
     stop = await startHelpButtonExperiment();
     await settle();
-    expect(button.className).toBe('');
+    expect(Boolean(learn())).toBe(variant !== 'control');
+    expect(learn()?.dataset.attention ?? 'false').toBe('false');
     expect(reportExperimentView).toHaveBeenCalledTimes(1);
   }
 );
@@ -151,21 +157,21 @@ it.each([{ variant: 'excluded' }, { variant: 'unknown' }, {}, null, false])(
     stop = await startHelpButtonExperiment();
     await settle();
     expect(reportExperimentView).not.toHaveBeenCalled();
-    expect(button.className).toBe('');
+    expect(learn()).toBeNull();
     button.click();
     expect(reportAppInteraction).not.toHaveBeenCalled();
   }
 );
 
 it.each([
-  ['?featureControl=true&pathfinderHelpPreview=tooltip', true],
-  ['?pathfinderHelpPreview=tooltip', false],
+  ['?featureControl=true&pathfinderHelpPreview=learn_hint', true],
+  ['?pathfinderHelpPreview=learn_hint', false],
 ])('previews a forced variant without telemetry only under feature control (%s)', async (search, previewed) => {
   window.history.replaceState(null, '', `/${search}`);
   await flag({ variant: 'excluded' });
   stop = await startHelpButtonExperiment();
   await settle();
-  expect(button.classList.contains('test-glow')).toBe(previewed);
+  expect(Boolean(learn())).toBe(previewed);
   expect(Boolean(document.querySelector('[data-testid="help-button-learning-hint"]'))).toBe(previewed);
   expect(Boolean(document.querySelector('[data-testid="help-experiment-preview"]'))).toBe(previewed);
   button.click();
@@ -179,22 +185,45 @@ it('does not turn a missing flag into control', async () => {
   stop = await startHelpButtonExperiment();
   await settle();
   expect(reportExperimentView).not.toHaveBeenCalled();
-  expect(button.className).toBe('');
+  expect(learn()).toBeNull();
 });
 
 it('reuses the SDK exposure after remount without another impression', async () => {
-  await flag({ variant: 'glow' });
+  await flag({ variant: 'learn' });
   stop = await startHelpButtonExperiment();
   await settle();
   stop();
   stop = await startHelpButtonExperiment();
   await settle();
   expect(reportExperimentView).toHaveBeenCalledTimes(1);
-  expect(button.className).toBe('test-glow');
+  expect(learn()?.dataset.attention).toBe('true');
+});
+
+it('opens interactive learning from Learn, attributes it, and keeps the button for the tab', async () => {
+  await flag({ variant: 'learn' });
+  stop = await startHelpButtonExperiment();
+  await settle();
+  learn()!.click();
+  expect(sidebarState.setPendingOpenSource).toHaveBeenCalledWith('help_button_learn');
+  expect(sidebarState.openSidebar).toHaveBeenCalledWith('Interactive learning');
+  expect(reportAppInteraction).toHaveBeenCalledWith(
+    UserInteraction.HelpButtonClickedToolbar,
+    expect.objectContaining({ experiment_help_button_nudge: 'learn', toolbar_target: 'learn' }),
+    { mirrorToFaro: false }
+  );
+  expect(learn()?.dataset.attention).toBe('false');
+  stop();
+  stop = await startHelpButtonExperiment();
+  await settle();
+  expect(learn()?.dataset.attention).toBe('false');
+  learn()!.click();
+  expect(sidebarState.openSidebar).toHaveBeenCalledTimes(2);
+  expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+  expect(reportExperimentView).toHaveBeenCalledTimes(1);
 });
 
 it.each(['analytics', 'anonymous'])('does not enroll when disabled by %s', async (reason) => {
-  await flag({ variant: 'glow' });
+  await flag({ variant: 'learn' });
   if (reason === 'analytics') {
     config.analytics.enabled = false;
   } else {
@@ -203,11 +232,11 @@ it.each(['analytics', 'anonymous'])('does not enroll when disabled by %s', async
   stop = await startHelpButtonExperiment();
   await settle();
   expect(reportExperimentView).not.toHaveBeenCalled();
-  expect(button.className).toBe('');
+  expect(learn()).toBeNull();
 });
 
 it('keeps tooltip dismissal separate from a click and preserves its assignment', async () => {
-  await flag({ variant: 'tooltip' });
+  await flag({ variant: 'learn_hint' });
   stop = await startHelpButtonExperiment();
   await settle();
   const close = document.querySelector<HTMLButtonElement>('[aria-label="Dismiss learning hint"]')!;
@@ -216,7 +245,7 @@ it('keeps tooltip dismissal separate from a click and preserves its assignment',
   expect(document.querySelector('[data-testid="help-button-learning-hint"]')).toBeNull();
   expect(reportAppInteraction).toHaveBeenLastCalledWith(
     UserInteraction.HelpButtonDismissedHint,
-    expect.objectContaining({ experiment_help_button_nudge: 'tooltip' }),
+    expect.objectContaining({ experiment_help_button_nudge: 'learn_hint' }),
     { mirrorToFaro: false }
   );
   stop();
@@ -226,7 +255,7 @@ it('keeps tooltip dismissal separate from a click and preserves its assignment',
   button.click();
   expect(reportAppInteraction).toHaveBeenLastCalledWith(
     UserInteraction.HelpButtonClickedToolbar,
-    expect.objectContaining({ experiment_help_button_nudge: 'tooltip' }),
+    expect.objectContaining({ experiment_help_button_nudge: 'learn_hint' }),
     { mirrorToFaro: false }
   );
   expect(reportExperimentView).toHaveBeenCalledTimes(1);

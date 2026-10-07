@@ -206,6 +206,7 @@
   },
   "helpButtonHint": {
     "message": "Try interactive learning",
-    "dismiss": "Dismiss learning hint"
+    "dismiss": "Dismiss learning hint",
+    "learn": "Learn"
   }
 }
