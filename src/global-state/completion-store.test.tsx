@@ -71,6 +71,7 @@ const storedMarks = new Set<string>(); // contentKey
 
 jest.mock('../lib/user-storage', () => ({
   interactiveStepStorage: {
+    getSkipped: jest.fn(() => new Set<string>()),
     getCompleted: jest.fn(async (contentKey: string, sectionId: string) => {
       return new Set(storedCompleted.get(pairKey(contentKey, sectionId)) ?? []);
     }),
@@ -175,7 +176,7 @@ describe('completion-store', () => {
     render(<StepProbe stepId="step-1" sectionId="section-x" />);
     await flushMicrotasks();
     expect(screen.getByTestId('completed').textContent).toBe('true');
-    // Reason is not persisted in storage today, so a hydrated entry has reason=null.
+    // Legacy completed IDs have no persisted reason.
     expect(screen.getByTestId('reason').textContent).toBe('null');
   });
 

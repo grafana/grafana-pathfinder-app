@@ -1,3 +1,6 @@
+import { summarizeGuideBlockIndex } from '../lib/guide-stats/summary';
+import { getGuideIndex } from '../global-state/active-guide-index';
+import type { CompletionSource, CompletionFact } from '../completion-records/types';
 // Learning Journey Helper Functions
 // Extracted from docs-fetcher.ts but focused on metadata operations only
 // No DOM processing - just data manipulation and navigation logic
@@ -14,14 +17,13 @@ import {
 import {
   journeyCompletionStorage,
   milestoneCompletionStorage,
-  learningProgressStorage,
   interactiveCompletionStorage,
 } from '../lib/user-storage';
 import { sanitizeContentKey } from '../global-state/content-key';
 import { resolvePathMemberPercentages, type PathMember } from '../global-state/path-member-join';
 import { dispatchProgress } from '../global-state/progress-events';
 import { meanOfMemberPercentages } from '../lib/guide-stats';
-import { markGuideCompleted, findPathByUrl } from '../lib/guide-completion-bridge';
+import { awardBadge, markGuideCompleted, findPathByUrl } from '../lib/guide-completion-bridge';
 import {
   recordGuideCompletion,
   recordJourneyCompletion,
@@ -31,6 +33,7 @@ import {
   resolveJourneyCompletionIdentity,
   manifestGuideId,
   normalizeGuideId,
+  type PathAnalyticsIdentity,
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
@@ -50,6 +53,8 @@ export type { ActiveMilestoneToolbarContext } from './active-milestone-sequence'
  * bundled guides, which fall back to `guideSource: 'bundled'` + the slug.
  */
 export interface CompletionContext {
+  source?: CompletionSource;
+  guideStats?: CompletionFact['guideStats'];
   packageManifest?: Record<string, unknown>;
   /** Recommendation-level repository (sibling of manifest in the V1 wire shape). */
   repository?: string;
@@ -683,24 +688,81 @@ export async function setJourneyCompletionPercentageAsync(
   }
 }
 
-function recordBundledGuideCompletion(guideId: string, context?: CompletionContext): void {
-  const manifestType = context?.packageManifest?.type;
-  if (manifestType === 'path' || manifestType === 'journey') {
-    return;
-  }
+export type AnalyticsCompletionIdentity = PathAnalyticsIdentity & { pathIdentity?: PathAnalyticsIdentity };
+
+function isPathOrJourneyManifest(packageManifest?: Record<string, unknown>): boolean {
+  return packageManifest?.type === 'path' || packageManifest?.type === 'journey';
+}
+
+function bundledGuideAnalyticsIdentity(guideId: string, context?: CompletionContext): AnalyticsCompletionIdentity {
   const identity = resolveBundledGuideCompletionIdentity({
     packageManifest: context?.packageManifest,
     repository: context?.repository,
     guideId,
   });
+  return { ...identity, sourceConfirmed: Boolean(context?.repository) || identity.guideSource === 'bundled' };
+}
+
+function standaloneGuideAnalyticsIdentity(guideId: string, context?: CompletionContext): AnalyticsCompletionIdentity {
+  return {
+    ...resolveStandaloneGuideCompletionIdentity({
+      packageManifest: context?.packageManifest,
+      repository: context?.repository,
+      guideId,
+    }),
+    sourceConfirmed: Boolean(context?.repository),
+  };
+}
+
+function journeyAnalyticsIdentity(
+  journeyBaseUrl: string,
+  context?: CompletionContext
+): PathAnalyticsIdentity | undefined {
+  const curatedPath = findPathByUrl(journeyBaseUrl);
+  const manifestId = manifestGuideId(context?.packageManifest);
+  const journeyId = manifestId ?? curatedPath?.id;
+  if (!journeyId) {
+    return undefined;
+  }
+  return {
+    ...resolveJourneyCompletionIdentity({
+      packageManifest: context?.packageManifest,
+      repository: context?.repository,
+      guideId: journeyId,
+    }),
+    sourceConfirmed: Boolean(context?.repository) || (!manifestId && Boolean(curatedPath)),
+  };
+}
+
+function milestoneAnalyticsIdentity(
+  journeyBaseUrl: string,
+  milestoneSlug: string,
+  context?: CompletionContext
+): AnalyticsCompletionIdentity {
+  return {
+    ...resolveMilestoneCompletionIdentity({
+      repository: context?.repository,
+      packageManifest: context?.packageManifest,
+      milestoneSlug,
+    }),
+    sourceConfirmed: Boolean(context?.repository) || Boolean(findPathByUrl(journeyBaseUrl)),
+    pathIdentity: journeyAnalyticsIdentity(journeyBaseUrl, context),
+  };
+}
+
+function recordBundledGuideCompletion(guideId: string, context?: CompletionContext): void {
+  if (isPathOrJourneyManifest(context?.packageManifest)) {
+    return;
+  }
   recordGuideCompletion({
     kind: 'guide',
-    ...identity,
+    ...bundledGuideAnalyticsIdentity(guideId, context),
     guideTitle: context?.guideTitle ?? guideId,
     guideCategory: 'interactive',
     pathId: context?.pathId,
     completionPercent: 100,
-    source: 'objectives',
+    source: context?.source ?? 'objectives',
+    ...(context?.guideStats && { guideStats: context.guideStats }),
     completedAt: new Date().toISOString(),
   });
 }
@@ -708,27 +770,22 @@ function recordBundledGuideCompletion(guideId: string, context?: CompletionConte
 export function recordStandaloneGuideCompletion(context: CompletionContext): void {
   // Journey-shaped packages complete via markMilestoneDone's journey trigger;
   // a guide-kind fact here would double-count them (same guard as the bundled path).
-  const manifestType = context.packageManifest?.type;
-  if (manifestType === 'path' || manifestType === 'journey') {
+  if (isPathOrJourneyManifest(context.packageManifest)) {
     return;
   }
   const guideId = manifestGuideId(context.packageManifest);
   if (!guideId) {
     return;
   }
-  const identity = resolveStandaloneGuideCompletionIdentity({
-    packageManifest: context.packageManifest,
-    repository: context.repository,
-    guideId,
-  });
   recordGuideCompletion({
     kind: 'guide',
-    ...identity,
+    ...standaloneGuideAnalyticsIdentity(guideId, context),
     guideTitle: context.guideTitle ?? guideId,
     guideCategory: 'interactive',
     pathId: context.pathId,
     completionPercent: 100,
-    source: 'objectives',
+    source: context?.source ?? 'objectives',
+    ...(context?.guideStats && { guideStats: context.guideStats }),
     completedAt: new Date().toISOString(),
   });
 }
@@ -742,6 +799,8 @@ export function recordStandaloneGuideCompletion(context: CompletionContext): voi
  * affordance, so completing a guide in any of them records the same fact.
  */
 export interface SurfaceCompletionInput {
+  source?: CompletionSource;
+  contentKey?: string;
   /**
    * activeTab.baseUrl — the SURFACE base, which is the milestone URL when a tab
    * was opened directly at a milestone. Drives bundled progress only; the
@@ -788,6 +847,27 @@ export function resolveActiveMilestoneSlug(input: {
   return slug && input.journeyBaseUrl ? slug : undefined;
 }
 
+export function resolveSurfaceCompletionIdentity(
+  input: SurfaceCompletionInput
+): AnalyticsCompletionIdentity | undefined {
+  const { metadata } = input;
+  const surfaceBase = input.baseUrl || input.contentUrl;
+  const journeyBase = metadata?.learningJourney?.baseUrl ?? metadata?.trackMemberBaseUrl;
+  const slug = resolveActiveMilestoneSlug({ currentUrl: input.currentUrl, journeyBaseUrl: journeyBase });
+  const context: CompletionContext = { packageManifest: metadata?.packageManifest, repository: metadata?.repository };
+  if (slug && journeyBase) {
+    return milestoneAnalyticsIdentity(journeyBase, slug, context);
+  }
+  if (isPathOrJourneyManifest(context.packageManifest)) {
+    return undefined;
+  }
+  if (surfaceBase?.startsWith('bundled:')) {
+    return bundledGuideAnalyticsIdentity(guideIdFromBundledJourneyBase(surfaceBase), context);
+  }
+  const guideId = manifestGuideId(context.packageManifest);
+  return guideId ? standaloneGuideAnalyticsIdentity(guideId, context) : undefined;
+}
+
 /**
  * The single surface-neutral completion emitter. Wired by each content-owning
  * component (DocsPanelContentArea, FloatingPanelContent, GuideReaderOverlay) so
@@ -811,7 +891,10 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
   const journeyBase = metadata?.learningJourney?.baseUrl ?? metadata?.trackMemberBaseUrl;
   const slug = resolveActiveMilestoneSlug({ currentUrl, journeyBaseUrl: journeyBase }) ?? '';
   const willMarkMilestone = Boolean(slug && journeyBase);
+  const activeIndex = input.contentKey ? getGuideIndex(input.contentKey) : undefined;
   const completionContext: CompletionContext = {
+    source: input.source,
+    guideStats: activeIndex ? summarizeGuideBlockIndex(activeIndex.index) : undefined,
     packageManifest: metadata?.packageManifest,
     repository: metadata?.repository,
     guideTitle,
@@ -950,19 +1033,15 @@ export async function markMilestoneDone(
   // warehouse. Local progress is unaffected — milestone progress is stored per
   // journey base URL — so a collision never grants unearned credit. Tracked for
   // RFC reconciliation.
-  const milestoneIdentity = resolveMilestoneCompletionIdentity({
-    repository: context?.repository,
-    packageManifest: context?.packageManifest,
-    milestoneSlug,
-  });
   recordGuideCompletion({
     kind: 'guide',
-    ...milestoneIdentity,
+    ...milestoneAnalyticsIdentity(journeyBaseUrl, milestoneSlug, context),
     guideTitle: context?.guideTitle ?? milestoneSlug,
     guideCategory: 'learning-journey',
     pathId: context?.pathId,
     completionPercent: 100,
-    source: 'objectives',
+    source: context?.source ?? 'objectives',
+    ...(context?.guideStats && { guideStats: context.guideStats }),
     completedAt: new Date().toISOString(),
   });
 
@@ -1010,7 +1089,7 @@ export async function markMilestoneDone(
 
       const path = findPathByUrl(journeyBaseUrl);
       if (path?.badgeId) {
-        await learningProgressStorage.awardBadge(path.badgeId);
+        await awardBadge(path.badgeId);
       }
 
       // The `journey_completed` trigger, keyed on the journey identity and
@@ -1018,13 +1097,8 @@ export async function markMilestoneDone(
       // re-emit. Fail closed when neither a manifest id nor a curated path id
       // resolves: a loader URL is never an acceptable identity (types.ts
       // contract), and a URL-keyed fact would become a permanently wrong durable key.
-      const stableJourneyId = manifestGuideId(context?.packageManifest) ?? path?.id;
-      if (stableJourneyId) {
-        const journeyIdentity = resolveJourneyCompletionIdentity({
-          packageManifest: context?.packageManifest,
-          repository: context?.repository,
-          guideId: stableJourneyId,
-        });
+      const journeyIdentity = journeyAnalyticsIdentity(journeyBaseUrl, context);
+      if (journeyIdentity) {
         recordJourneyCompletion({
           kind: 'journey',
           ...journeyIdentity,
@@ -1032,7 +1106,7 @@ export async function markMilestoneDone(
           guideCategory: 'learning-journey',
           pathId: context?.pathId ?? path?.id,
           completionPercent: 100,
-          source: 'objectives',
+          source: context?.source ?? 'objectives',
           completedAt: new Date().toISOString(),
         });
       }

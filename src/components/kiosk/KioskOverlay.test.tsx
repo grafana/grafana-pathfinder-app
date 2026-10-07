@@ -1,10 +1,17 @@
-import { reportKioskInteraction } from '../../lib/kiosk-analytics';
+import { getKioskSessionId, reportKioskInteraction } from '../../lib/kiosk-analytics';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { KioskOverlay } from './KioskOverlay';
 import { loadKioskData, DEFAULT_BANNER, type KioskData } from './kiosk-rules';
 
-jest.mock('../../lib/kiosk-analytics', () => ({ reportKioskInteraction: jest.fn() }));
+jest.mock('../../lib/kiosk-analytics', () => ({
+  ...jest.requireActual('../../lib/kiosk-analytics'),
+  reportKioskInteraction: jest.fn(),
+}));
+jest.mock('../../lib/analytics', () => ({
+  reportAppInteraction: jest.fn(),
+  UserInteraction: { KioskInteraction: 'kiosk_interaction' },
+}));
 
 jest.mock('@grafana/ui', () => ({
   Icon: () => null,
@@ -30,6 +37,22 @@ beforeEach(() => {
   jest.spyOn(document, 'hasFocus').mockReturnValue(true);
 });
 afterEach(() => jest.restoreAllMocks());
+
+it('starts a session before loading and replaces it when the kiosk reopens', async () => {
+  load.mockResolvedValue(data('Guide'));
+  const first = render(<KioskOverlay rulesUrl="" mode="instance" onClose={jest.fn()} />);
+  await screen.findByText('Guide');
+  const firstId = getKioskSessionId();
+  expect(firstId).toEqual(expect.any(String));
+  expect(load.mock.calls[0]![3]).toEqual({ sessionId: firstId, mode: 'instance' });
+  first.unmount();
+  expect(getKioskSessionId()).toBeUndefined();
+  const second = render(<KioskOverlay rulesUrl="" mode="presentation" onClose={jest.fn()} />);
+  await screen.findByText('Guide');
+  expect(getKioskSessionId()).not.toBe(firstId);
+  expect(load.mock.calls[1]![3]).toEqual({ sessionId: getKioskSessionId(), mode: 'presentation' });
+  second.unmount();
+});
 
 it('sanitizes remote banners and displays fallback warnings', async () => {
   load.mockResolvedValue({

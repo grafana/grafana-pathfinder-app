@@ -38,7 +38,7 @@ import {
 import { StorageEvents } from '../lib/event-names';
 import { StorageKeys, buildVersionedSectionStorageKey, parseVersionedStorageKey } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
-import { guideProgress, type CompletionEvidence } from '../lib/guide-stats';
+import { furthestEvidencedPosition, guideProgress, type CompletionEvidence } from '../lib/guide-stats';
 
 import { evictAllGuideIndexes, evictGuideIndex, getGuideIndex } from './active-guide-index';
 import { getContentKey } from './content-key';
@@ -50,7 +50,7 @@ export const STANDALONE_SECTION_ID = '__standalone__';
 export interface StepCompletionEntry {
   completed: boolean;
   reason: ProgressReason | null;
-  /** ms since epoch; 0 when restored from storage (storage doesn't persist the reason or timestamp today). */
+  /** ms since epoch; 0 for restored entries. Only skipped reasons survive reloads. */
   completedAt: number;
 }
 
@@ -190,13 +190,20 @@ function ensureHydrated(contentKey: string, sectionId: string): Promise<void> {
       }
       const bySteps = stepsFor(contentKey, sectionId);
       const hadClears = cleared !== undefined && cleared.size > 0;
+      let skipped: ReadonlySet<string>;
+      try {
+        skipped = interactiveStepStorage.getSkipped(contentKey, sectionId);
+      } catch (error) {
+        logger.warn('[completion-store] skipped-step read failed', { contentKey, sectionId, error });
+        skipped = new Set();
+      }
       let changed = false;
       stored.forEach((stepId) => {
         if (cleared?.has(stepId)) {
           return;
         }
         if (!bySteps.has(stepId)) {
-          bySteps.set(stepId, { completed: true, reason: null, completedAt: 0 });
+          bySteps.set(stepId, { completed: true, reason: skipped.has(stepId) ? 'skipped' : null, completedAt: 0 });
           changed = true;
         }
       });
@@ -350,9 +357,13 @@ function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
 function persistSection(contentKey: string, sectionId: string): void {
   const bySteps = stepsFor(contentKey, sectionId);
   const completedIds = new Set<string>();
+  const skippedIds = new Set<string>();
   bySteps.forEach((entry, stepId) => {
     if (entry.completed) {
       completedIds.add(stepId);
+      if (entry.reason === 'skipped') {
+        skippedIds.add(stepId);
+      }
     }
   });
   // Preview-mode sandbox (#842 Bug 3): block-editor previews must not
@@ -365,10 +376,12 @@ function persistSection(contentKey: string, sectionId: string): void {
     // Empty completedIds → fully clear the storage entry rather than
     // leaving an empty Set marker. Keeps the "no progress" predicate
     // (`hasProgress`) and reset-detection clean.
-    if (completedIds.size === 0) {
+    const loading = hydrationClears.get(`${contentKey}::${sectionId}`);
+    const clearedDuringLoad = loading instanceof Set ? loading : undefined;
+    if (completedIds.size === 0 && !clearedDuringLoad) {
       interactiveStepStorage.clear(contentKey, sectionId);
     } else {
-      interactiveStepStorage.setCompleted(contentKey, sectionId, completedIds);
+      interactiveStepStorage.setCompleted(contentKey, sectionId, completedIds, skippedIds, clearedDuringLoad);
     }
   }
   refreshGuidePercentage(contentKey);
@@ -568,6 +581,24 @@ export function resetStep(stepId: string, sectionId: string | undefined = STANDA
  */
 export function peekGuidePercentage(contentKey: string): number {
   return computeGuideProgress(contentKey)?.percent ?? 0;
+}
+
+export function getGuideCompletionSource(contentKey: string): 'manual' | 'skipped' | 'objectives' {
+  if (guideCompletionMarkStorage.isMarked(contentKey)) {
+    return 'manual';
+  }
+  const skippedIds = new Set(interactiveStepStorage.listAllSkipped(contentKey));
+  entries.get(contentKey)?.forEach((bySteps) => {
+    bySteps.forEach((entry, stepId) => {
+      if (entry.completed && entry.reason === 'skipped') {
+        skippedIds.add(stepId);
+      }
+    });
+  });
+  const index = getGuideIndex(contentKey)?.index;
+  return [...skippedIds].some((blockId) => !index || furthestEvidencedPosition(index, [{ kind: 'do-it', blockId }]) > 0)
+    ? 'skipped'
+    : 'objectives';
 }
 
 /** Subscribe to per-content progress changes. Returns an unsubscribe function. */
