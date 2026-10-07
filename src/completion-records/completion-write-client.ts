@@ -41,6 +41,12 @@ export interface CompletionWriteBody {
   completedAt: string;
   durationMs?: number;
   platform: CompletionPlatform;
+  /**
+   * The page the learner was on at completion, captured when the fact is
+   * queued. Never persisted; the backend forwards it to the Tangelo completion
+   * webhook when that integration is on.
+   */
+  pathfinderUrl?: string;
 }
 
 /**

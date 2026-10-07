@@ -28,6 +28,7 @@ import { isCodaTerminalForcedByFlag } from '../../utils/coda-enablement';
 import { isDocsLinkInterceptionForcedByFlag } from '../../utils/docs-link-interception-enablement';
 import { logger } from '../../lib/logging';
 import { CodaBackendStatus } from './CodaBackendStatus';
+import { TangeloIntegration } from './TangeloIntegration';
 import { getFeatureFlagValue } from '../../utils/openfeature';
 
 type JsonData = PathfinderPluginConfig;
@@ -654,6 +655,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           </Button>
         </div>
       </FieldSet>
+      <TangeloIntegration
+        pluginId={plugin.meta.id}
+        enabled={plugin.meta.jsonData?.tangeloCompletionEnabled === true}
+        className={s.marginTopXl}
+      />
     </form>
   );
 };

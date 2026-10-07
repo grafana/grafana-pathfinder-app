@@ -234,6 +234,8 @@ export const testIds = {
     peerjsPort: 'config-peerjs-port',
     peerjsKey: 'config-peerjs-key',
     codaTerminalToggle: 'config-coda-terminal-toggle',
+    tangeloToggle: 'config-tangelo-toggle',
+    tangeloCredentials: 'config-tangelo-credentials',
     // Interactive Features
     interactiveFeatures: {
       toggle: 'config-interactive-auto-detection-toggle',

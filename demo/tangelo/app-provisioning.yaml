@@ -1,0 +1,18 @@
+apiVersion: 1
+
+# Demo-only provisioning for demo/tangelo/DEMO.md. Mounted over
+# provisioning/plugins/app.yaml by docker-compose.tangelo.yaml. The secure values
+# are synthetic and match demo/tangelo/fake-tangelo.mjs; on a real stack they
+# are provisioned per stack and never typed into Grafana.
+apps:
+  - type: 'grafana-pathfinder-app'
+    org_id: 1
+    org_name: 'grafanalabs'
+    disabled: false
+    jsonData:
+      tangeloCompletionEnabled: true
+      # Honored only by a backend built with the tangelodemo tag.
+      tangeloCompletionEndpoint: 'http://host.docker.internal:8787/api/v1/task_completions'
+    secureJsonData:
+      tangeloCompletionToken: 'demo-tangelo-token'
+      tangeloCompletionServiceAccountUserID: 'demo-service-account-user'
