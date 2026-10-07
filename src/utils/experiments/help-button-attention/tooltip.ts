@@ -49,7 +49,7 @@ export function showHelpButtonTooltip(
     padding: theme.spacing(0.5, 0.5, 0.5, 1.5),
     background: theme.colors.background.primary,
     color: theme.colors.text.primary,
-    border: `1px solid ${theme.colors.border.medium}`,
+    border: `1px solid ${theme.colors.warning.main}`,
     borderRadius: theme.shape.radius.default,
     boxShadow: theme.shadows.z2,
     animation: `${pulse} 4s ease-in-out infinite`,
@@ -68,8 +68,8 @@ export function showHelpButtonTooltip(
       left: 'var(--help-hint-arrow)',
       transform: 'rotate(45deg)',
       background: theme.colors.background.primary,
-      borderTop: `1px solid ${theme.colors.border.medium}`,
-      borderLeft: `1px solid ${theme.colors.border.medium}`,
+      borderTop: `1px solid ${theme.colors.warning.main}`,
+      borderLeft: `1px solid ${theme.colors.warning.main}`,
     },
     '& button': {
       display: 'inline-flex',
@@ -96,10 +96,10 @@ export function showHelpButtonTooltip(
   const position = () => {
     const rect = anchor.getBoundingClientRect();
     const width = container.getBoundingClientRect().width;
-    const left = Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12));
+    const left = Math.max(12, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 12));
     const top = `${rect.bottom + 8}px`;
     const x = `${left}px`;
-    const arrow = `${Math.max(12, Math.min(width - 16, rect.left + rect.width / 2 - left - 4))}px`;
+    const arrow = `${Math.max(12, Math.min(width - 16, rect.left + rect.width / 2 - left - container.clientLeft - 4))}px`;
     if (container.style.left !== x) {
       container.style.left = x;
     }
@@ -129,8 +129,14 @@ export function showHelpButtonTooltip(
   const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(position);
   resize?.observe(anchor);
   resize?.observe(container);
-  position();
+  let frame: number;
+  const followAnchor = () => {
+    position();
+    frame = requestAnimationFrame(followAnchor);
+  };
+  followAnchor();
   return () => {
+    cancelAnimationFrame(frame);
     resize?.disconnect();
     close.removeEventListener('click', dismiss);
     document.removeEventListener('keydown', onKeyDown);
