@@ -341,11 +341,12 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
       }
     });
 
-    it('tags the section event with the owning renderer key, not the ambient one', async () => {
+    it('tags the section event with the owning renderer key as resolved at completion time', async () => {
       const { events, unsubscribe } = recordSectionEvents();
+      let ownerKey = 'https://grafana.com/docs/journey/milestone-1/';
       try {
         render(
-          <GuideContentKeyContext.Provider value="block-editor://preview/owner">
+          <GuideContentKeyContext.Provider value={() => ownerKey}>
             <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
               <InteractiveStep targetAction="highlight" refTarget=".a">
                 Step
@@ -354,6 +355,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
           </GuideContentKeyContext.Provider>
         );
         await waitFor(() => expect(screen.getByTestId(completeBtn(STEP_ID))).toBeInTheDocument());
+        ownerKey = 'https://grafana.com/docs/journey/milestone-2/';
         act(() => {
           screen.getByTestId(completeBtn(STEP_ID)).click();
         });
@@ -361,7 +363,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         await waitFor(() => {
           const evt = events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section');
           expect(evt!.detail).toEqual(
-            expect.objectContaining({ kind: 'section', contentKey: 'block-editor://preview/owner' })
+            expect.objectContaining({ kind: 'section', contentKey: 'https://grafana.com/docs/journey/milestone-2/' })
           );
         });
       } finally {

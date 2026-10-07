@@ -197,7 +197,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
   const guideCompleteCalledRef = useRef(false);
-  const ownerContentKey = resolveGuideContentKey(content.url);
+  const resolveOwnerContentKey = useCallback(() => resolveGuideContentKey(content.url), [content.url]);
 
   // Text selection tracking for assistant integration
   const selectionState = useTextSelection(activeRef);
@@ -547,7 +547,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   );
 
   return (
-    <GuideContentKeyContext.Provider value={ownerContentKey}>
+    <GuideContentKeyContext.Provider value={resolveOwnerContentKey}>
       <GuideResponseProvider guideId={guideId}>
         <GuideRequirementsProvider guideId={guideId}>
           <ContentWithVariables

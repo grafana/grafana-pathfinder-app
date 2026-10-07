@@ -112,7 +112,8 @@ describe('ContentRenderer — the automatic section route and reset', () => {
   it('matches its own guide key regardless of a trailing slash', async () => {
     const onGuideComplete = jest.fn();
     await renderWithSections(onGuideComplete);
-    SECTION_IDS.forEach((sectionId) => completeSection(sectionId, GUIDE_URL.replace(/\/+$/, '')));
+    const slashToggled = GUIDE_URL.endsWith('/') ? GUIDE_URL.slice(0, -1) : `${GUIDE_URL}/`;
+    SECTION_IDS.forEach((sectionId) => completeSection(sectionId, slashToggled));
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
   });
 

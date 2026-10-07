@@ -208,7 +208,7 @@ export function InteractiveSection({
   // --- Persistence helpers (restore across refresh) ---
   // Content key resolved via shared utility to ensure persist/restore consistency
 
-  const ownerContentKey = useContext(GuideContentKeyContext);
+  const resolveOwnerContentKey = useContext(GuideContentKeyContext);
 
   // Detect if we're in preview mode (block editor preview)
   // Preview mode uses a special URL pattern: block-editor://preview/{guide-id}
@@ -490,7 +490,7 @@ export function InteractiveSection({
         hasEmittedGuideCompletionRef.current = true;
         dispatchProgress({
           kind: 'section',
-          contentKey: ownerContentKey ?? '',
+          contentKey: resolveOwnerContentKey?.() ?? '',
           sectionId,
           completed: true,
         });
@@ -515,7 +515,7 @@ export function InteractiveSection({
         SequentialRequirementsManager.getInstance().watchNextStep(3000); // Watch for 3 seconds
       });
     }
-  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode, gateAnalysis.isAllPassive, ownerContentKey]);
+  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode, gateAnalysis.isAllPassive, resolveOwnerContentKey]);
 
   // PRE-COMPUTE eligibility for ALL steps once (React best practice)
   // This prevents expensive recalculation on every render
