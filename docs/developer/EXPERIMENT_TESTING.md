@@ -23,6 +23,13 @@ Use a signed-in Cloud QA stack with analytics and Pathfinder frontend telemetry 
 `{ "variant": "glow" }`, `{ "variant": "tooltip" }`, or `{ "variant": "excluded" }`, then reload with the sidebar closed.
 On older Grafana hosts without local feature-control support, use a remote QA targeting rule.
 
+Disable **Open panel on launch** in the test stack's plugin configuration before this test,
+and set `pathfinder.auto-open-sidebar` to `false`. The plugin setting and feature flag are
+independent auto-open triggers: overriding the flag alone does not disable the plugin setting.
+Avoid highlighted-guide auto-open rules and deep links that open the panel. Any opening dismisses
+the nudge for the tab, so clear the experiment's tab state after disabling those triggers.
+Changing plugin configuration affects the whole stack; use a dedicated QA stack.
+
 Before each fresh run, clear only this experiment's tab state:
 
 ```js
