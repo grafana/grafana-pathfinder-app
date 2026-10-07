@@ -142,6 +142,33 @@ describe('useGuidePreviewProgress — listener contract', () => {
     expect(result.current.hasProgress).toBe(true);
   });
 
+  it('matches section events on their own contentKey, not the active content key', async () => {
+    setActiveTabUrl(PROGRESS_KEY);
+    const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'section', contentKey: OTHER_KEY, sectionId: 'section-a', completed: true },
+        })
+      );
+    });
+    expect(result.current.hasProgress).toBe(false);
+
+    setActiveTabUrl(OTHER_KEY);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'section', contentKey: PROGRESS_KEY, sectionId: 'section-a', completed: true },
+        })
+      );
+    });
+    expect(result.current.hasProgress).toBe(true);
+  });
+
   it('ignores step / section events when the active content key does not match', async () => {
     setActiveTabUrl(OTHER_KEY);
     const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));

@@ -46,12 +46,9 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
       // once the frozen block index has published for it; until then
       // `refreshGuidePercentage` returns undefined and nothing announces the
       // percentage, so the Reset button would be unreachable. Flip on
-      // per-step / per-section completion events whose active content key
-      // matches this preview hook's progress key. Reads `getContentKey()`
-      // lazily because the hook isn't necessarily mounted under the same
-      // active tab.
-      // A section event names its owning guide, so it is matched on that key
-      // rather than the ambient one.
+      // per-step / per-section completion events for this preview hook's
+      // progress key. A section event names its owning guide; a step event
+      // does not, so it falls back to a lazy `getContentKey()` read.
       if (detail.kind === 'section' && detail.completed && detail.contentKey === progressKey) {
         setHasProgress(true);
       } else if (detail.kind === 'step' && detail.completed && getContentKey() === progressKey) {
