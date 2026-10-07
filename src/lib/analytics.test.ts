@@ -30,6 +30,20 @@ const mockReportInteraction = reportInteraction as jest.Mock;
 const mockPushFaroUserAction = pushFaroUserAction as jest.Mock;
 
 describe('reportAppInteraction', () => {
+  it('keeps the analytics outcome while the experiments SDK owns its Faro mirror', () => {
+    reportAppInteraction(
+      UserInteraction.HelpButtonClickedToolbar,
+      {
+        experiment_help_button_nudge: 'control',
+      },
+      { mirrorToFaro: false }
+    );
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_help_button_clicked_toolbar',
+      expect.objectContaining({ experiment_help_button_nudge: 'control' })
+    );
+    expect(mockPushFaroUserAction).not.toHaveBeenCalled();
+  });
   it('removes private guide identifiers and authored metadata from the Faro mirror', () => {
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
       action: 'open',

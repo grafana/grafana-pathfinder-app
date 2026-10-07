@@ -203,5 +203,9 @@
     "disabled": "Interactive learning is disabled",
     "disabledDescription": "Interactive learning is turned off for this organization.",
     "openSettings": "Open interactive learning settings"
+  },
+  "helpButtonHint": {
+    "message": "Try interactive learning",
+    "dismiss": "Dismiss learning hint"
   }
 }

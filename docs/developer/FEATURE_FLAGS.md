@@ -278,6 +278,49 @@ Enrollment also re-stamps the Faro session `experiments` attribute, because `ini
 
 ---
 
+### `pathfinder.help-button-nudge-experiment`
+
+Object flag, default `{ "variant": "excluded" }`. `control` leaves the Help button unchanged;
+`glow` adds a halo using Grafana's theme-aware orange palette, pulses twice over four seconds, then remains static.
+`tooltip` displays a dismissible “Try interactive learning” hint below the button.
+Reduced-motion users receive the static highlight. Closing the hint or pressing Escape hides only
+the hint; the subsequent Help click remains attributable. Opening any Pathfinder surface or clicking
+Help dismisses the treatment for the current tab, scoped by namespace and signed-in user.
+
+Enrollment happens only when the unique, visible question-mark Help button exposes
+`aria-expanded="false"`. Mobile Help dropdowns, hidden tabs, ambiguous matches, anonymous sessions,
+missing namespaces, disabled analytics, and unavailable Pathfinder Faro instances do not enroll.
+The DOM adapter depends on Grafana's question-circle icon test ID, localized Help label, and
+expanded-state contract; unsupported markup fails closed.
+
+This experiment uses `@grafana-experiments/sdk@0.2.0` with Pathfinder's existing OpenFeature client
+and isolated Faro instance. It deliberately has **no `trackingKey`**: the SDK owns the single
+`experiment_viewed` denominator through `reportExperimentView` and Faro. Experiment ID:
+`pathfinder-help-button-nudge-v1`; group: `closed-help-toolbar`. SDK exposure deduplication is per
+Faro session and assignment, with sessionStorage persistence when available. Pathfinder's Faro
+sessions are volatile, so a full reload can create a new session and exposure. Dismissal survives
+reloads within the same tab. Do not interpret exposure rows as unique people or allocation units.
+
+The primary outcome is `pathfinder_help_button_clicked_toolbar`, once on the first eligible click
+in all three arms. RudderStack properties include `experiment_help_button_nudge`, `exposure_id`, and
+`event_id`; Faro receives the SDK's full assignment snapshot. The SDK owns this event's Faro mirror,
+so `reportAppInteraction` skips its normal mirror for this call. The closed-surface Faro gate admits
+only this experiment's exposure, click, and hint dismissal; it does not activate replay or general page telemetry.
+
+Remote provisioning is separate: create a public object flag with excluded/control/glow/tooltip values,
+excluded outside the chosen population, and the intended three-arm split inside it. Assignment uses
+the existing stack/org OpenFeature context, never client-side user bucketing. Verify the deployed
+bucketing field and allocation before declaring randomized inference. Keep the experiment's allocation
+stable after launch; changing variation weights or ordering can change assignment boundaries.
+The SDK accepts any caller-defined list of variation names; this integration declares these three.
+Analysis is performed independently of Odin's two-arm analysis model. Verify ingestion for all arms
+before launch. Hint dismissal emits `pathfinder_help_button_dismissed_hint` with the same attribution
+properties as the click. A RudderStack dashboard needs staging models for these outcome events.
+
+Retirement removes the flag registry entry, `help-button-attention/`, its bootstrap call, the shared
+constants and dismissal key, the click event and mirror option (if unused elsewhere), the narrow
+Faro filter exception and getter, these documentation sections, and the remote flag/experiment.
+
 ## Backend aggregation toggles (not MTFF)
 
 Separate from the OpenFeature flags above, Grafana **App Platform APIService aggregation toggles** gate whether the plugin's aggregated backend APIs are served on a stack. They live in core Grafana config (`config.featureToggles`), not MTFF, and are read server-side in the Go backend — not through `openfeature.ts`.

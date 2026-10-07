@@ -6,14 +6,49 @@ Open Grafana with `?featureControl=true` (for example, append it to the current 
 
 ## Current experiments
 
-| Flag                                                | Variants                             | What treatment does                                                                                                        |
-| --------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `pathfinder.highlighted-guide-experiment`           | `excluded` / `control` / `treatment` | Both `control` and `treatment` keep Pathfinder visible — they differ only in which `guideId` is auto-opened + featured.    |
-| `pathfinder.interactive-learning-banner-experiment` | `excluded` / `control` / `treatment` | `treatment` shows a dismissible explanatory banner on the context page and above opened guides. `control` renders nothing. |
+| Flag                                                | Variants                                    | What treatment does                                                                                                        |
+| --------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `pathfinder.highlighted-guide-experiment`           | `excluded` / `control` / `treatment`        | Both `control` and `treatment` keep Pathfinder visible — they differ only in which `guideId` is auto-opened + featured.    |
+| `pathfinder.interactive-learning-banner-experiment` | `excluded` / `control` / `treatment`        | `treatment` shows a dismissible explanatory banner on the context page and above opened guides. `control` renders nothing. |
+| `pathfinder.help-button-nudge-experiment`           | `excluded` / `control` / `glow` / `tooltip` | Orange highlight or dismissible learning hint on the closed desktop Help button; control is unchanged.                     |
 
 See [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md) for the full flag shapes and variant tables.
 
 A related pre-post change — **PLG Onboarding Flow Revamp** — auto-opens Pathfinder from the Cloud onboarding survey. It is not a Pathfinder MTFF flag; identify it in analytics by `source` on `pathfinder_docs_panel_interaction`. See [PLG Onboarding Flow Revamp](#plg-onboarding-flow-revamp-pre-post).
+
+## Help-button attention
+
+Use a signed-in Cloud QA stack with analytics and Pathfinder frontend telemetry enabled. Set
+`pathfinder.help-button-nudge-experiment` through feature control to `{ "variant": "control" }`,
+`{ "variant": "glow" }`, `{ "variant": "tooltip" }`, or `{ "variant": "excluded" }`, then reload with the sidebar closed.
+On older Grafana hosts without local feature-control support, use a remote QA targeting rule.
+
+Before each fresh run, clear only this experiment's tab state:
+
+```js
+Object.keys(sessionStorage)
+  .filter(
+    (key) =>
+      key.startsWith('pathfinder-help-button-nudge-v1:dismissed:') ||
+      (key.startsWith('grafana-experiments:v2:') && key.includes('pathfinder-help-button-nudge-v1'))
+  )
+  .forEach((key) => sessionStorage.removeItem(key));
+```
+
+In all three active arms, verify exactly one `experiment_viewed` for the SDK session/assignment and a
+`pathfinder_help_button_clicked_toolbar` outcome with the same exposure ID after the first click.
+Control must have the original button styles. Glow must pulse twice, remain highlighted,
+retain keyboard focus, and stop after click or opening through another route. Reopening and route
+changes must not restart the nudge. Check light/dark themes and reduced motion (static from the start).
+The tooltip must disappear on Help click or another opening route. Close and Escape must dismiss
+only the tooltip, preserving subsequent Help-click attribution; dismissal survives a tab reload.
+Mobile dropdowns, hidden buttons, excluded/malformed/missing flags, and analytics-disabled sessions
+must produce neither a nudge nor an exposure. Exposing the toolbar after it mounts late should work.
+
+The legacy `__pathfinderExperiment.clearExposures()` helper does not clear SDK storage. This is a
+DOM-based integration: check the selector contract on every supported Grafana version before launch.
+Unit tests exercise the real SDK with an in-memory OpenFeature provider; they do not prove remote
+assignment, live appearance, or collector delivery.
 
 ## Debug-surface API
 
