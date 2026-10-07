@@ -4,6 +4,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
 import { InteractiveMultiStep } from './interactive-multi-step';
+import { markStepCompleted } from '../../global-state/completion-store';
 import {
   clearHeldCompletionRequests,
   createCoordinatorWrapper,
@@ -255,6 +256,9 @@ describe('InteractiveMultiStep — full-screen fallback location', () => {
     const [showCall, doCall] = mockExecuteInteractiveAction.mock.calls.map((call) => call[0]);
     expect(showCall).toMatchObject({ buttonType: 'show', fullScreenFallbackLocation: '/connections' });
     expect(doCall).toMatchObject({ buttonType: 'do', fullScreenFallbackLocation: '/connections' });
+    await waitFor(() =>
+      expect(markStepCompleted).toHaveBeenCalledWith('multi-fallback', undefined, 'manual', expect.any(String))
+    );
   });
 });
 
