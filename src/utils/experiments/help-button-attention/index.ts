@@ -35,7 +35,8 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
     return () => {};
   }
   const contextKey = `${config.namespace}:${config.bootData.user.id}`;
-  const helpLabel = t('navigation.help.aria-label', 'Help');
+  // Core's namespace, so the label matches the rendered Help button in every locale.
+  const helpLabel = t('navigation.help.aria-label', 'Help', { ns: 'grafana' });
   const dismissalKey = `${StorageKeys.HELP_BUTTON_ATTENTION_DISMISSED_PREFIX}${contextKey}`;
   let dismissed = false;
   let tooltipDismissed = false;

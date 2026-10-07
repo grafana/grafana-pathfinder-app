@@ -29,7 +29,11 @@ jest.mock('../../../lib/analytics', () => ({
   },
 }));
 jest.mock('../../openfeature', () => ({ getFeatureFlagClient: () => OpenFeature.getClient('help-button-test') }));
-jest.mock('@grafana/i18n', () => ({ t: (_key: string, fallback: string) => fallback }));
+let mockCoreHelpLabel = 'Help';
+jest.mock('@grafana/i18n', () => ({
+  t: (key: string, fallback: string, values?: { ns?: string }) =>
+    key === 'navigation.help.aria-label' && values?.ns === 'grafana' ? mockCoreHelpLabel : fallback,
+}));
 jest.mock('./styles', () => ({ getHelpButtonAttentionStyle: () => 'test-glow' }));
 jest.mock('@grafana/runtime', () => ({
   config: { namespace: 'stacks-123', bootData: { user: { id: 42, isSignedIn: true } }, analytics: { enabled: true } },
@@ -63,6 +67,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
   sessionStorage.clear();
+  mockCoreHelpLabel = 'Help';
   config.theme2 = createTheme();
   config.analytics.enabled = true;
   config.bootData.user.isSignedIn = true;
@@ -92,6 +97,16 @@ afterEach(async () => {
   await OpenFeature.clearProviders();
   jest.useRealTimers();
   jest.restoreAllMocks();
+});
+
+it("matches Grafana's translated Help label in non-English locales", async () => {
+  mockCoreHelpLabel = 'Hilfe';
+  button.setAttribute('aria-label', 'Hilfe');
+  await flag({ variant: 'glow' });
+  stop = await startHelpButtonExperiment();
+  await settle();
+  expect(reportExperimentView).toHaveBeenCalledWith(HELP_BUTTON_EXPERIMENT_ID, 'closed-help-toolbar', 'glow');
+  expect(button.classList.contains('test-glow')).toBe(true);
 });
 
 it.each(['control', 'glow', 'tooltip'])(
