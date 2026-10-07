@@ -169,3 +169,48 @@ it('drops the skip attribution of a step reset while saved progress loads', asyn
 
   expect(getGuideCompletionSource(GUIDE)).toBe('objectives');
 });
+
+it('keeps saved progress and skip attribution readable while a save lands before it loads', async () => {
+  await completeWithSkip();
+  resetCompletionStoreForTests();
+  publish();
+  let resolveStored: (ids: Set<string>) => void = () => undefined;
+  jest
+    .spyOn(interactiveStepStorage, 'getCompleted')
+    .mockImplementationOnce(() => new Promise((resolve) => (resolveStored = resolve)));
+  function Probe() {
+    const { completed } = useStepCompletion('first', SECTION);
+    return <span>{completed ? 'done' : 'open'}</span>;
+  }
+  render(<Probe />);
+
+  act(() => markStepCompleted('last', SECTION, 'objectives'));
+
+  expect(await interactiveStepStorage.getCompleted(GUIDE, SECTION)).toEqual(new Set(['first', 'last']));
+  expect(getGuideCompletionSource(GUIDE)).toBe('skipped');
+  await act(async () => resolveStored(new Set(['first', 'last'])));
+  expect(getGuideCompletionSource(GUIDE)).toBe('skipped');
+});
+
+it('keeps unloaded progress when a step reset empties the section before saved progress loads', async () => {
+  await completeWithSkip();
+  resetCompletionStoreForTests();
+  publish();
+  let resolveStored: (ids: Set<string>) => void = () => undefined;
+  jest
+    .spyOn(interactiveStepStorage, 'getCompleted')
+    .mockImplementationOnce(() => new Promise((resolve) => (resolveStored = resolve)));
+  function Probe() {
+    const { completed } = useStepCompletion('first', SECTION);
+    return <span>{completed ? 'done' : 'open'}</span>;
+  }
+  render(<Probe />);
+
+  act(() => markStepCompleted('last', SECTION, 'objectives'));
+  act(() => resetStep('last', SECTION));
+
+  expect(await interactiveStepStorage.getCompleted(GUIDE, SECTION)).toEqual(new Set(['first']));
+  expect(interactiveStepStorage.getSkipped(GUIDE, SECTION)).toEqual(new Set(['first']));
+  await act(async () => resolveStored(new Set(['first', 'last'])));
+  expect(getGuideCompletionSource(GUIDE)).toBe('skipped');
+});

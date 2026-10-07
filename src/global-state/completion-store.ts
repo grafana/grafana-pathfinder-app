@@ -381,17 +381,12 @@ function persistSection(contentKey: string, sectionId: string): void {
     // Empty completedIds → fully clear the storage entry rather than
     // leaving an empty Set marker. Keeps the "no progress" predicate
     // (`hasProgress`) and reset-detection clean.
-    if (completedIds.size === 0) {
+    const loading = hydrationClears.get(`${contentKey}::${sectionId}`);
+    const clearedDuringLoad = loading instanceof Set ? loading : undefined;
+    if (completedIds.size === 0 && !clearedDuringLoad) {
       interactiveStepStorage.clear(contentKey, sectionId);
     } else {
-      const loading = hydrationClears.get(`${contentKey}::${sectionId}`);
-      interactiveStepStorage.setCompleted(
-        contentKey,
-        sectionId,
-        completedIds,
-        skippedIds,
-        loading instanceof Set ? loading : undefined
-      );
+      interactiveStepStorage.setCompleted(contentKey, sectionId, completedIds, skippedIds, clearedDuringLoad);
     }
   }
   refreshGuidePercentage(contentKey);

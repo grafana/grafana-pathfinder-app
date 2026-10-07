@@ -1044,15 +1044,17 @@ function parseStepIds(raw: string): unknown[] | null {
   }
 }
 
-function readSkippedSteps(contentKey: string, sectionId: string): Set<string> {
+function readStepIds(prefix: string, contentKey: string, sectionId: string): Set<string> {
   try {
-    const raw = localStorage.getItem(
-      progressSectionKey(StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX, contentKey, sectionId)
-    );
+    const raw = localStorage.getItem(progressSectionKey(prefix, contentKey, sectionId));
     return new Set((raw ? (parseStepIds(raw) ?? []) : []).filter((id): id is string => typeof id === 'string'));
   } catch {
     return new Set();
   }
+}
+
+function readSkippedSteps(contentKey: string, sectionId: string): Set<string> {
+  return readStepIds(StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX, contentKey, sectionId);
 }
 
 function writeSkippedSteps(contentKey: string, sectionId: string, skippedIds: ReadonlySet<string>): void {
@@ -1142,13 +1144,21 @@ export const interactiveStepStorage = {
     sectionId: string,
     completedIds: Set<string>,
     skippedIds: ReadonlySet<string> = new Set(),
-    unloadedSkipsClearedDuringLoad?: ReadonlySet<string>
+    clearedDuringLoad?: ReadonlySet<string>
   ): Promise<void> {
-    const storedSkipped = readSkippedSteps(contentKey, sectionId);
-    const keepsStoredSkip = (id: string) =>
-      unloadedSkipsClearedDuringLoad !== undefined && storedSkipped.has(id) && !unloadedSkipsClearedDuringLoad.has(id);
+    // A save while the section loads must not drop stored steps the load is about to restore.
+    const keepsStored = (id: string) => clearedDuringLoad !== undefined && !clearedDuringLoad.has(id);
+    const unloaded = clearedDuringLoad
+      ? [...readStepIds(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId)].filter(keepsStored)
+      : [];
+    const completed = new Set([...completedIds, ...unloaded]);
+    if (completed.size === 0) {
+      return interactiveStepStorage.clear(contentKey, sectionId);
+    }
     const skipped = new Set(
-      [...storedSkipped, ...skippedIds].filter((id) => completedIds.has(id) || keepsStoredSkip(id))
+      [...readSkippedSteps(contentKey, sectionId), ...skippedIds].filter(
+        (id) => completedIds.has(id) || (keepsStored(id) && completed.has(id))
+      )
     );
     // Skip annotations must be visible before a completion notification can record its source.
     writeSkippedSteps(contentKey, sectionId, skipped);
@@ -1156,7 +1166,7 @@ export const interactiveStepStorage = {
       completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
-      await storage.setItem(key, Array.from(completedIds));
+      await storage.setItem(key, Array.from(completed));
     } catch (error) {
       logger.warn('Failed to save completed steps', { error });
     }
