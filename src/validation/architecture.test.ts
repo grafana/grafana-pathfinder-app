@@ -441,11 +441,6 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
  */
 const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
-    violation: 'types/backend-api.schema.ts',
-    reason: 'Imported only by validation/backend-api-contract.test.ts, the Go-to-TypeScript contract check.',
-    tracking: '#1923',
-  },
-  {
     violation: 'types/v1-recommender.types.ts',
     reason:
       'Every production importer uses `import type`, but v1-recommender.types.test.ts value-imports ' +

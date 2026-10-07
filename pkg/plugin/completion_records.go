@@ -92,6 +92,22 @@ type completionCapability struct {
 	Diagnostics *guideProxyDiagnostic `json:"diagnostics,omitempty"`
 	Available   bool                  `json:"available"`
 	Reason      string                `json:"reason,omitempty"`
+	// ProgressRecords advertises that this plugin build accepts attempt
+	// upserts (a write body with attemptId). Set whenever Available is. It says
+	// what the build supports, not what the caller may write.
+	ProgressRecords bool `json:"progressRecords,omitempty"`
+}
+
+// inProgressCompletion is a guide the user has started but whose most recent
+// activity is an unfinished attempt.
+type inProgressCompletion struct {
+	GuideSource       string `json:"guideSource"`
+	GuideID           string `json:"guideId"`
+	GuideTitle        string `json:"guideTitle"`
+	GuideCategory     string `json:"guideCategory"`
+	PathID            string `json:"pathId"`
+	CompletionPercent int64  `json:"completionPercent"`
+	LastUpdatedAt     string `json:"lastUpdatedAt"`
 }
 
 // collatedCompletion is one entry per (guideSource, guideId) for a single user.
@@ -113,7 +129,10 @@ type myCompletionsResponse struct {
 	Capability  completionCapability  `json:"capability"`
 	UserID      string                `json:"userId,omitempty"`
 	Completions []collatedCompletion  `json:"completions"`
-	AsOf        string                `json:"asOf,omitempty"`
+	// InProgress is always present ([] when empty); writeMyCompletions
+	// normalizes a nil slice.
+	InProgress []inProgressCompletion `json:"inProgress"`
+	AsOf       string                 `json:"asOf,omitempty"`
 }
 
 // completionIndex is the collated, per-user view of a namespace's records.
@@ -122,8 +141,9 @@ type myCompletionsResponse struct {
 // idx.byUser[caller] — a cache hit is structurally incapable of exposing
 // another user's slice.
 type completionIndex struct {
-	byUser map[string][]collatedCompletion
-	asOf   time.Time
+	byUser           map[string][]collatedCompletion
+	inProgressByUser map[string][]inProgressCompletion
+	asOf             time.Time
 }
 
 type completionCacheEntry struct {
@@ -400,9 +420,11 @@ func buildCompletionIndex(ctx context.Context, namespace string, lister completi
 	if err != nil {
 		return nil, pages, err
 	}
+	byUser, inProgressByUser := collateCompletions(records)
 	return &completionIndex{
-		byUser: collateByUser(records),
-		asOf:   timeNow(),
+		byUser:           byUser,
+		inProgressByUser: inProgressByUser,
+		asOf:             timeNow(),
 	}, pages, nil
 }
 
@@ -433,9 +455,19 @@ func drainCompletionRecords(ctx context.Context, namespace string, lister comple
 	return records, pages, nil
 }
 
-// collateByUser groups records by userId, then collapses each user's records to
-// one entry per (guideSource, guideId), sorted by latest completion descending.
-func collateByUser(records []completionRecordSpec) map[string][]collatedCompletion {
+// collateCompletions groups records by userId, then collapses each user's
+// records to one entry per (guideSource, guideId), sorted by latest completion
+// descending.
+//
+// Only a record with a completedAt is a completion: it alone feeds count, the
+// latest fields and maxCompletionPercent, and only guides with at least one
+// appear in completions. Every legacy record has a completedAt (it was
+// required), whatever its percent, so legacy collation is unchanged. An attempt
+// record has none until it reaches 100%, so a record without one is an
+// unfinished attempt. Per guide, the
+// newest attempt is reported in inProgress only if it started after the last
+// completion. Server arrival time cannot order delayed writes after a reset.
+func collateCompletions(records []completionRecordSpec) (map[string][]collatedCompletion, map[string][]inProgressCompletion) {
 	type key struct{ source, id string }
 	// Per user: (guideSource,guideId) -> accumulating entry + latest timestamp.
 	type acc struct {
@@ -443,6 +475,15 @@ func collateByUser(records []completionRecordSpec) map[string][]collatedCompleti
 		latestTime time.Time
 		latestOK   bool
 		has        bool
+
+		// Latest completion event time, independent of retry arrival.
+		doneUpdated   time.Time
+		doneUpdatedOK bool
+
+		partial     inProgressCompletion
+		partialTime time.Time
+		partialOK   bool
+		hasPartial  bool
 	}
 
 	perUser := map[string]map[key]*acc{}
@@ -462,6 +503,30 @@ func collateByUser(records []completionRecordSpec) map[string][]collatedCompleti
 			groups[k] = a
 		}
 
+		updated, updatedOK := parseCompletionTime(rec.CompletedAt)
+		if rec.CompletedAt == "" {
+			updated, updatedOK = parseCompletionTime(rec.AttemptStartedAt)
+			if !updatedOK {
+				updated, updatedOK = parseCompletionTime(rec.LastUpdatedAt)
+			}
+			if shouldReplaceLatest(a.partialTime, a.partialOK, a.hasPartial, updated, updatedOK) {
+				a.partialTime, a.partialOK, a.hasPartial = updated, updatedOK, true
+				a.partial = inProgressCompletion{
+					GuideSource:       rec.GuideSource,
+					GuideID:           rec.GuideID,
+					GuideTitle:        rec.GuideTitle,
+					GuideCategory:     rec.GuideCategory,
+					PathID:            rec.PathID,
+					CompletionPercent: rec.CompletionPercent,
+					LastUpdatedAt:     rec.LastUpdatedAt,
+				}
+			}
+			continue
+		}
+		if updatedOK && (!a.doneUpdatedOK || updated.After(a.doneUpdated)) {
+			a.doneUpdated, a.doneUpdatedOK = updated, true
+		}
+
 		a.entry.Count++
 		if rec.CompletionPercent > a.entry.MaxCompletionPercent {
 			a.entry.MaxCompletionPercent = rec.CompletionPercent
@@ -479,17 +544,52 @@ func collateByUser(records []completionRecordSpec) map[string][]collatedCompleti
 	}
 
 	result := map[string][]collatedCompletion{}
+	inProgress := map[string][]inProgressCompletion{}
 	for userID, groups := range perUser {
 		entries := make([]collatedCompletion, 0, len(groups))
+		var partials []inProgressCompletion
 		for _, a := range groups {
-			entries = append(entries, a.entry)
+			if a.entry.Count > 0 {
+				entries = append(entries, a.entry)
+			}
+			// A partial shows when nothing is completed yet, or when it is
+			// provably newer than the latest completed record.
+			if a.hasPartial && (a.entry.Count == 0 || (a.partialOK && a.doneUpdatedOK && a.partialTime.After(a.doneUpdated))) {
+				partials = append(partials, a.partial)
+			}
 		}
 		sort.SliceStable(entries, func(i, j int) bool {
 			return completionEntryLess(entries[j], entries[i]) // descending by latestCompletedAt
 		})
-		result[userID] = entries
+		sort.SliceStable(partials, func(i, j int) bool {
+			return inProgressLess(partials[j], partials[i]) // descending by lastUpdatedAt
+		})
+		if len(entries) > 0 {
+			result[userID] = entries
+		}
+		if len(partials) > 0 {
+			inProgress[userID] = partials
+		}
 	}
-	return result
+	return result, inProgress
+}
+
+// inProgressLess orders partials by LastUpdatedAt ascending, the same way
+// completionEntryLess orders completions, with a guide-identity tiebreak so
+// the order is deterministic.
+func inProgressLess(x, y inProgressCompletion) bool {
+	tx, okx := parseCompletionTime(x.LastUpdatedAt)
+	ty, oky := parseCompletionTime(y.LastUpdatedAt)
+	if okx && oky && !tx.Equal(ty) {
+		return tx.Before(ty)
+	}
+	if okx != oky {
+		return oky
+	}
+	if x.GuideSource != y.GuideSource {
+		return x.GuideSource > y.GuideSource
+	}
+	return x.GuideID > y.GuideID
 }
 
 // shouldReplaceLatest reports whether a candidate record should become the
@@ -596,15 +696,12 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 		diagnostic.Outcome, diagnostic.Cache = "degraded", "stale"
 		diagnostic.CacheAgeMS = max(0, timeNow().Sub(idx.asOf).Milliseconds())
 	}
-	entries := idx.byUser[userID]
-	if entries == nil {
-		entries = []collatedCompletion{}
-	}
 	a.writeMyCompletions(w, myCompletionsResponse{
-		Capability:  completionCapability{Available: true},
+		Capability:  completionCapability{Available: true, ProgressRecords: true},
 		Diagnostics: diagnostic,
 		UserID:      userID,
-		Completions: entries,
+		Completions: idx.byUser[userID],
+		InProgress:  idx.inProgressByUser[userID],
 		AsOf:        idx.asOf.UTC().Format(time.RFC3339),
 	})
 }
@@ -647,10 +744,17 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 		diagnostic.Outcome, diagnostic.Cache = "degraded", "stale"
 		diagnostic.CacheAgeMS = max(0, timeNow().Sub(idx.asOf).Milliseconds())
 	}
-	a.writeJSON(w, completionCapability{Available: true, Diagnostics: diagnostic}, http.StatusOK)
+	a.writeJSON(w, completionCapability{Available: true, ProgressRecords: true, Diagnostics: diagnostic}, http.StatusOK)
 }
 
 func (a *App) writeMyCompletions(w http.ResponseWriter, resp myCompletionsResponse) {
+	// Both arrays are always present on the wire, never null.
+	if resp.Completions == nil {
+		resp.Completions = []collatedCompletion{}
+	}
+	if resp.InProgress == nil {
+		resp.InProgress = []inProgressCompletion{}
+	}
 	a.writeJSON(w, resp, http.StatusOK)
 }
 

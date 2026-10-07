@@ -10,6 +10,7 @@ import {
   peekGuidePercentage,
   reconcileSection,
   refreshAndNotifyGuideProgress,
+  refreshGuidePercentageOnLoad,
   resetCompletionStoreForTests,
   resetSection,
   resetStep,
@@ -575,6 +576,95 @@ describe('completion-store', () => {
       expect(new Set(events.map((e) => e.kind === 'step' && e.stepId))).toEqual(new Set(['s-1', 's-2']));
       expect(events.every((e) => e.kind === 'step' && e.completed === false)).toBe(true);
       unsubscribe();
+    });
+  });
+
+  // The progress observer starts a guide attempt only on a real change, so
+  // every announcement says why it fired, or, for a reset, says nothing.
+  describe('guide announcement origin', () => {
+    async function announcedDuring(run: () => void): Promise<ProgressEventDetail[]> {
+      const announced: ProgressEventDetail[] = [];
+      const unsubscribe = subscribeProgressEvent((detail) => {
+        if (detail.kind === 'guide') {
+          announced.push(detail);
+        }
+      });
+      try {
+        act(run);
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+      } finally {
+        unsubscribe();
+      }
+      return announced;
+    }
+
+    function origins(events: ProgressEventDetail[]): unknown[] {
+      return events.map((detail) => (detail.kind === 'guide' && 'origin' in detail ? detail.origin : 'absent'));
+    }
+
+    async function settle(): Promise<void> {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+
+    it('marks a step completion as a change', async () => {
+      publishFlatIndex(CONTENT_KEY, 4, ['s-1']);
+
+      const events = await announcedDuring(() => markStepCompleted('s-1', 'section-a', 'manual'));
+
+      expect(origins(events)).toEqual(['change']);
+    });
+
+    it('marks a bulk step completion as a change', async () => {
+      publishFlatIndex(CONTENT_KEY, 4, ['s-1', 's-2']);
+
+      const events = await announcedDuring(() => markStepsCompleted(['s-1', 's-2'], 'section-a', 'objectives'));
+
+      expect(origins(events)).toEqual(['change']);
+    });
+
+    it('marks a hydration replay of stored steps as a load', async () => {
+      publishFlatIndex(CONTENT_KEY, 4, ['step-1']);
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1']));
+
+      const events = await announcedDuring(() => {
+        render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      });
+
+      expect(events.length).toBeGreaterThan(0);
+      expect(new Set(origins(events))).toEqual(new Set(['load']));
+    });
+
+    it('marks a roster reconcile as a load', async () => {
+      publishFlatIndex(CONTENT_KEY, 4, ['keep', 'orphan']);
+      act(() => markStepsCompleted(['keep', 'orphan'], 'section-r', 'manual'));
+      await settle();
+
+      const events = await announcedDuring(() => reconcileSection('section-r', ['keep']));
+
+      expect(origins(events)).toEqual(['load']);
+    });
+
+    it('gives a step reset no origin at all', async () => {
+      publishFlatIndex(CONTENT_KEY, 4, ['s-1', 's-2']);
+      act(() => markStepsCompleted(['s-1', 's-2'], 'section-a', 'manual'));
+      await settle();
+
+      const events = await announcedDuring(() => resetStep('s-2', 'section-a'));
+
+      expect(origins(events)).toEqual(['absent']);
+    });
+
+    it('marks the content-load recompute as a load', async () => {
+      publishFlatIndex(CONTENT_KEY, 4, ['s-1']);
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-a'), new Set(['s-1']));
+
+      const events = await announcedDuring(() => refreshGuidePercentageOnLoad(CONTENT_KEY));
+
+      expect(origins(events)).toEqual(['load']);
     });
   });
 

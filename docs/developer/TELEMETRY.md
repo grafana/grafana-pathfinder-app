@@ -57,6 +57,28 @@ If none apply, the free channels cover you. When in doubt, ask: _if this silentl
 
 Span helpers (`withFaroUserAction`, `setFaroUserActionAttributes`), explicit error pushes (`pushFaroError` from error boundaries), and view setters (`setFaroView`/`setFaroViewName`) may be used directly from components.
 
+## Guide progress events
+
+`pathfinder.progress-analytics` defaults to false, including when MTFF is unreachable.
+When enabled, `reportAppInteraction` sends `pathfinder_guide_progress` through the existing consent and environment gates.
+It reports first real progress and subsequent 25%, 50%, or 75% crossings, at most four events per attempt.
+Progress carries `guide_source`, `guide_id`, optional `path_id`, `percent`, `threshold`, and `attempt_id`.
+
+The flag also adds `attempt_id` to the existing terminal `guide_completed` event for an attempt-eligible guide.
+It does not send a second completion event or control terminal event emission.
+The terminal event retains its public-identity filtering, `completion_percentage`, and `completion_source` fields.
+Its separate analytics guard reports once, without waiting for durable queue acceptance or backend success.
+The recorder creates the attempt before this report, so startup buffering and retries keep the same correlation ID.
+
+The random attempt ID correlates events within a device-local attempt. It is not a user ID, but it is a high-cardinality correlation field.
+Progress events do not include guide titles, guide content, or credentials. Event enablement requires privacy review of the identity and correlation fields.
+Sent events cannot be recalled by disabling the flag.
+
+Device-local attempts persist under `grafana-pathfinder-app-guide-attempt-`, scoped to user and organization, even when both progress flags are false.
+The value contains a random ID, start timestamp, completion state, highest percentage, and mode.
+These keys do not use user-storage synchronization. Resetting guide progress removes the corresponding attempt.
+The separate `pathfinder.progress-records` flag controls partial-record writes and capability discovery, not these analytics events.
+
 ## Privacy invariants
 
 Privacy protection is split between enforced normalization and caller discipline:

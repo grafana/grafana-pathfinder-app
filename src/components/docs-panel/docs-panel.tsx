@@ -598,11 +598,17 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
           const progress = getJourneyProgress(updatedTab.content);
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
-          setJourneyCompletionPercentage(completionKey, progress, {
-            packageManifest: updatedTab.content.metadata.packageManifest,
-            repository: updatedTab.content.metadata.repository,
-            guideTitle: updatedTab.title,
-          });
+          // Journey-driven (learning-journey tabs only), and a journey completion never creates a guide attempt.
+          setJourneyCompletionPercentage(
+            completionKey,
+            progress,
+            {
+              packageManifest: updatedTab.content.metadata.packageManifest,
+              repository: updatedTab.content.metadata.repository,
+              guideTitle: updatedTab.title,
+            },
+            { attemptEligible: false }
+          );
         }
         if (this.state.activeTabId !== tabId) {
           pauseGuideLoad(loadContext);

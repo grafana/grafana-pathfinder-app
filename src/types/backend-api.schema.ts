@@ -45,6 +45,8 @@ export const CompletionCapabilityWireSchema = z.strictObject({
   diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   available: z.boolean(),
   reason: z.string().optional(),
+  /** Present (true) when this plugin build accepts attempt upserts. Absent on older builds. */
+  progressRecords: z.boolean().optional(),
 });
 
 // ============ /completion-records/my ============
@@ -63,8 +65,22 @@ export const CollatedCompletionWireSchema = z.strictObject({
 });
 
 /**
+ * A guide whose most recent activity is an unfinished attempt.
+ * @coupling Go struct: inProgressCompletion
+ */
+export const InProgressCompletionWireSchema = z.strictObject({
+  guideSource: z.string(),
+  guideId: z.string(),
+  guideTitle: z.string(),
+  guideCategory: z.string(),
+  pathId: z.string(),
+  completionPercent: z.number().int(),
+  lastUpdatedAt: z.string(),
+});
+
+/**
  * `completions` is a required array, never nullable and never `.catch([])`:
- * the handler builds a non-nil slice unconditionally (`collateByUser` and
+ * the handler builds a non-nil slice unconditionally (`writeMyCompletions` and
  * `handleMyCompletions` in completion_records.go) and
  * `TestMyCompletions_UnknownUserEmptyList` asserts it serializes as `[]`.
  * A `null` here is a Go bug that should fail loudly rather than be absorbed.
@@ -76,6 +92,8 @@ export const MyCompletionsResponseWireSchema = z.strictObject({
   capability: CompletionCapabilityWireSchema,
   userId: z.string().optional(),
   completions: z.array(CollatedCompletionWireSchema),
+  /** Always present, `[]` when empty, for the same reason as `completions`. */
+  inProgress: z.array(InProgressCompletionWireSchema),
   asOf: z.string().optional(),
 });
 
@@ -278,6 +296,7 @@ export const GO_STRUCT_SCHEMAS = {
   myCompletionsResponse: MyCompletionsResponseWireSchema,
   completionCapability: CompletionCapabilityWireSchema,
   collatedCompletion: CollatedCompletionWireSchema,
+  inProgressCompletion: InProgressCompletionWireSchema,
   myAssignmentsResponse: MyAssignmentsResponseWireSchema,
   assignmentCapability: AssignmentCapabilityWireSchema,
   assignmentEntry: AssignmentEntryWireSchema,

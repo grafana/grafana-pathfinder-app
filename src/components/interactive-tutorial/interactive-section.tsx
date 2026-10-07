@@ -527,7 +527,7 @@ export function InteractiveSection({
           // section shape — it credits the section's last block — and no
           // ack write goes through `persistSection`, so refresh here for
           // all of them, not only the all-passive ones.
-          refreshAndNotifyGuideProgress(getContentKey());
+          refreshAndNotifyGuideProgress(getContentKey(), 'change');
         }
       }
 

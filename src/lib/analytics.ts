@@ -88,6 +88,7 @@ export enum UserInteraction {
   LearningPathProgress = 'learning_path_progress',
   BadgeUnlocked = 'badge_unlocked',
   GuideLaunchSurfaceChosen = 'guide_launch_surface_chosen',
+  GuideProgress = 'guide_progress',
   GuideCompleted = 'guide_completed',
   JourneyCompleted = 'journey_completed',
 
