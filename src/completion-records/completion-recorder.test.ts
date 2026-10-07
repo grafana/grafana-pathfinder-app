@@ -8,17 +8,22 @@
  *   - guide and journey keys are independent; distinct guides emit separately
  *   - a throwing subscriber never breaks the completion path
  *   - early completions wait for the write subscriber
- *   - the guard is durable across a reload (a fresh in-memory Set), and
- *     `invalidateEmittedCompletion`/`invalidateAllEmittedCompletions` are the
- *     only way to lift it — the reset-then-re-mark and duplicate-write fixes
+ *   - the guard is durable across a reload (a fresh in-memory Set) until a
+ *     reset or a dropped queued write lifts it — the reset-then-re-mark and
+ *     duplicate-write fixes
+ *   - the Track 1 analytics event fires once per terminal completion on its
+ *     own guard, ahead of the startup buffer and independent of durable acceptance
  */
 import { logger } from '../lib/logging';
+import { reportCompletionAnalytics } from './completion-analytics';
 import {
   recordGuideCompletion,
   recordJourneyCompletion,
   onCompletionRecorded,
   invalidateEmittedCompletion,
   invalidateAllEmittedCompletions,
+  discardPendingCompletions,
+  liftDurableCompletionGuard,
   __resetRecorderForTests,
 } from './completion-recorder';
 import type { CompletionFact, CompletionListener, GuideCompletionFact, JourneyCompletionFact } from './types';
@@ -26,22 +31,31 @@ import type { CompletionFact, CompletionListener, GuideCompletionFact, JourneyCo
 let mockOwner: string | null = 'user-1:org-1';
 jest.mock('./completion-write-storage', () => ({ currentCompletionQueueOwnerKey: () => mockOwner }));
 
-const persistedEmitted = new Map<string, true>();
+jest.mock('./completion-analytics', () => ({ reportCompletionAnalytics: jest.fn() }));
 
-jest.mock('../lib/user-storage', () => ({
-  completionEmittedStorage: {
-    isEmitted: (key: string) => persistedEmitted.has(key),
+const reportAnalytics = jest.mocked(reportCompletionAnalytics);
+
+const persistedEmitted = new Map<string, true>();
+const persistedReported = new Map<string, true>();
+
+jest.mock('../lib/user-storage', () => {
+  const guardStorage = (store: () => Map<string, true>) => ({
+    isEmitted: (key: string) => store().has(key),
     markEmitted: async (key: string) => {
-      persistedEmitted.set(key, true);
+      store().set(key, true);
     },
     clear: async (key: string) => {
-      persistedEmitted.delete(key);
+      store().delete(key);
     },
     clearAll: async () => {
-      persistedEmitted.clear();
+      store().clear();
     },
-  },
-}));
+  });
+  return {
+    completionEmittedStorage: guardStorage(() => persistedEmitted),
+    completionReportedStorage: guardStorage(() => persistedReported),
+  };
+});
 
 function guideFact(overrides: Partial<GuideCompletionFact> = {}): GuideCompletionFact {
   return {
@@ -77,6 +91,8 @@ beforeEach(() => {
   mockOwner = 'user-1:org-1';
   __resetRecorderForTests();
   persistedEmitted.clear();
+  persistedReported.clear();
+  reportAnalytics.mockClear();
 });
 
 describe('completion recorder — emitter seam', () => {
@@ -439,5 +455,158 @@ describe('completion recorder startup recovery', () => {
     const seen: CompletionFact[] = [];
     onCompletionRecorded(acceptInto(seen));
     expect(seen).toEqual([]);
+  });
+});
+
+describe('completion recorder — Track 1 analytics event', () => {
+  it('reports once per terminal completion alongside the durable write', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact({ guideId: 'track1' }));
+    recordGuideCompletion(guideFact({ guideId: 'track1' }));
+
+    expect(seen).toHaveLength(1);
+    expect(reportAnalytics).toHaveBeenCalledTimes(1);
+    expect(reportAnalytics).toHaveBeenCalledWith(expect.objectContaining({ kind: 'guide', guideId: 'track1' }));
+  });
+
+  it('reports once when nothing durably accepts, even across a reload', () => {
+    onCompletionRecorded(() => false);
+
+    recordGuideCompletion(guideFact({ guideId: 'unowned' }));
+    recordGuideCompletion(guideFact({ guideId: 'unowned' }));
+    __resetRecorderForTests();
+    recordGuideCompletion(guideFact({ guideId: 'unowned' }));
+
+    expect(reportAnalytics).toHaveBeenCalledTimes(1);
+    expect(persistedEmitted.has('guide:bundled:unowned')).toBe(false);
+  });
+
+  it('reports before the write hook arms, and the replay does not report again', () => {
+    recordGuideCompletion(guideFact({ guideId: 'late-arm' }));
+    expect(reportAnalytics).toHaveBeenCalledTimes(1);
+
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+    recordGuideCompletion(guideFact({ guideId: 'late-arm' }));
+
+    expect(seen).toHaveLength(1);
+    expect(persistedEmitted.has('guide:bundled:late-arm')).toBe(true);
+    expect(reportAnalytics).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a completion the full startup buffer drops', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    try {
+      for (let index = 0; index <= 100; index++) {
+        recordGuideCompletion(guideFact({ guideId: `guide-${index}` }));
+      }
+
+      expect(warn).toHaveBeenCalledWith('completion write: startup buffer is full');
+      expect(reportAnalytics).toHaveBeenCalledTimes(101);
+      expect(reportAnalytics).toHaveBeenLastCalledWith(expect.objectContaining({ guideId: 'guide-100' }));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('does not report again after the startup buffer is discarded', () => {
+    recordGuideCompletion(guideFact({ guideId: 'discarded' }));
+    discardPendingCompletions();
+    recordGuideCompletion(guideFact({ guideId: 'discarded' }));
+
+    expect(reportAnalytics).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['guide', 'all'])('reports a buffered completion again after a reset (%s)', (scope) => {
+    recordGuideCompletion(guideFact({ guideId: 'buffered' }));
+    if (scope === 'guide') {
+      invalidateEmittedCompletion('bundled', 'buffered');
+    } else {
+      invalidateAllEmittedCompletions();
+    }
+    recordGuideCompletion(guideFact({ guideId: 'buffered' }));
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    expect(seen).toHaveLength(1);
+    expect(reportAnalytics).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not report an identity durably recorded before the event existed', () => {
+    persistedEmitted.set('guide:bundled:recorded-before-upgrade', true);
+
+    recordGuideCompletion(guideFact({ guideId: 'recorded-before-upgrade' }));
+
+    expect(reportAnalytics).not.toHaveBeenCalled();
+  });
+
+  it('reports again after each kind of reset', () => {
+    onCompletionRecorded(acceptInto([]));
+
+    recordGuideCompletion(guideFact({ guideId: 'again' }));
+    invalidateEmittedCompletion('bundled', 'again');
+    recordGuideCompletion(guideFact({ guideId: 'again' }));
+    invalidateAllEmittedCompletions();
+    recordGuideCompletion(guideFact({ guideId: 'again' }));
+
+    expect(reportAnalytics).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not report again when a dropped durable write lifts only the durable guard', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact({ guideId: 'dropped' }));
+    liftDurableCompletionGuard('bundled', 'dropped');
+    recordGuideCompletion(guideFact({ guideId: 'dropped' }));
+
+    expect(seen).toHaveLength(2);
+    expect(reportAnalytics).toHaveBeenCalledTimes(1);
+  });
+
+  it('still records durably when the report throws', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    reportAnalytics.mockImplementationOnce(() => {
+      throw new Error('analytics down');
+    });
+    try {
+      const seen: CompletionFact[] = [];
+      onCompletionRecorded(acceptInto(seen));
+
+      recordGuideCompletion(guideFact({ guideId: 'report-throws' }));
+
+      expect(seen).toHaveLength(1);
+      expect(persistedEmitted.has('guide:bundled:report-throws')).toBe(true);
+      expect(warn).toHaveBeenCalledWith('Failed to report completion analytics', expect.anything());
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('still buffers and replays a completion whose report throws before the hook arms', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    reportAnalytics.mockImplementationOnce(() => {
+      throw new Error('analytics down');
+    });
+    try {
+      recordGuideCompletion(guideFact({ guideId: 'report-throws-early' }));
+      const seen: CompletionFact[] = [];
+      onCompletionRecorded(acceptInto(seen));
+
+      expect(seen).toEqual([expect.objectContaining({ guideId: 'report-throws-early' })]);
+      expect(persistedEmitted.has('guide:bundled:report-throws-early')).toBe(true);
+      expect(reportAnalytics).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('reports a guide and a journey with the same identity separately', () => {
+    recordGuideCompletion(guideFact({ guideId: 'x' }));
+    recordJourneyCompletion(journeyFact({ guideId: 'x' }));
+
+    expect(reportAnalytics.mock.calls.map(([fact]) => fact.kind)).toEqual(['guide', 'journey']);
   });
 });

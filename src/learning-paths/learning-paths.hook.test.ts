@@ -80,6 +80,12 @@ jest.mock('../lib/user-storage', () => ({
     clear: (dedupeKey: string) => mockCompletionEmittedClear(dedupeKey),
     clearAll: jest.fn().mockResolvedValue(undefined),
   },
+  completionReportedStorage: {
+    isEmitted: jest.fn().mockReturnValue(false),
+    markEmitted: jest.fn().mockResolvedValue(undefined),
+    clear: jest.fn().mockResolvedValue(undefined),
+    clearAll: jest.fn().mockResolvedValue(undefined),
+  },
 }));
 
 jest.mock('./badge-coordinator', () => ({
@@ -512,24 +518,32 @@ describe('useLearningPaths — resetPath reports a partial failure once', () => 
         'journey:app-platform:bundled-path',
         'guide:interactive-tutorials:bundled-path',
         'journey:interactive-tutorials:bundled-path',
+        'guide:online-cdn:bundled-path',
+        'journey:online-cdn:bundled-path',
         'guide:bundled:bundled-guide',
         'journey:bundled:bundled-guide',
         'guide:app-platform:bundled-guide',
         'journey:app-platform:bundled-guide',
         'guide:interactive-tutorials:bundled-guide',
         'journey:interactive-tutorials:bundled-guide',
+        'guide:online-cdn:bundled-guide',
+        'journey:online-cdn:bundled-guide',
         'guide:bundled:bundled-path/content.json',
         'journey:bundled:bundled-path/content.json',
         'guide:app-platform:bundled-path/content.json',
         'journey:app-platform:bundled-path/content.json',
         'guide:interactive-tutorials:bundled-path/content.json',
         'journey:interactive-tutorials:bundled-path/content.json',
+        'guide:online-cdn:bundled-path/content.json',
+        'journey:online-cdn:bundled-path/content.json',
         'guide:bundled:bundled-guide/content.json',
         'journey:bundled:bundled-guide/content.json',
         'guide:app-platform:bundled-guide/content.json',
         'journey:app-platform:bundled-guide/content.json',
         'guide:interactive-tutorials:bundled-guide/content.json',
         'journey:interactive-tutorials:bundled-guide/content.json',
+        'guide:online-cdn:bundled-guide/content.json',
+        'journey:online-cdn:bundled-guide/content.json',
       ])
     );
   });

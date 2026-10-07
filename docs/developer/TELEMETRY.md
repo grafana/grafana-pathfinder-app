@@ -75,6 +75,63 @@ Privacy protection is split between enforced normalization and caller discipline
   - The **query is stripped**, everywhere. On a Grafana URL the query is where the user's own choices live — `var-*` template values, Explore's serialized queries, `?doc=` deep links — which is a different class of data from a title.
   - This applies on **two independent channels**. `replay-scrub.ts` covers URLs inside the rrweb payload; `redactPageUrl` in `filtering.ts` covers `meta.page.url`, which Faro sets from `location.href` on every item regardless of payload. The second one matters more than it looks: Grafana Cloud's collector explodes that query into `page.attributes`, so an unscrubbed URL arrives as first-class searchable `page_attr_var_*` fields.
 
+## Completion events
+
+`guide_completed` and `journey_completed` (`pathfinder_guide_completed` and `pathfinder_journey_completed` in the warehouse) are the Track 1 events of the [Completion Records RFC](https://github.com/grafana/pathfinder-rfcs/blob/main/rfc/COMPLETION_RECORDS.md#73-track-1-event-additions). The RFC keeps completion records on the customer's stack, so these events are how Grafana sees completions across stacks. They fire from `src/completion-records/completion-recorder.ts`, the same seam as the durable write, so every completion path reports both. The report has its own persisted guard (`completionReportedStorage`) and runs before the recorder's pre-arm startup buffer, so it never waits on the write hook arming or on the durable write being accepted, and never stands in for either.
+
+| Property                      | Value                                                                                                                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guide_source`                | The resolving repository: `bundled`, `interactive-tutorials`, `online-cdn` or `app-platform`; anything else is `other`; `unresolved` when the source was only a default |
+| `guide_visibility`            | `public` for a confirmed `bundled`, `interactive-tutorials` or `online-cdn` source; `private` otherwise and for the local harness guides                                |
+| `guide_id`, `guide_title`     | `guide_completed`, public sources only; a local harness guide sends `guide_id` alone                                                                                    |
+| `path_id`                     | Milestone `guide_completed` only: the containing path, when the path itself is a confirmed public source                                                                |
+| `journey_id`, `journey_title` | `journey_completed`, public sources only                                                                                                                                |
+| `guide_category`              | `learning-journey` for milestones and journeys, `interactive` for every other guide                                                                                     |
+| `completion_source`           | `manual` for Mark complete; `skipped` when credited steps include a skip; `objectives` for other automatic completion                                                   |
+| `completion_percentage`       | Always `100`                                                                                                                                                            |
+| `duration_ms`                 | Sent only when measured; no caller measures it yet                                                                                                                      |
+
+Terminal percentages are always 100 and no caller measures duration. The first terminal trigger owns `completion_source`: an explicit guide mark is `manual`; otherwise, credited completed steps containing any skip produce `skipped`, and other automatic completions produce `objectives`. Skip annotations survive reloads and are cleared with the corresponding progress reset. Legacy completion arrays without annotations retain `objectives`; historical skip reasons cannot be reconstructed. This does not add a partial-percentage ‘skip remaining’ action. For a journey, the source describes the final milestone's completion, not every member. The property names follow this app's analytics conventions rather than the RFC draft (`completion_percentage`, `completion_source`). A milestone's `guide_completed` sends the containing path as `path_id` only when that path is itself confirmed public, because a customer's private path can contain a public guide; it equals that path's `journey_completed.journey_id`.
+
+Guide completions also carry `total_block_count`, `completable_block_count`, `section_count`, `guide_stats_version` and `block_progress_rule_version: block-position-v1` when the completing surface has a frozen guide index. These are live counts, including zeros for prose-only guides, and contain no resource identity. They are omitted when the index is unavailable and on whole-journey events: the final milestone's block count is not the journey denominator. These properties enrich Track 1 only; the durable record schema is unchanged.
+
+### Identity policy
+
+New events carry guide identity only for confirmed Grafana-published sources. `guideIdentityAnalyticsProperties` and `pathAnalyticsProperties` in `completion-identity.ts` are the rule, so a new event that names a guide or path reuses them. A source is confirmed when the loader named its repository explicitly, the content was opened as `bundled:` and its source resolves to `bundled` (the bundled loader stamps that on the manifest), or it belongs to a curated path in `paths.json` / `paths-cloud.json`. A source that only fell back to a default (see [Source attribution](#source-attribution)), or came from a manifest's own `repository`, which the manifest schema itself defaults, reports `guide_source = 'unresolved'` and `guide_visibility = 'private'` with no identifier or title. The title is whatever the completing surface shows, usually the panel tab's title.
+
+- The local harness guides, `bundled:e2e-test` (the e2e runner) and `bundled:wysiwyg-preview` (a preview loader nothing writes to today), load their content from localStorage. They report `guide_visibility = 'private'` and their fixed harness id with no title (`src/constants/local-bundled-guides.ts`).
+
+`mark_complete_clicked` carries the same `guide_source`, `guide_visibility`, `guide_id` and, on a milestone, `path_id`, from `resolveSurfaceCompletionIdentity` in `learning-journey-helpers.ts`. That function uses the same branch order and resolvers as the completion writer, so a click joins to its `guide_completed` on (`guide_source`, `guide_id`). It sends no title, and no identity at all where the writer records no guide completion, such as a path or journey manifest.
+
+RudderStack properties are otherwise sent unredacted (only the Faro mirror redacts), and existing events already send raw identifiers and titles, App Platform ones included. They are legacy exceptions, left unchanged for warehouse continuity. The list is not exhaustive:
+
+- Step events built by `buildInteractiveStepProperties` (`step_auto_completed`, `show_me_button_click`, `do_it_button_click` and others): `source_document` is the active tab URL, `backend-guide:` keys included.
+- `learning_path_progress`: `path_id` and `path_title`.
+- `alignment_prompt_shown`, `alignment_prompt_confirmed` and `alignment_prompt_dismissed`: `guide_url` and `guide_title`.
+- `jump_into_milestone_click`: `content_url`, which is `backend-guide:<path id>` for an App Platform path, and the path and milestone titles.
+- `open_resource_click` from the custom guides section: `content_url` (`backend-guide:<guide id>`) and `content_title`.
+- `close_tab_click`: `content_url` and `tab_title`.
+- `milestone_arrow_interaction_click`: `content_url` and `content_title`.
+
+### Mapping to warehouse concepts
+
+- **Milestone completion** is `guide_completed` with `guide_category = 'learning-journey'`. `guide_id` is the bare milestone slug, not qualified by its path, so two journeys that share a slug under one source report it once; `path_id` tells them apart when the path is public.
+- **Path completion** is `journey_completed`; "journey" in code means a learning path. `journey_id` is the manifest id, else the curated path id. It fires when every milestone of a milestone-based path is complete, and is skipped when neither id exists, as for a docs-site journey that is not a curated path.
+- **Guide-list curated paths and Path Tracks** have no `journey_completed` trigger yet. Every curated guide-list path has a badge, and its completion shows up only as `badge_unlocked` with `trigger_type = 'path-completed'` (`src/learning-paths/badges.ts` maps `badge_id` to its path). Path completions are the union of `journey_completed` and those badge events. A milestone-based curated path can report both, so count each path once per reader.
+- **Titles** on milestone and journey completions come from the completing surface: the tab's open-time title in the sidebar and floating panel, the content title in the guide reader. That is usually the journey's own title, so key them on the id.
+
+### Source attribution
+
+`guide_source` is the repository that resolved the guide, not its URL scheme: a `backend-guide:` guide reports `app-platform`, and a CDN package reports whatever its resolver returned. Learning journeys served from the Grafana docs site resolve no repository, so their milestones fall back to `bundled` and the journey to `interactive-tutorials`; a standalone guide whose manifest names no repository also falls back to `interactive-tutorials`. Those fallbacks are used for the durable key, but analytics reports them as `unresolved` unless the journey is a curated path. The guard is per `(kind, guide_source, guide_id)`, so a guide reached through two repositories reports once under each.
+
+### Delivery
+
+- **Once per identity per browser profile** on each Grafana stack, whichever user or org is signed in, since the guard lives in plain localStorage. A reset that covers the identity (a per-guide reset, a path reset, or Reset all learning progress) re-arms it, so a reset and redo reports again.
+- **No backfill.** An identity this browser profile durably recorded before the release that added these events is not reported. One it never recorded durably reports the next time it completes.
+- **Grafana Cloud only.** Grafana registers its RudderStack backend only when a write key is configured, so OSS and self-hosted instances send nothing.
+- **Fire and forget.** The guard is set before the event is sent, and Pathfinder never retries a dropped event, so one an ad blocker or network failure drops is lost. Counts are a floor.
+- **Synthetic traffic.** The e2e runner opens its guide as `bundled:e2e-test`, so a completed run reports `guide_source = 'bundled'`, `guide_visibility = 'private'` and `guide_id = 'e2e-test'`. Those runs come mostly from Grafana's synthetic e2e stacks; filter that guide out.
+
 ## Gating and environments
 
 Faro initializes only when `resolveFaroEnvironment()` resolves: Grafana Cloud with analytics enabled, on `.grafana.com` / `.grafana.net` / `.grafana-ops.net` / `.grafana-dev.net` hosts, and only when the default-on `pathfinder.frontend-telemetry` flag is set. Local development sends nothing unless `localStorage['pathfinder.faro.local'] = 'true'` in a dev build. The activity gate drops everything except errors until a Pathfinder surface reports itself on mount — a persisted panel mode alone no longer opens it — so collector sessions mean "used Pathfinder or Pathfinder errored", not "loaded a Grafana page".
@@ -180,7 +237,7 @@ When the guide has a frozen block index (`getGuideIndex` in `src/global-state/ac
 | `completable_block_count` | Counted blocks that can emit completion evidence.                                                                                                                                                                                                  |
 | `section_count`           | Section containers in the guide — the index's `sectionCount`, the same figure as the manifest stamp's `sectionCount` and the library survey in `docs/design/COMPLETION-MODEL.md`. A section with no counted blocks cannot move the percentage.     |
 
-All four are omitted when there is no index for the content key (HTML docs never have one) or the step has no position (an anonymous standalone step, or a block whose runtime id a `snippet-ref` shifts). The index is looked up under `getContentKey()`, the key the completion store credits steps under; `source_document` is the same value before that key's sanitization. `mark_complete_clicked` carries `total_block_count`, `completable_block_count` and `section_count` under the same index rule. On a milestone it also carries the reader's `current_milestone` and the path's `total_milestones`. Its guide identity comes with the completion events in #2035, so both use one resolver.
+All four are omitted when there is no index for the content key (HTML docs never have one) or the step has no position (an anonymous standalone step, or a block whose runtime id a `snippet-ref` shifts). The index is looked up under `getContentKey()`, the key the completion store credits steps under; `source_document` is the same value before that key's sanitization. `mark_complete_clicked` carries `total_block_count`, `completable_block_count` and `section_count` under the same index rule. On a milestone it also carries the reader's `current_milestone` and the path's `total_milestones`. Its guide identity follows the [Identity policy](#identity-policy) and uses the completion writer's resolver.
 
 ### Measuring guide progress
 
