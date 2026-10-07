@@ -191,18 +191,18 @@ it('aborts activation when the target disappears', async () => {
   expect(runtime.reportClick).not.toHaveBeenCalled();
 });
 
-it('does not restart the pulse after the toolbar is replaced', async () => {
+it('keeps the glow on a replacement toolbar after the initial four seconds', async () => {
   const first = addButton();
-  const runtime = setup();
+  setup();
   await frame();
   await frame();
-  expect(runtime.getClassName).toHaveBeenLastCalledWith(true);
+  expect(first).toHaveClass('glow');
   jest.advanceTimersByTime(4100);
   await frame();
   first.remove();
-  addButton();
+  const replacement = addButton();
   await frame();
-  expect(runtime.getClassName).toHaveBeenLastCalledWith(false);
+  expect(replacement).toHaveClass('glow');
 });
 
 it('dismisses just the tooltip and still attributes a later Help click', async () => {

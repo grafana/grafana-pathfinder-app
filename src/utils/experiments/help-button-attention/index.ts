@@ -94,7 +94,7 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
   const stop = observeHelpButton({
     experiment,
     helpLabel,
-    getClassName: (animate) => getHelpButtonAttentionStyle(config.theme2, animate),
+    getClassName: () => getHelpButtonAttentionStyle(config.theme2),
     isOpen: isPathfinderOpen,
     subscribeToOpen: (listener) => onPathfinderSurfaceChange(listener),
     isDismissed,

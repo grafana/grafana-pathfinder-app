@@ -44,7 +44,7 @@ Object.keys(sessionStorage)
 
 In all three active arms, verify exactly one `experiment_viewed` for the SDK session/assignment and a
 `pathfinder_help_button_clicked_toolbar` outcome with the same exposure ID after the first click.
-Control must have the original button styles. Glow must pulse twice, remain highlighted,
+Control must have the original button styles. Glow must pulse continuously on a slow four-second cycle, remain highlighted,
 retain keyboard focus, and stop after click or opening through another route. Reopening and route
 changes must not restart the nudge. Check light/dark themes and reduced motion (static from the start).
 The tooltip must disappear on Help click or another opening route. Close and Escape must dismiss

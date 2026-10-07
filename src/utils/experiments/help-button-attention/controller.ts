@@ -3,7 +3,7 @@ import type { Experiment } from '@grafana-experiments/sdk';
 interface Options {
   experiment: Experiment;
   helpLabel: string;
-  getClassName: (animate: boolean) => string;
+  getClassName: () => string;
   isOpen: () => boolean;
   subscribeToOpen: (listener: () => void) => () => void;
   isDismissed: () => boolean;
@@ -47,8 +47,6 @@ export function observeHelpButton(options: Options): () => void {
   let className: string | undefined;
   let pending: AbortController | undefined;
   let attempted: HTMLButtonElement | undefined;
-  let pulseTimer: ReturnType<typeof setTimeout> | undefined;
-  let pulseFinished = false;
   let removeTooltip: (() => void) | undefined;
   const hideTooltip = () => {
     removeTooltip?.();
@@ -103,13 +101,7 @@ export function observeHelpButton(options: Options): () => void {
     if (state.status === 'active') {
       button.addEventListener('click', onClick, true);
       if (state.variant === 'glow') {
-        if (pulseTimer === undefined && !pulseFinished) {
-          pulseTimer = setTimeout(() => {
-            pulseFinished = true;
-            schedule();
-          }, 4000);
-        }
-        const nextClass = options.getClassName(!pulseFinished);
+        const nextClass = options.getClassName();
         if (className !== nextClass) {
           if (className) {
             button.classList.remove(className);
@@ -183,7 +175,6 @@ export function observeHelpButton(options: Options): () => void {
   const stop = () => {
     stopped = true;
     pending?.abort();
-    clearTimeout(pulseTimer);
     if (frame !== undefined) {
       cancelAnimationFrame(frame);
     }
