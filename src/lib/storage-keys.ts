@@ -28,6 +28,9 @@ export const StorageKeys = {
   // `kind:guideSource:guideId` dedupe string (not a content key). Durable
   // half of completion-recorder.ts's exactly-once guard; survives a reload.
   COMPLETION_EMITTED_PREFIX: 'grafana-pathfinder-app-completion-emitted-',
+  // Dynamic: see buildVersionedContentStorageKey, keyed by `guideSource:guideId`.
+  // Device-local guide attempt (completion-records/guide-attempts.ts); never synced.
+  GUIDE_ATTEMPT_PREFIX: 'grafana-pathfinder-app-guide-attempt-',
   COMPLETION_REPORTED_PREFIX: 'grafana-pathfinder-app-completion-reported-',
   // Full screen mode persistence (for page refreshes during recording)
   FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',

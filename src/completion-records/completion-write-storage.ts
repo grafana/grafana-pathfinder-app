@@ -39,8 +39,8 @@ interface StoredLease {
 }
 
 export function currentCompletionQueueOwnerKey(): string | null {
-  const userId = config.bootData?.user?.id;
-  const orgId = config.bootData?.user?.orgId;
+  const userId = config?.bootData?.user?.id;
+  const orgId = config?.bootData?.user?.orgId;
   if (!Number.isInteger(userId) || Number(userId) <= 0 || !Number.isInteger(orgId) || Number(orgId) <= 0) {
     return null;
   }

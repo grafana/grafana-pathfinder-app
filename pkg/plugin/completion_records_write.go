@@ -149,6 +149,13 @@ type completionWriteRequest struct {
 	// and non-blank; never persisted. See completionRecordName for how it derives
 	// the record name.
 	IdempotencyKey string `json:"idempotencyKey"`
+
+	// AttemptID, when present, makes this write one attempt's progress: the
+	// record is named from (userID, attemptId) and updated in place
+	// (completion_records_attempt.go). Absent, the write is the legacy
+	// create-only completion and behaves exactly as before.
+	AttemptID        string `json:"attemptId,omitempty"`
+	AttemptStartedAt string `json:"attemptStartedAt,omitempty"`
 }
 
 // handleCreateCompletionRecord serves POST /completion-records.
@@ -226,6 +233,15 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	spec, err := a.buildCompletionSpec(r, req, userID, userLogin, userDisplayName, namespace)
 	if err != nil {
 		a.writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.AttemptID != "" {
+		spec.AttemptStartedAt = req.AttemptStartedAt
+		if spec.AttemptStartedAt == "" {
+			spec.AttemptStartedAt = req.CompletedAt
+		}
+		a.handleCompletionAttemptWrite(w, r, creator, namespace, userID, req.AttemptID, spec)
 		return
 	}
 
@@ -307,6 +323,7 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 		{"pathId", req.PathID, completionMaxIDLen},
 		{"guideTitle", req.GuideTitle, completionMaxTitleLen},
 		{"idempotencyKey", req.IdempotencyKey, completionMaxIDLen},
+		{"attemptId", req.AttemptID, completionMaxIDLen},
 	} {
 		if err := validateBoundedText(f.name, f.value, f.max); err != nil {
 			return completionRecordWriteSpec{}, err
@@ -323,6 +340,17 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 	}
 	if req.CompletionPercent < 0 || req.CompletionPercent > 100 {
 		return completionRecordWriteSpec{}, fmt.Errorf("completionPercent out of range")
+	}
+	// The attempt id names the record, so it must be exactly what the client
+	// minted: no surrounding whitespace.
+	if req.AttemptID != "" && strings.TrimSpace(req.AttemptID) != req.AttemptID {
+		return completionRecordWriteSpec{}, fmt.Errorf("invalid attemptId")
+	}
+	if req.AttemptStartedAt != "" {
+		started, err := time.Parse(time.RFC3339Nano, req.AttemptStartedAt)
+		if err != nil || started.IsZero() || started.After(timeNow().Add(completionMaxClockSkew)) {
+			return completionRecordWriteSpec{}, fmt.Errorf("invalid attemptStartedAt")
+		}
 	}
 	if err := validateCompletedAt(req.CompletedAt); err != nil {
 		return completionRecordWriteSpec{}, err

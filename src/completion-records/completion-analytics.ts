@@ -1,12 +1,14 @@
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 
 import type { CompletionFact } from './types';
+import { completionAttemptAnalyticsProperties } from './progress-analytics';
 import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from './completion-identity';
 export { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from './completion-identity';
 
 export function completionAnalyticsProperties(fact: CompletionFact): Record<string, string | number> {
   return {
     ...guideIdentityAnalyticsProperties(fact),
+    ...completionAttemptAnalyticsProperties(fact),
     ...pathAnalyticsProperties(fact.pathIdentity),
     guide_category: fact.guideCategory,
     completion_source: fact.source,

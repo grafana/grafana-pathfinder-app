@@ -1,9 +1,11 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
@@ -44,6 +46,9 @@ var completionRecordsAggregationToggle = aggregationToggle(appPlatformGroup)
 // this read proxy consumes. Unlisted spec fields (durationSeconds, userLogin,
 // recordedAt, orgId, …) are ignored by encoding/json. Field names track
 // kinds/completionrecord.cue.
+//
+// CompletedAt is empty on an in-progress attempt record (the CRD makes it
+// optional): only a record at 100% is a completion.
 type completionRecordSpec struct {
 	UserID            string `json:"userId"`
 	GuideID           string `json:"guideId"`
@@ -53,7 +58,29 @@ type completionRecordSpec struct {
 	PathID            string `json:"pathId"`
 	Source            string `json:"source"`
 	CompletedAt       string `json:"completedAt"`
+	RecordedAt        string `json:"recordedAt"`
 	CompletionPercent int64  `json:"completionPercent"`
+
+	// LastUpdatedAt is when the record last changed: the server-stamped
+	// grafana.app/updatedTimestamp annotation when present and parseable, else
+	// spec.recordedAt. Filled from object metadata by ListPage, never from spec.
+	LastUpdatedAt    string `json:"-"`
+	AttemptStartedAt string `json:"-"`
+}
+
+// completionUpdatedTimestampAnnotation is the annotation the App Platform
+// apistore stamps on every update (absent after create). Verified on dev in the
+// incremental-progress spike; grafana.com/updateTimestamp is not used.
+const completionUpdatedTimestampAnnotation = "grafana.app/updatedTimestamp"
+
+// recordLastUpdatedAt picks the annotation when it parses, else recordedAt.
+func recordLastUpdatedAt(annotations map[string]string, recordedAt string) string {
+	if ts := annotations[completionUpdatedTimestampAnnotation]; ts != "" {
+		if _, ok := parseCompletionTime(ts); ok {
+			return ts
+		}
+	}
+	return recordedAt
 }
 
 // completionRecordPage is one page of a namespace LIST: the decoded record
@@ -84,12 +111,15 @@ const completionWriteMaxBytes = 256 * 1024
 // block is client-supplied (WHAT was completed); the second is stamped by this
 // trusted writer from its verified request context (never from the body).
 type completionRecordWriteSpec struct {
-	GuideID           string `json:"guideId"`
-	GuideSource       string `json:"guideSource"`
-	GuideTitle        string `json:"guideTitle"`
-	PathID            string `json:"pathId"`
-	Source            string `json:"source"`
-	CompletedAt       string `json:"completedAt"`
+	AttemptStartedAt string `json:"-"`
+	GuideID          string `json:"guideId"`
+	GuideSource      string `json:"guideSource"`
+	GuideTitle       string `json:"guideTitle"`
+	PathID           string `json:"pathId"`
+	Source           string `json:"source"`
+	// CompletedAt is omitted on an in-progress attempt record: it is set once,
+	// when the attempt reaches 100%. Legacy (non-attempt) writes always set it.
+	CompletedAt       string `json:"completedAt,omitempty"`
 	DurationSeconds   int64  `json:"durationSeconds"`
 	CompletionPercent int64  `json:"completionPercent"`
 	GuideCategory     string `json:"guideCategory"`
@@ -110,8 +140,29 @@ type completionRecordWriteSpec struct {
 // by the client, so a retried create targets the same object and an upstream 409
 // is an idempotent success.
 type completionRecordObjectMeta struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
+	Name        string            `json:"name"`
+	Namespace   string            `json:"namespace"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// storedCompletionRecord is a record read back by name for an attempt upsert.
+// Raw is the full object as returned (minus metadata.managedFields), so a PUT
+// carries every field the server holds, including ones this plugin does not
+// model. Spec is the decoded view the upsert reasons about.
+type storedCompletionRecord struct {
+	Raw  map[string]any
+	Spec completionRecordWriteSpec
+}
+
+// completionRecordUpdater is the attempt-upsert surface: read one record by
+// name and replace it. Get returns (nil, nil) when the record does not exist
+// (a Kubernetes NotFound Status); any other failure is an error. The
+// production implementation is completionHTTPClient, whose calls share one
+// access token per request.
+type completionRecordUpdater interface {
+	completionRecordCreator
+	Get(ctx context.Context, namespace, name string) (*storedCompletionRecord, error)
+	Replace(ctx context.Context, namespace, name string, obj map[string]any) error
 }
 
 // completionRecordObject is the full aggregated-API object POSTed on create.
@@ -160,6 +211,8 @@ func (c *completionHTTPClient) ListPage(ctx context.Context, namespace, continue
 		if err := json.Unmarshal(item.Spec, &spec); err != nil {
 			return nil, fmt.Errorf("completion records: decode spec: %w", err)
 		}
+		spec.LastUpdatedAt = recordLastUpdatedAt(item.Metadata.Annotations, spec.RecordedAt)
+		spec.AttemptStartedAt = item.Metadata.Annotations[completionAttemptStartedAnnotation]
 		records = append(records, spec)
 	}
 	return &completionRecordPage{Records: records, Continue: page.Metadata.Continue}, nil
@@ -181,4 +234,51 @@ func (c *completionHTTPClient) Create(ctx context.Context, namespace string, obj
 	}
 	return c.inner.create(ctx, completionRecordsGroupVersion, namespace,
 		completionRecordsResource, body, completionWriteMaxBytes)
+}
+
+// Get reads one record by name. A 404 whose body is a Kubernetes Status with
+// reason NotFound means the record does not exist and returns (nil, nil). Any
+// other 404 is structural (the route is not served) and stays an error, so the
+// write path passes it through and the client disarms as for a create.
+func (c *completionHTTPClient) Get(ctx context.Context, namespace, name string) (*storedCompletionRecord, error) {
+	body, err := c.inner.get(ctx, completionRecordsGroupVersion, namespace, completionRecordsResource, name, completionWriteMaxBytes)
+	if err != nil {
+		if status, ok := upstreamStatusOf(err); ok && status == http.StatusNotFound && upstreamStatusReasonOf(err) == "NotFound" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return decodeStoredCompletionRecord(body)
+}
+
+// Replace PUTs the full object back. obj must carry the resourceVersion it was
+// read at; a stale one is a 409 the caller retries.
+func (c *completionHTTPClient) Replace(ctx context.Context, namespace, name string, obj map[string]any) error {
+	body, err := json.Marshal(obj)
+	if err != nil {
+		return fmt.Errorf("completion records: encode object: %w", err)
+	}
+	return c.inner.replace(ctx, completionRecordsGroupVersion, namespace, completionRecordsResource, name, body, completionWriteMaxBytes)
+}
+
+// decodeStoredCompletionRecord decodes a GET body into the raw object (with
+// metadata.managedFields dropped: a PUT must not echo server-owned field
+// ownership back) and its typed spec.
+func decodeStoredCompletionRecord(body []byte) (*storedCompletionRecord, error) {
+	var raw map[string]any
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber() // numbers round-trip unchanged on the PUT
+	if err := dec.Decode(&raw); err != nil {
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json"}, err: fmt.Errorf("completion records: decode object: %w", err)}
+	}
+	if meta, ok := raw["metadata"].(map[string]any); ok {
+		delete(meta, "managedFields")
+	}
+	var typed struct {
+		Spec completionRecordWriteSpec `json:"spec"`
+	}
+	if err := json.Unmarshal(body, &typed); err != nil {
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json"}, err: fmt.Errorf("completion records: decode spec: %w", err)}
+	}
+	return &storedCompletionRecord{Raw: raw, Spec: typed.Spec}, nil
 }

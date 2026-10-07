@@ -2,6 +2,8 @@ import { logger } from '../lib/logging';
 
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
 import { liftDurableCompletionGuard } from './completion-recorder';
+import { reopenAttempt } from './guide-attempts';
+import type { ProgressRecordsCapability } from './progress-records-capability';
 import { reportCompletionWriteDegradation } from './completion-write-telemetry';
 import { DRAIN_BUDGET_PER_PASS, MAX_RETENTION_MS } from './completion-write-timing';
 import { createCompletionEventId, type CompletionWriteStorage, type QueuedWrite } from './completion-write-storage';
@@ -21,6 +23,20 @@ export interface WriteQueueDeps {
   maxRetentionMs?: number;
   /** Fired after POST /completion-records returns success. Not fired on enqueue. */
   onCreated?: () => void;
+  /**
+   * Whether the backend accepts partial attempt writes, read at send time.
+   * `no` drops a queued partial; `unknown` holds it. Defaults to `yes`.
+   */
+  partialsSupported?: () => ProgressRecordsCapability;
+  partialsEnabled?: () => boolean;
+  isAttemptCurrent?: (body: CompletionWriteBody) => boolean;
+  /** Debounce for a partial with nothing to inherit. Defaults to PARTIAL_DEBOUNCE_MS. */
+  partialDebounceMs?: number;
+}
+
+export interface EnqueueOptions {
+  /** Storage id to use instead of a fresh one (attempt items are `${attemptId}-${percent}`). */
+  id?: string;
 }
 
 export interface ProcessResult {
@@ -32,7 +48,7 @@ export interface ProcessResult {
 
 export interface WriteQueue {
   /** `true` when the record was persisted durably, so it survives a reload. */
-  enqueue(body: CompletionWriteBody): boolean;
+  enqueue(body: CompletionWriteBody, options?: EnqueueOptions): boolean;
   processDue(): Promise<ProcessResult>;
   size(): number;
   isDisarmed(): boolean;
@@ -40,6 +56,7 @@ export interface WriteQueue {
   subscribe(listener: () => void): () => void;
   /** Drop every queued record, in memory and in storage. */
   clear(): void;
+  discardAttemptPartials(key: { guideSource: string; guideId: string }): void;
 }
 
 // 100 is a PER-TAB, eventually-global bound for MVP: each tab enforces it
@@ -50,6 +67,19 @@ export interface WriteQueue {
 const DEFAULT_MAX_SIZE = 100;
 const DEFAULT_BASE_BACKOFF_MS = 1000;
 const DEFAULT_MAX_BACKOFF_MS = 5 * 60 * 1000;
+/** How long a partial waits for later progress to supersede it before it is sent. */
+export const PARTIAL_DEBOUNCE_MS = 10_000;
+/** How long a partial is held while the backend's capability is still unknown. */
+const CAPABILITY_WAIT_MS = 5_000;
+
+/** The queue id of one attempt write. Same-percent writes from two tabs share it. */
+export function attemptWriteId(attemptId: string, percent: number): string {
+  return `${attemptId}-${percent}`;
+}
+
+function isPartialAttemptItem(item: QueuedWrite): boolean {
+  return item.body.attemptId !== undefined && item.body.completionPercent < 100;
+}
 
 export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   const now = deps.now;
@@ -63,6 +93,9 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   const drainBudget = deps.drainBudget ?? DRAIN_BUDGET_PER_PASS;
   const maxRetentionMs = deps.maxRetentionMs ?? MAX_RETENTION_MS;
   const onCreated = deps.onCreated;
+  const partialsSupported = deps.partialsSupported ?? (() => 'yes' as const);
+  const partialsEnabled = deps.partialsEnabled ?? (() => true);
+  const partialDebounceMs = deps.partialDebounceMs ?? PARTIAL_DEBOUNCE_MS;
 
   let items: QueuedWrite[] = [];
   let disarmed = false;
@@ -79,8 +112,19 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   // permanently unrecordable for the rest of this browser profile. A
   // terminal (4xx) drop is deliberately excluded: that record WAS considered
   // and rejected, so the guard staying set is correct.
+  //
+  // Only a completion (100%) ever set the guard. A lost partial is just
+  // progress that a later write will carry again, so it touches neither the
+  // guard nor the attempt. A lost attempt completion also reopens its attempt,
+  // so the re-completion is recorded under the same attempt id.
   function liftGuardFor(item: QueuedWrite): void {
+    if (item.body.completionPercent < 100) {
+      return;
+    }
     liftDurableCompletionGuard(item.body.guideSource, item.body.guideId);
+    if (item.body.attemptId !== undefined) {
+      reopenAttempt({ guideSource: item.body.guideSource, guideId: item.body.guideId }, item.body.attemptId);
+    }
   }
 
   function isExpired(item: QueuedWrite): boolean {
@@ -137,16 +181,38 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     return Math.max(0, Math.min(maxBackoffMs, Math.round(base + jitter)));
   }
 
-  function enqueue(body: CompletionWriteBody): boolean {
-    // A structural-404 disarm suppresses network drains for the session but must
-    // NOT stop persistence: later facts still enqueue and survive to the next
-    // load, where they drain once the route exists. Never gate enqueue on it.
-    //
-    // No refresh() here: reconciling against every stored item is an
-    // origin-wide localStorage scan, and this runs inline on the completion
-    // emission path. Eviction is enforced against the in-memory queue (bounded
-    // by maxSize) and the O(1) put persists the fact; the async drain does the
-    // full cross-tab refresh off this stack.
+  function enqueue(body: CompletionWriteBody, options: EnqueueOptions = {}): boolean {
+    if (
+      body.attemptId !== undefined &&
+      items.some((i) => i.body.attemptId === body.attemptId && i.body.completionPercent >= body.completionPercent)
+    ) {
+      return true;
+    }
+    const older =
+      body.attemptId === undefined
+        ? []
+        : items.filter(
+            (i) =>
+              i.body.attemptId === body.attemptId &&
+              i.id !== inFlightId &&
+              i.body.completionPercent < body.completionPercent
+          );
+    const createdAt = now();
+    const nextAttemptAt =
+      body.attemptId !== undefined && body.completionPercent < 100
+        ? older.length
+          ? Math.min(...older.map((i) => i.nextAttemptAt))
+          : createdAt + partialDebounceMs
+        : createdAt;
+    const item = { id: options.id ?? nextId(), body, attempts: 0, createdAt, nextAttemptAt };
+    // Never delete accepted data until its replacement is durable.
+    if (!storage.put(item)) {
+      return false;
+    }
+    for (const predecessor of older) {
+      remove(predecessor);
+    }
+    items = items.filter((i) => i.id !== item.id);
     if (items.length >= maxSize) {
       // Evict the oldest item that is NOT in flight — evicting the pending one
       // would let a transient result re-persist a record absent from `items`.
@@ -161,10 +227,8 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         }
       }
     }
-    const createdAt = now();
-    const item = { id: nextId(), body, attempts: 0, createdAt, nextAttemptAt: createdAt };
     items.push(item);
-    return storage.put(item);
+    return true;
   }
 
   async function processDue(): Promise<ProcessResult> {
@@ -210,6 +274,26 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         reportCompletionWriteDegradation('expired-drop');
         continue;
       }
+      if (isPartialAttemptItem(item)) {
+        if (!partialsEnabled() || deps.isAttemptCurrent?.(item.body) === false) {
+          remove(item);
+          continue;
+        }
+        const supported = partialsSupported();
+        if (supported === 'no') {
+          // The backend can't take partials (for example a plugin rollback).
+          // Drop rather than retry: the completion still records on its own.
+          remove(item);
+          logger.info('completion write: dropped a partial the backend does not support', { id: item.id });
+          reportCompletionWriteDegradation('partial-unsupported-drop');
+          continue;
+        }
+        if (supported === 'unknown') {
+          item.nextAttemptAt = now() + CAPABILITY_WAIT_MS;
+          storage.put(item);
+          continue;
+        }
+      }
       if (!storage.renewLease(now())) {
         return { nextDelayMs: computeNextDelay(), disarmed: false };
       }
@@ -233,7 +317,9 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
 
       if (outcome.kind === 'created') {
         remove(item);
-        onCreated?.();
+        if (!isPartialAttemptItem(item)) {
+          onCreated?.();
+        }
         continue;
       }
       if (outcome.kind === 'route-missing' || outcome.kind === 'forbidden') {
@@ -291,6 +377,17 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     snapshot: () => items.map((i) => ({ ...i })),
     subscribe: (listener) => storage.subscribe(listener),
     clear,
+    discardAttemptPartials: (key) => {
+      for (const item of storage.list()) {
+        if (
+          isPartialAttemptItem(item) &&
+          item.body.guideSource === key.guideSource &&
+          item.body.guideId === key.guideId
+        ) {
+          remove(item);
+        }
+      }
+    },
   };
 }
 

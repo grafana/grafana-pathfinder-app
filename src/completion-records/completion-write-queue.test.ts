@@ -5,6 +5,10 @@
  * client module out of this suite entirely.
  */
 jest.mock('./completion-write-telemetry', () => ({ reportCompletionWriteDegradation: jest.fn() }));
+jest.mock('./completion-write-storage', () => ({
+  ...jest.requireActual('./completion-write-storage'),
+  currentCompletionQueueOwnerKey: () => 'user-7:org-3',
+}));
 
 import { createWriteQueue as createRawWriteQueue, type WriteQueueDeps } from './completion-write-queue';
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
@@ -13,6 +17,7 @@ import { reportCompletionWriteDegradation } from './completion-write-telemetry';
 // Real, unmocked — the durable guard these cases prove gets lifted/kept is
 // completion-recorder.ts's real dedupe guard over real (jsdom) localStorage.
 import { completionEmittedStorage, completionReportedStorage } from '../lib/user-storage';
+import { getOrMintAttempt, readAttempt } from './guide-attempts';
 
 const GUARD_KEY = 'guide:bundled:g1';
 
@@ -167,6 +172,25 @@ describe('write queue — enqueue and eviction', () => {
 
     expect(completionEmittedStorage.isEmitted('guide:bundled:a')).toBe(false);
     expect(completionReportedStorage.isEmitted('guide:bundled:a')).toBe(true);
+  });
+
+  it('leaves the guide attempt in place when it lifts the guard for an evicted record', async () => {
+    await completionEmittedStorage.markEmitted('guide:bundled:a');
+    const { attempt } = getOrMintAttempt({ guideSource: 'bundled', guideId: 'a' }, () => 'analytics');
+
+    const ids = ['a', 'b', 'c'];
+    const q = createWriteQueue({
+      now: () => 0,
+      send: makeSender([{ kind: 'created' }]).send,
+      maxSize: 2,
+      nextId: () => ids.shift()!,
+    });
+    q.enqueue(body({ guideId: 'a' }));
+    q.enqueue(body({ guideId: 'b' }));
+    q.enqueue(body({ guideId: 'c' })); // evicts 'a'
+
+    expect(completionEmittedStorage.isEmitted('guide:bundled:a')).toBe(false);
+    expect(readAttempt({ guideSource: 'bundled', guideId: 'a' })).toEqual(attempt);
   });
 });
 
@@ -773,6 +797,18 @@ describe('write queue — retention horizon (retry-retention-horizon)', () => {
 
     expect(completionEmittedStorage.isEmitted(GUARD_KEY)).toBe(false);
     expect(completionReportedStorage.isEmitted(GUARD_KEY)).toBe(true);
+  });
+
+  it('leaves the guide attempt in place when it lifts the guard for an expired record', async () => {
+    await completionEmittedStorage.markEmitted(GUARD_KEY);
+    const { attempt } = getOrMintAttempt({ guideSource: 'bundled', guideId: 'g1' }, () => 'analytics');
+
+    const q = createWriteQueue({ now: () => NOW + THIRTY_DAYS + 1, send: makeSender([{ kind: 'created' }]).send });
+    q.enqueue(body({ guideId: 'g1', completedAt: new Date(NOW).toISOString() }));
+    await q.processDue();
+
+    expect(completionEmittedStorage.isEmitted(GUARD_KEY)).toBe(false);
+    expect(readAttempt({ guideSource: 'bundled', guideId: 'g1' })).toEqual(attempt);
   });
 });
 
