@@ -55,7 +55,7 @@ completion-store ──dispatchProgress({kind:'guide', origin})──▶ pathfin
 - `markStepsCompleted(stepIds, sectionId, reason)` — bulk (Do section, objectives auto-complete). Persists with origin `'change'`.
 - `refreshAndNotifyGuideProgress(contentKey, 'change')` — a section acknowledgement (`interactive-section.tsx`), which writes no step.
 
-The Mark complete control (`src/components/mark-complete/MarkCompleteFooter.tsx`) and `markMilestoneDone` write 100 to the percentage namespace themselves and announce it with no origin. They are terminal paths, not progress: the observer ignores 100. Any other direct `dispatchProgress({ kind: 'guide' })` outside the store is a bypass.
+The Mark complete control (`src/components/mark-complete/MarkCompleteFooter.tsx`), `markMilestoneDone` and `backfillLegacyMilestoneCompletion` (`src/docs-retrieval/learning-journey-helpers.ts`, folding legacy milestone data into the store) write 100 to the percentage namespace themselves and announce it with no origin. They are terminal paths, not progress: the observer ignores 100. Any other direct `dispatchProgress({ kind: 'guide' })` outside the store is a bypass.
 
 Which block types count is fixed by `COMPLETION_AFFORDANCE_BLOCK_TYPES` (`src/lib/guide-stats/completion-affordance.ts`), kept in step with the runtime registry `STEP_TYPE_PARSE_KEYS` (`src/components/interactive-tutorial/step-type-registry.ts`). See `.cursor/rules/tracked-step-types.mdc` for the four-site registry.
 
@@ -121,7 +121,7 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 
 ### 7. Consumers of raw rows
 
-- `pkg/plugin/completion_records.go` `collateCompletions` — completed rows become completions; rows with an empty `completedAt` become `inProgress`, shown only when nothing is completed or the partial is newer than the last completion.
+- `pkg/plugin/completion_records.go` `collateCompletions` — completed rows become completions; rows with an empty `completedAt` become `inProgress`, shown only if the attempt started after the last completion.
 - `pkg/plugin/assignment_satisfaction.go` — evaluates per row against `acceptCompletionsFrom`. A partial row is excluded today **only because** an empty `completedAt` fails `parseCompletionTime`. A new consumer must exclude partials explicitly.
 
 ### 8. Reset
@@ -134,7 +134,7 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 - **Monotonic.** Within an attempt the client high-water mark and the stored percent only rise.
 - **Terminal is terminal.** Only a 100% write sets `completedAt`. A closed attempt accepts no more partials until a reset clears it.
 - **Retry identity.** A retried completion reuses its idempotency key; a lost attempt completion reopens and reuses its `attemptId`.
-- **Origin.** Only a reader's write is `'change'`. Initialization, hydration, cross-tab sync and restore are never `'change'`.
+- **Origin.** Only a reader's write is `'change'`. Initialization, hydration, cross-tab sync and restore are never `'change'`. **Known deviation:** objectives auto-complete (`interactive-section.tsx`, `step-checker.hook.ts`) runs from an effect with no reader action yet saves with `'change'`, so opening a guide whose objectives are already met can start an attempt. Tracked in [#2102](https://github.com/grafana/grafana-pathfinder-app/issues/2102); do not copy the pattern into a new path.
 - **One identity per surface render.** The identity registered for live progress and the identity recorded at completion come from the same `SurfaceCompletionInput`.
 - **Separate guards.** The analytics guard (`completionReportedStorage`) and the durable guard (`completionEmittedStorage`) are independent; a dropped write lifts only the durable one.
 
@@ -164,6 +164,7 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 ### Adding a reset or clear path
 
 - [ ] Go through `resetGuideProgress` or `invalidateEmittedCompletion` / `invalidateAllEmittedCompletions`, so the attempt and queued partials clear with the storage. Clearing storage alone leaves a closed attempt that blocks re-completion.
+- [ ] A reset-all path also calls `discardQueuedCompletionWrites` before any `await`, as `MyLearningTab.tsx` does. `invalidateAllEmittedCompletions` clears the queue only once the write hook is armed, through the `onAttemptReset` listener, and a scheduled drain can fire between the reset and that clear.
 
 ### Reading raw `CompletionRecord` rows
 
