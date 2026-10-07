@@ -1,7 +1,7 @@
 import { logger } from '../lib/logging';
 
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
-import { liftEmittedCompletionGuard } from './completion-recorder';
+import { liftDurableCompletionGuard } from './completion-recorder';
 import { reopenAttempt } from './guide-attempts';
 import type { ProgressRecordsCapability } from './progress-records-capability';
 import { reportCompletionWriteDegradation } from './completion-write-telemetry';
@@ -121,7 +121,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     if (item.body.completionPercent < 100) {
       return;
     }
-    liftEmittedCompletionGuard(item.body.guideSource, item.body.guideId);
+    liftDurableCompletionGuard(item.body.guideSource, item.body.guideId);
     if (item.body.attemptId !== undefined) {
       reopenAttempt({ guideSource: item.body.guideSource, guideId: item.body.guideId }, item.body.attemptId);
     }

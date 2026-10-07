@@ -13,6 +13,7 @@ export const StorageKeys = {
   INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion', // Stores completion percentage by contentKey
   TABS: 'grafana-pathfinder-app-tabs',
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
+  INTERACTIVE_SKIPPED_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-skipped-steps-',
   INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: see buildVersionedSectionStorageKey
   // Superseded per-content marker. Nothing reads it; kept so the discard sweep can recognise and remove it.
   CONTENT_PROGRESS_V2_PREFIX: 'grafana-pathfinder-app-content-progress-v2:',
@@ -30,6 +31,7 @@ export const StorageKeys = {
   // Dynamic: see buildVersionedContentStorageKey, keyed by `guideSource:guideId`.
   // Device-local guide attempt (completion-records/guide-attempts.ts); never synced.
   GUIDE_ATTEMPT_PREFIX: 'grafana-pathfinder-app-guide-attempt-',
+  COMPLETION_REPORTED_PREFIX: 'grafana-pathfinder-app-completion-reported-',
   // Full screen mode persistence (for page refreshes during recording)
   FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
   FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
@@ -124,6 +126,7 @@ export function buildAssistantStorageKey(contentKey: string, assistantId: string
  * of them and silently miss the fourth.
  */
 export const PROGRESS_SECTION_PREFIXES = [
+  StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX,
   StorageKeys.INTERACTIVE_STEPS_PREFIX,
   StorageKeys.SECTION_COLLAPSE_PREFIX,
   StorageKeys.SECTION_ACKNOWLEDGED_PREFIX,

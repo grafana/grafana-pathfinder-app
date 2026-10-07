@@ -18,7 +18,7 @@ import { recordGuideRender } from '../../lib/telemetry/facade';
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { pushFaroLog } from '../../lib/telemetry/bridge';
-import { reportAppInteraction } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
 import {
   guideCompletionMarkStorage,
@@ -1390,6 +1390,34 @@ describe('MyLearningTab — reset all learning progress', () => {
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect(discardQueuedCompletionWrites).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  function resetEvents(): unknown[][] {
+    return jest.mocked(reportAppInteraction).mock.calls.filter(([type]) => type === UserInteraction.ResetProgressClick);
+  }
+
+  it('reports one all-scope reset from the footer when confirmed', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(learningProgressStorage.clear).toHaveBeenCalledTimes(1));
+    expect(resetEvents()).toEqual([
+      [UserInteraction.ResetProgressClick, { reset_scope: 'all', interaction_location: 'my_learning_footer' }],
+    ]);
+    confirmSpy.mockRestore();
+  });
+
+  it('reports no reset when the confirmation is declined', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    expect(resetEvents()).toHaveLength(0);
     confirmSpy.mockRestore();
   });
 });

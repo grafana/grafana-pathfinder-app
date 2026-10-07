@@ -1,5 +1,6 @@
 import { logger } from '../lib/logging';
-import { completionEmittedStorage } from '../lib/user-storage';
+import { completionEmittedStorage, completionReportedStorage } from '../lib/user-storage';
+import { reportCompletionAnalytics } from './completion-analytics';
 import { bundledGuideIdReadVariants } from './completion-identity';
 import { currentCompletionQueueOwnerKey } from './completion-write-storage';
 import {
@@ -13,7 +14,6 @@ import {
   __resetAttemptsForTests,
   type GuideAttempt,
 } from './guide-attempts';
-import { reportGuideCompleted } from './progress-analytics';
 
 import type {
   CompletionFact,
@@ -58,8 +58,27 @@ function synchronizePendingOwner(): string | null {
 // — see `record` below.
 const emitted = new Set<string>();
 
+const reported = new Set<string>();
+
 function dedupeKey(kind: CompletionKind, guideSource: string, guideId: string): string {
   return `${kind}:${guideSource}:${guideId}`;
+}
+
+function reportOnce(fact: CompletionFact, key: string, variants: readonly string[]): void {
+  try {
+    const alreadyReported = variants.some((id) => {
+      const variantKey = dedupeKey(fact.kind, fact.guideSource, id);
+      return reported.has(variantKey) || completionReportedStorage.isEmitted(variantKey);
+    });
+    if (alreadyReported) {
+      return;
+    }
+    reported.add(key);
+    void completionReportedStorage.markEmitted(key);
+    reportCompletionAnalytics(fact);
+  } catch (error) {
+    logger.warn('Failed to report completion analytics', { error });
+  }
 }
 
 /** `true` when at least one listener durably accepted the fact. */
@@ -89,7 +108,7 @@ export interface RecordGuideCompletionOptions {
  * Record a terminal guide completion. Covers bundled/standalone-interactive
  * guides reaching 100% and the milestone-as-guide bridge. Never blocks, never
  * throws on the completion path. Idempotent per `(kind, guideSource, guideId)`,
- * durably — see `invalidateEmittedCompletion` and `liftEmittedCompletionGuard`.
+ * durably.
  */
 export function recordGuideCompletion(fact: GuideCompletionFact, options: RecordGuideCompletionOptions = {}): void {
   record(fact, options.attemptEligible === true);
@@ -140,8 +159,13 @@ function recordLocked(fact: CompletionFact, attemptEligible: boolean): void {
       emitted.add(key);
       return;
     }
-    // No listener armed yet: buffer the fact (attempt minting waits for the
-    // replay, so a buffered fact that is never replayed mints nothing).
+    const attemptKey = { guideSource: fact.guideSource, guideId: variants[0] };
+    const attempt: GuideAttempt | null =
+      attemptEligible && fact.kind === 'guide' ? getOrMintAttempt(attemptKey, resolveAttemptMode).attempt : null;
+    const recorded: CompletionFact = attempt
+      ? { ...fact, attemptId: attempt.attemptId, attemptMode: attempt.mode, attemptStartedAt: attempt.startedAt }
+      : fact;
+    reportOnce(recorded, key, variants);
     if (listeners.size === 0 && owner) {
       if (!pending.has(key) && pending.size >= MAX_PENDING_COMPLETIONS) {
         logger.warn('completion write: startup buffer is full');
@@ -153,14 +177,6 @@ function recordLocked(fact: CompletionFact, attemptEligible: boolean): void {
       return;
     }
     pending.delete(key);
-    // Minted before the listeners run, so a fact nobody accepts leaves the
-    // attempt open and the re-emit reuses its id.
-    const attemptKey = { guideSource: fact.guideSource, guideId: variants[0] };
-    const attempt: GuideAttempt | null =
-      attemptEligible && fact.kind === 'guide' ? getOrMintAttempt(attemptKey, resolveAttemptMode).attempt : null;
-    const recorded: CompletionFact = attempt
-      ? { ...fact, attemptId: attempt.attemptId, attemptMode: attempt.mode, attemptStartedAt: attempt.startedAt }
-      : fact;
     // Set the guard only once someone durably accepted the fact. Between the
     // two risks here: a duplicate is recoverable — the record is true, and
     // downstream dedup can collapse it — while a lost completion is not,
@@ -174,7 +190,6 @@ function recordLocked(fact: CompletionFact, attemptEligible: boolean): void {
       if (attempt) {
         closeAttempt(attemptKey, attempt.attemptId);
         raiseHighWater(attemptKey, 100);
-        reportGuideCompleted({ ...recorded, attemptId: attempt.attemptId });
       }
     }
   } catch (error) {
@@ -193,47 +208,29 @@ export function onCompletionRecorded(listener: CompletionListener): () => void {
   };
 }
 
-/**
- * Lift the exactly-once guard for one guide identity, both kinds, and forget
- * its attempt so the next progress starts a new one. Every reset
- * path that forgets a guide's progress must call this for each guide it
- * resets — otherwise a reader who resets and re-completes gets no durable
- * record, no badge and no path progress on the second completion, because
- * `record()` above would still see the identity as already emitted.
- *
- * Clears every spelling `bundledGuideIdReadVariants` yields — the normalized key
- * AND the legacy `/content.json`-suffixed key — so a guide recorded under either
- * identity shape is fully forgotten.
- *
- * MIGRATION GUARANTEE — do not remove the legacy read: durable records written
- * under the suffixed id shipped in plugin 2.17.0 and have been live on Cloud for
- * weeks. There is no route that deletes a durable record, so this read-both
- * behaviour must stay until someone deliberately retires it after those records
- * have aged out. Reading only the normalized key would silently orphan them.
- */
-export function invalidateEmittedCompletion(guideSource: string, guideId: string): void {
-  withAttemptLock(() => {
-    liftEmittedCompletionGuard(guideSource, guideId);
-    clearAttempt({ guideSource, guideId });
-  });
+// Legacy /content.json identities remain valid until their durable records are retired.
+function identityKeys(guideSource: string, guideId: string): string[] {
+  const kinds: readonly CompletionKind[] = ['guide', 'journey'];
+  return kinds.flatMap((kind) => bundledGuideIdReadVariants(guideId).map((id) => dedupeKey(kind, guideSource, id)));
 }
 
-/**
- * Lift the exactly-once guard alone, leaving the guide's attempt in place.
- * For a queued record lost before it was sent: the completion has to be
- * recordable again, and under the same attempt.
- */
-export function liftEmittedCompletionGuard(guideSource: string, guideId: string): void {
-  const variants = bundledGuideIdReadVariants(guideId);
-  const kinds: readonly CompletionKind[] = ['guide', 'journey'];
-  for (const kind of kinds) {
-    for (const id of variants) {
-      const key = dedupeKey(kind, guideSource, id);
-      pending.delete(key);
-      emitted.delete(key);
-      void completionEmittedStorage.clear(key);
-    }
+export function liftDurableCompletionGuard(guideSource: string, guideId: string): void {
+  for (const key of identityKeys(guideSource, guideId)) {
+    pending.delete(key);
+    emitted.delete(key);
+    void completionEmittedStorage.clear(key);
   }
+}
+
+export function invalidateEmittedCompletion(guideSource: string, guideId: string): void {
+  withAttemptLock(() => {
+    liftDurableCompletionGuard(guideSource, guideId);
+    for (const key of identityKeys(guideSource, guideId)) {
+      reported.delete(key);
+      void completionReportedStorage.clear(key);
+    }
+    clearAttempt({ guideSource, guideId });
+  });
 }
 
 export function discardPendingCompletions(): void {
@@ -245,7 +242,9 @@ export function invalidateAllEmittedCompletions(): void {
   withAttemptLock(() => {
     discardPendingCompletions();
     emitted.clear();
+    reported.clear();
     void completionEmittedStorage.clearAll();
+    void completionReportedStorage.clearAll();
     clearAllAttempts();
   });
 }
@@ -260,6 +259,7 @@ export function __resetRecorderForTests(): void {
   pending.clear();
   pendingOwner = null;
   emitted.clear();
+  reported.clear();
   listeners.clear();
   __resetAttemptsForTests();
 }

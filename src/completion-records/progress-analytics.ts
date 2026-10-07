@@ -1,9 +1,4 @@
-/**
- * Product analytics for guide progress: `guide_progress` at an attempt's first
- * real progress and at each 25/50/75 crossing, `guide_completed` when the
- * recorder's completion is durably accepted. Both go through
- * `reportAppInteraction`, which also mirrors them to Faro.
- */
+// Progress events and completion correlation are opt-in; terminal events have their own guard.
 
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { getFeatureFlagValue } from '../utils/openfeature';
@@ -63,19 +58,6 @@ export function reportGuideProgress(
   );
 }
 
-export function reportGuideCompleted(fact: CompletionFact & { attemptId: string }): void {
-  if (!isEnabled()) {
-    return;
-  }
-  reportAppInteraction(
-    UserInteraction.GuideCompleted,
-    definedOnly({
-      guide_source: fact.guideSource,
-      guide_id: fact.guideId,
-      path_id: fact.pathId,
-      percent: fact.completionPercent,
-      attempt_id: fact.attemptId,
-      source: fact.source,
-    })
-  );
+export function completionAttemptAnalyticsProperties(fact: CompletionFact): Record<string, string> {
+  return fact.attemptId && isEnabled() ? { attempt_id: fact.attemptId } : {};
 }

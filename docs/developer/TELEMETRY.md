@@ -60,18 +60,21 @@ Span helpers (`withFaroUserAction`, `setFaroUserActionAttributes`), explicit err
 ## Guide progress events
 
 `pathfinder.progress-analytics` defaults to false, including when MTFF is unreachable.
-When enabled, `reportAppInteraction` sends these events to RudderStack and mirrors them to Faro through the existing consent and environment gates:
+When enabled, `reportAppInteraction` sends `pathfinder_guide_progress` through the existing consent and environment gates.
+It reports first real progress and subsequent 25%, 50%, or 75% crossings, at most four events per attempt.
+Progress carries `guide_source`, `guide_id`, optional `path_id`, `percent`, `threshold`, and `attempt_id`.
 
-- `pathfinder_guide_progress`: first real progress and subsequent 25%, 50%, or 75% crossings, at most four events per attempt.
-- `pathfinder_guide_completed`: terminal completion accepted into the durable local queue, not proof of a successful backend write.
+The flag also adds `attempt_id` to the existing terminal `guide_completed` event for an attempt-eligible guide.
+It does not send a second completion event or control terminal event emission.
+The terminal event retains its public-identity filtering, `completion_percentage`, and `completion_source` fields.
+Its separate analytics guard reports once, without waiting for durable queue acceptance or backend success.
+The recorder creates the attempt before this report, so startup buffering and retries keep the same correlation ID.
 
-Both events carry `guide_source`, `guide_id`, optional `path_id`, `percent`, and `attempt_id`.
-Progress also carries `threshold`. Completion also carries `source`.
 The random attempt ID correlates events within a device-local attempt. It is not a user ID, but it is a high-cardinality correlation field.
-These events do not include guide titles, guide content, or credentials. Event enablement requires privacy review of the identity and correlation fields.
+Progress events do not include guide titles, guide content, or credentials. Event enablement requires privacy review of the identity and correlation fields.
 Sent events cannot be recalled by disabling the flag.
 
-Device-local attempts persist under `grafana-pathfinder-app-guide-attempt-`, even when both progress flags are false.
+Device-local attempts persist under `grafana-pathfinder-app-guide-attempt-`, scoped to user and organization, even when both progress flags are false.
 The value contains a random ID, start timestamp, completion state, highest percentage, and mode.
 These keys do not use user-storage synchronization. Resetting guide progress removes the corresponding attempt.
 The separate `pathfinder.progress-records` flag controls partial-record writes and capability discovery, not these analytics events.
@@ -93,6 +96,63 @@ Privacy protection is split between enforced normalization and caller discipline
   - The **path is recorded whole**, dashboard title slug included — `/d/<uid>/acme-q3-revenue`. That is a considered trade: it is what makes a replay navigable, and the board name is not a secret to anyone who can already read this telemetry. The masking guarantee covers rendered text and DOM attributes; page URLs are outside it.
   - The **query is stripped**, everywhere. On a Grafana URL the query is where the user's own choices live — `var-*` template values, Explore's serialized queries, `?doc=` deep links — which is a different class of data from a title.
   - This applies on **two independent channels**. `replay-scrub.ts` covers URLs inside the rrweb payload; `redactPageUrl` in `filtering.ts` covers `meta.page.url`, which Faro sets from `location.href` on every item regardless of payload. The second one matters more than it looks: Grafana Cloud's collector explodes that query into `page.attributes`, so an unscrubbed URL arrives as first-class searchable `page_attr_var_*` fields.
+
+## Completion events
+
+`guide_completed` and `journey_completed` (`pathfinder_guide_completed` and `pathfinder_journey_completed` in the warehouse) are the Track 1 events of the [Completion Records RFC](https://github.com/grafana/pathfinder-rfcs/blob/main/rfc/COMPLETION_RECORDS.md#73-track-1-event-additions). The RFC keeps completion records on the customer's stack, so these events are how Grafana sees completions across stacks. They fire from `src/completion-records/completion-recorder.ts`, the same seam as the durable write, so every completion path reports both. The report has its own persisted guard (`completionReportedStorage`) and runs before the recorder's pre-arm startup buffer, so it never waits on the write hook arming or on the durable write being accepted, and never stands in for either.
+
+| Property                      | Value                                                                                                                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guide_source`                | The resolving repository: `bundled`, `interactive-tutorials`, `online-cdn` or `app-platform`; anything else is `other`; `unresolved` when the source was only a default |
+| `guide_visibility`            | `public` for a confirmed `bundled`, `interactive-tutorials` or `online-cdn` source; `private` otherwise and for the local harness guides                                |
+| `guide_id`, `guide_title`     | `guide_completed`, public sources only; a local harness guide sends `guide_id` alone                                                                                    |
+| `path_id`                     | Milestone `guide_completed` only: the containing path, when the path itself is a confirmed public source                                                                |
+| `journey_id`, `journey_title` | `journey_completed`, public sources only                                                                                                                                |
+| `guide_category`              | `learning-journey` for milestones and journeys, `interactive` for every other guide                                                                                     |
+| `completion_source`           | `manual` for Mark complete; `skipped` when credited steps include a skip; `objectives` for other automatic completion                                                   |
+| `completion_percentage`       | Always `100`                                                                                                                                                            |
+| `duration_ms`                 | Sent only when measured; no caller measures it yet                                                                                                                      |
+
+Terminal percentages are always 100 and no caller measures duration. The first terminal trigger owns `completion_source`: an explicit guide mark is `manual`; otherwise, credited completed steps containing any skip produce `skipped`, and other automatic completions produce `objectives`. Skip annotations survive reloads and are cleared with the corresponding progress reset. Legacy completion arrays without annotations retain `objectives`; historical skip reasons cannot be reconstructed. This does not add a partial-percentage ‘skip remaining’ action. For a journey, the source describes the final milestone's completion, not every member. The property names follow this app's analytics conventions rather than the RFC draft (`completion_percentage`, `completion_source`). A milestone's `guide_completed` sends the containing path as `path_id` only when that path is itself confirmed public, because a customer's private path can contain a public guide; it equals that path's `journey_completed.journey_id`.
+
+Guide completions also carry `total_block_count`, `completable_block_count`, `section_count`, `guide_stats_version` and `block_progress_rule_version: block-position-v1` when the completing surface has a frozen guide index. These are live counts, including zeros for prose-only guides, and contain no resource identity. They are omitted when the index is unavailable and on whole-journey events: the final milestone's block count is not the journey denominator. These properties enrich Track 1 only; the durable record schema is unchanged.
+
+### Identity policy
+
+New events carry guide identity only for confirmed Grafana-published sources. `guideIdentityAnalyticsProperties` and `pathAnalyticsProperties` in `completion-identity.ts` are the rule, so a new event that names a guide or path reuses them. A source is confirmed when the loader named its repository explicitly, the content was opened as `bundled:` and its source resolves to `bundled` (the bundled loader stamps that on the manifest), or it belongs to a curated path in `paths.json` / `paths-cloud.json`. A source that only fell back to a default (see [Source attribution](#source-attribution)), or came from a manifest's own `repository`, which the manifest schema itself defaults, reports `guide_source = 'unresolved'` and `guide_visibility = 'private'` with no identifier or title. The title is whatever the completing surface shows, usually the panel tab's title.
+
+- The local harness guides, `bundled:e2e-test` (the e2e runner) and `bundled:wysiwyg-preview` (a preview loader nothing writes to today), load their content from localStorage. They report `guide_visibility = 'private'` and their fixed harness id with no title (`src/constants/local-bundled-guides.ts`).
+
+`mark_complete_clicked` carries the same `guide_source`, `guide_visibility`, `guide_id` and, on a milestone, `path_id`, from `resolveSurfaceCompletionIdentity` in `learning-journey-helpers.ts`. That function uses the same branch order and resolvers as the completion writer, so a click joins to its `guide_completed` on (`guide_source`, `guide_id`). It sends no title, and no identity at all where the writer records no guide completion, such as a path or journey manifest.
+
+RudderStack properties are otherwise sent unredacted (only the Faro mirror redacts), and existing events already send raw identifiers and titles, App Platform ones included. They are legacy exceptions, left unchanged for warehouse continuity. The list is not exhaustive:
+
+- Step events built by `buildInteractiveStepProperties` (`step_auto_completed`, `show_me_button_click`, `do_it_button_click` and others): `source_document` is the active tab URL, `backend-guide:` keys included.
+- `learning_path_progress`: `path_id` and `path_title`.
+- `alignment_prompt_shown`, `alignment_prompt_confirmed` and `alignment_prompt_dismissed`: `guide_url` and `guide_title`.
+- `jump_into_milestone_click`: `content_url`, which is `backend-guide:<path id>` for an App Platform path, and the path and milestone titles.
+- `open_resource_click` from the custom guides section: `content_url` (`backend-guide:<guide id>`) and `content_title`.
+- `close_tab_click`: `content_url` and `tab_title`.
+- `milestone_arrow_interaction_click`: `content_url` and `content_title`.
+
+### Mapping to warehouse concepts
+
+- **Milestone completion** is `guide_completed` with `guide_category = 'learning-journey'`. `guide_id` is the bare milestone slug, not qualified by its path, so two journeys that share a slug under one source report it once; `path_id` tells them apart when the path is public.
+- **Path completion** is `journey_completed`; "journey" in code means a learning path. `journey_id` is the manifest id, else the curated path id. It fires when every milestone of a milestone-based path is complete, and is skipped when neither id exists, as for a docs-site journey that is not a curated path.
+- **Guide-list curated paths and Path Tracks** have no `journey_completed` trigger yet. Every curated guide-list path has a badge, and its completion shows up only as `badge_unlocked` with `trigger_type = 'path-completed'` (`src/learning-paths/badges.ts` maps `badge_id` to its path). Path completions are the union of `journey_completed` and those badge events. A milestone-based curated path can report both, so count each path once per reader.
+- **Titles** on milestone and journey completions come from the completing surface: the tab's open-time title in the sidebar and floating panel, the content title in the guide reader. That is usually the journey's own title, so key them on the id.
+
+### Source attribution
+
+`guide_source` is the repository that resolved the guide, not its URL scheme: a `backend-guide:` guide reports `app-platform`, and a CDN package reports whatever its resolver returned. Learning journeys served from the Grafana docs site resolve no repository, so their milestones fall back to `bundled` and the journey to `interactive-tutorials`; a standalone guide whose manifest names no repository also falls back to `interactive-tutorials`. Those fallbacks are used for the durable key, but analytics reports them as `unresolved` unless the journey is a curated path. The guard is per `(kind, guide_source, guide_id)`, so a guide reached through two repositories reports once under each.
+
+### Delivery
+
+- **Once per identity per browser profile** on each Grafana stack, whichever user or org is signed in, since the guard lives in plain localStorage. A reset that covers the identity (a per-guide reset, a path reset, or Reset all learning progress) re-arms it, so a reset and redo reports again.
+- **No backfill.** An identity this browser profile durably recorded before the release that added these events is not reported. One it never recorded durably reports the next time it completes.
+- **Grafana Cloud only.** Grafana registers its RudderStack backend only when a write key is configured, so OSS and self-hosted instances send nothing.
+- **Fire and forget.** The guard is set before the event is sent, and Pathfinder never retries a dropped event, so one an ad blocker or network failure drops is lost. Counts are a floor.
+- **Synthetic traffic.** The e2e runner opens its guide as `bundled:e2e-test`, so a completed run reports `guide_source = 'bundled'`, `guide_visibility = 'private'` and `guide_id = 'e2e-test'`. Those runs come mostly from Grafana's synthetic e2e stacks; filter that guide out.
 
 ## Gating and environments
 
@@ -176,6 +236,65 @@ initialization and Faro activity gating are not detection prerequisites. A silen
 is not recovery proof; verify successful endpoint/user flows. Frontend degraded rendering
 and upstream service recovery are separate observations.
 
+## Step events and percentages
+
+The interactive step events — `show_me_button_click`, `do_it_button_click`, `step_auto_completed`, `step_auto_complete_failed`, `step_skipped`, the blocking data check's `data_check_*` events and `gcx_setup_skipped` — all build their properties through `buildInteractiveStepProperties` in `src/lib/analytics.ts`. They share `source_document`, `step_id`, `current_step`, `total_document_steps`, `completion_percentage`, `section_id` and `section_title`, and join on `source_document` + `step_id`. A `step_id` is positional unless the author set an `id`, and `block_position` and the counts shift when a guide is edited, so treat that join as valid only within one revision of a guide. Step events carry no `guide_id`: to join them to `mark_complete_clicked` or the completion events, take the bundled guide id from `source_document` by stripping `bundled:` and `/content.json`; other sources need the published catalog.
+
+### What the step fields mean
+
+- **`completion_percentage` is a step position, not progress.** It is `round(100 × current_step / total_document_steps)`, where `total_document_steps` is the number of tracked steps the section registry counted in the rendered document. The formula has not changed since it was introduced (#202, October 2025), so the series is comparable across versions — but it is never the percentage the app shows. `do_section_button_click` and the events built with `enrichWithStepContext` (links opened from a guide, `reset_progress_click`) carry the same step-position figure.
+- **`completion_method`** is the constant `auto_detected` on `step_auto_completed` and is absent on quiz rows, so it says nothing about how a step was completed. Terminal `do_it_button_click` rows carry `copy` or `exec`.
+- **`step_auto_completed` covers auto-detected completions and quiz answers only.** A guided step emits one per sub-action the reader performs (`internal_step_number` of `internal_actions_count`), so only the row where the two are equal means the block finished. A multistep emits once, when its last action is detected. A quiz emits on a correct answer and also on a max-attempts reveal, with `quiz_is_correct` false and `quiz_revealed` true.
+- **A successful Do it on a plain step emits `do_it_button_click` only**, at click time and before the action runs, so the row does not say whether the action succeeded. No completion event follows.
+- **Some completions send no completion event**: a Do section run (only `do_section_button_click`), Show me on a step that has no Do it (only `show_me_button_click`, sent at click time), a step whose objectives were already met, and "Mark section as complete".
+
+### Block properties
+
+When the guide has a frozen block index (`getGuideIndex` in `src/global-state/active-guide-index.ts`, published for JSON guides only), step events also carry:
+
+| Property                  | Meaning                                                                                                                                                                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `block_position`          | The counted position the completion store credits when this step completes. It is computed by the same arithmetic (`furthestEvidencedPosition` over one "Do it" signal), so a step inside a conditional branch reports its conditional's position. |
+| `total_block_count`       | The guide percentage's denominator: counted blocks, containers excluded.                                                                                                                                                                           |
+| `completable_block_count` | Counted blocks that can emit completion evidence.                                                                                                                                                                                                  |
+| `section_count`           | Section containers in the guide — the index's `sectionCount`, the same figure as the manifest stamp's `sectionCount` and the library survey in `docs/design/COMPLETION-MODEL.md`. A section with no counted blocks cannot move the percentage.     |
+
+All four are omitted when there is no index for the content key (HTML docs never have one) or the step has no position (an anonymous standalone step, or a block whose runtime id a `snippet-ref` shifts). The index is looked up under `getContentKey()`, the key the completion store credits steps under; `source_document` is the same value before that key's sanitization. `mark_complete_clicked` carries `total_block_count`, `completable_block_count` and `section_count` under the same index rule. On a milestone it also carries the reader's `current_milestone` and the path's `total_milestones`. Its guide identity follows the [Identity policy](#identity-policy) and uses the completion writer's resolver.
+
+### Measuring guide progress
+
+`block_progress_rule_version: block-position-v1` names the formula for the new block properties; `guide_stats_version` identifies the counting rules used by the live index. `percentage_rule_version` only ever describes `completion_percentage`: it is `step-position-v1` on step events, `do_section_button_click` and the step-context events. The footer's `completion_percentage_before` is a block-rule value, so it is tagged `block_progress_rule_version: block-position-v1`, with or without an index. These markers do not reclassify stored percentages in older events.
+
+The step stream cannot reconstruct exact guide progress. `do_it_button_click` fires before execution and may fail; Do section, Show me-only steps, already-satisfied objectives and section acknowledgements do not all emit completion signals. A maximum over click positions can therefore both over-credit and under-credit. Use `completion_percentage_before` as a live observation at mark time and terminal completion events as terminal observations. An authoritative incremental-progress event from the shared completion store, including reset and restoration semantics, remains a separate follow-up.
+
+**Binary-only guides** are those with `completable_block_count` 0 and `section_count` 0. Nothing but Mark complete can evidence them, so they read 0% or 100% and nothing in between. In the completion model's survey that is 256 of the 308 guides with no completable block; the other 52 have sections, and "Mark section as complete" gives them intermediate percentages.
+
+### Skips
+
+`step_skipped` is emitted once per skip, from the click that performs it, by every Skip control and once for each step a Do section run skips. It carries the step properties above, so it joins `step_auto_completed` on `source_document` + `step_id`, plus `target_action` (the step type: the interactive action such as `button`, or `multistep`, `guided`, `quiz`, `challenge`, `code-block`, `terminal`, `terminal-connect`, `datasource-check`), `interaction_location` and `skip_reason`:
+
+| `skip_reason`        | Produced by                                                                                                                                                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user`               | A Skip on a step that could still be done: the always-available Skip on plain, multistep, guided and quiz steps, a cancelled guided tour, a challenge or data check not yet failed, and gcx setup before any attempt.                    |
+| `requirements_unmet` | A Skip offered because the step cannot be done here: failed requirements (plain, code block, terminal, data check), an unavailable Coda sandbox (terminal), or no data source of the authored type.                                      |
+| `after_failure`      | A Skip after the step was tried and failed: multistep and guided execution errors and timeouts, a failed challenge check or setup, a data check that found no data or errored, and gcx setup that failed or fell back to a pasted token. |
+| `section_run_auto`   | A Do section run skipping a skippable step whose requirements failed and could not be fixed.                                                                                                                                             |
+
+A skipped step credits the guide percentage like a completed one. It is evidence of progress, but does not make the incomplete stream an exact progress ledger. Input blocks have no step id and record nothing, so their Skip sends no event. `data_check_skipped` and `gcx_setup_skipped` still fire as before, gaining only the block properties every step event carries; each skip that sends one also sends `step_skipped`. Block-editor previews are not filtered out, as with every other step event. Neither are the local harness guides (`bundled:e2e-test`, `bundled:wysiwyg-preview`); their `source_document` identifies them, and #2071 stops the CLI guide runners sending to RudderStack.
+
+### Percentage properties by plugin version
+
+Live values are computed when the event fires. Stored values are read back from browser storage, so the rule that produced them depends on when the value was written, not on the row's `plugin_version`.
+
+| Property                                                                          | Events                                                                 | Source            | Cutovers                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `completion_percentage`                                                           | Step events, `do_section_button_click`, `enrichWithStepContext` events | Live              | Step position in every version.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `block_position`, `total_block_count`, `completable_block_count`, `section_count` | Step events; the three counts on `mark_complete_clicked`               | Live              | Absent before the first release after 2.20.1.                                                                                                                                                                                                                                                                                                                                                                                       |
+| `completion_percentage_before`                                                    | `mark_complete_clicked`                                                | Live              | Block rule since the event shipped in 2.18.0; conditional-branch steps credited from 2.18.2.                                                                                                                                                                                                                                                                                                                                        |
+| `completion_percentage`                                                           | `open_resource_click` (featured cards and recommendations)             | Stored            | Before 2.18.0: completed steps / total document steps. 2.18.0 (#1866): block rule — furthest evidenced position / `total_block_count`, capped at 99 until complete, Mark complete = 100 — for values written from then on; #1864 dropped v2.17-shaped evidence, so values stored by older versions never heal on reopen. 2.18.2 (#1953): conditional-branch credit. 2.19.0 (#1925): legacy milestone completions backfilled as 100. |
+| `completion_percent`                                                              | `learning_path_progress`                                               | Stored, rolled up | Before 2.18.0: completed guides / total guides. From 2.18.0 (#1866): the mean of the members' stored percentages, with the per-guide cutovers above. Only guide-list paths send this event and they have one sequence, so #1927's best-of-sequence rollup (2.19.0) does not change these rows.                                                                                                                                      |
+| `completion_percentage`                                                           | `milestone_arrow_interaction_click`, `close_tab_click` (journeys)      | Stored, averaged  | Before 2.18.0: the navigation ordinal (current milestone over total). From 2.18.0: the mean of the members' evidence percentages, with the per-guide cutovers above. From 2.20.0 (#2033), toolbar-arrow rows average the reader's active track when they have one.                                                                                                                                                                  |
+
 ## Kiosk catalogs and launches
 
 `pathfinder_kiosk_catalog_loaded` is sent to RudderStack through `reportAppInteraction` and mirrored as a Faro user action. The existing Faro event remains available for operational queries. It records the served `tier` (`override`, `configured`, `generic`, or `bundled`) and whether loading `degraded`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason; rejected rule logs name the invalid field without its value.
@@ -217,3 +336,44 @@ without settings, user IDs, or stack IDs.
 `assistant_customize_click`, `assistant_customize_success` and `assistant_customize_error` cover both inline block customization and whole-guide customization. Whole-guide runs carry the fixed `source: private-guide` attribute; filter by this attribute when measuring them separately from inline block runs. Inline block events retain their existing `source_document`, `step_id`, `assistant_id`, `assistant_type` and `content_key` attributes.
 
 Whole-guide clicks are recorded before context collection and prompt serialization, so local validation failures have a matching attempt. Success means a generated guide passed validation and was offered for editor review; it does not mean the user saved or published it. A repair attempt belongs to the original click. These events contain no answers, guide content, data-source metadata or generated output.
+
+## Learning path events
+
+These RudderStack events describe learning paths, badges and progress resets. Read them with the semantics below rather than their names: several are snapshots rather than state changes, and some changed meaning between releases.
+
+### Badge unlocks
+
+`badge_unlocked` fires once when a badge is newly written to the reader's learning progress, with `badge_id`, `badge_title` and `trigger_type` taken from `src/learning-paths/badges.ts`. Both award paths build the payload in `src/learning-paths/badge-coordinator.ts`:
+
+- **Guide completion** (`markGuideCompleted`) evaluates every badge whose trigger is met. It runs when a bundled guide reaches 100% and when any journey milestone completes, and never for a standalone guide from the interactive-tutorials CDN, an online CDN package or App Platform. So `first-steps` ("Complete your first guide") means the first bundled guide or milestone completed, not the first guide completed, and the streak badges (`consistent-learner`, `dedicated-learner`) advance only on a day the reader completes a bundled guide or milestone they had not completed before.
+- **Journey completion** (`markMilestoneDone`) awards a URL-based path's badge once every expected milestone is complete.
+
+A `path-completed` badge maps to one curated path through its `trigger.pathId` in `badges.ts`, and from the release after v2.20.1 the event sends that id as `path_id`. Every badge is curated, so the id is always a Grafana-published path; other trigger types send no `path_id`, and no badge sends a `journey_id`. The six URL-based path badges (`penguin-wrangler`, `log-visualizer`, `metric-miner`, `log-whisperer`, `dashboard-artisan` and `alert-guardian`) were awarded without this event from #587 (v1.8.0, 2026-02-18) through v2.20.1, so the warehouse holds almost none of those awards; count them only from later releases. Those paths are milestone-based, so once the completion events from #2035 ship, the same completion also appears as `journey_completed`; count each path once per reader.
+
+A badge reports at most once per successful award, best effort: a progress save that fails and is retried can report it twice. Path resets keep earned badges, so only a full reset (`reset_scope` `all`) lets the same reader earn and report a badge again.
+
+### Path progress snapshots
+
+`learning_path_progress` is a snapshot, not a progress change. My Learning sends it every time a reader clicks **Start** or **Continue** on a path card, with `path_id`, `path_title`, `completion_percent`, `guides_total` and `guides_completed`. Only static guide-list paths send it: `handleOpenGuide` in `MyLearningTab.tsx` returns early, before the emit, for manifest-backed paths (App Platform paths, CDN course packages and online-catalogue assignments) and for URL-based paths, all of which open their cover page instead. That leaves the curated paths that list their own guides: `getting-started` and `observability-basics` on OSS, and `cloud-getting-started` on Cloud.
+
+- `completion_percent` changed rule at v2.18.0 (#1866), so split any trend on it there. Before v2.18.0 it was `round(guides_completed / guides_total * 100)`: it moved only when a whole guide completed and always agreed with `guides_completed`. From v2.18.0 it is the mean of each member's stored percentage, computed at click time, with members in `completedGuides` counted as 100, floored and capped at 99 until every member is complete. Within 2.18.0 and later rows it reads stored values, so its rule follows whatever wrote each member's percentage rather than the event's `plugin_version`: a value stored under the pre-2.18.0 step rule stays in the mean.
+- `guides_completed` counts members listed in `completedGuides` and ignores partial progress. From v2.18.0 it can disagree with `completion_percent`: one of three guides half done sends `completion_percent` 16 and `guides_completed` 0. `guides_total` is the path's member count.
+
+The row sent when a reader accepts **Reset and continue** on an assignment is computed from the progress the card held before the reset, so it still counts the guides that were just reset as completed and overstates both `completion_percent` and `guides_completed`.
+
+### Journey navigation percentage
+
+`milestone_arrow_interaction_click` (from `milestone_progress_bar` and `bottom_navigation`) and `close_tab_click` on a learning-journey tab carry `completion_percentage`. Before v2.18.0 it was the navigation ordinal, `round(currentMilestone / totalMilestones * 100)`, which measured where the reader was rather than what they had done. From v2.18.0 (#1866) it is the mean of each unlocked milestone's stored percentage, floored and capped at 99 until every milestone is complete. Split any trend on this field at 2.18.0. Rows from `milestone_progress_bar` split again at v2.20.0 (#2033): from then the toolbar arrows average the sequence the reader is in, which is their active path track when they have one, and the toolbar also appears on guides that belong only to a track. From v2.18.0 through v2.19.x the toolbar arrows averaged the journey's own unlocked milestones. Bottom navigation and tab close still average the journey's own milestones.
+
+### Progress resets
+
+`reset_progress_click` means the reader confirmed a reset, not that it succeeded: it fires before storage is cleared, like the per-guide reset. It carries `reset_scope`, so a re-completion can be told apart from a first completion by an earlier reset of matching scope in the reader's stream:
+
+| `reset_scope` | Fires when                                                                                                             | `interaction_location`                 | Extra fields                                                             |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| `guide`       | A reader chooses **Reset guide** in the guide toolbar menu, in the sidebar, floating panel or full screen              | `docs_content_meta_header`             | `content_url`, `content_type`, step context                              |
+| `path`        | A reader confirms **Restart** on a completed path card                                                                 | `learning_path_card_restart`           | `path_id`, only for a curated path in `paths.json` or `paths-cloud.json` |
+| `assignment`  | A reader accepts **Reset and continue** on an assignment whose locally completed guides the assignment does not credit | `learning_path_assignment_reset_modal` | `guides_cleared`, the number of guides cleared                           |
+| `all`         | A reader confirms **Reset progress** in the My Learning footer                                                         | `my_learning_footer`                   | None                                                                     |
+
+Each reset reports once per action, never per member guide. An assignment reset clears only the guides the assignment does not credit, so it has its own scope and reports how many it cleared; a path restart and a full reset do not count what they clear. App Platform, CDN course, online-catalogue and assignment paths never send `path_id`, so a reset of one of those cannot be tied to its path. Rows from v2.20.1 and earlier have no `reset_scope`; every one of them is a per-guide reset, since nothing else reported. No mounted surface shows **Restart** today: the button appears only on a completed path card, My Learning renders every path card as incomplete, and `LearningPathsPanel`, which does pass real completion, is not mounted. Expect no `learning_path_card_restart` rows until a surface renders it.

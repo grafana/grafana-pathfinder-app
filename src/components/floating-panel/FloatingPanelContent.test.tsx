@@ -16,12 +16,12 @@ jest.mock('../content-renderer/content-renderer', () => ({
     onActiveTrackChange,
     initialActiveTrackId,
   }: {
-    onGuideComplete?: () => void;
+    onGuideComplete?: (source: 'manual', contentKey: string) => void;
     onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
     initialActiveTrackId?: string | null;
   }) => (
     <>
-      <button onClick={onGuideComplete}>Complete rendered guide</button>
+      <button onClick={() => onGuideComplete?.('manual', 'rendered-guide')}>Complete rendered guide</button>
       <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
       <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
     </>
@@ -124,6 +124,8 @@ describe('FloatingPanelContent completion emission', () => {
       contentType: 'docs',
       metadata: content().metadata,
       guideTitle: 'My guide',
+      source: 'manual',
+      contentKey: 'rendered-guide',
     });
   });
 });

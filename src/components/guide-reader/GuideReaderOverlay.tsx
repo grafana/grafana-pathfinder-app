@@ -209,7 +209,9 @@ function GuideReaderInner({
           containerRef={contentRef}
           className={contentClassName}
           onContentReady={handleContentReady}
-          onGuideComplete={() => recordGuideCompletionForSurface(surfaceCompletionInput)}
+          onGuideComplete={(source, contentKey) =>
+            recordGuideCompletionForSurface({ ...surfaceCompletionInput, source, contentKey })
+          }
         />
       </div>
     ) : null;

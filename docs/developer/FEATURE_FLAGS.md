@@ -175,14 +175,16 @@ The flag and the setting are a plain OR, applied once settings resolve in `src/m
 
 **Type**: Boolean
 
-**Purpose**: Remote kill switch for the guide progress analytics events, `pathfinder_guide_progress` and `pathfinder_guide_completed` (RudderStack, mirrored to Faro).
+**Purpose**: Remote kill switch for `pathfinder_guide_progress` and attempt correlation on terminal completion events (RudderStack, mirrored to Faro).
 
 **Default**: `false` (no progress analytics events when the flag is absent or MTFF is unreachable)
 
 **Behavior**:
 
-- **`true`**: `guide_progress` fires at an attempt's first real progress and when it crosses 25%, 50% and 75% — at most four times per attempt. `guide_completed` fires when a bundled or standalone guide's completion is durably accepted.
-- **`false`**: neither event fires. Guide attempts are still tracked on the device, and completion records and their request body are unaffected.
+- **`true`**: `guide_progress` fires at first real progress and at 25%, 50%, and 75% crossings, at most four times per attempt. The existing `guide_completed` event also carries `attempt_id` for a bundled or standalone guide.
+- **`false`**: progress events stop, and terminal events omit `attempt_id`. Guide attempts still persist on the device. Durable completion writes are unaffected.
+
+Terminal completion analytics keep their separate guard and do not depend on this flag or durable write acceptance. Attempt tracking does not emit a second terminal event.
 
 The flag is read each time an event would fire, so a flip takes effect without a reload once the provider has the new value. Implementation: `src/completion-records/progress-analytics.ts`.
 

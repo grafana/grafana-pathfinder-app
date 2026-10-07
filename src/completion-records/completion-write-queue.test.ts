@@ -16,7 +16,7 @@ import type { CompletionWriteStorage, QueuedWrite } from './completion-write-sto
 import { reportCompletionWriteDegradation } from './completion-write-telemetry';
 // Real, unmocked — the durable guard these cases prove gets lifted/kept is
 // completion-recorder.ts's real dedupe guard over real (jsdom) localStorage.
-import { completionEmittedStorage } from '../lib/user-storage';
+import { completionEmittedStorage, completionReportedStorage } from '../lib/user-storage';
 import { getOrMintAttempt, readAttempt } from './guide-attempts';
 
 const GUARD_KEY = 'guide:bundled:g1';
@@ -160,6 +160,7 @@ describe('write queue — enqueue and eviction', () => {
   // can never be recorded again in any future session.
   it('lifts the durable guard for a record evicted over cap', async () => {
     await completionEmittedStorage.markEmitted('guide:bundled:a');
+    await completionReportedStorage.markEmitted('guide:bundled:a');
     expect(completionEmittedStorage.isEmitted('guide:bundled:a')).toBe(true);
 
     const s = makeSender([{ kind: 'created' }]);
@@ -170,6 +171,7 @@ describe('write queue — enqueue and eviction', () => {
     q.enqueue(body({ guideId: 'c' })); // evicts 'a'
 
     expect(completionEmittedStorage.isEmitted('guide:bundled:a')).toBe(false);
+    expect(completionReportedStorage.isEmitted('guide:bundled:a')).toBe(true);
   });
 
   it('leaves the guide attempt in place when it lifts the guard for an evicted record', async () => {
@@ -785,6 +787,7 @@ describe('write queue — retention horizon (retry-retention-horizon)', () => {
   // permanently unrecordable.
   it('lifts the durable guard for a record dropped past the retention horizon', async () => {
     await completionEmittedStorage.markEmitted(GUARD_KEY);
+    await completionReportedStorage.markEmitted(GUARD_KEY);
     expect(completionEmittedStorage.isEmitted(GUARD_KEY)).toBe(true);
 
     const s = makeSender([{ kind: 'created' }]);
@@ -793,6 +796,7 @@ describe('write queue — retention horizon (retry-retention-horizon)', () => {
     await q.processDue();
 
     expect(completionEmittedStorage.isEmitted(GUARD_KEY)).toBe(false);
+    expect(completionReportedStorage.isEmitted(GUARD_KEY)).toBe(true);
   });
 
   it('leaves the guide attempt in place when it lifts the guard for an expired record', async () => {

@@ -14,6 +14,8 @@ import type { RawContent } from '../../types/content.types';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { resetContentKeyForTests } from '../../global-state/content-key';
 import { StorageEvents } from '../../lib/event-names';
+import { interactiveStepStorage } from '../../lib/user-storage';
+import { resetCompletionStoreForTests } from '../../global-state/completion-store';
 import { ContentRenderer } from './content-renderer';
 
 jest.mock('@grafana/i18n', () => ({
@@ -66,6 +68,7 @@ async function announceCleared(contentKey: string): Promise<void> {
 beforeEach(() => {
   jest.useFakeTimers();
   localStorage.clear();
+  resetCompletionStoreForTests();
   resetContentKeyForTests();
   window.__DocsPluginActiveTabUrl = GUIDE_URL;
 });
@@ -87,6 +90,16 @@ describe('ContentRenderer — the automatic section route and reset', () => {
 
     completeSection('section-3');
 
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
+  });
+
+  it('reports skipped when automatic completion includes a restored skipped step', async () => {
+    await interactiveStepStorage.setCompleted(GUIDE_URL, 'section-1', new Set(['step-1']), new Set(['step-1']));
+    const onGuideComplete = jest.fn();
+    await renderWithSections(onGuideComplete);
+    SECTION_IDS.forEach(completeSection);
+    expect(onGuideComplete).toHaveBeenCalledWith('skipped', GUIDE_URL);
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
   });
 

@@ -1,3 +1,5 @@
+import type { GuideStatsSummary } from '../types/guide-stats.schema';
+
 /**
  * Shared types for the completion-recorder boundary.
  *
@@ -26,7 +28,7 @@ export interface CompletionKey {
 
 export type CompletionKind = 'guide' | 'journey';
 
-/** How the completion happened. Today only 'objectives' is produced (see brief §2). */
+/** Explicit guide mark, credited skipped steps, or other completion evidence. */
 export type CompletionSource = 'objectives' | 'manual' | 'skipped';
 
 export type CompletionCategory = 'interactive' | 'documentation' | 'learning-journey';
@@ -57,7 +59,15 @@ export interface CompletionFact extends CompletionKey {
   attemptId?: string;
   attemptMode?: AttemptMode;
   attemptStartedAt?: number;
+  /** Live rendered-guide counts for analytics; not part of the durable write body. */
+  guideStats?: GuideStatsSummary;
+  /** Analytics only: `guideSource` was resolved, not a default. */
+  sourceConfirmed?: boolean;
+  /** Analytics only: the learning path a milestone belongs to. */
+  pathIdentity?: PathAnalyticsIdentity;
 }
+
+export type PathAnalyticsIdentity = CompletionKey & { sourceConfirmed: boolean };
 
 /** A fact whose `kind` is pinned to 'guide' — the only shape `recordGuideCompletion` accepts. */
 export type GuideCompletionFact = CompletionFact & { kind: 'guide' };

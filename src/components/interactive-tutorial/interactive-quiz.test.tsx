@@ -11,6 +11,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { InteractiveQuiz, resetQuizCounter, shuffleQuizChoices, type QuizChoice } from './interactive-quiz';
+import { reportStepSkipped } from '../../lib/analytics';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,7 @@ jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: { StepAutoCompleted: 'auto' },
   buildInteractiveStepProperties: jest.fn((props) => props),
+  reportStepSkipped: jest.fn(),
 }));
 
 // Stateful mock so the test can exercise the full mark-complete → re-render
@@ -458,6 +460,34 @@ describe('InteractiveQuiz: skip reason', () => {
     // 'manual' even on skip, making the dispatched pathfinder:progress
     // event lie about user intent.
     expect(store.__getStoredReason('quiz-skip-test')).toBe('skipped');
+  });
+
+  it('reports one user skip, and offers no Skip once the store records it', () => {
+    jest.mocked(reportStepSkipped).mockClear();
+    const quiz = () => (
+      <InteractiveQuiz
+        question="Q"
+        choices={choices}
+        skippable
+        shuffle={false}
+        stepId="quiz-skip-report"
+        stepIndex={2}
+        totalSteps={5}
+      >
+        Q
+      </InteractiveQuiz>
+    );
+    const { rerender } = render(quiz());
+
+    fireEvent.click(screen.getByTestId('interactive-quiz-skip-quiz-skip-report'));
+    rerender(quiz());
+
+    expect(screen.queryByTestId('interactive-quiz-skip-quiz-skip-report')).not.toBeInTheDocument();
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'quiz', interactionLocation: 'interactive_quiz', skipReason: 'user' },
+      expect.objectContaining({ stepId: 'quiz-skip-report', stepIndex: 2, totalSteps: 5 })
+    );
   });
 
   it('writes reason="manual" to the store when the user answers correctly', () => {
