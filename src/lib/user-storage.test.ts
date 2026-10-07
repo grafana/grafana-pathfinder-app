@@ -3,6 +3,7 @@ import { getAppEvents } from '@grafana/runtime';
 import {
   __resetQuotaWarningForTests,
   completionEmittedStorage,
+  completionReportedStorage,
   createHybridStorage,
   createLocalStorage,
   guideResponseStorage,
@@ -1061,6 +1062,20 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
     expect(removeItem).not.toHaveBeenCalled();
     setItem.mockRestore();
     removeItem.mockRestore();
+  });
+
+  it('keeps the analytics once-guard apart from the durable completion guard', async () => {
+    await completionEmittedStorage.markEmitted('guide:bundled:shared');
+    await completionReportedStorage.markEmitted('guide:bundled:shared');
+
+    await completionReportedStorage.clearAll();
+
+    expect(completionEmittedStorage.isEmitted('guide:bundled:shared')).toBe(true);
+    expect(completionReportedStorage.isEmitted('guide:bundled:shared')).toBe(false);
+    expect(Object.keys(localStorage).filter((key) => key.startsWith(StorageKeys.COMPLETION_REPORTED_PREFIX))).toEqual(
+      []
+    );
+    await completionEmittedStorage.clearAll();
   });
 
   it('writes no record of its own — only the backend timestamp companions of records it removed', async () => {

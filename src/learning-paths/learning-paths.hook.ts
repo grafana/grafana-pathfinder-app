@@ -21,6 +21,7 @@ import type {
 } from '../types/learning-paths.types';
 
 import { invalidateEmittedCompletion } from '../completion-records';
+import { reportAppInteraction, UserInteraction, type ResetScope } from '../lib/analytics';
 import { StorageEvents } from '../lib/event-names';
 import { getMilestoneSlug } from '../lib/learning-journey-url';
 import { logger } from '../lib/logging';
@@ -61,7 +62,7 @@ const EMPTY_APP_PLATFORM_RESULT: AppPlatformPathsResult = { paths: [], guideMeta
 // than fetching each member's manifest just to reset a guard. Harmless when
 // a member's real source isn't in this list: that guard is simply not lifted
 // for it, a narrower miss than the reset-then-re-mark defect this exists to close.
-const KNOWN_PATH_MEMBER_GUIDE_SOURCES = ['bundled', 'app-platform', 'interactive-tutorials'] as const;
+const KNOWN_PATH_MEMBER_GUIDE_SOURCES = ['bundled', 'app-platform', 'interactive-tutorials', 'online-cdn'] as const;
 
 function invalidateEmittedCompletionsForPathMembers(memberIds: readonly string[]): void {
   for (const memberId of memberIds) {
@@ -199,6 +200,21 @@ async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Pr
         "Some of this path's progress could not be cleared. Reload the page and try again."
       ),
     ],
+  });
+}
+
+function reportPathReset(
+  resetScope: Extract<ResetScope, 'path' | 'assignment'>,
+  interactionLocation: string,
+  pathId?: string,
+  guidesCleared?: number
+): void {
+  const curatedPathId = getPathsData().paths.some((path) => path.id === pathId) ? pathId : undefined;
+  reportAppInteraction(UserInteraction.ResetProgressClick, {
+    reset_scope: resetScope,
+    interaction_location: interactionLocation,
+    ...(curatedPathId && { path_id: curatedPathId }),
+    ...(guidesCleared !== undefined && { guides_cleared: guidesCleared }),
   });
 }
 
@@ -563,6 +579,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (!path) {
         return;
       }
+      reportPathReset('path', 'learning_path_card_restart', path.id);
 
       // Guard-invalidation member ids beyond `path.guides`, which for a
       // URL-based path can still be empty here — the dynamic milestone fetch
@@ -656,6 +673,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       if (guides.length === 0) {
         return;
       }
+      reportPathReset('assignment', 'learning_path_assignment_reset_modal', undefined, guides.length);
       const guideIds = guides.map((guide) => guide.id);
       const path = paths.find((p) => p.id === pathId);
 

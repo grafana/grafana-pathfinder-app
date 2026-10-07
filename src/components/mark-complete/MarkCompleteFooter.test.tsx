@@ -4,6 +4,8 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import { testIds } from '../../constants/testIds';
 import { UserInteraction } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
+import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { evictAllGuideIndexes, publishGuideIndex } from '../../global-state/active-guide-index';
 import { MarkCompleteFooter } from './MarkCompleteFooter';
 
 jest.mock('@grafana/i18n', () => ({
@@ -106,8 +108,75 @@ describe('MarkCompleteFooter', () => {
       interaction_location: 'content_footer',
       completion_context: 'guide',
       completion_percentage_before: 25,
+      block_progress_rule_version: 'block-position-v1',
     });
     await waitFor(() => expect(markStorage.set).toHaveBeenCalledWith('guide-key', true));
+  });
+
+  it("carries the reader's position in the path on a milestone", async () => {
+    render(
+      <MarkCompleteFooter context="milestone" currentMilestone={2} totalMilestones={5} onMarkComplete={jest.fn()} />
+    );
+
+    await clickWhenReady();
+
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.MarkCompleteClicked,
+      expect.objectContaining({ current_milestone: 2, total_milestones: 5 })
+    );
+  });
+
+  it('sends no milestone position for a standalone guide', async () => {
+    render(<MarkCompleteFooter context="guide" currentMilestone={2} totalMilestones={5} />);
+
+    await clickWhenReady();
+
+    const properties = jest.mocked(reportAppInteraction).mock.calls[0]![1];
+    expect(properties).not.toHaveProperty('current_milestone');
+    expect(properties).not.toHaveProperty('total_milestones');
+  });
+
+  describe('block counts', () => {
+    const index = computeGuideBlockIndex([
+      { type: 'markdown' },
+      { type: 'section', id: 'setup', blocks: [{ type: 'interactive' }, { type: 'markdown' }] },
+    ]);
+
+    afterEach(() => {
+      evictAllGuideIndexes();
+    });
+
+    it("carries the guide's counts when its frozen index has published", async () => {
+      publishGuideIndex({ contentKey: 'guide-key', index, denominatorSource: 'live-pre-inlining' });
+      render(<MarkCompleteFooter context="guide" />);
+
+      await clickWhenReady();
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
+        interaction_location: 'content_footer',
+        completion_context: 'guide',
+        completion_percentage_before: 25,
+        block_progress_rule_version: 'block-position-v1',
+        guide_stats_version: 1,
+        total_block_count: 3,
+        completable_block_count: 1,
+        section_count: 1,
+      });
+    });
+
+    it('omits the counts when only another guide has an index', async () => {
+      publishGuideIndex({ contentKey: 'other-guide-key', index, denominatorSource: 'live-pre-inlining' });
+      render(<MarkCompleteFooter context="guide" />);
+
+      await clickWhenReady();
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
+        interaction_location: 'content_footer',
+        completion_context: 'guide',
+        completion_percentage_before: 25,
+        block_progress_rule_version: 'block-position-v1',
+      });
+    });
   });
 
   it('fires nothing on render or re-render', async () => {

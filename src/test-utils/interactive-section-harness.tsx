@@ -94,6 +94,7 @@ function sweepContent(contentKey: string) {
 export function createUserStorageMock() {
   return {
     interactiveStepStorage: {
+      getSkipped: jest.fn(() => new Set<string>()),
       getCompleted: jest.fn(async (contentKey: string, sectionId: string) => {
         const v = memoryStore.get(stepsKey(contentKey, sectionId));
         return v ? new Set(v as Set<string>) : new Set<string>();
@@ -383,6 +384,7 @@ export function createAlignmentContextMock() {
 export function createAnalyticsMock() {
   return {
     reportAppInteraction: jest.fn(),
+    reportStepSkipped: jest.fn(),
     createInteractionName: jest.fn((type: string) => `pathfinder_${type}`),
     UserInteraction: {
       DoSectionButtonClick: 'do_section_button_click',
