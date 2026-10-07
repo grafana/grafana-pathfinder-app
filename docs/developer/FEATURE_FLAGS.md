@@ -213,10 +213,11 @@ Local attempts still persist under `grafana-pathfinder-app-guide-attempt-` when 
 
 1. Deploy the CompletionRecord schema with optional `completedAt`.
 2. Deploy partial-aware collation and attempt upserts to every serving plugin replica.
-3. Verify GET, create, and update through the deployed plugin's OBO flow as a Viewer.
-4. Verify that partial progress followed by 100% produces one record and satisfies an assignment.
+3. Verify that partial progress followed by 100% produces one record and satisfies an assignment on the deployed stack.
 
-Viewer verification remains a rollout prerequisite, not a proven capability. A 403 still disarms the session's write queue and retains all items until retry or the 30-day expiry. There is no create-only fallback for failed attempt updates.
+Costa confirmed in Slack that Viewer OBO receives the required permissions through the RBAC permission set, as reported by Tom. This resolves the permission-model question. The live end-to-end check remains separate. A 403 still disarms the session's write queue and retains items until retry or the 30-day expiry. There is no create-only fallback for failed attempt updates.
+
+Records-mode minting requires the browser Web Locks API. Minting, completion, and reset share one origin-wide lock. Browsers without this API create analytics-mode attempts and retain the legacy completion path. A lock-acquisition failure also disables new records-mode attempts for that session. Reset removes unsent partials for that guide. Send-time checks also reject partials whose attempt is no longer current.
 
 **Do not roll back the plugin by disabling the flag alone.** Older readers count existing partials as completions. Follow the [rollback procedure](../design/BACKEND_PROXY_PATTERN.md#rollout-and-rollback-of-attempt-records), including writer quiescence and partial-record cleanup.
 

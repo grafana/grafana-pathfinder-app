@@ -465,9 +465,8 @@ func drainCompletionRecords(ctx context.Context, namespace string, lister comple
 // required), whatever its percent, so legacy collation is unchanged. An attempt
 // record has none until it reaches 100%, so a record without one is an
 // unfinished attempt. Per guide, the
-// partial with the latest lastUpdatedAt is reported in inProgress, but only
-// when it is newer than every completed record of that guide (most recent
-// activity), or when the guide has no completed record.
+// newest attempt is reported in inProgress only if it started after the last
+// completion. Server arrival time cannot order delayed writes after a reset.
 func collateCompletions(records []completionRecordSpec) (map[string][]collatedCompletion, map[string][]inProgressCompletion) {
 	type key struct{ source, id string }
 	// Per user: (guideSource,guideId) -> accumulating entry + latest timestamp.
@@ -477,7 +476,7 @@ func collateCompletions(records []completionRecordSpec) (map[string][]collatedCo
 		latestOK   bool
 		has        bool
 
-		// latest lastUpdatedAt over completed records
+		// Latest completion event time, independent of retry arrival.
 		doneUpdated   time.Time
 		doneUpdatedOK bool
 
@@ -504,8 +503,12 @@ func collateCompletions(records []completionRecordSpec) (map[string][]collatedCo
 			groups[k] = a
 		}
 
-		updated, updatedOK := parseCompletionTime(rec.LastUpdatedAt)
+		updated, updatedOK := parseCompletionTime(rec.CompletedAt)
 		if rec.CompletedAt == "" {
+			updated, updatedOK = parseCompletionTime(rec.AttemptStartedAt)
+			if !updatedOK {
+				updated, updatedOK = parseCompletionTime(rec.LastUpdatedAt)
+			}
 			if shouldReplaceLatest(a.partialTime, a.partialOK, a.hasPartial, updated, updatedOK) {
 				a.partialTime, a.partialOK, a.hasPartial = updated, updatedOK, true
 				a.partial = inProgressCompletion{

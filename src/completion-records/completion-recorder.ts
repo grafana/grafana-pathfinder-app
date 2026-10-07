@@ -3,6 +3,7 @@ import { completionEmittedStorage } from '../lib/user-storage';
 import { bundledGuideIdReadVariants } from './completion-identity';
 import { currentCompletionQueueOwnerKey } from './completion-write-storage';
 import {
+  withAttemptLock,
   clearAllAttempts,
   clearAttempt,
   closeAttempt,
@@ -121,6 +122,15 @@ export function hasEmittedGuideCompletion(guideSource: string, guideId: string):
 }
 
 function record(fact: CompletionFact, attemptEligible: boolean): void {
+  const owner = currentCompletionQueueOwnerKey();
+  withAttemptLock(() => {
+    if (owner === currentCompletionQueueOwnerKey()) {
+      recordLocked(fact, attemptEligible);
+    }
+  });
+}
+
+function recordLocked(fact: CompletionFact, attemptEligible: boolean): void {
   try {
     const owner = synchronizePendingOwner();
     const variants = bundledGuideIdReadVariants(fact.guideId);
@@ -149,7 +159,7 @@ function record(fact: CompletionFact, attemptEligible: boolean): void {
     const attempt: GuideAttempt | null =
       attemptEligible && fact.kind === 'guide' ? getOrMintAttempt(attemptKey, resolveAttemptMode).attempt : null;
     const recorded: CompletionFact = attempt
-      ? { ...fact, attemptId: attempt.attemptId, attemptMode: attempt.mode }
+      ? { ...fact, attemptId: attempt.attemptId, attemptMode: attempt.mode, attemptStartedAt: attempt.startedAt }
       : fact;
     // Set the guard only once someone durably accepted the fact. Between the
     // two risks here: a duplicate is recoverable — the record is true, and
@@ -202,8 +212,10 @@ export function onCompletionRecorded(listener: CompletionListener): () => void {
  * have aged out. Reading only the normalized key would silently orphan them.
  */
 export function invalidateEmittedCompletion(guideSource: string, guideId: string): void {
-  liftEmittedCompletionGuard(guideSource, guideId);
-  clearAttempt({ guideSource, guideId });
+  withAttemptLock(() => {
+    liftEmittedCompletionGuard(guideSource, guideId);
+    clearAttempt({ guideSource, guideId });
+  });
 }
 
 /**
@@ -230,10 +242,12 @@ export function discardPendingCompletions(): void {
 
 /** Lifts the guard for every guide identity. Backs "Reset all learning progress". */
 export function invalidateAllEmittedCompletions(): void {
-  discardPendingCompletions();
-  emitted.clear();
-  void completionEmittedStorage.clearAll();
-  clearAllAttempts();
+  withAttemptLock(() => {
+    discardPendingCompletions();
+    emitted.clear();
+    void completionEmittedStorage.clearAll();
+    clearAllAttempts();
+  });
 }
 
 /**

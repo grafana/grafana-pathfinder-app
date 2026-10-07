@@ -14,17 +14,26 @@ import { isPreviewContentKey } from '../global-state/completion-store';
 import { subscribeProgressEvent, type ProgressEventDetail } from '../global-state/progress-events';
 
 import { hasEmittedGuideCompletion } from './completion-recorder';
-import { getOrMintAttempt, raiseHighWater, readAttempt, resolveAttemptMode } from './guide-attempts';
+import { getOrMintAttempt, raiseHighWater, readAttempt, resolveAttemptMode, withAttemptLock } from './guide-attempts';
 import { lookupGuideIdentity, type RegisteredGuideIdentity } from './guide-identity-registry';
 import { reportGuideProgress, thresholdToReport } from './progress-analytics';
 
 let unsubscribe: (() => void) | null = null;
 
 /** Receives each raised partial of a `records`-mode attempt (the durable write queue). */
-export type AttemptProgressSink = (identity: RegisteredGuideIdentity, attemptId: string, percent: number) => void;
+export type AttemptProgressSink = (
+  identity: RegisteredGuideIdentity,
+  attemptId: string,
+  percent: number,
+  startedAt: number
+) => boolean;
 let progressSink: AttemptProgressSink | null = null;
 
 function onProgress(detail: ProgressEventDetail): void {
+  withAttemptLock(() => trackProgress(detail));
+}
+
+function trackProgress(detail: ProgressEventDetail): void {
   try {
     if (detail.kind !== 'guide' || detail.origin !== 'change') {
       return;
@@ -53,15 +62,16 @@ function onProgress(detail: ProgressEventDetail): void {
     if (attempt.closed) {
       return;
     }
-    const { raised, previous } = raiseHighWater(key, percentage);
-    if (!minted && !raised) {
+    if (percentage <= attempt.highWater) {
       return;
     }
-    // Only a real increase is written; the mode was fixed when the attempt was minted.
-    if (raised && attempt.mode === 'records' && getFeatureFlagValue('pathfinder.progress-records', false)) {
-      progressSink?.(identity, attempt.attemptId, percentage);
+    if (attempt.mode === 'records' && getFeatureFlagValue('pathfinder.progress-records', false)) {
+      if (!progressSink?.(identity, attempt.attemptId, percentage, attempt.startedAt)) {
+        return;
+      }
     }
-    const threshold = thresholdToReport(previous, percentage, minted);
+    const { previous } = raiseHighWater(key, percentage);
+    const threshold = thresholdToReport(previous, percentage, minted || previous === 0);
     if (threshold !== null) {
       reportGuideProgress(identity, attempt.attemptId, percentage, threshold);
     }

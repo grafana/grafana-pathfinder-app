@@ -29,6 +29,7 @@ export interface WriteQueueDeps {
    */
   partialsSupported?: () => ProgressRecordsCapability;
   partialsEnabled?: () => boolean;
+  isAttemptCurrent?: (body: CompletionWriteBody) => boolean;
   /** Debounce for a partial with nothing to inherit. Defaults to PARTIAL_DEBOUNCE_MS. */
   partialDebounceMs?: number;
 }
@@ -55,6 +56,7 @@ export interface WriteQueue {
   subscribe(listener: () => void): () => void;
   /** Drop every queued record, in memory and in storage. */
   clear(): void;
+  discardAttemptPartials(key: { guideSource: string; guideId: string }): void;
 }
 
 // 100 is a PER-TAB, eventually-global bound for MVP: each tab enforces it
@@ -179,38 +181,38 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     return Math.max(0, Math.min(maxBackoffMs, Math.round(base + jitter)));
   }
 
-  // Queued attempt items are immutable; a newer one supersedes older ones.
-  // Lower-percent items of the same attempt that are not in flight are removed,
-  // and a new partial inherits the earliest due time among them (or waits the
-  // debounce when there were none), so a burst of progress sends once. A 100%
-  // item is due now. Removal is by id, so a late response for a removed item
-  // can never delete a newer one. Superseding is an optimisation: the server
-  // never lowers progress, so a race that leaves an older item is harmless.
-  function supersede(body: CompletionWriteBody): number | null {
-    let inherited: number | null = null;
-    const attemptId = body.attemptId;
-    if (attemptId === undefined) {
-      return inherited;
-    }
-    for (const older of items.filter(
-      (i) => i.body.attemptId === attemptId && i.id !== inFlightId && i.body.completionPercent < body.completionPercent
-    )) {
-      inherited = inherited === null ? older.nextAttemptAt : Math.min(inherited, older.nextAttemptAt);
-      remove(older);
-    }
-    return inherited;
-  }
-
   function enqueue(body: CompletionWriteBody, options: EnqueueOptions = {}): boolean {
-    // A structural-404 disarm suppresses network drains for the session but must
-    // NOT stop persistence: later facts still enqueue and survive to the next
-    // load, where they drain once the route exists. Never gate enqueue on it.
-    //
-    // No refresh() here: reconciling against every stored item is an
-    // origin-wide localStorage scan, and this runs inline on the completion
-    // emission path. Eviction is enforced against the in-memory queue (bounded
-    // by maxSize) and the O(1) put persists the fact; the async drain does the
-    // full cross-tab refresh off this stack.
+    if (
+      body.attemptId !== undefined &&
+      items.some((i) => i.body.attemptId === body.attemptId && i.body.completionPercent >= body.completionPercent)
+    ) {
+      return true;
+    }
+    const older =
+      body.attemptId === undefined
+        ? []
+        : items.filter(
+            (i) =>
+              i.body.attemptId === body.attemptId &&
+              i.id !== inFlightId &&
+              i.body.completionPercent < body.completionPercent
+          );
+    const createdAt = now();
+    const nextAttemptAt =
+      body.attemptId !== undefined && body.completionPercent < 100
+        ? older.length
+          ? Math.min(...older.map((i) => i.nextAttemptAt))
+          : createdAt + partialDebounceMs
+        : createdAt;
+    const item = { id: options.id ?? nextId(), body, attempts: 0, createdAt, nextAttemptAt };
+    // Never delete accepted data until its replacement is durable.
+    if (!storage.put(item)) {
+      return false;
+    }
+    for (const predecessor of older) {
+      remove(predecessor);
+    }
+    items = items.filter((i) => i.id !== item.id);
     if (items.length >= maxSize) {
       // Evict the oldest item that is NOT in flight — evicting the pending one
       // would let a transient result re-persist a record absent from `items`.
@@ -225,27 +227,8 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         }
       }
     }
-    const createdAt = now();
-    let nextAttemptAt = createdAt;
-    if (body.attemptId !== undefined) {
-      const attemptId = body.attemptId;
-      // An equal or higher item already queued carries this progress.
-      if (
-        body.completionPercent < 100 &&
-        items.some((i) => i.body.attemptId === attemptId && i.body.completionPercent >= body.completionPercent)
-      ) {
-        return true;
-      }
-      const inherited = supersede(body);
-      if (body.completionPercent < 100) {
-        nextAttemptAt = inherited ?? createdAt + partialDebounceMs;
-      }
-    }
-    const id = options.id ?? nextId();
-    items = items.filter((i) => i.id !== id);
-    const item = { id, body, attempts: 0, createdAt, nextAttemptAt };
     items.push(item);
-    return storage.put(item);
+    return true;
   }
 
   async function processDue(): Promise<ProcessResult> {
@@ -292,7 +275,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         continue;
       }
       if (isPartialAttemptItem(item)) {
-        if (!partialsEnabled()) {
+        if (!partialsEnabled() || deps.isAttemptCurrent?.(item.body) === false) {
           remove(item);
           continue;
         }
@@ -394,6 +377,17 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     snapshot: () => items.map((i) => ({ ...i })),
     subscribe: (listener) => storage.subscribe(listener),
     clear,
+    discardAttemptPartials: (key) => {
+      for (const item of storage.list()) {
+        if (
+          isPartialAttemptItem(item) &&
+          item.body.guideSource === key.guideSource &&
+          item.body.guideId === key.guideId
+        ) {
+          remove(item);
+        }
+      }
+    },
   };
 }
 

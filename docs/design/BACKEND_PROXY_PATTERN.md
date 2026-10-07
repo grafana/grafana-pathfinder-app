@@ -773,9 +773,18 @@ bodies; it says nothing about the caller's permissions.
 
 **Read side.** `/completion-records/my` counts only records with a `completedAt` as completions,
 so legacy records, which always have one, collate as before. `inProgress[]` (always present)
-lists, per guide, the latest partial when it is newer than the guide's latest completion. "Newer"
-compares last-updated times: the `grafana.app/updatedTimestamp` annotation when present, else
-`spec.recordedAt`.
+lists the newest unfinished attempt per guide only when its start time is later than the latest `completedAt`.
+Attempt writes carry an optional `attemptStartedAt`, stored in the immutable `pathfinder.grafana.com/attempt-started-at` annotation.
+The plugin validates this client timestamp and preserves it through updates. It does not require a new CRD spec field.
+Older queued bodies use their client `completedAt` as the initial start-time fallback.
+Records without the annotation retain the legacy last-update ordering. Their original attempt order cannot be reconstructed reliably.
+The displayed `lastUpdatedAt` still uses `grafana.app/updatedTimestamp`, falling back to `spec.recordedAt`.
+
+The browser serializes attempt minting, completion, and reset through an origin-wide Web Lock.
+Without Web Locks, new attempts use analytics mode and send only legacy completions.
+A queue replacement must persist before the queue removes its predecessors or enforces capacity.
+Failed enqueueing does not advance the progress high-water mark. Reset removes unsent partials for the affected guide.
+Immutable attempt start times prevent a delayed, in-flight write from making an older attempt appear newer than a completion.
 
 ### Rollout and rollback of attempt records
 
@@ -786,11 +795,12 @@ Before enabling partial writes:
 
 1. Deploy the schema that permits an absent `completedAt`.
 2. Deploy partial-aware collation and attempt upserts to every serving plugin replica.
-3. Verify Viewer GET, create, and update rights through the deployed plugin's OBO flow.
-4. Verify one record across partial progress and completion, including assignment satisfaction.
+3. Verify one record across partial progress and completion, including assignment satisfaction.
 
-A capability response advertises build support, not Viewer update rights. A Viewer 403 still disarms the session queue.
-The queue retains items for later retry, subject to its 30-day expiry. Enablement must wait for live Viewer evidence.
+Costa confirmed the required Viewer OBO permissions through the RBAC permission set in Slack, as reported by Tom.
+This resolves the permission-model question, not the live end-to-end verification.
+A capability response advertises build support, not an authorization test. A 403 still disarms the session queue.
+The queue retains items for later retry, subject to its 30-day expiry.
 
 **CAUTION: Do not restore an older reader while partial records exist.** Older collation counts these records as completions.
 A new annotation cannot protect an older reader that ignores it.

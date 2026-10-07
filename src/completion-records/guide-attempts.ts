@@ -8,6 +8,7 @@
  * design, so it must never route through the user-storage sync layer.
  */
 
+import { logger } from '../lib/logging';
 import { collectKeysByPrefix } from '../lib/storage/key-utils';
 import { StorageKeys, buildVersionedContentStorageKey } from '../lib/storage-keys';
 import { getFeatureFlagValue } from '../utils/openfeature';
@@ -44,6 +45,41 @@ const defaultDeps: AttemptDeps = {
 };
 
 const ATTEMPT_ID_RE = /^[0-9a-f]{32}$/;
+let coordinationFailed = false;
+const resetListeners = new Set<(key: AttemptKey | null) => void>();
+
+export function onAttemptReset(listener: (key: AttemptKey | null) => void): () => void {
+  resetListeners.add(listener);
+  return () => {
+    resetListeners.delete(listener);
+  };
+}
+
+/** All production mint/reset operations share an origin-wide Web Lock. Callbacks stay synchronous. */
+export function withAttemptLock(work: () => void): void {
+  if (coordinationFailed || typeof navigator === 'undefined' || !navigator.locks?.request) {
+    work();
+    return;
+  }
+  let started = false;
+  const failed = (error: unknown) => {
+    logger.warn('guide attempt: coordination failed', { error: String(error) });
+    if (!started) {
+      coordinationFailed = true;
+      work();
+    }
+  };
+  try {
+    void navigator.locks
+      .request('pathfinder-guide-attempts', () => {
+        started = true;
+        work();
+      })
+      .catch(failed);
+  } catch (error) {
+    failed(error);
+  }
+}
 
 // Failed writes shadow stale storage without changing an existing attempt's identity.
 const memory = new Map<string, GuideAttempt>();
@@ -125,9 +161,7 @@ export function readAttempt(key: AttemptKey): GuideAttempt | null {
  * The guide's attempt, minting one only when none exists. A closed attempt is
  * returned as-is — closing is not the same as clearing.
  *
- * Write-then-re-read: a second tab minting at the same moment may win the
- * write, and adopting whatever is stored keeps both tabs on one id. `minted`
- * is `true` only when this call's own candidate is the one that stuck.
+ * Production callers must hold withAttemptLock. Rereading also detects a competing legacy tab.
  */
 export function getOrMintAttempt(
   key: AttemptKey,
@@ -197,6 +231,9 @@ export function reopenAttempt(key: AttemptKey, attemptId: string): void {
 
 /** Forget the guide's attempt under every spelling of its id, so the next progress mints a new one. */
 export function clearAttempt(key: AttemptKey): void {
+  for (const listener of resetListeners) {
+    listener({ ...key, guideId: normalizeGuideId(key.guideId) });
+  }
   for (const guideId of bundledGuideIdReadVariants(key.guideId)) {
     const storageKey = storageKeyFor(key.guideSource, guideId);
     memory.delete(storageKey);
@@ -210,6 +247,9 @@ export function clearAttempt(key: AttemptKey): void {
 
 /** Forget every guide's attempt. Backs "Reset all learning progress". */
 export function clearAllAttempts(): void {
+  for (const listener of resetListeners) {
+    listener(null);
+  }
   memory.clear();
   try {
     for (const storageKey of collectKeysByPrefix(localStorage, StorageKeys.GUIDE_ATTEMPT_PREFIX)) {
@@ -229,12 +269,18 @@ const PROGRESS_RECORDS_FLAG = 'pathfinder.progress-records';
  * known, is `analytics`, whose wire body is the original create-only one.
  */
 export function resolveAttemptMode(): AttemptMode {
-  if (progressRecordsCapability() !== 'yes') {
+  if (
+    coordinationFailed ||
+    typeof navigator === 'undefined' ||
+    !navigator.locks?.request ||
+    progressRecordsCapability() !== 'yes'
+  ) {
     return 'analytics';
   }
   return getFeatureFlagValue(PROGRESS_RECORDS_FLAG, false) ? 'records' : 'analytics';
 }
 
 export function __resetAttemptsForTests(): void {
+  coordinationFailed = false;
   memory.clear();
 }

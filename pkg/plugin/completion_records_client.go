@@ -64,7 +64,8 @@ type completionRecordSpec struct {
 	// LastUpdatedAt is when the record last changed: the server-stamped
 	// grafana.app/updatedTimestamp annotation when present and parseable, else
 	// spec.recordedAt. Filled from object metadata by ListPage, never from spec.
-	LastUpdatedAt string `json:"-"`
+	LastUpdatedAt    string `json:"-"`
+	AttemptStartedAt string `json:"-"`
 }
 
 // completionUpdatedTimestampAnnotation is the annotation the App Platform
@@ -110,11 +111,12 @@ const completionWriteMaxBytes = 256 * 1024
 // block is client-supplied (WHAT was completed); the second is stamped by this
 // trusted writer from its verified request context (never from the body).
 type completionRecordWriteSpec struct {
-	GuideID     string `json:"guideId"`
-	GuideSource string `json:"guideSource"`
-	GuideTitle  string `json:"guideTitle"`
-	PathID      string `json:"pathId"`
-	Source      string `json:"source"`
+	AttemptStartedAt string `json:"-"`
+	GuideID          string `json:"guideId"`
+	GuideSource      string `json:"guideSource"`
+	GuideTitle       string `json:"guideTitle"`
+	PathID           string `json:"pathId"`
+	Source           string `json:"source"`
 	// CompletedAt is omitted on an in-progress attempt record: it is set once,
 	// when the attempt reaches 100%. Legacy (non-attempt) writes always set it.
 	CompletedAt       string `json:"completedAt,omitempty"`
@@ -138,8 +140,9 @@ type completionRecordWriteSpec struct {
 // by the client, so a retried create targets the same object and an upstream 409
 // is an idempotent success.
 type completionRecordObjectMeta struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
+	Name        string            `json:"name"`
+	Namespace   string            `json:"namespace"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // storedCompletionRecord is a record read back by name for an attempt upsert.
@@ -209,6 +212,7 @@ func (c *completionHTTPClient) ListPage(ctx context.Context, namespace, continue
 			return nil, fmt.Errorf("completion records: decode spec: %w", err)
 		}
 		spec.LastUpdatedAt = recordLastUpdatedAt(item.Metadata.Annotations, spec.RecordedAt)
+		spec.AttemptStartedAt = item.Metadata.Annotations[completionAttemptStartedAnnotation]
 		records = append(records, spec)
 	}
 	return &completionRecordPage{Records: records, Continue: page.Metadata.Continue}, nil

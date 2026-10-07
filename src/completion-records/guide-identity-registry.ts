@@ -23,25 +23,24 @@ interface Registration {
   identity: RegisteredGuideIdentity;
 }
 
-const registrations = new Map<string, Registration>();
+const registrations = new Map<string, Registration[]>();
 
-/**
- * Register `identity` for `contentKey`, replacing any earlier registration.
- * The returned function removes the registration only while it is still this
- * one, so a surface unmounting after another took over leaves the newer one in place.
- */
+/** The latest mounted surface wins; its cleanup restores any remaining owner. */
 export function registerGuideIdentity(contentKey: string, identity: RegisteredGuideIdentity): () => void {
   const token = Symbol(contentKey);
-  registrations.set(contentKey, { token, identity: { ...identity } });
+  registrations.set(contentKey, [...(registrations.get(contentKey) ?? []), { token, identity: { ...identity } }]);
   return () => {
-    if (registrations.get(contentKey)?.token === token) {
+    const remaining = registrations.get(contentKey)?.filter((registration) => registration.token !== token);
+    if (remaining?.length) {
+      registrations.set(contentKey, remaining);
+    } else {
       registrations.delete(contentKey);
     }
   };
 }
 
 export function lookupGuideIdentity(contentKey: string): RegisteredGuideIdentity | null {
-  return registrations.get(contentKey)?.identity ?? null;
+  return registrations.get(contentKey)?.at(-1)?.identity ?? null;
 }
 
 export function __resetGuideIdentityRegistryForTests(): void {

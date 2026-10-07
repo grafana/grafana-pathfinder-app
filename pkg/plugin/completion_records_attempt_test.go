@@ -642,7 +642,7 @@ func TestCompletionHTTPClient_UpsertSharesOneTokenAndStripsManagedFields(t *test
 func TestCompletionList_LastUpdatedPrefersAnnotation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"metadata":{},"items":[
-			{"metadata":{"name":"a","annotations":{"grafana.app/updatedTimestamp":"2026-10-06T16:03:49Z"}},"spec":{"userId":"u","recordedAt":"2026-10-06T16:00:00Z"}},
+			{"metadata":{"name":"a","annotations":{"grafana.app/updatedTimestamp":"2026-10-06T16:03:49Z","pathfinder.grafana.com/attempt-started-at":"2026-10-05T10:00:00Z"}},"spec":{"userId":"u","recordedAt":"2026-10-06T16:00:00Z"}},
 			{"metadata":{"name":"b"},"spec":{"userId":"u","recordedAt":"2026-10-06T16:00:00Z"}},
 			{"metadata":{"name":"c","annotations":{"grafana.app/updatedTimestamp":"garbage"}},"spec":{"userId":"u","recordedAt":"2026-10-06T15:00:00Z"}}
 		]}`)
@@ -653,6 +653,9 @@ func TestCompletionList_LastUpdatedPrefersAnnotation(t *testing.T) {
 	page, err := c.ListPage(context.Background(), testNamespace, "")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if page.Records[0].AttemptStartedAt != "2026-10-05T10:00:00Z" {
+		t.Fatalf("start=%s", page.Records[0].AttemptStartedAt)
 	}
 	want := []string{"2026-10-06T16:03:49Z", "2026-10-06T16:00:00Z", "2026-10-06T15:00:00Z"}
 	for i, r := range page.Records {
@@ -699,6 +702,57 @@ func TestCollation_PartialNewerThanCompletionShows(t *testing.T) {
 	got := inProgress["user:1"]
 	if len(got) != 1 || got[0].CompletionPercent != 60 || got[0].LastUpdatedAt != "2026-10-05T10:00:00Z" {
 		t.Fatalf("inProgress = %+v, want the latest partial (60)", got)
+	}
+}
+
+func TestCollation_DelayedOldAttemptDoesNotReopenCompletedGuide(t *testing.T) {
+	old := partialRec("g", 40, "2026-10-03T12:00:00Z")
+	old.AttemptStartedAt = "2026-10-01T12:00:00Z"
+	completed := doneRec("g", "2026-10-02T12:00:00Z")
+	_, partials := collateCompletions([]completionRecordSpec{old, completed})
+	if len(partials["user:1"]) != 0 {
+		t.Fatalf("stale attempt resurfaced: %+v", partials)
+	}
+	fresh := partialRec("g", 20, "2026-10-03T11:00:00Z")
+	fresh.AttemptStartedAt = "2026-10-03T10:00:00Z"
+	_, partials = collateCompletions([]completionRecordSpec{old, completed, fresh})
+	if len(partials["user:1"]) != 1 || partials["user:1"][0].CompletionPercent != 20 {
+		t.Fatalf("latest attempt must win over late writes: %+v", partials)
+	}
+}
+
+func TestAttemptWrite_PreservesStartTimeAnnotationAcrossUpdates(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	store := newFakeAttemptStore()
+	withCreator(t, store)
+	body := attemptBody(20, "att-1")
+	started := timeNow().Add(-time.Hour).UTC().Format(time.RFC3339)
+	body["attemptStartedAt"] = started
+	response := doWrite(t, nil, writeRequest(t, testAttemptUser, body, testGrafanaConfig()))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	doAttemptWrite(t, store, 70, "att-1")
+	name := completionAttemptRecordName(testAttemptUser, "att-1")
+	annotations := store.objects[name]["metadata"].(map[string]any)["annotations"].(map[string]any)
+	if annotations[completionAttemptStartedAnnotation] != started {
+		t.Fatalf("annotations=%+v", annotations)
+	}
+	if _, exists := store.spec(t, name)["attemptStartedAt"]; exists {
+		t.Fatal("attempt start must not require a new CRD spec field")
+	}
+}
+
+func TestAttemptWrite_RejectsInvalidStartTime(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	withCreator(t, newFakeAttemptStore())
+	for _, started := range []string{"invalid", "0001-01-01T00:00:00Z", timeNow().Add(time.Hour).UTC().Format(time.RFC3339)} {
+		body := attemptBody(20, "att-1")
+		body["attemptStartedAt"] = started
+		response := doWrite(t, nil, writeRequest(t, testAttemptUser, body, testGrafanaConfig()))
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("start=%s status=%d", started, response.Code)
+		}
 	}
 }
 

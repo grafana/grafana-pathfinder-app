@@ -286,6 +286,48 @@ it('notifies completion listeners only for a completion', async () => {
   expect(onCreated).toHaveBeenCalledTimes(1);
 });
 
+it.each([10, 20, 40, 100])(
+  'does not evict a completion when progress %s replaces or duplicates a partial',
+  (percent) => {
+    const t = setup({ maxSize: 2 });
+    t.queue.enqueue(body(100, { attemptId: 'b'.repeat(32) }), { id: 'completion-b' });
+    t.queue.enqueue(body(20), { id: attemptWriteId(ATTEMPT, 20) });
+    t.queue.enqueue(body(percent), { id: attemptWriteId(ATTEMPT, percent) });
+    expect(t.items.has('completion-b')).toBe(true);
+    expect(t.queue.size()).toBe(2);
+  }
+);
+
+it('preserves accepted data and memory when a replacement cannot persist', async () => {
+  const { storage, items } = makeStorage();
+  const queue = createWriteQueue({ storage, now: () => 0, send: jest.fn() });
+  queue.enqueue(body(20), { id: 'twenty' });
+  jest.spyOn(storage, 'put').mockReturnValue(false);
+  expect(queue.enqueue(body(40), { id: 'forty' })).toBe(false);
+  expect([...items.keys()]).toEqual(['twenty']);
+  expect(queue.snapshot().map((item) => item.id)).toEqual(['twenty']);
+});
+
+it('removes reset partials without removing completions or resurrecting an in-flight partial', async () => {
+  const { storage, items } = makeStorage();
+  let finish!: (outcome: WriteOutcome) => void;
+  const queue = createWriteQueue({
+    storage,
+    now: () => 0,
+    partialDebounceMs: 0,
+    send: () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  });
+  queue.enqueue(body(40), { id: 'partial' });
+  const pass = queue.processDue();
+  queue.discardAttemptPartials(KEY);
+  finish({ kind: 'transient' });
+  await pass;
+  expect(items.size).toBe(0);
+});
+
 it('leaves bodies without an attempt exactly as before', async () => {
   const t = setup();
   const { attemptId: _omitted, ...legacy } = body(100);

@@ -56,6 +56,7 @@ export interface CompletionFact extends CompletionKey {
   /** Set by the recorder on an attempt-eligible guide completion. Not sent on the wire. */
   attemptId?: string;
   attemptMode?: AttemptMode;
+  attemptStartedAt?: number;
 }
 
 /** A fact whose `kind` is pinned to 'guide' — the only shape `recordGuideCompletion` accepts. */

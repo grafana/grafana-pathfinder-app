@@ -27,10 +27,16 @@ import { of, throwError } from 'rxjs';
 import { dispatchProgress } from '../global-state/progress-events';
 import { getFeatureFlagValue } from '../utils/openfeature';
 
-import { recordGuideCompletion, __resetRecorderForTests } from './completion-recorder';
+import {
+  invalidateAllEmittedCompletions,
+  invalidateEmittedCompletion,
+  recordGuideCompletion,
+  __resetRecorderForTests,
+} from './completion-recorder';
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
 import {
   armCompletionWriteHook,
+  discardQueuedCompletionWrites,
   __resetCompletionWriteHookForTests,
   type WriteHookDeps,
 } from './completion-write-hook';
@@ -58,6 +64,15 @@ function setFlag(on: boolean): void {
 }
 
 beforeEach(() => {
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: (_name: string, work: () => void) => {
+        work();
+        return Promise.resolve();
+      },
+    },
+  });
   localStorage.clear();
   mockFetch.mockReset();
   setFlag(false);
@@ -271,6 +286,84 @@ describe('records mode end to end', () => {
     await runTimer();
     expect(sent).toHaveLength(1);
     expect(sent[0]!.body).toMatchObject({ completionPercent: 100, attemptId: attempt.attemptId });
+  });
+
+  it('discards an old attempt partial on reset and retains the new completion', async () => {
+    arm('yes');
+    progress(40);
+    const old = readAttempt(KEY)!;
+    invalidateEmittedCompletion(KEY.guideSource, KEY.guideId);
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+    clock += PARTIAL_DEBOUNCE_MS;
+    await runTimer();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.body.completionPercent).toBe(100);
+    expect(sent[0]!.body.attemptId).not.toBe(old.attemptId);
+    expect(sent[0]!.body.attemptStartedAt).toBe(new Date(readAttempt(KEY)!.startedAt).toISOString());
+  });
+
+  it('keeps the high-water mark retryable after a queue persist failure', async () => {
+    arm('yes');
+    const original = Storage.prototype.setItem;
+    const spy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key.includes('completion-write-queue-')) {
+        throw new Error('quota');
+      }
+      original.call(this, key, value);
+    });
+    progress(40);
+    expect(readAttempt(KEY)!.highWater).toBe(0);
+    spy.mockRestore();
+    progress(40);
+    expect(readAttempt(KEY)!.highWater).toBe(40);
+    clock += PARTIAL_DEBOUNCE_MS;
+    await runTimer();
+    expect(sent).toHaveLength(1);
+  });
+
+  it('serializes real progress and completion callbacks through the asynchronous lock', async () => {
+    arm('yes');
+    let pending = Promise.resolve();
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: (_name: string, work: () => void) => {
+          pending = pending.then(work);
+          return pending;
+        },
+      },
+    });
+    progress(20);
+    progress(40);
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+    await pending;
+    await runTimer();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.body.completionPercent).toBe(100);
+    expect(readAttempt(KEY)).toMatchObject({ closed: true, highWater: 100, attemptId: sent[0]!.body.attemptId });
+  });
+
+  it('reset all also clears writes waiting on an asynchronous attempt lock', async () => {
+    arm('yes');
+    let pending = Promise.resolve();
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: (_name: string, work: () => void) => {
+          pending = pending.then(work);
+          return pending;
+        },
+      },
+    });
+    progress(20);
+    recordGuideCompletion(guideFact(), { attemptEligible: true });
+    invalidateAllEmittedCompletions();
+    discardQueuedCompletionWrites();
+    await pending;
+    await runTimer();
+    expect(sent).toEqual([]);
+    expect(readAttempt(KEY)).toBeNull();
   });
 
   it('keeps an attempt in the mode it was minted in when the flag flips', async () => {

@@ -40,10 +40,11 @@ const (
 	// completionAttemptMaxTries bounds the GET→write loop on 409s.
 	completionAttemptMaxTries = 3
 
-	reasonAttemptConflict   = "attempt-conflict"
-	reasonWriteContended    = "completion-write-contended"
-	reasonSchemaNotReady    = "schema-not-ready"
-	completionRecordKindStr = "CompletionRecord"
+	reasonAttemptConflict              = "attempt-conflict"
+	reasonWriteContended               = "completion-write-contended"
+	reasonSchemaNotReady               = "schema-not-ready"
+	completionRecordKindStr            = "CompletionRecord"
+	completionAttemptStartedAnnotation = "pathfinder.grafana.com/attempt-started-at"
 )
 
 var errAttemptContended = errors.New("completion attempt: write contended")
@@ -94,7 +95,7 @@ func upsertCompletionAttempt(r *http.Request, store completionRecordUpdater, nam
 			obj := completionRecordObject{
 				APIVersion: completionRecordsGroupVersion,
 				Kind:       completionRecordKindStr,
-				Metadata:   completionRecordObjectMeta{Name: name, Namespace: namespace},
+				Metadata:   completionRecordObjectMeta{Name: name, Namespace: namespace, Annotations: map[string]string{completionAttemptStartedAnnotation: incoming.AttemptStartedAt}},
 				Spec:       incoming,
 			}
 			err := store.Create(ctx, namespace, obj)

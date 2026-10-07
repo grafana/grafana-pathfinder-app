@@ -48,6 +48,7 @@ export interface CompletionWriteBody {
    * attempt upserts ignores the field and creates a record as before.
    */
   attemptId?: string;
+  attemptStartedAt?: string;
 }
 
 /**
