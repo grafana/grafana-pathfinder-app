@@ -64,9 +64,7 @@ import {
 // The allowlist — the ratchet baseline (see #1975 for the pay-down plan)
 // ---------------------------------------------------------------------------
 
-/**
- * The remaining editor-only collection read needs a full-resource proxy (#1975).
- */
+// The editor needs full resources to preserve metadata and spec during saves.
 const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [
   {
     violation: 'utils/fetchBackendGuides.ts — GET collectionUrl(namespace)',
@@ -74,9 +72,9 @@ const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [
       'Pre-existing defect (not a design choice): a direct read of the interactive-guides collection, the ' +
       "same failure mode as incident 5857. An anonymous viewer's read fails the storage layer's delegated " +
       'service-token check and 403s; this call swallows that 403 as "endpoint not rolled out yet" and ' +
-      'returns an empty list, so the anonymous visitor sees no custom guides and no error. A proxied ' +
-      'equivalent already exists (fetchCustomGuideRepository in src/lib/custom-guide-repository-client.ts) ' +
-      'and is the likely fix.',
+      'returns an empty list, so the anonymous visitor sees no custom guides and no error. ' +
+      'fetchCustomGuideRepository returns summaries, which are insufficient for editor saves. ' +
+      'Pay down this read with a plugin-backend proxy that preserves full resource metadata and spec.',
     tracking: '#1975',
   },
 ];
@@ -93,9 +91,10 @@ const ADVICE =
   'own rights — so the read 403s and the plugin fails to initialize. A plugin-backend proxy avoids ' +
   'that check entirely by minting a caller-scoped on-behalf-of token server-side.\n\n' +
   'Fix: add (or reuse) a GET route on the plugin backend — a proxy at `${PLUGIN_BACKEND_URL}/<route>` ' +
-  '— and read through it instead of calling getBackendSrv() directly. For a guide list specifically, ' +
-  'reuse fetchCustomGuideRepository in src/lib/custom-guide-repository-client.ts, which already ' +
-  'proxies this read correctly. See docs/design/BACKEND_PROXY_PATTERN.md for the full pattern.\n\n' +
+  '— and read through it instead of calling getBackendSrv() directly. For catalogue summaries, ' +
+  'reuse fetchCustomGuideRepository in src/lib/custom-guide-repository-client.ts. The editor needs ' +
+  'a full-resource proxy that preserves metadata and spec for saves (#1975). See ' +
+  'docs/design/BACKEND_PROXY_PATTERN.md for the full pattern.\n\n' +
   'Administrative WRITES are a deliberate exception: a resolved PUT/POST/PATCH/DELETE stays on the ' +
   'direct App Platform API with its own optimistic-concurrency checks (see ' +
   'docs/design/BACKEND_PROXY_PATTERN.md, "Singleton settings reads") and is never flagged here.\n\n' +
