@@ -120,10 +120,10 @@ The store handles completion writes; the reducer coordinates the ack bit. Call s
 type ProgressEventDetail =
   | { kind: 'step'; stepId; sectionId?; completed; reason }
   | { kind: 'section'; sectionId; completed; percentage? }
-  | { kind: 'guide'; contentKey; percentage; hasProgress };
+  | { kind: 'guide'; contentKey; percentage; hasProgress; origin? };
 ```
 
-Listeners use `subscribeProgressEvent(detail => ...)`. The store fires `kind: 'step'` from `markStepCompleted` / `resetStep`, `kind: 'guide'` from its `persistSection` writes. `interactive-section.tsx` fires `kind: 'section'` when the section transitions to a terminal state. The four legacy events (`interactive-step-completed`, `section-completed`, `interactive-section-completed`, `interactive-progress-saved`) are gone.
+Listeners use `subscribeProgressEvent(detail => ...)`. The store fires `kind: 'step'` from `markStepCompleted` / `resetStep`, `kind: 'guide'` from its `persistSection` writes. `origin` is `'change'` only for a write the reader just made and `'load'` for a recompute of stored evidence; only `'change'` can start partial-progress tracking — see `COMPLETION_RECORDING.md`. `interactive-section.tsx` fires `kind: 'section'` when the section transitions to a terminal state. The four legacy events (`interactive-step-completed`, `section-completed`, `interactive-section-completed`, `interactive-progress-saved`) are gone.
 
 The orphan `step-auto-skipped` listener at `step-checker.hook.ts:746` was removed in C3 — there were no dispatchers anywhere in the repo.
 
