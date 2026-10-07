@@ -1,5 +1,7 @@
+const UNOBSERVABLE_ACTIONS: ReadonlySet<string> = new Set(['noop', 'popout']);
+
 export function nextRequiredAction(actions: ReadonlyArray<{ targetAction: string }>, cursor: number): number {
-  while (actions[cursor]?.targetAction === 'noop') {
+  while (UNOBSERVABLE_ACTIONS.has(actions[cursor]?.targetAction ?? '')) {
     cursor++;
   }
   return cursor;

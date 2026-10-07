@@ -119,7 +119,7 @@ export class CompletionCoordinator {
       if (cursor === undefined) {
         return;
       }
-      entry.cursor = Math.min(cursor, entry.step.actions.length);
+      entry.cursor = Math.max(entry.cursor, Math.min(cursor, entry.step.actions.length));
       if (entry.cursor > 0 && entry.cursor === entry.step.actions.length) {
         entry.requested = 'observed';
       }
@@ -176,10 +176,14 @@ export class CompletionCoordinator {
     const dormant = this.dormant.get(step.id);
     const previousCursor =
       dormant && JSON.stringify(dormant.step.actions) === JSON.stringify(step.actions) ? dormant.cursor : 0;
-    const restored = Math.min(this.restoredCursors[step.id] ?? previousCursor, step.actions.length);
+    const restored = Math.min(
+      Math.max(this.restoredCursors[step.id] ?? 0, previous?.cursor ?? previousCursor),
+      step.actions.length
+    );
     this.dormant.delete(step.id);
     delete this.restoredCursors[step.id];
     const entry: Entry = previous ?? { step, cursor: restored, committed: false, revision: 0 };
+    entry.cursor = restored;
     if (restored > 0 && restored === step.actions.length) {
       entry.requested = 'observed';
     }

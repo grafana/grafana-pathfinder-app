@@ -489,3 +489,48 @@ it("clears every guide's held requests on an all-guides reset", async () => {
   expect(reopened.commit).not.toHaveBeenCalled();
   successor.stop();
 });
+
+describe('cursor handoff and unobservable actions', () => {
+  const twoActions = [
+    { targetAction: 'button', refTarget: 'Open' },
+    { targetAction: 'button', refTarget: 'Save' },
+  ];
+
+  it('never rewinds a live cursor when a less advanced snapshot is restored', () => {
+    const coordinator = new CompletionCoordinator(jest.fn());
+    const item = step({ id: 'restore-live', actions: twoActions });
+    coordinator.register(item);
+    coordinator.observeIndex(item.id, 0);
+    expect(coordinator.cursor(item.id)).toBe(1);
+    coordinator.restore({ [item.id]: 0 });
+    expect(coordinator.cursor(item.id)).toBe(1);
+  });
+
+  it('keeps the dormant cursor when a lower restored cursor arrives before re-registering', () => {
+    const coordinator = new CompletionCoordinator(jest.fn());
+    const item = step({ id: 'restore-dormant', actions: twoActions });
+    const unregister = coordinator.register(item);
+    coordinator.observeIndex(item.id, 0);
+    unregister();
+    coordinator.restore({ [item.id]: 0 });
+    coordinator.register(step({ id: 'restore-dormant', actions: twoActions }));
+    expect(coordinator.cursor(item.id)).toBe(1);
+  });
+
+  it('skips a popout action so the actions after it can still be observed', async () => {
+    const coordinator = new CompletionCoordinator(jest.fn());
+    const item = step({
+      id: 'popout-then-save',
+      actions: [
+        { targetAction: 'popout', targetValue: 'floating' },
+        { targetAction: 'button', refTarget: 'Save' },
+      ],
+    });
+    coordinator.register(item);
+    coordinator.start();
+    coordinator.observe((action) => action.refTarget === 'Save');
+    await settle();
+    expect(item.commit).toHaveBeenCalledWith('observed');
+    coordinator.stop();
+  });
+});

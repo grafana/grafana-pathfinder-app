@@ -479,7 +479,7 @@ Objectives declare what a guide step will accomplish. They use the same syntax a
 - **All-or-nothing**: when multiple objectives are specified, ALL must be met
 - **Completion authority**: authored objectives must pass after manual actions and assisted execution alike. Clicking Save is not evidence that saving succeeded.
 - **Automatic observation**: opening a guide starts read-only checks, including existing outcomes and later steps. An unsatisfied or unavailable objective leaves the step incomplete. Tokens that are not condition types, such as legacy prose, are dropped at load with an authoring diagnostic and never gate completion.
-- **Action fallback**: without objectives, supported user actions and authored verification can complete a step. A formfill action counts once its field shows the authored value, typed or picked from a dropdown. Guided and multistep blocks require each non-informational action in order.
+- **Action fallback**: without objectives, supported user actions and authored verification can complete a step. A formfill action counts once its field shows the authored value, typed or picked from a dropdown. Guided and multistep blocks require each observable action in order; `noop` and `popout` actions cannot be observed and are skipped.
 - **Same syntax as requirements**: use the condition vocabulary to express the outcome. `exists-reftarget` proves a target is available, not that the intended action succeeded.
 - **Explicit command checks**: `coda-exit-zero:` is never polled by the observer. It can run after explicit assistance or when the reader chooses **Check completion**.
 
