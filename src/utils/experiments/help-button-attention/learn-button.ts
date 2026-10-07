@@ -28,7 +28,7 @@ function svg(attributes: Record<string, string>, paths: string[]): SVGSVGElement
 }
 
 function getStyles(theme: GrafanaTheme2) {
-  const accent = theme.visualization.getColorByName('orange');
+  const accent = theme.colors.action.selectedBorder;
   const twinkle = keyframes({
     '0%, 100%': { opacity: 0, transform: 'scale(0.4)' },
     '50%': { opacity: 1, transform: 'scale(1)' },
@@ -43,7 +43,7 @@ function getStyles(theme: GrafanaTheme2) {
     border: `1px solid ${accent}`,
     borderRadius: theme.shape.radius.default,
     background: `linear-gradient(180deg, ${colorManipulator.alpha(accent, 0.28)}, ${colorManipulator.alpha(accent, 0.12)})`,
-    color: theme.isDark ? colorManipulator.lighten(accent, 0.4) : theme.colors.warning.text,
+    color: theme.colors.text.primary,
     fontFamily: theme.typography.fontFamily,
     fontSize: theme.typography.body.fontSize,
     fontWeight: theme.typography.fontWeightMedium,

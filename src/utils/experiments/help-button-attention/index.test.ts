@@ -36,7 +36,12 @@ jest.mock('@grafana/i18n', () => ({
     key === 'navigation.help.aria-label' && values?.ns === 'grafana' ? mockCoreHelpLabel : fallback,
 }));
 jest.mock('../../../global-state/sidebar', () => ({
-  sidebarState: { setPendingOpenSource: jest.fn(), openSidebar: jest.fn() },
+  sidebarState: {
+    setPendingOpenSource: jest.fn(),
+    openSidebar: jest.fn(),
+    closeSidebar: jest.fn(),
+    getIsSidebarMounted: jest.fn(() => false),
+  },
 }));
 jest.mock('@grafana/runtime', () => ({
   config: { namespace: 'stacks-123', bootData: { user: { id: 42, isSignedIn: true } }, analytics: { enabled: true } },
@@ -211,6 +216,14 @@ it('opens interactive learning from Learn, attributes it, and keeps the button f
     expect.objectContaining({ experiment_help_button_nudge: 'learn', toolbar_target: 'learn' }),
     { mirrorToFaro: false }
   );
+  expect(learn()?.dataset.attention).toBe('false');
+  button.setAttribute('aria-expanded', 'true');
+  const closeHelp = jest.fn();
+  button.addEventListener('click', closeHelp);
+  learn()!.click();
+  expect(closeHelp).toHaveBeenCalledTimes(1);
+  button.setAttribute('aria-expanded', 'false');
+  expect(sidebarState.openSidebar).toHaveBeenCalledTimes(1);
   expect(learn()?.dataset.attention).toBe('false');
   stop();
   stop = await startHelpButtonExperiment();

@@ -265,6 +265,17 @@ it('handles delayed toolbar mounting and replacement without reactivating', asyn
   expect(learnButton()?.nextElementSibling).toBe(second);
 });
 
+it('does not abort reactivation for an enrolled user with learning open', async () => {
+  addButton();
+  const runtime = setup('learn', { enrolled: true, attentionDismissed: true });
+  runtime.activate.mockImplementation(() => new Promise(() => {}));
+  runtime.setOpen(true);
+  await frame();
+  runtime.setOpen(true);
+  const options = (runtime.activate.mock.calls as unknown as Array<[{ signal: AbortSignal }]>)[0]![0];
+  expect(options.signal.aborted).toBe(false);
+});
+
 it('aborts activation when the target disappears', async () => {
   const button = addButton();
   const runtime = setup();

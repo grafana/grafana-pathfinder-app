@@ -15,7 +15,7 @@ export function showHelpButtonTooltip(
   icon.setAttribute('aria-hidden', 'true');
   icon.setAttribute('focusable', 'false');
   icon.style.flexShrink = '0';
-  icon.style.color = theme.colors.warning.text;
+  icon.style.color = theme.colors.action.selectedBorder;
   const iconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   iconPath.setAttribute('fill', 'currentColor');
   iconPath.setAttribute(
@@ -36,7 +36,7 @@ export function showHelpButtonTooltip(
   const pulse = keyframes({
     '0%, 100%': { boxShadow: theme.shadows.z2 },
     '50%': {
-      boxShadow: `${theme.shadows.z2}, 0 0 0 1px ${colorManipulator.alpha(theme.colors.warning.main, 0.25)}, 0 0 10px ${colorManipulator.alpha(theme.colors.warning.main, 0.12)}`,
+      boxShadow: `${theme.shadows.z2}, 0 0 0 1px ${colorManipulator.alpha(theme.colors.action.selectedBorder, 0.25)}, 0 0 10px ${colorManipulator.alpha(theme.colors.action.selectedBorder, 0.12)}`,
     },
   });
   container.className = css({
@@ -49,7 +49,7 @@ export function showHelpButtonTooltip(
     padding: theme.spacing(0.5, 0.5, 0.5, 1.5),
     background: theme.colors.background.primary,
     color: theme.colors.text.primary,
-    border: `1px solid ${theme.colors.warning.main}`,
+    border: `1px solid ${theme.colors.action.selectedBorder}`,
     borderRadius: theme.shape.radius.default,
     boxShadow: theme.shadows.z2,
     animation: `${pulse} 4s ease-in-out infinite`,
@@ -68,8 +68,8 @@ export function showHelpButtonTooltip(
       left: 'var(--help-hint-arrow)',
       transform: 'rotate(45deg)',
       background: theme.colors.background.primary,
-      borderTop: `1px solid ${theme.colors.warning.main}`,
-      borderLeft: `1px solid ${theme.colors.warning.main}`,
+      borderTop: `1px solid ${theme.colors.action.selectedBorder}`,
+      borderLeft: `1px solid ${theme.colors.action.selectedBorder}`,
     },
     '& button': {
       display: 'inline-flex',

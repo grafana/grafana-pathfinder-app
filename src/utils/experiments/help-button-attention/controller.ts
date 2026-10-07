@@ -170,7 +170,10 @@ export function observeHelpButton(options: Options): () => void {
       });
   };
   const schedule = () => {
-    if (pending && (document.visibilityState !== 'visible' || options.isOpen() || button !== findTarget())) {
+    if (
+      pending &&
+      (document.visibilityState !== 'visible' || (!options.isEnrolled() && options.isOpen()) || button !== findTarget())
+    ) {
       pending.abort();
     }
     if (!stopped && frame === undefined) {
