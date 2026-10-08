@@ -809,15 +809,7 @@ function getStoredMilestoneSlugs(
   return new Set(slugs);
 }
 
-/**
- * Milestone completion storage operations
- *
- * Tracks which milestones within a learning journey have been completed.
- * Stored as a map of journeyBaseUrl -> array of completed milestone slugs.
- */
-// Chains markCompleted/removeCompleted/clear/clearAll through one promise so each
-// sees the previous mutation's write instead of racing on a stale pre-write record
-// (same lost-update shape bounded-record-storage.ts's mutationQueue guards against).
+// Serializes milestone mutations so each sees the previous write, not a stale record.
 let milestoneMutationQueue: Promise<unknown> = Promise.resolve();
 function serializeMilestoneMutation<T>(operation: () => Promise<T>): Promise<T> {
   const result = milestoneMutationQueue.then(operation);
@@ -825,6 +817,12 @@ function serializeMilestoneMutation<T>(operation: () => Promise<T>): Promise<T> 
   return result;
 }
 
+/**
+ * Milestone completion storage operations
+ *
+ * Tracks which milestones within a learning journey have been completed.
+ * Stored as a map of journeyBaseUrl -> array of completed milestone slugs.
+ */
 export const milestoneCompletionStorage = {
   async getCompleted(journeyBaseUrl: string, milestoneUrls: string[] = []): Promise<Set<string>> {
     try {
