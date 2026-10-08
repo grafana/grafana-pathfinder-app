@@ -316,7 +316,7 @@ describe('block preview', () => {
   };
   const previewKey = 'block-editor://preview/preview-guide';
 
-  it('is untracked: no identity, no attempt, no completion record', async () => {
+  it('is untracked: no identity and no completion record', async () => {
     render(<BlockPreview guide={previewGuide} />);
     await clickMarkComplete();
 
