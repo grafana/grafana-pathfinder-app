@@ -1,4 +1,4 @@
-import { normalizeHttpOrigin } from '../../lib/input-value';
+import { normalizeHttpOrigin, normalizeHttpUrl, describeHttpInput } from '../../lib/input-value';
 /**
  * Input Block Renderer
  *
@@ -26,7 +26,7 @@ export interface InputBlockProps {
   prompt: string;
   /** Input type: text, boolean, or datasource */
   inputType: 'text' | 'boolean' | 'datasource';
-  format?: 'http-origin';
+  format?: 'http-origin' | 'http-url';
   /** Variable name for storing the response */
   variableName: string;
   /** Placeholder for text input */
@@ -194,9 +194,9 @@ export function InputBlock({
         setValidationError('This field is required');
         return false;
       }
-      if (format === 'http-origin' && value && normalizeHttpOrigin(value) === null) {
+      if (format && value && normalizeHttpUrl(value) === null) {
         setValidationError(
-          'Enter an HTTP(S) origin, such as https://example.com, without a path, credentials, query, or fragment'
+          'Enter a website address, such as example.com or https://example.com/shop, without embedded credentials'
         );
         return false;
       }
@@ -293,7 +293,11 @@ export function InputBlock({
         const wasAlreadySaved = isSaved;
         responseContext.setResponse(
           variableName,
-          format === 'http-origin' && textValue ? normalizeHttpOrigin(textValue)! : textValue.trim()
+          format === 'http-origin' && textValue
+            ? normalizeHttpOrigin(textValue)!
+            : format === 'http-url' && textValue
+              ? normalizeHttpUrl(textValue)!
+              : textValue.trim()
         );
         setIsSaved(true);
 
@@ -419,7 +423,12 @@ export function InputBlock({
       case 'text':
         return (
           <div className={styles.inputContainer}>
-            <Field label="" invalid={!!validationError} error={validationError}>
+            <Field
+              label=""
+              invalid={!!validationError}
+              error={validationError}
+              description={describeHttpInput(textValue, format)}
+            >
               <Input
                 value={textValue}
                 onChange={handleTextChange}

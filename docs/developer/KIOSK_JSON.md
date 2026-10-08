@@ -60,7 +60,9 @@ Standard guide tiles display the current user's saved completion percentage and 
 }
 ```
 
-Use `inputType: "text"` for ordinary text, or add `format: "http-origin"` for a website origin. Use `inputType: "datasource"` with optional `datasourceFilter` for an instance data source picker. Selections store data source names, matching ordinary guide inputs. Inputs are limited to 2,048 characters; variable names must be identifiers and cannot be `__proto__`, `prototype`, or `constructor`.
+Use `inputType: "text"` for ordinary text, add `format: "http-origin"` to save a website origin, or `format: "http-url"` to save the full HTTP check URL. Both formats trim surrounding whitespace, accept bare hostnames by defaulting to HTTPS, and reject embedded credentials and non-HTTP schemes. URL inputs preserve paths and queries; fragments are removed because HTTP requests do not send them. Origin inputs derive the scheme, hostname, and port from a pasted URL. The form previews the normalized values before submission. Use `inputType: "datasource"` with optional `datasourceFilter` for an instance data source picker. Selections store data source names, matching ordinary guide inputs. Inputs are limited to 2,048 characters; variable names must be identifiers and cannot be `__proto__`, `prototype`, or `constructor`.
+
+Use `{{appUrl}}` for the HTTP target and `{{appUrl:origin}}` for its exact Frontend Observability allowed origin. The origin is derived at render time, so changing the saved URL cannot leave a stale origin. This modifier has the same kiosk sink restrictions as plain variables; it is only accepted in display text and form-fill values.
 
 The destination guide must declare exactly one compatible input for each transferred `variableName`, including matching `format`, data source filter, and requiredness. For example:
 

@@ -562,7 +562,7 @@ export interface JsonInputBlock extends AuthorAnnotated {
   prompt: string;
   /** Input type determines the UI: text input, checkbox, or datasource picker */
   inputType: 'text' | 'boolean' | 'datasource';
-  format?: 'http-origin';
+  format?: 'http-origin' | 'http-url';
   /** Variable name for storing/referencing the response */
   variableName: string;
   /** Placeholder text (for text input) */

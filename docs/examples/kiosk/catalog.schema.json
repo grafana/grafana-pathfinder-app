@@ -251,7 +251,7 @@
     },
     "__schema14": {
       "type": "string",
-      "enum": ["http-origin"]
+      "enum": ["http-origin", "http-url"]
     },
     "__schema15": {
       "$ref": "#/$defs/__schema9"
