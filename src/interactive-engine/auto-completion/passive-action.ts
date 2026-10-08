@@ -58,13 +58,24 @@ function renderedSelection(field: Element): string[] {
   return [];
 }
 
-export function formFieldValues(element: Element): string[] {
+type FormField = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+
+function isFormField(element: unknown): element is FormField {
+  return (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+  );
+}
+
+function formFieldOf(element: Element): FormField | undefined {
   const field = element.matches(FORM_FIELDS) ? element : element.querySelector(FORM_FIELDS);
-  if (!(
-    field instanceof HTMLInputElement ||
-    field instanceof HTMLTextAreaElement ||
-    field instanceof HTMLSelectElement
-  )) {
+  return isFormField(field) ? field : undefined;
+}
+
+export function formFieldValues(element: Element): string[] {
+  const field = formFieldOf(element);
+  if (!field) {
     return [];
   }
   const values = [field.value];
@@ -79,16 +90,20 @@ export function formFieldValues(element: Element): string[] {
   return values.map((value) => value.trim()).filter(Boolean);
 }
 
-export function matchesFormfillState(action: ObservedAction): boolean {
-  const expected = action.targetValue?.replace(/^@@CLEAR@@/, '');
+export function matchesFormfillState(action: ObservedAction, touched: (field: Element) => boolean): boolean {
+  const expected = action.targetValue?.replace(/^@@CLEAR@@\s*/, '');
   if (action.targetAction !== 'formfill' || !action.refTarget || !expected) {
     return false;
   }
-  return resolveTargets(action).some(
-    (element) =>
+  return resolveTargets(action).some((element) => {
+    const field = formFieldOf(element);
+    return (
+      !!field &&
+      touched(field) &&
       !element.closest(GUIDE_CONTENT) &&
-      formFieldValues(element).some((value) => matchFormValue(value, expected).isMatch)
-  );
+      formFieldValues(field).some((value) => matchFormValue(value, expected).isMatch)
+    );
+  });
 }
 
 export function matchesPassiveAction(action: ObservedAction, event: Event): boolean {
@@ -130,20 +145,30 @@ export function matchesPassiveAction(action: ObservedAction, event: Event): bool
       )) {
         return false;
       }
-      return matchFormValue(matched.value, action.targetValue?.replace(/^@@CLEAR@@/, '')).isMatch;
+      return matchFormValue(matched.value, action.targetValue?.replace(/^@@CLEAR@@\s*/, '')).isMatch;
     }
     default:
       return false;
   }
 }
 
-export function observePassiveActions(onEvent: (event: Event) => void, onSettled?: () => void): () => void {
+export function observePassiveActions(
+  onEvent: (event: Event) => void,
+  onSettled?: (touched: (field: Element) => boolean) => void
+): () => void {
   const values = new WeakMap<Element, string>();
+  const touchedFields = new WeakSet<Element>();
+  const touched = (field: Element) => touchedFields.has(field);
   let settling: ReturnType<typeof setTimeout> | undefined;
   const settle = () => {
     if (onSettled) {
       clearTimeout(settling);
-      settling = setTimeout(onSettled, SETTLE_MS);
+      settling = setTimeout(() => onSettled(touched), SETTLE_MS);
+    }
+  };
+  const touch = (event: Event) => {
+    if (isFormField(event.target)) {
+      touchedFields.add(event.target);
     }
   };
   const listener = (event: Event) => {
@@ -151,12 +176,8 @@ export function observePassiveActions(onEvent: (event: Event) => void, onSettled
       settle();
     }
     const target = event.target;
-    if (
-      (event.type === 'input' || event.type === 'change') &&
-      (target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement)
-    ) {
+    if ((event.type === 'input' || event.type === 'change') && isFormField(target)) {
+      touchedFields.add(target);
       if (values.get(target) === target.value) {
         return;
       }
@@ -167,10 +188,12 @@ export function observePassiveActions(onEvent: (event: Event) => void, onSettled
   const events = ['click', 'input', 'change', 'mouseover'];
   events.forEach((event) => document.addEventListener(event, listener, true));
   document.addEventListener('keydown', settle, true);
+  document.addEventListener('focusin', touch, true);
   return () => {
     clearTimeout(settling);
     events.forEach((event) => document.removeEventListener(event, listener, true));
     document.removeEventListener('keydown', settle, true);
+    document.removeEventListener('focusin', touch, true);
   };
 }
 

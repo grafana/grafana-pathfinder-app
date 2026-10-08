@@ -244,9 +244,18 @@ export class CompletionCoordinator {
     this.recheck();
   }
 
+  private ownGuides() {
+    return new Set([...this.entries.values(), ...this.dormant.values()].map(({ step }) => step.guideKey));
+  }
+
   resetScope(stepId: string | undefined, sectionId: string | undefined) {
+    const guides = this.ownGuides();
     heldRequests.forEach((held, id) => {
-      if (held.sectionId === sectionId && (stepId === undefined || held.stepId === stepId)) {
+      if (
+        guides.has(held.guideKey) &&
+        held.sectionId === sectionId &&
+        (stepId === undefined || held.stepId === stepId)
+      ) {
         heldRequests.delete(id);
       }
     });
@@ -266,7 +275,7 @@ export class CompletionCoordinator {
     this.abortController.abort();
     this.abortController = new AbortController();
     if (id === undefined) {
-      const guides = new Set([...this.entries.values(), ...this.dormant.values()].map(({ step }) => step.guideKey));
+      const guides = this.ownGuides();
       heldRequests.forEach((held, key) => {
         if (scope === 'all' || guides.has(held.guideKey)) {
           heldRequests.delete(key);
@@ -362,7 +371,6 @@ export class CompletionCoordinator {
       this.observeIndex(step.id, index);
       break;
     }
-    this.recheck();
   }
 
   observeIndex(id: string, index: number) {

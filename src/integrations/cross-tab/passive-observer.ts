@@ -122,9 +122,11 @@ export function createPassiveObserver(
     const events = observePassiveActions(
       (event) => {
         observe((action) => matchesPassiveAction(action, event));
-        changed();
+        if (event.type !== 'mouseover') {
+          changed();
+        }
       },
-      () => observe(matchesFormfillState)
+      (touched) => observe((action) => matchesFormfillState(action, touched))
     );
     const navigation = observePassiveNavigation(() => {
       observe(matchesPassiveNavigation);

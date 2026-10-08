@@ -253,6 +253,9 @@ it('completes a formfill step when the reader picks the value from a dropdown', 
     </>
   );
   expect(done).not.toHaveBeenCalled();
+  act(() => {
+    screen.getByRole('combobox').focus();
+  });
   fireEvent.click(screen.getByRole('option'));
   await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
   expect(markStepCompleted).toHaveBeenCalledWith('pick-scenario', undefined, 'observed', 'guide');
@@ -332,4 +335,33 @@ it("drops other guides' held requests when all progress is reset", async () => {
   await act(async () => {});
   expect(commitElsewhere).not.toHaveBeenCalled();
   reopened.stop();
+});
+
+it('backs off fallback polling while nothing happens and resets on activity', async () => {
+  jest.useFakeTimers();
+  try {
+    render(
+      <CompletionObservationProvider contentKey="guide">
+        <Step objectives={['has-datasource:prometheus']} onComplete={jest.fn()} />
+      </CompletionObservationProvider>
+    );
+    const advance = async (ms: number) => {
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+    };
+    await advance(0);
+    const atOpen = mockCheck.mock.calls.length;
+    await advance(35_000);
+    expect(mockCheck.mock.calls.length - atOpen).toBe(3);
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await advance(0);
+    const afterFocus = mockCheck.mock.calls.length;
+    await advance(5_000);
+    expect(mockCheck.mock.calls.length).toBe(afterFocus + 1);
+  } finally {
+    jest.useRealTimers();
+  }
 });

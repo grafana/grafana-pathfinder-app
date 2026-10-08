@@ -120,6 +120,7 @@ it('reports a dropdown pick in the live tab once the field settles', () => {
   option.addEventListener('click', () => {
     document.querySelector('#selection')!.textContent = 'Random Walk';
   });
+  document.querySelector<HTMLInputElement>('input[aria-label="scenario"]')!.focus();
   option.click();
   expect(post).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'observation-evidence' }));
   jest.advanceTimersByTime(200);

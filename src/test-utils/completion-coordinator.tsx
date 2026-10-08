@@ -42,7 +42,7 @@ export function createCoordinatorWrapper(check?: ObservationCheck) {
       coordinator.start();
       const stopObserving = observePassiveActions(
         (event) => coordinator.observe((action) => matchesPassiveAction(action, event)),
-        () => coordinator.observe(matchesFormfillState)
+        (touched) => coordinator.observe((action) => matchesFormfillState(action, touched))
       );
       return () => {
         stopObserving();

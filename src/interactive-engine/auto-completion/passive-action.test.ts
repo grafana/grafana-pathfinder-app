@@ -75,6 +75,29 @@ it('treats input and change for the same edit as one observed action', () => {
 
 describe('formfill state', () => {
   const formfill = (refTarget: string, targetValue: string) => ({ targetAction: 'formfill', refTarget, targetValue });
+  const touchedAll = () => true;
+
+  it('ignores a field the reader never focused or edited, even when it already holds the value', () => {
+    document.body.innerHTML =
+      '<input aria-label="url" value="http://localhost:9090"><button id="elsewhere">Elsewhere</button>';
+    jest.useFakeTimers();
+    try {
+      const settled = jest.fn((touched: (field: Element) => boolean) =>
+        matchesFormfillState(formfill('input[aria-label="url"]', 'http://localhost:9090'), touched)
+      );
+      const stop = observePassiveActions(() => {}, settled);
+      eventOn(document.querySelector('#elsewhere')!);
+      jest.advanceTimersByTime(200);
+      expect(settled).toHaveLastReturnedWith(false);
+      document.querySelector<HTMLInputElement>('input')!.focus();
+      eventOn(document.querySelector('#elsewhere')!);
+      jest.advanceTimersByTime(200);
+      expect(settled).toHaveLastReturnedWith(true);
+      stop();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 
   it('reads the choice a select renders beside its cleared input', () => {
     document.body.innerHTML = `
@@ -82,47 +105,47 @@ describe('formfill state', () => {
         <div>Random Walk</div>
         <div data-value=""><input role="combobox" aria-autocomplete="list" aria-label="scenario" value=""></div>
       </div>`;
-    expect(matchesFormfillState(formfill('input[aria-label="scenario"]', 'Random Walk'))).toBe(true);
-    expect(matchesFormfillState(formfill('input[aria-label="scenario"]', 'CSV Content'))).toBe(false);
+    expect(matchesFormfillState(formfill('input[aria-label="scenario"]', 'Random Walk'), touchedAll)).toBe(true);
+    expect(matchesFormfillState(formfill('input[aria-label="scenario"]', 'CSV Content'), touchedAll)).toBe(false);
   });
 
   it('reads a picker that shows its selection as the input placeholder', () => {
     document.body.innerHTML =
       '<input aria-autocomplete="list" aria-label="data source" placeholder="TestData" value="">';
-    expect(matchesFormfillState(formfill('input[aria-label="data source"]', 'TestData'))).toBe(true);
+    expect(matchesFormfillState(formfill('input[aria-label="data source"]', 'TestData'), touchedAll)).toBe(true);
   });
 
   it('reads a compact data source picker that shows only the selected type logo', () => {
     document.body.innerHTML = `
       <div><img alt="TestData logo" src="testdata.svg"><input role="combobox" aria-autocomplete="list" aria-label="data source" placeholder=""></div>`;
-    expect(matchesFormfillState(formfill('input[aria-label="data source"]', 'TestData'))).toBe(true);
-    expect(matchesFormfillState(formfill('input[aria-label="data source"]', 'Prometheus'))).toBe(false);
+    expect(matchesFormfillState(formfill('input[aria-label="data source"]', 'TestData'), touchedAll)).toBe(true);
+    expect(matchesFormfillState(formfill('input[aria-label="data source"]', 'Prometheus'), touchedAll)).toBe(false);
   });
 
   it('does not accept a different option whose label only starts with the target', () => {
     document.body.innerHTML = `
       <div><div>Random Walk Table</div><div><input role="combobox" aria-autocomplete="list" aria-label="scenario"></div></div>`;
-    expect(matchesFormfillState(formfill('input[aria-label="scenario"]', 'Random Walk'))).toBe(false);
+    expect(matchesFormfillState(formfill('input[aria-label="scenario"]', 'Random Walk'), touchedAll)).toBe(false);
   });
 
   it('does not treat a plain input hint as a value', () => {
     document.body.innerHTML = '<input aria-label="title" placeholder="My dashboard" value="">';
-    expect(matchesFormfillState(formfill('input[aria-label="title"]', 'My dashboard'))).toBe(false);
+    expect(matchesFormfillState(formfill('input[aria-label="title"]', 'My dashboard'), touchedAll)).toBe(false);
   });
 
   it('reads native select options and typed values', () => {
     document.body.innerHTML = `
       <select aria-label="unit"><option value="ms">Milliseconds</option><option value="s" selected>Seconds</option></select>
       <input aria-label="name" value="walker=jack">`;
-    expect(matchesFormfillState(formfill('select[aria-label="unit"]', 'Seconds'))).toBe(true);
-    expect(matchesFormfillState(formfill('input[aria-label="name"]', 'walker=jack'))).toBe(true);
+    expect(matchesFormfillState(formfill('select[aria-label="unit"]', 'Seconds'), touchedAll)).toBe(true);
+    expect(matchesFormfillState(formfill('input[aria-label="name"]', 'walker=jack'), touchedAll)).toBe(true);
   });
 
   it('never reads a field inside the guide or a clear-only value', () => {
     document.body.innerHTML = '<div class="interactive-step"><input aria-label="inside" value="TestData"></div>';
-    expect(matchesFormfillState(formfill('input[aria-label="inside"]', 'TestData'))).toBe(false);
+    expect(matchesFormfillState(formfill('input[aria-label="inside"]', 'TestData'), touchedAll)).toBe(false);
     document.body.innerHTML = '<input aria-label="cleared" value="">';
-    expect(matchesFormfillState(formfill('input[aria-label="cleared"]', '@@CLEAR@@'))).toBe(false);
+    expect(matchesFormfillState(formfill('input[aria-label="cleared"]', '@@CLEAR@@'), touchedAll)).toBe(false);
   });
 
   it('settles once after clicks and keys, but not after mouse movement', () => {
@@ -147,4 +170,16 @@ describe('formfill state', () => {
       jest.useRealTimers();
     }
   });
+});
+
+it('strips a clear prefix followed by a space before comparing the typed value', () => {
+  document.body.innerHTML = '<input id="query">';
+  const input = document.querySelector('input')!;
+  input.value = 'rate(http_requests_total[5m])';
+  const action = {
+    targetAction: 'formfill',
+    refTarget: '#query',
+    targetValue: '@@CLEAR@@ rate(http_requests_total[5m])',
+  };
+  expect(matchesPassiveAction(action, eventOn(input, 'input'))).toBe(true);
 });

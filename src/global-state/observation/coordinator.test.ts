@@ -534,3 +534,51 @@ describe('cursor handoff and unobservable actions', () => {
     coordinator.stop();
   });
 });
+
+it("keeps another guide's held request when a same-position step is reset", async () => {
+  const left = new CompletionCoordinator(async () => false);
+  const held = step({
+    id: 'guide-d/step',
+    guideKey: 'guide-d',
+    sectionId: 'section-1',
+    stepId: 'step-1',
+    verify: ['on-page:/done'],
+  });
+  const unregister = left.register(held);
+  left.request(held.id);
+  unregister();
+
+  const current = new CompletionCoordinator(async () => true);
+  current.register(step({ id: 'guide-e/step', guideKey: 'guide-e', sectionId: 'section-1', stepId: 'step-1' }));
+  current.resetScope('step-1', 'section-1');
+
+  const reopened = new CompletionCoordinator(async () => true);
+  const successor = step({
+    id: 'guide-d/step',
+    guideKey: 'guide-d',
+    sectionId: 'section-1',
+    stepId: 'step-1',
+    verify: ['on-page:/done'],
+  });
+  reopened.start();
+  reopened.register(successor);
+  await settle();
+  expect(successor.commit).toHaveBeenCalledWith('manual');
+  reopened.stop();
+});
+
+it('does not re-run objective checks for events that record no evidence', async () => {
+  const check = jest.fn().mockResolvedValue(false);
+  const coordinator = new CompletionCoordinator(check);
+  coordinator.register(step({ id: 'quiet-objective', objectives: ['has-datasource:prometheus'] }));
+  coordinator.register(step({ id: 'quiet-action' }));
+  coordinator.start();
+  await settle();
+  const checksAfterOpen = check.mock.calls.length;
+  for (let i = 0; i < 20; i++) {
+    coordinator.observe(() => false);
+  }
+  await settle();
+  expect(check).toHaveBeenCalledTimes(checksAfterOpen);
+  coordinator.stop();
+});

@@ -28,6 +28,8 @@ import {
 } from '../../interactive-engine';
 
 let observationGeneration = 0;
+const POLL_MS = 5000;
+const MAX_POLL_MS = 60_000;
 
 export function CompletionObservationProvider({ children, contentKey }: PropsWithChildren<{ contentKey: string }>) {
   const { checkPostconditions } = useGuideRequirements();
@@ -113,12 +115,32 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
     }
     coordinator.restore(takeObservationHandoff(contentKey));
     coordinator.start();
-    const unsubscribeContext = onContextChange(coordinator.recheck);
+    let pollDelay = POLL_MS;
+    let poll: ReturnType<typeof setTimeout> | undefined;
+    const recheckIfVisible = () => {
+      if (mode === 'controller' || document.visibilityState !== 'hidden') {
+        coordinator.recheck();
+      }
+    };
+    const schedulePoll = () => {
+      clearTimeout(poll);
+      poll = setTimeout(() => {
+        pollDelay = Math.min(pollDelay * 2, MAX_POLL_MS);
+        recheckIfVisible();
+        schedulePoll();
+      }, pollDelay);
+    };
+    const visibleCheck = () => {
+      pollDelay = POLL_MS;
+      schedulePoll();
+      recheckIfVisible();
+    };
+    const unsubscribeContext = onContextChange(visibleCheck);
     const unsubscribeProgress = subscribeProgressEvent((event) => {
       if (event.kind !== 'guide' && !event.completed) {
         coordinator.resetScope(event.kind === 'step' ? event.stepId : undefined, event.sectionId);
       } else {
-        coordinator.recheck();
+        visibleCheck();
       }
     });
     const observe =
@@ -127,14 +149,9 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
             (event) => {
               coordinator.observe((action) => matchesPassiveAction(action, event));
             },
-            () => coordinator.observe(matchesFormfillState)
+            (touched) => coordinator.observe((action) => matchesFormfillState(action, touched))
           )
         : () => {};
-    const visibleCheck = () => {
-      if (mode === 'controller' || document.visibilityState !== 'hidden') {
-        coordinator.recheck();
-      }
-    };
     const saveHandoff = () => saveObservationHandoff(contentKey, coordinator.exportCursors());
     const handoff = () => {
       saveHandoff();
@@ -172,7 +189,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       window.addEventListener('pagehide', saveHandoff);
     }
     window.addEventListener(StorageEvents.InteractiveProgressCleared, handleReset);
-    const interval = setInterval(visibleCheck, 5000);
+    schedulePoll();
     window.addEventListener('popstate', visibleCheck);
     window.addEventListener('hashchange', visibleCheck);
     window.addEventListener('focus', visibleCheck);
@@ -190,7 +207,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       unsubscribeContext();
       unsubscribeProgress();
       observe();
-      clearInterval(interval);
+      clearTimeout(poll);
       window.removeEventListener('popstate', visibleCheck);
       window.removeEventListener('hashchange', visibleCheck);
       window.removeEventListener('focus', visibleCheck);
