@@ -198,7 +198,7 @@ Opening a guide observes user actions without any assistance. The renderer-owned
 
 1. The coordinator registers every guided, multistep, and interactive block in the active branch, including children of collapsed sections.
 2. A user action reaches `matchesPassiveAction` for each eligible block without objectives, against the next required action only.
-3. A match advances that block's ordered action cursor; a later action never implies an earlier one.
+3. A match advances that block's ordered action cursor; a later action never implies an earlier one. One action advances one block. When several blocks wait on the same action, it goes to the earliest in guide order, unless the reader has started a later section this session (an observed action, partial progress, assistance or a skip there), in which case it goes to the earliest started block. A section reset clears that section's started state.
 4. When the cursor reaches the end, the coordinator applies `verify` (or the objectives, when authored) and records completion with reason `observed`.
 5. No evidence is recorded while any block is executing, so assistance clicks are never mistaken for manual actions.
 

@@ -17,6 +17,7 @@ export interface ObservationStep {
   guideKey?: string;
   stepId: string;
   sectionId?: string;
+  order?: number;
   actions: ObservedAction[];
   objectives?: ConditionInput;
   verify?: ConditionInput;
@@ -54,6 +55,10 @@ export type ObservationCheck = (
   step: ObservationStep,
   signal: AbortSignal
 ) => Promise<boolean | undefined>;
+
+function sectionOf(step: ObservationStep): string {
+  return JSON.stringify([step.guideKey, step.sectionId ?? step.id]);
+}
 
 function hasObjectives(input: ConditionInput | undefined): boolean {
   return Array.isArray(input) ? input.length > 0 : !!input;
@@ -102,6 +107,7 @@ export function isPassiveCondition(conditions: ConditionInput): boolean {
 export class CompletionCoordinator {
   private dormant = new Map<string, { step: ObservationStep; cursor: number }>();
   private entries = new Map<string, Entry>();
+  private engaged = new Set<string>();
   private listeners = new Set<() => void>();
   private revision = 0;
   generation = 0;
@@ -272,6 +278,9 @@ export class CompletionCoordinator {
         this.reset(id);
       }
     });
+    if (stepId === undefined && sectionId !== undefined) {
+      guides.forEach((guideKey) => this.engaged.delete(JSON.stringify([guideKey, sectionId])));
+    }
   }
 
   reset(id?: string, scope: 'guide' | 'all' = 'guide') {
@@ -285,6 +294,7 @@ export class CompletionCoordinator {
         }
       });
       this.dormant.clear();
+      this.engaged.clear();
       this.generation++;
       this.restoredCursors = {};
     } else {
@@ -352,8 +362,16 @@ export class CompletionCoordinator {
     return this.entries.get(id)?.cursor ?? 0;
   }
 
+  private prioritized() {
+    const started = new Set(this.engaged);
+    this.entries.forEach((entry) => entry.cursor > 0 && started.add(sectionOf(entry.step)));
+    const rank = ({ step }: Entry) => (started.has(sectionOf(step)) ? 0 : 1);
+    const order = ({ step }: Entry) => step.order ?? Number.MAX_SAFE_INTEGER;
+    return [...this.entries.values()].sort((a, b) => rank(a) - rank(b) || order(a) - order(b));
+  }
+
   pendingActions() {
-    return [...this.entries.values()]
+    return this.prioritized()
       .filter(
         ({ step, committed }) =>
           !committed && !step.completed && step.eligible && !step.executing && !hasObjectives(step.objectives)
@@ -365,7 +383,7 @@ export class CompletionCoordinator {
     if ([...this.entries.values()].some((entry) => entry.step.executing)) {
       return;
     }
-    for (const entry of this.entries.values()) {
+    for (const entry of this.prioritized()) {
       const { step } = entry;
       if (entry.committed || step.completed || !step.eligible || step.executing || hasObjectives(step.objectives)) {
         continue;
@@ -393,6 +411,7 @@ export class CompletionCoordinator {
       return;
     }
     entry.cursor = cursor;
+    this.engaged.add(sectionOf(entry.step));
     if (entry.cursor === entry.step.actions.length) {
       entry.requested = 'observed';
     }
@@ -402,6 +421,10 @@ export class CompletionCoordinator {
 
   request(id: string, reason: ObservationReason = 'manual', skipVerify = false) {
     const entry = this.entries.get(id);
+    const target = entry?.step ?? this.dormant.get(id)?.step;
+    if (target) {
+      this.engaged.add(sectionOf(target));
+    }
     if (!entry) {
       const dormant = this.dormant.get(id);
       if (dormant && (reason === 'skipped' || !hasObjectives(completionGate(dormant.step, skipVerify)))) {

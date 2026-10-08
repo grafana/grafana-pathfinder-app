@@ -67,6 +67,7 @@ export function useObservedCompletion(options: Options) {
     ...options,
     id,
     guideKey: contentKey,
+    order: options.analytics.stepMeta.stepIndex,
     completed,
     commit,
     readCompleted: () => readStepCompletion(stepId, sectionId, contentKey),

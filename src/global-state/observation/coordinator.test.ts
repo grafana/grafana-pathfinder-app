@@ -687,3 +687,58 @@ it('resets one step without restarting observation or checks for the rest of the
   expect(seen[0]).toBeGreaterThan(0);
   coordinator.stop();
 });
+
+describe('a reader action shared by blocks in different sections', () => {
+  const save = { targetAction: 'button', refTarget: '#save' };
+  const setup = () => {
+    const coordinator = new CompletionCoordinator(async () => false);
+    const later = step({ id: 'later', sectionId: 'second', order: 5, actions: [save] });
+    const opener = step({
+      id: 'opener',
+      sectionId: 'second',
+      order: 4,
+      actions: [
+        { targetAction: 'button', refTarget: '#open' },
+        { targetAction: 'button', refTarget: '#close' },
+      ],
+    });
+    const earlier = step({ id: 'earlier', sectionId: 'first', order: 1, actions: [save] });
+    coordinator.register(later);
+    coordinator.register(opener);
+    coordinator.register(earlier);
+    coordinator.start();
+    const click = (target: string) => coordinator.observe((action) => action.refTarget === target);
+    return { coordinator, later, earlier, click };
+  };
+
+  it('credits the earliest block in guide order, whatever order the blocks registered in', async () => {
+    const { coordinator, later, earlier, click } = setup();
+    click('#save');
+    await settle();
+    expect(earlier.commit).toHaveBeenCalledWith('observed', 'change');
+    expect(later.commit).not.toHaveBeenCalled();
+    coordinator.stop();
+  });
+
+  it('credits a later section the reader has started instead of the untouched earlier one', async () => {
+    const { coordinator, later, earlier, click } = setup();
+    click('#open');
+    expect(coordinator.pendingActions().map(({ id }) => id)).toEqual(['opener', 'later', 'earlier']);
+    click('#save');
+    await settle();
+    expect(later.commit).toHaveBeenCalledWith('observed', 'change');
+    expect(earlier.commit).not.toHaveBeenCalled();
+    coordinator.stop();
+  });
+
+  it('returns to guide order once the started section is reset', async () => {
+    const { coordinator, later, earlier, click } = setup();
+    click('#open');
+    coordinator.resetScope(undefined, 'second');
+    click('#save');
+    await settle();
+    expect(earlier.commit).toHaveBeenCalledWith('observed', 'change');
+    expect(later.commit).not.toHaveBeenCalled();
+    coordinator.stop();
+  });
+});
