@@ -20,6 +20,7 @@ import {
   wrapEnvelope,
 } from './user-storage';
 import { StorageEvents } from './event-names';
+import { logger } from './logging';
 import { StorageKeys, buildVersionedSectionStorageKey } from './storage-keys';
 
 // Mock `@grafana/runtime` so the quota-toast helper can publish through a
@@ -265,6 +266,42 @@ describe('milestoneCompletionStorage', () => {
     await expect(milestoneCompletionStorage.getCompleted(otherJourneyUrl)).resolves.toEqual(
       new Set(['fe-alerting-01'])
     );
+  });
+
+  it('keeps only the survivor when removeCompleted calls race inside Promise.all', async () => {
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'm1');
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'm2');
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'm3');
+
+    await Promise.all([
+      milestoneCompletionStorage.removeCompleted(journeyUrl, 'm1'),
+      milestoneCompletionStorage.removeCompleted(journeyUrl, 'm2'),
+    ]);
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['m3']));
+  });
+
+  it('runs the next queued mutation after a rejected one', async () => {
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'm1');
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {
+      throw new Error('logger failed');
+    });
+    const getItem = jest.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
+      throw new Error('read failed');
+    });
+
+    try {
+      const [rejected] = await Promise.allSettled([
+        milestoneCompletionStorage.removeCompleted(journeyUrl, 'm1'),
+        milestoneCompletionStorage.markCompleted(journeyUrl, 'm2'),
+      ]);
+
+      expect(rejected.status).toBe('rejected');
+      await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['m1', 'm2']));
+    } finally {
+      getItem.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   describe('getCompletedSync', () => {
