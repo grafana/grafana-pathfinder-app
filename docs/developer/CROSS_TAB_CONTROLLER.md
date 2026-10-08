@@ -113,7 +113,8 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
   asks the controller to recheck objectives after a click, input, change or
   navigation in the live tab.
 
-An intentional surface handoff also carries partial action cursors through the
+An intentional surface handoff also carries partial action cursors, and the ids
+of steps the reader acted on (so shared-action priority survives), through the
 `pathfinder-observation-handoff` localStorage key, a one-use record that expires
 after 10 seconds.
 

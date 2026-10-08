@@ -122,7 +122,8 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
     if (!enabled || (mode !== 'controller' && new URLSearchParams(window.location.search).get('controller') === '1')) {
       return;
     }
-    coordinator.restore(takeObservationHandoff(contentKey));
+    const opened = takeObservationHandoff(contentKey);
+    coordinator.restore(opened.cursors, opened.started);
     coordinator.start();
     let pollDelay = POLL_MS;
     let poll: ReturnType<typeof setTimeout> | undefined;
@@ -176,16 +177,20 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
         observe = observeActions();
       }
     });
-    const saveHandoff = () => saveObservationHandoff(contentKey, coordinator.exportCursors());
+    const saveHandoff = () =>
+      saveObservationHandoff(contentKey, {
+        cursors: coordinator.exportCursors(),
+        started: coordinator.exportStarted(),
+      });
     const handoff = () => {
       saveHandoff();
       coordinator.stop();
     };
     const restoreHandoff = (event: StorageEvent) => {
       if (event.key === OBSERVATION_HANDOFF_EVENT && mode === 'controller') {
-        const cursors = takeObservationHandoff(contentKey);
-        if (Object.keys(cursors).length) {
-          coordinator.restore(cursors);
+        const { cursors, started } = takeObservationHandoff(contentKey);
+        if (Object.keys(cursors).length || started.length) {
+          coordinator.restore(cursors, started);
           coordinator.recheck();
         }
       }

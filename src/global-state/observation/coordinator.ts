@@ -39,6 +39,7 @@ interface Entry {
   committed: boolean;
   revision: number;
   epoch: number;
+  engaged?: boolean;
 }
 
 interface HeldRequest {
@@ -105,9 +106,9 @@ export function isPassiveCondition(conditions: ConditionInput): boolean {
 }
 
 export class CompletionCoordinator {
-  private dormant = new Map<string, { step: ObservationStep; cursor: number }>();
+  private dormant = new Map<string, { step: ObservationStep; cursor: number; engaged?: boolean }>();
   private entries = new Map<string, Entry>();
-  private engaged = new Set<string>();
+  private restoredStarted = new Set<string>();
   private listeners = new Set<() => void>();
   private revision = 0;
   generation = 0;
@@ -121,9 +122,13 @@ export class CompletionCoordinator {
     private restoredCursors: Record<string, number> = {}
   ) {}
 
-  restore(cursors: Record<string, number>) {
+  restore(cursors: Record<string, number>, started: readonly string[] = []) {
     this.restoredCursors = cursors;
+    this.restoredStarted = new Set(started);
     this.entries.forEach((entry, id) => {
+      if (this.restoredStarted.delete(id)) {
+        entry.engaged = true;
+      }
       const cursor = cursors[id];
       if (cursor === undefined) {
         return;
@@ -146,6 +151,10 @@ export class CompletionCoordinator {
           .map(([id, entry]) => [id, entry.cursor])
       ),
     };
+  }
+
+  exportStarted() {
+    return [...this.dormant, ...this.entries].filter(([, entry]) => entry.engaged).map(([id]) => id);
   }
 
   subscribe = (listener: () => void) => {
@@ -189,10 +198,13 @@ export class CompletionCoordinator {
       Math.max(this.restoredCursors[step.id] ?? 0, previous?.cursor ?? previousCursor),
       step.actions.length
     );
+    const handedOff = this.restoredStarted.delete(step.id);
+    const engaged = !!previous?.engaged || !!dormant?.engaged || handedOff;
     this.dormant.delete(step.id);
     delete this.restoredCursors[step.id];
     const entry: Entry = previous ?? { step, cursor: restored, committed: false, revision: 0, epoch: 0 };
     entry.cursor = restored;
+    entry.engaged = engaged;
     if (restored > 0 && restored === step.actions.length) {
       entry.requested = 'observed';
     }
@@ -208,7 +220,7 @@ export class CompletionCoordinator {
       if (this.entries.get(step.id) === entry) {
         entry.revision++;
         this.entries.delete(step.id);
-        this.dormant.set(step.id, { step: entry.step, cursor: entry.cursor });
+        this.dormant.set(step.id, { step: entry.step, cursor: entry.cursor, engaged: entry.engaged });
         if (entry.requested && !entry.committed && !entry.step.completed) {
           holdRequest(entry.step, entry.requested, !!entry.skipVerify);
         }
@@ -278,9 +290,6 @@ export class CompletionCoordinator {
         this.reset(id);
       }
     });
-    if (stepId === undefined && sectionId !== undefined) {
-      guides.forEach((guideKey) => this.engaged.delete(JSON.stringify([guideKey, sectionId])));
-    }
   }
 
   reset(id?: string, scope: 'guide' | 'all' = 'guide') {
@@ -294,13 +303,14 @@ export class CompletionCoordinator {
         }
       });
       this.dormant.clear();
-      this.engaged.clear();
       this.generation++;
       this.restoredCursors = {};
+      this.restoredStarted.clear();
     } else {
       this.dormant.delete(id);
       heldRequests.delete(id);
       delete this.restoredCursors[id];
+      this.restoredStarted.delete(id);
     }
     const epoch = nextObservationStamp();
     this.entries.forEach((entry, key) => {
@@ -316,6 +326,7 @@ export class CompletionCoordinator {
       entry.committed = false;
       entry.revision++;
       entry.epoch = epoch;
+      entry.engaged = false;
     });
     this.changed();
     this.recheck();
@@ -363,8 +374,11 @@ export class CompletionCoordinator {
   }
 
   private prioritized() {
-    const started = new Set(this.engaged);
-    this.entries.forEach((entry) => entry.cursor > 0 && started.add(sectionOf(entry.step)));
+    const started = new Set(
+      [...this.dormant.values(), ...this.entries.values()]
+        .filter((entry) => entry.engaged || entry.cursor > 0)
+        .map((entry) => sectionOf(entry.step))
+    );
     const rank = ({ step }: Entry) => (started.has(sectionOf(step)) ? 0 : 1);
     const order = ({ step }: Entry) => step.order ?? Number.MAX_SAFE_INTEGER;
     return [...this.entries.values()].sort((a, b) => rank(a) - rank(b) || order(a) - order(b));
@@ -411,7 +425,7 @@ export class CompletionCoordinator {
       return;
     }
     entry.cursor = cursor;
-    this.engaged.add(sectionOf(entry.step));
+    entry.engaged = true;
     if (entry.cursor === entry.step.actions.length) {
       entry.requested = 'observed';
     }
@@ -421,9 +435,9 @@ export class CompletionCoordinator {
 
   request(id: string, reason: ObservationReason = 'manual', skipVerify = false) {
     const entry = this.entries.get(id);
-    const target = entry?.step ?? this.dormant.get(id)?.step;
+    const target = entry ?? this.dormant.get(id);
     if (target) {
-      this.engaged.add(sectionOf(target));
+      target.engaged = true;
     }
     if (!entry) {
       const dormant = this.dormant.get(id);

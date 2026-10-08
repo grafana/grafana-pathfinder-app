@@ -731,6 +731,43 @@ describe('a reader action shared by blocks in different sections', () => {
     coordinator.stop();
   });
 
+  it('returns to guide order once each step of the started section is reset', async () => {
+    const { coordinator, later, earlier, click } = setup();
+    click('#open');
+    coordinator.reset('opener');
+    coordinator.reset('later');
+    click('#save');
+    await settle();
+    expect(earlier.commit).toHaveBeenCalledWith('observed', 'change');
+    expect(later.commit).not.toHaveBeenCalled();
+    coordinator.stop();
+  });
+
+  it('keeps a section started by a skip across a surface handoff', async () => {
+    const before = new CompletionCoordinator(async () => false);
+    const skipped = step({ id: 'skipped', sectionId: 'second', order: 4, actions: [save] });
+    before.register(skipped);
+    before.start();
+    before.request('skipped', 'skipped');
+    const started = before.exportStarted();
+    before.stop();
+    expect(started).toEqual(['skipped']);
+
+    const after = new CompletionCoordinator(async () => false);
+    after.restore({}, started);
+    const later = step({ id: 'later', sectionId: 'second', order: 5, actions: [save] });
+    const earlier = step({ id: 'earlier', sectionId: 'first', order: 1, actions: [save] });
+    after.register({ ...skipped, completed: true });
+    after.register(later);
+    after.register(earlier);
+    after.start();
+    after.observe((action) => action.refTarget === '#save');
+    await settle();
+    expect(later.commit).toHaveBeenCalledWith('observed', 'change');
+    expect(earlier.commit).not.toHaveBeenCalled();
+    after.stop();
+  });
+
   it('returns to guide order once the started section is reset', async () => {
     const { coordinator, later, earlier, click } = setup();
     click('#open');
