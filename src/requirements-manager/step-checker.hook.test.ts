@@ -1175,7 +1175,13 @@ describe('condition shape parity', () => {
       const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
 
       await act(async () => {
-        dispatchProgress({ kind: 'section', contentKey: 'k', sectionId: 'section-intro', completed: true });
+        dispatchProgress({
+          kind: 'section',
+          contentKey: 'k',
+          sectionId: 'section-intro',
+          completed: true,
+          hydrated: false,
+        });
         await Promise.resolve();
       });
 

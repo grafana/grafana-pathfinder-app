@@ -52,9 +52,9 @@ async function renderWithSections(onGuideComplete: jest.Mock): Promise<void> {
   });
 }
 
-function completeSection(sectionId: string, contentKey: string = GUIDE_URL) {
+function completeSection(sectionId: string, contentKey: string = GUIDE_URL, hydrated = false) {
   act(() => {
-    dispatchProgress({ kind: 'section', contentKey, sectionId, completed: true });
+    dispatchProgress({ kind: 'section', contentKey, sectionId, completed: true, hydrated });
     jest.advanceTimersByTime(SETTLE_MS);
   });
 }
@@ -90,6 +90,33 @@ describe('ContentRenderer — the automatic section route and reset', () => {
 
     completeSection('section-3');
 
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
+  });
+
+  it('counts a hydrated section toward the tally without letting it complete the guide', async () => {
+    const onGuideComplete = jest.fn();
+    await renderWithSections(onGuideComplete);
+
+    completeSection('section-1', GUIDE_URL, true);
+    completeSection('section-2', GUIDE_URL, true);
+    completeSection('section-3', GUIDE_URL, true);
+    expect(onGuideComplete).not.toHaveBeenCalled();
+
+    // A reader's completion of any section now finds the tally already full.
+    completeSection('section-3');
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('completes the guide when a reader finishes the last section of a partly hydrated tally', async () => {
+    const onGuideComplete = jest.fn();
+    await renderWithSections(onGuideComplete);
+
+    completeSection('section-1', GUIDE_URL, true);
+    completeSection('section-2', GUIDE_URL, true);
+    expect(onGuideComplete).not.toHaveBeenCalled();
+
+    completeSection('section-3');
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
     expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
   });
