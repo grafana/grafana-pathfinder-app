@@ -768,6 +768,26 @@ describe('a reader action shared by blocks in different sections', () => {
     after.stop();
   });
 
+  it('keeps a section started by a skip on an unmounted step', async () => {
+    const coordinator = new CompletionCoordinator(async () => false);
+    const skipped = step({ id: 'skipped', sectionId: 'second', order: 4, actions: [save] });
+    const later = step({ id: 'later', sectionId: 'second', order: 5, actions: [save] });
+    const earlier = step({ id: 'earlier', sectionId: 'first', order: 1, actions: [save] });
+    const unmount = coordinator.register(skipped);
+    coordinator.register(later);
+    coordinator.register(earlier);
+    coordinator.start();
+    unmount();
+    coordinator.request('skipped', 'skipped');
+    expect(skipped.commit).toHaveBeenCalledWith('skipped', 'change');
+    expect(coordinator.exportStarted()).toEqual(['skipped']);
+    coordinator.observe((action) => action.refTarget === '#save');
+    await settle();
+    expect(later.commit).toHaveBeenCalledWith('observed', 'change');
+    expect(earlier.commit).not.toHaveBeenCalled();
+    coordinator.stop();
+  });
+
   it('returns to guide order once the started section is reset', async () => {
     const { coordinator, later, earlier, click } = setup();
     click('#open');
