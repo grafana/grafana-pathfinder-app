@@ -537,6 +537,8 @@ describe('resolvePackageMilestones', () => {
       title: 'Title for step-one',
       url: 'bundled:step-one/content.json',
       isActive: false,
+      packageManifest: { id: 'step-one', type: 'guide' },
+      repository: 'bundled',
     });
     expect(result[1]!.number).toBe(2);
     expect(result[2]!.number).toBe(3);

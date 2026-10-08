@@ -91,6 +91,7 @@ import { computeGuideBlockIndex } from '../../lib/guide-stats';
 import { selectCountingTree } from '../../lib/guide-counting-source';
 import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
+import { Prerequisites } from '../Prerequisites';
 import { MarkCompleteFooter } from '../mark-complete';
 import { resolveFullScreenFallbackLocation } from './full-screen-fallback-location';
 
@@ -537,18 +538,28 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     resolveFullScreenFallbackLocation(getCurrentMilestone(content)?.startingLocation) ??
     resolveFullScreenFallbackLocation(typeof courseStartingLocation === 'string' ? courseStartingLocation : undefined);
   const isCoverPage = isJourneyCoverPage(content);
+  const packageManifest = content.metadata.packageManifest;
+  const prerequisites =
+    !isCoverPage && journey && packageManifest?.type === 'path' ? undefined : packageManifest?.prerequisites;
+  const hasPrerequisites = Array.isArray(prerequisites) && prerequisites.length > 0;
+  const hasCoverContents = isCoverPage && journey && journey.milestones.length > 0;
   const beforeContent =
-    isCoverPage && journey && journey.milestones.length > 0 ? (
-      <LearningPathTableOfContents
-        milestones={journey.milestones}
-        baseUrl={journey.baseUrl}
-        pathId={pathId}
-        title={content.metadata.title}
-        description={pathDescription}
-        tracks={journey.tracks}
-        onActiveTrackChange={onActiveTrackChange}
-        initialActiveTrackId={initialActiveTrackId}
-      />
+    hasPrerequisites || hasCoverContents ? (
+      <>
+        <Prerequisites prerequisites={prerequisites} />
+        {hasCoverContents && journey && (
+          <LearningPathTableOfContents
+            milestones={journey.milestones}
+            baseUrl={journey.baseUrl}
+            pathId={pathId}
+            title={content.metadata.title}
+            description={pathDescription}
+            tracks={journey.tracks}
+            onActiveTrackChange={onActiveTrackChange}
+            initialActiveTrackId={initialActiveTrackId}
+          />
+        )}
+      </>
     ) : null;
 
   // Unconditional for every guide and every milestone (COMPLETION-MODEL.md,

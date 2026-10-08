@@ -23,6 +23,7 @@ import {
   type GuideTargeting,
   type ManifestTrack,
   type PackageType,
+  type Prerequisite,
   type RepositoryEntry,
   type RepositoryJson,
   type TestEnvironment,
@@ -84,6 +85,27 @@ export const DependencyClauseSchema = z.union([
  * @coupling Type: DependencyList
  */
 export const DependencyListSchema = z.array(DependencyClauseSchema) satisfies z.ZodType<DependencyList>;
+
+// ============ PREREQUISITE SCHEMA ============
+
+export const PrerequisiteSchema = z.object({
+  id: z.string().refine((value) => value.trim().length > 0, 'Prerequisite id must not be blank'),
+  label: z.string().refine((value) => value.trim().length > 0, 'Prerequisite label must not be blank'),
+}) satisfies z.ZodType<Prerequisite>;
+
+export const PrerequisitesSchema = z.array(PrerequisiteSchema).superRefine((prerequisites, ctx) => {
+  const seenIds = new Set<string>();
+  prerequisites.forEach(({ id }, index) => {
+    if (seenIds.has(id)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Prerequisite id "${id}" must be unique within the manifest`,
+        path: [index, 'id'],
+      });
+    }
+    seenIds.add(id);
+  });
+});
 
 // ============ AUTHOR SCHEMA ============
 
@@ -189,6 +211,7 @@ export const ManifestJsonObjectSchema = z.looseObject({
   provides: z.array(z.string().min(1)).default([]),
   conflicts: z.array(z.string().min(1)).default([]),
   replaces: z.array(z.string().min(1)).default([]),
+  prerequisites: PrerequisitesSchema.optional(),
 
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.default(DEFAULT_TEST_ENVIRONMENT),
@@ -357,6 +380,7 @@ const packageMetadataSchemaFields = {
   provides: z.array(z.string()).optional(),
   conflicts: z.array(z.string()).optional(),
   replaces: z.array(z.string()).optional(),
+  prerequisites: PrerequisitesSchema.optional(),
 };
 
 // ============ REPOSITORY INDEX SCHEMA ============

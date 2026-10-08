@@ -96,6 +96,23 @@ describe('member launch keeps the loader manifest reachable', () => {
     ).toBe('/alerting/notifications');
   });
 
+  it('preserves prerequisites from catalogue and loaded manifest metadata', async () => {
+    const loadedPrerequisites = [{ id: 'loaded', label: 'Loaded requirement' }];
+    const cataloguePrerequisites = [{ id: 'catalogue', label: 'Catalogue requirement' }];
+    mockFetch.mockReturnValue(backendGuideResource({ prerequisites: loadedPrerequisites }));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', {
+      ...slimCatalogueManifest,
+      prerequisites: cataloguePrerequisites,
+    });
+
+    expect(result.content?.metadata.packageManifest?.prerequisites).toEqual(cataloguePrerequisites);
+
+    mockFetch.mockReturnValue(backendGuideResource({ prerequisites: loadedPrerequisites }));
+    const loadedOnly = await fetchPackageContent('backend-guide:fe-alerting-01');
+    expect(loadedOnly.content?.metadata.packageManifest?.prerequisites).toEqual(loadedPrerequisites);
+  });
+
   it('still resolves to null when no manifest declares one', async () => {
     mockFetch.mockReturnValue(backendGuideResource({}));
 

@@ -189,6 +189,8 @@ export interface Milestone {
   id?: string;
   number: number;
   title: string;
+  packageManifest?: Record<string, unknown>;
+  repository?: string;
   /** Author-provided estimate from the member's own manifest. Absent when not authored — never a guessed default. */
   estimatedMinutes?: number;
   url: string;

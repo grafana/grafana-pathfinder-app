@@ -195,6 +195,74 @@ describe('ContextService: online package recommendations (recommender-disabled b
     expect(rec!.manifest).not.toHaveProperty('minGrafanaVersion');
   });
 
+  it('normalizes prerequisite declarations from the online package manifest', async () => {
+    (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
+      baseUrl: 'https://interactive-learning.grafana.net/packages/',
+      packages: [
+        {
+          id: 'no-prerequisites',
+          path: 'no-prerequisites/v1',
+          title: 'No prerequisites field',
+          targeting: { match: { urlPrefix: '/connections' } },
+          manifest: { id: 'no-prerequisites', type: 'guide' },
+        },
+        {
+          id: 'empty-prerequisites',
+          path: 'empty-prerequisites/v1',
+          title: 'Empty prerequisites',
+          targeting: { match: { urlPrefix: '/connections' } },
+          manifest: { id: 'empty-prerequisites', type: 'guide', prerequisites: [] },
+        },
+        {
+          id: 'valid-prerequisites',
+          path: 'valid-prerequisites/v1',
+          title: 'Valid prerequisites',
+          targeting: { match: { urlPrefix: '/connections' } },
+          manifest: {
+            id: 'valid-prerequisites',
+            type: 'guide',
+            prerequisites: [
+              { id: 'first', label: '<strong>literal</strong> **text**' },
+              { id: 'bad-label', label: ' \t ' },
+              { id: ' \t ', label: 'Nonblank label' },
+              { id: 'first', label: 'Duplicate ID' },
+              { id: 'bad-shape', label: 42 },
+              { id: 'second', label: '[literal](url)' },
+            ],
+          },
+        },
+      ],
+    });
+
+    const result = await ContextService.fetchRecommendations(baseContext, {
+      acceptedTermsAndConditions: false,
+    });
+
+    const recommendationsById = new Map(
+      result.recommendations.map((recommendation) => [
+        (recommendation.manifest as Record<string, unknown> | undefined)?.id,
+        recommendation,
+      ])
+    );
+    expect(recommendationsById.get('no-prerequisites')?.manifest).toEqual({
+      id: 'no-prerequisites',
+      type: 'guide',
+    });
+    expect(recommendationsById.get('empty-prerequisites')?.manifest).toEqual({
+      id: 'empty-prerequisites',
+      type: 'guide',
+      prerequisites: [],
+    });
+    expect(recommendationsById.get('valid-prerequisites')?.manifest).toEqual({
+      id: 'valid-prerequisites',
+      type: 'guide',
+      prerequisites: [
+        { id: 'first', label: '<strong>literal</strong> **text**' },
+        { id: 'second', label: '[literal](url)' },
+      ],
+    });
+  });
+
   it('builds clean content/manifest URLs even when entry.path already has a trailing slash', async () => {
     (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
       baseUrl: 'https://interactive-learning.grafana.net/packages/',
