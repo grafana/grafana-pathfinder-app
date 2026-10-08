@@ -186,6 +186,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
       <ContentRenderer
         key={`preview-content-${resetKey}`}
         content={content}
+        completion={{ kind: 'untracked', reason: 'preview' }}
         className={`${journeyStyles} ${interactiveStyles} ${prismStyles} ${styles.previewContent}`}
       />
     </div>
