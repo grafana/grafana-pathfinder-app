@@ -101,7 +101,7 @@ An attempt's **mode is fixed at mint**. It is `records` only when there is a que
 `ContentRenderer` (`src/components/content-renderer/content-renderer.tsx`) fires `onGuideComplete(source, contentKey)` once per content, from the first of:
 
 - every interactive section in its container completed;
-- a `kind: 'guide'` event at 100% whose key matches the renderer's own `resolveGuideContentKey(content.url)`;
+- a `kind: 'guide'` event at 100% whose key matches the ambient key the surface published (`resolveGuideContentKey(content.url)`);
 - the Mark complete control.
 
 A reset re-arms it. Each surface forwards to `recordGuideCompletionForSurface` (`src/docs-retrieval/learning-journey-helpers.ts`), the single surface-neutral router. It decides milestone versus bundled versus standalone guide, and calls the recorder with `attemptEligible` true only for an ordinary guide. Journey refreshes pass `attemptEligible: false`.
