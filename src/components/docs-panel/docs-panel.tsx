@@ -787,6 +787,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     milestones?: Milestone[] | null,
     pathId?: string
   ): void {
+    const current = this.state.tabs.find((tab) => tab.id === tabId);
+    // The cover re-reports its selection on every mount; only a change to what projectPersistedTabs writes needs a save.
+    const selectionChanged =
+      (current?.activeTrackId || null) !== (trackId || null) || (!!trackId && current?.activeTrackPathId !== pathId);
     this.setState({
       tabs: this.state.tabs.map((tab) =>
         tab.id === tabId
@@ -794,6 +798,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           : tab
       ),
     });
+    if (current && selectionChanged) {
+      this.saveTabsToStorage();
+    }
   }
 
   public canNavigateNext(): boolean {
