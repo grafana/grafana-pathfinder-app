@@ -34,6 +34,10 @@ const POLL_MS = 5000;
 const MAX_POLL_MS = 60_000;
 const ACTIVITY_MS = 250;
 
+function outcome({ verdict }: { verdict?: string }): boolean | undefined {
+  return verdict === 'satisfied' ? true : verdict === 'unsatisfied' || verdict === 'invalid' ? false : undefined;
+}
+
 export function CompletionObservationProvider({ children, contentKey }: PropsWithChildren<{ contentKey: string }>) {
   const { checkPostconditions } = useGuideRequirements();
   const mode = useInteractiveMode();
@@ -42,7 +46,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
   const { config } = usePathfinderPluginConfig();
   const enabled = config.enableAutoDetection !== false && getFeatureFlagValue('pathfinder.passive-completion', true);
   const coordinator = useMemo(() => {
-    const inFlight = new Map<string, Promise<boolean>>();
+    const inFlight = new Map<string, Promise<boolean | undefined>>();
     const overdue = new Set<string>();
     return new CompletionCoordinator(async (conditions, step, signal) => {
       const action = step.actions[0];
@@ -58,29 +62,29 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       let timer: ReturnType<typeof setTimeout> | undefined;
       const evaluate = async () => {
         if (mode !== 'controller') {
-          return (await checkPostconditions(options)).verdict === 'satisfied';
+          return outcome(await checkPostconditions(options));
         }
         if (!channel) {
-          return false;
+          return undefined;
         }
         const { guideScoped, remaining } = splitGuideScopedRequirements(conditions);
-        const local =
-          !conditionTokens(guideScoped).length ||
-          (await checkPostconditions({ ...options, requirements: guideScoped })).verdict === 'satisfied';
-        if (!local) {
-          return false;
+        if (conditionTokens(guideScoped).length) {
+          const local = outcome(await checkPostconditions({ ...options, requirements: guideScoped }));
+          if (local !== true) {
+            return local;
+          }
         }
         if (!conditionTokens(remaining).length) {
           return true;
         }
         const remote = await channel.requestRequirementCheck(step.stepId, remaining, { ...options, passive: true });
-        return remote !== null && remote.verdict === 'satisfied';
+        return remote === null ? undefined : outcome(remote);
       };
       const key = JSON.stringify([conditions, step.actions[0]]);
       let pending = inFlight.get(key);
       if (!pending) {
         if (inFlight.size - overdue.size >= 4) {
-          return false;
+          return undefined;
         }
         pending = evaluate().finally(() => {
           inFlight.delete(key);
@@ -91,8 +95,8 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       let onAbort = () => {};
       try {
         return await Promise.race([
-          new Promise<boolean>((resolve) => {
-            onAbort = () => resolve(false);
+          new Promise<undefined>((resolve) => {
+            onAbort = () => resolve(undefined);
             if (signal.aborted) {
               onAbort();
             } else {
@@ -100,8 +104,8 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
             }
           }),
           pending,
-          new Promise<boolean>((resolve) => {
-            timer = setTimeout(() => resolve(false), 4000);
+          new Promise<undefined>((resolve) => {
+            timer = setTimeout(() => resolve(undefined), 4000);
           }),
         ]);
       } finally {

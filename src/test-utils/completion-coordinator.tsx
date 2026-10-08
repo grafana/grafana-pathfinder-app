@@ -28,7 +28,7 @@ function checkAsTheSidebarDoes(
       lazyRender: false,
       maxRetries: 0,
     });
-    return result.verdict === 'satisfied';
+    return result.verdict === 'unavailable' ? undefined : result.verdict === 'satisfied';
   };
 }
 

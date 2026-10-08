@@ -33,6 +33,7 @@ interface Entry {
   requested?: ObservationReason;
   skipVerify?: boolean;
   unmet?: string;
+  seenUnmet?: boolean;
   checkCommand?: boolean;
   committed: boolean;
   revision: number;
@@ -51,7 +52,7 @@ export type ObservationCheck = (
   conditions: ConditionInput,
   step: ObservationStep,
   signal: AbortSignal
-) => Promise<boolean>;
+) => Promise<boolean | undefined>;
 
 function hasObjectives(input: ConditionInput | undefined): boolean {
   return Array.isArray(input) ? input.length > 0 : !!input;
@@ -106,7 +107,6 @@ export class CompletionCoordinator {
   private running = false;
   private dirty = false;
   private active = false;
-  private opening = false;
   private abortController = new AbortController();
 
   constructor(
@@ -160,7 +160,6 @@ export class CompletionCoordinator {
       this.abortController = new AbortController();
     }
     this.active = true;
-    this.opening = true;
     liveCoordinators.add(this);
     this.recheck();
   }
@@ -299,6 +298,7 @@ export class CompletionCoordinator {
       entry.requested = undefined;
       entry.skipVerify = undefined;
       entry.unmet = undefined;
+      entry.seenUnmet = undefined;
       entry.checkCommand = false;
       entry.committed = false;
       entry.revision++;
@@ -472,7 +472,6 @@ export class CompletionCoordinator {
     this.running = true;
     void this.flush().finally(() => {
       this.running = false;
-      this.opening = false;
       if (this.dirty && this.active) {
         this.recheck();
       }
@@ -482,18 +481,19 @@ export class CompletionCoordinator {
   private async flush() {
     this.dirty = false;
     const work = [...this.entries.values()];
-    const checks = new Map<string, Promise<boolean>>();
+    const checks = new Map<string, Promise<boolean | undefined>>();
     const firstUnmet = async (conditions: ConditionInput, step: ObservationStep) => {
       for (const token of conditionTokens(conditions)) {
         const implicitTarget = token.includes('reftarget') ? step.actions[0] : undefined;
         const key = JSON.stringify([token, implicitTarget]);
         let result = checks.get(key);
         if (!result) {
-          result = this.check([token], step, this.abortController.signal).catch(() => false);
+          result = this.check([token], step, this.abortController.signal).catch(() => undefined);
           checks.set(key, result);
         }
-        if (!(await result)) {
-          return token;
+        const met = await result;
+        if (met !== true) {
+          return { token, known: met === false };
         }
       }
       return undefined;
@@ -525,9 +525,9 @@ export class CompletionCoordinator {
         }
         entry.checkCommand = false;
         const invalidBlank = Array.isArray(conditions) && conditions.some((token) => !token.trim());
-        const unmet =
+        const blocked =
           invalidBlank || (!conditionTokens(conditions).length && objectiveGate)
-            ? ''
+            ? { token: '', known: true }
             : conditionTokens(conditions).length
               ? await firstUnmet(conditions!, step)
               : undefined;
@@ -539,19 +539,22 @@ export class CompletionCoordinator {
         ) {
           continue;
         }
-        if (unmet === undefined) {
+        if (blocked === undefined) {
           try {
             this.commit(
               entry,
               objectiveGate ? 'objectives' : entry.requested!,
-              objectiveGate && this.opening ? 'load' : 'change'
+              objectiveGate && !entry.requested && !entry.seenUnmet ? 'load' : 'change'
             );
           } catch (error) {
             logger.warn('[completion-coordinator] completion callback failed', { stepId: step.stepId, error });
           }
-        } else if (entry.unmet !== unmet) {
-          entry.unmet = unmet;
-          this.changed();
+        } else {
+          entry.seenUnmet ||= blocked.known;
+          if (entry.unmet !== blocked.token) {
+            entry.unmet = blocked.token;
+            this.changed();
+          }
         }
       }
     };

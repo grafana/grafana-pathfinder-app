@@ -583,7 +583,7 @@ it('does not re-run objective checks for events that record no evidence', async 
   coordinator.stop();
 });
 
-it('marks only objectives met in the opening pass as a load', async () => {
+it('marks only objectives met on their first answered check as a load', async () => {
   let ready = false;
   const coordinator = new CompletionCoordinator(async ([token]) => token === 'has-datasources' || ready);
   const existing = step({ id: 'existing-outcome', objectives: ['has-datasources'] });
@@ -598,5 +598,54 @@ it('marks only objectives met in the opening pass as a load', async () => {
   coordinator.recheck();
   await settle();
   expect(later.commit).toHaveBeenCalledWith('objectives', 'change');
+  coordinator.stop();
+});
+
+it('still records an already-met objective as a load when its first checks gave no answer', async () => {
+  let answer: boolean | undefined = undefined;
+  const coordinator = new CompletionCoordinator(async () => answer);
+  const existing = step({ objectives: ['has-datasources'] });
+  coordinator.register(existing);
+  coordinator.start();
+  await settle();
+  coordinator.recheck();
+  await settle();
+  expect(existing.commit).not.toHaveBeenCalled();
+  answer = true;
+  coordinator.recheck();
+  await settle();
+  expect(existing.commit).toHaveBeenCalledWith('objectives', 'load');
+  coordinator.stop();
+});
+
+it('records an assisted completion as a change even when objectives were never seen unmet', async () => {
+  let answer: boolean | undefined = undefined;
+  const coordinator = new CompletionCoordinator(async () => answer);
+  const assisted = step({ objectives: ['has-datasources'] });
+  coordinator.register(assisted);
+  coordinator.start();
+  await settle();
+  coordinator.request(assisted.id);
+  answer = true;
+  coordinator.recheck();
+  await settle();
+  expect(assisted.commit).toHaveBeenCalledWith(expect.any(String), 'change');
+  coordinator.stop();
+});
+
+it('takes a fresh baseline after a reset', async () => {
+  let ready = false;
+  const coordinator = new CompletionCoordinator(async () => ready);
+  const item = step({ objectives: ['has-datasources'] });
+  coordinator.register(item);
+  coordinator.start();
+  await settle();
+  ready = true;
+  coordinator.recheck();
+  await settle();
+  expect(item.commit).toHaveBeenLastCalledWith('objectives', 'change');
+  coordinator.reset();
+  await settle();
+  expect(item.commit).toHaveBeenLastCalledWith('objectives', 'load');
   coordinator.stop();
 });
