@@ -43,6 +43,8 @@ export function bindExperimentsProvider(fn: GetActiveExperimentsFn): void {
 export enum UserInteraction {
   // Core Panel Interactions
   DocsPanelInteraction = 'docs_panel_interaction',
+  HelpButtonClickedToolbar = 'help_button_clicked_toolbar',
+  HelpButtonDismissedHint = 'help_button_dismissed_hint',
   PanelScroll = 'panel_scroll',
 
   // Navigation & Tab Management
@@ -274,7 +276,8 @@ export function tabTypeToContentType(tabType: string | undefined): AnalyticsCont
 
 export function reportAppInteraction(
   type: UserInteraction,
-  properties: Record<string, string | number | boolean> = {}
+  properties: Record<string, string | number | boolean> = {},
+  options: { mirrorToFaro?: boolean } = {}
 ): void {
   try {
     const interactionName = createInteractionName(type);
@@ -330,7 +333,9 @@ export function reportAppInteraction(
           faroProperties[key] = normalizeTelemetryUrl(value);
         }
       }
-      pushFaroUserAction(interactionName, faroProperties);
+      if (options.mirrorToFaro !== false) {
+        pushFaroUserAction(interactionName, faroProperties);
+      }
     }
   } catch (error) {
     logger.warn('Analytics reporting failed', { error });

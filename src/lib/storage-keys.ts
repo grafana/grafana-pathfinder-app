@@ -9,6 +9,7 @@
  */
 
 export const StorageKeys = {
+  HELP_BUTTON_ATTENTION_DISMISSED_PREFIX: 'pathfinder-help-button-nudge-v1:dismissed:',
   JOURNEY_COMPLETION: 'grafana-pathfinder-app-journey-completion',
   INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion', // Stores completion percentage by contentKey
   TABS: 'grafana-pathfinder-app-tabs',

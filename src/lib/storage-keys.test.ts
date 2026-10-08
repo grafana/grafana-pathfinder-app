@@ -48,6 +48,7 @@ describe('StorageKeys — stable string contract', () => {
       GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
 
       // Experiment / feature-flag state
+      HELP_BUTTON_ATTENTION_DISMISSED_PREFIX: 'pathfinder-help-button-nudge-v1:dismissed:',
       EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
       HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
       HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',

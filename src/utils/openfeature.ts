@@ -65,6 +65,11 @@ export const DEFAULT_HIGHLIGHTED_GUIDE_CONFIG: HighlightedGuideConfig = {
  * Naming convention: prefix with component name (e.g., pathfinder.feature-name)
  */
 const pathfinderFeatureFlags = {
+  'pathfinder.help-button-nudge-experiment': {
+    valueType: 'object',
+    values: ['excluded', 'control', 'learn', 'learn_hint'].map((variant) => ({ variant })),
+    defaultValue: { variant: 'excluded' },
+  },
   /**
    * Global kill-switch for the Pathfinder plugin in Grafana Cloud.
    * When true: Pathfinder loads normally (sidebar available)
