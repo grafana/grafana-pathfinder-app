@@ -37,6 +37,7 @@ jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: {
     KioskDemoStarted: 'kiosk_demo_started',
+    KioskInteraction: 'kiosk_interaction',
   },
 }));
 
@@ -123,7 +124,6 @@ describe('KioskTile', () => {
       guide_type: rule.type,
       target_instance: rule.targetUrl,
       launch_mode: 'presentation',
-      interactive_learning: true,
     });
 
     const analyticsCallOrder = (reportAppInteraction as jest.Mock).mock.invocationCallOrder[0]!;
@@ -306,6 +306,7 @@ describe('KioskTile', () => {
 
 describe('product navigation', () => {
   const product: KioskRule = {
+    id: 'synthetic',
     title: 'Product',
     description: 'Explore',
     type: 'interactive',
@@ -320,18 +321,16 @@ describe('product navigation', () => {
   it('opens the product without guide side effects and retains the panel preference', () => {
     panelModeManager.setModePersisted('floating');
     const close = jest.fn();
-    render(<KioskTile rule={product} index={0} mode="instance" onLaunch={close} />);
+    render(<KioskTile rule={product} index={0} mode="instance" onLaunch={close} blockIndex={4} />);
     fireEvent.click(screen.getByRole('button', { name: /Open product/ }));
     expect(mockPush).toHaveBeenCalledWith('/a/product?view=all&orgId=2#tab');
-    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskDemoStarted, {
-      kiosk_session_id: expect.any(String),
-      kiosk_name: 'unknown',
-      guide_title: product.title,
-      guide_type: product.type,
+    expect(reportAppInteraction).not.toHaveBeenCalledWith(UserInteraction.KioskDemoStarted, expect.anything());
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskInteraction, {
       launch_mode: 'instance',
-      target_instance: window.location.origin,
-      interactive_learning: false,
-      product_page: '/a/product',
+      block_index: 4,
+      component: 'guide-links',
+      action: 'open_product',
+      rule_id: 'synthetic',
     });
     expect((reportAppInteraction as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
       close.mock.invocationCallOrder[0]!
@@ -356,23 +355,19 @@ describe('product navigation', () => {
       'noopener,noreferrer'
     );
   });
-  it.each(['instance', 'presentation'] as const)('attributes a %s product launch to the kiosk session', (mode) => {
+  it.each(['instance', 'presentation'] as const)('attributes a %s product open to the kiosk session', (mode) => {
     const session = startKioskSession('dem');
-    const guideUrl = 'https://interactive-learning.grafana.net/packages/welcome-frontend-observability/content.json';
-    launchKioskGuide({ ...product, url: guideUrl, targetUrl: 'https://example.com/grafana/' }, mode);
+    launchKioskGuide({ ...product, targetUrl: 'https://example.com/grafana/' }, mode, undefined, undefined, 2);
     expect(reportAppInteraction).toHaveBeenCalledTimes(1);
-    expect(reportAppInteraction).toHaveBeenCalledWith(
-      UserInteraction.KioskDemoStarted,
-      expect.objectContaining({
-        kiosk_session_id: session.id,
-        kiosk_name: 'dem',
-        guide_url: guideUrl,
-        launch_mode: mode,
-        target_instance: mode === 'instance' ? window.location.origin : 'https://example.com/grafana/',
-        interactive_learning: false,
-        product_page: '/a/product',
-      })
-    );
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskInteraction, {
+      kiosk_session_id: session.id,
+      kiosk_name: 'dem',
+      launch_mode: mode,
+      block_index: 2,
+      component: 'guide-links',
+      action: 'open_product',
+      rule_id: 'synthetic',
+    });
     session.end();
   });
   it('does not report a rejected product launch', () => {

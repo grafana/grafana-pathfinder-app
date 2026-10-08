@@ -9,7 +9,7 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { PATHFINDER_PARAMS, stripPathfinderParams } from '../../utils/pathfinder-search-params';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { getKioskName, getKioskSessionId } from '../../lib/kiosk-analytics';
+import { getKioskName, getKioskSessionId, reportKioskInteraction } from '../../lib/kiosk-analytics';
 import type { KioskRule } from './kiosk-rules';
 import { parseKioskWebUrl } from '../../security/kiosk-url';
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
@@ -20,7 +20,8 @@ export function launchKioskGuide(
   rule: KioskRule,
   mode: KioskMode,
   onLaunch?: () => void,
-  prepared?: PreparedGuideLaunch
+  prepared?: PreparedGuideLaunch,
+  blockIndex?: number
 ): void {
   const page = rule.page === undefined ? undefined : validateInternalNavigationPath(rule.page);
   if (page === null || (rule.interactiveLearning !== false && !isAllowedContentUrl(rule.url))) {
@@ -51,7 +52,7 @@ export function launchKioskGuide(
         target.searchParams.set(key, value);
       }
       target.hash = destination.hash;
-      reportKioskLaunch(rule, mode, getKioskSessionId() ?? crypto.randomUUID(), destination.pathname);
+      reportKioskInteraction(mode, blockIndex, { component: 'guide-links', action: 'open_product', ruleId: rule.id });
       window.open(target.href, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -63,7 +64,7 @@ export function launchKioskGuide(
     if (subpath && (destination.pathname === subpath || destination.pathname.startsWith(`${subpath}/`))) {
       destination.pathname = destination.pathname.slice(subpath.length) || '/';
     }
-    reportKioskLaunch(rule, mode, getKioskSessionId() ?? crypto.randomUUID(), destination.pathname);
+    reportKioskInteraction(mode, blockIndex, { component: 'guide-links', action: 'open_product', ruleId: rule.id });
     onLaunch?.();
     if (sidebarState.getIsSidebarMounted() && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
@@ -96,7 +97,15 @@ export function launchKioskGuide(
   const sessionId = getKioskSessionId() ?? crypto.randomUUID();
   const kioskName = getKioskName() ?? 'unknown';
 
-  reportKioskLaunch(rule, mode, sessionId);
+  reportAppInteraction(UserInteraction.KioskDemoStarted, {
+    kiosk_session_id: sessionId,
+    kiosk_name: kioskName,
+    guide_url: rule.url,
+    guide_title: rule.title,
+    guide_type: rule.type,
+    launch_mode: mode,
+    target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
+  });
 
   if (!prepared) {
     url.searchParams.set('doc', rule.url);
@@ -158,21 +167,6 @@ export function launchKioskGuide(
   } else {
     window.open(url.toString(), '_blank', 'noopener,noreferrer');
   }
-}
-
-function reportKioskLaunch(rule: KioskRule, mode: KioskMode, sessionId: string, productPage?: string): void {
-  const isProduct = productPage !== undefined;
-  reportAppInteraction(UserInteraction.KioskDemoStarted, {
-    kiosk_session_id: sessionId,
-    kiosk_name: getKioskName() ?? 'unknown',
-    ...((!isProduct || isAllowedContentUrl(rule.url)) && { guide_url: rule.url }),
-    guide_title: rule.title,
-    guide_type: rule.type,
-    launch_mode: mode,
-    target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
-    interactive_learning: !isProduct,
-    ...(isProduct && { product_page: productPage }),
-  });
 }
 
 function stripProductLaunchParams(url: URL): void {

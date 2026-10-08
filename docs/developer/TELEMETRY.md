@@ -299,7 +299,7 @@ Live values are computed when the event fires. Stored values are read back from 
 
 `pathfinder_kiosk_catalog_loaded` is sent to RudderStack through `reportAppInteraction` and mirrored as a Faro user action. The existing Faro event remains available for operational queries. It records the served `tier` (`override`, `configured`, `generic`, or `bundled`) and whether loading `degraded`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason; rejected rule logs name the invalid field without its value.
 
-`KioskDemoStarted` includes `launch_mode` (`instance` or `presentation`). Since URL-selected kiosks were added, `target_instance` is the current origin for instance launches and the catalog target (or current origin) for presentation launches. Filter by `launch_mode = presentation` for booth-demo comparisons; older events lack this field. Product cards (rules with `interactiveLearning: false`) emit the same event when they navigate, with `interactive_learning: false` and `product_page` set to the destination path without its query or fragment; `guide_url` is omitted unless the rule's URL is an allowed content URL. Guide launches send `interactive_learning: true`. Events before this field existed are guide launches; product launches sent nothing. Catalog URLs, rule content, and raw failure messages are not added to catalog telemetry.
+`KioskDemoStarted` includes `launch_mode` (`instance` or `presentation`). Since URL-selected kiosks were added, `target_instance` is the current origin for instance launches and the catalog target (or current origin) for presentation launches. Filter by `launch_mode = presentation` for booth-demo comparisons; older events lack this field. Catalog URLs, rule content, and raw failure messages are not added to catalog telemetry.
 
 Structured kiosk controls emit `kiosk_interaction`, mirrored to Faro through the normal analytics bridge:
 
@@ -308,6 +308,9 @@ Structured kiosk controls emit `kiosk_interaction`, mirrored to Faro through the
 | `input`       | `change` once per field per mounted form; `invalid` for native validation | `input_type`, zero-based `input_index`                                 |
 | `launch-form` | `submit`, `ready`, `error`                                                | Errors use bounded `reason`: `validation`, `storage`, or `unavailable` |
 | `command`     | `copy`                                                                    | `outcome`: `success` or `error`                                        |
+| `guide-links` | `open_product` when a product card or link navigates                      | `rule_id` when the rule has a slug-shaped ID                           |
+
+Product rules (`interactiveLearning: false`) open a Grafana page rather than a guide, so they emit `open_product` and never `KioskDemoStarted`, which counts guide launches only. Rejected destinations emit nothing. For "saw the kiosk page" exposure, count `pathfinder_kiosk_catalog_loaded` rather than launches.
 
 Explicit exits emit the same event with `component=kiosk`, `action=exit`, and `method=button` or `escape`. Launching a guide is not counted as an exit, and dismissing a child dropdown is not counted either.
 
