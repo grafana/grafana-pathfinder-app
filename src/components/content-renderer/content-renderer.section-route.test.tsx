@@ -11,7 +11,7 @@ import React from 'react';
 import { act, render } from '@testing-library/react';
 
 import type { RawContent } from '../../types/content.types';
-import { dispatchProgress } from '../../global-state/progress-events';
+import { dispatchProgress, subscribeProgressEvent, type ProgressEventDetail } from '../../global-state/progress-events';
 import { resetContentKeyForTests } from '../../global-state/content-key';
 import { StorageEvents } from '../../lib/event-names';
 import { interactiveStepStorage } from '../../lib/user-storage';
@@ -142,6 +142,42 @@ describe('ContentRenderer — the automatic section route and reset', () => {
     completeSection('section-3');
 
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('tags the section event a mounted section dispatches with the renderer own key', async () => {
+    const sections: ProgressEventDetail[] = [];
+    const unsubscribe = subscribeProgressEvent((detail) => {
+      if (detail.kind === 'section') {
+        sections.push(detail);
+      }
+    });
+    const guide: RawContent = {
+      ...content,
+      content: JSON.stringify({
+        id: 'owner-key-guide',
+        title: 'Owner key guide',
+        blocks: [
+          {
+            type: 'section',
+            id: 'owned-section',
+            title: 'Owned',
+            blocks: [{ type: 'interactive', action: 'noop', content: 'Read me.' }],
+          },
+        ],
+      }),
+    };
+    try {
+      render(<ContentRenderer content={guide} />);
+      await act(async () => {
+        jest.advanceTimersByTime(SETTLE_MS);
+      });
+
+      expect(sections).toEqual([
+        expect.objectContaining({ kind: 'section', sectionId: 'section-owned-section', contentKey: GUIDE_URL }),
+      ]);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it.each([
