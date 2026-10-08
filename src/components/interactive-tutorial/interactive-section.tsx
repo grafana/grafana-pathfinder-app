@@ -1,7 +1,7 @@
 import { useCompletionCoordinator } from '../../global-state/observation/context';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { usePathfinderPluginConfig } from '../../hooks';
-import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef, useContext } from 'react';
 import { Button } from '@grafana/ui';
 
 import { useInteractiveElements, outcomeFromLoopExit, type LoopExitReason } from '../../interactive-engine';
@@ -85,6 +85,7 @@ import type { InteractiveElementData } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
+import { GuideContentKeyContext } from './guide-content-key-context';
 import {
   analyzeAcknowledgement,
   getResumeInfo as computeResumeInfo,
@@ -203,6 +204,8 @@ export function InteractiveSection({
 
   // --- Persistence helpers (restore across refresh) ---
   // Content key resolved via shared utility to ensure persist/restore consistency
+
+  const resolveOwnerContentKey = useContext(GuideContentKeyContext);
 
   // Detect if we're in preview mode (block editor preview)
   // Preview mode uses a special URL pattern: block-editor://preview/{guide-id}
@@ -516,7 +519,12 @@ export function InteractiveSection({
       // belt-and-braces against future re-dispatch effects.
       if (!hasEmittedGuideCompletionRef.current) {
         hasEmittedGuideCompletionRef.current = true;
-        dispatchProgress({ kind: 'section', sectionId, completed: true });
+        dispatchProgress({
+          kind: 'section',
+          contentKey: resolveOwnerContentKey?.() ?? '',
+          sectionId,
+          completed: true,
+        });
         // Persist the section's done state so `section-completed:`
         // requirement checks work without the section being mounted
         // (other milestones, virtualized regions, conditional branches).
@@ -538,7 +546,7 @@ export function InteractiveSection({
         SequentialRequirementsManager.getInstance().watchNextStep(3000); // Watch for 3 seconds
       });
     }
-  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode, gateAnalysis.isAllPassive]);
+  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode, gateAnalysis.isAllPassive, resolveOwnerContentKey]);
 
   // PRE-COMPUTE eligibility for ALL steps once (React best practice)
   // This prevents expensive recalculation on every render

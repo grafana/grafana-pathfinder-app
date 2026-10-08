@@ -274,13 +274,16 @@ it.each(['instance', 'presentation'] as const)('launches product rules from the 
   const onLaunch = jest.fn();
   render(
     <KioskPage
-      page={{ version: 1, blocks: [{ type: 'guide-links', layout: 'links', links: [{ ruleId: 'product' }] }] }}
+      page={{
+        version: 1,
+        blocks: [{ type: 'divider' }, { type: 'guide-links', layout: 'links', links: [{ ruleId: 'product' }] }],
+      }}
       rules={[product]}
       mode={mode}
       onLaunch={onLaunch}
     />
   );
   fireEvent.click(screen.getByRole('button', { name: 'Product — Open product' }));
-  expect(launchKioskGuide).toHaveBeenCalledWith(product, mode, onLaunch);
+  expect(launchKioskGuide).toHaveBeenCalledWith(product, mode, onLaunch, undefined, 1);
   expect(prepareKioskInputs).not.toHaveBeenCalled();
 });

@@ -367,8 +367,8 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   constants in `pkg/plugin/` are the definition, and the front-end gates on `available` and
   ignores the string.
   A bare 503 conflates "never works here" with "blip": the front-end already lumps 503 into its
-  not-rolled-out status set (`UNAVAILABLE_STATUSES` in `src/utils/fetchBackendGuides.ts`, mirrored
-  in `src/context-engine/context.init.ts`) and silently renders empty with no retry, so a
+  not-rolled-out status set (`UNAVAILABLE_STATUSES` in `src/utils/fetchBackendGuides.ts`)
+  and silently renders empty with no retry, so a
   transient 503 darkens the feature for that load exactly as if it were structurally absent. This
   is also why missing identity on a GET read is soft-200, not 401: these routes gate whether a
   feature renders at all.
@@ -847,5 +847,5 @@ provider that predates and sits outside the #1966 contract. That test is the aut
 rule's exact precision (how a conditional method, a url builder, or a variable-held request
 object is resolved); see it rather than this paragraph for the mechanics.
 
-Two pre-existing direct reads are grandfathered in that test's allowlist, tracked for pay-down in
+One pre-existing direct read remains grandfathered in that test's allowlist, tracked for pay-down in
 [#1975](https://github.com/grafana/grafana-pathfinder-app/issues/1975).

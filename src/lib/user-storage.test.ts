@@ -20,6 +20,7 @@ import {
   wrapEnvelope,
 } from './user-storage';
 import { StorageEvents } from './event-names';
+import { logger } from './logging';
 import { StorageKeys, buildVersionedSectionStorageKey } from './storage-keys';
 
 // Mock `@grafana/runtime` so the quota-toast helper can publish through a
@@ -244,6 +245,63 @@ describe('milestoneCompletionStorage', () => {
   it('removeCompleted is a no-op when the journey has no record at all', async () => {
     await milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy');
     expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
+  });
+
+  // markCompleted reads the whole record, mutates its own journey's entry, and
+  // writes the whole record back — two calls for DIFFERENT journeys fired
+  // without an await between them would otherwise both read the same
+  // pre-write record, and whichever write resolved last would silently
+  // discard the other's journey (a lost update, mirroring
+  // bounded-record-storage.test.ts's "keeps every key when two set() calls
+  // for DIFFERENT keys race" case).
+  it('keeps both journeys when two markCompleted calls for DIFFERENT journeys race without an await between them', async () => {
+    const otherJourneyUrl = 'backend-guide:fe-alerting-path';
+
+    await Promise.all([
+      milestoneCompletionStorage.markCompleted(journeyUrl, 'install-alloy'),
+      milestoneCompletionStorage.markCompleted(otherJourneyUrl, 'fe-alerting-01'),
+    ]);
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['install-alloy']));
+    await expect(milestoneCompletionStorage.getCompleted(otherJourneyUrl)).resolves.toEqual(
+      new Set(['fe-alerting-01'])
+    );
+  });
+
+  it('keeps only the survivor when removeCompleted calls race inside Promise.all', async () => {
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'm1');
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'm2');
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'm3');
+
+    await Promise.all([
+      milestoneCompletionStorage.removeCompleted(journeyUrl, 'm1'),
+      milestoneCompletionStorage.removeCompleted(journeyUrl, 'm2'),
+    ]);
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['m3']));
+  });
+
+  it('runs the next queued mutation after a rejected one', async () => {
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'm1');
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {
+      throw new Error('logger failed');
+    });
+    const getItem = jest.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
+      throw new Error('read failed');
+    });
+
+    try {
+      const [rejected] = await Promise.allSettled([
+        milestoneCompletionStorage.removeCompleted(journeyUrl, 'm1'),
+        milestoneCompletionStorage.markCompleted(journeyUrl, 'm2'),
+      ]);
+
+      expect(rejected.status).toBe('rejected');
+      await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['m1', 'm2']));
+    } finally {
+      getItem.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   describe('getCompletedSync', () => {
