@@ -1,6 +1,7 @@
 import { getAppEvents } from '@grafana/runtime';
 import { BusEventBase, BusEventWithPayload } from '@grafana/data';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { clearExtensionSidebarDocked } from '../lib/storage/extension-sidebar';
 import pluginJson from '../plugin.json';
 import { panelModeManager } from './panel-mode';
 import { autoLaunchChannel } from './auto-launch';
@@ -153,6 +154,7 @@ class GlobalSidebarState {
 
   public requestCloseSidebar(): void {
     getAppEvents().publish(new CloseExtensionSidebarEvent());
+    clearExtensionSidebarDocked();
   }
 
   public closeSidebar(): void {
