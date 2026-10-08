@@ -743,7 +743,7 @@ describe('a reader action shared by blocks in different sections', () => {
     coordinator.stop();
   });
 
-  it('keeps a section started by a skip across a surface handoff', async () => {
+  it('keeps a section started by a skip across a surface handoff, even if that step never remounts', async () => {
     const before = new CompletionCoordinator(async () => false);
     const skipped = step({ id: 'skipped', sectionId: 'second', order: 4, actions: [save] });
     before.register(skipped);
@@ -751,13 +751,12 @@ describe('a reader action shared by blocks in different sections', () => {
     before.request('skipped', 'skipped');
     const started = before.exportStarted();
     before.stop();
-    expect(started).toEqual(['skipped']);
+    expect(started).toEqual([expect.objectContaining({ id: 'skipped', sectionId: 'second' })]);
 
     const after = new CompletionCoordinator(async () => false);
     after.restore({}, started);
     const later = step({ id: 'later', sectionId: 'second', order: 5, actions: [save] });
     const earlier = step({ id: 'earlier', sectionId: 'first', order: 1, actions: [save] });
-    after.register({ ...skipped, completed: true });
     after.register(later);
     after.register(earlier);
     after.start();
@@ -780,7 +779,7 @@ describe('a reader action shared by blocks in different sections', () => {
     unmount();
     coordinator.request('skipped', 'skipped');
     expect(skipped.commit).toHaveBeenCalledWith('skipped', 'change');
-    expect(coordinator.exportStarted()).toEqual(['skipped']);
+    expect(coordinator.exportStarted()).toEqual([expect.objectContaining({ id: 'skipped', sectionId: 'second' })]);
     coordinator.observe((action) => action.refTarget === '#save');
     await settle();
     expect(later.commit).toHaveBeenCalledWith('observed', 'change');

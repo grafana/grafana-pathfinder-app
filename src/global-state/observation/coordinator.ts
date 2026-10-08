@@ -56,7 +56,13 @@ export type ObservationCheck = (
   signal: AbortSignal
 ) => Promise<boolean | undefined>;
 
-function sectionOf(step: ObservationStep): string {
+export type StartedStep = Pick<ObservationStep, 'id' | 'stepId' | 'guideKey' | 'sectionId'>;
+
+function startedStep({ id, stepId, guideKey, sectionId }: ObservationStep): StartedStep {
+  return { id, stepId, guideKey, sectionId };
+}
+
+function sectionOf(step: Pick<ObservationStep, 'id' | 'guideKey' | 'sectionId'>): string {
   return JSON.stringify([step.guideKey, step.sectionId ?? step.id]);
 }
 
@@ -107,8 +113,7 @@ export function isPassiveCondition(conditions: ConditionInput): boolean {
 export class CompletionCoordinator {
   private dormant = new Map<string, { step: ObservationStep; cursor: number }>();
   private entries = new Map<string, Entry>();
-  private started = new Map<string, ObservationStep>();
-  private restoredStarted = new Set<string>();
+  private started = new Map<string, StartedStep>();
   private listeners = new Set<() => void>();
   private revision = 0;
   generation = 0;
@@ -122,13 +127,10 @@ export class CompletionCoordinator {
     private restoredCursors: Record<string, number> = {}
   ) {}
 
-  restore(cursors: Record<string, number>, started: readonly string[] = []) {
+  restore(cursors: Record<string, number>, started: readonly StartedStep[] = []) {
     this.restoredCursors = cursors;
-    this.restoredStarted = new Set(started);
+    started.forEach((step) => this.started.set(step.id, step));
     this.entries.forEach((entry, id) => {
-      if (this.restoredStarted.delete(id)) {
-        this.started.set(id, entry.step);
-      }
       const cursor = cursors[id];
       if (cursor === undefined) {
         return;
@@ -154,7 +156,7 @@ export class CompletionCoordinator {
   }
 
   exportStarted() {
-    return [...this.started.keys()];
+    return [...this.started.values()];
   }
 
   subscribe = (listener: () => void) => {
@@ -198,9 +200,6 @@ export class CompletionCoordinator {
       Math.max(this.restoredCursors[step.id] ?? 0, previous?.cursor ?? previousCursor),
       step.actions.length
     );
-    if (this.restoredStarted.delete(step.id) || this.started.has(step.id)) {
-      this.started.set(step.id, step);
-    }
     this.dormant.delete(step.id);
     delete this.restoredCursors[step.id];
     const entry: Entry = previous ?? { step, cursor: restored, committed: false, revision: 0, epoch: 0 };
@@ -280,7 +279,7 @@ export class CompletionCoordinator {
         heldRequests.delete(id);
       }
     });
-    const inScope = (step: ObservationStep) =>
+    const inScope = (step: StartedStep) =>
       step.sectionId === sectionId && (stepId === undefined || step.stepId === stepId);
     this.dormant.forEach((entry, id) => {
       if (inScope(entry.step)) {
@@ -313,13 +312,11 @@ export class CompletionCoordinator {
       this.generation++;
       this.restoredCursors = {};
       this.started.clear();
-      this.restoredStarted.clear();
     } else {
       this.dormant.delete(id);
       heldRequests.delete(id);
       delete this.restoredCursors[id];
       this.started.delete(id);
-      this.restoredStarted.delete(id);
     }
     const epoch = nextObservationStamp();
     this.entries.forEach((entry, key) => {
@@ -436,7 +433,7 @@ export class CompletionCoordinator {
       return;
     }
     entry.cursor = cursor;
-    this.started.set(id, entry.step);
+    this.started.set(id, startedStep(entry.step));
     if (entry.cursor === entry.step.actions.length) {
       entry.requested = 'observed';
     }
@@ -448,7 +445,7 @@ export class CompletionCoordinator {
     const entry = this.entries.get(id);
     const target = entry?.step ?? this.dormant.get(id)?.step;
     if (target) {
-      this.started.set(id, target);
+      this.started.set(id, startedStep(target));
     }
     if (!entry) {
       const dormant = this.dormant.get(id);

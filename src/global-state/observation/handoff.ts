@@ -1,10 +1,25 @@
+import type { StartedStep } from './coordinator';
+
 const KEY = 'pathfinder-observation-handoff';
 export const OBSERVATION_HANDOFF_EVENT = 'pathfinder-observation-handoff';
 export type ObservationCursors = Record<string, number>;
 export interface ObservationHandoff {
   cursors: ObservationCursors;
-  started: string[];
+  started: StartedStep[];
 }
+const isBounded = (value: unknown): value is string => typeof value === 'string' && value.length <= 4096;
+const isStartedStep = (value: unknown): value is StartedStep => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const { id, stepId, guideKey, sectionId } = value as Record<string, unknown>;
+  return (
+    isBounded(id) &&
+    isBounded(stepId) &&
+    (guideKey === undefined || isBounded(guideKey)) &&
+    (sectionId === undefined || isBounded(sectionId))
+  );
+};
 const EMPTY: ObservationHandoff = { cursors: {}, started: [] };
 
 export function saveObservationHandoff(contentKey: string, { cursors, started }: ObservationHandoff): void {
@@ -39,8 +54,11 @@ export function takeObservationHandoff(contentKey: string): ObservationHandoff {
           cursor <= 256
       )
     ) as ObservationCursors;
-    const started = Array.isArray(value.started)
-      ? value.started.filter((id: unknown): id is string => typeof id === 'string' && id.length <= 4096).slice(0, 256)
+    const started: StartedStep[] = Array.isArray(value.started)
+      ? value.started
+          .filter(isStartedStep)
+          .slice(0, 256)
+          .map(({ id, stepId, guideKey, sectionId }: StartedStep) => ({ id, stepId, guideKey, sectionId }))
       : [];
     return { cursors, started };
   } catch {
