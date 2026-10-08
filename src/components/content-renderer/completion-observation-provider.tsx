@@ -163,7 +163,8 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
                 activity = setTimeout(visibleCheck, ACTIVITY_MS);
               }
             },
-            (touched) => coordinator.observe((action) => matchesFormfillState(action, touched))
+            (touched) =>
+              coordinator.observe((action, since) => matchesFormfillState(action, (field) => touched(field, since)))
           )
         : () => {};
     let observe = observeActions();
@@ -191,7 +192,11 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
     };
     window.addEventListener('storage', restoreHandoff);
     const handleReset = (event: Event) => {
-      const key = (event as CustomEvent<{ contentKey?: string }>).detail?.contentKey;
+      const { contentKey: key, sectionId } =
+        (event as CustomEvent<{ contentKey?: string; sectionId?: string }>).detail ?? {};
+      if (sectionId !== undefined) {
+        return;
+      }
       if (!key || key === '*') {
         coordinator.reset(undefined, 'all');
       } else if (key === resolveGuideContentKey(contentKey)) {

@@ -374,10 +374,17 @@ describe('observation message validation', () => {
     expect(validateCrossTabMessage(message)).toBe(message);
   });
 
+  it('accepts a non-negative integer reset epoch on a step', () => {
+    const message = subscription([{ id: 's', cursor: 0, epoch: 7, actions: [{ targetAction: 'noop' }] }]);
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
   it.each([
     ['an unknown action verb', [{ id: 's', cursor: 0, actions: [{ targetAction: 'execute' }] }]],
     ['a cursor past the last action', [{ id: 's', cursor: 2, actions: [{ targetAction: 'button', refTarget: 'a' }] }]],
     ['a negative cursor', [{ id: 's', cursor: -1, actions: [{ targetAction: 'button', refTarget: 'a' }] }]],
+    ['a fractional epoch', [{ id: 's', cursor: 0, epoch: 1.5, actions: [{ targetAction: 'noop' }] }]],
+    ['a negative epoch', [{ id: 's', cursor: 0, epoch: -1, actions: [{ targetAction: 'noop' }] }]],
     ['too many steps', Array.from({ length: 257 }, (_, i) => ({ id: `s${i}`, cursor: 0, actions: [] }))],
   ])('rejects a subscription with %s', (_name, steps) => {
     expect(validateCrossTabMessage(subscription(steps))).toBeNull();

@@ -1,5 +1,6 @@
 import { locationService } from '@grafana/runtime';
 import type { ObservedAction } from '../../global-state/observation/coordinator';
+import { nextObservationStamp } from '../../global-state/observation/action-progress';
 import { resolveSelector } from '../../lib/dom/selector-resolver';
 import { querySelectorAllEnhanced, findButtonByText } from '../../lib/dom';
 import { matchFormValue } from './action-matcher';
@@ -154,11 +155,11 @@ export function matchesPassiveAction(action: ObservedAction, event: Event): bool
 
 export function observePassiveActions(
   onEvent: (event: Event) => void,
-  onSettled?: (touched: (field: Element) => boolean) => void
+  onSettled?: (touched: (field: Element, since?: number) => boolean) => void
 ): () => void {
   const values = new WeakMap<Element, string>();
-  const touchedFields = new WeakSet<Element>();
-  const touched = (field: Element) => touchedFields.has(field);
+  const touchedFields = new WeakMap<Element, number>();
+  const touched = (field: Element, since = 0) => (touchedFields.get(field) ?? 0) > since;
   let settling: ReturnType<typeof setTimeout> | undefined;
   const settle = () => {
     if (onSettled) {
@@ -168,7 +169,7 @@ export function observePassiveActions(
   };
   const touch = (event: Event) => {
     if (isFormField(event.target)) {
-      touchedFields.add(event.target);
+      touchedFields.set(event.target, nextObservationStamp());
     }
   };
   const listener = (event: Event) => {
@@ -177,7 +178,7 @@ export function observePassiveActions(
     }
     const target = event.target;
     if ((event.type === 'input' || event.type === 'change') && isFormField(target)) {
-      touchedFields.add(target);
+      touchedFields.set(target, nextObservationStamp());
       if (values.get(target) === target.value) {
         return;
       }

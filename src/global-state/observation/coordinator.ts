@@ -1,4 +1,4 @@
-import { nextRequiredAction, advanceActionProgress } from './action-progress';
+import { nextRequiredAction, advanceActionProgress, nextObservationStamp } from './action-progress';
 import { conditionTokens } from '../../lib/condition-input';
 import type { ProgressOrigin } from '../progress-events';
 import { logger } from '../../lib/logging';
@@ -37,6 +37,7 @@ interface Entry {
   checkCommand?: boolean;
   committed: boolean;
   revision: number;
+  epoch: number;
 }
 
 interface HeldRequest {
@@ -184,7 +185,7 @@ export class CompletionCoordinator {
     );
     this.dormant.delete(step.id);
     delete this.restoredCursors[step.id];
-    const entry: Entry = previous ?? { step, cursor: restored, committed: false, revision: 0 };
+    const entry: Entry = previous ?? { step, cursor: restored, committed: false, revision: 0, epoch: 0 };
     entry.cursor = restored;
     if (restored > 0 && restored === step.actions.length) {
       entry.requested = 'observed';
@@ -274,9 +275,9 @@ export class CompletionCoordinator {
   }
 
   reset(id?: string, scope: 'guide' | 'all' = 'guide') {
-    this.abortController.abort();
-    this.abortController = new AbortController();
     if (id === undefined) {
+      this.abortController.abort();
+      this.abortController = new AbortController();
       const guides = this.ownGuides();
       heldRequests.forEach((held, key) => {
         if (scope === 'all' || guides.has(held.guideKey)) {
@@ -284,12 +285,14 @@ export class CompletionCoordinator {
         }
       });
       this.dormant.clear();
+      this.generation++;
+      this.restoredCursors = {};
     } else {
       this.dormant.delete(id);
       heldRequests.delete(id);
+      delete this.restoredCursors[id];
     }
-    this.generation++;
-    this.restoredCursors = {};
+    const epoch = nextObservationStamp();
     this.entries.forEach((entry, key) => {
       if (id !== undefined && key !== id) {
         return;
@@ -302,6 +305,7 @@ export class CompletionCoordinator {
       entry.checkCommand = false;
       entry.committed = false;
       entry.revision++;
+      entry.epoch = epoch;
     });
     this.changed();
     this.recheck();
@@ -354,10 +358,10 @@ export class CompletionCoordinator {
         ({ step, committed }) =>
           !committed && !step.completed && step.eligible && !step.executing && !hasObjectives(step.objectives)
       )
-      .map((entry) => ({ id: entry.step.id, actions: entry.step.actions, cursor: entry.cursor }));
+      .map((entry) => ({ id: entry.step.id, actions: entry.step.actions, cursor: entry.cursor, epoch: entry.epoch }));
   }
 
-  observe(matches: (action: ObservedAction) => boolean) {
+  observe(matches: (action: ObservedAction, since: number) => boolean) {
     if ([...this.entries.values()].some((entry) => entry.step.executing)) {
       return;
     }
@@ -368,7 +372,7 @@ export class CompletionCoordinator {
       }
       const index = nextRequiredAction(step.actions, entry.cursor);
       const action = step.actions[index];
-      if (!action || !matches(action)) {
+      if (!action || !matches(action, entry.epoch)) {
         continue;
       }
       this.observeIndex(step.id, index);

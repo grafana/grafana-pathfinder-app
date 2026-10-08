@@ -5,6 +5,7 @@ import { useObservedCompletion } from '../../global-state/observation/use-observ
 import { markStepCompleted } from '../../global-state/completion-store';
 import { reportAppInteraction } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
+import { dispatchProgress } from '../../global-state/progress-events';
 import { CompletionCoordinator, resetHeldRequestsForTests } from '../../global-state/observation/coordinator';
 
 const mockCheck = jest.fn();
@@ -512,4 +513,72 @@ it('forgets fields the reader touched before progress was reset', async () => {
   } finally {
     jest.useRealTimers();
   }
+});
+
+it('keeps other steps observed when one step is reset', async () => {
+  jest.useFakeTimers();
+  try {
+    const done: Record<string, jest.Mock> = { a: jest.fn(), b: jest.fn() };
+    function FormStep({ id }: { id: 'a' | 'b' }) {
+      useObservedCompletion({
+        stepId: id,
+        executing: false,
+        eligible: true,
+        onComplete: done[id],
+        actions: [{ targetAction: 'formfill', refTarget: `input[aria-label="${id}"]`, targetValue: 'ready' }],
+        analytics: { location: 'test', targetAction: 'formfill', stepMeta: { stepId: id } },
+      });
+      return null;
+    }
+    render(
+      <>
+        <input aria-label="a" defaultValue="ready" />
+        <input aria-label="b" defaultValue="ready" />
+        <button>Elsewhere</button>
+        <CompletionObservationProvider contentKey="guide">
+          <FormStep id="a" />
+          <FormStep id="b" />
+        </CompletionObservationProvider>
+      </>
+    );
+    const advance = async (ms: number) => {
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+    };
+    act(() => {
+      screen.getByLabelText('a').focus();
+      screen.getByLabelText('b').focus();
+    });
+    act(() => {
+      dispatchProgress({ kind: 'step', stepId: 'a', completed: false, reason: 'none' });
+    });
+    fireEvent.click(screen.getByText('Elsewhere'));
+    await advance(500);
+    expect(done.b).toHaveBeenCalledTimes(1);
+    expect(done.a).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('leaves other sections observed when one section is reset', async () => {
+  const done = jest.fn();
+  render(
+    <>
+      <button id="first">First</button>
+      <button id="last">Last</button>
+      <CompletionObservationProvider contentKey="guide">
+        <Step onComplete={done} />
+      </CompletionObservationProvider>
+    </>
+  );
+  fireEvent.click(screen.getByText('First'));
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: 'guide', sectionId: 'other' } })
+    );
+  });
+  fireEvent.click(screen.getByText('Last'));
+  await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
 });

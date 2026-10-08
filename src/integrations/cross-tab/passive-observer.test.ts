@@ -129,3 +129,45 @@ it('reports a dropdown pick in the live tab once the field settles', () => {
   );
   observer.stop();
 });
+
+it('rewinds only a reset step and ignores fields it touched before the reset', () => {
+  document.body.innerHTML = `
+    <button id="next">Next</button>
+    <input aria-label="url" value="http://localhost:9090">
+    <button id="elsewhere">Elsewhere</button>`;
+  const steps = (epoch: number, cursor: number) => [
+    {
+      id: 'step',
+      cursor: 0,
+      actions: [
+        { targetAction: 'button', refTarget: '#next' },
+        { targetAction: 'button', refTarget: '#next' },
+      ],
+    },
+    {
+      id: 'url',
+      cursor,
+      epoch,
+      actions: [
+        { targetAction: 'formfill', refTarget: 'input[aria-label="url"]', targetValue: 'http://localhost:9090' },
+      ],
+    },
+  ];
+  const post = jest.fn();
+  const observer = createPassiveObserver(post);
+  observer.update(message({ steps: steps(0, 0) }));
+  document.querySelector<HTMLButtonElement>('#next')!.click();
+  document.querySelector<HTMLInputElement>('input')!.focus();
+  observer.update(message({ revision: 2, steps: steps(4, 0) }));
+  document.querySelector<HTMLButtonElement>('#elsewhere')!.click();
+  jest.advanceTimersByTime(200);
+  expect(post).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'url' }));
+  document.querySelector<HTMLButtonElement>('#next')!.click();
+  expect(post).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'step', index: 1 }));
+  document.querySelector<HTMLButtonElement>('#elsewhere')!.focus();
+  document.querySelector<HTMLInputElement>('input')!.focus();
+  document.querySelector<HTMLButtonElement>('#elsewhere')!.click();
+  jest.advanceTimersByTime(200);
+  expect(post).toHaveBeenCalledWith(expect.objectContaining({ id: 'url', index: 0 }));
+  observer.stop();
+});

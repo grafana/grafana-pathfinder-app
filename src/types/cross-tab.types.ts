@@ -186,6 +186,7 @@ export interface ObservationSubscriptionMessage extends CrossTabEnvelope, Partia
   steps: Array<{
     id: string;
     cursor: number;
+    epoch?: number;
     actions: Array<{ targetAction: string; refTarget?: string; targetValue?: string }>;
   }>;
 }
@@ -517,6 +518,7 @@ function isValidObservationSubscription(message: Record<string, unknown>): boole
         isRecord(step) &&
         isBoundedString(step.id, 4096) &&
         Number.isSafeInteger(step.cursor) &&
+        (step.epoch === undefined || (Number.isSafeInteger(step.epoch) && (step.epoch as number) >= 0)) &&
         Array.isArray(step.actions) &&
         step.actions.length <= 256 &&
         (step.cursor as number) >= 0 &&

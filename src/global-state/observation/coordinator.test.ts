@@ -649,3 +649,41 @@ it('takes a fresh baseline after a reset', async () => {
   expect(item.commit).toHaveBeenLastCalledWith('objectives', 'load');
   coordinator.stop();
 });
+
+it('resets one step without restarting observation or checks for the rest of the guide', async () => {
+  const signals: Record<string, AbortSignal> = {};
+  const coordinator = new CompletionCoordinator(
+    (_conditions, item, signal) =>
+      new Promise(() => {
+        signals[item.id] = signal;
+      })
+  );
+  const pending = step({ id: 'pending', objectives: ['has-datasources'] });
+  const partial = step({
+    id: 'partial',
+    actions: [
+      { targetAction: 'button', refTarget: '#first' },
+      { targetAction: 'button', refTarget: '#last' },
+    ],
+  });
+  coordinator.register(pending);
+  coordinator.register(partial);
+  coordinator.start();
+  await settle();
+  const generation = coordinator.generation;
+  coordinator.observe((action) => action.refTarget === '#first');
+  coordinator.reset('partial');
+  expect(coordinator.generation).toBe(generation);
+  expect(signals.pending!.aborted).toBe(false);
+  const seen: number[] = [];
+  coordinator.observe((action, since) => {
+    seen.push(since);
+    return false;
+  });
+  const epochs = Object.fromEntries(
+    coordinator.pendingActions().map(({ id, epoch, cursor }) => [id, { epoch, cursor }])
+  );
+  expect(epochs.partial).toEqual({ epoch: seen[0], cursor: 0 });
+  expect(seen[0]).toBeGreaterThan(0);
+  coordinator.stop();
+});

@@ -1,4 +1,8 @@
-import { nextRequiredAction, advanceActionProgress } from '../../global-state/observation/action-progress';
+import {
+  nextRequiredAction,
+  advanceActionProgress,
+  nextObservationStamp,
+} from '../../global-state/observation/action-progress';
 import { onContextChange } from '../../lib/context-event-bus';
 import {
   matchesFormfillState,
@@ -13,6 +17,8 @@ import type {
   ObservationChangeMessage,
 } from '../../types/cross-tab.types';
 
+type ObservedStep = ObservationSubscriptionMessage['steps'][number] & { since: number };
+
 export function createPassiveObserver(
   post: (
     evidence:
@@ -21,7 +27,7 @@ export function createPassiveObserver(
   ) => void,
   paused: () => boolean = () => false
 ) {
-  let subscription: ObservationSubscriptionMessage | undefined;
+  let subscription: (Omit<ObservationSubscriptionMessage, 'steps'> & { steps: ObservedStep[] }) | undefined;
   let release: (() => void) | undefined;
   let expiry: ReturnType<typeof setTimeout> | undefined;
   const cancelled = new Set<string>();
@@ -41,16 +47,14 @@ export function createPassiveObserver(
       stop();
     }
   };
-  const observe = (
-    matches: (action: ObservationSubscriptionMessage['steps'][number]['actions'][number]) => boolean
-  ) => {
+  const observe = (matches: (action: ObservedStep['actions'][number], since: number) => boolean) => {
     if (!subscription || paused()) {
       return;
     }
     for (const step of subscription.steps) {
       const index = nextRequiredAction(step.actions, step.cursor);
       const action = step.actions[index];
-      if (!action || !matches(action)) {
+      if (!action || !matches(action, step.since)) {
         continue;
       }
       step.cursor = advanceActionProgress(step.actions, step.cursor, index);
@@ -86,15 +90,16 @@ export function createPassiveObserver(
     }
     subscription = {
       ...message,
-      steps: message.steps.map((step) => ({
-        ...step,
-        cursor: Math.max(
-          step.cursor,
+      steps: message.steps.map((step) => {
+        const old =
           previous?.subscriptionId === message.subscriptionId
-            ? (previous.steps.find((old) => old.id === step.id)?.cursor ?? 0)
-            : 0
-        ),
-      })),
+            ? previous.steps.find(({ id }) => id === step.id)
+            : undefined;
+        if (old && old.epoch !== step.epoch) {
+          return { ...step, since: nextObservationStamp() };
+        }
+        return { ...step, cursor: Math.max(step.cursor, old?.cursor ?? 0), since: old?.since ?? 0 };
+      }),
     };
     clearTimeout(expiry);
     expiry = setTimeout(stop, 6000);
@@ -126,7 +131,7 @@ export function createPassiveObserver(
           changed();
         }
       },
-      (touched) => observe((action) => matchesFormfillState(action, touched))
+      (touched) => observe((action, since) => matchesFormfillState(action, (field) => touched(field, since)))
     );
     const navigation = observePassiveNavigation(() => {
       observe(matchesPassiveNavigation);

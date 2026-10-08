@@ -402,7 +402,9 @@ function persistSection(contentKey: string, sectionId: string, origin?: Progress
     // in a mixed guide must not fire "cleared" while acks remain.
     const ackTotal = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
     if (guideTotal === 0 && ackTotal === 0) {
-      window.dispatchEvent(new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey } }));
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey, sectionId } })
+      );
     }
   }
 }

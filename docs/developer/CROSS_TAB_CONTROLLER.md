@@ -91,15 +91,19 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
   (controller → live → controller), correlated by `requestId`. `passive: true`
   marks a passive completion check: the live tab evaluates it as a postcondition
   with no retries and answers `unavailable` while it is hidden.
-- `observation-subscribe` — `{ generation, subscriptionId, guideKey, revision, steps: [{ id, cursor, actions }] }`,
+- `observation-subscribe` — `{ generation, subscriptionId, guideKey, revision, steps: [{ id, cursor, epoch?, actions }] }`,
   a signed controller → live command that installs passive matchers for the
   steps the controller is waiting on. The controller re-sends it on every
   coordinator change and every 2 seconds; the live tab drops a subscription
   it has not heard about for 6 seconds, ignores a lower `generation` for the
   same session, and accepts the inert `noop` and `popout` actions without
-  widening `KNOWN_TARGET_ACTIONS`.
-- `observation-cancel` — `{ subscriptionId }`, signed controller → live; reset,
-  reconnect and unmount cancel the old subscription.
+  widening `KNOWN_TARGET_ACTIONS`. Within one subscription the live tab keeps
+  its own cursor for a step while `epoch` is unchanged; a new `epoch` means that
+  step was reset, so the live tab takes the sent cursor and ignores fields the
+  reader touched before it.
+- `observation-cancel` — `{ subscriptionId }`, signed controller → live; a
+  guide reset, reconnect and unmount cancel the old subscription. A single
+  step or section reset keeps it and changes only that step's `epoch`.
 - `observation-evidence` — `{ subscriptionId, guideKey, id, index }`, live →
   controller, reports that the reader performed action `index` of step `id`.
   Only identifiers cross the channel; input values and DOM content stay in the

@@ -1195,7 +1195,7 @@ export function InteractiveSection({
       const contentKey = getContentKey();
       window.dispatchEvent(
         new CustomEvent(StorageEvents.InteractiveProgressCleared, {
-          detail: { contentKey },
+          detail: { contentKey, sectionId },
         })
       );
       // All-passive sections bypass `persistSection` on reset too;
