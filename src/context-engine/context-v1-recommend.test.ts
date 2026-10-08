@@ -200,7 +200,17 @@ describe('V1 /api/v1/recommend endpoint integration', () => {
           contentUrl: 'https://interactive-learning.grafana.net/packages/sm-setting-up-your-first-check/content.json',
           manifestUrl: 'https://interactive-learning.grafana.net/packages/sm-setting-up-your-first-check/manifest.json',
           repository: 'interactive-tutorials',
-          manifest: { id: 'sm-setting-up-your-first-check', type: 'guide' },
+          manifest: {
+            id: 'sm-setting-up-your-first-check',
+            type: 'guide',
+            prerequisites: [
+              { id: 'valid', label: '<strong>literal</strong> **text**' },
+              { id: 'bad-label', label: ' \t ' },
+              { id: ' \t ', label: 'Nonblank label' },
+              { id: 'valid', label: 'duplicate id' },
+              { id: 'bad-shape', label: 42 as unknown as string },
+            ],
+          },
         },
       ],
       featured: [
@@ -232,7 +242,13 @@ describe('V1 /api/v1/recommend endpoint integration', () => {
       'https://interactive-learning.grafana.net/packages/sm-setting-up-your-first-check/manifest.json'
     );
     expect(featured!.repository).toBe('interactive-tutorials');
-    expect(featured!.manifest).toEqual({ id: 'sm-setting-up-your-first-check', type: 'guide' });
+    expect(featured!.manifest).toEqual({
+      id: 'sm-setting-up-your-first-check',
+      type: 'guide',
+      prerequisites: [{ id: 'valid', label: '<strong>literal</strong> **text**' }],
+    });
+    const ordinary = result.recommendations.find((item) => item.type === 'package');
+    expect(ordinary?.manifest).toEqual(featured!.manifest);
   });
 
   it('should sanitize v1 recommendations and not pass through raw properties', async () => {

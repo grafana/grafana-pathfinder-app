@@ -16,6 +16,8 @@ import {
   AuthorSchema,
   GuideTargetingSchema,
   TestEnvironmentSchema,
+  PrerequisiteSchema,
+  PrerequisitesSchema,
   PackageTypeSchema,
   GraphNodeSchema,
   GraphEdgeSchema,
@@ -127,9 +129,46 @@ describe('ManifestJsonSchema', () => {
     type: 'guide',
   };
 
-  it('should accept a minimal guide manifest', () => {
+  it('should accept a minimal guide manifest without prerequisites', () => {
     const result = ManifestJsonSchema.safeParse(minimalGuideManifest);
     expect(result.success).toBe(true);
+  });
+
+  it('should accept absent and empty prerequisite declarations', () => {
+    expect(ManifestJsonObjectSchema.safeParse(minimalGuideManifest).success).toBe(true);
+    expect(ManifestJsonObjectSchema.safeParse({ ...minimalGuideManifest, prerequisites: [] }).success).toBe(true);
+  });
+
+  it('preserves valid prerequisite strings and order', () => {
+    const prerequisites = [
+      { id: ' mysql-server ', label: '<strong>text</strong>' },
+      { id: 'second', label: '**text** and [text](url)' },
+    ];
+    const result = ManifestJsonObjectSchema.safeParse({ ...minimalGuideManifest, prerequisites });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.prerequisites).toEqual(prerequisites);
+    }
+  });
+
+  it.each([
+    [[{ id: '', label: 'Label' }]],
+    [[{ id: ' \t ', label: 'Label' }]],
+    [[{ id: 'id', label: '' }]],
+    [[{ id: 'id', label: ' \t ' }]],
+    [
+      [
+        { id: 'duplicate', label: 'First' },
+        { id: 'duplicate', label: 'Second' },
+      ],
+    ],
+  ])('rejects invalid prerequisite declarations %j', (prerequisites) => {
+    expect(PrerequisitesSchema.safeParse(prerequisites).success).toBe(false);
+    expect(ManifestJsonObjectSchema.safeParse({ ...minimalGuideManifest, prerequisites }).success).toBe(false);
+  });
+
+  it('validates a single prerequisite entry', () => {
+    expect(PrerequisiteSchema.safeParse({ id: 'mysql-server', label: 'A running MySQL server.' }).success).toBe(true);
   });
 
   it('should apply defaults during parsing', () => {

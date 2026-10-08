@@ -109,6 +109,8 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
       title,
       url: resolution.contentUrl,
       isActive: false,
+      ...(resolution.manifest != null && { packageManifest: resolution.manifest }),
+      ...(resolution.repository != null && { repository: resolution.repository }),
       ...(description != null && { description }),
       ...(typeof estimatedMinutes === 'number' && { estimatedMinutes }),
       ...(typeof startingLocation === 'string' && { startingLocation }),
@@ -156,16 +158,11 @@ export async function resolvePackageTracks(tracks: ManifestTrack[], pathSlug?: s
  * Platform resolutions are never cached, so it is used as-is.
  */
 async function resolvePathTracks(
-  manifestId: string,
   callerManifest: Record<string, unknown> | undefined,
+  resolvedManifest: Record<string, unknown> | undefined,
   pathSlug?: string
 ): Promise<{ declared: ManifestTrack[]; resolved: CoverPageTrack[] }> {
-  const needsPackageManifest = manifestId !== '' && callerManifest?.repository !== 'app-platform';
-  const resolver = needsPackageManifest ? await getPackageResolver() : undefined;
-  const resolution = resolver
-    ? await resolver.resolve(manifestId, { loadContent: 'metadata-only' }).catch(() => undefined)
-    : undefined;
-  const declared = getManifestTracks(resolution?.ok && resolution.manifest ? resolution.manifest : callerManifest);
+  const declared = getManifestTracks(resolvedManifest ?? callerManifest);
   return { declared, resolved: declared.length > 0 ? await resolvePackageTracks(declared, pathSlug) : [] };
 }
 
@@ -357,7 +354,7 @@ export async function fetchPackageContent(
   // resolver fetched ahead of this array) so a cold resolver's chunk fetch
   // overlaps fetchContent(contentUrl, { loadContext }) instead of
   // serializing in front of it.
-  const [result, resolvedMilestones, baseUrlResolution, pathTracks] = await Promise.all([
+  const [result, resolvedMilestones, baseUrlResolution] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
     manifestId
@@ -365,15 +362,37 @@ export async function fetchPackageContent(
           resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
         )
       : Promise.resolve(undefined),
-    tracksEligible ? resolvePathTracks(manifestId, packageManifest, pathSlug) : Promise.resolve(undefined),
   ]);
+  const pathTracks = tracksEligible
+    ? await resolvePathTracks(
+        packageManifest,
+        packageManifest?.repository === 'app-platform'
+          ? undefined
+          : baseUrlResolution?.ok
+            ? baseUrlResolution.manifest
+            : undefined,
+        pathSlug
+      )
+    : undefined;
   const manifestTracks = pathTracks?.declared ?? [];
 
   if (!result.content) {
     return result;
   }
 
-  const resolvedRepository = repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
+  const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
+  const memberIndex = needsMilestones
+    ? (milestones?.findIndex((milestone) =>
+        explicitGuideId ? milestone.id === explicitGuideId : milestone.url === contentUrl
+      ) ?? -1)
+    : -1;
+  const memberMilestone = memberIndex >= 0 ? milestones?.[memberIndex] : undefined;
+  const trackMember = pathTracks?.resolved
+    .flatMap((track) => track.milestones)
+    .find((milestone) => (explicitGuideId ? milestone.id === explicitGuideId : milestone.url === contentUrl));
+  const resolvedMember = memberMilestone ?? trackMember;
+  const resolvedRepository =
+    resolvedMember?.repository ?? repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
 
   let learningJourney: LearningJourneyMetadata | undefined;
   // Set only for a track-only member (see the isTrackOnlyMember branch
@@ -384,7 +403,6 @@ export async function fetchPackageContent(
   let contentString = result.content.content;
 
   if (needsMilestones) {
-    const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
     const tracks = pathTracks?.resolved ?? [];
 
     if (milestones && milestones.length > 0) {
@@ -526,6 +544,18 @@ export async function fetchPackageContent(
     }
   }
 
+  let packageManifestMetadata: Record<string, unknown> | undefined;
+  if (resolvedMember) {
+    if (result.content.metadata.packageManifest || resolvedMember.packageManifest) {
+      packageManifestMetadata = {
+        ...result.content.metadata.packageManifest,
+        ...resolvedMember.packageManifest,
+      };
+    }
+  } else if (packageManifest !== undefined) {
+    packageManifestMetadata = { ...result.content.metadata.packageManifest, ...packageManifest };
+  }
+
   return {
     ...result,
     content: {
@@ -537,9 +567,7 @@ export async function fetchPackageContent(
         ...result.content.metadata,
         // Merge, not replace: a catalogue entry is a slim projection and would
         // otherwise bury fields the loader resolved in full (issue #1681).
-        ...(packageManifest !== undefined && {
-          packageManifest: { ...result.content.metadata.packageManifest, ...packageManifest },
-        }),
+        ...(packageManifestMetadata !== undefined && { packageManifest: packageManifestMetadata }),
         // Fall back to the repository the baseUrl resolution already carries, so
         // an entry path that supplies no explicit one still keys the durable
         // completion on the true source instead of the manifest schema default.

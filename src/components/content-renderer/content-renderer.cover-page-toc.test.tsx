@@ -38,6 +38,81 @@ describe('ContentRenderer cover-page table of contents', () => {
     expect(screen.getByTestId(testIds.learningPaths.tableOfContents)).toBeInTheDocument();
   });
 
+  it('renders path prerequisites before the cover actions', () => {
+    const content = makeContent({
+      metadata: {
+        ...makeContent().metadata,
+        packageManifest: {
+          id: 'demo-path',
+          type: 'path',
+          prerequisites: [{ id: 'mysql', label: '<b>Literal</b> & **plain text**' }],
+        },
+      },
+    });
+
+    const { container } = render(<ContentRenderer content={content} />);
+
+    const prerequisite = screen.getByText('<b>Literal</b> & **plain text**');
+    const tableOfContents = screen.getByTestId(testIds.learningPaths.tableOfContents);
+    expect(prerequisite.tagName).toBe('LI');
+    expect(container.querySelector('li b')).not.toBeInTheDocument();
+    expect(prerequisite.compareDocumentPosition(tableOfContents) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows a directly opened milestone’s own prerequisites without path inheritance', () => {
+    const content = makeContent({
+      metadata: {
+        ...makeContent().metadata,
+        learningJourney: { ...makeContent().metadata.learningJourney!, currentMilestone: 1 },
+        packageManifest: {
+          id: 'milestone-guide',
+          type: 'guide',
+          prerequisites: [{ id: 'own', label: 'Guide-only need' }],
+        },
+      },
+    });
+
+    render(<ContentRenderer content={content} />);
+
+    const prerequisite = screen.getByText('Guide-only need');
+    const body = screen.getByText('Body');
+    expect(prerequisite).toBeInTheDocument();
+    expect(screen.queryByText('Path-only need')).not.toBeInTheDocument();
+    expect(prerequisite.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId(testIds.markComplete.button)).toBeInTheDocument();
+  });
+
+  it('does not repeat path prerequisites on a later milestone', () => {
+    const content = makeContent({
+      metadata: {
+        ...makeContent().metadata,
+        learningJourney: { ...makeContent().metadata.learningJourney!, currentMilestone: 1 },
+        packageManifest: {
+          id: 'demo-path',
+          type: 'path',
+          prerequisites: [{ id: 'path-need', label: 'Path-only need' }],
+        },
+      },
+    });
+
+    render(<ContentRenderer content={content} />);
+
+    expect(screen.queryByText('Path-only need')).not.toBeInTheDocument();
+  });
+
+  it.each([undefined, []])('omits prerequisites for missing or empty declarations: %s', (prerequisites) => {
+    const content = makeContent({
+      metadata: {
+        ...makeContent().metadata,
+        packageManifest: { id: 'demo-path', type: 'path', ...(prerequisites === undefined ? {} : { prerequisites }) },
+      },
+    });
+
+    render(<ContentRenderer content={content} />);
+
+    expect(screen.queryByRole('heading', { name: 'Prerequisites' })).not.toBeInTheDocument();
+  });
+
   it('renders for package-backed path covers', () => {
     const content = makeContent({
       metadata: {

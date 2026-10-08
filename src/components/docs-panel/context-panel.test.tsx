@@ -152,6 +152,52 @@ describe('RecommendationsSection', () => {
     expect(screen.queryByText('Interactive guide')).not.toBeInTheDocument();
   });
 
+  it('shows recommendation prerequisites before milestone links in expanded Summary', () => {
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Prometheus learning path',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/prometheus-lj/content.json',
+            type: 'package',
+            summary: 'Learn Prometheus step by step.',
+            manifest: {
+              id: 'prometheus-lj',
+              type: 'path',
+              prerequisites: [{ id: 'prometheus', label: 'A running Prometheus server.' }],
+            },
+            summaryExpanded: true,
+            totalSteps: 1,
+            milestones: [{ number: 1, title: 'Install Prometheus', url: 'https://example.com/step-1' }],
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    const prerequisite = screen.getByText('A running Prometheus server.');
+    const milestones = screen.getByTestId(testIds.contextPanel.recommendationMilestones(0));
+    expect(prerequisite.compareDocumentPosition(milestones) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('shows the milestone duration only when estimatedMinutes is authored, omitting it entirely otherwise', () => {
     render(
       <RecommendationsSection

@@ -66,6 +66,32 @@ const SUPPORTED_MATCH_PREDICATE_KEYS: ReadonlySet<string> = new Set([
 // failures in getOnlinePackageRecommendations' catch.
 export const ONLINE_PACKAGES_TIMEOUT_MESSAGE = 'Online package recommendations timed out; continuing without them';
 
+function normalizePrerequisites(value: unknown): Array<{ id: string; label: string }> | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const seenIds = new Set<string>();
+  return value
+    .filter((item): item is { id: string; label: string } => {
+      if (
+        item == null ||
+        typeof item !== 'object' ||
+        Array.isArray(item) ||
+        typeof item.id !== 'string' ||
+        item.id.trim().length === 0 ||
+        typeof item.label !== 'string' ||
+        item.label.trim().length === 0 ||
+        seenIds.has(item.id)
+      ) {
+        return false;
+      }
+      seenIds.add(item.id);
+      return true;
+    })
+    .map(({ id, label }) => ({ id, label }));
+}
+
 export class ContextService {
   // Error handling state
   private static lastExternalRecommenderError: {
@@ -717,6 +743,10 @@ export class ContextService {
     }
     if (Array.isArray(m.replaces)) {
       sanitized.replaces = m.replaces.filter((s): s is string => typeof s === 'string');
+    }
+    const prerequisites = normalizePrerequisites(m.prerequisites);
+    if (prerequisites !== undefined) {
+      sanitized.prerequisites = prerequisites;
     }
 
     return sanitized;
@@ -1493,6 +1523,10 @@ export class ContextService {
       if (Array.isArray(value)) {
         normalized[field] = value.filter((s): s is string => typeof s === 'string');
       }
+    }
+    const prerequisites = normalizePrerequisites(raw.prerequisites);
+    if (prerequisites !== undefined) {
+      normalized.prerequisites = prerequisites;
     }
     return normalized;
   }

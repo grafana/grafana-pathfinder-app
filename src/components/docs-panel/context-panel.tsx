@@ -30,6 +30,7 @@ import { usePathfinderPluginConfig } from '../../hooks';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
 import { CustomGuidesSection } from './CustomGuidesSection';
+import { Prerequisites } from '../Prerequisites';
 import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuides';
 import { ContextPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
@@ -582,6 +583,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 </div>
                               )}
 
+                              <Prerequisites prerequisites={recommendation.manifest?.prerequisites} />
+
                               {recommendation.isResolvingDeferred && !recommendation.milestones && (
                                 <div className={cx(skeletonStyles.skeleton, styles.deferredSkeleton)}>
                                   {Array.from({
@@ -879,6 +882,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                 <p className={styles.summaryText}>{recommendation.summary}</p>
                               </div>
                             )}
+
+                            <Prerequisites prerequisites={recommendation.manifest?.prerequisites} />
 
                             {recommendation.isResolvingDeferred && !recommendation.milestones && (
                               <div className={cx(skeletonStyles.skeleton, styles.deferredSkeleton)}>
