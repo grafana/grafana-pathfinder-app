@@ -1,5 +1,55 @@
 # Changelog
 
+## 2.21.0
+
+### Added
+
+- **Incremental guide progress records**: Save a reader's guide progress as one monotonic record per attempt, from the first real interaction through completion. Partial writes and progress analytics remain independently feature-flagged and off by default. (#2090)
+
+- **Public guide search for CLI and MCP clients**: Search the public guide catalog with bounded lexical ranking, filters, page targeting, and deterministic results through `pathfinder_find_guides`, with launch links that open the parent path for matching milestones. (#2048)
+
+- **Shareable guide links**: Copy a link from a guide's sidebar menu that opens the same accessible guide or journey milestone on the same Grafana instance without leaking dashboard state. (#2075)
+
+- **Assigned paths in side-panel recommendations**: Badge paths with unsatisfied assignments and open them directly on the assigned track instead of Fundamentals, matching My Learning. (#2106)
+
+- **Guide and journey completion analytics**: Report privacy-bounded completion events once at the recorder boundary, including manual, skipped, and objective-based completion sources and live guide structure metadata where available. (#2035)
+
+- **Block-aware step analytics**: Add rendered block positions and guide counts to step events, report bounded skip reasons, and identify public guides or milestones on Mark complete interactions. (#2059)
+
+- **Learning-path badge and reset analytics**: Report URL-path badge unlocks and distinguish guide, path, and full-progress resets without exposing private path identifiers. (#2060)
+
+### Fixed
+
+- **Grafana documentation link interception**: Open eligible Grafana documentation links in interactive learning from nested link elements and recover safely when the expected panel surface cannot accept the launch. A new remote feature flag can enable interception alongside the tenant setting. (#2053)
+
+- **Interactive learning user-facing name**: Replace the internal Pathfinder name throughout visible UI and accessibility text, with validation that prevents it from returning in user-facing copy. (#2045)
+
+- **Immediate guided-tour dismissal**: Closing a guide after an earlier navigation cancels its active tour immediately instead of leaving the highlight and session lock behind for several seconds. (#2051)
+
+- **Compound kiosk catalog failures**: When both a requested kiosk catalog and the configured default fail, warnings identify both failures while preserving the catalog that was ultimately served. (#2052)
+
+- **Named kiosk analytics sessions**: Correlate catalog views, controls, launches, and subsequent guide interactions with one bounded kiosk session and privacy-safe catalog name without allowing stale attribution to overwrite an explicit session. (#2085)
+
+- **Kiosk product-open analytics**: Report product-card and product-link launches as kiosk interactions before navigating, while keeping guide-start analytics distinct. (#2111)
+
+- **Published guide titles for API links**: Replace a temporary resource-id tab title with the published guide title after kiosk or shared-link content loads, without overwriting an existing catalog or path title. (#2047)
+
+- **Unresolvable path-member completion keys**: Exclude a path member from progress averages when any candidate key cannot be normalized safely instead of counting the member as unopened at zero percent. (#2054)
+
+- **Concurrent milestone completion writes**: Serialize local milestone completion mutations so simultaneous updates no longer overwrite one another. (#2074)
+
+- **Selected tracks after fullscreen**: Preserve the selected path track when leaving fullscreen or restoring a saved side-panel tab instead of returning to Fundamentals. (#2107)
+
+- **Synthetic analytics from CLI guide runs**: Disable RudderStack before Grafana initializes in CLI runner browser contexts, including reloads and new tabs, so automated guide tests do not send production analytics. (#2071)
+
+- **Always-on agent context budget**: Restore main-branch validation and add budget headroom by routing detailed writing and filing conventions to on-demand documentation. (#2072)
+
+### Chore
+
+- **App Platform transport validation**: Ratchet direct browser reads behind the plugin-backend proxy, grandfather the two existing violations with accountable follow-up, and reject new unproxied reads with remediation guidance. (#1974)
+
+- **Completion-recording developer guidance**: Document the end-to-end completion seam and route relevant review changes to its identity, progress, attempt, reset, and persistence invariants. (#2098)
+
 ## 2.20.1
 
 ### Added
