@@ -149,6 +149,24 @@ export async function resolvePackageTracks(tracks: ManifestTrack[], pathSlug?: s
 }
 
 /**
+ * A path's declared tracks, read from the package's own manifest: a caller's
+ * manifest may be a slim recommender projection that carries none. Falls
+ * back to the caller's manifest only when the package manifest is unavailable.
+ */
+async function resolvePathTracks(
+  manifestId: string,
+  callerManifest: Record<string, unknown> | undefined,
+  pathSlug?: string
+): Promise<{ declared: ManifestTrack[]; resolved: CoverPageTrack[] }> {
+  const resolver = manifestId ? await getPackageResolver() : undefined;
+  const resolution = resolver
+    ? await resolver.resolve(manifestId, { loadContent: 'metadata-only' }).catch(() => undefined)
+    : undefined;
+  const declared = getManifestTracks(resolution?.ok && resolution.manifest ? resolution.manifest : callerManifest);
+  return { declared, resolved: declared.length > 0 ? await resolvePackageTracks(declared, pathSlug) : [] };
+}
+
+/**
  * Resolve bare package IDs (from manifest `recommends`/`suggests`) into
  * {@link ResolvedNavLink} objects so the context panel can display
  * human-readable titles and open packages with the correct type.
@@ -328,8 +346,6 @@ export async function fetchPackageContent(
   // for journey): RFC §6.1 / schema Rule 3 restrict tracks to paths, but
   // that rule only runs in superRefine, which many runtime loaders skip.
   const tracksEligible = needsMilestones && packageManifest?.type === 'path';
-  const manifestTracks = tracksEligible ? getManifestTracks(packageManifest) : [];
-  const shouldResolveTracks = tracksEligible && manifestTracks.length > 0;
 
   // Run content fetch, milestone resolution, track resolution, and baseUrl
   // resolution in parallel. These are independent: the page body doesn't
@@ -338,7 +354,7 @@ export async function fetchPackageContent(
   // resolver fetched ahead of this array) so a cold resolver's chunk fetch
   // overlaps fetchContent(contentUrl, { loadContext }) instead of
   // serializing in front of it.
-  const [result, resolvedMilestones, baseUrlResolution, resolvedTracks] = await Promise.all([
+  const [result, resolvedMilestones, baseUrlResolution, pathTracks] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
     manifestId
@@ -346,8 +362,9 @@ export async function fetchPackageContent(
           resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
         )
       : Promise.resolve(undefined),
-    shouldResolveTracks ? resolvePackageTracks(manifestTracks, pathSlug) : Promise.resolve(undefined),
+    tracksEligible ? resolvePathTracks(manifestId, packageManifest, pathSlug) : Promise.resolve(undefined),
   ]);
+  const manifestTracks = pathTracks?.declared ?? [];
 
   if (!result.content) {
     return result;
@@ -365,7 +382,7 @@ export async function fetchPackageContent(
 
   if (needsMilestones) {
     const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
-    const tracks = resolvedTracks ?? [];
+    const tracks = pathTracks?.resolved ?? [];
 
     if (milestones && milestones.length > 0) {
       // Structural classification: a direct id lookup against the manifest's

@@ -34,7 +34,7 @@ import {
   fetchCustomGuideRepository,
   invalidateCustomGuideRepositoryCache,
 } from '../lib/custom-guide-repository-client';
-import type { PackageResolver, PackageResolution } from '../types';
+import type { PackageResolver, PackageResolution, ResolveOptions } from '../types';
 
 // Mock AbortSignal.timeout for Node environments
 if (!AbortSignal.timeout) {
@@ -869,7 +869,7 @@ describe('fetchPackageContent path-type enrichment', () => {
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'bundled',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
-          manifest: { id, type: 'guide' },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
         })
       ),
     };
@@ -960,7 +960,7 @@ describe('fetchPackageContent path-type enrichment', () => {
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'bundled',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
-          manifest: { id, type: 'guide' },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
         })
       ),
     };
@@ -1017,7 +1017,7 @@ describe('fetchPackageContent path-type enrichment', () => {
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'bundled',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
-          manifest: { id, type: 'guide' },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
         })
       ),
     };
@@ -1135,8 +1135,8 @@ describe('fetchPackageContent path-type enrichment', () => {
   it("retries the path's own resolve past a cached failure and recovers trackMemberBaseUrl when knownBaseUrl is absent (direct/deep-link entry point)", async () => {
     let callCount = 0;
     const underlyingResolver: PackageResolver = {
-      resolve: jest.fn().mockImplementation((id: string) => {
-        if (id === 'test-path') {
+      resolve: jest.fn().mockImplementation((id: string, options?: ResolveOptions) => {
+        if (id === 'test-path' && options?.loadContent !== 'metadata-only') {
           callCount += 1;
           if (callCount === 1) {
             return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'transient hiccup' } });
@@ -1158,7 +1158,7 @@ describe('fetchPackageContent path-type enrichment', () => {
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'bundled',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
-          manifest: { id, type: 'guide' },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
         });
       }),
     };
@@ -1379,7 +1379,7 @@ describe('fetchPackageContent path-type enrichment', () => {
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'bundled',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
-          manifest: { id, type: 'path' },
+          manifest: id === manifest.id ? manifest : { id, type: 'path' },
         });
       }),
     };
