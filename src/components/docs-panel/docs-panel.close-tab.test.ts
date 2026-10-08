@@ -363,6 +363,18 @@ describe('CombinedLearningJourneyPanel.closeTab — focus adjacency', () => {
   });
 });
 
+describe('CombinedLearningJourneyPanel.setActiveTrackId', () => {
+  it('persists a changed selection, including a return to Foundations', () => {
+    const panel = panelWith([RECOMMENDATIONS, tab('path-1', 'learning-journey')], 'path-1');
+    const saveTabs = jest.spyOn(panel, 'saveTabsToStorage').mockResolvedValue();
+
+    panel.setActiveTrackId('path-1', 'builder', [], 'path-a');
+    panel.setActiveTrackId('path-1', null, null, 'path-a');
+
+    expect(saveTabs).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('CombinedLearningJourneyPanel.saveTabsToStorage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
