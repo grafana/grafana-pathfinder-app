@@ -80,8 +80,9 @@ type appPlatformListPage struct {
 // spec and status stay raw so each kind decodes its own schema.
 type appPlatformListItem struct {
 	Metadata struct {
-		Name            string `json:"name"`
-		ResourceVersion string `json:"resourceVersion"`
+		Name            string            `json:"name"`
+		ResourceVersion string            `json:"resourceVersion"`
+		Annotations     map[string]string `json:"annotations"`
 	} `json:"metadata"`
 	Spec   json.RawMessage `json:"spec"`
 	Status json.RawMessage `json:"status"`
@@ -147,6 +148,13 @@ type appPlatformListClient struct {
 	idToken    string
 	httpClient *http.Client
 	logger     log.Logger
+
+	// objectToken is the access token single-object calls (get, create,
+	// replace) share. The client is built per inbound request, so this is one
+	// exchange per request however many upstream calls an upsert makes. LIST
+	// keeps minting per page: a long drain can outlive one token.
+	objectTokenMu sync.Mutex
+	objectToken   string
 }
 
 func newAppPlatformListClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *appPlatformListClient {
@@ -273,6 +281,83 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 	})
 }
 
+// get GETs one named object and returns its raw body on 200. Any other status,
+// including 404, is an appPlatformUpstreamError carrying the status and the
+// (bounded) response body, so the caller can tell a NotFound Status from a
+// structural 404.
+func (c *appPlatformListClient) get(ctx context.Context, groupVersion, namespace, resource, name string, maxBytes int64) (body []byte, err error) {
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "get", err) }()
+	if namespace == "" || name == "" {
+		return nil, fmt.Errorf("app platform get: empty name")
+	}
+	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource) + "/" + url.PathEscape(name)
+
+	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
+	defer cancel()
+
+	accessToken, err := c.sharedObjectToken(reqCtx, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("app platform get: %w", err)
+	}
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("app platform get: build request: %w", err)
+	}
+	req.Header.Set(auth.AccessTokenHeader, accessToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("app platform get: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, &appPlatformUpstreamError{
+			status:     resp.StatusCode,
+			retryAfter: resp.Header.Get("Retry-After"),
+			body:       errBody,
+			msg:        fmt.Sprintf("app platform get %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(errBody))),
+		}
+	}
+	body, err = io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("app platform get: read body: %w", err)
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform get: response exceeded %d bytes", maxBytes)}
+	}
+	return body, nil
+}
+
+// replace PUTs a full object over a named one. The object must carry the
+// metadata.resourceVersion it was read at; a stale one comes back as a 409.
+func (c *appPlatformListClient) replace(ctx context.Context, groupVersion, namespace, resource, name string, obj []byte, maxBytes int64) (err error) {
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "update", err) }()
+	if namespace == "" || name == "" {
+		return fmt.Errorf("app platform update: empty name")
+	}
+	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource) + "/" + url.PathEscape(name)
+	return c.sendObject(ctx, http.MethodPut, endpoint, namespace, resource, "update", obj, maxBytes, nil)
+}
+
+// sharedObjectToken returns the per-request token for single-object calls,
+// minting it on first use.
+func (c *appPlatformListClient) sharedObjectToken(ctx context.Context, namespace string) (string, error) {
+	c.objectTokenMu.Lock()
+	defer c.objectTokenMu.Unlock()
+	if c.objectToken != "" {
+		return c.objectToken, nil
+	}
+	token, err := mintAccessToken(ctx, c.minter, namespace, c.idToken)
+	if err != nil {
+		return "", err
+	}
+	c.objectToken = token
+	return token, nil
+}
+
 // updateStatus PUTs a kind's status subresource. The body is the status
 // document the caller encoded. A non-2xx carries the upstream status, the
 // same way create does.
@@ -290,7 +375,7 @@ func (c *appPlatformListClient) sendObject(ctx context.Context, method, endpoint
 	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 
-	accessToken, err := mintAccessToken(reqCtx, c.minter, namespace, c.idToken)
+	accessToken, err := c.sharedObjectToken(reqCtx, namespace)
 	if err != nil {
 		return fmt.Errorf("app platform %s: %w", op, err)
 	}
@@ -318,6 +403,7 @@ func (c *appPlatformListClient) sendObject(ctx context.Context, method, endpoint
 		return &appPlatformUpstreamError{
 			status:     resp.StatusCode,
 			retryAfter: resp.Header.Get("Retry-After"),
+			body:       body,
 			msg:        fmt.Sprintf("app platform %s %s: status %d: %s", op, resource, resp.StatusCode, strings.TrimSpace(string(body))),
 		}
 	}
@@ -361,6 +447,27 @@ type appPlatformUpstreamError struct {
 	status     int
 	retryAfter string
 	msg        string
+	// body is the bounded (2 KiB) upstream error body, kept so a caller can
+	// read a Kubernetes Status (for example reason NotFound vs a structural 404).
+	body []byte
+}
+
+// upstreamStatusReasonOf returns the `reason` of a Kubernetes Status error
+// body (for example "NotFound", "Conflict", "Invalid"), or "" when the error
+// carries no status or its body is not a Status.
+func upstreamStatusReasonOf(err error) string {
+	var ue *appPlatformUpstreamError
+	if !errors.As(err, &ue) || len(ue.body) == 0 {
+		return ""
+	}
+	var status struct {
+		Kind   string `json:"kind"`
+		Reason string `json:"reason"`
+	}
+	if json.Unmarshal(ue.body, &status) != nil || status.Kind != "Status" {
+		return ""
+	}
+	return status.Reason
 }
 
 func (e *appPlatformUpstreamError) Error() string { return e.msg }

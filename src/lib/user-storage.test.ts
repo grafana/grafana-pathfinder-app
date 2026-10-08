@@ -3,6 +3,7 @@ import { getAppEvents } from '@grafana/runtime';
 import {
   __resetQuotaWarningForTests,
   completionEmittedStorage,
+  completionReportedStorage,
   createHybridStorage,
   createLocalStorage,
   guideResponseStorage,
@@ -243,6 +244,27 @@ describe('milestoneCompletionStorage', () => {
   it('removeCompleted is a no-op when the journey has no record at all', async () => {
     await milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy');
     expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
+  });
+
+  // markCompleted reads the whole record, mutates its own journey's entry, and
+  // writes the whole record back — two calls for DIFFERENT journeys fired
+  // without an await between them would otherwise both read the same
+  // pre-write record, and whichever write resolved last would silently
+  // discard the other's journey (a lost update, mirroring
+  // bounded-record-storage.test.ts's "keeps every key when two set() calls
+  // for DIFFERENT keys race" case).
+  it('keeps both journeys when two markCompleted calls for DIFFERENT journeys race without an await between them', async () => {
+    const otherJourneyUrl = 'backend-guide:fe-alerting-path';
+
+    await Promise.all([
+      milestoneCompletionStorage.markCompleted(journeyUrl, 'install-alloy'),
+      milestoneCompletionStorage.markCompleted(otherJourneyUrl, 'fe-alerting-01'),
+    ]);
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['install-alloy']));
+    await expect(milestoneCompletionStorage.getCompleted(otherJourneyUrl)).resolves.toEqual(
+      new Set(['fe-alerting-01'])
+    );
   });
 
   describe('getCompletedSync', () => {
@@ -1061,6 +1083,20 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
     expect(removeItem).not.toHaveBeenCalled();
     setItem.mockRestore();
     removeItem.mockRestore();
+  });
+
+  it('keeps the analytics once-guard apart from the durable completion guard', async () => {
+    await completionEmittedStorage.markEmitted('guide:bundled:shared');
+    await completionReportedStorage.markEmitted('guide:bundled:shared');
+
+    await completionReportedStorage.clearAll();
+
+    expect(completionEmittedStorage.isEmitted('guide:bundled:shared')).toBe(true);
+    expect(completionReportedStorage.isEmitted('guide:bundled:shared')).toBe(false);
+    expect(Object.keys(localStorage).filter((key) => key.startsWith(StorageKeys.COMPLETION_REPORTED_PREFIX))).toEqual(
+      []
+    );
+    await completionEmittedStorage.clearAll();
   });
 
   it('writes no record of its own — only the backend timestamp companions of records it removed', async () => {

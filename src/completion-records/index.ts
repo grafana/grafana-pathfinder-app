@@ -9,8 +9,12 @@ export {
   onCompletionRecorded,
   invalidateEmittedCompletion,
   invalidateAllEmittedCompletions,
+  hasEmittedGuideCompletion,
   __resetRecorderForTests,
 } from './completion-recorder';
+export type { RecordGuideCompletionOptions } from './completion-recorder';
+export { registerGuideIdentity, lookupGuideIdentity } from './guide-identity-registry';
+export type { RegisteredGuideIdentity } from './guide-identity-registry';
 export {
   resolveCompletionIdentity,
   resolveMilestoneCompletionIdentity,
@@ -20,12 +24,15 @@ export {
   manifestGuideId,
   manifestGuideSource,
   normalizeGuideId,
+  guideIdentityAnalyticsProperties,
+  pathAnalyticsProperties,
 } from './completion-identity';
 export type {
   ResolveCompletionIdentityInput,
   ResolveMilestoneCompletionIdentityInput,
   ResolveGuideCompletionIdentityInput,
 } from './completion-identity';
+export type { PathAnalyticsIdentity } from './types';
 export { armCompletionWriteHook, discardQueuedCompletionWrites } from './completion-write-hook';
 export type {
   CompletionKey,
@@ -36,4 +43,5 @@ export type {
   GuideCompletionFact,
   JourneyCompletionFact,
   CompletionListener,
+  AttemptMode,
 } from './types';

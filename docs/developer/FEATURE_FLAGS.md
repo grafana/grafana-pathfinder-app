@@ -171,6 +171,66 @@ The flag and the setting are a plain OR, applied once settings resolve in `src/m
 
 ---
 
+### `pathfinder.progress-analytics`
+
+**Type**: Boolean
+
+**Purpose**: Remote kill switch for `pathfinder_guide_progress` and attempt correlation on terminal completion events (RudderStack, mirrored to Faro).
+
+**Default**: `false` (no progress analytics events when the flag is absent or MTFF is unreachable)
+
+**Behavior**:
+
+- **`true`**: `guide_progress` fires at first real progress and at 25%, 50%, and 75% crossings, at most four times per attempt. The existing `guide_completed` event also carries `attempt_id` for a bundled or standalone guide.
+- **`false`**: progress events stop, and terminal events omit `attempt_id`. Guide attempts still persist on the device. Durable completion writes are unaffected.
+
+Terminal completion analytics keep their separate guard and do not depend on this flag or durable write acceptance. Attempt tracking does not emit a second terminal event.
+
+The flag is read each time an event would fire, so a flip takes effect without a reload once the provider has the new value. Implementation: `src/completion-records/progress-analytics.ts`.
+
+**Tracking key**: `progress_analytics`
+
+---
+
+### `pathfinder.progress-records`
+
+**Type**: Boolean
+
+**Purpose**: Saves guide progress as it happens. With the flag on, a new guide attempt is minted in `records` mode, and its partial percentages are written to one durable CompletionRecord per attempt, raised in place until the guide is complete.
+
+**Default**: `false`
+
+**Behavior**:
+
+- **`true`**: a new attempt uses `records` mode when the installed plugin backend also reports `progressRecords: true` on `/completion-records/capability`. Partial progress is queued (debounced 10 seconds), and the completion at 100% updates the same record.
+- **`false`**: new attempts use `analytics` mode and send the original create-only completion body. Existing records-mode attempts keep their identity for the final 100% write. The observer stops new partials, and the queue removes unsent partials before transmission.
+
+The flag does not cancel requests already in flight. Each tab uses its locally available flag value. Stale tabs can continue partial writes until they receive the disabled value or reload.
+
+Capability discovery makes no requests while this flag is false. The controller checks the local flag every five seconds until enabled. Unknown capability retries with exponential backoff and jitter, capped at five minutes. Invalid capability responses remain unknown and do not remove queued partials.
+
+Local attempts still persist under `grafana-pathfinder-app-guide-attempt-` when both progress flags are false. Each key includes the current user and organization, matching the write queue owner. Resets affect only that owner's attempts. These device-local keys do not use user-storage synchronization. Without a valid owner, attempts do not persist or use records mode.
+
+Old unscoped attempt keys remain unused because their owner is unknown. The app neither adopts nor deletes them during an owner's reset. The separate analytics flag controls remote events. See [Telemetry](TELEMETRY.md#guide-progress-events).
+
+**Before enabling the flag:**
+
+1. Deploy the CompletionRecord schema with optional `completedAt`.
+2. Deploy partial-aware collation and attempt upserts to every serving plugin replica.
+3. Verify that partial progress followed by 100% produces one record and satisfies an assignment on the deployed stack.
+
+Costa confirmed in Slack that Viewer OBO receives the required permissions through the RBAC permission set, as reported by Tom. This resolves the permission-model question. The live end-to-end check remains separate. A 403 still disarms the session's write queue and retains items until retry or the 30-day expiry. There is no create-only fallback for failed attempt updates.
+
+Records-mode minting requires the browser Web Locks API. Minting, completion, and reset share one origin-wide lock. Browsers without this API create analytics-mode attempts and retain the legacy completion path. A lock-acquisition failure also disables new records-mode attempts for that session. Reset removes unsent partials for that guide. Send-time checks also reject partials whose attempt is no longer current.
+
+**Do not roll back the plugin by disabling the flag alone.** Older readers count existing partials as completions. Follow the [rollback procedure](../design/BACKEND_PROXY_PATTERN.md#rollout-and-rollback-of-attempt-records), including writer quiescence and partial-record cleanup.
+
+Implementation: `src/completion-records/guide-attempts.ts`, `progress-records-capability.ts`, and `completion-write-queue.ts`.
+
+**Tracking key**: `progress_records`
+
+---
+
 ### `pathfinder.highlighted-guide-experiment`
 
 **Type**: Object (`HighlightedGuideConfig`)

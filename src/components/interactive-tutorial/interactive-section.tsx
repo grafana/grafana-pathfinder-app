@@ -72,11 +72,13 @@ function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
 }
 import {
   reportAppInteraction,
+  reportStepSkipped,
   UserInteraction,
   getSourceDocument,
   calculateStepCompletion,
   AnalyticsContentType,
   createInteractionName,
+  STEP_PERCENTAGE_RULE_VERSION,
 } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
@@ -494,7 +496,7 @@ export function InteractiveSection({
           // section shape — it credits the section's last block — and no
           // ack write goes through `persistSection`, so refresh here for
           // all of them, not only the all-passive ones.
-          refreshAndNotifyGuideProgress(getContentKey());
+          refreshAndNotifyGuideProgress(getContentKey(), 'change');
         }
       }
 
@@ -780,6 +782,28 @@ export function InteractiveSection({
       };
       startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
+      const autoSkipStep = (stepInfo: StepInfo): void => {
+        const stepRef = stepRefs.current.get(stepInfo.stepId);
+        if (!stepRef?.markSkipped) {
+          return;
+        }
+        stepRef.markSkipped();
+        handleStepComplete(stepInfo.stepId, true);
+        reportStepSkipped(
+          {
+            targetAction: stepInfo.targetAction ?? 'unknown',
+            interactionLocation: 'interactive_section',
+            skipReason: 'section_run_auto',
+          },
+          {
+            stepId: stepInfo.stepId,
+            ...getDocumentStepPosition(sectionId, stepInfo.index),
+            sectionId,
+            sectionTitle: title,
+          }
+        );
+      };
+
       let loopExitReason: LoopExitReason = 'ok';
       let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
       // The completion store handles per-step persistence synchronously via
@@ -884,13 +908,8 @@ export function InteractiveSection({
                           // Fix didn't work - check if step is skippable
                           // Priority 3: Skip if possible
                           if (stepInfo.skippable) {
-                            // Skip this step properly using the step's own markSkipped function
-                            const stepRef = stepRefs.current.get(stepInfo.stepId);
-                            if (stepRef?.markSkipped) {
-                              stepRef.markSkipped(); // This handles the blue state properly
-                              handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                            }
-                            continue; // Continue to next step
+                            autoSkipStep(stepInfo);
+                            continue;
                           } else {
                             loopExitReason = 'requirements_exhausted';
                             break;
@@ -905,12 +924,7 @@ export function InteractiveSection({
 
                         // Fix failed - check if step is skippable
                         if (stepInfo.skippable) {
-                          // Skip this step properly using the step's own markSkipped function
-                          const stepRef = stepRefs.current.get(stepInfo.stepId);
-                          if (stepRef?.markSkipped) {
-                            stepRef.markSkipped(); // This handles the blue state properly
-                            handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                          }
+                          autoSkipStep(stepInfo);
                           continue;
                         } else {
                           loopExitReason = 'requirements_exhausted';
@@ -921,13 +935,8 @@ export function InteractiveSection({
                       // No fix available - check if step is skippable
                       // Priority 3: Skip if possible
                       if (stepInfo.skippable) {
-                        // Skip this step properly using the step's own markSkipped function
-                        const stepRef = stepRefs.current.get(stepInfo.stepId);
-                        if (stepRef?.markSkipped) {
-                          stepRef.markSkipped(); // This handles the blue state properly
-                          handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                        }
-                        continue; // Continue to next step
+                        autoSkipStep(stepInfo);
+                        continue;
                       } else {
                         loopExitReason = 'requirements_exhausted';
                         break;
@@ -1069,6 +1078,7 @@ export function InteractiveSection({
               current_step: documentStepIndex + 1, // 1-indexed for analytics
               ...(documentCompletionPercentage !== undefined && {
                 completion_percentage: documentCompletionPercentage,
+                percentage_rule_version: STEP_PERCENTAGE_RULE_VERSION,
               }),
               // Completion status
               canceled: wasCanceled,

@@ -52,11 +52,12 @@ export { markGuideCompleted } from './badge-coordinator';
 // Self-register this engine's implementation of the Tier 1 guide-completion
 // bridge so docs-retrieval can reach it without a lateral Tier 2 import.
 import { registerGuideCompletionBridge } from '../lib/guide-completion-bridge';
-import { markGuideCompleted as markGuideCompletedImpl } from './badge-coordinator';
+import { awardBadge as awardBadgeImpl, markGuideCompleted as markGuideCompletedImpl } from './badge-coordinator';
 import { findPathByUrl as findPathByUrlImpl } from './paths-data';
 
 registerGuideCompletionBridge({
   markGuideCompleted: markGuideCompletedImpl,
+  awardBadge: awardBadgeImpl,
   findPathByUrl: findPathByUrlImpl,
 });
 // Path Assignments

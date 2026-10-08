@@ -598,11 +598,17 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
           const progress = getJourneyProgress(updatedTab.content);
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
-          setJourneyCompletionPercentage(completionKey, progress, {
-            packageManifest: updatedTab.content.metadata.packageManifest,
-            repository: updatedTab.content.metadata.repository,
-            guideTitle: updatedTab.title,
-          });
+          // Journey-driven (learning-journey tabs only), and a journey completion never creates a guide attempt.
+          setJourneyCompletionPercentage(
+            completionKey,
+            progress,
+            {
+              packageManifest: updatedTab.content.metadata.packageManifest,
+              repository: updatedTab.content.metadata.repository,
+              guideTitle: updatedTab.title,
+            },
+            { attemptEligible: false }
+          );
         }
         if (this.state.activeTabId !== tabId) {
           pauseGuideLoad(loadContext);
@@ -781,6 +787,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     milestones?: Milestone[] | null,
     pathId?: string
   ): void {
+    const current = this.state.tabs.find((tab) => tab.id === tabId);
+    // The cover re-reports its selection on every mount; only a change to what projectPersistedTabs writes needs a save.
+    const selectionChanged =
+      (current?.activeTrackId || null) !== (trackId || null) || (!!trackId && current?.activeTrackPathId !== pathId);
     this.setState({
       tabs: this.state.tabs.map((tab) =>
         tab.id === tabId
@@ -788,6 +798,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           : tab
       ),
     });
+    if (current && selectionChanged) {
+      this.saveTabsToStorage();
+    }
   }
 
   public canNavigateNext(): boolean {

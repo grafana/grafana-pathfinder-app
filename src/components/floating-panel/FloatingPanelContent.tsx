@@ -1,6 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
+import { useGuideIdentityRegistration } from '../content-renderer/useGuideIdentityRegistration';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
@@ -111,7 +112,19 @@ export function FloatingPanelContent({
     [alignmentIsPending, alignmentStartingLocation]
   );
 
-  if (!content) {
+  const surfaceCompletionInput = content
+    ? {
+        baseUrl: activeTab?.baseUrl,
+        contentUrl: content.url,
+        currentUrl: activeTab?.currentUrl,
+        contentType: content.type,
+        metadata: content.metadata,
+        guideTitle: activeTab?.title,
+      }
+    : null;
+  useGuideIdentityRegistration(content?.url, surfaceCompletionInput);
+
+  if (!content || !surfaceCompletionInput) {
     return (
       <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-secondary)' }}>No guide content loaded</div>
     );
@@ -166,18 +179,12 @@ export function FloatingPanelContent({
           content={content}
           containerRef={contentRef}
           className={contentClassName}
-          onGuideComplete={() => {
+          completionSurface={{ baseUrl: activeTab?.baseUrl, currentUrl: activeTab?.currentUrl }}
+          onGuideComplete={(source, contentKey) => {
             // Emit the completion fact beneath the surface: floating and
             // full-screen both render through here, so neither manager needs to
             // wire emission and neither can silently drop it.
-            recordGuideCompletionForSurface({
-              baseUrl: activeTab?.baseUrl,
-              contentUrl: content.url,
-              currentUrl: activeTab?.currentUrl,
-              contentType: content.type,
-              metadata: content.metadata,
-              guideTitle: activeTab?.title,
-            });
+            recordGuideCompletionForSurface({ ...surfaceCompletionInput, source, contentKey });
             onGuideComplete?.();
           }}
           onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}

@@ -815,6 +815,16 @@ function getStoredMilestoneSlugs(
  * Tracks which milestones within a learning journey have been completed.
  * Stored as a map of journeyBaseUrl -> array of completed milestone slugs.
  */
+// Chains markCompleted/removeCompleted/clear/clearAll through one promise so each
+// sees the previous mutation's write instead of racing on a stale pre-write record
+// (same lost-update shape bounded-record-storage.ts's mutationQueue guards against).
+let milestoneMutationQueue: Promise<unknown> = Promise.resolve();
+function serializeMilestoneMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = milestoneMutationQueue.then(operation);
+  milestoneMutationQueue = result.catch(() => undefined);
+  return result;
+}
+
 export const milestoneCompletionStorage = {
   async getCompleted(journeyBaseUrl: string, milestoneUrls: string[] = []): Promise<Set<string>> {
     try {
@@ -828,24 +838,26 @@ export const milestoneCompletionStorage = {
   },
 
   async markCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
-      const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
-      const existing = getStoredMilestoneSlugs(data, canonicalKey);
-      existing.add(milestoneSlug);
-      const completedSlugs = Array.from(existing);
-      for (const storedKey of Object.keys(data)) {
-        if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
-          data[storedKey] = completedSlugs;
+    return serializeMilestoneMutation(async () => {
+      try {
+        const storage = createUserStorage();
+        const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
+        const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+        const existing = getStoredMilestoneSlugs(data, canonicalKey);
+        existing.add(milestoneSlug);
+        const completedSlugs = Array.from(existing);
+        for (const storedKey of Object.keys(data)) {
+          if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
+            data[storedKey] = completedSlugs;
+          }
         }
+        data[canonicalKey] = completedSlugs;
+        data[journeyBaseUrl] = completedSlugs;
+        await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
+      } catch (error) {
+        logger.warn('Failed to save milestone completion', { error });
       }
-      data[canonicalKey] = completedSlugs;
-      data[journeyBaseUrl] = completedSlugs;
-      await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
-    } catch (error) {
-      logger.warn('Failed to save milestone completion', { error });
-    }
+    });
   },
 
   async isCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<boolean> {
@@ -871,29 +883,31 @@ export const milestoneCompletionStorage = {
    * canonicalizes to the journey base.
    */
   async removeCompleted(journeyBaseUrl: string, milestoneSlug: string, milestoneUrls: string[] = []): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
-      const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
-      const exactKeys = new Set([journeyBaseUrl, ...milestoneUrls].map((key) => key.replace(/\/+$/, '')));
-      let mutated = false;
-      for (const storedKey of Object.keys(data)) {
-        const storedSlugs = data[storedKey];
-        if (
-          storedSlugs &&
-          (getLearningJourneyBaseUrl(storedKey) === canonicalKey || exactKeys.has(storedKey.replace(/\/+$/, ''))) &&
-          storedSlugs.includes(milestoneSlug)
-        ) {
-          data[storedKey] = storedSlugs.filter((slug) => slug !== milestoneSlug);
-          mutated = true;
+    return serializeMilestoneMutation(async () => {
+      try {
+        const storage = createUserStorage();
+        const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
+        const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+        const exactKeys = new Set([journeyBaseUrl, ...milestoneUrls].map((key) => key.replace(/\/+$/, '')));
+        let mutated = false;
+        for (const storedKey of Object.keys(data)) {
+          const storedSlugs = data[storedKey];
+          if (
+            storedSlugs &&
+            (getLearningJourneyBaseUrl(storedKey) === canonicalKey || exactKeys.has(storedKey.replace(/\/+$/, ''))) &&
+            storedSlugs.includes(milestoneSlug)
+          ) {
+            data[storedKey] = storedSlugs.filter((slug) => slug !== milestoneSlug);
+            mutated = true;
+          }
         }
+        if (mutated) {
+          await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
+        }
+      } catch (error) {
+        logger.warn('Failed to remove milestone completion', { error });
       }
-      if (mutated) {
-        await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
-      }
-    } catch (error) {
-      logger.warn('Failed to remove milestone completion', { error });
-    }
+    });
   },
 
   /**
@@ -914,28 +928,32 @@ export const milestoneCompletionStorage = {
   },
 
   async clear(journeyBaseUrl: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
-      const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
-      for (const storedKey of Object.keys(data)) {
-        if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
-          delete data[storedKey];
+    return serializeMilestoneMutation(async () => {
+      try {
+        const storage = createUserStorage();
+        const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
+        const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+        for (const storedKey of Object.keys(data)) {
+          if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
+            delete data[storedKey];
+          }
         }
+        await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
+      } catch (error) {
+        logger.warn('Failed to clear milestone completion', { error });
       }
-      await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
-    } catch (error) {
-      logger.warn('Failed to clear milestone completion', { error });
-    }
+    });
   },
 
   async clearAll(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await storage.removeItem(StorageKeys.MILESTONE_COMPLETION);
-    } catch (error) {
-      logger.warn('Failed to clear all milestone completion', { error });
-    }
+    return serializeMilestoneMutation(async () => {
+      try {
+        const storage = createUserStorage();
+        await storage.removeItem(StorageKeys.MILESTONE_COMPLETION);
+      } catch (error) {
+        logger.warn('Failed to clear all milestone completion', { error });
+      }
+    });
   },
 };
 
@@ -1044,6 +1062,32 @@ function parseStepIds(raw: string): unknown[] | null {
   }
 }
 
+function readStepIds(prefix: string, contentKey: string, sectionId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(progressSectionKey(prefix, contentKey, sectionId));
+    return new Set((raw ? (parseStepIds(raw) ?? []) : []).filter((id): id is string => typeof id === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function readSkippedSteps(contentKey: string, sectionId: string): Set<string> {
+  return readStepIds(StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX, contentKey, sectionId);
+}
+
+function writeSkippedSteps(contentKey: string, sectionId: string, skippedIds: ReadonlySet<string>): void {
+  try {
+    const key = progressSectionKey(StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX, contentKey, sectionId);
+    if (skippedIds.size === 0) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, JSON.stringify([...skippedIds]));
+    }
+  } catch (error) {
+    logger.warn('Failed to persist skipped step attribution', { error });
+  }
+}
+
 /**
  * Cache for the completed-step id scan, so neither `countAllCompleted` nor
  * `listAllCompleted` costs an O(n) localStorage sweep per call. The count is
@@ -1071,6 +1115,21 @@ function invalidateProgressScanCaches(contentKey: string): void {
  * Interactive step completion storage operations
  */
 export const interactiveStepStorage = {
+  getSkipped: readSkippedSteps,
+
+  listAllSkipped(contentKey: string): readonly string[] {
+    const skipped: string[] = [];
+    for (const { sectionId, raw } of listProgressEntries(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey)) {
+      const completed = new Set(parseStepIds(raw) ?? []);
+      for (const id of readSkippedSteps(contentKey, sectionId)) {
+        if (completed.has(id)) {
+          skipped.push(id);
+        }
+      }
+    }
+    return skipped;
+  },
+
   /**
    * Drop the cached completion count for a content key without touching
    * localStorage. Used by the cross-tab `storage` listener in
@@ -1098,25 +1157,41 @@ export const interactiveStepStorage = {
     }
   },
 
-  /**
-   * Sets completed step IDs for a specific content/section
-   */
-  async setCompleted(contentKey: string, sectionId: string, completedIds: Set<string>): Promise<void> {
+  async setCompleted(
+    contentKey: string,
+    sectionId: string,
+    completedIds: Set<string>,
+    skippedIds: ReadonlySet<string> = new Set(),
+    clearedDuringLoad?: ReadonlySet<string>
+  ): Promise<void> {
+    // A save while the section loads must not drop stored steps the load is about to restore.
+    const keepsStored = (id: string) => clearedDuringLoad !== undefined && !clearedDuringLoad.has(id);
+    const unloaded = clearedDuringLoad
+      ? [...readStepIds(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId)].filter(keepsStored)
+      : [];
+    const completed = new Set([...completedIds, ...unloaded]);
+    if (completed.size === 0) {
+      return interactiveStepStorage.clear(contentKey, sectionId);
+    }
+    const skipped = new Set(
+      [...readSkippedSteps(contentKey, sectionId), ...skippedIds].filter(
+        (id) => completedIds.has(id) || (keepsStored(id) && completed.has(id))
+      )
+    );
+    // Skip annotations must be visible before a completion notification can record its source.
+    writeSkippedSteps(contentKey, sectionId, skipped);
     try {
-      // Invalidate before the write so the next scan re-reads storage
       completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
-      await storage.setItem(key, Array.from(completedIds));
+      await storage.setItem(key, Array.from(completed));
     } catch (error) {
       logger.warn('Failed to save completed steps', { error });
     }
   },
 
-  /**
-   * Clears completed steps for a specific content/section
-   */
   async clear(contentKey: string, sectionId: string): Promise<void> {
+    writeSkippedSteps(contentKey, sectionId, new Set());
     try {
       completedIdsCache.delete(contentKey);
       const storage = createUserStorage();
@@ -1140,7 +1215,7 @@ export const interactiveStepStorage = {
   },
 
   /**
-   * Clears every section record for one content key, across all four
+   * Clears every section record for one content key, across all progress
    * namespaces. Rejects rather than resolving if any record survives.
    */
   async clearAllForContent(contentKey: string): Promise<void> {
@@ -1190,6 +1265,7 @@ export const interactiveStepStorage = {
     try {
       completedIdsCache.clear();
       acknowledgedIdsCache.clear();
+      const skippedPrefix = StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX;
       const stepsPrefix = StorageKeys.INTERACTIVE_STEPS_PREFIX;
       const collapsePrefix = StorageKeys.SECTION_COLLAPSE_PREFIX;
       const ackPrefix = StorageKeys.SECTION_ACKNOWLEDGED_PREFIX;
@@ -1200,7 +1276,8 @@ export const interactiveStepStorage = {
         const key = localStorage.key(i);
         if (
           key &&
-          (key.startsWith(stepsPrefix) ||
+          (key.startsWith(skippedPrefix) ||
+            key.startsWith(stepsPrefix) ||
             key.startsWith(collapsePrefix) ||
             key.startsWith(ackPrefix) ||
             key.startsWith(donePrefix))
@@ -1562,8 +1639,8 @@ export const guideCompletionMarkStorage = {
 };
 
 /**
- * Durable half of `completion-records/completion-recorder.ts`'s exactly-once
- * guard. Keyed by the recorder's own `kind:guideSource:guideId` dedupe
+ * Durable half of each of `completion-records/completion-recorder.ts`'s
+ * once-guards. Keyed by the recorder's own `kind:guideSource:guideId` dedupe
  * string — not a content key — via the same versioned-key builder, so the
  * guard survives a page reload rather than resetting with the module's
  * in-memory `Set`. A reset invalidates the specific keys for the guide being
@@ -1581,56 +1658,60 @@ export const guideCompletionMarkStorage = {
  * value. `createLocalStorage()`'s `removeItem` is a plain
  * `localStorage.removeItem` — an actual delete, no tombstone.
  */
-function completionEmittedKey(dedupeKey: string): string {
-  return buildVersionedContentStorageKey(StorageKeys.COMPLETION_EMITTED_PREFIX, dedupeKey);
+function createCompletionGuardStorage(prefix: string) {
+  const guardKey = (dedupeKey: string) => buildVersionedContentStorageKey(prefix, dedupeKey);
+  const guard = {
+    /** Synchronous read — the recorder's dedupe check runs outside React render, but must stay non-blocking. */
+    isEmitted(dedupeKey: string): boolean {
+      try {
+        return localStorage.getItem(guardKey(dedupeKey)) === 'true';
+      } catch {
+        return false;
+      }
+    },
+
+    async markEmitted(dedupeKey: string): Promise<void> {
+      try {
+        const storage = createLocalStorage();
+        await storage.setItem(guardKey(dedupeKey), true);
+      } catch (error) {
+        logger.warn('Failed to persist completion dedupe key', { error });
+      }
+    },
+
+    async clear(dedupeKey: string): Promise<void> {
+      // isEmitted is a synchronous, unconditional check, so skip the write
+      // entirely when there is nothing to clear — a reset over a set of
+      // members it does not know completed any of would otherwise still issue
+      // one localStorage removeItem per combination that never occurred.
+      if (!guard.isEmitted(dedupeKey)) {
+        return;
+      }
+      try {
+        localStorage.removeItem(guardKey(dedupeKey));
+      } catch (error) {
+        logger.warn('Failed to clear completion dedupe key', { error });
+      }
+    },
+
+    async clearAll(): Promise<void> {
+      try {
+        // A plain localStorage-backed key: an actual delete, no tombstone
+        // companion to sweep afterwards.
+        for (const key of collectKeysByPrefix(localStorage, prefix)) {
+          localStorage.removeItem(key);
+        }
+      } catch (error) {
+        logger.warn('Failed to clear completion dedupe keys', { error });
+      }
+    },
+  };
+  return guard;
 }
 
-export const completionEmittedStorage = {
-  /** Synchronous read — the recorder's dedupe check runs outside React render, but must stay non-blocking. */
-  isEmitted(dedupeKey: string): boolean {
-    try {
-      return localStorage.getItem(completionEmittedKey(dedupeKey)) === 'true';
-    } catch {
-      return false;
-    }
-  },
+export const completionEmittedStorage = createCompletionGuardStorage(StorageKeys.COMPLETION_EMITTED_PREFIX);
 
-  async markEmitted(dedupeKey: string): Promise<void> {
-    try {
-      const storage = createLocalStorage();
-      await storage.setItem(completionEmittedKey(dedupeKey), true);
-    } catch (error) {
-      logger.warn('Failed to persist completion dedupe key', { error });
-    }
-  },
-
-  async clear(dedupeKey: string): Promise<void> {
-    // isEmitted is a synchronous, unconditional check, so skip the write
-    // entirely when there is nothing to clear — a reset over a set of
-    // members it does not know completed any of would otherwise still issue
-    // one localStorage removeItem per combination that never occurred.
-    if (!completionEmittedStorage.isEmitted(dedupeKey)) {
-      return;
-    }
-    try {
-      localStorage.removeItem(completionEmittedKey(dedupeKey));
-    } catch (error) {
-      logger.warn('Failed to clear completion dedupe key', { error });
-    }
-  },
-
-  async clearAll(): Promise<void> {
-    try {
-      // A plain localStorage-backed key: an actual delete, no tombstone
-      // companion to sweep afterwards.
-      for (const key of collectKeysByPrefix(localStorage, StorageKeys.COMPLETION_EMITTED_PREFIX)) {
-        localStorage.removeItem(key);
-      }
-    } catch (error) {
-      logger.warn('Failed to clear completion dedupe keys', { error });
-    }
-  },
-};
+export const completionReportedStorage = createCompletionGuardStorage(StorageKeys.COMPLETION_REPORTED_PREFIX);
 
 /**
  * Full screen mode state storage operations

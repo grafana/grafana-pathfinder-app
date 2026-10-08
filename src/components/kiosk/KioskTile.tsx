@@ -15,9 +15,10 @@ interface KioskTileProps {
   index: number;
   mode?: KioskMode;
   onLaunch?: () => void;
+  blockIndex?: number;
 }
 
-export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'presentation', onLaunch }) => {
+export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'presentation', onLaunch, blockIndex }) => {
   const styles = useStyles2(getKioskOverlayStyles);
   const revision = useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision);
   const [progress, setProgress] = useState<{ url: string; type: string; percentage: number }>();
@@ -47,8 +48,8 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
       : undefined;
 
   const handleClick = useCallback(() => {
-    launchKioskGuide(rule, mode, onLaunch);
-  }, [rule, mode, onLaunch]);
+    launchKioskGuide(rule, mode, onLaunch, undefined, blockIndex);
+  }, [rule, mode, onLaunch, blockIndex]);
 
   return (
     <button type="button" className={styles.tile} onClick={handleClick} data-testid={testIds.kioskMode.tile(index)}>

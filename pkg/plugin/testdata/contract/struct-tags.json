@@ -286,6 +286,13 @@
       "type": "string",
       "wire": "string",
       "omitempty": true
+    },
+    {
+      "field": "ProgressRecords",
+      "json": "progressRecords",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": true
     }
   ],
   "customGuideCapability": [
@@ -577,6 +584,57 @@
       "omitempty": true
     }
   ],
+  "inProgressCompletion": [
+    {
+      "field": "GuideSource",
+      "json": "guideSource",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideID",
+      "json": "guideId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideTitle",
+      "json": "guideTitle",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideCategory",
+      "json": "guideCategory",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "PathID",
+      "json": "pathId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "CompletionPercent",
+      "json": "completionPercent",
+      "type": "int64",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "LastUpdatedAt",
+      "json": "lastUpdatedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    }
+  ],
   "myAssignmentsResponse": [
     {
       "field": "Capability",
@@ -633,6 +691,13 @@
       "field": "Completions",
       "json": "completions",
       "type": "[]plugin.collatedCompletion",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "InProgress",
+      "json": "inProgress",
+      "type": "[]plugin.inProgressCompletion",
       "wire": "array<object>",
       "omitempty": false
     },
