@@ -9,7 +9,7 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { PATHFINDER_PARAMS, stripPathfinderParams } from '../../utils/pathfinder-search-params';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { getKioskName, getKioskSessionId } from '../../lib/kiosk-analytics';
+import { getKioskName, getKioskSessionId, reportKioskInteraction } from '../../lib/kiosk-analytics';
 import type { KioskRule } from './kiosk-rules';
 import { parseKioskWebUrl } from '../../security/kiosk-url';
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
@@ -20,7 +20,8 @@ export function launchKioskGuide(
   rule: KioskRule,
   mode: KioskMode,
   onLaunch?: () => void,
-  prepared?: PreparedGuideLaunch
+  prepared?: PreparedGuideLaunch,
+  blockIndex?: number
 ): void {
   const page = rule.page === undefined ? undefined : validateInternalNavigationPath(rule.page);
   if (page === null || (rule.interactiveLearning !== false && !isAllowedContentUrl(rule.url))) {
@@ -51,6 +52,7 @@ export function launchKioskGuide(
         target.searchParams.set(key, value);
       }
       target.hash = destination.hash;
+      reportKioskInteraction(mode, blockIndex, { component: 'guide-links', action: 'open_product', ruleId: rule.id });
       window.open(target.href, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -62,6 +64,7 @@ export function launchKioskGuide(
     if (subpath && (destination.pathname === subpath || destination.pathname.startsWith(`${subpath}/`))) {
       destination.pathname = destination.pathname.slice(subpath.length) || '/';
     }
+    reportKioskInteraction(mode, blockIndex, { component: 'guide-links', action: 'open_product', ruleId: rule.id });
     onLaunch?.();
     if (sidebarState.getIsSidebarMounted() && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
