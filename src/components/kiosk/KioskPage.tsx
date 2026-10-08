@@ -408,6 +408,7 @@ export function KioskPage({ page, rules, mode, onLaunch }: Props) {
                         index={rules.indexOf(rule)}
                         mode={mode}
                         onLaunch={onLaunch}
+                        blockIndex={index}
                       />
                     );
                   }
@@ -415,7 +416,7 @@ export function KioskPage({ page, rules, mode, onLaunch }: Props) {
                     <Button
                       key={link.ruleId}
                       variant="secondary"
-                      onClick={() => launchKioskGuide(rule, mode, onLaunch)}
+                      onClick={() => launchKioskGuide(rule, mode, onLaunch, undefined, index)}
                     >
                       {link.label ?? rule.title}
                       {rule.interactiveLearning === false && ' — Open product'}

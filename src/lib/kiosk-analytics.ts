@@ -37,7 +37,10 @@ type KioskInteraction =
   | { component: 'input'; action: 'change' | 'invalid'; inputType: 'text' | 'datasource'; inputIndex: number }
   | { component: 'launch-form'; action: 'submit' | 'ready' | 'fallback' }
   | { component: 'launch-form'; action: 'error'; reason: 'validation' | 'storage' | 'unavailable' }
-  | { component: 'command'; action: 'copy'; outcome: 'success' | 'error' };
+  | { component: 'command'; action: 'copy'; outcome: 'success' | 'error' }
+  | { component: 'guide-links'; action: 'open_product'; ruleId?: string };
+
+const RULE_ID = /^[a-zA-Z_][a-zA-Z0-9_]{0,99}$/;
 
 export function reportKioskInteraction(
   mode: 'instance' | 'presentation',
@@ -58,5 +61,8 @@ export function reportKioskInteraction(
     }),
     ...(interaction.component === 'launch-form' && interaction.action === 'error' && { reason: interaction.reason }),
     ...(interaction.component === 'command' && { outcome: interaction.outcome }),
+    ...(interaction.component === 'guide-links' &&
+      interaction.ruleId &&
+      RULE_ID.test(interaction.ruleId) && { rule_id: interaction.ruleId }),
   });
 }

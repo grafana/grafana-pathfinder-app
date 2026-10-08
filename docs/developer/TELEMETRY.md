@@ -308,6 +308,9 @@ Structured kiosk controls emit `kiosk_interaction`, mirrored to Faro through the
 | `input`       | `change` once per field per mounted form; `invalid` for native validation | `input_type`, zero-based `input_index`                                 |
 | `launch-form` | `submit`, `ready`, `error`                                                | Errors use bounded `reason`: `validation`, `storage`, or `unavailable` |
 | `command`     | `copy`                                                                    | `outcome`: `success` or `error`                                        |
+| `guide-links` | `open_product` when a product card or link navigates                      | `rule_id` when the rule has a slug-shaped ID                           |
+
+Product rules (`interactiveLearning: false`) open a Grafana page rather than a guide, so they emit `open_product` and never `KioskDemoStarted`, which counts guide launches only. Rejected destinations emit nothing. For "saw the kiosk page" exposure, count `pathfinder_kiosk_catalog_loaded` rather than launches.
 
 Explicit exits emit the same event with `component=kiosk`, `action=exit`, and `method=button` or `escape`. Launching a guide is not counted as an exit, and dismissing a child dropdown is not counted either.
 

@@ -246,6 +246,27 @@ describe('milestoneCompletionStorage', () => {
     expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
   });
 
+  // markCompleted reads the whole record, mutates its own journey's entry, and
+  // writes the whole record back — two calls for DIFFERENT journeys fired
+  // without an await between them would otherwise both read the same
+  // pre-write record, and whichever write resolved last would silently
+  // discard the other's journey (a lost update, mirroring
+  // bounded-record-storage.test.ts's "keeps every key when two set() calls
+  // for DIFFERENT keys race" case).
+  it('keeps both journeys when two markCompleted calls for DIFFERENT journeys race without an await between them', async () => {
+    const otherJourneyUrl = 'backend-guide:fe-alerting-path';
+
+    await Promise.all([
+      milestoneCompletionStorage.markCompleted(journeyUrl, 'install-alloy'),
+      milestoneCompletionStorage.markCompleted(otherJourneyUrl, 'fe-alerting-01'),
+    ]);
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set(['install-alloy']));
+    await expect(milestoneCompletionStorage.getCompleted(otherJourneyUrl)).resolves.toEqual(
+      new Set(['fe-alerting-01'])
+    );
+  });
+
   describe('getCompletedSync', () => {
     it('returns an empty set before anything is written', () => {
       expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set());
