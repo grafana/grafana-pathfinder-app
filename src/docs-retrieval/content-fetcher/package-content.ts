@@ -152,13 +152,16 @@ export async function resolvePackageTracks(tracks: ManifestTrack[], pathSlug?: s
  * A path's declared tracks, read from the package's own manifest: a caller's
  * manifest may be a slim recommender projection that carries none. Falls
  * back to the caller's manifest only when the package manifest is unavailable.
+ * An App Platform caller manifest already is the package's own, and App
+ * Platform resolutions are never cached, so it is used as-is.
  */
 async function resolvePathTracks(
   manifestId: string,
   callerManifest: Record<string, unknown> | undefined,
   pathSlug?: string
 ): Promise<{ declared: ManifestTrack[]; resolved: CoverPageTrack[] }> {
-  const resolver = manifestId ? await getPackageResolver() : undefined;
+  const needsPackageManifest = manifestId !== '' && callerManifest?.repository !== 'app-platform';
+  const resolver = needsPackageManifest ? await getPackageResolver() : undefined;
   const resolution = resolver
     ? await resolver.resolve(manifestId, { loadContent: 'metadata-only' }).catch(() => undefined)
     : undefined;

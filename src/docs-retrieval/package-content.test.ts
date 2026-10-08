@@ -893,6 +893,66 @@ describe('fetchPackageContent path-type enrichment', () => {
     expect(journey.tracks![0]!.milestones[0]!.title).toBe('Milestone: builder-1');
   });
 
+  it('reads tracks from the package manifest when the caller manifest is a slim recommender projection', async () => {
+    const packageManifest = {
+      id: 'first-dashboard',
+      type: 'path',
+      milestones: ['step-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
+    };
+    setPackageResolver({
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: id === packageManifest.id ? packageManifest : { id, type: 'guide' },
+        })
+      ),
+    });
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      id: 'first-dashboard',
+      type: 'path',
+      milestones: ['step-1'],
+    });
+
+    expect(result.content!.metadata.learningJourney!.tracks).toEqual([
+      expect.objectContaining({ trackId: 'builder', label: 'Builder' }),
+    ]);
+  });
+
+  it('uses an App Platform caller manifest as-is, without re-resolving the path for its tracks', async () => {
+    const resolve = jest.fn().mockImplementation((id: string) =>
+      Promise.resolve({
+        ok: true,
+        id,
+        contentUrl: `bundled:${id}/content.json`,
+        manifestUrl: `bundled:${id}/manifest.json`,
+        repository: 'bundled',
+        content: { id, title: `Milestone: ${id}`, blocks: [] },
+        manifest: { id, type: 'guide' },
+      })
+    );
+    setPackageResolver({ resolve });
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      id: 'first-dashboard',
+      type: 'path',
+      repository: 'app-platform',
+      milestones: ['step-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
+    });
+
+    expect(result.content!.metadata.learningJourney!.tracks).toEqual([
+      expect.objectContaining({ trackId: 'builder', label: 'Builder' }),
+    ]);
+    expect(resolve).not.toHaveBeenCalledWith('first-dashboard', { loadContent: 'metadata-only' });
+  });
+
   it('omits learningJourney.tracks for a journey manifest even when tracks is present (regression: RFC restricts tracks to paths)', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockImplementation((id: string) =>
