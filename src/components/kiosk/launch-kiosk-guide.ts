@@ -51,6 +51,7 @@ export function launchKioskGuide(
         target.searchParams.set(key, value);
       }
       target.hash = destination.hash;
+      reportKioskLaunch(rule, mode, getKioskSessionId() ?? crypto.randomUUID(), destination.pathname);
       window.open(target.href, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -62,6 +63,7 @@ export function launchKioskGuide(
     if (subpath && (destination.pathname === subpath || destination.pathname.startsWith(`${subpath}/`))) {
       destination.pathname = destination.pathname.slice(subpath.length) || '/';
     }
+    reportKioskLaunch(rule, mode, getKioskSessionId() ?? crypto.randomUUID(), destination.pathname);
     onLaunch?.();
     if (sidebarState.getIsSidebarMounted() && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
@@ -94,15 +96,7 @@ export function launchKioskGuide(
   const sessionId = getKioskSessionId() ?? crypto.randomUUID();
   const kioskName = getKioskName() ?? 'unknown';
 
-  reportAppInteraction(UserInteraction.KioskDemoStarted, {
-    kiosk_session_id: sessionId,
-    kiosk_name: kioskName,
-    guide_url: rule.url,
-    guide_title: rule.title,
-    guide_type: rule.type,
-    launch_mode: mode,
-    target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
-  });
+  reportKioskLaunch(rule, mode, sessionId);
 
   if (!prepared) {
     url.searchParams.set('doc', rule.url);
@@ -164,6 +158,21 @@ export function launchKioskGuide(
   } else {
     window.open(url.toString(), '_blank', 'noopener,noreferrer');
   }
+}
+
+function reportKioskLaunch(rule: KioskRule, mode: KioskMode, sessionId: string, productPage?: string): void {
+  const isProduct = productPage !== undefined;
+  reportAppInteraction(UserInteraction.KioskDemoStarted, {
+    kiosk_session_id: sessionId,
+    kiosk_name: getKioskName() ?? 'unknown',
+    ...((!isProduct || isAllowedContentUrl(rule.url)) && { guide_url: rule.url }),
+    guide_title: rule.title,
+    guide_type: rule.type,
+    launch_mode: mode,
+    target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
+    interactive_learning: !isProduct,
+    ...(isProduct && { product_page: productPage }),
+  });
 }
 
 function stripProductLaunchParams(url: URL): void {

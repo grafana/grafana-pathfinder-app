@@ -123,6 +123,7 @@ describe('KioskTile', () => {
       guide_type: rule.type,
       target_instance: rule.targetUrl,
       launch_mode: 'presentation',
+      interactive_learning: true,
     });
 
     const analyticsCallOrder = (reportAppInteraction as jest.Mock).mock.invocationCallOrder[0]!;
@@ -322,7 +323,19 @@ describe('product navigation', () => {
     render(<KioskTile rule={product} index={0} mode="instance" onLaunch={close} />);
     fireEvent.click(screen.getByRole('button', { name: /Open product/ }));
     expect(mockPush).toHaveBeenCalledWith('/a/product?view=all&orgId=2#tab');
-    expect(reportAppInteraction).not.toHaveBeenCalledWith(UserInteraction.KioskDemoStarted, expect.anything());
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskDemoStarted, {
+      kiosk_session_id: expect.any(String),
+      kiosk_name: 'unknown',
+      guide_title: product.title,
+      guide_type: product.type,
+      launch_mode: 'instance',
+      target_instance: window.location.origin,
+      interactive_learning: false,
+      product_page: '/a/product',
+    });
+    expect((reportAppInteraction as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+      close.mock.invocationCallOrder[0]!
+    );
     expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
     expect(panelModeManager.getMode()).toBe('sidebar');
     expect(close).toHaveBeenCalledTimes(1);
@@ -342,6 +355,30 @@ describe('product navigation', () => {
       '_blank',
       'noopener,noreferrer'
     );
+  });
+  it.each(['instance', 'presentation'] as const)('attributes a %s product launch to the kiosk session', (mode) => {
+    const session = startKioskSession('dem');
+    const guideUrl = 'https://interactive-learning.grafana.net/packages/welcome-frontend-observability/content.json';
+    launchKioskGuide({ ...product, url: guideUrl, targetUrl: 'https://example.com/grafana/' }, mode);
+    expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.KioskDemoStarted,
+      expect.objectContaining({
+        kiosk_session_id: session.id,
+        kiosk_name: 'dem',
+        guide_url: guideUrl,
+        launch_mode: mode,
+        target_instance: mode === 'instance' ? window.location.origin : 'https://example.com/grafana/',
+        interactive_learning: false,
+        product_page: '/a/product',
+      })
+    );
+    session.end();
+  });
+  it('does not report a rejected product launch', () => {
+    launchKioskGuide({ ...product, targetUrl: 'javascript:alert(1)' }, 'presentation');
+    expect(window.open).not.toHaveBeenCalled();
+    expect(reportAppInteraction).not.toHaveBeenCalled();
   });
   it('closes only the Pathfinder sidebar', () => {
     sidebarState.setIsSidebarMounted(true);
@@ -373,6 +410,7 @@ describe('product navigation', () => {
     (page) => {
       launchKioskGuide({ ...product, page }, 'instance');
       expect(mockPush).not.toHaveBeenCalled();
+      expect(reportAppInteraction).not.toHaveBeenCalled();
     }
   );
 });
