@@ -135,7 +135,7 @@ The orphan `step-auto-skipped` listener at `step-checker.hook.ts:746` was remove
 
 ## Content-key resolution
 
-`src/global-state/content-key.ts` is the typed module that owns `getContentKey()`. It reads from the typed module state first, falling back to the legacy `window.__DocsPluginActiveTabUrl` / `__DocsPluginContentKey` globals so consumers can migrate piecemeal.
+`src/global-state/content-key.ts` is the typed module that owns `getContentKey()`. It reads from the typed module state first, falling back to the legacy `window.__DocsPluginActiveTabUrl` / `__DocsPluginContentKey` globals so consumers can migrate piecemeal. Each guide-rendering surface (sidebar, floating, full screen, guide reader) publishes its own key while mounted.
 
 ## Importing the types
 

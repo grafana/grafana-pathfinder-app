@@ -6,13 +6,16 @@
  * The legacy `window.__DocsPluginActiveTabUrl` and
  * `window.__DocsPluginContentKey` globals are still set and/or read by
  * their existing owners (`useGlobalActiveTabExposure`,
- * `content-renderer.tsx`, and `analytics.ts`); the typed readers
+ * `usePublishSurfaceContentKey`, `content-renderer.tsx`, and `analytics.ts`); the typed readers
  * transparently fall back to them so callers can migrate to the typed
  * API piecemeal. The fallback is therefore load-bearing — do not
  * remove it until those remaining consumers also use the typed API.
  *
  * Resolution order:
- *   1. Active tab URL (canonical: set by `useGlobalActiveTabExposure`)
+ *   1. Active tab URL (canonical: each guide-rendering surface — sidebar,
+ *      floating, full screen, guide reader — publishes its own key while
+ *      mounted; the sidebar via `useGlobalActiveTabExposure`, the others via
+ *      `usePublishSurfaceContentKey`)
  *   2. Content-key override (set when the active tab URL is not yet
  *      available — e.g. during preview mode)
  *   3. `window.location.pathname` (last-resort fallback)

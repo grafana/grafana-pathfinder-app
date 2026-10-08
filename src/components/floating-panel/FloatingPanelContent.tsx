@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
 import { useGuideIdentityRegistration } from '../content-renderer/useGuideIdentityRegistration';
+import { usePublishSurfaceContentKey } from '../../hooks';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
@@ -122,6 +123,7 @@ export function FloatingPanelContent({
         guideTitle: activeTab?.title,
       }
     : null;
+  usePublishSurfaceContentKey(content ? activeTab?.currentUrl || activeTab?.baseUrl : undefined);
   useGuideIdentityRegistration(content?.url, surfaceCompletionInput);
 
   if (!content || !surfaceCompletionInput) {

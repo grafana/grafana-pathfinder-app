@@ -1,14 +1,22 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, renderHook, screen, fireEvent, act } from '@testing-library/react';
 import { GuideReaderOverlay } from './GuideReaderOverlay';
 import { testIds } from '../../constants/testIds';
 import { fetchUnifiedContent } from '../../docs-retrieval';
 import { recordGuideRender } from '../../lib/telemetry/facade';
+import { getActiveTabUrl } from '../../global-state/content-key';
+import { findDocPage } from '../../utils/find-doc-page';
+import { useGlobalActiveTabExposure } from '../docs-panel/hooks/useGlobalActiveTabExposure';
 import type { ContentFetchResult, RawContent } from '../../types/content.types';
 
 jest.mock('../../lib/telemetry/facade', () => ({
   ...jest.requireActual('../../lib/telemetry/facade'),
   recordGuideRender: jest.fn(),
+}));
+
+jest.mock('../../lib/faro', () => ({
+  setFaroView: jest.fn(),
+  setFaroViewName: jest.fn(),
 }));
 
 jest.mock('../../docs-retrieval', () => ({
@@ -69,6 +77,63 @@ describe('GuideReaderOverlay', () => {
       mockFetchContent.mock.calls[0]?.[1]?.loadContext?.loadId
     );
     expect(recordGuideRender).not.toHaveBeenCalled();
+  });
+
+  it('publishes the rendered guide key (the sidebar tab spelling) and releases it on unmount', async () => {
+    window.__DocsPluginActiveTabUrl = 'https://grafana.com/docs/stale/';
+    mockFetchContent.mockResolvedValue({ content: { url: 'bundled:intro', type: 'interactive' } } as any);
+
+    const { unmount } = render(<GuideReaderOverlay doc="bundled:intro" />);
+    await screen.findByTestId('mock-content');
+
+    expect(window.__DocsPluginActiveTabUrl).toBe('bundled:intro');
+    unmount();
+    window.__DocsPluginActiveTabUrl = 'https://grafana.com/docs/sidebar/';
+    expect(getActiveTabUrl()).toBe('https://grafana.com/docs/sidebar/');
+  });
+
+  describe('content key parity with the sidebar tab for the same launch', () => {
+    const sidebarKey = (doc: string, fetchedUrl: string | undefined) => {
+      window.__DocsPluginActiveTabUrl = '';
+      const { unmount } = renderHook(() =>
+        useGlobalActiveTabExposure({
+          activeTabId: 'tab-1',
+          activeTabBaseUrl: findDocPage(doc)?.url ?? doc,
+          activeTabCurrentUrl: fetchedUrl || doc,
+        })
+      );
+      const key = window.__DocsPluginActiveTabUrl;
+      unmount();
+      return key;
+    };
+
+    const readerKey = async (doc: string, fetchedUrl: string | undefined) => {
+      window.__DocsPluginActiveTabUrl = '';
+      mockFetchContent.mockResolvedValue({ content: { url: fetchedUrl, type: 'interactive' } } as any);
+      const { unmount } = render(<GuideReaderOverlay doc={doc} />);
+      await screen.findByTestId('mock-content');
+      const key = window.__DocsPluginActiveTabUrl;
+      unmount();
+      return key;
+    };
+
+    it.each([
+      ['a bundled launch', 'bundled:welcome-to-grafana', 'bundled:welcome-to-grafana'],
+      ['a bundled launch whose content has no url', 'bundled:welcome-to-grafana', undefined],
+      ['an https launch', 'https://grafana.com/docs/grafana/latest/', 'https://grafana.com/docs/grafana/latest/'],
+    ])('publishes the sidebar key for %s', async (_name, doc, fetchedUrl) => {
+      const fromSidebar = await sidebarKey(doc, fetchedUrl);
+      expect(fromSidebar).toBeTruthy();
+      expect(await readerKey(doc, fetchedUrl)).toBe(fromSidebar);
+    });
+
+    it('keeps bundled:<id> and bundled:<id>/content.json distinct', async () => {
+      const bare = 'bundled:welcome-to-grafana';
+      const withFile = `${bare}/content.json`;
+      expect(await readerKey(bare, bare)).toBe(await sidebarKey(bare, bare));
+      expect(await readerKey(withFile, withFile)).toBe(await sidebarKey(withFile, withFile));
+      expect(await readerKey(bare, bare)).not.toBe(await readerKey(withFile, withFile));
+    });
   });
 
   it('provides controller mode to the rendered content', async () => {
