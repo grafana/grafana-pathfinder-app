@@ -158,11 +158,16 @@ export async function resolvePackageTracks(tracks: ManifestTrack[], pathSlug?: s
  * Platform resolutions are never cached, so it is used as-is.
  */
 async function resolvePathTracks(
+  manifestId: string,
   callerManifest: Record<string, unknown> | undefined,
-  resolvedManifest: Record<string, unknown> | undefined,
   pathSlug?: string
 ): Promise<{ declared: ManifestTrack[]; resolved: CoverPageTrack[] }> {
-  const declared = getManifestTracks(resolvedManifest ?? callerManifest);
+  const needsPackageManifest = manifestId !== '' && callerManifest?.repository !== 'app-platform';
+  const resolver = needsPackageManifest ? await getPackageResolver() : undefined;
+  const resolution = resolver
+    ? await resolver.resolve(manifestId, { loadContent: 'metadata-only' }).catch(() => undefined)
+    : undefined;
+  const declared = getManifestTracks(resolution?.ok && resolution.manifest ? resolution.manifest : callerManifest);
   return { declared, resolved: declared.length > 0 ? await resolvePackageTracks(declared, pathSlug) : [] };
 }
 
@@ -354,7 +359,7 @@ export async function fetchPackageContent(
   // resolver fetched ahead of this array) so a cold resolver's chunk fetch
   // overlaps fetchContent(contentUrl, { loadContext }) instead of
   // serializing in front of it.
-  const [result, resolvedMilestones, baseUrlResolution] = await Promise.all([
+  const [result, resolvedMilestones, baseUrlResolution, pathTracks] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
     manifestId
@@ -362,18 +367,8 @@ export async function fetchPackageContent(
           resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
         )
       : Promise.resolve(undefined),
+    tracksEligible ? resolvePathTracks(manifestId, packageManifest, pathSlug) : Promise.resolve(undefined),
   ]);
-  const pathTracks = tracksEligible
-    ? await resolvePathTracks(
-        packageManifest,
-        packageManifest?.repository === 'app-platform'
-          ? undefined
-          : baseUrlResolution?.ok
-            ? baseUrlResolution.manifest
-            : undefined,
-        pathSlug
-      )
-    : undefined;
   const manifestTracks = pathTracks?.declared ?? [];
 
   if (!result.content) {

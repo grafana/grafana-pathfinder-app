@@ -110,8 +110,9 @@ describe('path milestone prerequisite metadata', () => {
       totalMilestones: 2,
       baseUrl: 'backend-guide:parent-path',
     });
-    expect(mockResolve).toHaveBeenCalledTimes(1);
+    expect(mockResolve).toHaveBeenCalledTimes(2);
     expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: false });
+    expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: 'metadata-only' });
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -132,8 +133,9 @@ describe('path milestone prerequisite metadata', () => {
     expect(result.content?.metadata.packageManifest).toMatchObject({ id: 'member-two', type: 'guide' });
     expect(result.content?.metadata.packageManifest?.prerequisites).toBeUndefined();
     expect(result.content?.metadata.learningJourney).toMatchObject({ currentMilestone: 2, totalMilestones: 2 });
-    expect(mockResolve).toHaveBeenCalledTimes(1);
+    expect(mockResolve).toHaveBeenCalledTimes(2);
     expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: false });
+    expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: 'metadata-only' });
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -158,8 +160,9 @@ describe('path milestone prerequisite metadata', () => {
       { id: 'member-only', label: '<em>Member</em> **requirement**' },
     ]);
     expect(result.content?.metadata.packageManifest?.prerequisites).not.toContainEqual(pathManifest.prerequisites?.[0]);
-    expect(mockResolve).toHaveBeenCalledTimes(1);
+    expect(mockResolve).toHaveBeenCalledTimes(2);
     expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: false });
+    expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: 'metadata-only' });
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -182,8 +185,9 @@ describe('path milestone prerequisite metadata', () => {
 
     expect(result.content?.metadata.packageManifest).toBeUndefined();
     expect(result.content?.metadata.learningJourney).toMatchObject({ currentMilestone: 1, totalMilestones: 2 });
-    expect(mockResolve).toHaveBeenCalledTimes(1);
+    expect(mockResolve).toHaveBeenCalledTimes(2);
     expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: false });
+    expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: 'metadata-only' });
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -203,8 +207,9 @@ describe('path milestone prerequisite metadata', () => {
 
     expect(result.content?.metadata.packageManifest?.prerequisites).toEqual(pathManifest.prerequisites);
     expect(result.content?.metadata.learningJourney).toMatchObject({ currentMilestone: 0, totalMilestones: 2 });
-    expect(mockResolve).toHaveBeenCalledTimes(1);
+    expect(mockResolve).toHaveBeenCalledTimes(2);
     expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: false });
+    expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: 'metadata-only' });
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
