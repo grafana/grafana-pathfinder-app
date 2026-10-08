@@ -16,7 +16,7 @@ The Interactive Engine provides the core automation and interaction capabilities
 - **`sequence-manager.ts`** - Coordinates sequential multi-step execution with retry logic
 - **`interactive-state-manager.ts`** - Tracks execution state and dispatches completion events
 - **`global-interaction-blocker.ts`** - Singleton that blocks user interactions during section execution using overlays
-- **`auto-completion/`** - Optional system for detecting and auto-completing user-performed actions
+- **`auto-completion/`** - Passive matchers that let the completion coordinator observe the reader's own actions, plus form value matching and validation
 - **`use-sequential-step-state.hook.ts`** - `useSyncExternalStore`-based hook for subscribing to sequential step state changes
 
 ## Main Hook
@@ -367,8 +367,8 @@ Located in `src/constants/interactive-config.ts`:
 
 **Constraints**:
 
-- Auto-completion must be disabled by default and opt-in via Plugin Configuration — it is an experimental feature that intercepts user events globally (from [Auto-Completion System](#auto-completion-system) above; `NOTE` in `action-monitor.ts`)
-- Auto-completion must be force-disabled during automated section execution to prevent interference between the automation and the detection system (from [Auto-Completion System](#auto-completion-system) above)
+- Passive completion is on by default but must stay switchable: per tenant with `enableAutoDetection: false`, fleet-wide with the `pathfinder.passive-completion` flag. Off, the renderer provides no coordinator (from [Passive Completion](#passive-completion) above)
+- Passive completion must record no evidence while any block is executing, so automation is never mistaken for the reader's own actions (from [Passive Completion](#passive-completion) above)
 - Hover state is intentionally persisted until explicit cleanup — subsequent actions may need to interact with hover-revealed elements (from code comment in `hover-handler.ts`)
 - An emergency unblock method must always be available — if the interaction blocker enters an invalid state, users must have an escape hatch (from [Interactive State Manager](#interactive-state-manager) and [Global Interaction Blocker](#global-interaction-blocker) above)
 - External URLs in the navigate handler must be validated via `parseUrlSafely` to block `javascript:` and `data:` scheme injection (from [Handler Types](#handler-types) above)

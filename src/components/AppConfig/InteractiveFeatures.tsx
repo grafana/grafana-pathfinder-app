@@ -5,6 +5,7 @@ import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
 import {
   PathfinderPluginConfig,
+  DEFAULT_ENABLE_AUTO_DETECTION,
   DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   DEFAULT_GUIDED_STEP_TIMEOUT,
   DEFAULT_DISABLE_AUTO_COLLAPSE,
@@ -21,6 +22,7 @@ import { logger } from '../../lib/logging';
 type JsonData = PathfinderPluginConfig;
 
 type State = {
+  enableAutoDetection: boolean;
   requirementsCheckTimeout: number;
   guidedStepTimeout: number;
   disableAutoCollapse: boolean;
@@ -32,6 +34,7 @@ type State = {
 
 function buildStateFromConfig(config: ResolvedPathfinderConfig): State {
   return {
+    enableAutoDetection: config.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
     requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
     guidedStepTimeout: config.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
     disableAutoCollapse: config.disableAutoCollapse ?? DEFAULT_DISABLE_AUTO_COLLAPSE,
@@ -67,6 +70,10 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
       return newErrors;
     });
     return num;
+  };
+
+  const onToggleAutoDetection = (event: ChangeEvent<HTMLInputElement>) => {
+    edit({ enableAutoDetection: event.target.checked });
   };
 
   const onToggleDisableAutoCollapse = (event: ChangeEvent<HTMLInputElement>) => {
@@ -105,6 +112,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
 
   const onResetDefaults = () => {
     edit({
+      enableAutoDetection: DEFAULT_ENABLE_AUTO_DETECTION,
       requirementsCheckTimeout: DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
       guidedStepTimeout: DEFAULT_GUIDED_STEP_TIMEOUT,
       disableAutoCollapse: DEFAULT_DISABLE_AUTO_COLLAPSE,
@@ -159,9 +167,28 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         </Alert>
       )}
       <FieldSet label="Interactive guide features" className={styles.fieldSet}>
-        <Alert title="Automatic completion" severity="info">
-          Open guides track completed objectives and supported actions automatically. Show me and Do it are optional.
-        </Alert>
+        <div className={styles.section}>
+          <Text variant="h4" weight="medium">
+            Automatic completion
+          </Text>
+          <div className={styles.toggleSection}>
+            <Switch
+              data-testid={testIds.appConfig.interactiveFeatures.toggle}
+              id="enable-auto-detection"
+              value={state.enableAutoDetection}
+              onChange={onToggleAutoDetection}
+            />
+            <div className={styles.toggleLabels}>
+              <Text variant="body" weight="medium">
+                Complete steps automatically
+              </Text>
+              <Text variant="body" color="secondary">
+                Open guides mark steps complete when their objectives are already met or readers perform the actions
+                themselves. Turn this off to complete steps only with Show me, Do it, or Mark complete.
+              </Text>
+            </div>
+          </div>
+        </div>
 
         <div className={styles.divider} />
 

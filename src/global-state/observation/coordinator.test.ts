@@ -24,7 +24,7 @@ describe('guide completion observation', () => {
     coordinator.register(item);
     coordinator.start();
     await settle();
-    expect(item.commit).toHaveBeenCalledWith('objectives');
+    expect(item.commit).toHaveBeenCalledWith('objectives', 'load');
     coordinator.recheck();
     await settle();
     expect(item.commit).toHaveBeenCalledTimes(1);
@@ -46,7 +46,7 @@ describe('guide completion observation', () => {
     coordinator.observe((action) => action.refTarget === 'Save');
     await settle();
     expect(item.commit).toHaveBeenCalledTimes(1);
-    expect(item.commit).toHaveBeenCalledWith('observed');
+    expect(item.commit).toHaveBeenCalledWith('observed', 'change');
   });
 
   it('requires separate events for repeated selectors', async () => {
@@ -64,7 +64,7 @@ describe('guide completion observation', () => {
     expect(item.commit).not.toHaveBeenCalled();
     coordinator.observe(() => true);
     await settle();
-    expect(item.commit).toHaveBeenCalledWith('observed');
+    expect(item.commit).toHaveBeenCalledWith('observed', 'change');
   });
 
   it('gates assisted completion on objectives and waits for execution to settle', async () => {
@@ -82,7 +82,7 @@ describe('guide completion observation', () => {
     satisfied = true;
     coordinator.recheck();
     await settle();
-    expect(item.commit).toHaveBeenCalledWith('objectives');
+    expect(item.commit).toHaveBeenCalledWith('objectives', 'change');
   });
 
   it('does not complete from failed verification or unavailable checks', async () => {
@@ -97,7 +97,7 @@ describe('guide completion observation', () => {
     check.mockResolvedValue(true);
     coordinator.recheck();
     await settle();
-    expect(item.commit).toHaveBeenCalledWith('observed');
+    expect(item.commit).toHaveBeenCalledWith('observed', 'change');
   });
 
   it('queues a change that arrives during a check', async () => {
@@ -118,7 +118,7 @@ describe('guide completion observation', () => {
     coordinator.recheck();
     finish(false);
     await settle();
-    expect(item.commit).toHaveBeenCalledWith('objectives');
+    expect(item.commit).toHaveBeenCalledWith('objectives', 'change');
   });
 
   it.each(['reset', 'stop', 'unregister'] as const)('discards stale results after %s', async (operation) => {
@@ -328,7 +328,7 @@ describe('assisted completion requests', () => {
     const item = step({ id: 'ungated', executing: true });
     coordinator.register(item);
     coordinator.request(item.id);
-    expect(item.commit).toHaveBeenCalledWith('manual');
+    expect(item.commit).toHaveBeenCalledWith('manual', 'change');
   });
 
   it('lets an early request skip verify but never objectives', async () => {
@@ -341,7 +341,7 @@ describe('assisted completion requests', () => {
     coordinator.request(verified.id, 'manual', true);
     coordinator.request(gated.id, 'manual', true);
     await settle();
-    expect(verified.commit).toHaveBeenCalledWith('manual');
+    expect(verified.commit).toHaveBeenCalledWith('manual', 'change');
     expect(gated.commit).not.toHaveBeenCalled();
     expect(coordinator.waiting(gated.id)).toBe(true);
     coordinator.reset();
@@ -356,7 +356,7 @@ describe('assisted completion requests', () => {
     coordinator.request(item.id);
     coordinator.request(item.id);
     expect(item.commit).toHaveBeenCalledTimes(1);
-    expect(item.commit).toHaveBeenCalledWith('manual');
+    expect(item.commit).toHaveBeenCalledWith('manual', 'change');
   });
 
   it('re-arms a gated request on the successor host, including in another coordinator', async () => {
@@ -376,7 +376,7 @@ describe('assisted completion requests', () => {
     second.start();
     second.register(successor);
     await settle();
-    expect(successor.commit).toHaveBeenCalledWith('manual');
+    expect(successor.commit).toHaveBeenCalledWith('manual', 'change');
     expect(original.commit).not.toHaveBeenCalled();
     second.stop();
   });
@@ -466,7 +466,7 @@ it("resets only its own guide's held requests", async () => {
   successor.start();
   successor.register(rearmed);
   await settle();
-  expect(rearmed.commit).toHaveBeenCalledWith('manual');
+  expect(rearmed.commit).toHaveBeenCalledWith('manual', 'change');
   successor.stop();
 });
 
@@ -530,7 +530,7 @@ describe('cursor handoff and unobservable actions', () => {
     coordinator.start();
     coordinator.observe((action) => action.refTarget === 'Save');
     await settle();
-    expect(item.commit).toHaveBeenCalledWith('observed');
+    expect(item.commit).toHaveBeenCalledWith('observed', 'change');
     coordinator.stop();
   });
 });
@@ -563,7 +563,7 @@ it("keeps another guide's held request when a same-position step is reset", asyn
   reopened.start();
   reopened.register(successor);
   await settle();
-  expect(successor.commit).toHaveBeenCalledWith('manual');
+  expect(successor.commit).toHaveBeenCalledWith('manual', 'change');
   reopened.stop();
 });
 
@@ -580,5 +580,23 @@ it('does not re-run objective checks for events that record no evidence', async 
   }
   await settle();
   expect(check).toHaveBeenCalledTimes(checksAfterOpen);
+  coordinator.stop();
+});
+
+it('marks only objectives met in the opening pass as a load', async () => {
+  let ready = false;
+  const coordinator = new CompletionCoordinator(async ([token]) => token === 'has-datasources' || ready);
+  const existing = step({ id: 'existing-outcome', objectives: ['has-datasources'] });
+  const later = step({ id: 'later-outcome', objectives: ['has-dashboard-named:Example'] });
+  coordinator.register(existing);
+  coordinator.register(later);
+  coordinator.start();
+  await settle();
+  expect(existing.commit).toHaveBeenCalledWith('objectives', 'load');
+  expect(later.commit).not.toHaveBeenCalled();
+  ready = true;
+  coordinator.recheck();
+  await settle();
+  expect(later.commit).toHaveBeenCalledWith('objectives', 'change');
   coordinator.stop();
 });

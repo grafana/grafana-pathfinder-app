@@ -10,6 +10,8 @@ import {
   TERMINAL_STATUS_CHANGED_EVENT,
 } from '../../lib/event-names';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
+import { usePathfinderPluginConfig } from '../../hooks';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 import React, { useEffect, useMemo, type PropsWithChildren } from 'react';
 import { CompletionCoordinator } from '../../global-state/observation/coordinator';
 import { CompletionObservationContext } from '../../global-state/observation/context';
@@ -30,12 +32,15 @@ import {
 let observationGeneration = 0;
 const POLL_MS = 5000;
 const MAX_POLL_MS = 60_000;
+const ACTIVITY_MS = 250;
 
 export function CompletionObservationProvider({ children, contentKey }: PropsWithChildren<{ contentKey: string }>) {
   const { checkPostconditions } = useGuideRequirements();
   const mode = useInteractiveMode();
   const channel = useControllerChannel();
   const connected = useControllerConnected();
+  const { config } = usePathfinderPluginConfig();
+  const enabled = config.enableAutoDetection !== false && getFeatureFlagValue('pathfinder.passive-completion', true);
   const coordinator = useMemo(() => {
     const inFlight = new Map<string, Promise<boolean>>();
     const overdue = new Set<string>();
@@ -110,7 +115,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
   }, [checkPostconditions, mode, channel]);
 
   useEffect(() => {
-    if (mode !== 'controller' && new URLSearchParams(window.location.search).get('controller') === '1') {
+    if (!enabled || (mode !== 'controller' && new URLSearchParams(window.location.search).get('controller') === '1')) {
       return;
     }
     coordinator.restore(takeObservationHandoff(contentKey));
@@ -143,15 +148,29 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
         visibleCheck();
       }
     });
-    const observe =
+    let activity: ReturnType<typeof setTimeout> | undefined;
+    const observeActions = () =>
       mode === 'interactive'
         ? observePassiveActions(
             (event) => {
               coordinator.observe((action) => matchesPassiveAction(action, event));
+              if (event.type !== 'mouseover') {
+                clearTimeout(activity);
+                activity = setTimeout(visibleCheck, ACTIVITY_MS);
+              }
             },
             (touched) => coordinator.observe((action) => matchesFormfillState(action, touched))
           )
         : () => {};
+    let observe = observeActions();
+    let generation = coordinator.generation;
+    const unsubscribeGeneration = coordinator.subscribe(() => {
+      if (generation !== coordinator.generation) {
+        generation = coordinator.generation;
+        observe();
+        observe = observeActions();
+      }
+    });
     const saveHandoff = () => saveObservationHandoff(contentKey, coordinator.exportCursors());
     const handoff = () => {
       saveHandoff();
@@ -206,7 +225,9 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleReset);
       unsubscribeContext();
       unsubscribeProgress();
+      unsubscribeGeneration();
       observe();
+      clearTimeout(activity);
       clearTimeout(poll);
       window.removeEventListener('popstate', visibleCheck);
       window.removeEventListener('hashchange', visibleCheck);
@@ -214,9 +235,9 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       window.removeEventListener(TERMINAL_STATUS_CHANGED_EVENT, visibleCheck);
       document.removeEventListener('visibilitychange', visibleCheck);
     };
-  }, [coordinator, mode, contentKey]);
+  }, [coordinator, mode, contentKey, enabled]);
   useEffect(() => {
-    if (mode !== 'controller' || !channel || !connected) {
+    if (!enabled || mode !== 'controller' || !channel || !connected) {
       return;
     }
     let generation = coordinator.generation;
@@ -261,11 +282,15 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       release();
       channel.post({ kind: 'observation-cancel', subscriptionId });
     };
-  }, [channel, connected, contentKey, coordinator, mode]);
+  }, [channel, connected, contentKey, coordinator, mode, enabled]);
   useEffect(() => {
     if (mode === 'controller') {
       coordinator.invalidate();
     }
   }, [connected, coordinator, mode]);
-  return <CompletionObservationContext.Provider value={coordinator}>{children}</CompletionObservationContext.Provider>;
+  return (
+    <CompletionObservationContext.Provider value={enabled ? coordinator : null}>
+      {children}
+    </CompletionObservationContext.Provider>
+  );
 }

@@ -1,5 +1,6 @@
 import { nextRequiredAction, advanceActionProgress } from './action-progress';
 import { conditionTokens } from '../../lib/condition-input';
+import type { ProgressOrigin } from '../progress-events';
 import { logger } from '../../lib/logging';
 import type { ConditionInput } from '../../types/requirements.types';
 
@@ -23,7 +24,7 @@ export interface ObservationStep {
   executing: boolean;
   completed: boolean;
   readCompleted?(): Promise<boolean>;
-  commit(reason: ObservationReason): void;
+  commit(reason: ObservationReason, origin: ProgressOrigin): void;
 }
 
 interface Entry {
@@ -105,6 +106,7 @@ export class CompletionCoordinator {
   private running = false;
   private dirty = false;
   private active = false;
+  private opening = false;
   private abortController = new AbortController();
 
   constructor(
@@ -158,6 +160,7 @@ export class CompletionCoordinator {
       this.abortController = new AbortController();
     }
     this.active = true;
+    this.opening = true;
     liveCoordinators.add(this);
     this.recheck();
   }
@@ -400,7 +403,7 @@ export class CompletionCoordinator {
       if (dormant && (reason === 'skipped' || !hasObjectives(completionGate(dormant.step, skipVerify)))) {
         this.dormant.delete(id);
         try {
-          dormant.step.commit(reason);
+          dormant.step.commit(reason, 'change');
         } catch (error) {
           this.dormant.set(id, dormant);
           throw error;
@@ -447,13 +450,13 @@ export class CompletionCoordinator {
     }
   }
 
-  private commit(entry: Entry, reason: ObservationReason) {
+  private commit(entry: Entry, reason: ObservationReason, origin: ProgressOrigin = 'change') {
     if (entry.committed || entry.step.completed) {
       return;
     }
     entry.committed = true;
     try {
-      entry.step.commit(reason);
+      entry.step.commit(reason, origin);
     } catch (error) {
       entry.committed = false;
       throw error;
@@ -469,6 +472,7 @@ export class CompletionCoordinator {
     this.running = true;
     void this.flush().finally(() => {
       this.running = false;
+      this.opening = false;
       if (this.dirty && this.active) {
         this.recheck();
       }
@@ -537,7 +541,11 @@ export class CompletionCoordinator {
         }
         if (unmet === undefined) {
           try {
-            this.commit(entry, objectiveGate ? 'objectives' : entry.requested!);
+            this.commit(
+              entry,
+              objectiveGate ? 'objectives' : entry.requested!,
+              objectiveGate && this.opening ? 'load' : 'change'
+            );
           } catch (error) {
             logger.warn('[completion-coordinator] completion callback failed', { stepId: step.stepId, error });
           }

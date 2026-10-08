@@ -274,5 +274,5 @@ Do NOT read `architecture.dot` unless you're working on cross-component changes 
 
 1. **New Action Types**: Add handler in `action-handlers/` + update `interactive.hook.ts`
 2. **New Requirements**: Add check function in `requirements-checker.utils.ts`
-3. **New Auto-Detection**: Extend `action-detector.ts` detection logic
+3. **New passive evidence**: Extend `interactive-engine/auto-completion/passive-action.ts` matchers; the coordinator in `global-state/observation/coordinator.ts` owns ordering and gates
 4. **New Content Sources**: Add strategy in `content-fetcher.ts`

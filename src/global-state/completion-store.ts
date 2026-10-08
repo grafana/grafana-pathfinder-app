@@ -523,7 +523,8 @@ export function markStepCompleted(
   stepId: string,
   sectionId: string | undefined,
   reason: ProgressReason,
-  contentKey = getContentKey()
+  contentKey = getContentKey(),
+  origin: ProgressOrigin = 'change'
 ): void {
   const resolvedSection = sectionId ?? STANDALONE_SECTION_ID;
   ensureHydrated(contentKey, resolvedSection);
@@ -541,7 +542,7 @@ export function markStepCompleted(
   }
   bySteps.set(stepId, { completed: true, reason, completedAt: Date.now() });
   bumpSectionVersion(contentKey, resolvedSection);
-  persistSection(contentKey, resolvedSection, 'change');
+  persistSection(contentKey, resolvedSection, origin);
   notify(contentKey);
   dispatchProgress({
     kind: 'step',
@@ -920,7 +921,8 @@ export function resetSteps(stepIds: readonly string[], sectionId: string): void 
 export function markStepsCompleted(
   stepIds: readonly string[],
   sectionId: string,
-  reason: ProgressReason = 'manual'
+  reason: ProgressReason = 'manual',
+  origin: ProgressOrigin = 'change'
 ): void {
   if (stepIds.length === 0) {
     return;
@@ -941,7 +943,7 @@ export function markStepsCompleted(
   });
   if (changed) {
     bumpSectionVersion(contentKey, sectionId);
-    persistSection(contentKey, sectionId, 'change');
+    persistSection(contentKey, sectionId, origin);
     notify(contentKey);
     // Per-step events keep `interactive-conditional` and other
     // `kind: 'step'` listeners reactive after objectives-based and

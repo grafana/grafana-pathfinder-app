@@ -238,6 +238,7 @@ export const testIds = {
     codaTerminalToggle: 'config-coda-terminal-toggle',
     // Interactive Features
     interactiveFeatures: {
+      toggle: 'config-interactive-auto-detection-toggle',
       debounce: 'config-interactive-debounce-input',
       requirementsTimeout: 'config-interactive-requirements-timeout',
       guidedTimeout: 'config-interactive-guided-timeout',

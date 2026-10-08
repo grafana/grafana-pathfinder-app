@@ -68,7 +68,7 @@ Objectives are authoritative for passive and assisted completion. Finishing an a
 
 The coordinator writes completed blocks to the existing store, with `objectives`, `observed`, or `manual` (assisted) reasons. Partial action cursors live only for the open session. An intentional surface handoff transfers cursors through a one-use, ten-second browser-storage record; ordinary guide closure does not save them. Reset invalidates checks and observation generations.
 
-Read-only objectives check on open and relevant changes, with a shared five-second visible-tab fallback, four concurrent checks, and per-cycle deduplication. Command objectives require explicit assistance or **Check completion**. The old `enableAutoDetection` setting remains readable for compatibility but no longer controls this behaviour.
+Read-only objectives check on open and relevant changes, with a shared five-second visible-tab fallback, four concurrent checks, and per-cycle deduplication. Command objectives require explicit assistance or **Check completion**. Passive completion runs unless the tenant stores `enableAutoDetection: false` (the **Automatic completion** setting) or the `pathfinder.passive-completion` flag is off; either one leaves the renderer without a coordinator, so steps complete through their own objective checks, Show me, Do it, and Mark complete.
 
 In a paired pop-out, signed observation subscriptions install matching in the live tab. Evidence carries subscription, guide, step and action identifiers; observed input values and DOM content stay in the live tab. Subscriptions expire after six seconds without renewal, and cancellation, reset and reconnect invalidate stale generations.
 

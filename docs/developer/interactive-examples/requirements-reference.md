@@ -457,7 +457,7 @@ Objectives declare what a guide step will accomplish. They use the same syntax a
 
 ### Purpose
 
-1. **Auto-completion**: if an objective is already met when a user visits a guide, the step is automatically marked complete with an "Already done!" message
+1. **Auto-completion**: if an objective is already met when a user visits a guide, the step is automatically marked complete with an "Already done!" message. While a guide is open, objectives also gate completion from the reader's own actions and from Show me or Do it
 2. **Skip unnecessary work**: users do not need to redo steps they have already accomplished
 
 ### Syntax
@@ -485,11 +485,11 @@ Objectives declare what a guide step will accomplish. They use the same syntax a
 
 ### Objectives vs requirements
 
-| Aspect        | Requirements               | Objectives                         |
-| ------------- | -------------------------- | ---------------------------------- |
-| Purpose       | Gate when step CAN execute | Gate WHETHER step NEEDS to execute |
-| When met      | Step becomes enabled       | Step is auto-completed             |
-| Empty/missing | Always allowed to execute  | Must be manually completed         |
+| Aspect        | Requirements               | Objectives                                                         |
+| ------------- | -------------------------- | ------------------------------------------------------------------ |
+| Purpose       | Gate when step CAN execute | Gate WHETHER step NEEDS to execute                                 |
+| When met      | Step becomes enabled       | Step is auto-completed                                             |
+| Empty/missing | Always allowed to execute  | Completes from observed actions, `verify`, Do it, or Mark complete |
 
 ## Validation rules
 

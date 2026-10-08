@@ -21,14 +21,14 @@ for (const kind of ['guided', 'multistep'] as const) {
         const body = await response.json();
         await route.fulfill({
           response,
-          json: { ...body, jsonData: { ...body.jsonData, enableTwoTabController: true, enableAutoDetection: false } },
+          json: { ...body, jsonData: { ...body.jsonData, enableTwoTabController: true } },
         });
       });
       await context.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
         route.fulfill({
           json: {
             metadata: { name: 'default', resourceVersion: '1' },
-            spec: { enableTwoTabController: true, enableAutoDetection: false },
+            spec: { enableTwoTabController: true },
           },
         })
       );

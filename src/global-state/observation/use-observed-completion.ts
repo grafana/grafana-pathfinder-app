@@ -3,6 +3,7 @@ import { useCompletionCoordinator } from './context';
 import type { ObservationReason, ObservedAction, ObservationStep } from './coordinator';
 import { markStepCompleted, useStepCompletion, readStepCompletion } from '../completion-store';
 import { getContentKey } from '../content-key';
+import type { ProgressOrigin } from '../progress-events';
 import type { ConditionInput } from '../../types/requirements.types';
 import {
   buildInteractiveStepProperties,
@@ -39,8 +40,8 @@ export function useObservedCompletion(options: Options) {
     latest.current = options;
   });
   const commit = useCallback(
-    (reason: ObservationReason) => {
-      markStepCompleted(stepId, sectionId, reason, contentKey);
+    (reason: ObservationReason, origin: ProgressOrigin) => {
+      markStepCompleted(stepId, sectionId, reason, contentKey, origin);
       latest.current.onStepComplete?.(stepId);
       latest.current.onComplete?.();
       if (reason === 'observed') {

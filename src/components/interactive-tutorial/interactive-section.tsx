@@ -107,7 +107,7 @@ import {
   resetSteps,
   useSectionCompletion,
 } from '../../global-state/completion-store';
-import { dispatchProgress } from '../../global-state/progress-events';
+import { dispatchProgress, type ProgressOrigin } from '../../global-state/progress-events';
 import { computeCursor, deriveSectionState, initialSectionState, sectionReducer } from './section-state';
 import { DEFAULT_INTERACTIVE_SECTION_TITLE, PASSIVE_SECTION_TITLE } from './section-titles';
 import {
@@ -378,7 +378,7 @@ export function InteractiveSection({
 
   const completionCoordinator = useCompletionCoordinator();
   const hasSectionObjectives = Array.isArray(objectives) ? objectives.length > 0 : !!objectives;
-  const [observedObjectives, setObservedObjectives] = useState(false);
+  const [observedObjectives, setObservedObjectives] = useState<ProgressOrigin | false>(false);
   const [restoredObjectives, setRestoredObjectives] = useState<boolean | undefined>(
     isPreviewMode || !hasSectionObjectives ? false : undefined
   );
@@ -409,8 +409,8 @@ export function InteractiveSection({
       objectives,
       eligible: true,
       executing: isRunning,
-      completed: observedObjectives,
-      commit: () => setObservedObjectives(true),
+      completed: observedObjectives !== false,
+      commit: (_reason, origin) => setObservedObjectives(origin),
     });
   }, [completionCoordinator, objectiveId, sectionId, objectives, hasSectionObjectives, isRunning, observedObjectives]);
 
@@ -429,7 +429,7 @@ export function InteractiveSection({
   });
 
   const isCompletedByObjectives =
-    observedObjectives || restoredObjectives === true || objectivesChecker.completionReason === 'objectives';
+    observedObjectives !== false || restoredObjectives === true || objectivesChecker.completionReason === 'objectives';
 
   // Derive the high-level state kind from the reducer's ack bit + the
   // gate analysis + objectives + the live completion set.
@@ -469,10 +469,10 @@ export function InteractiveSection({
       const allStepIds = stepComponents.map((step) => step.stepId);
       if (completedSteps.size !== allStepIds.length) {
         // Single bulk write — the store persists + notifies once.
-        markStepsCompleted(allStepIds, sectionId, 'objectives');
+        markStepsCompleted(allStepIds, sectionId, 'objectives', observedObjectives || 'change');
       }
     }
-  }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
+  }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps, observedObjectives]);
 
   const { config: pluginConfig } = usePathfinderPluginConfig();
 

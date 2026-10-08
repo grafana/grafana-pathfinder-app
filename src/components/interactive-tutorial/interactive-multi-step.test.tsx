@@ -284,7 +284,13 @@ describe('InteractiveMultiStep — full-screen fallback location', () => {
     expect(showCall).toMatchObject({ buttonType: 'show', fullScreenFallbackLocation: '/connections' });
     expect(doCall).toMatchObject({ buttonType: 'do', fullScreenFallbackLocation: '/connections' });
     await waitFor(() =>
-      expect(markStepCompleted).toHaveBeenCalledWith('multi-fallback', undefined, 'manual', expect.any(String))
+      expect(markStepCompleted).toHaveBeenCalledWith(
+        'multi-fallback',
+        undefined,
+        'manual',
+        expect.any(String),
+        'change'
+      )
     );
   });
 });

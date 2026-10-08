@@ -3,10 +3,20 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { CompletionObservationProvider } from './completion-observation-provider';
 import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import { markStepCompleted } from '../../global-state/completion-store';
+import { reportAppInteraction } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { CompletionCoordinator, resetHeldRequestsForTests } from '../../global-state/observation/coordinator';
 
 const mockCheck = jest.fn();
+let mockAutoDetection: boolean | undefined = true;
+let mockPassiveFlag = true;
+jest.mock('../../hooks', () => ({
+  usePathfinderPluginConfig: () => ({ config: { enableAutoDetection: mockAutoDetection }, isResolved: true }),
+}));
+jest.mock('../../utils/openfeature', () => ({
+  getFeatureFlagValue: (_name: string, fallback: boolean) =>
+    _name === 'pathfinder.passive-completion' ? mockPassiveFlag : fallback,
+}));
 const mockListen = jest.fn(() => () => {});
 jest.mock('@grafana/runtime', () => ({ locationService: { getHistory: () => ({ listen: mockListen }) } }));
 jest.mock('../../requirements-manager', () => ({
@@ -70,6 +80,8 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  mockAutoDetection = true;
+  mockPassiveFlag = true;
   jest.clearAllMocks();
   mockCheck.mockResolvedValue({ pass: false, verdict: 'unmet' });
 });
@@ -90,7 +102,12 @@ it('observes a manual composite sequence without starting assistance', async () 
   fireEvent.click(screen.getByText('First'));
   fireEvent.click(screen.getByText('Last'));
   await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
-  expect(markStepCompleted).toHaveBeenCalledWith('step', undefined, 'observed', 'guide');
+  expect(markStepCompleted).toHaveBeenCalledWith('step', undefined, 'observed', 'guide', 'change');
+  expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+  expect(reportAppInteraction).toHaveBeenCalledWith(
+    'auto',
+    expect.objectContaining({ completion_method: 'auto_detected', internal_actions_count: 2 })
+  );
 });
 
 it('keeps assisted completion pending until objectives are satisfied', async () => {
@@ -108,7 +125,20 @@ it('keeps assisted completion pending until objectives are satisfied', async () 
     window.dispatchEvent(new Event('focus'));
   });
   await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
-  expect(markStepCompleted).toHaveBeenCalledWith('step', undefined, 'objectives', 'guide');
+  expect(markStepCompleted).toHaveBeenCalledWith('step', undefined, 'objectives', 'guide', 'change');
+  expect(reportAppInteraction).not.toHaveBeenCalled();
+});
+
+it('records an objective already met when the guide opens as a load, not a reader change', async () => {
+  mockCheck.mockResolvedValue({ pass: true, verdict: 'satisfied' });
+  const done = jest.fn();
+  render(
+    <CompletionObservationProvider contentKey="guide">
+      <Step objectives={['has-datasources']} onComplete={done} />
+    </CompletionObservationProvider>
+  );
+  await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+  expect(markStepCompleted).toHaveBeenCalledWith('step', undefined, 'objectives', 'guide', 'load');
 });
 
 it('ignores an invalid objective even when its prerequisite-style pass flag is true', async () => {
@@ -258,7 +288,7 @@ it('completes a formfill step when the reader picks the value from a dropdown', 
   });
   fireEvent.click(screen.getByRole('option'));
   await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
-  expect(markStepCompleted).toHaveBeenCalledWith('pick-scenario', undefined, 'observed', 'guide');
+  expect(markStepCompleted).toHaveBeenCalledWith('pick-scenario', undefined, 'observed', 'guide', 'change');
 });
 
 it('frees a check slot once a hung check times out', async () => {
@@ -361,6 +391,124 @@ it('backs off fallback polling while nothing happens and resets on activity', as
     const afterFocus = mockCheck.mock.calls.length;
     await advance(5_000);
     expect(mockCheck.mock.calls.length).toBe(afterFocus + 1);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it.each([
+  ['the tenant opts out', () => (mockAutoDetection = false)],
+  ['the fleet flag is off', () => (mockPassiveFlag = false)],
+])('provides no coordinator and observes nothing when %s', async (_name, switchOff) => {
+  switchOff();
+  mockCheck.mockResolvedValue({ pass: true, verdict: 'satisfied' });
+  const { useCompletionCoordinator } = jest.requireActual('../../global-state/observation/context');
+  const seen: unknown[] = [];
+  function Probe() {
+    seen.push(useCompletionCoordinator());
+    return null;
+  }
+  const done = jest.fn();
+  render(
+    <CompletionObservationProvider contentKey="guide">
+      <Probe />
+      <Step objectives={['has-datasources']} onComplete={done} />
+    </CompletionObservationProvider>
+  );
+  await act(async () => {});
+  expect(seen.every((value) => value === null)).toBe(true);
+  expect(mockCheck).not.toHaveBeenCalled();
+  expect(done).not.toHaveBeenCalled();
+});
+
+it('keeps observing when the tenant has never stored the setting', async () => {
+  mockAutoDetection = undefined;
+  mockCheck.mockResolvedValue({ pass: true, verdict: 'satisfied' });
+  const done = jest.fn();
+  render(
+    <CompletionObservationProvider contentKey="guide">
+      <Step objectives={['has-datasources']} onComplete={done} />
+    </CompletionObservationProvider>
+  );
+  await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+});
+
+it('rechecks objectives soon after the reader acts elsewhere in Grafana', async () => {
+  jest.useFakeTimers();
+  try {
+    render(
+      <>
+        <button>Save</button>
+        <CompletionObservationProvider contentKey="guide">
+          <Step objectives={['has-datasource:prometheus']} onComplete={jest.fn()} />
+        </CompletionObservationProvider>
+      </>
+    );
+    const advance = async (ms: number) => {
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+    };
+    await advance(35_000);
+    const idle = mockCheck.mock.calls.length;
+    fireEvent.mouseOver(screen.getByText('Save'));
+    await advance(1000);
+    expect(mockCheck.mock.calls.length).toBe(idle);
+    fireEvent.click(screen.getByText('Save'));
+    await advance(300);
+    expect(mockCheck.mock.calls.length).toBe(idle + 1);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('forgets fields the reader touched before progress was reset', async () => {
+  jest.useFakeTimers();
+  try {
+    const done = jest.fn();
+    function FormStep() {
+      useObservedCompletion({
+        stepId: 'set-url',
+        executing: false,
+        eligible: true,
+        onComplete: done,
+        actions: [
+          { targetAction: 'formfill', refTarget: 'input[aria-label="url"]', targetValue: 'http://localhost:9090' },
+        ],
+        analytics: { location: 'test', targetAction: 'formfill', stepMeta: { stepId: 'set-url' } },
+      });
+      return null;
+    }
+    render(
+      <>
+        <input aria-label="url" defaultValue="http://localhost:9090" />
+        <button>Elsewhere</button>
+        <CompletionObservationProvider contentKey="guide">
+          <FormStep />
+        </CompletionObservationProvider>
+      </>
+    );
+    const advance = async (ms: number) => {
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+    };
+    act(() => {
+      screen.getByLabelText('url').focus();
+    });
+    act(() => {
+      window.dispatchEvent(new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: '*' } }));
+    });
+    fireEvent.click(screen.getByText('Elsewhere'));
+    await advance(500);
+    expect(done).not.toHaveBeenCalled();
+    act(() => {
+      screen.getByText('Elsewhere').focus();
+      screen.getByLabelText('url').focus();
+    });
+    fireEvent.click(screen.getByText('Elsewhere'));
+    await advance(500);
+    expect(done).toHaveBeenCalledTimes(1);
   } finally {
     jest.useRealTimers();
   }
