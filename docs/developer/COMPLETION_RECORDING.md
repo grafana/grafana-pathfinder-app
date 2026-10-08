@@ -183,4 +183,4 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 | Backend                  | `pkg/plugin/completion_records_attempt_test.go`, `completion_records_test.go`, `assignment_satisfaction_test.go`                                                 |
 | Reset                    | `src/components/docs-panel/hooks/resetGuideProgress.test.ts`                                                                                                     |
 
-Known gaps, tracked in [#2095](https://github.com/grafana/grafana-pathfinder-app/issues/2095): no runtime test proves each completable block's component reaches the store with `origin: 'change'`, and no named test proves a partial row cannot satisfy an assignment.
+Known gap, tracked in [#2095](https://github.com/grafana/grafana-pathfinder-app/issues/2095): no runtime test proves each completable block's component reaches the store with `origin: 'change'`.
