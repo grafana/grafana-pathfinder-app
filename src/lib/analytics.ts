@@ -173,6 +173,7 @@ export enum AnalyticsLinkType {
 
 export const STEP_PERCENTAGE_RULE_VERSION = 'step-position-v1';
 export const BLOCK_PROGRESS_RULE_VERSION = 'block-position-v1';
+export const AUTO_COMPLETION_RULE_VERSION = 'observed-block-v1';
 
 export type ResetScope = 'guide' | 'path' | 'assignment' | 'all';
 

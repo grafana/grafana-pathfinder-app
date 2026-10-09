@@ -6,6 +6,7 @@ import { getContentKey } from '../content-key';
 import type { ProgressOrigin } from '../progress-events';
 import type { ConditionInput } from '../../types/requirements.types';
 import {
+  AUTO_COMPLETION_RULE_VERSION,
   buildInteractiveStepProperties,
   reportAppInteraction,
   UserInteraction,
@@ -54,6 +55,7 @@ export function useObservedCompletion(options: Options) {
               ref_target: analytics.refTarget ?? stepId,
               interaction_location: analytics.location,
               completion_method: 'auto_detected',
+              auto_completion_rule_version: AUTO_COMPLETION_RULE_VERSION,
               ...(actions.length > 1 && { internal_actions_count: actions.length }),
             },
             analytics.stepMeta

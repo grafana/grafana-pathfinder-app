@@ -52,6 +52,7 @@ jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   buildInteractiveStepProperties: (properties: object) => properties,
   UserInteraction: { StepAutoCompleted: 'auto' },
+  AUTO_COMPLETION_RULE_VERSION: 'observed-block-v1',
 }));
 jest.mock('../../lib/dom', () => ({
   querySelectorAllEnhanced: (selector: string) => ({ elements: [...document.querySelectorAll(selector)] }),
@@ -119,7 +120,11 @@ it('observes a manual composite sequence without starting assistance', async () 
   expect(reportAppInteraction).toHaveBeenCalledTimes(1);
   expect(reportAppInteraction).toHaveBeenCalledWith(
     'auto',
-    expect.objectContaining({ completion_method: 'auto_detected', internal_actions_count: 2 })
+    expect.objectContaining({
+      completion_method: 'auto_detected',
+      auto_completion_rule_version: 'observed-block-v1',
+      internal_actions_count: 2,
+    })
   );
 });
 
