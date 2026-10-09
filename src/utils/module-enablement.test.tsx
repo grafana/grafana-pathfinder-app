@@ -51,6 +51,7 @@ async function boot(
     clearExtensionSidebarDocked: jest.fn(),
     setPendingOpenSource: jest.fn(),
     recordStartupSettings: jest.fn(),
+    startHelpButtonExperiment: jest.fn().mockResolvedValue(jest.fn()),
     onPathfinderSurfaceChange: jest.fn().mockReturnValue(jest.fn()),
     setInterceptionEnabled: jest.fn(),
   };
@@ -110,6 +111,7 @@ async function boot(
       getNumberFlagValue: () => 1,
     },
     './utils/experiments/active-experiments': { getActiveExperiments: jest.fn() },
+    './utils/experiments/help-button-attention': effects,
     './utils/experiments': {
       ...effects,
       createExperimentDebugger: jest.fn(),
@@ -265,6 +267,22 @@ it('records immediately when the surface has already reported its mount', async 
   await Promise.resolve();
   await waitFor(() => expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved'));
   expect(effects.onPathfinderSurfaceChange).not.toHaveBeenCalled();
+});
+
+it('records startup telemetry while the help-button experiment chunk retries', async () => {
+  jest.useFakeTimers();
+  try {
+    const { effects } = await boot(true, true, false, undefined, 'grafana-pathfinder-app', true, 'sidebar', {
+      './utils/experiments/help-button-attention': 1,
+    });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved');
+    expect(effects.startHelpButtonExperiment).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(effects.startHelpButtonExperiment).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 it('restores a legacy title-only dock when enabled in sidebar mode', async () => {
