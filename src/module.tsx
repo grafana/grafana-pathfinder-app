@@ -4,7 +4,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { logger } from './lib/logging';
 import { retryChunkImport } from './lib/retry-chunk-import';
 import { createTranslatedComponent } from './components/App/TranslatedComponent';
-import { ensurePluginTranslations, loadTranslatedModule } from './lib/plugin-translations';
+import { ensurePluginTranslations } from './lib/plugin-translations';
 import pluginJson from './plugin.json';
 import { initializeConfiguredSurfaces } from './utils/configured-bootstrap';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
@@ -245,7 +245,7 @@ plugin.init = function () {
               bannerContainer.remove();
             });
         }
-        loadTranslatedModule(() => import('./integrations/cross-tab/live-tab-executor'))
+        retryChunkImport(() => import('./integrations/cross-tab/live-tab-executor'))
           .then(({ installLiveTabExecutor }) => installLiveTabExecutor())
           .catch((err) => logger.error('[Pathfinder] Failed to load cross-tab executor', { error: err }));
       },
