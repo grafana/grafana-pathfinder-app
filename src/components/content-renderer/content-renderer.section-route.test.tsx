@@ -106,30 +106,30 @@ describe('ContentRenderer — the automatic section route and reset', () => {
   });
 
   it('counts a hydrated section toward the tally without letting it complete the guide', async () => {
-    const onGuideComplete = jest.fn();
-    await renderWithSections(onGuideComplete);
+    await renderWithSections();
 
     completeSection('section-1', GUIDE_URL, true);
     completeSection('section-2', GUIDE_URL, true);
     completeSection('section-3', GUIDE_URL, true);
-    expect(onGuideComplete).not.toHaveBeenCalled();
+    expect(recordCompletion).not.toHaveBeenCalled();
 
     // A reader's completion of any section now finds the tally already full.
     completeSection('section-3');
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
   });
 
   it('completes the guide when a reader finishes the last section of a partly hydrated tally', async () => {
-    const onGuideComplete = jest.fn();
-    await renderWithSections(onGuideComplete);
+    await renderWithSections();
 
     completeSection('section-1', GUIDE_URL, true);
     completeSection('section-2', GUIDE_URL, true);
-    expect(onGuideComplete).not.toHaveBeenCalled();
+    expect(recordCompletion).not.toHaveBeenCalled();
 
     completeSection('section-3');
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
-    expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'objectives', contentKey: GUIDE_URL })
+    );
   });
 
   it('ignores sections from another guide, including ones whose ids match its own', async () => {
