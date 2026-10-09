@@ -145,7 +145,7 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 - [ ] Decide whether it is completable — can emit evidence — not merely interactive. Passive blocks stay out of `COMPLETION_AFFORDANCE_BLOCK_TYPES`.
 - [ ] Update the four-site registry in `.cursor/rules/tracked-step-types.mdc`.
 - [ ] Record completion only through `markStepCompleted` / `markStepsCompleted` under the parser's `props.stepId`. Never call `dispatchProgress({ kind: 'guide' })` or compute a guide percentage — a block-local metric (for example "watched %") is not guide progress.
-- [ ] Run `completion-affordance.parity.test.ts` and `progress.parity.test.ts`.
+- [ ] Add a driver for it to `BLOCKS` in `src/components/interactive-tutorial/completion-origin.parity.test.tsx`, then run it with `completion-affordance.parity.test.ts` and `progress.parity.test.ts`.
 
 ### Adding or refactoring a guide-rendering surface
 
@@ -174,7 +174,7 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 
 | Hop                      | Tests                                                                                                                                                                                                         |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Evidence and percentage  | `src/global-state/completion-store.test.tsx`, `src/lib/guide-stats/progress.parity.test.ts`, `completion-affordance.parity.test.ts`                                                                           |
+| Evidence and percentage  | `src/global-state/completion-store.test.tsx`, `src/components/interactive-tutorial/completion-origin.parity.test.tsx`, `src/lib/guide-stats/progress.parity.test.ts`, `completion-affordance.parity.test.ts`  |
 | Identity registration    | `src/completion-records/guide-identity-registry.test.ts`, `src/components/content-renderer/useGuideIdentityRegistration.test.tsx`, `surface-conformance.test.tsx`, `src/validation/completion-wiring.test.ts` |
 | Observation and attempts | `progress-observer.test.ts`, `guide-attempts.test.ts`, `guide-attempt-coordination.test.ts`, `progress-records.test.ts`                                                                                       |
 | Terminal routing         | `src/docs-retrieval/learning-journey-helpers.completion-boundary.test.ts`, `completion-recorder.test.ts`                                                                                                      |
@@ -182,4 +182,4 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 | Backend                  | `pkg/plugin/completion_records_attempt_test.go`, `completion_records_test.go`, `assignment_satisfaction_test.go`                                                                                              |
 | Reset                    | `src/components/docs-panel/hooks/resetGuideProgress.test.ts`                                                                                                                                                  |
 
-Known gap, tracked in [#2095](https://github.com/grafana/grafana-pathfinder-app/issues/2095): no runtime test proves each completable block's component reaches the store with `origin: 'change'`.
+`completion-origin.parity.test.tsx` mounts each completable block with the real store and fails if its completion does not reach the guide percentage with `origin: 'change'`, or if a stored completion replays as anything but `'load'`. Its table is keyed by the completable block types, so a new one needs a driver. `src/validation/completion-wiring.test.ts` also fails on a new direct `dispatchProgress({ kind: 'guide' })` call or a new caller of `recordGuideCompletion` or a reset entry point.

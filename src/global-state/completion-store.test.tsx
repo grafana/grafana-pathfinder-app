@@ -666,6 +666,65 @@ describe('completion-store', () => {
 
       expect(origins(events)).toEqual(['load']);
     });
+
+    it('announces nothing for a step that is already complete', async () => {
+      publishFlatIndex(CONTENT_KEY, 4, ['s-1']);
+      act(() => markStepCompleted('s-1', 'section-a', 'manual'));
+      await settle();
+
+      const events = await announcedDuring(() => markStepCompleted('s-1', 'section-a', 'manual'));
+
+      expect(events).toEqual([]);
+    });
+
+    it('announces nothing for a bulk completion that adds no step', async () => {
+      publishFlatIndex(CONTENT_KEY, 4, ['s-1', 's-2']);
+      act(() => markStepsCompleted(['s-1', 's-2'], 'section-a', 'manual'));
+      await settle();
+
+      const events = await announcedDuring(() => markStepsCompleted(['s-1', 's-2'], 'section-a', 'manual'));
+
+      expect(events).toEqual([]);
+    });
+
+    it('marks a hydration replay of a stored bulk completion as a load', async () => {
+      publishFlatIndex(CONTENT_KEY, 4, ['s-1', 's-2']);
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-a'), new Set(['s-1', 's-2']));
+
+      const events = await announcedDuring(() => {
+        render(<StepProbe stepId="s-1" sectionId="section-a" />);
+      });
+
+      expect(events.length).toBeGreaterThan(0);
+      expect(new Set(origins(events))).toEqual(new Set(['load']));
+    });
+
+    it('marks a section acknowledgement as a change', async () => {
+      publishSectionedIndex(CONTENT_KEY, ['section-ack']);
+      storedAcks.set(pairKey(CONTENT_KEY, 'section-ack'), true);
+
+      const events = await announcedDuring(() => refreshAndNotifyGuideProgress(CONTENT_KEY, 'change'));
+
+      expect(origins(events)).toEqual(['change']);
+      expect(events[0]).toMatchObject({ percentage: 100, hasProgress: true });
+    });
+
+    it('marks a stored section acknowledgement replayed at content load as a load', async () => {
+      publishSectionedIndex(CONTENT_KEY, ['section-ack']);
+      storedAcks.set(pairKey(CONTENT_KEY, 'section-ack'), true);
+
+      const events = await announcedDuring(() => refreshGuidePercentageOnLoad(CONTENT_KEY));
+
+      expect(origins(events)).toEqual(['load']);
+    });
+
+    it('gives a section acknowledgement reset no origin at all', async () => {
+      publishSectionedIndex(CONTENT_KEY, ['section-ack']);
+
+      const events = await announcedDuring(() => refreshAndNotifyGuideProgress(CONTENT_KEY));
+
+      expect(origins(events)).toEqual(['absent']);
+    });
   });
 
   // Reset guide / "Reset progress" parity tripwire.
