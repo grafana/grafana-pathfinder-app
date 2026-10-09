@@ -1,5 +1,9 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { retryChunkImport } from '../../lib/retry-chunk-import';
+jest.mock('../../lib/retry-chunk-import', () => ({
+  retryChunkImport: jest.fn((load: () => Promise<unknown>) => load()),
+}));
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { KioskPage } from './KioskPage';
 import { prepareKioskInputs } from './prepare-kiosk-inputs';
 import { launchKioskGuide } from './launch-kiosk-guide';
@@ -9,7 +13,7 @@ import { KioskFormError } from '../../lib/input-value';
 import { reportAppInteraction } from '../../lib/analytics';
 import type { KioskPage as Page } from '../../types/kiosk-page.schema';
 
-jest.mock('../../lib/logging', () => ({ logger: { error: jest.fn(), warn: jest.fn() } }));
+jest.mock('../../lib/logging', () => ({ logger: { error: jest.fn(), warn: jest.fn(), exception: jest.fn() } }));
 
 jest.mock('./prepare-kiosk-inputs', () => ({ prepareKioskInputs: jest.fn() }));
 jest.mock('./launch-kiosk-guide', () => ({ launchKioskGuide: jest.fn() }));
@@ -283,4 +287,36 @@ it.each(['instance', 'presentation'] as const)('launches product rules from the 
   fireEvent.click(screen.getByRole('button', { name: 'Product — Open product' }));
   expect(launchKioskGuide).toHaveBeenCalledWith(product, mode, onLaunch);
   expect(prepareKioskInputs).not.toHaveBeenCalled();
+});
+
+it('keeps plain command text when the highlighting chunk fails', async () => {
+  jest.mocked(retryChunkImport).mockRejectedValueOnce(new Error('chunk unavailable'));
+  render(
+    <KioskPage
+      page={{ version: 1, blocks: [{ type: 'command', command: 'echo hello', language: 'bash' }] }}
+      rules={[]}
+      mode="presentation"
+      onLaunch={jest.fn()}
+    />
+  );
+  await waitFor(() => expect(logger.exception).toHaveBeenCalled());
+  expect(document.querySelector('code')?.textContent).toBe('echo hello');
+  expect(document.querySelector('code .token')).toBeNull();
+});
+
+it('does not prepare or launch after unmounting during the input chunk import', async () => {
+  let finish!: (value: typeof import('./prepare-kiosk-inputs')) => void;
+  jest.mocked(retryChunkImport).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  const { unmount } = render(<KioskPage page={page} rules={rules} mode="instance" onLaunch={jest.fn()} />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'https://example.com' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Launch' }));
+  unmount();
+  await act(async () => finish({ prepareKioskInputs } as typeof import('./prepare-kiosk-inputs')));
+  expect(prepareKioskInputs).not.toHaveBeenCalled();
+  expect(launchKioskGuide).not.toHaveBeenCalled();
 });

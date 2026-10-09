@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
@@ -6,7 +6,8 @@ import type { Page, BrowserContext } from '@playwright/test';
 
 const pluginPath = '/public/plugins/grafana-pathfinder-app/';
 function assetsForModule(sourcePath: string) {
-  return readdirSync(join(__dirname, '../dist'))
+  const distPath = join(__dirname, '../dist');
+  return (existsSync(distPath) ? readdirSync(distPath) : [])
     .filter((file) => file.endsWith('.js.map'))
     .filter((file) => {
       const map = JSON.parse(readFileSync(join(__dirname, '../dist', file), 'utf8')) as { sources: string[] };

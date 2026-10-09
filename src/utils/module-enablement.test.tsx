@@ -36,7 +36,8 @@ async function boot(
   failedImports: Record<string, number> = {},
   flags: Record<string, boolean> = {},
   deepLink: DeepLinkParams = { doc: 'bundled:test' },
-  translationReady: Promise<void> = Promise.resolve()
+  translationReady: Promise<void> = Promise.resolve(),
+  controllerPairing: object | null = null
 ) {
   const settings = readFailed ? undefined : getConfigWithDefaults({ pathfinderEnabled: tenant });
   const root = { component: undefined as React.ComponentType | undefined };
@@ -65,6 +66,9 @@ async function boot(
     ensurePluginTranslations: jest.fn().mockReturnValue(translationReady),
     initializeOpenFeature: jest.fn().mockResolvedValue(undefined),
     createCompatRoot: jest.fn(async () => ({ render: jest.fn() })),
+    installLiveTabExecutor: jest.fn(),
+    reportPathfinderSurface: jest.fn(),
+    reportPathfinderSurfaceClosed: jest.fn(),
   };
   const modules: Record<string, unknown> = {
     react: React,
@@ -78,7 +82,10 @@ async function boot(
     './components/App/TranslatedComponent': { createTranslatedComponent },
     './lib/plugin-translations': {
       ensurePluginTranslations: effects.ensurePluginTranslations,
-      loadTranslatedModule: async (load: () => Promise<unknown>) => load(),
+      loadTranslatedModule: async (load: () => Promise<unknown>) => {
+        await translationReady;
+        return load();
+      },
     },
     './lib/analytics': { reportAppInteraction: jest.fn(), UserInteraction: {}, bindExperimentsProvider: jest.fn() },
     './lib/retry-chunk-import': { retryChunkImport },
@@ -102,7 +109,7 @@ async function boot(
     './utils/pathfinder-deep-link-handler': effects,
     './utils/pathfinder-search-params': {
       parsePathfinderDeepLink: () => deepLink,
-      parseControllerPairingHash: () => null,
+      parseControllerPairingHash: () => controllerPairing,
     },
     './lib/storage/extension-sidebar': {
       ...effects,
@@ -137,6 +144,8 @@ async function boot(
     './components/floating-panel/FloatingPanelManager': { FloatingPanelManager: () => null },
     './lib/create-root-compat': effects,
     './components/kiosk/KioskOverlay': { KioskOverlay: () => null },
+    './integrations/cross-tab/live-tab-executor': effects,
+    './integrations/cross-tab/PairingRequestBanner': { PairingRequestBanner: () => null },
     './components/App/App': { default: () => <div>Learning app</div>, __esModule: true },
     './components/App/PathfinderDisabled': {
       PathfinderDisabled: () => <div>Disabled</div>,
@@ -382,6 +391,48 @@ it('starts kiosk translations before asynchronous bootstrap without waiting for 
   );
 });
 
+it('removes the controller mount and closes its surface when root creation fails', async () => {
+  const { plugin, effects } = await boot(
+    true,
+    true,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {},
+    {},
+    { doc: 'bundled:test', controller: true },
+    Promise.resolve(),
+    {}
+  );
+  effects.createCompatRoot.mockRejectedValueOnce(new Error('root unavailable'));
+  plugin.init();
+  effects.initializeConfiguredSurfaces.mock.calls[0][2].mountController();
+  await waitFor(() => expect(effects.reportPathfinderSurfaceClosed).toHaveBeenCalledWith('controller'));
+  expect(document.getElementById('pathfinder-controller-root')).toBeNull();
+});
+
+it('installs the live-tab executor while translations are unavailable', async () => {
+  const { plugin, effects } = await boot(
+    true,
+    true,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {},
+    {},
+    { doc: 'bundled:test' },
+    new Promise<void>(() => {})
+  );
+  plugin.init();
+  effects.initializeConfiguredSurfaces.mock.calls[0][2].mountExecutor();
+  await waitFor(() => expect(effects.installLiveTabExecutor).toHaveBeenCalledTimes(1));
+  document.getElementById('pathfinder-pairing-banner-root')?.remove();
+});
+
 it('preloads kiosk UI only after translation readiness without mounting a surface', async () => {
   let ready!: () => void;
   const translations = new Promise<void>((resolve) => {
@@ -403,5 +454,43 @@ it('preloads kiosk UI only after translation readiness without mounting a surfac
   expect(requireModule).not.toHaveBeenCalledWith('./components/kiosk/KioskOverlay');
   ready();
   await waitFor(() => expect(requireModule).toHaveBeenCalledWith('./components/kiosk/KioskOverlay'));
+  expect(effects.createCompatRoot).not.toHaveBeenCalled();
+});
+
+it.each([{ doc: 'bundled:test' }, { doc: 'bundled:test', controller: true }])(
+  'does not preload the kiosk overlay for a document or controller link: %j',
+  async (deepLink) => {
+    const { requireModule } = await boot(
+      true,
+      true,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {},
+      {},
+      deepLink
+    );
+    expect(requireModule).not.toHaveBeenCalledWith('./components/kiosk/KioskOverlay');
+  }
+);
+
+it('allows URL kiosk preloading before enablement without mounting a disabled surface', async () => {
+  const { plugin, requireModule, effects } = await boot(
+    false,
+    false,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {},
+    {},
+    { pathfinderKiosk: true }
+  );
+  await waitFor(() => expect(requireModule).toHaveBeenCalledWith('./components/kiosk/KioskOverlay'));
+  plugin.init();
+  expect(effects.initializeConfiguredSurfaces).not.toHaveBeenCalled();
   expect(effects.createCompatRoot).not.toHaveBeenCalled();
 });

@@ -45,12 +45,11 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
     );
     // The view may still be loading when cancellation rejects the catalog request.
     void promise.catch(() => {});
-    const publish = () => {
+    queueMicrotask(() => {
       if (!controller.signal.aborted) {
         setCatalog({ launch, rulesUrl, promise });
       }
-    };
-    void parser.then(publish, publish);
+    });
     return () => controller.abort();
   }, [launch, rulesUrl]);
 
