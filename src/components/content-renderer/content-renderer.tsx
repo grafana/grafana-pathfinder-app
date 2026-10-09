@@ -351,11 +351,16 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     };
 
     const handleSectionComplete = (event: Event) => {
-      const { sectionId, contentKey } = (event as CustomEvent).detail;
+      const { sectionId, contentKey, hydrated } = (event as CustomEvent).detail;
       if (stripTrailingSlashes(contentKey) !== stripTrailingSlashes(resolveGuideContentKey(effectContentUrl))) {
         return;
       }
       completedSectionsRef.current.add(sectionId);
+
+      // A hydrated section counts toward the tally but cannot itself complete the guide.
+      if (hydrated) {
+        return;
+      }
 
       // CRITICAL: Don't trigger completion until content has settled
       // This prevents old component events from triggering completion on new content
@@ -448,7 +453,9 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     const unsubscribeProgress = subscribeProgressEvent((detail) => {
       if (detail.kind === 'section' && detail.completed) {
         handleSectionComplete(
-          new CustomEvent('section', { detail: { sectionId: detail.sectionId, contentKey: detail.contentKey } })
+          new CustomEvent('section', {
+            detail: { sectionId: detail.sectionId, contentKey: detail.contentKey, hydrated: detail.hydrated },
+          })
         );
       } else if (detail.kind === 'step' && detail.completed) {
         handleStepComplete();

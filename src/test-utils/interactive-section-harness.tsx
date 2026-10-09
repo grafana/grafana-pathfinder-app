@@ -48,6 +48,14 @@ export function setCheckRequirementsResult(result: typeof _checkRequirementsResu
  *  per-test via `setExecuteInteractiveActionOutcome()`; reset in `resetSectionHarness()`. */
 let _executeInteractiveActionOutcome: 'ok' | 'error' = 'ok';
 
+/** Completion reason the mocked `useStepChecker` reports. `'objectives'` makes a
+ *  section complete through its objectives; reset in `resetSectionHarness()`. */
+let _stepCheckerCompletionReason: 'none' | 'objectives' = 'none';
+
+export function setStepCheckerCompletionReason(reason: typeof _stepCheckerCompletionReason) {
+  _stepCheckerCompletionReason = reason;
+}
+
 export function setExecuteInteractiveActionOutcome(outcome: 'ok' | 'error') {
   _executeInteractiveActionOutcome = outcome;
 }
@@ -326,7 +334,7 @@ export function createRequirementsManagerMock() {
       isEnabled: true,
       isCompleted: false,
       explanation: null,
-      completionReason: 'none',
+      completionReason: _stepCheckerCompletionReason,
       canSkip: false,
       markSkipped: jest.fn(),
       resetStep: jest.fn(),
@@ -459,6 +467,7 @@ export function resetSectionHarness() {
   memoryStore.clear();
   _checkRequirementsResult = { pass: true, error: [] };
   _executeInteractiveActionOutcome = 'ok';
+  _stepCheckerCompletionReason = 'none';
   executeInteractiveActionCalls.length = 0;
   _stableCheckRequirementsFromData?.mockClear();
   // The completion store keeps its own module-scope cache + hydration
