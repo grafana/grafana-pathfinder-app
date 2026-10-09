@@ -119,7 +119,9 @@ function matchDataSource(dataSources: ListedDataSource[], requirement: string): 
 
 function localDataSources(): ListedDataSource[] {
   try {
-    return getDataSourceSrv().getList();
+    return getDataSourceSrv()
+      .getList()
+      .filter((ds) => !ds.meta?.builtIn);
   } catch {
     return [];
   }

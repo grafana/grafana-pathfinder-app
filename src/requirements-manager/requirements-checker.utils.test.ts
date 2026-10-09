@@ -1134,6 +1134,16 @@ describe('has-datasource sources and error policy', () => {
     expect(grafanaApi.fetchDataSources).not.toHaveBeenCalled();
   });
 
+  it.each(['grafana', 'mixed', 'dashboard'])('never matches the built-in %s data source', async (type) => {
+    (getDataSourceSrv as jest.Mock).mockReturnValue({
+      getList: () => [{ name: `-- ${type} --`, type, uid: type, meta: { builtIn: true } }],
+    });
+    (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue([]);
+    const result = await hasDataSourceCheck(`has-datasource:${type}`);
+    expect(result.pass).toBe(false);
+    expect(grafanaApi.fetchDataSources).toHaveBeenCalled();
+  });
+
   it('asks the API for a data source created outside this page', async () => {
     local([]);
     (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue([{ name: 'Prom', type: 'prometheus', uid: 'p' }]);

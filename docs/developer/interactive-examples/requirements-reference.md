@@ -186,7 +186,7 @@ Checks for a specific data source by name or type (case-insensitive). Searches n
 
 Does **not** test connectivity -- use `datasource-configured` for that.
 
-It reads the page's own data-source list first and makes no request when the source is there. Otherwise it asks `/api/datasources`, so a source created from a terminal, by provisioning or in another tab still counts. That read is shared by every caller for two seconds, so a new source is visible within two seconds of the next check. If the read is denied (401 or 403), the page's list is treated as everything this user can see; any other failure reports `unavailable` instead of treating the source as missing.
+It reads the page's own data-source list first, ignoring Grafana's built-in sources (`-- Grafana --`, `-- Mixed --`, `-- Dashboard --`), and makes no request when the source is there. Otherwise it asks `/api/datasources`, so a source created from a terminal, by provisioning or in another tab still counts. That read is shared by every caller for two seconds, so a new source is visible within two seconds of the next check. If the read is denied (401 or 403), the page's list is treated as everything this user can see; any other failure reports `unavailable` instead of treating the source as missing.
 
 ### `datasource-configured:<identifier>`
 
