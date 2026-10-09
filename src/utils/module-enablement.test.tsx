@@ -26,7 +26,8 @@ async function boot(
   dockedPlugin = 'grafana-pathfinder-app',
   surfaceReported?: boolean,
   panelMode = 'floating',
-  failedImports: Record<string, number> = {}
+  failedImports: Record<string, number> = {},
+  flags: Record<string, boolean> = {}
 ) {
   const settings = readFailed ? undefined : getConfigWithDefaults({ pathfinderEnabled: tenant });
   const root = { component: undefined as React.ComponentType | undefined };
@@ -50,7 +51,9 @@ async function boot(
     clearExtensionSidebarDocked: jest.fn(),
     setPendingOpenSource: jest.fn(),
     recordStartupSettings: jest.fn(),
+    startHelpButtonExperiment: jest.fn().mockResolvedValue(jest.fn()),
     onPathfinderSurfaceChange: jest.fn().mockReturnValue(jest.fn()),
+    setInterceptionEnabled: jest.fn(),
   };
   const modules: Record<string, unknown> = {
     react: React,
@@ -77,7 +80,7 @@ async function boot(
     },
     './docs-retrieval/content-fetcher/package-resolver-registry': effects,
     './lib/event-names': { PANEL_MODE_CHANGE_EVENT: 'test-panel-mode-change' },
-    './global-state/link-interception': { linkInterceptionState: { setInterceptionEnabled: jest.fn() } },
+    './global-state/link-interception': { linkInterceptionState: effects },
     'global-state/sidebar': { sidebarState: effects },
     './global-state/panel-mode': { panelModeManager: { getMode: () => panelMode } },
     './global-state/suggestion': { suggestionState: {} },
@@ -104,10 +107,11 @@ async function boot(
       getFeatureFlagValue: (key: string) =>
         key === 'pathfinder.enabled'
           ? remote
-          : key === 'pathfinder.frontend-telemetry' && surfaceReported !== undefined,
+          : (flags[key] ?? (key === 'pathfinder.frontend-telemetry' && surfaceReported !== undefined)),
       getNumberFlagValue: () => 1,
     },
     './utils/experiments/active-experiments': { getActiveExperiments: jest.fn() },
+    './utils/experiments/help-button-attention': effects,
     './utils/experiments': {
       ...effects,
       createExperimentDebugger: jest.fn(),
@@ -208,6 +212,22 @@ it('keeps the page-load decision after timeout, while late opt-out reaches confi
   }
 });
 
+it.each([
+  [false, false, false],
+  [false, true, true],
+  [true, false, true],
+])('intercepts docs links with flag=%s and tenant setting=%s: %s', async (flag, setting, expected) => {
+  const { plugin, effects } = await boot(true, true, false, undefined, undefined, undefined, undefined, undefined, {
+    'pathfinder.intercept-docs-links': flag,
+  });
+  plugin.init();
+
+  const [, , surfaceEffects] = effects.initializeConfiguredSurfaces.mock.calls[0];
+  surfaceEffects.applySettings(getConfigWithDefaults({ interceptGlobalDocsLinks: setting }));
+
+  expect(effects.setInterceptionEnabled).toHaveBeenCalledWith(expected);
+});
+
 it('does not clear another plugin’s docked entry', async () => {
   const { effects } = await boot(false, false, false, undefined, 'another-plugin');
   expect(effects.clearExtensionSidebarDocked).not.toHaveBeenCalled();
@@ -247,6 +267,22 @@ it('records immediately when the surface has already reported its mount', async 
   await Promise.resolve();
   await waitFor(() => expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved'));
   expect(effects.onPathfinderSurfaceChange).not.toHaveBeenCalled();
+});
+
+it('records startup telemetry while the help-button experiment chunk retries', async () => {
+  jest.useFakeTimers();
+  try {
+    const { effects } = await boot(true, true, false, undefined, 'grafana-pathfinder-app', true, 'sidebar', {
+      './utils/experiments/help-button-attention': 1,
+    });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved');
+    expect(effects.startHelpButtonExperiment).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(effects.startHelpButtonExperiment).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 it('restores a legacy title-only dock when enabled in sidebar mode', async () => {

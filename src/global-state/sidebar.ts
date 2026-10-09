@@ -1,6 +1,7 @@
 import { getAppEvents } from '@grafana/runtime';
-import { BusEventWithPayload } from '@grafana/data';
+import { BusEventBase, BusEventWithPayload } from '@grafana/data';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { clearExtensionSidebarDocked } from '../lib/storage/extension-sidebar';
 import pluginJson from '../plugin.json';
 import { panelModeManager } from './panel-mode';
 import { autoLaunchChannel } from './auto-launch';
@@ -13,6 +14,10 @@ interface OpenExtensionSidebarPayload {
 
 export class OpenExtensionSidebarEvent extends BusEventWithPayload<OpenExtensionSidebarPayload> {
   static type = 'open-extension-sidebar';
+}
+
+export class CloseExtensionSidebarEvent extends BusEventBase {
+  static type = 'close-extension-sidebar';
 }
 
 /**
@@ -145,6 +150,11 @@ class GlobalSidebarState {
         this.openSidebar('Interactive learning');
       }
     }
+  }
+
+  public requestCloseSidebar(): void {
+    getAppEvents().publish(new CloseExtensionSidebarEvent());
+    clearExtensionSidebarDocked();
   }
 
   public closeSidebar(): void {

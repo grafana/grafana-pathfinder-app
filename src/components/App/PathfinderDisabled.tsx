@@ -8,11 +8,11 @@ export function PathfinderDisabled() {
   const isAdmin = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
 
   return (
-    <Alert severity="info" title={t('pathfinder.disabled', 'Pathfinder is disabled')}>
-      <p>{t('pathfinder.disabledDescription', 'Pathfinder is turned off for this organization.')}</p>
+    <Alert severity="info" title={t('pathfinder.disabled', 'Interactive learning is disabled')}>
+      <p>{t('pathfinder.disabledDescription', 'Interactive learning is turned off for this organization.')}</p>
       {isAdmin && (
         <Button onClick={() => locationService.push('/plugins/grafana-pathfinder-app?page=configuration')}>
-          {t('pathfinder.openSettings', 'Open Pathfinder settings')}
+          {t('pathfinder.openSettings', 'Open interactive learning settings')}
         </Button>
       )}
     </Alert>

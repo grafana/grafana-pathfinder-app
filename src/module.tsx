@@ -96,6 +96,14 @@ void (async () => {
       getNumberFlagValue('pathfinder.session-replay-sampling-rate', 1)
     )
   );
+  if (pathfinderEnabled) {
+    void retryChunkImport(() => import('./utils/experiments/help-button-attention'))
+      .then(async ({ startHelpButtonExperiment }) => {
+        const stopHelpButtonExperiment = await startHelpButtonExperiment();
+        window.addEventListener('pagehide', stopHelpButtonExperiment, { once: true });
+      })
+      .catch((error: unknown) => logger.exception(error, { source: 'Help button experiment init' }));
+  }
   const { recordStartupSettings } = await retryChunkImport(() => import('./lib/telemetry/facade'));
   const record = () => {
     const { durationMs, outcome } = getPathfinderStartupDecision();
@@ -197,7 +205,9 @@ plugin.init = function () {
     { pathfinderEnabled, controllerRequested, hasDoc: Boolean(docsParam) },
     {
       applySettings: (resolved) => {
-        linkInterceptionState.setInterceptionEnabled(resolved.interceptGlobalDocsLinks);
+        linkInterceptionState.setInterceptionEnabled(
+          getFeatureFlagValue('pathfinder.intercept-docs-links', false) || resolved.interceptGlobalDocsLinks
+        );
         setPackageResolverFactory(() =>
           import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(resolved))
         );

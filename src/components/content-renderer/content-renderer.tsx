@@ -1,3 +1,5 @@
+import type { CompletionSource } from '../../completion-records/types';
+
 import { handleKioskLinkClick } from '../../utils/kiosk-navigation';
 import { getGuideResponseId } from '../../lib/guide-response-id';
 import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBoundary';
@@ -29,6 +31,8 @@ import {
   useGuideResponses,
   isJourneyCoverPage,
   getCurrentMilestone,
+  resolveSurfaceCompletionIdentity,
+  type SurfaceCompletionInput,
 } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
@@ -65,11 +69,13 @@ import {
 import { substituteVariables } from '../../utils/variable-substitution';
 import {
   STANDALONE_SECTION_ID,
+  getGuideCompletionSource,
   isBlockEditorPreviewUrl,
   refreshGuidePercentageOnLoad,
 } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { GuideContentKeyContext } from '../interactive-tutorial/guide-content-key-context';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import {
   evictGuideIndex,
@@ -128,7 +134,8 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
 interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
-  onGuideComplete?: () => void;
+  onGuideComplete?: (source?: CompletionSource, contentKey?: string) => void;
+  completionSurface?: Pick<SurfaceCompletionInput, 'baseUrl' | 'currentUrl'>;
   /**
    * Advance to the next milestone, for the milestone form of the Mark complete
    * control. Surfaces that cannot navigate — or that are on the last milestone
@@ -174,10 +181,13 @@ export const ContentRenderer = React.memo(function ContentRenderer(props: Conten
   );
 });
 
+const stripTrailingSlashes = (key: string): string => key.replace(/\/+$/, '');
+
 const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
   onGuideComplete,
+  completionSurface,
   onContinueToNextMilestone,
   onActiveTrackChange,
   initialActiveTrackId,
@@ -187,6 +197,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
   const guideCompleteCalledRef = useRef(false);
+  const resolveOwnerContentKey = useCallback(() => resolveGuideContentKey(content.url), [content.url]);
 
   // Text selection tracking for assistant integration
   const selectionState = useTextSelection(activeRef);
@@ -207,32 +218,26 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
 
   const markCompleteRearmedRef = useRef(false);
 
-  // The one gate every completion route passes through — the automatic
-  // section/step routes below and the Mark complete control at the foot of the
-  // content alike — so a guide records exactly one completion however it was
-  // finished, and a click followed by an auto-complete does not record twice.
-  // Emitting also spends any pending re-arm: whichever route gets here first
-  // is the one completion, so a later click cannot re-open a gate that has
-  // already closed on this guide.
-  const triggerGuideComplete = useCallback(() => {
-    if (guideCompleteCalledRef.current) {
-      return;
-    }
-    guideCompleteCalledRef.current = true;
-    markCompleteRearmedRef.current = false;
-    onGuideCompleteRef.current?.();
-  }, []);
+  // The first terminal trigger owns the completion cause until a reset.
+  const triggerGuideComplete = useCallback(
+    (source?: CompletionSource) => {
+      if (guideCompleteCalledRef.current) {
+        return;
+      }
+      guideCompleteCalledRef.current = true;
+      markCompleteRearmedRef.current = false;
+      const contentKey = resolveGuideContentKey(content.url);
+      onGuideCompleteRef.current?.(source ?? getGuideCompletionSource(contentKey), contentKey);
+    },
+    [content.url]
+  );
 
-  // The Mark complete route's own entry to that gate. A reset arms this route
-  // and only this route, so the reader's next click records once; the gate
-  // closes again inside `triggerGuideComplete`, leaving the automatic routes
-  // exactly the state they would have seen without the reset.
   const triggerGuideCompleteFromMark = useCallback(() => {
     if (markCompleteRearmedRef.current) {
       markCompleteRearmedRef.current = false;
       guideCompleteCalledRef.current = false;
     }
-    triggerGuideComplete();
+    triggerGuideComplete('manual');
   }, [triggerGuideComplete]);
 
   // Reset tracking state when content changes (new guide = fresh start)
@@ -317,7 +322,10 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     };
 
     const handleSectionComplete = (event: Event) => {
-      const { sectionId } = (event as CustomEvent).detail;
+      const { sectionId, contentKey } = (event as CustomEvent).detail;
+      if (stripTrailingSlashes(contentKey) !== stripTrailingSlashes(resolveGuideContentKey(effectContentUrl))) {
+        return;
+      }
       completedSectionsRef.current.add(sectionId);
 
       // CRITICAL: Don't trigger completion until content has settled
@@ -394,14 +402,13 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
         return; // This handler was created for different content
       }
       const detail = (event as CustomEvent).detail;
-      const currentTabUrl = window.__DocsPluginActiveTabUrl;
-      if (detail?.completionPercentage >= 100 && detail?.contentKey && currentTabUrl) {
-        // Only trigger if the event is for the current page (strict equality after normalization).
+      if (detail?.completionPercentage >= 100 && detail?.contentKey) {
+        // Only trigger if the event is for the rendered guide (strict equality after normalization).
         // Bidirectional startsWith would produce false matches when URLs share a common prefix
         // (e.g., /docs/dashboard matching /docs/dashboard-variables).
         const eventKeyNorm = detail.contentKey.replace(/\/+$/, '');
-        const tabUrlNorm = currentTabUrl.replace(/\/+$/, '');
-        if (eventKeyNorm === tabUrlNorm) {
+        const ownKeyNorm = resolveGuideContentKey(effectContentUrl).replace(/\/+$/, '');
+        if (eventKeyNorm === ownKeyNorm) {
           triggerGuideComplete();
         }
       }
@@ -411,7 +418,9 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     // based on the discriminant.
     const unsubscribeProgress = subscribeProgressEvent((detail) => {
       if (detail.kind === 'section' && detail.completed) {
-        handleSectionComplete(new CustomEvent('section', { detail: { sectionId: detail.sectionId } }));
+        handleSectionComplete(
+          new CustomEvent('section', { detail: { sectionId: detail.sectionId, contentKey: detail.contentKey } })
+        );
       } else if (detail.kind === 'step' && detail.completed) {
         handleStepComplete();
       } else if (detail.kind === 'guide') {
@@ -511,36 +520,54 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   // decision 2). A path's cover page is the one thing it is absent from, and
   // that is not the deleted predicate: a table of contents is neither a guide
   // nor a milestone, and marking it complete would record a guide nobody read.
+  const { baseUrl: completionBaseUrl, currentUrl: completionCurrentUrl } = completionSurface ?? {
+    currentUrl: content.url,
+  };
+  const completionIdentity = useMemo(
+    () =>
+      resolveSurfaceCompletionIdentity({
+        baseUrl: completionBaseUrl,
+        contentUrl: content.url,
+        currentUrl: completionCurrentUrl,
+        metadata: content.metadata,
+      }),
+    [completionBaseUrl, completionCurrentUrl, content.url, content.metadata]
+  );
   const afterContent = isCoverPage ? null : (
     <MarkCompleteFooter
       context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
       contentUrl={content.url}
+      completionIdentity={completionIdentity}
+      currentMilestone={journey?.currentMilestone}
+      totalMilestones={journey?.totalMilestones}
       onMarkComplete={triggerGuideCompleteFromMark}
       onContinue={onContinueToNextMilestone}
     />
   );
 
   return (
-    <GuideResponseProvider guideId={guideId}>
-      <GuideRequirementsProvider guideId={guideId}>
-        <ContentWithVariables
-          processedContent={processedContent}
-          countingSource={content.countingSource}
-          contentType={content.type}
-          baseUrl={content.url}
-          title={content.metadata.title}
-          isNativeJson={content.isNativeJson ?? false}
-          onContentReady={onContentReady}
-          activeRef={activeRef}
-          className={className}
-          selectionState={selectionState}
-          documentContext={documentContext}
-          beforeContent={beforeContent}
-          afterContent={afterContent}
-          fullScreenFallbackLocation={fullScreenFallbackLocation}
-        />
-      </GuideRequirementsProvider>
-    </GuideResponseProvider>
+    <GuideContentKeyContext.Provider value={resolveOwnerContentKey}>
+      <GuideResponseProvider guideId={guideId}>
+        <GuideRequirementsProvider guideId={guideId}>
+          <ContentWithVariables
+            processedContent={processedContent}
+            countingSource={content.countingSource}
+            contentType={content.type}
+            baseUrl={content.url}
+            title={content.metadata.title}
+            isNativeJson={content.isNativeJson ?? false}
+            onContentReady={onContentReady}
+            activeRef={activeRef}
+            className={className}
+            selectionState={selectionState}
+            documentContext={documentContext}
+            beforeContent={beforeContent}
+            afterContent={afterContent}
+            fullScreenFallbackLocation={fullScreenFallbackLocation}
+          />
+        </GuideRequirementsProvider>
+      </GuideResponseProvider>
+    </GuideContentKeyContext.Provider>
   );
 });
 

@@ -25,6 +25,7 @@ The only top-level hook in `src/utils/` is `usePublishedGuides.ts`. Development-
 - `find-doc-page.ts` - Resolves deep-link document identifiers into loadable pages
 - `pathfinder-deep-link-handler.ts` - Processes deep links and coordinates panel launch
 - `pathfinder-search-params.ts` - Parses Pathfinder URL parameters and builds share, full-screen, and controller-pairing URLs
+- `guide-share-link.ts` - Builds the sidebar "Copy link to guide" URL for a guide tab, or null when the receiver could not open it
 - `slug.ts` - Stable and unique document-heading slug generation
 - `utils.plugin.ts` - Plugin props context management
 - `utils.routing.ts` - Route prefixing utilities
@@ -116,7 +117,6 @@ async function fetchBackendGuides(namespace: string, publishedOnly?: boolean): P
 
 **Used by**:
 
-- `src/context-engine/context.init.ts`
 - `src/docs-retrieval/content-fetcher/backend-guide.ts`
 - `src/components/block-editor/hooks/useBackendGuides.ts`
 - `src/utils/fetchBackendGuides.ts`

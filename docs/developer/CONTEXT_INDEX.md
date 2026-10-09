@@ -27,6 +27,8 @@ Load these files **only when working in the relevant domain**.
 
 ## Security, review, and testing
 
+- `WRITING_AND_FILING_CONVENTIONS.md` — Sentence-case writing style, filing issues, A/B experiments, `npx` examples, tech-debt audits
+
 - `frontend-security.mdc` — Frontend security (from security team)
 - `react-antipatterns.mdc` — PR reviews (on hit), hooks/effects/state. An index — routes each R-code to a themed file holding the detail
 - `testingStrategy.mdc` — Writing or reviewing tests
@@ -69,6 +71,7 @@ Load these files **only when working in the relevant domain**.
 - `EXTERNAL_API.md` — External (CI / Terraform / scripts) guide-import API. The Pathfinder Backend's K8s aggregator is callable directly with a Grafana SA token; companion bash helpers at `scripts/upsert-guide.sh` (one guide) and `scripts/upsert-learning-path.sh` (a path/journey package, including `spec.manifest`).
 - `TERRAFORM.md` — Provisioning private guides with Terraform via `grafana_apps_generic_resource`: worked example, path/journey ordering with `depends_on`, what "covered by the CRD shape" means (pruned block fields become a non-converging plan), and the RBAC / per-stack-enablement gaps that remain.
 - `TELEMETRY.md` — Faro + RudderStack telemetry: what a new feature gets for free vs when to add custom facade ops, privacy invariants, gating. Load when touching telemetry code or instrumenting a feature.
+- `COMPLETION_RECORDING.md` — The completion seam end to end: evidence → percentage and `origin` → content key and surface identity registration → attempts → terminal recorder → queue → Go upsert → collation and assignment satisfaction. Extension checklists for a new interactive block, a new or refactored guide-rendering surface (view mode), a new finish or reset path, and a raw `CompletionRecord` reader. Load before touching any of those, even when the change is not "about" completion.
 - `.cursor/rules/systemPatterns.mdc` (completion-records section) — Durable completion records: the single recorder boundary, surface-neutral emission (`recordGuideCompletionForSurface`), the retry queue (lease, idempotency key, retention, drain budget), identity keying, and the write contract shared with backend PR #1433. Load when touching completion recording or the write path.
 
 ## Refactoring and tech debt
@@ -81,7 +84,7 @@ Load these files **only when working in the relevant domain**.
 - `magefile.go` — Go build tasks (mage targets)
 - `coda.mdc` — Coda terminal integration — the client side of the `grafana-coda-app` v1 API
 - `CODA.md` — Coda terminal integration (comprehensive). Backend contract lives in the `grafana-coda-app` repo's `docs/API.md`
-- `docs/design/BACKEND_PROXY_PATTERN.md` — Canonical pattern for plugin-backend proxies to the App Platform aggregator: inbound ID-token verification and namespace binding, outbound OBO access-token minting, caching, pagination, failure semantics, capability envelopes, the Go ⇄ TypeScript contract goldens (§10), and the POST-create write variant (§11)
+- `docs/design/BACKEND_PROXY_PATTERN.md` — Canonical pattern for plugin-backend proxies to the App Platform aggregator: inbound ID-token verification and namespace binding, outbound OBO access-token minting, caching, pagination, failure semantics, capability envelopes, the Go ⇄ TypeScript contract goldens (§10), the POST-create write variant (§11), and the frontend read/write transport split that `src/validation/app-platform-transport.test.ts` enforces
 
 ## History and onboarding
 

@@ -17,6 +17,7 @@ const markGuideCompletedMock = jest.fn();
 const getPathsDataMock = jest.fn();
 
 const persistedEmitted = new Set<string>();
+const persistedReported = new Set<string>();
 
 // Stateful fake for the single consolidated progress store: `set`/`getAll`/
 // `peekAll` all read and write the same map, so a milestone a call just
@@ -40,7 +41,6 @@ jest.mock('../lib/user-storage', () => ({
     // path exercised sets this explicitly.
     getCompletedSync: (...a: unknown[]) => milestoneGetCompletedSyncMock(...a),
   },
-  learningProgressStorage: { awardBadge: (...a: unknown[]) => awardBadgeMock(...a) },
   // The recorder's durable dedupe guard. A plain in-memory fake here (rather
   // than the real storage) matches this file's existing "real recorder,
   // mocked storage" split — the recorder's own tests cover the guard itself.
@@ -54,6 +54,18 @@ jest.mock('../lib/user-storage', () => ({
     },
     clearAll: async () => {
       persistedEmitted.clear();
+    },
+  },
+  completionReportedStorage: {
+    isEmitted: (key: string) => persistedReported.has(key),
+    markEmitted: async (key: string) => {
+      persistedReported.add(key);
+    },
+    clear: async (key: string) => {
+      persistedReported.delete(key);
+    },
+    clearAll: async () => {
+      persistedReported.clear();
     },
   },
   // Reset-path plumbing resetGuideProgress also touches, irrelevant to this
@@ -77,6 +89,7 @@ jest.mock('../lib/guide-completion-bridge', () => {
   return {
     __esModule: true,
     markGuideCompleted: (...a: unknown[]) => markGuideCompletedMock(...a),
+    awardBadge: (...a: unknown[]) => awardBadgeMock(...a),
     findPathByUrl: (url: string) =>
       (getPathsDataMock().paths as Array<{ url?: string }>).find((path) => matchesPathUrl(path, url)),
   };
@@ -87,6 +100,8 @@ jest.mock('../global-state/completion-store', () => ({
   evictContentCache: jest.fn(),
 }));
 
+import { publishGuideIndex, evictAllGuideIndexes } from '../global-state/active-guide-index';
+import { computeGuideBlockIndex } from '../lib/guide-stats';
 import { of } from 'rxjs';
 import { config, setBackendSrv, type BackendSrv } from '@grafana/runtime';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
@@ -97,10 +112,14 @@ import {
   setMilestoneCompletionPercentage,
   markMilestoneDone,
   recordGuideCompletionForSurface,
+  resolveSurfaceCompletionIdentity,
   resolveActiveMilestoneSlug,
+  resolveSurfaceGuideIdentity,
   getMilestoneSlug,
+  type SurfaceCompletionInput,
   journeyMilestonePercentages,
 } from './learning-journey-helpers';
+import { StorageKeys } from '../lib/storage-keys';
 import { resetGuideProgress } from '../components/docs-panel/hooks/resetGuideProgress';
 import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
 import {
@@ -133,9 +152,12 @@ function seedMilestoneComplete(url: string): void {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  evictAllGuideIndexes();
   __resetRecorderForTests();
   persistedEmitted.clear();
+  persistedReported.clear();
   interactiveCompletionData.clear();
+  localStorage.clear();
   emitted = [];
   unsubscribe = onCompletionRecorded((fact) => {
     emitted.push(fact);
@@ -1155,5 +1177,389 @@ describe('malformed journey metadata (defensive boundary)', () => {
     // real percentage with a spurious 0.
     expect(journeySetMock).toHaveBeenCalledTimes(1);
     expect(journeySetMock).not.toHaveBeenCalledWith('bundled:linux', 0);
+  });
+});
+
+// Only a bundled or standalone guide completion may create a guide attempt; a
+// milestone and a journey stay on the attempt-free path.
+describe('guide attempts at the completion call sites', () => {
+  const ATTEMPT_ID = /^[0-9a-f]{32}$/;
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const attemptKeys = () => Object.keys(localStorage).filter((key) => key.startsWith(StorageKeys.GUIDE_ATTEMPT_PREFIX));
+
+  it('attaches an attempt to a bundled guide reaching 100%', () => {
+    setJourneyCompletionPercentage('bundled:first-dashboard', 100);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]!.attemptId).toMatch(ATTEMPT_ID);
+    expect(emitted[0]!.attemptMode).toBe('analytics');
+  });
+
+  it('attaches an attempt through the async twin too', async () => {
+    await setJourneyCompletionPercentageAsync('bundled:foo', 100);
+
+    expect(emitted[0]!.attemptId).toMatch(ATTEMPT_ID);
+  });
+
+  it('attaches an attempt to a standalone guide completion', () => {
+    recordStandaloneGuideCompletion({ packageManifest: { id: 'remote-guide', repository: 'app-platform' } });
+
+    expect(emitted[0]!.attemptId).toMatch(ATTEMPT_ID);
+  });
+
+  it('never creates an attempt for a milestone', async () => {
+    await markMilestoneDone('base', 'm1', milestoneUrl('base', 'm1'), undefined, {
+      packageManifest: { id: 'fe-alerting-01', repository: 'app-platform' },
+    });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).not.toHaveProperty('attemptId');
+    expect(attemptKeys()).toEqual([]);
+  });
+
+  it('never creates an attempt for a whole-journey completion or its final milestone', async () => {
+    const urls = journeyUrls('base', ['m1', 'm2', 'm3']);
+    seedMilestoneComplete(urls[0]!);
+    seedMilestoneComplete(urls[1]!);
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'linux-path', title: 'Linux', url: 'base', badgeId: 'linux-badge' }],
+    });
+
+    await markMilestoneDone('base', 'm3', urls[2]!, urls, {
+      packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+    });
+
+    expect(emitted.map((fact) => fact.kind).sort()).toEqual(['guide', 'journey']);
+    expect(emitted.some((fact) => 'attemptId' in fact)).toBe(false);
+    expect(attemptKeys()).toEqual([]);
+  });
+
+  it('never creates an attempt for a milestone completed through a surface', async () => {
+    recordGuideCompletionForSurface({
+      baseUrl: 'https://ex/lj',
+      contentUrl: 'https://ex/lj',
+      currentUrl: 'https://ex/m1/content.json',
+      contentType: 'learning-journey',
+      metadata: {
+        title: '',
+        packageManifest: { id: 'lj', repository: 'app-platform' },
+        learningJourney: {
+          baseUrl: 'https://ex/lj',
+          currentMilestone: 1,
+          totalMilestones: 1,
+          milestones: [{ number: 1, title: 'm1', url: 'https://ex/m1/', isActive: false }],
+        },
+      },
+      guideTitle: 'LJ',
+    });
+    await flush();
+
+    expect(emitted.filter((fact) => fact.kind === 'guide')).toHaveLength(1);
+    expect(attemptKeys()).toEqual([]);
+  });
+
+  // The final milestone's journey refresh records a guide fact for a `bundled:` base.
+  it.each([
+    ['no manifest', undefined],
+    ['a guide-typed manifest', { id: 'linux', repository: 'app-platform', type: 'guide' }],
+  ])('never creates an attempt for the final milestone of a bundled journey with %s', async (_label, manifest) => {
+    const completedSync = milestoneGetCompletedSyncMock as jest.Mock;
+    completedSync.mockImplementation(() => new Set(['select-platform']));
+    try {
+      recordGuideCompletionForSurface({
+        baseUrl: 'bundled:linux',
+        contentUrl: 'bundled:linux',
+        currentUrl: 'https://ex/select-platform/content.json',
+        contentType: 'learning-journey',
+        metadata: {
+          title: '',
+          ...(manifest && { packageManifest: manifest }),
+          learningJourney: {
+            baseUrl: 'bundled:linux',
+            currentMilestone: 1,
+            totalMilestones: 1,
+            milestones: [{ number: 1, title: 'Select', url: 'https://ex/select-platform/', isActive: false }],
+          },
+        },
+        guideTitle: 'Linux',
+      });
+      await flush();
+    } finally {
+      completedSync.mockImplementation(() => new Set<string>());
+    }
+
+    expect(journeySetMock).toHaveBeenCalledWith('bundled:linux', 100);
+    // The journey base's own guide fact is still recorded, just attempt-free.
+    expect(emitted.filter((fact) => fact.kind === 'guide' && fact.guideCategory === 'interactive')).toHaveLength(1);
+    expect(emitted.some((fact) => 'attemptId' in fact)).toBe(false);
+    expect(attemptKeys()).toEqual([]);
+  });
+
+  it('gives a guide reset and completed again a fresh attempt', async () => {
+    const manifest = { id: 'remote-guide', repository: 'app-platform' };
+    recordStandaloneGuideCompletion({ packageManifest: manifest });
+
+    await resetGuideProgress('https://ex/remote-guide/content.json', { packageManifest: manifest });
+    expect(attemptKeys()).toEqual([]);
+
+    recordStandaloneGuideCompletion({ packageManifest: manifest });
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[1]!.attemptId).toMatch(ATTEMPT_ID);
+    expect(emitted[1]!.attemptId).not.toBe(emitted[0]!.attemptId);
+  });
+
+  // resolveSurfaceGuideIdentity is what a surface registers for live progress;
+  // it must name exactly the identity the eligible completion is recorded
+  // under, or nothing when no eligible completion is recorded at all.
+  const journeyMetadata = (baseUrl: string, slug: string) => ({
+    learningJourney: {
+      baseUrl,
+      currentMilestone: 1,
+      totalMilestones: 1,
+      milestones: [{ number: 1, title: slug, url: `https://ex/${slug}/`, isActive: false }],
+    },
+  });
+  const parityFixtures: Array<[string, SurfaceCompletionInput]> = [
+    ['a bundled guide', { baseUrl: 'bundled:foo', contentUrl: 'bundled:foo', metadata: { title: '' } }],
+    [
+      'a bundled guide launched by package path',
+      { baseUrl: 'bundled:foo/content.json', contentUrl: 'bundled:foo/content.json', metadata: { title: '' } },
+    ],
+    [
+      'a bundled guide with a sibling repository',
+      {
+        baseUrl: 'bundled:linux-01',
+        metadata: { title: '', packageManifest: { id: 'linux-01', type: 'guide' }, repository: 'online-cdn' },
+      },
+    ],
+    [
+      'a remote guide with a manifest',
+      {
+        baseUrl: 'https://ex/g',
+        contentUrl: 'https://ex/g/content.json',
+        currentUrl: 'https://ex/g/content.json',
+        metadata: { title: '', packageManifest: { id: 'remote-1', repository: 'app-platform' } },
+      },
+    ],
+    [
+      'a remote guide whose resolved repository beats the manifest default',
+      {
+        baseUrl: 'https://cdn.example.com/g',
+        contentUrl: 'https://cdn.example.com/g/content.json',
+        metadata: {
+          title: '',
+          packageManifest: { id: 'linux-01', repository: 'interactive-tutorials', type: 'guide' },
+          repository: 'online-cdn',
+        },
+      },
+    ],
+    [
+      'a guide-shaped page whose manifest declares no type',
+      { baseUrl: 'https://ex/typeless', metadata: { title: '', packageManifest: { id: 'typeless' } } },
+    ],
+    ['a remote page with no manifest', { baseUrl: 'https://ex/plain', metadata: { title: '' } }],
+    [
+      'a milestone page',
+      {
+        baseUrl: 'https://ex/lj',
+        currentUrl: 'https://ex/m1/content.json',
+        contentType: 'learning-journey',
+        metadata: {
+          title: '',
+          packageManifest: { id: 'lj', repository: 'app-platform' },
+          ...journeyMetadata('https://ex/lj', 'm1'),
+        },
+      },
+    ],
+    [
+      'a bundled milestone page',
+      {
+        baseUrl: 'bundled:linux',
+        currentUrl: 'https://ex/select-platform/content.json',
+        contentType: 'learning-journey',
+        metadata: { title: '', ...journeyMetadata('bundled:linux', 'select-platform') },
+      },
+    ],
+    [
+      'a path cover',
+      {
+        baseUrl: 'backend-guide:fe-alerting-path',
+        metadata: { title: '', packageManifest: { id: 'fe-alerting-path', type: 'path' } },
+      },
+    ],
+    [
+      'a journey-shaped bundled package',
+      {
+        baseUrl: 'bundled:linux-journey',
+        metadata: { title: '', packageManifest: { id: 'linux-journey', repository: 'app-platform', type: 'journey' } },
+      },
+    ],
+  ];
+
+  it.each(parityFixtures)('names the eligible completion identity for %s', async (_label, input) => {
+    recordGuideCompletionForSurface(input);
+    await flush();
+
+    const eligible = emitted.filter((fact) => fact.attemptId !== undefined);
+    expect(eligible.length).toBeLessThanOrEqual(1);
+    const identity = resolveSurfaceGuideIdentity(input);
+    if (eligible.length === 0) {
+      expect(identity).toBeNull();
+    } else {
+      expect(identity).toMatchObject({ guideSource: eligible[0]!.guideSource, guideId: eligible[0]!.guideId });
+    }
+  });
+
+  it('names an identity for at least the guide fixtures, so the parity check is not vacuous', () => {
+    const named = parityFixtures.filter(([, input]) => resolveSurfaceGuideIdentity(input) !== null);
+    expect(named.map(([label]) => label)).toEqual([
+      'a bundled guide',
+      'a bundled guide launched by package path',
+      'a bundled guide with a sibling repository',
+      'a remote guide with a manifest',
+      'a remote guide whose resolved repository beats the manifest default',
+      'a guide-shaped page whose manifest declares no type',
+    ]);
+  });
+});
+
+describe('completion analytics context', () => {
+  it.each(['bundled', 'app-platform'])('preserves the manual cause and live counts for %s', (repository) => {
+    const contentKey = 'rendered-guide';
+    publishGuideIndex({
+      contentKey,
+      denominatorSource: 'live-pre-inlining',
+      index: computeGuideBlockIndex([{ type: 'markdown' }]),
+    });
+    recordGuideCompletionForSurface({
+      contentUrl: repository === 'bundled' ? 'bundled:reading' : 'backend-guide:reading',
+      metadata: { title: 'Reading', repository, packageManifest: { id: 'reading' } },
+      source: 'manual',
+      contentKey,
+    });
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({
+      source: 'manual',
+      guideStats: { blockCount: 1, completableBlockCount: 0, sectionCount: 0 },
+    });
+  });
+
+  it.each(['manual', 'skipped'] as const)(
+    'carries the final milestone %s cause to the journey without using milestone counts as journey counts',
+    async (source) => {
+      const url = 'https://grafana.com/docs/learning-journeys/example/finish/';
+      await markMilestoneDone('https://grafana.com/docs/learning-journeys/example/', 'finish', url, [url], {
+        repository: 'online-cdn',
+        packageManifest: { id: 'example' },
+        source,
+        guideStats: {
+          version: 1,
+          blockCount: 3,
+          completableBlockCount: 0,
+          sectionCount: 0,
+          finalCompletablePosition: 0,
+        },
+      });
+      expect(emitted.find((fact) => fact.kind === 'guide')).toMatchObject({
+        source,
+        guideStats: { blockCount: 3 },
+      });
+      expect(emitted.find((fact) => fact.kind === 'journey')).toMatchObject({ source });
+      expect(emitted.find((fact) => fact.kind === 'journey')).not.toHaveProperty('guideStats');
+    }
+  );
+});
+
+describe('mark-complete click identity matches the recorded completion', () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const journey = (baseUrl: string, slug: string) => ({
+    baseUrl,
+    currentMilestone: 1,
+    totalMilestones: 1,
+    milestones: [{ number: 1, title: slug, duration: '5m', url: `https://ex/${slug}/`, isActive: false }],
+  });
+
+  async function expectClickMatchesRecord(input: Parameters<typeof recordGuideCompletionForSurface>[0]) {
+    recordGuideCompletionForSurface(input);
+    await flush();
+    const guideFacts = emitted.filter((fact) => fact.kind === 'guide');
+    const click = resolveSurfaceCompletionIdentity(input);
+    if (guideFacts.length === 0) {
+      expect(click).toBeUndefined();
+      return click;
+    }
+    expect(guideFacts).toHaveLength(1);
+    const { guideSource, guideId, sourceConfirmed, pathIdentity } = guideFacts[0]!;
+    expect(click).toEqual({ guideSource, guideId, sourceConfirmed, pathIdentity });
+    return click;
+  }
+
+  it('agrees on a milestone with no repository, and marks its source unconfirmed', async () => {
+    const click = await expectClickMatchesRecord({
+      contentUrl: 'https://ex/install/content.json',
+      currentUrl: 'https://ex/install/content.json',
+      metadata: { title: '', learningJourney: journey('https://ex/unknown-path', 'install') } as any,
+      guideTitle: 'Install',
+    });
+    expect(click).toMatchObject({ guideSource: 'bundled', guideId: 'install', sourceConfirmed: false });
+  });
+
+  it('confirms a bundled guide whose manifest carries the bundled loader repository', async () => {
+    const click = await expectClickMatchesRecord({
+      baseUrl: 'bundled:reading',
+      contentUrl: 'bundled:reading/content.json',
+      currentUrl: 'bundled:reading',
+      metadata: { title: '', packageManifest: { id: 'reading', type: 'guide', repository: 'bundled' } },
+      guideTitle: 'Reading',
+    });
+    expect(click).toMatchObject({ guideSource: 'bundled', guideId: 'reading', sourceConfirmed: true });
+  });
+
+  it('does not confirm a bundled launch whose manifest names another repository', async () => {
+    const click = await expectClickMatchesRecord({
+      baseUrl: 'bundled:reading',
+      contentUrl: 'bundled:reading/content.json',
+      metadata: { title: '', packageManifest: { id: 'reading', repository: 'interactive-tutorials' } },
+      guideTitle: 'Reading',
+    });
+    expect(click).toMatchObject({ guideSource: 'interactive-tutorials', sourceConfirmed: false });
+  });
+
+  it('carries no guide identity for a path or journey manifest, as the writer records no guide', async () => {
+    for (const type of ['path', 'journey']) {
+      emitted = [];
+      await expectClickMatchesRecord({
+        contentUrl: `https://ex/${type}-package`,
+        metadata: { title: '', packageManifest: { id: `${type}-package`, type, repository: 'online-cdn' } },
+        guideTitle: 'Package',
+      });
+    }
+  });
+
+  it('agrees on backend-guide content whose manifest names no repository', async () => {
+    const click = await expectClickMatchesRecord({
+      baseUrl: 'backend-guide:acme-guide',
+      contentUrl: 'backend-guide:acme-guide',
+      metadata: { title: '', packageManifest: { id: 'acme-guide' } },
+      guideTitle: 'Acme',
+    });
+    expect(click).toMatchObject({ guideId: 'acme-guide', sourceConfirmed: false });
+  });
+
+  it('confirms a milestone of a curated path and names the path', async () => {
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'linux-server-integration', title: 'Linux', url: 'https://ex/linux/' }],
+    });
+    const click = await expectClickMatchesRecord({
+      contentUrl: 'https://ex/install/content.json',
+      currentUrl: 'https://ex/install/content.json',
+      metadata: { title: '', learningJourney: journey('https://ex/linux', 'install') } as any,
+      guideTitle: 'Install',
+    });
+    expect(click).toMatchObject({
+      sourceConfirmed: true,
+      pathIdentity: { guideId: 'linux-server-integration', sourceConfirmed: true },
+    });
   });
 });

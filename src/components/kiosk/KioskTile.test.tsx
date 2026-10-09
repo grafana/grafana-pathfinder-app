@@ -1,6 +1,7 @@
 import { config } from '@grafana/runtime';
 import { sidebarState } from '../../global-state/sidebar';
 import { launchKioskGuide } from './launch-kiosk-guide';
+import { startKioskSession } from '../../lib/kiosk-analytics';
 import { REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
@@ -36,6 +37,7 @@ jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: {
     KioskDemoStarted: 'kiosk_demo_started',
+    KioskInteraction: 'kiosk_interaction',
   },
 }));
 
@@ -64,6 +66,8 @@ describe('KioskTile', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    sidebarState.setIsSidebarMounted(false);
+    sidebarState.consumePendingOpenSource();
     window.open = mockOpen;
     Object.defineProperty(globalThis, 'crypto', {
       value: { randomUUID: mockRandomUUID },
@@ -84,12 +88,37 @@ describe('KioskTile', () => {
     expect(mockOpen.mock.calls[0][2]).toBe('noopener,noreferrer');
   });
 
+  it.each(['instance', 'presentation'] as const)('carries the opening session through a %s launch', (mode) => {
+    const session = startKioskSession('customer-onboarding');
+    mockRandomUUID.mockReturnValueOnce('00000000-0000-4000-a000-000000000002');
+    window.__pathfinderKioskSessionId = 'previous-guide';
+    launchKioskGuide(rule, mode, session.end);
+    const destination = mode === 'instance' ? mockPush.mock.calls[0][0] : mockOpen.mock.calls[0][0];
+    expect(new URL(destination, window.location.origin).searchParams.get('kiosk_session')).toBe(session.id);
+    expect(new URL(destination, window.location.origin).searchParams.get('kiosk_name')).toBe('customer-onboarding');
+    expect(new URL(destination, window.location.origin).searchParams.get('source')).toBe('kiosk_session');
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.KioskDemoStarted,
+      expect.objectContaining({ kiosk_session_id: session.id, kiosk_name: 'customer-onboarding' })
+    );
+    if (mode === 'instance') {
+      expect(window.__pathfinderKioskSessionId).toBe(session.id);
+      expect(window.__pathfinderKioskName).toBe('customer-onboarding');
+      expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'sidebar_toggle', action: 'open' });
+    }
+    session.end();
+    delete window.__pathfinderKioskSessionId;
+    delete window.__pathfinderKioskName;
+    mockRandomUUID.mockReset().mockReturnValue('00000000-0000-4000-a000-000000000001');
+  });
+
   it('fires KioskDemoStarted analytics event before opening the tab', () => {
     render(<KioskTile rule={rule} index={0} />);
     fireEvent.click(screen.getByTestId('kiosk-tile-0'));
 
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskDemoStarted, {
       kiosk_session_id: '00000000-0000-4000-a000-000000000001',
+      kiosk_name: 'unknown',
       guide_url: rule.url,
       guide_title: rule.title,
       guide_type: rule.type,
@@ -226,12 +255,37 @@ describe('KioskTile', () => {
     try {
       launchKioskGuide(rule, 'instance', jest.fn(), prepared);
       expect(panelModeManager.getMode()).toBe('floating');
-      expect(pending).toEqual(expect.objectContaining({ url: rule.url, preparedContent: prepared.preparedContent }));
+      expect(pending).toEqual(
+        expect.objectContaining({ url: rule.url, preparedContent: prepared.preparedContent, source: 'kiosk_session' })
+      );
       expect(new URL(mockPush.mock.calls[0][0], window.location.origin).searchParams.has('doc')).toBe(false);
+      expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'sidebar_toggle', action: 'open' });
     } finally {
       document.removeEventListener(REQUEST_FLOATING_GUIDE_EVENT, listener);
       jest.mocked(isExtensionSidebarOwnedByOther).mockReturnValue(false);
     }
+  });
+
+  it('sets kiosk attribution when a prepared guide actually opens the sidebar', () => {
+    panelModeManager.setModeTransient('sidebar');
+    const prepared: PreparedGuideLaunch = {
+      url: rule.url,
+      title: rule.title,
+      type: 'docs',
+      source: 'kiosk_session',
+      requiresGrafanaUi: true,
+      preparedContent: {
+        url: rule.url,
+        content: '{}',
+        type: 'interactive',
+        metadata: { title: rule.title },
+        lastFetched: '',
+        countingSource: { kind: 'pre-inlining', guideJson: '{}' },
+      },
+    };
+    launchKioskGuide(rule, 'instance', jest.fn(), prepared);
+    expect(sidebarState.getIsSidebarMounted()).toBe(true);
+    expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto-open' });
   });
 
   it('keeps the current route when no page is specified and forwards learning journeys', () => {
@@ -252,6 +306,7 @@ describe('KioskTile', () => {
 
 describe('product navigation', () => {
   const product: KioskRule = {
+    id: 'synthetic',
     title: 'Product',
     description: 'Explore',
     type: 'interactive',
@@ -266,10 +321,20 @@ describe('product navigation', () => {
   it('opens the product without guide side effects and retains the panel preference', () => {
     panelModeManager.setModePersisted('floating');
     const close = jest.fn();
-    render(<KioskTile rule={product} index={0} mode="instance" onLaunch={close} />);
+    render(<KioskTile rule={product} index={0} mode="instance" onLaunch={close} blockIndex={4} />);
     fireEvent.click(screen.getByRole('button', { name: /Open product/ }));
     expect(mockPush).toHaveBeenCalledWith('/a/product?view=all&orgId=2#tab');
     expect(reportAppInteraction).not.toHaveBeenCalledWith(UserInteraction.KioskDemoStarted, expect.anything());
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskInteraction, {
+      launch_mode: 'instance',
+      block_index: 4,
+      component: 'guide-links',
+      action: 'open_product',
+      rule_id: 'synthetic',
+    });
+    expect((reportAppInteraction as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+      close.mock.invocationCallOrder[0]!
+    );
     expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
     expect(panelModeManager.getMode()).toBe('sidebar');
     expect(close).toHaveBeenCalledTimes(1);
@@ -289,6 +354,26 @@ describe('product navigation', () => {
       '_blank',
       'noopener,noreferrer'
     );
+  });
+  it.each(['instance', 'presentation'] as const)('attributes a %s product open to the kiosk session', (mode) => {
+    const session = startKioskSession('dem');
+    launchKioskGuide({ ...product, targetUrl: 'https://example.com/grafana/' }, mode, undefined, undefined, 2);
+    expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskInteraction, {
+      kiosk_session_id: session.id,
+      kiosk_name: 'dem',
+      launch_mode: mode,
+      block_index: 2,
+      component: 'guide-links',
+      action: 'open_product',
+      rule_id: 'synthetic',
+    });
+    session.end();
+  });
+  it('does not report a rejected product launch', () => {
+    launchKioskGuide({ ...product, targetUrl: 'javascript:alert(1)' }, 'presentation');
+    expect(window.open).not.toHaveBeenCalled();
+    expect(reportAppInteraction).not.toHaveBeenCalled();
   });
   it('closes only the Pathfinder sidebar', () => {
     sidebarState.setIsSidebarMounted(true);
@@ -320,6 +405,7 @@ describe('product navigation', () => {
     (page) => {
       launchKioskGuide({ ...product, page }, 'instance');
       expect(mockPush).not.toHaveBeenCalled();
+      expect(reportAppInteraction).not.toHaveBeenCalled();
     }
   );
 });

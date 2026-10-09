@@ -118,17 +118,22 @@
   },
   "appConfig": {
     "beta": "Beta",
-    "pathfinderEnabled": "Enable Pathfinder",
-    "pathfinderEnabledDescription": "Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, Pathfinder stays available.",
+    "pathfinderEnabled": "Enable interactive learning",
+    "pathfinderEnabledDescription": "Changes apply when users reload Grafana and their settings load successfully. If settings cannot be read, interactive learning stays available.",
     "pathfinderPreview": "Interactive learning",
-    "pathfinderPreviewDescription": "Pathfinder brings contextual help and interactive guides into Grafana.",
-    "pathfinderRemotelyDisabled": "Pathfinder is disabled remotely",
-    "pathfinderRemotelyDisabledDescription": "The remote switch currently prevents Pathfinder from running. Your saved preference will apply when Pathfinder is enabled remotely again.",
+    "pathfinderPreviewDescription": "Interactive learning brings contextual help and interactive guides into Grafana.",
+    "pathfinderRemotelyDisabled": "Interactive learning is disabled remotely",
+    "pathfinderRemotelyDisabledDescription": "The remote switch currently prevents interactive learning from running. Your saved preference will apply when interactive learning is enabled remotely again.",
     "pathfinderRevertDescription": "Turn this off to use Grafana’s classic Help menu after users reload. Your learning progress is kept."
   },
   "pathfinder": {
-    "disabled": "Pathfinder is disabled",
-    "disabledDescription": "Pathfinder is turned off for this organization.",
-    "openSettings": "Open Pathfinder settings"
+    "disabled": "Interactive learning is disabled",
+    "disabledDescription": "Interactive learning is turned off for this organization.",
+    "openSettings": "Open interactive learning settings"
+  },
+  "helpButtonHint": {
+    "message": "試試互動式學習",
+    "dismiss": "關閉學習提示",
+    "learn": "學習"
   }
 }

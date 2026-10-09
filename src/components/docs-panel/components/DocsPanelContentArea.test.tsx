@@ -35,6 +35,7 @@ jest.mock('../../../lib/analytics', () => ({
 
 jest.mock('../../../docs-retrieval', () => ({
   recordGuideCompletionForSurface: jest.fn(),
+  resolveSurfaceGuideIdentity: jest.fn(() => null),
   journeyProgressFromMilestones: jest.fn(() => 0),
   // Pure logic, no `@grafana/runtime`/storage imports — see
   // `active-milestone-sequence.ts`'s own doc comment.
@@ -51,12 +52,12 @@ jest.mock('../../content-renderer/content-renderer', () => ({
     onActiveTrackChange,
     initialActiveTrackId,
   }: {
-    onGuideComplete?: () => void;
+    onGuideComplete?: (source: 'manual', contentKey: string) => void;
     onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
     initialActiveTrackId?: string | null;
   }) => (
     <>
-      <button onClick={onGuideComplete}>Complete rendered guide</button>
+      <button onClick={() => onGuideComplete?.('manual', 'rendered-guide')}>Complete rendered guide</button>
       <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
       <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
     </>
@@ -80,6 +81,9 @@ jest.mock('../../SelectorDebugPanel', () => ({
       Open
     </button>
   ),
+}));
+jest.mock('../../content-renderer/useGuideIdentityRegistration', () => ({
+  useGuideIdentityRegistration: jest.fn(),
 }));
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
@@ -208,6 +212,8 @@ describe('DocsPanelContentArea', () => {
         contentType: 'docs',
         metadata: { packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
         guideTitle: 'My guide',
+        source: 'manual',
+        contentKey: 'rendered-guide',
       });
     });
 
@@ -243,6 +249,8 @@ describe('DocsPanelContentArea', () => {
           learningJourney: { totalMilestones: 3 },
         },
         guideTitle: 'My guide',
+        source: 'manual',
+        contentKey: 'rendered-guide',
       });
     });
   });

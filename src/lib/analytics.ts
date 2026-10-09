@@ -6,6 +6,7 @@
  */
 
 import { reportInteraction } from '@grafana/runtime';
+import { parseKioskName } from './kiosk-attribution';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security/url-validator';
 // Bridge, not the Faro adapter: analytics is entry-eager and a direct
@@ -15,6 +16,11 @@ import { pushFaroUserAction } from './telemetry/bridge';
 // directly even from this entry-eager module.
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
+import { furthestEvidencedPosition } from './guide-stats/progress';
+import { GUIDE_STATS_VERSION } from './guide-stats/summary';
+import type { GuideBlockIndex } from './guide-stats/block-index';
+import { getGuideIndex } from '../global-state/active-guide-index';
+import { getContentKey } from '../global-state/content-key';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 import type { LearningJourneyTabType } from '../types/content-panel.types';
 
@@ -37,6 +43,8 @@ export function bindExperimentsProvider(fn: GetActiveExperimentsFn): void {
 export enum UserInteraction {
   // Core Panel Interactions
   DocsPanelInteraction = 'docs_panel_interaction',
+  HelpButtonClickedToolbar = 'help_button_clicked_toolbar',
+  HelpButtonDismissedHint = 'help_button_dismissed_hint',
   PanelScroll = 'panel_scroll',
 
   // Navigation & Tab Management
@@ -64,6 +72,7 @@ export enum UserInteraction {
   DoSectionButtonClick = 'do_section_button_click',
   StepAutoCompleted = 'step_auto_completed',
   StepAutoCompleteFailed = 'step_auto_complete_failed',
+  StepSkipped = 'step_skipped',
   ResetProgressClick = 'reset_progress_click',
   MarkCompleteClicked = 'mark_complete_clicked',
 
@@ -82,6 +91,9 @@ export enum UserInteraction {
   LearningPathProgress = 'learning_path_progress',
   BadgeUnlocked = 'badge_unlocked',
   GuideLaunchSurfaceChosen = 'guide_launch_surface_chosen',
+  GuideProgress = 'guide_progress',
+  GuideCompleted = 'guide_completed',
+  JourneyCompleted = 'journey_completed',
 
   // Feature Flag Tracking
   FeatureFlagEvaluated = 'feature_flag_evaluated',
@@ -109,6 +121,7 @@ export enum UserInteraction {
   // Kiosk Mode
   KioskDemoStarted = 'kiosk_demo_started',
   KioskInteraction = 'kiosk_interaction',
+  KioskCatalogLoaded = 'kiosk_catalog_loaded',
 
   // Initial-state alignment ("implied 0th step") — Phase 1 auto-recovery
   AlignmentPromptShown = 'alignment_prompt_shown',
@@ -158,6 +171,11 @@ export enum AnalyticsLinkType {
   RelatedJourney = 'related_journey',
   RelatedJourneyExternal = 'related_journey_external',
 }
+
+export const STEP_PERCENTAGE_RULE_VERSION = 'step-position-v1';
+export const BLOCK_PROGRESS_RULE_VERSION = 'block-position-v1';
+
+export type ResetScope = 'guide' | 'path' | 'assignment' | 'all';
 
 // ============================================================================
 // CORE ANALYTICS FUNCTIONS
@@ -256,51 +274,42 @@ export function tabTypeToContentType(tabType: string | undefined): AnalyticsCont
   return (tabType && TAB_TYPE_TO_CONTENT_TYPE[tabType]) || AnalyticsContentType.Docs;
 }
 
-/**
- * Reports a user interaction event to Grafana analytics (Rudder Stack)
- *
- * All events automatically include:
- * - plugin_version: The current plugin version from plugin.json
- * - feature_flags: JSON object containing current feature flag state (except for FeatureFlagEvaluated events)
- *
- * @param type - The type of interaction from UserInteraction enum
- * @param properties - Additional properties to attach to the event
- */
 export function reportAppInteraction(
   type: UserInteraction,
-  properties: Record<string, string | number | boolean> = {}
+  properties: Record<string, string | number | boolean> = {},
+  options: { mirrorToFaro?: boolean } = {}
 ): void {
   try {
     const interactionName = createInteractionName(type);
 
-    // Skip experiment enrichment for FeatureFlagEvaluated events to avoid recursion
-    // (those events already contain the flag info in their properties)
+    // Evaluating experiments while reporting their evaluation would recurse.
     const shouldEnrichWithExperiments = type !== UserInteraction.FeatureFlagEvaluated;
     const activeExperiments = shouldEnrichWithExperiments ? getExperimentsForAnalytics() : null;
     const experiments = activeExperiments && activeExperiments.length > 0 ? activeExperiments : null;
     const variant = experiments ? rollUpVariant(experiments) : null;
 
-    const kioskSessionId = window.__pathfinderKioskSessionId;
+    const kioskSessionId = properties.kiosk_session_id ?? window.__pathfinderKioskSessionId;
+    const kioskName =
+      parseKioskName(properties.kiosk_name) ??
+      (kioskSessionId === window.__pathfinderKioskSessionId
+        ? parseKioskName(window.__pathfinderKioskName)
+        : undefined) ??
+      'unknown';
 
     const enrichedProperties: Record<string, unknown> = {
       plugin_version: packageJson.version,
       ...properties,
       ...(variant && { variant }),
       ...(experiments && { experiments }),
-      ...(kioskSessionId && { kiosk_session_id: kioskSessionId }),
+      ...(kioskSessionId && { kiosk_session_id: kioskSessionId, kiosk_name: kioskName }),
     };
 
     try {
       reportInteraction(interactionName, enrichedProperties);
     } finally {
-      // Mirrors every analytics event into Faro as a User Action (same name,
-      // copied properties) so the two pipelines can be cross-checked against
-      // each other. The finally keeps the mirror alive when reportInteraction
-      // itself throws — a lost RudderStack event is exactly the divergence the
-      // mirror exists to surface. pushFaroUserAction never throws.
-      // `experiments` is carried once per session (lib/telemetry/session)
-      // instead of on every mirrored action; RudderStack keeps it.
+      // Preserve the Faro mirror even when RudderStack reporting throws.
       const faroProperties = { ...enrichedProperties };
+      // Faro carries experiments once per session.
       delete faroProperties.experiments;
       const privateGuide = Object.values(faroProperties).some(
         (value) =>
@@ -317,17 +326,16 @@ export function reportAppInteraction(
           }
         }
       }
-      // RudderStack properties are never redacted (first-party, same policy
-      // as identity), but the Faro mirror is the final URL boundary for this
-      // path — normalize by the `*_url` naming convention every call site
-      // already follows, so query/fragment data never reaches Faro raw.
+      // Strip URL queries and fragments at the final Faro boundary.
       for (const key of Object.keys(faroProperties)) {
         const value = faroProperties[key];
         if (typeof value === 'string' && /url$/i.test(key)) {
           faroProperties[key] = normalizeTelemetryUrl(value);
         }
       }
-      pushFaroUserAction(interactionName, faroProperties);
+      if (options.mirrorToFaro !== false) {
+        pushFaroUserAction(interactionName, faroProperties);
+      }
     }
   } catch (error) {
     logger.warn('Analytics reporting failed', { error });
@@ -676,24 +684,73 @@ export function buildInteractiveStepProperties(
   stepContext: StepContext
 ): Record<string, string | number | boolean> {
   const { stepId, stepIndex, totalSteps, sectionId, sectionTitle } = stepContext;
-
-  // Get source document info
-  const docInfo = getSourceDocument(stepId);
-
-  // Calculate completion percentage
   const completionPercentage = calculateStepCompletion(stepIndex, totalSteps);
 
-  // Build complete properties object
   return {
-    ...docInfo,
+    ...getSourceDocument(stepId),
     ...baseProperties,
     content_type: AnalyticsContentType.InteractiveGuide,
-    ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
+    ...(stepIndex !== undefined && { current_step: stepIndex + 1 }),
     ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
-    ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+    ...(completionPercentage !== undefined && {
+      completion_percentage: completionPercentage,
+      percentage_rule_version: STEP_PERCENTAGE_RULE_VERSION,
+    }),
     ...(sectionId && { section_id: sectionId }),
     ...(sectionTitle && { section_title: sectionTitle }),
+    ...getStepBlockProperties(stepId),
   };
+}
+
+function blockCountProperties(index: GuideBlockIndex): Record<string, string | number> {
+  return {
+    block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
+    guide_stats_version: GUIDE_STATS_VERSION,
+    total_block_count: index.totalBlockCount,
+    completable_block_count: index.completableBlockCount,
+    section_count: index.sectionCount,
+  };
+}
+
+export function getGuideBlockCountProperties(contentKey: string): Record<string, string | number> {
+  const active = getGuideIndex(contentKey);
+  return active ? blockCountProperties(active.index) : {};
+}
+
+function getStepBlockProperties(stepId: string | undefined): Record<string, string | number> {
+  if (!stepId) {
+    return {};
+  }
+  const active = getGuideIndex(getContentKey());
+  if (!active) {
+    return {};
+  }
+  const blockPosition = furthestEvidencedPosition(active.index, [{ kind: 'do-it', blockId: stepId }]);
+  if (blockPosition === 0) {
+    return {};
+  }
+  return { block_position: blockPosition, ...blockCountProperties(active.index) };
+}
+
+export type StepSkipReason = 'user' | 'requirements_unmet' | 'section_run_auto' | 'after_failure';
+
+interface StepSkip {
+  targetAction: string;
+  interactionLocation: string;
+  skipReason: StepSkipReason;
+}
+
+export function reportStepSkipped(
+  { targetAction, interactionLocation, skipReason }: StepSkip,
+  stepContext: StepContext
+): void {
+  reportAppInteraction(
+    UserInteraction.StepSkipped,
+    buildInteractiveStepProperties(
+      { target_action: targetAction, interaction_location: interactionLocation, skip_reason: skipReason },
+      stepContext
+    )
+  );
 }
 
 /**
@@ -704,7 +761,7 @@ export function buildInteractiveStepProperties(
  *
  * @returns Step context properties or empty object if not in an interactive document
  */
-export function getCurrentStepContext(): Record<string, number> {
+export function getCurrentStepContext(): Record<string, string | number> {
   try {
     const stepIndex = window.__DocsPluginCurrentStepIndex;
     const totalSteps = window.__DocsPluginTotalSteps;
@@ -718,7 +775,10 @@ export function getCurrentStepContext(): Record<string, number> {
     return {
       current_step: stepIndex + 1, // 1-indexed for analytics
       total_document_steps: totalSteps,
-      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+      ...(completionPercentage !== undefined && {
+        completion_percentage: completionPercentage,
+        percentage_rule_version: STEP_PERCENTAGE_RULE_VERSION,
+      }),
     };
   } catch {
     return {};

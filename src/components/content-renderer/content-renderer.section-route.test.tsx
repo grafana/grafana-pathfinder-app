@@ -11,9 +11,11 @@ import React from 'react';
 import { act, render } from '@testing-library/react';
 
 import type { RawContent } from '../../types/content.types';
-import { dispatchProgress } from '../../global-state/progress-events';
+import { dispatchProgress, subscribeProgressEvent, type ProgressEventDetail } from '../../global-state/progress-events';
 import { resetContentKeyForTests } from '../../global-state/content-key';
 import { StorageEvents } from '../../lib/event-names';
+import { interactiveStepStorage } from '../../lib/user-storage';
+import { resetCompletionStoreForTests } from '../../global-state/completion-store';
 import { ContentRenderer } from './content-renderer';
 
 jest.mock('@grafana/i18n', () => ({
@@ -50,9 +52,9 @@ async function renderWithSections(onGuideComplete: jest.Mock): Promise<void> {
   });
 }
 
-function completeSection(sectionId: string) {
+function completeSection(sectionId: string, contentKey: string = GUIDE_URL) {
   act(() => {
-    dispatchProgress({ kind: 'section', sectionId, completed: true });
+    dispatchProgress({ kind: 'section', contentKey, sectionId, completed: true });
     jest.advanceTimersByTime(SETTLE_MS);
   });
 }
@@ -66,6 +68,7 @@ async function announceCleared(contentKey: string): Promise<void> {
 beforeEach(() => {
   jest.useFakeTimers();
   localStorage.clear();
+  resetCompletionStoreForTests();
   resetContentKeyForTests();
   window.__DocsPluginActiveTabUrl = GUIDE_URL;
 });
@@ -88,6 +91,39 @@ describe('ContentRenderer — the automatic section route and reset', () => {
     completeSection('section-3');
 
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
+  });
+
+  it('ignores sections from another guide, including ones whose ids match its own', async () => {
+    const onGuideComplete = jest.fn();
+    await renderWithSections(onGuideComplete);
+    const previewKey = 'block-editor://preview/other-guide';
+
+    for (const sectionId of [...SECTION_IDS, 'preview-section-1']) {
+      completeSection(sectionId, previewKey);
+    }
+    expect(onGuideComplete).not.toHaveBeenCalled();
+
+    SECTION_IDS.forEach((sectionId) => completeSection(sectionId));
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
+  });
+
+  it('matches its own guide key regardless of a trailing slash', async () => {
+    const onGuideComplete = jest.fn();
+    await renderWithSections(onGuideComplete);
+    const slashToggled = GUIDE_URL.endsWith('/') ? GUIDE_URL.slice(0, -1) : `${GUIDE_URL}/`;
+    SECTION_IDS.forEach((sectionId) => completeSection(sectionId, slashToggled));
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports skipped when automatic completion includes a restored skipped step', async () => {
+    await interactiveStepStorage.setCompleted(GUIDE_URL, 'section-1', new Set(['step-1']), new Set(['step-1']));
+    const onGuideComplete = jest.fn();
+    await renderWithSections(onGuideComplete);
+    SECTION_IDS.forEach((sectionId) => completeSection(sectionId));
+    expect(onGuideComplete).toHaveBeenCalledWith('skipped', GUIDE_URL);
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the other sections completed when one of them is reset', async () => {
@@ -106,6 +142,42 @@ describe('ContentRenderer — the automatic section route and reset', () => {
     completeSection('section-3');
 
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('tags the section event a mounted section dispatches with the renderer own key', async () => {
+    const sections: ProgressEventDetail[] = [];
+    const unsubscribe = subscribeProgressEvent((detail) => {
+      if (detail.kind === 'section') {
+        sections.push(detail);
+      }
+    });
+    const guide: RawContent = {
+      ...content,
+      content: JSON.stringify({
+        id: 'owner-key-guide',
+        title: 'Owner key guide',
+        blocks: [
+          {
+            type: 'section',
+            id: 'owned-section',
+            title: 'Owned',
+            blocks: [{ type: 'interactive', action: 'noop', content: 'Read me.' }],
+          },
+        ],
+      }),
+    };
+    try {
+      render(<ContentRenderer content={guide} />);
+      await act(async () => {
+        jest.advanceTimersByTime(SETTLE_MS);
+      });
+
+      expect(sections).toEqual([
+        expect.objectContaining({ kind: 'section', sectionId: 'section-owned-section', contentKey: GUIDE_URL }),
+      ]);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it.each([

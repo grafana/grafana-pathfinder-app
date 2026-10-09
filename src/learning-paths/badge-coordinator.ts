@@ -29,6 +29,24 @@ import { getBadgeById, getBadgesToAward } from './badges';
 import { getPathsData } from './paths-data';
 import { calculateUpdatedStreak } from './streak-tracker';
 
+function reportBadgeUnlocked(badgeId: string): void {
+  const badge = getBadgeById(badgeId);
+  reportAppInteraction(UserInteraction.BadgeUnlocked, {
+    badge_id: badgeId,
+    badge_title: badge?.title || badgeId,
+    trigger_type: badge?.trigger?.type || 'unknown',
+    ...(badge?.trigger?.type === 'path-completed' && { path_id: badge.trigger.pathId }),
+  });
+}
+
+export async function awardBadge(badgeId: string): Promise<boolean> {
+  const newlyAwarded = await learningProgressStorage.awardBadge(badgeId);
+  if (newlyAwarded) {
+    reportBadgeUnlocked(badgeId);
+  }
+  return newlyAwarded;
+}
+
 /**
  * Marks a guide as completed, evaluates badge awards, updates the streak,
  * persists the new progress, and fires both the `BadgeUnlocked` analytics
@@ -37,10 +55,6 @@ import { calculateUpdatedStreak } from './streak-tracker';
  * Idempotent for already-completed guides — repeats are a no-op except for
  * the trailing event dispatch (preserved so UI listeners that re-render
  * off completion still receive a tick).
- *
- * Replaces the previous `learningProgressStorage.markGuideCompleted` entry
- * point. Callers that used to invoke storage directly should call this
- * coordinator instead.
  */
 export async function markGuideCompleted(guideId: string): Promise<void> {
   try {
@@ -69,13 +83,7 @@ export async function markGuideCompleted(guideId: string): Promise<void> {
             progress.pendingCelebrations.push(badgeId);
           }
           newlyAwardedBadges.push(badgeId);
-
-          const badge = getBadgeById(badgeId);
-          reportAppInteraction(UserInteraction.BadgeUnlocked, {
-            badge_id: badgeId,
-            badge_title: badge?.title || badgeId,
-            trigger_type: badge?.trigger?.type || 'unknown',
-          });
+          reportBadgeUnlocked(badgeId);
         }
       }
 
