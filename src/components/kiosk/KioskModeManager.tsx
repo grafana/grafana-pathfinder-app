@@ -1,7 +1,6 @@
 import React, { useEffect, useCallback, useSyncExternalStore, useState } from 'react';
 import { ThemeContext } from '@grafana/data';
 import { config } from '@grafana/runtime';
-import { LoadingPlaceholder } from '@grafana/ui';
 import { createTranslatedComponent } from '../App/TranslatedComponent';
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../../lib/telemetry/surface';
 import { sidebarState } from '../../global-state/sidebar';
@@ -13,6 +12,8 @@ import { clearKioskLaunchParams } from '../../utils/kiosk-navigation';
 const KioskOverlay = createTranslatedComponent(async () => ({
   default: (await import('./KioskOverlay')).KioskOverlay,
 }));
+
+const pendingCatalog = new Promise<PreparedKioskData>(() => {});
 
 interface KioskModeManagerProps {
   rulesUrl: string;
@@ -84,14 +85,11 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
   if (!launch) {
     return null;
   }
-  if (catalog?.launch !== launch || catalog.rulesUrl !== rulesUrl) {
-    return <LoadingPlaceholder text="Loading interactive learning" />;
-  }
 
   return (
     <ThemeContext.Provider value={theme}>
       <KioskOverlay
-        catalog={catalog.promise}
+        catalog={catalog?.launch === launch && catalog.rulesUrl === rulesUrl ? catalog.promise : pendingCatalog}
         rulesUrl={rulesUrl}
         overrideUrl={launch.rulesUrl}
         mode={launch.source === 'url' ? 'instance' : 'presentation'}

@@ -9,6 +9,8 @@ import { prepareKioskData, type PreparedKioskData } from './kiosk-rules';
 import { retryChunkImport } from '../../lib/retry-chunk-import';
 
 const mockOverlay = jest.fn();
+const mockOverlayUnmount = jest.fn();
+const mockOverlayMount = jest.fn();
 jest.mock('../../lib/retry-chunk-import', () => ({
   retryChunkImport: jest.fn((load: () => Promise<unknown>) => load()),
 }));
@@ -37,6 +39,10 @@ jest.mock('./KioskOverlay', () => ({
     rulesUrl: string;
     catalog: Promise<PreparedKioskData>;
   }) => {
+    React.useEffect(() => {
+      mockOverlayMount();
+      return mockOverlayUnmount;
+    }, []);
     mockOverlay(props);
     return (
       <button data-testid="close-overlay" onClick={props.onClose}>
@@ -171,6 +177,8 @@ it('replaces the catalog and aborts the previous request when the launch or rule
   kioskState.set({ source: 'url', rulesUrl: 'first' });
   const view = render(<KioskModeManager rulesUrl="default" />);
   await screen.findByTestId('close-overlay');
+  const mounts = mockOverlayMount.mock.calls.length;
+  const unmounts = mockOverlayUnmount.mock.calls.length;
   const first = mockOverlay.mock.calls.at(-1)![0].catalog;
   const signal = jest.mocked(prepareKioskData).mock.calls.at(-1)![2]!;
   act(() => kioskState.set({ source: 'url', rulesUrl: 'second' }));
@@ -181,6 +189,8 @@ it('replaces the catalog and aborts the previous request when the launch or rule
   view.rerender(<KioskModeManager rulesUrl="changed" />);
   await waitFor(() => expect(prepareKioskData).toHaveBeenLastCalledWith('changed', 'second', expect.any(AbortSignal)));
   expect(mockOverlay.mock.calls.at(-1)![0].catalog).not.toBe(second);
+  expect(mockOverlayMount).toHaveBeenCalledTimes(mounts);
+  expect(mockOverlayUnmount).toHaveBeenCalledTimes(unmounts);
   view.unmount();
   kioskState.set(null);
 });
@@ -190,7 +200,7 @@ it('passes a failed rules import to the overlay error path', async () => {
   jest.mocked(retryChunkImport).mockRejectedValueOnce(error);
   kioskState.set({ source: 'sidebar' });
   const { unmount } = render(<KioskModeManager rulesUrl="default" />);
-  await screen.findByTestId('close-overlay');
+  await act(async () => {});
   await expect(mockOverlay.mock.calls.at(-1)![0].catalog).rejects.toBe(error);
   unmount();
   kioskState.set(null);

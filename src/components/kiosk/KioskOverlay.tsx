@@ -40,9 +40,13 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
   const [result, setResult] = useState<{
     rulesUrl: string;
     overrideUrl?: string;
+    catalog?: Promise<PreparedKioskData>;
     data: KioskData & { warning?: string };
   } | null>(null);
-  const current = result?.rulesUrl === rulesUrl && result?.overrideUrl === overrideUrl ? result.data : null;
+  const current =
+    result?.rulesUrl === rulesUrl && result?.overrideUrl === overrideUrl && result?.catalog === catalog
+      ? result.data
+      : null;
   const loading = current === null;
   const rules = current?.rules ?? [];
   const page = current?.page;
@@ -67,7 +71,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
     loadKioskData(rulesUrl, overrideUrl, controller.signal, { sessionId: session.id, mode }, catalog)
       .then((data) => {
         if (!controller.signal.aborted) {
-          setResult({ rulesUrl, overrideUrl, data });
+          setResult({ rulesUrl, overrideUrl, catalog, data });
         }
       })
       .catch(() => {
@@ -75,6 +79,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
           setResult({
             rulesUrl,
             overrideUrl,
+            catalog,
             data: { rules: [], banner: '', warning: 'The kiosk could not be loaded. Try opening it again.' },
           });
         }
