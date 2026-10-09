@@ -12,7 +12,7 @@ const alignment = z.enum(['start', 'center']).optional();
 export const KioskInputSchema = z
   .strictObject({
     inputType: z.enum(['text', 'datasource']),
-    format: z.enum(['http-origin']).optional(),
+    format: z.enum(['http-origin', 'http-url']).optional(),
     variableName: name,
     prompt: text,
     placeholder: text.optional(),
