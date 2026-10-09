@@ -407,7 +407,7 @@ Configuration is managed through plugin settings (`PathfinderPluginConfig`):
 - `src/lib/context-event-bus.ts` - Module-singleton owning EchoSrv subscription and inferred datasource/visualization state
 - `src/context-engine/context.hook.ts` - React hook for UI integration
 - `src/context-engine/context.init.ts` - Plugin lifecycle initialization
-- `src/context-engine/context-event-bus.test.ts` - Event bus unit tests
+- `src/lib/context-event-bus.test.ts` - Event bus unit tests
 - `src/context-engine/context-security.test.ts` - Security test suite
 - `src/context-engine/context.service.completion.test.ts` - Completion storage selection tests
 - `src/types/context.types.ts` - TypeScript type definitions
