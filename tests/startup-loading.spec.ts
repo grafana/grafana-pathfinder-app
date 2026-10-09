@@ -199,3 +199,39 @@ test('does not fetch a kiosk catalog when learning is disabled', async ({ page }
   expect(requests).toBe(0);
   await expect(page.getByTestId(testIds.kioskMode.overlay)).not.toBeVisible();
 });
+
+test('places the Learn experiment beside toolbar Help despite page help icons', async ({ page }) => {
+  await settings(page);
+  await page.addInitScript(() => {
+    localStorage.setItem('pathfinder.faro.local', 'true');
+    let boot: unknown;
+    Object.defineProperty(window, 'grafanaBootData', {
+      configurable: true,
+      get: () => boot,
+      set: (value) => {
+        value.settings.buildInfo.env = 'development';
+        value.settings.namespace = 'stacks-123';
+        value.settings.analytics = { ...value.settings.analytics, enabled: true };
+        boot = value;
+      },
+    });
+    document.addEventListener('DOMContentLoaded', () => {
+      const button = document.createElement('button');
+      button.setAttribute('aria-label', 'Page help');
+      button.setAttribute('aria-expanded', 'false');
+      const icon = document.createElement('span');
+      icon.dataset.testid = 'icon-question-circle';
+      button.append(icon);
+      document.body.append(button);
+    });
+  });
+  await page.route(/https:\/\/faro-collector-[^/]+\/collect\//, (route) =>
+    route.fulfill({ status: 202, headers: { 'Access-Control-Allow-Origin': '*' } })
+  );
+  await page.goto('/dashboards?featureControl=true&pathfinderHelpPreview=learn');
+  const toolbar = page.getByTestId('data-testid Nav toolbar');
+  const learn = toolbar.getByTestId('help-button-learn');
+  await expect(learn).toBeVisible({ timeout: 20_000 });
+  await learn.click();
+  await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible({ timeout: 20_000 });
+});

@@ -93,7 +93,10 @@ beforeEach(() => {
   const icon = document.createElement('span');
   icon.dataset.testid = 'icon-question-circle';
   button.append(icon);
-  document.body.append(button);
+  const toolbar = document.querySelector('[data-testid="data-testid Nav toolbar"]') ?? document.createElement('div');
+  toolbar.setAttribute('data-testid', 'data-testid Nav toolbar');
+  toolbar.append(button);
+  document.body.append(toolbar);
   jest.spyOn(button, 'getBoundingClientRect').mockReturnValue({
     width: 32,
     height: 32,

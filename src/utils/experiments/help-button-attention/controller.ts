@@ -27,7 +27,9 @@ interface Options {
 }
 
 export function findHelpButton(helpLabel?: string, requireClosed = true): HTMLButtonElement | undefined {
-  const buttons = Array.from(document.querySelectorAll('[data-testid="icon-question-circle"]'))
+  const buttons = Array.from(
+    document.querySelectorAll('[data-testid="data-testid Nav toolbar"] [data-testid="icon-question-circle"]')
+  )
     .map((icon) => icon.closest('button'))
     .filter((button): button is HTMLButtonElement => {
       const expanded = button?.getAttribute('aria-expanded');
