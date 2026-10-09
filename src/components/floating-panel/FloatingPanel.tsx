@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { IconButton, useStyles2, getPortalContainer } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { copyTextToClipboard } from '../../lib/clipboard';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
 import { startModalWatch, stopModalWatch } from '../../interactive-engine';
 import { getFloatingPanelStyles } from './floating-panel.styles';
@@ -74,7 +75,7 @@ export function FloatingPanel({
     onSwitchToSidebar();
   }, [onSwitchToSidebar]);
 
-  const [linkCopied, setLinkCopied] = useState(false);
+  const [linkCopy, setLinkCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const handleCopyWorkshopLink = useCallback(() => {
@@ -82,19 +83,16 @@ export function FloatingPanel({
       return;
     }
     const shareUrl = buildPathfinderShareUrl({ doc: guideUrl, panelMode: 'floating', guideType });
-    navigator.clipboard
-      .writeText(shareUrl)
-      .then(() => {
-        setLinkCopied(true);
-        clearTimeout(copyTimerRef.current);
-        copyTimerRef.current = setTimeout(() => setLinkCopied(false), 2000);
+    copyTextToClipboard(shareUrl).then((copied) => {
+      setLinkCopy(copied ? 'copied' : 'failed');
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setLinkCopy('idle'), 2000);
+      if (copied) {
         reportAppInteraction(UserInteraction.FloatingPanelCopyLink, {
           guide_url: guideUrl,
         });
-      })
-      .catch(() => {
-        // Clipboard may be unavailable
-      });
+      }
+    });
   }, [guideUrl, guideType]);
 
   // Keyboard: Escape minimizes — only when the panel itself or document.body
@@ -157,9 +155,15 @@ export function FloatingPanel({
           <div className={styles.headerActions}>
             {guideUrl && (
               <IconButton
-                name={linkCopied ? 'check' : 'link'}
+                name={linkCopy === 'copied' ? 'check' : linkCopy === 'failed' ? 'exclamation-triangle' : 'link'}
                 size="sm"
-                tooltip={linkCopied ? 'Copied!' : 'Copy workshop link'}
+                tooltip={
+                  linkCopy === 'copied'
+                    ? 'Copied!'
+                    : linkCopy === 'failed'
+                      ? 'Could not copy the link'
+                      : 'Copy workshop link'
+                }
                 onClick={handleCopyWorkshopLink}
                 aria-label="Copy workshop link"
               />

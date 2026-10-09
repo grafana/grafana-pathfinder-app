@@ -52,20 +52,6 @@ export function stripAuthorNotes(guide: JsonGuide): JsonGuide {
 }
 
 /**
- * Copy JSON guide to clipboard
- *
- * @param guide - The guide to copy
- * @param pretty - Whether to format with indentation (default: true)
- * @returns Promise that resolves when copied
- */
-export async function copyGuideToClipboard(guide: JsonGuide, pretty = true): Promise<void> {
-  const exportable = stripAuthorNotes(guide);
-  const json = pretty ? JSON.stringify(exportable, null, 2) : JSON.stringify(exportable);
-
-  await navigator.clipboard.writeText(json);
-}
-
-/**
  * Download JSON guide as a file
  *
  * @param guide - The guide to download

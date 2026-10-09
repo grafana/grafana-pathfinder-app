@@ -17,6 +17,7 @@ import {
 } from '../../../lib/analytics';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { currentPlatform } from '../../../lib/platform';
+import { copyTextToClipboard } from '../../../lib/clipboard';
 import { testIds } from '../../../constants/testIds';
 import { clearExtensionSidebarDocked } from '../../../lib/storage/extension-sidebar';
 import { isNonContentTab } from '../utils';
@@ -78,24 +79,23 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
     if (!shareLink) {
       return;
     }
-    navigator.clipboard
-      .writeText(shareLink)
-      .then(() => {
-        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-          action: 'copy_guide_link',
-          source: 'header_menu_copy_link',
-        });
-        getAppEvents().publish({
-          type: 'alert-success',
-          payload: [t('docsPanel.linkCopied', 'Link copied to clipboard')],
-        });
-      })
-      .catch(() => {
+    copyTextToClipboard(shareLink).then((copied) => {
+      if (!copied) {
         getAppEvents().publish({
           type: 'alert-error',
           payload: [t('docsPanel.linkCopyFailed', 'Could not copy the link')],
         });
+        return;
+      }
+      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+        action: 'copy_guide_link',
+        source: 'header_menu_copy_link',
       });
+      getAppEvents().publish({
+        type: 'alert-success',
+        payload: [t('docsPanel.linkCopied', 'Link copied to clipboard')],
+      });
+    });
   };
 
   const handleFeedbackClick = () => {
