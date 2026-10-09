@@ -21,7 +21,7 @@ import (
 	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
-// Contract goldens for the four App Platform response envelopes
+// Contract goldens for the App Platform response envelopes
 // (docs/design/BACKEND_PROXY_PATTERN.md). Go and TypeScript describe these
 // shapes twice, in two processes, so no compiler can couple them; these
 // committed bytes are what does. `src/validation/backend-api-contract.test.ts`
@@ -65,12 +65,11 @@ type contractRoot struct {
 	typ reflect.Type
 }
 
-// contractRoots are the four in-scope envelopes. Every Coda route is out of
-// scope: #1468 deletes coda.go, coda_exec.go and resources.go.
 func contractRoots() []contractRoot {
 	return []contractRoot{
 		{"package-recommendations", reflect.TypeOf(PackageRecommendationsResponse{})},
 		{"custom-guide-repository", reflect.TypeOf(customGuideRepositoryResponse{})},
+		{"custom-guides", reflect.TypeOf(customGuidesResponse{})},
 		{"completion-records-my", reflect.TypeOf(myCompletionsResponse{})},
 		{"completion-records-capability", reflect.TypeOf(completionCapability{})},
 		{"assignments-my", reflect.TypeOf(myAssignmentsResponse{})},
@@ -92,6 +91,8 @@ func contractCases() []contractCase {
 		{"custom-guide-repository.default", captureCustomGuideDefault},
 		{"custom-guide-repository.wire-widened-manifest", captureCustomGuideWireWidenedManifest},
 		{"custom-guide-repository.unavailable", captureCustomGuideUnavailable},
+		{"custom-guides.default", captureCustomGuidesDefault},
+		{"custom-guides.empty", captureCustomGuidesEmpty},
 		{"completion-records-my.default", captureMyCompletionsDefault},
 		{"completion-records-my.empty", captureMyCompletionsEmpty},
 		{"completion-records-my.in-progress", captureMyCompletionsInProgress},
@@ -795,6 +796,25 @@ func captureCustomGuideUnavailable(t *testing.T) *httptest.ResponseRecorder {
 	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: testNamespace})
 	ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(testGrafanaConfig()))
 	return doCustomGuideGolden(t, r.WithContext(ctx))
+}
+
+func doCustomGuidesGolden(t *testing.T, upstreamBody string) *httptest.ResponseRecorder {
+	t.Helper()
+	freezeContractTime(t)
+	app, cfg := customGuidesTestApp(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(upstreamBody))
+	}, http.StatusOK)
+	rr := httptest.NewRecorder()
+	app.handleCustomGuides(rr, customGuideRequestWithConfig(t, "/custom-guides", "user:1", cfg))
+	return rr
+}
+
+func captureCustomGuidesDefault(t *testing.T) *httptest.ResponseRecorder {
+	return doCustomGuidesGolden(t, `{"items":[{"apiVersion":"pathfinderbackend.ext.grafana.app/v1alpha1","kind":"InteractiveGuide","metadata":{"name":"editor-guide","uid":"uid-editor","resourceVersion":"42","creationTimestamp":"2026-10-01T00:00:00Z","annotations":{"source":"editor"},"labels":{"team":"observability"}},"spec":{"id":"editor-guide","title":"Team guide","status":"draft","blocks":[{"type":"markdown","content":"Hello"}],"manifest":{"type":"guide"}},"futureField":{"preserve":true}}]}`)
+}
+
+func captureCustomGuidesEmpty(t *testing.T) *httptest.ResponseRecorder {
+	return doCustomGuidesGolden(t, `{"items":[]}`)
 }
 
 // --- Captures: /completion-records/* -----------------------------------------

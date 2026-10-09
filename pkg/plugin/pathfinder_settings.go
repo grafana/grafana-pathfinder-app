@@ -20,28 +20,10 @@ func (a *App) handlePathfinderSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, resource, name string, maxBytes int64) {
-	w.Header().Set("Cache-Control", "no-store")
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
-		a.writeError(w, "method not allowed", http.StatusMethodNotAllowed)
+	client, namespace := a.appPlatformReadClient(w, r, resource, "get")
+	if client == nil {
 		return
 	}
-	if status := a.validIDToken(r); status != identityVerified {
-		a.writeProxyError(w, status.capabilityReason(), http.StatusForbidden, proxyGateDiagnostic("identity-unavailable", resource, "get", "identity"))
-		return
-	}
-	namespace := backend.PluginConfigFromContext(r.Context()).Namespace
-	cfg := config.GrafanaConfigFromContext(r.Context())
-	if cfg == nil || namespace == "" || a.oboExchanger == nil {
-		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, "get", "configuration"))
-		return
-	}
-	appURL, err := cfg.AppURL()
-	if err != nil || appURL == "" {
-		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, "get", "configuration"))
-		return
-	}
-	client := newAppPlatformListClient(appURL, a.oboExchanger, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), a.ctxLogger(r.Context()))
 	body, err := client.getItem(r.Context(), namespace, resource, name, maxBytes)
 	if err != nil {
 		status := appPlatformReadErrorStatus(err)
@@ -54,6 +36,32 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 		return
 	}
 	a.writeJSON(w, body, http.StatusOK)
+}
+
+func (a *App) appPlatformReadClient(w http.ResponseWriter, r *http.Request, resource, operation string) (*appPlatformListClient, string) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		a.writeError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return nil, ""
+	}
+	if status := a.validIDToken(r); status != identityVerified {
+		a.writeProxyError(w, status.capabilityReason(), http.StatusForbidden, proxyGateDiagnostic("identity-unavailable", resource, operation, "identity"))
+		return nil, ""
+	}
+	namespace := backend.PluginConfigFromContext(r.Context()).Namespace
+	cfg := config.GrafanaConfigFromContext(r.Context())
+	if cfg == nil || namespace == "" || a.oboExchanger == nil {
+		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, operation, "configuration"))
+		return nil, ""
+	}
+	appURL, err := cfg.AppURL()
+	if err != nil || appURL == "" {
+		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, operation, "configuration"))
+		return nil, ""
+	}
+	client := newAppPlatformListClient(appURL, a.oboExchanger, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), a.ctxLogger(r.Context()))
+	return client, namespace
 }
 
 func (c *appPlatformListClient) getSettings(ctx context.Context, namespace string) (json.RawMessage, error) {

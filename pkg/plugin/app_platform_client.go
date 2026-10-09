@@ -75,6 +75,13 @@ type appPlatformListPage struct {
 	Items []appPlatformListItem `json:"items"`
 }
 
+type appPlatformRawListPage struct {
+	Metadata struct {
+		Continue string `json:"continue"`
+	} `json:"metadata"`
+	Items []json.RawMessage `json:"items"`
+}
+
 // appPlatformListItem is one LIST element. metadata.name addresses the
 // object; resourceVersion is what a subsequent status update must echo back.
 // spec and status stay raw so each kind decodes its own schema.
@@ -188,13 +195,26 @@ var credentialDiagOnce sync.Once
 // consume, leaving POST's credential/RBAC result otherwise undiagnosed).
 var createDiagOnce sync.Once
 
-// listPage fetches one page of a namespace LIST. The body is bounded by
-// maxBytes; upstream HTTP failures carry the status for retryability and scope
-// classification, and a mint failure carries errAccessTokenMintFailed instead.
-func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64) (page *appPlatformListPage, err error) {
+func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64) (*appPlatformListPage, error) {
+	page := &appPlatformListPage{}
+	if err := c.listPageInto(ctx, groupVersion, namespace, resource, continueToken, pageSize, maxBytes, page); err != nil {
+		return nil, err
+	}
+	return page, nil
+}
+
+func (c *appPlatformListClient) listRawPage(ctx context.Context, namespace, continueToken string) (*appPlatformRawListPage, error) {
+	page := &appPlatformRawListPage{}
+	if err := c.listPageInto(ctx, customGuideGroupVersion, namespace, customGuideResource, continueToken, customGuidesPageSize, customGuideListMaxBytes, page); err != nil {
+		return nil, err
+	}
+	return page, nil
+}
+
+func (c *appPlatformListClient) listPageInto(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64, page any) (err error) {
 	defer func() { logAppPlatformResult(c.logger, namespace, resource, "list", err) }()
 	if namespace == "" {
-		return nil, fmt.Errorf("app platform list: empty namespace")
+		return fmt.Errorf("app platform list: empty namespace")
 	}
 
 	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource)
@@ -210,19 +230,19 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 
 	accessToken, err := mintAccessToken(reqCtx, c.minter, namespace, c.idToken)
 	if err != nil {
-		return nil, fmt.Errorf("app platform list: %w", err)
+		return fmt.Errorf("app platform list: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("app platform list: build request: %w", err)
+		return fmt.Errorf("app platform list: build request: %w", err)
 	}
 	req.Header.Set(auth.AccessTokenHeader, accessToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("app platform list: %w", err)
+		return fmt.Errorf("app platform list: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -236,7 +256,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return nil, &appPlatformUpstreamError{
+		return &appPlatformUpstreamError{
 			status:     resp.StatusCode,
 			retryAfter: resp.Header.Get("Retry-After"),
 			msg:        fmt.Sprintf("app platform list %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(body))),
@@ -245,17 +265,16 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("app platform list: read body: %w", err)
+		return fmt.Errorf("app platform list: read body: %w", err)
 	}
 	if int64(len(body)) > maxBytes {
-		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform list: page response exceeded %d bytes", maxBytes)}
+		return &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform list: page response exceeded %d bytes", maxBytes)}
 	}
 
-	page = &appPlatformListPage{}
 	if err := json.Unmarshal(body, page); err != nil {
-		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform list: decode: %w", err)}
+		return &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform list: decode: %w", err)}
 	}
-	return page, nil
+	return nil
 }
 
 // create POSTs a single object to a namespace collection (the write companion
