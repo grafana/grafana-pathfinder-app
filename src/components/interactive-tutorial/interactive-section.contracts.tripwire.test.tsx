@@ -388,6 +388,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
             contentKey: '',
             sectionId: SECTION_ID,
             completed: true,
+            hydrated: false,
           });
         });
       } finally {

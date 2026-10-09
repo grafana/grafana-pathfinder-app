@@ -5,7 +5,6 @@ import { runInNewContext } from 'vm';
 import * as ts from 'typescript';
 import { render, screen, waitFor } from '@testing-library/react';
 import { getConfigWithDefaults } from '../constants';
-import { resolvePathfinderAvailability } from './pathfinder-enablement';
 import type { DeepLinkParams } from './pathfinder-search-params';
 import { createTranslatedComponent } from '../components/App/TranslatedComponent';
 
@@ -13,6 +12,7 @@ jest.mock('../lib/plugin-translations', () => ({
   loadTranslatedModule: async (load: () => Promise<unknown>) => load(),
 }));
 
+import { isImageRendererSession, resolvePathfinderAvailability } from './pathfinder-enablement';
 import { retryChunkImport } from '../lib/retry-chunk-import';
 
 // Wrap the compiled entrypoint to execute its top-level awaits under Jest's CommonJS runtime.
@@ -37,7 +37,8 @@ async function boot(
   flags: Record<string, boolean> = {},
   deepLink: DeepLinkParams = { doc: 'bundled:test' },
   translationReady: Promise<void> = Promise.resolve(),
-  controllerPairing: object | null = null
+  controllerPairing: object | null = null,
+  authenticatedBy = 'password'
 ) {
   const settings = readFailed ? undefined : getConfigWithDefaults({ pathfinderEnabled: tenant });
   const root = { component: undefined as React.ComponentType | undefined };
@@ -70,6 +71,7 @@ async function boot(
     installLiveTabExecutor: jest.fn(),
     reportPathfinderSurface: jest.fn(),
     reportPathfinderSurfaceClosed: jest.fn(),
+    readPathfinderStartupPreference: jest.fn(async () => (read ? await read : settings)),
   };
   const modules: Record<string, unknown> = {
     react: React,
@@ -79,6 +81,7 @@ async function boot(
       },
       PluginExtensionPoints: { CommandPalette: 'command-palette' },
     },
+    '@grafana/runtime': { config: { bootData: { user: { authenticatedBy } } } },
     '@grafana/ui': { LoadingPlaceholder: () => null },
     './components/App/TranslatedComponent': { createTranslatedComponent },
     './lib/plugin-translations': {
@@ -94,10 +97,11 @@ async function boot(
     './plugin.json': { id: 'grafana-pathfinder-app' },
     './utils/configured-bootstrap': effects,
     './hooks/usePathfinderPluginConfig': {
-      readPathfinderStartupPreference: async () => (read ? await read : settings),
+      readPathfinderStartupPreference: effects.readPathfinderStartupPreference,
       waitForPathfinderPluginConfig: async () => (read ? await read : settings),
     },
     './utils/pathfinder-enablement': {
+      isImageRendererSession,
       resolvePathfinderAvailability,
       getPathfinderStartupDecision: () => ({ durationMs: 10, outcome: 'resolved' }),
     },
@@ -203,6 +207,41 @@ it.each([true, undefined])('registers learning surfaces when remote enabled and 
   expect(effects.handlePathfinderDeepLink).toHaveBeenCalledWith(
     expect.objectContaining({ attemptAutoOpen: expect.any(Function) })
   );
+});
+
+it('stays dormant without reading settings in an image-renderer session', async () => {
+  const { plugin, effects } = await boot(
+    true,
+    true,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'render'
+  );
+  plugin.init();
+  expect(effects.readPathfinderStartupPreference).not.toHaveBeenCalled();
+  expect(plugin.addComponent).not.toHaveBeenCalled();
+  expect(plugin.addLink).not.toHaveBeenCalled();
+  expect(effects.initializeConfiguredSurfaces).not.toHaveBeenCalled();
+});
+
+it('keeps the docked sidebar when a person opens a render=1 URL in a normal session', async () => {
+  window.history.replaceState(null, '', '/d/abc/home?render=1&kiosk=1');
+  try {
+    const { plugin, effects } = await boot(true, true, false, undefined, undefined, undefined, 'sidebar');
+    expect(effects.readPathfinderStartupPreference).toHaveBeenCalledTimes(1);
+    expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+    expect(effects.clearExtensionSidebarDocked).not.toHaveBeenCalled();
+  } finally {
+    window.history.replaceState(null, '', '/');
+  }
 });
 
 it('registers baseline learning surfaces after an unsuccessful settings read', async () => {
