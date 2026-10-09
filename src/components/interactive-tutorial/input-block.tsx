@@ -1,3 +1,4 @@
+import { decodeChoiceSelection, encodeChoiceSelection } from '../../lib/choice-response';
 import { normalizeHttpOrigin } from '../../lib/input-value';
 /**
  * Input Block Renderer
@@ -7,7 +8,7 @@ import { normalizeHttpOrigin } from '../../lib/input-value';
  */
 
 import type { ConditionInput } from '../../types/requirements.types';
-import React, { useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useId, ReactNode } from 'react';
 import { css } from '@emotion/css';
 import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon, Combobox, type ComboboxOption } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -25,7 +26,8 @@ export interface InputBlockProps {
   /** The prompt text (markdown supported) */
   prompt: string;
   /** Input type: text, boolean, or datasource */
-  inputType: 'text' | 'boolean' | 'datasource';
+  inputType: 'text' | 'boolean' | 'datasource' | 'checkbox-group';
+  choices?: Array<{ id: string; text: string }>;
   format?: 'http-origin';
   /** Variable name for storing the response */
   variableName: string;
@@ -106,6 +108,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
 
 export function InputBlock({
   inputType,
+  choices,
   variableName,
   placeholder,
   checkboxLabel,
@@ -124,6 +127,39 @@ export function InputBlock({
 }: InputBlockProps) {
   const styles = useStyles2(getStyles);
   const responseContext = useGuideResponsesOptional();
+  const promptId = useId();
+  const optionIds = choices?.map((choice) => choice.id) ?? [];
+  const selection = decodeChoiceSelection(responseContext?.getResponse(variableName), optionIds);
+  useEffect(() => {
+    if (inputType !== 'checkbox-group' || !responseContext || responseContext.isLoading) {
+      return;
+    }
+    const stored = responseContext.getResponse(variableName);
+    const ids = choices?.map((choice) => choice.id) ?? [];
+    const normalized = encodeChoiceSelection(decodeChoiceSelection(stored, ids), ids);
+    if (stored !== undefined && normalized !== stored) {
+      if (normalized) {
+        responseContext.setResponse(variableName, normalized);
+      } else {
+        responseContext.deleteResponse(variableName);
+      }
+    }
+  }, [inputType, choices, responseContext, variableName]);
+
+  const handleChoiceChange = (id: string, checked: boolean) => {
+    const next = checked ? [...selection, id] : selection.filter((selected) => selected !== id);
+    const encoded = encodeChoiceSelection(next, optionIds);
+    if (encoded) {
+      responseContext?.setResponse(variableName, encoded);
+    } else {
+      responseContext?.deleteResponse(variableName);
+    }
+    reportAppInteraction(UserInteraction.InputBlockSubmit, {
+      input_type: 'checkbox-group',
+      variable_name: variableName,
+      is_update: responseContext?.hasResponse(variableName) ?? false,
+    });
+  };
 
   const datasources = useMemo(
     () => (inputType === 'datasource' ? filterDatasourcesByType(datasourceFilter) : []),
@@ -430,6 +466,27 @@ export function InputBlock({
           </div>
         );
 
+      case 'checkbox-group':
+        return (
+          <div
+            role="group"
+            aria-labelledby={promptId}
+            className={styles.checkboxContainer}
+            data-choice-question={variableName}
+          >
+            {choices?.map((choice) => (
+              <Checkbox
+                key={choice.id}
+                label={choice.text}
+                checked={selection.includes(choice.id)}
+                disabled={responseContext.isLoading}
+                onChange={(event) => handleChoiceChange(choice.id, event.currentTarget.checked)}
+              />
+            ))}
+            {required && selection.length === 0 && <p role="status">Select at least one option to continue</p>}
+          </div>
+        );
+
       case 'boolean':
         return (
           <div className={styles.checkboxContainer}>
@@ -485,16 +542,22 @@ export function InputBlock({
   };
 
   return (
-    <div className={styles.container}>
-      {/* Prompt/Question */}
-      <div className={styles.promptContainer}>{children}</div>
+    <div
+      className={styles.container}
+      data-required-choice-unanswered={
+        inputType === 'checkbox-group' && required && selection.length === 0 ? 'true' : undefined
+      }
+    >
+      <div className={styles.promptContainer} id={promptId}>
+        {children}
+      </div>
 
       {/* Input field based on type */}
       {renderInput()}
 
       {/* Actions - same for all input types */}
       <div className={styles.buttonContainer}>
-        {skippable && !required && !isSaved && (
+        {inputType !== 'checkbox-group' && skippable && !required && !isSaved && (
           <Button
             variant="secondary"
             size="sm"
@@ -505,14 +568,14 @@ export function InputBlock({
           </Button>
         )}
 
-        {isSaved && (
+        {(inputType === 'checkbox-group' ? selection.length > 0 : isSaved) && (
           <span className={styles.savedIndicator}>
             <Icon name="check" />
             Saved
           </span>
         )}
 
-        {isSaved && (
+        {(inputType === 'checkbox-group' ? selection.length > 0 : isSaved) && (
           <Button
             variant="secondary"
             size="sm"
@@ -523,14 +586,16 @@ export function InputBlock({
           </Button>
         )}
 
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleSave}
-          data-testid={testIds.interactive.inputSaveButton(variableName)}
-        >
-          {isSaved ? 'Update' : 'Save'}
-        </Button>
+        {inputType !== 'checkbox-group' && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSave}
+            data-testid={testIds.interactive.inputSaveButton(variableName)}
+          >
+            {isSaved ? 'Update' : 'Save'}
+          </Button>
+        )}
       </div>
     </div>
   );

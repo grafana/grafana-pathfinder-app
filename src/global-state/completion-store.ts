@@ -40,7 +40,8 @@ import { StorageKeys, buildVersionedSectionStorageKey, parseVersionedStorageKey 
 import { logger } from '../lib/logging';
 import { furthestEvidencedPosition, guideProgress, type CompletionEvidence } from '../lib/guide-stats';
 
-import { evictAllGuideIndexes, evictGuideIndex, getGuideIndex } from './active-guide-index';
+import { choiceGuideProgress } from '../lib/guide-stats/choice-progress';
+import { evictAllGuideIndexes, evictGuideIndex, getGuideIndex, getHiddenGuideSections } from './active-guide-index';
 import { getContentKey } from './content-key';
 import { dispatchProgress, type ProgressOrigin, type ProgressReason } from './progress-events';
 
@@ -346,10 +347,20 @@ interface GuidePercentage {
  * or the content has no countable blocks at all (not guide-shaped).
  */
 function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
+  const active = getGuideIndex(contentKey);
+  if (active?.choiceModel) {
+    const progress = choiceGuideProgress(
+      active.choiceModel,
+      active.index,
+      collectEvidence(contentKey),
+      active.responses ?? {},
+      getHiddenGuideSections(contentKey)
+    );
+    return { percent: progress.percent, complete: progress.complete, evidenced: progress.position > 0 };
+  }
   if (guideCompletionMarkStorage.isMarked(contentKey)) {
     return { percent: 100, complete: true, evidenced: true };
   }
-  const active = getGuideIndex(contentKey);
   if (!active) {
     return undefined;
   }

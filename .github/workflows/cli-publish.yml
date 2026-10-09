@@ -35,6 +35,7 @@ on:
       - 'Dockerfile.cli'
       - '.dockerignore'
       - '.github/workflows/cli-publish.yml'
+      - 'src/lib/choice-response.ts'
   pull_request:
     branches:
       - main
@@ -53,6 +54,7 @@ on:
       - 'Dockerfile.cli'
       - '.dockerignore'
       - '.github/workflows/cli-publish.yml'
+      - 'src/lib/choice-response.ts'
 
 permissions: read-all
 

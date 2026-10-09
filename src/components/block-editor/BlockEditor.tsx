@@ -36,6 +36,7 @@ import { BlockEditorFooter } from './BlockEditorFooter';
 import { BlockEditorHeader } from './BlockEditorHeader';
 import { BlockEditorContent } from './BlockEditorContent';
 import { BlockEditorModals } from './BlockEditorModals';
+import { ChoiceInputsProvider } from './forms/ChoiceInputsContext';
 import { BlockEditorContextProvider, useBlockEditorContext } from './BlockEditorContext';
 import { useGuideLint } from './lint';
 import { HealthStatusBar } from './HealthStatusBar';
@@ -903,31 +904,33 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
 
       {/* Block form modal - kept separate due to complex editing state dependencies */}
       {isBlockFormOpen && editingBlockType && (
-        <BlockFormModal
-          blockType={editingBlockType}
-          initialData={editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block}
-          onSubmit={handleBlockFormSubmitWithSection}
-          onSubmitAndRecord={editingBlockType === 'section' ? handleSubmitAndStartRecording : undefined}
-          onCancel={handleBlockFormCancel}
-          isEditing={!!editingBlock || !!editingNestedBlock || !!editingConditionalBranchBlock}
-          onSplitToBlocks={
-            (editingBlockType === 'multistep' || editingBlockType === 'guided') &&
-            (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
-              ? conversionHandlers.handleSplitToBlocks
-              : undefined
-          }
-          onConvertType={
-            (editingBlockType === 'multistep' || editingBlockType === 'guided') &&
-            (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
-              ? conversionHandlers.handleConvertType
-              : undefined
-          }
-          onSwitchBlockType={
-            editingBlock || editingNestedBlock || editingConditionalBranchBlock
-              ? conversionHandlers.handleSwitchBlockType
-              : undefined
-          }
-        />
+        <ChoiceInputsProvider blocks={state.blocks.map((item) => item.block)}>
+          <BlockFormModal
+            blockType={editingBlockType}
+            initialData={editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block}
+            onSubmit={handleBlockFormSubmitWithSection}
+            onSubmitAndRecord={editingBlockType === 'section' ? handleSubmitAndStartRecording : undefined}
+            onCancel={handleBlockFormCancel}
+            isEditing={!!editingBlock || !!editingNestedBlock || !!editingConditionalBranchBlock}
+            onSplitToBlocks={
+              (editingBlockType === 'multistep' || editingBlockType === 'guided') &&
+              (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
+                ? conversionHandlers.handleSplitToBlocks
+                : undefined
+            }
+            onConvertType={
+              (editingBlockType === 'multistep' || editingBlockType === 'guided') &&
+              (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
+                ? conversionHandlers.handleConvertType
+                : undefined
+            }
+            onSwitchBlockType={
+              editingBlock || editingNestedBlock || editingConditionalBranchBlock
+                ? conversionHandlers.handleSwitchBlockType
+                : undefined
+            }
+          />
+        </ChoiceInputsProvider>
       )}
 
       {/* Record mode overlay for section/conditional recording */}

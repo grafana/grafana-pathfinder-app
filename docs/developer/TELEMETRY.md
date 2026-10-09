@@ -117,6 +117,14 @@ Terminal percentages are always 100 and no caller measures duration. The first t
 
 Guide completions also carry `total_block_count`, `completable_block_count`, `section_count`, `guide_stats_version` and `block_progress_rule_version: block-position-v1` when the completing surface has a frozen guide index. These are live counts, including zeros for prose-only guides, and contain no resource identity. They are omitted when the index is unavailable and on whole-journey events: the final milestone's block count is not the journey denominator. These properties enrich Track 1 only; the durable record schema is unchanged.
 
+### Choice-driven guide progress
+
+Guides with checkbox groups or section visibility controls use `block_progress_rule_version: choice-path-v1`. Their `active_block_count` is the current progress denominator. The existing block counts describe the full authored guide, and `block_position` remains its authored position.
+
+A completed later section does not credit an unfinished earlier section. Hidden content does not count toward progress. Selection changes can lower the percentage without removing completed-step evidence.
+
+Checkbox-group submission events reuse `InputBlockSubmit` with `input_type: checkbox-group`. They do not include question text, option labels, option IDs, or selected values.
+
 ### Identity policy
 
 New events carry guide identity only for confirmed Grafana-published sources. `guideIdentityAnalyticsProperties` and `pathAnalyticsProperties` in `completion-identity.ts` are the rule, so a new event that names a guide or path reuses them. A source is confirmed when the loader named its repository explicitly, the content was opened as `bundled:` and its source resolves to `bundled` (the bundled loader stamps that on the manifest), or it belongs to a curated path in `paths.json` / `paths-cloud.json`. A source that only fell back to a default (see [Source attribution](#source-attribution)), or came from a manifest's own `repository`, which the manifest schema itself defaults, reports `guide_source = 'unresolved'` and `guide_visibility = 'private'` with no identifier or title. The title is whatever the completing surface shows, usually the panel tab's title.

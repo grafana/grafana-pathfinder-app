@@ -84,6 +84,7 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
   sectionId?: string;
   skippable?: boolean; // Whether this section can be skipped if requirements fail
   autoCollapse?: boolean; // Whether to auto-collapse on completion (default: true, can be overridden by user preference)
+  whenRequirementsUnmet?: 'disable' | 'heading-only' | 'hide';
 }
 
 /**

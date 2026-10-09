@@ -4,6 +4,8 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import { testIds } from '../../constants/testIds';
 import { UserInteraction } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
+import type { JsonBlock } from '../../types/json-guide.types';
+import { createChoiceProgressModel, CHOICE_COMPLETION_VARIABLE } from '../../lib/guide-stats/choice-progress';
 import { computeGuideBlockIndex } from '../../lib/guide-stats';
 import { evictAllGuideIndexes, publishGuideIndex } from '../../global-state/active-guide-index';
 import { MarkCompleteFooter } from './MarkCompleteFooter';
@@ -12,6 +14,14 @@ jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string, vars?: Record<string, unknown>) =>
     vars ? fallback.replace(/\{\{(\w+)\}\}/g, (_m, name) => String(vars[name])) : fallback,
 }));
+
+let mockChoiceResponses: {
+  responses: Record<string, string>;
+  getResponse: (name: string) => string | undefined;
+  setResponse: jest.Mock;
+  isLoading: boolean;
+} | null = null;
+jest.mock('../../docs-retrieval', () => ({ useGuideResponsesOptional: () => mockChoiceResponses }));
 
 const reportAppInteraction = jest.fn();
 jest.mock('../../lib/analytics', () => ({
@@ -80,6 +90,7 @@ function liveRegions(): Element[] {
 beforeEach(() => {
   jest.clearAllMocks();
   percentage = 25;
+  mockChoiceResponses = null;
   notifyProgress = undefined;
   ambientKey = 'guide-key';
   progressKeys.length = 0;
@@ -96,6 +107,62 @@ async function clickWhenReady(): Promise<void> {
 }
 
 describe('MarkCompleteFooter', () => {
+  describe('choice paths', () => {
+    const blocks: JsonBlock[] = [
+      {
+        type: 'input',
+        inputType: 'checkbox-group',
+        prompt: 'Which signals?',
+        variableName: 'signals',
+        required: true,
+        choices: [{ id: 'logs', text: 'Logs' }],
+      },
+      {
+        type: 'section',
+        id: 'logs',
+        requirements: ['var-signals:includes:logs'],
+        whenRequirementsUnmet: 'hide',
+        blocks: [{ type: 'markdown', id: 'logs-step', content: 'Logs' }],
+      },
+    ];
+    beforeEach(() => {
+      const index = computeGuideBlockIndex(blocks);
+      publishGuideIndex({
+        contentKey: 'guide-key',
+        index,
+        denominatorSource: 'live-pre-inlining',
+        choiceModel: createChoiceProgressModel(blocks, index),
+      });
+      mockChoiceResponses = { responses: {}, getResponse: () => undefined, setResponse: jest.fn(), isLoading: false };
+    });
+    afterEach(() => evictAllGuideIndexes());
+
+    it('disables guide completion until a required choice is answered', async () => {
+      render(<MarkCompleteFooter context="guide" />);
+      const button = await screen.findByTestId(testIds.markComplete.button);
+      await waitFor(() => expect(markStorage.get).toHaveBeenCalled());
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+      expect(markStorage.set).not.toHaveBeenCalled();
+    });
+
+    it('stores a path-specific completion snapshot and re-arms after the path expands', async () => {
+      mockChoiceResponses!.responses = { signals: 'logs' };
+      render(<MarkCompleteFooter context="guide" />);
+      await clickWhenReady();
+      expect(mockChoiceResponses!.setResponse).toHaveBeenCalledWith(CHOICE_COMPLETION_VARIABLE, expect.any(String));
+      const saved = JSON.parse(mockChoiceResponses!.setResponse.mock.calls[0]![1]);
+      expect(saved).toContain('logs-step');
+      markStorage.get.mockResolvedValue(true);
+      percentage = 100;
+      await act(async () => notifyProgress?.());
+      await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
+      percentage = 50;
+      await act(async () => notifyProgress?.());
+      await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
+    });
+  });
+
   it('records exactly one completion and one analytics event per click', async () => {
     const onMarkComplete = jest.fn();
     render(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);

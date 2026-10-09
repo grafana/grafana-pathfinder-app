@@ -366,6 +366,7 @@ export function createRequirementsManagerMock() {
 /** Factory for `jest.mock('../../docs-retrieval', ...)`. */
 export function createDocsRetrievalMock() {
   return {
+    useGuideResponsesOptional: () => null,
     ImageRenderer: () => null,
     VideoRenderer: () => null,
     YouTubeVideoRenderer: () => null,

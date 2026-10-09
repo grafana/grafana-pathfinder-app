@@ -904,6 +904,19 @@ describe('warnQuotaExceededOnce — surfaces a single toast across writes', () =
 // ============================================================================
 
 describe('guideResponseStorage — own-key lookups', () => {
+  it('serializes rapid writes, deletes, and merges without losing another guide', async () => {
+    await guideResponseStorage.clearAll();
+    await Promise.all([
+      guideResponseStorage.setResponse('first', 'signals', 'logs'),
+      guideResponseStorage.setResponse('first', 'environments', 'development'),
+      guideResponseStorage.setResponse('second', 'signals', 'metrics'),
+      guideResponseStorage.setResponse('first', 'signals', 'logs,traces'),
+      guideResponseStorage.deleteResponse('first', 'environments'),
+      guideResponseStorage.mergeResponses('first', { regions: 'west' }),
+    ]);
+    expect(await guideResponseStorage.getForGuide('first')).toEqual({ signals: 'logs,traces', regions: 'west' });
+    expect(await guideResponseStorage.getForGuide('second')).toEqual({ signals: 'metrics' });
+  });
   beforeEach(() => {
     localStorage.clear();
     // Seeded so getAll() parses a fresh container instead of returning the module default.

@@ -1,0 +1,64 @@
+{
+  "id": "choice-driven-signals",
+  "title": "Choose your signals",
+  "blocks": [
+    {
+      "type": "input",
+      "id": "signal-selection",
+      "inputType": "checkbox-group",
+      "prompt": "Which signals do you want to configure?",
+      "variableName": "signals",
+      "required": true,
+      "choices": [
+        { "id": "metrics", "text": "Metrics" },
+        { "id": "logs", "text": "Logs" },
+        { "id": "traces", "text": "Traces" }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "common",
+      "title": "Before you start",
+      "blocks": [
+        {
+          "type": "markdown",
+          "id": "common-step",
+          "content": "Read the instructions for each selected signal. Mark each section complete after you finish its steps."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "metrics",
+      "title": "Configure metrics",
+      "requirements": ["var-signals:includes:metrics"],
+      "whenRequirementsUnmet": "hide",
+      "blocks": [
+        { "type": "markdown", "id": "metrics-source", "content": "Choose a metrics data source." },
+        { "type": "markdown", "id": "metrics-query", "content": "Run a metrics query." }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "logs",
+      "title": "Configure logs",
+      "requirements": ["var-signals:includes:logs"],
+      "whenRequirementsUnmet": "hide",
+      "blocks": [
+        { "type": "markdown", "id": "logs-source", "content": "Choose a logs data source." },
+        { "type": "markdown", "id": "logs-query", "content": "Run a logs query." }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "traces",
+      "title": "Configure traces",
+      "requirements": ["var-signals:includes:traces"],
+      "whenRequirementsUnmet": "hide",
+      "blocks": [
+        { "type": "markdown", "id": "traces-source", "content": "Choose a traces data source." },
+        { "type": "markdown", "id": "traces-query", "content": "Run a traces query." }
+      ]
+    }
+  ]
+}

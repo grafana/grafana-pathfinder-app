@@ -28,7 +28,13 @@ import { css, keyframes } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
 import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from '../../completion-records';
-import type { AnalyticsCompletionIdentity } from '../../docs-retrieval';
+import { useGuideResponsesOptional, type AnalyticsCompletionIdentity } from '../../docs-retrieval';
+import { getGuideIndex, getHiddenGuideSections } from '../../global-state/active-guide-index';
+import {
+  CHOICE_COMPLETION_VARIABLE,
+  choicePathCompletionKeys,
+  choicePathHasUnansweredRequiredInput,
+} from '../../lib/guide-stats/choice-progress';
 import {
   BLOCK_PROGRESS_RULE_VERSION,
   getGuideBlockCountProperties,
@@ -105,7 +111,8 @@ export function MarkCompleteFooter({
   // the stored mark has been read, a return visit cannot be told from a first
   // one.
   const hydrated = mark !== null && mark.readFor === contentUrl;
-  const marked = hydrated && mark.marked;
+  const storedMarked = hydrated && mark.marked;
+  const responses = useGuideResponsesOptional();
   const contentKey = hydrated ? mark.key : undefined;
 
   const percentage = useSyncExternalStore(
@@ -115,6 +122,16 @@ export function MarkCompleteFooter({
     ),
     useCallback(() => (contentKey === undefined ? 0 : peekGuidePercentage(contentKey)), [contentKey])
   );
+
+  const activeGuide = contentKey ? getGuideIndex(contentKey) : undefined;
+  const marked = storedMarked && (!activeGuide?.choiceModel || percentage === 100);
+  const unansweredChoices =
+    activeGuide?.choiceModel &&
+    choicePathHasUnansweredRequiredInput(
+      activeGuide.choiceModel,
+      responses?.responses ?? {},
+      getHiddenGuideSections(contentKey!)
+    );
 
   // Both producers of the content key publish it from a layout effect — the
   // panel's active tab URL and this renderer's own override — so resolving it
@@ -189,12 +206,30 @@ export function MarkCompleteFooter({
   });
 
   const handleClick = useCallback(() => {
-    if (contentKey === undefined || marked) {
+    if (contentKey === undefined || marked || unansweredChoices || responses?.isLoading) {
       return;
     }
     // The button the reader just activated is about to unmount, and React
     // would drop focus to `document.body`. A return visit that hydrates an
     // existing mark must not steal focus, so only a click claims it.
+    const active = getGuideIndex(contentKey);
+    if (active?.choiceModel && responses) {
+      let previous: string[] = [];
+      try {
+        const decoded: unknown = JSON.parse(String(responses.getResponse(CHOICE_COMPLETION_VARIABLE) ?? '[]'));
+        if (Array.isArray(decoded)) {
+          previous = decoded.filter((key): key is string => typeof key === 'string');
+        }
+      } catch {
+        previous = [];
+      }
+      const keys = choicePathCompletionKeys(
+        active.choiceModel,
+        responses.responses,
+        getHiddenGuideSections(contentKey)
+      );
+      responses.setResponse(CHOICE_COMPLETION_VARIABLE, JSON.stringify([...new Set([...previous, ...keys])]));
+    }
     claimFocusRef.current = true;
     setMark({ readFor: contentUrl, key: contentKey, marked: true });
 
@@ -249,6 +284,8 @@ export function MarkCompleteFooter({
     contentKey,
     completionIdentity,
     marked,
+    unansweredChoices,
+    responses,
     context,
     percentage,
     contentUrl,
@@ -297,7 +334,7 @@ export function MarkCompleteFooter({
           variant="primary"
           icon="check"
           size="md"
-          disabled={!hydrated}
+          disabled={!hydrated || Boolean(unansweredChoices) || Boolean(responses?.isLoading)}
           onClick={handleClick}
           data-testid={testIds.markComplete.button}
         >
