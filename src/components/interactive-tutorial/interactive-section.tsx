@@ -1,7 +1,16 @@
 import { useCompletionCoordinator } from '../../global-state/observation/context';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { usePathfinderPluginConfig } from '../../hooks';
-import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef, useContext } from 'react';
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useReducer,
+  useRef,
+  useContext,
+  useSyncExternalStore,
+} from 'react';
 import { Button } from '@grafana/ui';
 
 import { useInteractiveElements, outcomeFromLoopExit, type LoopExitReason } from '../../interactive-engine';
@@ -380,6 +389,10 @@ export function InteractiveSection({
     stepComponents.length > 0 && (nonNoopSteps.length === 0 || nonNoopSteps.every((s) => completedSteps.has(s.stepId)));
 
   const completionCoordinator = useCompletionCoordinator();
+  useSyncExternalStore(
+    completionCoordinator?.subscribe ?? (() => () => {}),
+    completionCoordinator?.snapshot ?? (() => 0)
+  );
   const hasSectionObjectives = Array.isArray(objectives) ? objectives.length > 0 : !!objectives;
   const [observedObjectives, setObservedObjectives] = useState<ProgressOrigin | false>(false);
   const [restoredObjectives, setRestoredObjectives] = useState<boolean | undefined>(
@@ -1014,11 +1027,6 @@ export function InteractiveSection({
               const success = await executeStep(stepInfo);
 
               if (success) {
-                completedStepsCount = i + 1;
-
-                // Single synchronous write to the store; survives a mid-section
-                // unmount because the store is module-scope and storage writes
-                // are fire-and-forget.
                 const observationId = JSON.stringify([getContentKey(), sectionId, stepInfo.stepId]);
                 if (completionCoordinator?.has(observationId)) {
                   completionCoordinator.request(observationId);
@@ -1026,6 +1034,7 @@ export function InteractiveSection({
                   if (completionCoordinator.waiting(observationId)) {
                     stopSectionBlocking(sectionId);
                     if (!(await completionCoordinator.waitForCompletion(observationId, controller.signal))) {
+                      loopExitReason = 'cancelled';
                       break;
                     }
                     if (i < stepComponents.length - 1 && !controller.signal.aborted) {
@@ -1036,7 +1045,7 @@ export function InteractiveSection({
                   markStepCompleted(stepInfo.stepId, sectionId, 'manual');
                 }
 
-                // Also call the standard completion handler for other side effects (skip state update to avoid double-setting)
+                completedStepsCount = i + 1;
                 handleStepComplete(stepInfo.stepId, true);
 
                 // Wait between steps for both visual feedback AND DOM settling

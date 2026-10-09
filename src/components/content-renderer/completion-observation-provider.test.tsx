@@ -1,4 +1,5 @@
 import React from 'react';
+import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CompletionObservationProvider } from './completion-observation-provider';
 import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
@@ -11,13 +12,19 @@ import { CompletionCoordinator, resetHeldRequestsForTests } from '../../global-s
 const mockCheck = jest.fn();
 let mockAutoDetection: boolean | undefined = true;
 let mockPassiveFlag = true;
+let mockCheckTimeout = 4000;
 jest.mock('../../hooks', () => ({
-  usePathfinderPluginConfig: () => ({ config: { enableAutoDetection: mockAutoDetection }, isResolved: true }),
+  usePathfinderPluginConfig: () => ({
+    config: { enableAutoDetection: mockAutoDetection, requirementsCheckTimeout: mockCheckTimeout },
+    isResolved: true,
+  }),
 }));
 jest.mock('../../utils/openfeature', () => ({
   getFeatureFlagValue: (_name: string, fallback: boolean) =>
     _name === 'pathfinder.passive-completion' ? mockPassiveFlag : fallback,
 }));
+let mockControllerChannel: { post: jest.Mock; onObservation: jest.Mock; requestRequirementCheck: jest.Mock } | null =
+  null;
 const mockListen = jest.fn(() => () => {});
 jest.mock('@grafana/runtime', () => ({ locationService: { getHistory: () => ({ listen: mockListen }) } }));
 jest.mock('../../requirements-manager', () => ({
@@ -29,14 +36,15 @@ jest.mock('../../interactive-engine', () =>
   jest.requireActual('../../interactive-engine/auto-completion/passive-action')
 );
 jest.mock('../../global-state/controller-channel', () => ({
-  useControllerChannel: () => null,
-  useControllerConnected: () => false,
+  useControllerChannel: () => mockControllerChannel,
+  useControllerConnected: () => mockControllerChannel !== null,
 }));
 jest.mock('../../global-state/content-key', () => ({ getContentKey: () => 'guide' }));
 jest.mock('../../global-state/completion-store', () => ({
   useStepCompletion: () => ({ completed: false }),
   markStepCompleted: jest.fn(),
   readStepCompletion: async () => false,
+  isBlockEditorPreviewUrl: () => false,
 }));
 jest.mock('../../lib/context-event-bus', () => ({ onContextChange: () => () => {} }));
 jest.mock('../../lib/analytics', () => ({
@@ -81,7 +89,9 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  mockControllerChannel = null;
   mockAutoDetection = true;
+  mockCheckTimeout = 4000;
   mockPassiveFlag = true;
   jest.clearAllMocks();
   mockCheck.mockResolvedValue({ pass: false, verdict: 'unmet' });
@@ -224,7 +234,7 @@ it('does not reuse an old guide check after a keyed guide switch', async () => {
   expect(newDone).not.toHaveBeenCalled();
 });
 
-it('fails closed on timeout, deduplicates unresolved requests, and clears timers on close', async () => {
+it('retries a timed-out check and clears timers on close', async () => {
   jest.useFakeTimers();
   const done = jest.fn();
   mockCheck.mockImplementation(() => new Promise(() => {}));
@@ -236,10 +246,10 @@ it('fails closed on timeout, deduplicates unresolved requests, and clears timers
   await act(async () => {});
   expect(mockCheck).toHaveBeenCalledTimes(1);
   await act(async () => {
-    jest.advanceTimersByTime(5001);
+    await jest.advanceTimersByTimeAsync(5001);
   });
   expect(done).not.toHaveBeenCalled();
-  expect(mockCheck).toHaveBeenCalledTimes(1);
+  expect(mockCheck).toHaveBeenCalledTimes(2);
   root.unmount();
   await act(async () => {});
   jest.runAllTicks();
@@ -581,4 +591,105 @@ it('leaves other sections observed when one section is reset', async () => {
   });
   fireEvent.click(screen.getByText('Last'));
   await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+});
+
+it('uses the configured timeout and accepts a fresh result after an old request times out', async () => {
+  jest.useFakeTimers();
+  try {
+    mockCheckTimeout = 100;
+    let finishOld!: (result: { verdict: string }) => void;
+    mockCheck.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOld = resolve;
+        })
+    );
+    const done = jest.fn();
+    const view = render(
+      <CompletionObservationProvider contentKey="guide">
+        <Step objectives={['has-datasources']} onComplete={done} />
+      </CompletionObservationProvider>
+    );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(101);
+    });
+    expect(done).not.toHaveBeenCalled();
+    mockCheck.mockResolvedValue({ verdict: 'satisfied' });
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(mockCheck).toHaveBeenCalledTimes(2);
+    expect(done).toHaveBeenCalledTimes(1);
+    await act(async () => finishOld({ verdict: 'unsatisfied' }));
+    expect(done).toHaveBeenCalledTimes(1);
+    view.unmount();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('ignores progress reset events for another guide', async () => {
+  const done = jest.fn();
+  render(
+    <>
+      <button id="first">First</button>
+      <button id="last">Last</button>
+      <CompletionObservationProvider contentKey="guide">
+        <Step onComplete={done} />
+      </CompletionObservationProvider>
+    </>
+  );
+  fireEvent.click(screen.getByText('First'));
+  act(() =>
+    window.dispatchEvent(
+      new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: 'other-guide' } })
+    )
+  );
+  fireEvent.click(screen.getByText('Last'));
+  await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+});
+
+it('coalesces controller subscription updates when several steps register together', async () => {
+  jest.useFakeTimers();
+  try {
+    mockControllerChannel = {
+      post: jest.fn(),
+      onObservation: jest.fn(() => () => {}),
+      requestRequirementCheck: jest.fn(),
+    };
+    function ObservedStep({ id }: { id: string }) {
+      useObservedCompletion({
+        stepId: id,
+        executing: false,
+        eligible: true,
+        actions: [{ targetAction: 'button', refTarget: '#first' }],
+        analytics: { location: 'test', targetAction: 'button', stepMeta: { stepId: id } },
+      });
+      return null;
+    }
+    const tree = (count: number) => (
+      <InteractiveModeContext.Provider value="controller">
+        <CompletionObservationProvider contentKey="guide">
+          {Array.from({ length: count }, (_, index) => (
+            <ObservedStep key={index} id={String(index)} />
+          ))}
+        </CompletionObservationProvider>
+      </InteractiveModeContext.Provider>
+    );
+    const view = render(tree(1));
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(51);
+    });
+    mockControllerChannel.post.mockClear();
+    view.rerender(tree(10));
+    expect(mockControllerChannel.post).not.toHaveBeenCalled();
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(51);
+    });
+    expect(mockControllerChannel.post).toHaveBeenCalledTimes(1);
+    expect(mockControllerChannel.post.mock.calls[0][0].steps).toHaveLength(10);
+    view.unmount();
+  } finally {
+    jest.useRealTimers();
+  }
 });

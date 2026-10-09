@@ -798,3 +798,96 @@ describe('a reader action shared by blocks in different sections', () => {
     coordinator.stop();
   });
 });
+
+it('keeps the last known unmet reason when the next check is unavailable', async () => {
+  const check = jest.fn().mockResolvedValue(false);
+  const coordinator = new CompletionCoordinator(check);
+  const item = step({ objectives: ['on-page:/first', 'on-page:/second'] });
+  coordinator.register(item);
+  coordinator.start();
+  await settle();
+  expect(coordinator.unmet(item.id)).toBe('on-page:/first');
+  check.mockResolvedValueOnce(true).mockResolvedValueOnce(undefined);
+  coordinator.recheck();
+  await settle();
+  expect(coordinator.unmet(item.id)).toBe('on-page:/first');
+  expect(item.commit).not.toHaveBeenCalled();
+  coordinator.stop();
+});
+
+it('expires held assisted requests before a successor registers', async () => {
+  const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
+  try {
+    const first = new CompletionCoordinator(async () => false);
+    const original = step({ id: 'expired-request', verify: ['on-page:/done'] });
+    const unregister = first.register(original);
+    first.request(original.id);
+    unregister();
+    first.stop();
+    now.mockReturnValue(31_001);
+    const second = new CompletionCoordinator(async () => true);
+    const successor = step({ id: original.id, verify: original.verify });
+    second.register(successor);
+    second.start();
+    await settle();
+    expect(successor.commit).not.toHaveBeenCalled();
+    second.stop();
+  } finally {
+    now.mockRestore();
+  }
+});
+
+it('rejects remote action evidence received out of authored order', async () => {
+  const coordinator = new CompletionCoordinator(async () => true);
+  const item = step({
+    actions: [
+      { targetAction: 'button', refTarget: '#first' },
+      { targetAction: 'button', refTarget: '#last' },
+    ],
+  });
+  coordinator.register(item);
+  coordinator.start();
+  coordinator.observeIndex(item.id, 1);
+  await settle();
+  expect(item.commit).not.toHaveBeenCalled();
+  expect(coordinator.exportCursors()[item.id]).toBe(0);
+  coordinator.observeIndex(item.id, 0);
+  coordinator.observeIndex(item.id, 1);
+  await settle();
+  expect(item.commit).toHaveBeenCalledTimes(1);
+  coordinator.stop();
+});
+
+it('checks reftarget conditions independently for different step targets', async () => {
+  const check = jest.fn(async (_conditions, item: ObservationStep) => item.actions[0]?.refTarget === '#ready');
+  const coordinator = new CompletionCoordinator(check);
+  const first = step({
+    id: 'first-target',
+    objectives: ['exists-reftarget'],
+    actions: [{ targetAction: 'button', refTarget: '#missing' }],
+  });
+  const second = step({
+    id: 'second-target',
+    objectives: ['exists-reftarget'],
+    actions: [{ targetAction: 'button', refTarget: '#ready' }],
+  });
+  coordinator.register(first);
+  coordinator.register(second);
+  coordinator.start();
+  await settle();
+  expect(check).toHaveBeenCalledTimes(2);
+  expect(first.commit).not.toHaveBeenCalled();
+  expect(second.commit).toHaveBeenCalledWith('objectives', 'load');
+  coordinator.stop();
+});
+
+it('re-arms observed completion from a fully restored action cursor', async () => {
+  const coordinator = new CompletionCoordinator(async () => true);
+  const item = step({ id: 'restored-full', verify: ['on-page:/done'] });
+  coordinator.register(item);
+  coordinator.restore({ [item.id]: 1 });
+  coordinator.start();
+  await settle();
+  expect(item.commit).toHaveBeenCalledWith('observed', 'change');
+  coordinator.stop();
+});

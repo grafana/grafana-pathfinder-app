@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from '@grafana/ui';
 
 import { getPostVerifyExplanation } from '../../requirements-manager';
+import { t } from '@grafana/i18n';
 import { testIds } from '../../constants/testIds';
 
 interface CompletionWaitingStatusProps {
@@ -11,20 +12,26 @@ interface CompletionWaitingStatusProps {
 }
 
 export function CompletionWaitingStatus({ id, unmet, onCheck }: CompletionWaitingStatusProps) {
+  const explanation = unmet ? getPostVerifyExplanation(unmet) : undefined;
+  const friendlyExplanation = explanation?.includes(unmet!) ? undefined : explanation;
   return (
     <div
       className="interactive-completion-waiting"
       role="status"
       data-testid={testIds.interactive.completionWaiting(id)}
     >
-      <span>{unmet ? `Waiting for completion: ${getPostVerifyExplanation(unmet)}` : 'Waiting for completion'}</span>{' '}
+      <span>
+        {friendlyExplanation
+          ? t('completion.waiting-reason', 'Waiting for completion: {{reason}}', { reason: friendlyExplanation })
+          : t('completion.waiting', 'Waiting for completion')}
+      </span>{' '}
       <Button
         size="sm"
         variant="secondary"
         onClick={onCheck}
         data-testid={testIds.interactive.checkCompletionButton(id)}
       >
-        Check completion
+        {t('completion.check', 'Check completion')}
       </Button>
     </div>
   );

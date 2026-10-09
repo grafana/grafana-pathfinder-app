@@ -600,7 +600,7 @@ export class CompletionCoordinator {
           }
         } else {
           entry.seenUnmet ||= blocked.known;
-          if (entry.unmet !== blocked.token) {
+          if (blocked.known && entry.unmet !== blocked.token) {
             entry.unmet = blocked.token;
             this.changed();
           }

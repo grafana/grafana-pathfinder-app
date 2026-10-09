@@ -566,3 +566,32 @@ describe('Do section auto-skip reports step_skipped', () => {
     );
   });
 });
+
+it('does not count an assisted step when its objective wait stops', async () => {
+  const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+  const { CompletionObservationContext } = await import('../../global-state/observation/context');
+  const { setFaroUserActionAttributes, withFaroUserAction } = await import('../../lib/faro');
+  const coordinator = new CompletionCoordinator(async () => false);
+  jest.spyOn(coordinator, 'has').mockReturnValue(true);
+  jest.spyOn(coordinator, 'request').mockImplementation(() => {});
+  jest.spyOn(coordinator, 'waiting').mockReturnValue(true);
+  jest.spyOn(coordinator, 'waitForCompletion').mockResolvedValue(false);
+  jest.mocked(setFaroUserActionAttributes).mockClear();
+  jest.mocked(withFaroUserAction).mockClear();
+  render(
+    <CompletionObservationContext.Provider value={coordinator}>
+      <InteractiveSection id="runner" title="Runner" autoCollapse={false}>
+        <InteractiveStep targetAction="highlight" refTarget=".a">
+          Step 1
+        </InteractiveStep>
+      </InteractiveSection>
+    </CompletionObservationContext.Provider>
+  );
+  await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toBeInTheDocument());
+  act(() => screen.getByTestId(doSectionBtn(SECTION_ID)).click());
+  await waitFor(() => expect(setFaroUserActionAttributes).toHaveBeenCalledWith({ steps_completed: 0, canceled: true }));
+  const run = jest
+    .mocked(withFaroUserAction)
+    .mock.calls.find((args) => args[0] === 'pathfinder_do_section_button_click');
+  expect(run?.[4]?.outcomeFrom?.(undefined)).toBe('cancelled');
+});

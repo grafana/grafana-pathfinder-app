@@ -47,7 +47,6 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
   const enabled = config.enableAutoDetection !== false && getFeatureFlagValue('pathfinder.passive-completion', true);
   const coordinator = useMemo(() => {
     const inFlight = new Map<string, Promise<boolean | undefined>>();
-    const overdue = new Set<string>();
     return new CompletionCoordinator(async (conditions, step, signal) => {
       const action = step.actions[0];
       const options = {
@@ -83,12 +82,13 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       const key = JSON.stringify([conditions, step.actions[0]]);
       let pending = inFlight.get(key);
       if (!pending) {
-        if (inFlight.size - overdue.size >= 4) {
+        if (inFlight.size >= 4) {
           return undefined;
         }
         pending = evaluate().finally(() => {
-          inFlight.delete(key);
-          overdue.delete(key);
+          if (inFlight.get(key) === pending) {
+            inFlight.delete(key);
+          }
         });
         inFlight.set(key, pending);
       }
@@ -105,18 +105,18 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
           }),
           pending,
           new Promise<undefined>((resolve) => {
-            timer = setTimeout(() => resolve(undefined), 4000);
+            timer = setTimeout(() => resolve(undefined), config.requirementsCheckTimeout ?? 4000);
           }),
         ]);
       } finally {
         clearTimeout(timer);
         signal.removeEventListener('abort', onAbort);
         if (inFlight.get(key) === pending) {
-          overdue.add(key);
+          inFlight.delete(key);
         }
       }
     });
-  }, [checkPostconditions, mode, channel]);
+  }, [checkPostconditions, mode, channel, config.requirementsCheckTimeout]);
 
   useEffect(() => {
     if (!enabled || (mode !== 'controller' && new URLSearchParams(window.location.search).get('controller') === '1')) {
@@ -287,11 +287,20 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       });
     };
     publish();
-    const unsubscribe = coordinator.subscribe(publish);
+    let publishTimer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = coordinator.subscribe(() => {
+      if (publishTimer === undefined) {
+        publishTimer = setTimeout(() => {
+          publishTimer = undefined;
+          publish();
+        }, 50);
+      }
+    });
     const heartbeat = setInterval(publish, 2000);
     coordinator.recheck();
     return () => {
       clearInterval(heartbeat);
+      clearTimeout(publishTimer);
       unsubscribe();
       release();
       channel.post({ kind: 'observation-cancel', subscriptionId });
