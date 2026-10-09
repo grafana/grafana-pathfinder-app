@@ -739,3 +739,49 @@ describe('InteractiveSection — hydrated completion versus a reader completion 
     }
   });
 });
+
+// ─── Section objectives with passive completion off ─────────────────────────
+// Both kill switches leave no coordinator (pinned in completion-observation-provider.test.tsx).
+
+const SECTION_OBJECTIVE = 'section-objective';
+const STEP_OBJECTIVE = `${SECTION_OBJECTIVE}-step-1`;
+
+function renderObjectiveSection() {
+  return render(
+    <InteractiveSection
+      id="objective"
+      title="Objective section"
+      objectives={['has-datasource:testdata']}
+      autoCollapse={false}
+    >
+      <InteractiveStep targetAction="highlight" refTarget=".a">
+        Step
+      </InteractiveStep>
+    </InteractiveSection>
+  );
+}
+
+describe('InteractiveSection — objectives without a completion coordinator', () => {
+  it('completes from its children under the previous rules, with no waiting row', async () => {
+    renderObjectiveSection();
+    await click(complete(STEP_OBJECTIVE));
+
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_OBJECTIVE))).toBeInTheDocument());
+    expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed');
+    expect(screen.queryByTestId(testIds.interactive.completionWaiting(SECTION_OBJECTIVE))).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /check completion/i })).not.toBeInTheDocument();
+    await settle();
+    expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`)).toBe(true);
+  });
+
+  it('restores a previously completed section and keeps its done bit for section-completed checks', async () => {
+    memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`, new Set([STEP_OBJECTIVE]));
+    memoryStore.set(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`, true);
+    renderObjectiveSection();
+
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_OBJECTIVE))).toBeInTheDocument());
+    await settle();
+    expect(screen.queryByTestId(testIds.interactive.completionWaiting(SECTION_OBJECTIVE))).not.toBeInTheDocument();
+    expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`)).toBe(true);
+  });
+});

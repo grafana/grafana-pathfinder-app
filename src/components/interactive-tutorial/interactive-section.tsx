@@ -448,6 +448,7 @@ export function InteractiveSection({
 
   const isCompletedByObjectives =
     observedObjectives !== false || restoredObjectives === true || objectivesChecker.completionReason === 'objectives';
+  const gatesOnObjectives = completionCoordinator !== null && hasSectionObjectives;
 
   // Derive the high-level state kind from the reducer's ack bit + the
   // gate analysis + objectives + the live completion set.
@@ -459,11 +460,11 @@ export function InteractiveSection({
       isCompletedByObjectives,
       completedSteps
     );
-    if (hasSectionObjectives && !isCompletedByObjectives && result.isCompleted) {
+    if (gatesOnObjectives && !isCompletedByObjectives && result.isCompleted) {
       return { ...result, kind: 'partial' as const, isCompleted: false, doneVia: null };
     }
     return result;
-  }, [sectionState, stepComponents, gateAnalysis, isCompletedByObjectives, completedSteps, hasSectionObjectives]);
+  }, [sectionState, stepComponents, gateAnalysis, isCompletedByObjectives, completedSteps, gatesOnObjectives]);
   const sectionKind = derived.kind;
   const isCompleted = derived.isCompleted;
   const doneVia = derived.doneVia;
@@ -1526,7 +1527,7 @@ export function InteractiveSection({
               Cancel
             </Button>
           </div>
-        ) : stepsCompleted && hasSectionObjectives && !isCompletedByObjectives ? (
+        ) : stepsCompleted && gatesOnObjectives && !isCompletedByObjectives ? (
           <CompletionWaitingStatus
             id={sectionId}
             unmet={completionCoordinator?.unmet(objectiveId)}
