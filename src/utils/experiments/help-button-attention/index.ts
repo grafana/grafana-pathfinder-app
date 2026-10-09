@@ -1,6 +1,6 @@
 import { type ExperimentConfig } from '@grafana-experiments/sdk';
 import { config, reportExperimentView } from '@grafana/runtime';
-import { t } from '@grafana/i18n';
+import { loadTranslatedModule } from '../../../lib/plugin-translations';
 
 import {
   HELP_BUTTON_EXPERIMENT_ID,
@@ -69,6 +69,7 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
   if (!config.namespace || !config.bootData.user.isSignedIn || config.analytics?.enabled === false) {
     return () => {};
   }
+  const { t } = await loadTranslatedModule(() => import('@grafana/i18n'));
   const contextKey = `${config.namespace}:${config.bootData.user.id}`;
   // Core's namespace, so the label matches the rendered Help button in every locale.
   const helpLabel = t('navigation.help.aria-label', 'Help', { ns: 'grafana' });

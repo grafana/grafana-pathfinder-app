@@ -52,7 +52,20 @@ function trackTranslations(page: Page) {
 }
 
 for (const enableKioskMode of [false, true]) {
-  test(`keeps translations unloaded until first open with kiosk enabled=${enableKioskMode}`, async ({ page }) => {
+  test(`keeps translations unloaded without toolbar experiments until first open with kiosk enabled=${enableKioskMode}`, async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      let boot: unknown;
+      Object.defineProperty(window, 'grafanaBootData', {
+        configurable: true,
+        get: () => boot,
+        set: (value) => {
+          value.settings.analytics = { ...value.settings.analytics, enabled: false };
+          boot = value;
+        },
+      });
+    });
     await settings(page, { enableKioskMode });
     const { requests: translations, pending } = trackTranslations(page);
     await page.goto('/');

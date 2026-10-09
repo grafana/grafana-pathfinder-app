@@ -11,6 +11,11 @@ import {
 } from '../../../constants/help-button-experiment';
 import { sidebarState } from '../../../global-state/sidebar';
 import { startHelpButtonExperiment } from './index';
+import { loadTranslatedModule } from '../../../lib/plugin-translations';
+
+jest.mock('../../../lib/plugin-translations', () => ({
+  loadTranslatedModule: jest.fn((load: () => Promise<unknown>) => load()),
+}));
 
 const mockPushEvent = jest.fn();
 const mockFaro = {
@@ -248,6 +253,7 @@ it.each(['analytics', 'anonymous'])('does not enroll when disabled by %s', async
   await settle();
   expect(reportExperimentView).not.toHaveBeenCalled();
   expect(learn()).toBeNull();
+  expect(loadTranslatedModule).not.toHaveBeenCalled();
 });
 
 it('keeps tooltip dismissal separate from a click and preserves its assignment', async () => {
