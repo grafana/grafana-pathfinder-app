@@ -14,6 +14,9 @@ jest.mock('../../lib/logging', () => ({ logger: { error: jest.fn(), warn: jest.f
 jest.mock('./prepare-kiosk-inputs', () => ({ prepareKioskInputs: jest.fn() }));
 jest.mock('./launch-kiosk-guide', () => ({ launchKioskGuide: jest.fn() }));
 jest.mock('./KioskTile', () => ({ KioskTile: () => null }));
+jest.mock('../interactive-tutorial/use-data-source-list', () => ({
+  useDataSourceList: () => ({ dataSources: [], loading: false }),
+}));
 jest.mock('../interactive-tutorial/datasource-options', () => ({
   filterDatasourcesByType: () => [],
   toDatasourceOptions: () => [{ label: 'Private data source', value: 'private-datasource' }],

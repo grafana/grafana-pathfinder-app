@@ -2,9 +2,9 @@ jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
 }));
 
-let mockAvailable = true;
-jest.mock('../utils/fetchBackendGuides', () => ({
-  isBackendApiAvailable: () => mockAvailable,
+let mockRuledOut = false;
+jest.mock('../utils/interactive-guides-api', () => ({
+  isBackendApiRuledOut: () => mockRuledOut,
 }));
 
 jest.mock('./telemetry/facade', () => ({
@@ -24,7 +24,7 @@ const mockGet = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockAvailable = true;
+  mockRuledOut = false;
   invalidateCustomGuideRepositoryCache();
   (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
 });
@@ -126,8 +126,8 @@ describe('fetchCustomGuideRepository', () => {
     expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('backend-unavailable');
   });
 
-  it('returns an empty array when the backend API is unavailable, without fetching', async () => {
-    mockAvailable = false;
+  it('returns an empty array when the boot toggles rule the backend API out, without fetching', async () => {
+    mockRuledOut = true;
 
     const result = await fetchCustomGuideRepository('stacks-123');
 

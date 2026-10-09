@@ -84,7 +84,6 @@ func validPayload(t *testing.T) []byte {
 }
 
 func TestHandlePackageRecommendations_Success(t *testing.T) {
-	resetPackageRecommendationsCache()
 	advance := withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 	_ = advance
 	fetcher, calls := stubFetcher(t, validPayload(t), nil)
@@ -143,7 +142,6 @@ func TestHandlePackageRecommendations_Success(t *testing.T) {
 }
 
 func TestHandlePackageRecommendations_CachesAcrossCalls(t *testing.T) {
-	resetPackageRecommendationsCache()
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 	fetcher, calls := stubFetcher(t, validPayload(t), nil)
 	withFetcherOverride(t, fetcher)
@@ -167,8 +165,29 @@ func TestHandlePackageRecommendations_CachesAcrossCalls(t *testing.T) {
 	}
 }
 
+func TestHandlePackageRecommendations_CacheNotSharedAcrossAppInstances(t *testing.T) {
+	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+	fetcher, calls := stubFetcher(t, validPayload(t), nil)
+	withFetcherOverride(t, fetcher)
+
+	first, second := newInstanceApp(t), newInstanceApp(t)
+	first.handlePackageRecommendations(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+	perFill := atomic.LoadInt32(calls)
+	first.handlePackageRecommendations(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+	if got := atomic.LoadInt32(calls); got != perFill {
+		t.Fatalf("first instance did not cache: upstream calls grew from %d to %d", perFill, got)
+	}
+	rr := httptest.NewRecorder()
+	second.handlePackageRecommendations(rr, httptest.NewRequest(http.MethodGet, "/package-recommendations", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("second instance: status %d", rr.Code)
+	}
+	if got := atomic.LoadInt32(calls); got != 2*perFill {
+		t.Errorf("second instance served the first instance's cache: upstream calls = %d, want %d", got, 2*perFill)
+	}
+}
+
 func TestHandlePackageRecommendations_DetachesFetchFromRequestCancellation(t *testing.T) {
-	resetPackageRecommendationsCache()
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 
 	// Wrap the stub fetcher to fail if the request context (which we cancel
@@ -204,7 +223,6 @@ func TestHandlePackageRecommendations_DetachesFetchFromRequestCancellation(t *te
 }
 
 func TestHandlePackageRecommendations_RefreshesAfterTTL(t *testing.T) {
-	resetPackageRecommendationsCache()
 	advance := withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 	fetcher, calls := stubFetcher(t, validPayload(t), nil)
 	withFetcherOverride(t, fetcher)
@@ -222,7 +240,6 @@ func TestHandlePackageRecommendations_RefreshesAfterTTL(t *testing.T) {
 }
 
 func TestHandlePackageRecommendations_StickyOnFailure(t *testing.T) {
-	resetPackageRecommendationsCache()
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 	fetcher, calls := stubFetcher(t, nil, errors.New("network down"))
 	withFetcherOverride(t, fetcher)
@@ -244,7 +261,6 @@ func TestHandlePackageRecommendations_StickyOnFailure(t *testing.T) {
 }
 
 func TestHandlePackageRecommendations_RejectsNonGet(t *testing.T) {
-	resetPackageRecommendationsCache()
 	app := newTestApp(t)
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
 		rr := httptest.NewRecorder()
@@ -256,7 +272,6 @@ func TestHandlePackageRecommendations_RejectsNonGet(t *testing.T) {
 }
 
 func TestHandlePackageRecommendations_RejectsParseFailure(t *testing.T) {
-	resetPackageRecommendationsCache()
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 	fetcher, _ := stubFetcher(t, []byte("not-json"), nil)
 	withFetcherOverride(t, fetcher)
@@ -301,7 +316,6 @@ func TestFetchAndParsePackageRepository_RejectsDisallowedHost(t *testing.T) {
 }
 
 func TestEnrichPackagesWithManifests_InlinesParsedJSON(t *testing.T) {
-	resetPackageRecommendationsCache()
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 
 	repoBody := []byte(`{
@@ -464,7 +478,6 @@ func slowManifestRepo(t *testing.T, n int) packageRepositoryFetcher {
 }
 
 func TestEnrichPackagesWithManifests_RespectsTotalBudget(t *testing.T) {
-	resetPackageRecommendationsCache()
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 	withEnrichBudgetOverride(t, 100*time.Millisecond)
 	withFetcherOverride(t, slowManifestRepo(t, 64))
@@ -497,16 +510,15 @@ func TestEnrichPackagesWithManifests_RespectsTotalBudget(t *testing.T) {
 		}
 	}
 
-	packageCacheMu.Lock()
-	partial := packageCache != nil && packageCache.partial
-	packageCacheMu.Unlock()
+	app.packageRecommendations.mu.Lock()
+	partial := app.packageRecommendations.entry != nil && app.packageRecommendations.entry.partial
+	app.packageRecommendations.mu.Unlock()
 	if !partial {
 		t.Error("budget-expired response was not cached as partial")
 	}
 }
 
 func TestHandlePackageRecommendations_PartialResultUsesShortTTL(t *testing.T) {
-	resetPackageRecommendationsCache()
 	advance := withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 	withEnrichBudgetOverride(t, 50*time.Millisecond)
 
@@ -654,7 +666,6 @@ func TestDefaultPackageRepositoryFetcher_BoundsBufferAtMaxBytes(t *testing.T) {
 // match deserialized into a typed struct that silently dropped urlRegex,
 // reserialized as `{}`, and the frontend then matched it against every page.
 func TestPackageMatchPreservesUnknownPredicates(t *testing.T) {
-	resetPackageRecommendationsCache()
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 
 	body := []byte(`{
@@ -738,12 +749,11 @@ func findKeyInExpr(node any, key string) bool {
 }
 
 // TestGetCachedPackageRecommendations_ReleasesMutexDuringFetch is the Bug 2
-// regression test: concurrent callers must not serialize on packageCacheMu
+// regression test: concurrent callers must not serialize on the cache mutex
 // while the upstream fetch is running. Before the fix, all callers blocked
 // on the mutex for the full ~50 s manifest fan-out; now the second caller
 // joins the in-flight refresh and they both return when the fetch completes.
 func TestGetCachedPackageRecommendations_ReleasesMutexDuringFetch(t *testing.T) {
-	resetPackageRecommendationsCache()
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 
 	// The fetcher blocks until `release` is closed, simulating a slow CDN.
@@ -792,7 +802,7 @@ func TestGetCachedPackageRecommendations_ReleasesMutexDuringFetch(t *testing.T) 
 		t.Fatal("first call never reached upstream fetch")
 	}
 
-	// Caller 2: must NOT block on packageCacheMu. With the bug, this would
+	// Caller 2: must NOT block on the cache mutex. With the bug, this would
 	// time out because caller 1 holds the mutex through the (still-blocked)
 	// fetch.
 	c2 := make(chan result, 1)
@@ -842,7 +852,6 @@ func TestGetCachedPackageRecommendations_ReleasesMutexDuringFetch(t *testing.T) 
 // whose own context is cancelled returns immediately rather than blocking
 // for the duration of the slow upstream fetch.
 func TestGetCachedPackageRecommendations_WaiterRespectsContextCancellation(t *testing.T) {
-	resetPackageRecommendationsCache()
 	withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 
 	release := make(chan struct{})
@@ -901,7 +910,6 @@ func TestOnlinePathGuides(t *testing.T) {
 	// per-target manifest fetch counts.
 	setup := func(t *testing.T, manifestErr error) (*App, map[string]int) {
 		t.Helper()
-		resetPackageRecommendationsCache()
 		withFrozenTime(t, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
 		fetches := map[string]int{}
 		withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {

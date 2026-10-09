@@ -82,6 +82,12 @@ const pathfinderAvailability = await resolvePathfinderAvailability(
 const pathfinderEnabled = pathfinderAvailability === 'enabled';
 const hostname = window.location.hostname;
 
+if (pathfinderEnabled) {
+  void import('./utils/current-user-role')
+    .then(({ refreshCurrentUser }) => refreshCurrentUser())
+    .catch(() => undefined);
+}
+
 // Telemetry chunk retries must never delay plugin registration.
 void (async () => {
   if (!getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {

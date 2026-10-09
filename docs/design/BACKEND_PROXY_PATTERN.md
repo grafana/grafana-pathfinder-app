@@ -724,6 +724,10 @@ package resolver's published-status probe both use this route. The proxy
 preserves draft content for existing share links; the resolver retains its
 published-status gate. Catalogue listing continues to use `/custom-guide-repository`.
 
+`GET /grafana/user`, `GET /grafana/dashboard?uid=<uid>` and `GET /grafana/dashboard-search?query=<q>`
+(`pkg/plugin/grafana_core_reads.go`) use the same gate for Grafana core groups (`iam`, `dashboard`,
+`folder`) in place of legacy `/api/*` reads. Each read is per request and uncached: it is the caller's RBAC view.
+
 ## Operational diagnostics
 
 App Platform failures carry optional `diagnostics` alongside existing error/capability

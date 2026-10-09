@@ -118,7 +118,7 @@ type packageCacheEntry struct {
 }
 
 // packageRefreshFlight is a single-flight handle for an active refresh.
-// Concurrent callers wait on `done` instead of serializing on `packageCacheMu`
+// Concurrent callers wait on `done` instead of serializing on the cache mutex
 // for the duration of the upstream fetch (which can be 5 s for the index
 // plus several seconds for the manifest fan-out).
 type packageRefreshFlight struct {
@@ -127,11 +127,13 @@ type packageRefreshFlight struct {
 	err  error
 }
 
-var (
-	packageCacheMu      sync.Mutex
-	packageCache        *packageCacheEntry
-	packageActiveFlight *packageRefreshFlight
+type packageRecommendationsCache struct {
+	mu           sync.Mutex
+	entry        *packageCacheEntry
+	activeFlight *packageRefreshFlight
+}
 
+var (
 	// Test-only override. nil falls back to the real HTTP fetcher.
 	packageRepositoryFetcherOverride packageRepositoryFetcher
 
@@ -197,21 +199,22 @@ func (a *App) handlePackageRecommendations(w http.ResponseWriter, r *http.Reques
 // refresh wait on the inflight channel instead of serializing on the mutex
 // (which would block them for the index fetch plus the enrichment budget).
 func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageRecommendationsResponse, error) {
-	packageCacheMu.Lock()
-	if packageCache != nil {
+	c := a.packageRecommendations
+	c.mu.Lock()
+	if c.entry != nil {
 		ttl := packageRepositoryCacheTTL
-		if packageCache.partial {
+		if c.entry.partial {
 			ttl = packageRepositoryPartialCacheTTL
 		}
-		if timeNow().Sub(packageCache.fetchedAt) < ttl {
-			resp, err := packageResponseDiagnostics(packageCache.resp, packageCache.err, "hit", timeNow().Sub(packageCache.fetchedAt).Milliseconds())
-			packageCacheMu.Unlock()
+		if timeNow().Sub(c.entry.fetchedAt) < ttl {
+			resp, err := packageResponseDiagnostics(c.entry.resp, c.entry.err, "hit", timeNow().Sub(c.entry.fetchedAt).Milliseconds())
+			c.mu.Unlock()
 			return resp, err
 		}
 	}
 
-	if existing := packageActiveFlight; existing != nil {
-		packageCacheMu.Unlock()
+	if existing := c.activeFlight; existing != nil {
+		c.mu.Unlock()
 		// Wait for the in-flight refresh to publish its result. Honour the
 		// caller's context so a cancelled request can return immediately
 		// instead of blocking on a slow CDN.
@@ -224,8 +227,8 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 	}
 
 	flight := &packageRefreshFlight{done: make(chan struct{})}
-	packageActiveFlight = flight
-	packageCacheMu.Unlock()
+	c.activeFlight = flight
+	c.mu.Unlock()
 
 	// Detach the upstream fetch from the request's cancellation: a canceled
 	// request (browser closed, panel collapsed mid-flight) must not poison
@@ -234,8 +237,8 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 	// with their own context.WithTimeout.
 	resp, partial, err := fetchAndParsePackageRepository(context.WithoutCancel(ctx), packageRepositoryURL)
 
-	packageCacheMu.Lock()
-	packageCache = &packageCacheEntry{
+	c.mu.Lock()
+	c.entry = &packageCacheEntry{
 		resp:      resp,
 		err:       err,
 		fetchedAt: timeNow(),
@@ -243,8 +246,8 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 	}
 	flight.resp = resp
 	flight.err = err
-	packageActiveFlight = nil
-	packageCacheMu.Unlock()
+	c.activeFlight = nil
+	c.mu.Unlock()
 	close(flight.done)
 
 	return packageResponseDiagnostics(resp, err, "refresh", 0)
@@ -443,12 +446,4 @@ func defaultPackageRepositoryFetcher(ctx context.Context, rawURL string, maxByte
 		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large"}, err: fmt.Errorf("response exceeded %d bytes", maxBytes)}
 	}
 	return body, nil
-}
-
-// resetPackageRecommendationsCache clears the cache. Test-only.
-func resetPackageRecommendationsCache() {
-	packageCacheMu.Lock()
-	defer packageCacheMu.Unlock()
-	packageCache = nil
-	packageActiveFlight = nil
 }

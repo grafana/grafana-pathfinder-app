@@ -52,13 +52,7 @@ jest.mock('@grafana/ui', () => {
   };
 });
 
-// `getDataSourceSrv` is queried by HasDatasourceHelper but not on the
-// initial render of the chip picker — mock it just in case the picker is
-// opened with `has-datasource:` in a test.
-jest.mock('@grafana/runtime', () => ({
-  ...jest.requireActual('@grafana/runtime'),
-  getDataSourceSrv: () => ({ getList: () => [] }),
-}));
+jest.mock('../../../lib/datasource/datasource-registry', () => ({ listDataSources: () => Promise.resolve([]) }));
 
 beforeEach(() => {
   window.localStorage.clear();

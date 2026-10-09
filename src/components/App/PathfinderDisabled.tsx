@@ -1,11 +1,12 @@
 import React from 'react';
 import { t } from '@grafana/i18n';
-import { config, locationService } from '@grafana/runtime';
+import { locationService } from '@grafana/runtime';
 import { Alert, Button } from '@grafana/ui';
 
+import { useCurrentUserIsAdmin } from '../../utils/current-user-role';
+
 export function PathfinderDisabled() {
-  const user = config.bootData?.user;
-  const isAdmin = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
+  const isAdmin = useCurrentUserIsAdmin();
 
   return (
     <Alert severity="info" title={t('pathfinder.disabled', 'Interactive learning is disabled')}>

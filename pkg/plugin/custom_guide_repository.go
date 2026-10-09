@@ -179,7 +179,7 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 		// darkening the feature.
 		// Info (not Debug) so a wrong CAP token or unreachable auth-api — which 503s
 		// this route indefinitely — is diagnosable without raising the log level
-		// (matches getCompletionIndex on the completions route).
+		// (matches completionCache.get on the completions route).
 		logger.Info("custom guide catalogue unavailable (transient)", "namespace", namespace, "reason", classifyGuideProxyError(err).Reason)
 		a.writeCustomGuideUnavailable(w, err)
 		return

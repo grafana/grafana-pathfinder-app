@@ -220,7 +220,6 @@ func TestMyAssignments_GuideSourceFailureRule(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resetPackageRecommendationsCache()
 			withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
 				if strings.HasSuffix(rawURL, "manifest.json") {
 					return tc.manifest()

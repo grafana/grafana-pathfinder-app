@@ -71,7 +71,7 @@ describe('AppPlatformPackageResolver — no loadContent', () => {
   });
 
   it('declines (not-found) when the GAP aggregation toggle is off', async () => {
-    mockFeatureToggles = {};
+    mockFeatureToggles = { 'aggregation.pathfinderbackend-ext-grafana-com.enabled': true };
     const resolver = new AppPlatformPackageResolver();
     const result = await resolver.resolve('fe-alerting-01', { loadContent: true });
 
@@ -82,6 +82,16 @@ describe('AppPlatformPackageResolver — no loadContent', () => {
     expect(result.error.code).toBe('not-found');
     expect(mockFetch).not.toHaveBeenCalled();
     expect(result.repository).toBeUndefined();
+  });
+
+  it('probes the proxy when the boot toggles are empty, as under multi-tenancy', async () => {
+    mockFeatureToggles = {};
+    mockFetch.mockReturnValue(of(okResource()));
+    const resolver = new AppPlatformPackageResolver();
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: true });
+
+    expect(mockFetch).toHaveBeenCalled();
+    expect(result.ok).toBe(true);
   });
 });
 

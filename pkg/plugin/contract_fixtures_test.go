@@ -683,8 +683,6 @@ func doPackageRecommendations(t *testing.T, index map[string]map[string]any, man
 	if len(index) > 1 {
 		t.Fatalf("package-recommendations goldens must use at most one entry; got %d", len(index))
 	}
-	resetPackageRecommendationsCache()
-	t.Cleanup(resetPackageRecommendationsCache)
 	freezeContractTime(t)
 	// The enrichment budget is wall-clock, so the default 3 s could theoretically
 	// expire on a loaded runner and drop `manifest` from the golden.

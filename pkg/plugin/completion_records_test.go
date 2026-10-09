@@ -46,13 +46,9 @@ func singlePageLister(records ...completionRecordSpec) *fakeLister {
 
 func withLister(t *testing.T, l completionRecordLister) {
 	t.Helper()
-	resetCompletionRecordsCache()
 	prev := completionListerOverride
 	completionListerOverride = l
-	t.Cleanup(func() {
-		completionListerOverride = prev
-		resetCompletionRecordsCache()
-	})
+	t.Cleanup(func() { completionListerOverride = prev })
 }
 
 func rec(userID, guideSource, guideID, title, category, pathID, source, completedAt string, percent int64) completionRecordSpec {
@@ -114,9 +110,18 @@ func doMyCompletions(t *testing.T, target, sub string) (*httptest.ResponseRecord
 	return doMyCompletionsReq(t, completionRequest(t, target, sub))
 }
 
+func doMyCompletionsOn(t *testing.T, app *App, target, sub string) (*httptest.ResponseRecorder, myCompletionsResponse) {
+	t.Helper()
+	return doMyCompletionsWith(t, app, completionRequest(t, target, sub))
+}
+
 func doMyCompletionsReq(t *testing.T, r *http.Request) (*httptest.ResponseRecorder, myCompletionsResponse) {
 	t.Helper()
-	app := newTestApp(t)
+	return doMyCompletionsWith(t, newTestApp(t), r)
+}
+
+func doMyCompletionsWith(t *testing.T, app *App, r *http.Request) (*httptest.ResponseRecorder, myCompletionsResponse) {
+	t.Helper()
 	rec := httptest.NewRecorder()
 	app.handleMyCompletions(rec, r)
 	var body myCompletionsResponse
@@ -207,7 +212,8 @@ func TestCollation_CrossUserIsolation(t *testing.T) {
 		rec("user:2", "bundled", "c", "C", "interactive", "", "objectives", "2026-07-12T00:00:00Z", 100),
 	))
 
-	_, body1 := doMyCompletions(t, "/completion-records/my", "user:1")
+	app := newTestApp(t)
+	_, body1 := doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	if len(body1.Completions) != 1 || body1.Completions[0].GuideID != "a" {
 		t.Fatalf("user:1 should see only its own record, got %+v", body1.Completions)
 	}
@@ -215,7 +221,7 @@ func TestCollation_CrossUserIsolation(t *testing.T) {
 		t.Errorf("userId echoed = %q, want user:1", body1.UserID)
 	}
 
-	_, body2 := doMyCompletions(t, "/completion-records/my", "user:2")
+	_, body2 := doMyCompletionsOn(t, app, "/completion-records/my", "user:2")
 	if len(body2.Completions) != 2 {
 		t.Fatalf("user:2 should see 2 records, got %d", len(body2.Completions))
 	}
@@ -316,12 +322,30 @@ func TestCache_WithinTTLServesFromCacheNoUpstream(t *testing.T) {
 	l := singlePageLister(rec("user:1", "bundled", "a", "A", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100))
 	withLister(t, l)
 
-	doMyCompletions(t, "/completion-records/my", "user:1")
-	doMyCompletions(t, "/completion-records/my", "user:1")
-	doMyCompletions(t, "/completion-records/my", "user:2")
+	app := newTestApp(t)
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:2")
 
 	if l.callCount() != 1 {
 		t.Fatalf("expected single upstream LIST within TTL, got %d", l.callCount())
+	}
+}
+
+func TestCache_NotSharedAcrossAppInstances(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := singlePageLister(rec("user:1", "bundled", "a", "A", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100))
+	withLister(t, l)
+
+	first, second := newInstanceApp(t), newInstanceApp(t)
+	doMyCompletionsOn(t, first, "/completion-records/my", "user:1")
+	doMyCompletionsOn(t, first, "/completion-records/my", "user:1")
+	if l.callCount() != 1 {
+		t.Fatalf("expected the first instance to cache after one LIST, got %d", l.callCount())
+	}
+	doMyCompletionsOn(t, second, "/completion-records/my", "user:1")
+	if l.callCount() != 2 {
+		t.Fatalf("second instance served the first instance's cache: LIST calls = %d, want 2", l.callCount())
 	}
 }
 
@@ -330,9 +354,10 @@ func TestCache_TTLExpiryTriggersRefresh(t *testing.T) {
 	l := singlePageLister(rec("user:1", "bundled", "a", "A", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100))
 	withLister(t, l)
 
-	doMyCompletions(t, "/completion-records/my", "user:1")
+	app := newTestApp(t)
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	advance(completionCacheTTL + time.Second)
-	doMyCompletions(t, "/completion-records/my", "user:1")
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 
 	if l.callCount() != 2 {
 		t.Fatalf("expected refresh after TTL, got %d calls", l.callCount())
@@ -352,6 +377,7 @@ func TestCache_Singleflight(t *testing.T) {
 		}}, nil
 	}}
 	withLister(t, l)
+	cache := newCompletionCache()
 
 	const n = 8
 	var wg sync.WaitGroup
@@ -359,7 +385,7 @@ func TestCache_Singleflight(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _ = getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+			_, _ = cache.get(context.Background(), testNamespace, l, false, log.DefaultLogger)
 		}()
 	}
 	<-started
@@ -387,10 +413,9 @@ func TestCache_InvalidationKeepsStaleServeFallback(t *testing.T) {
 		}
 		return nil, errors.New("upstream blip")
 	}}
-	resetCompletionRecordsCache()
-	t.Cleanup(resetCompletionRecordsCache)
+	cache := newCompletionCache()
 
-	warm, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	warm, err := cache.get(context.Background(), testNamespace, l, false, log.DefaultLogger)
 	if err != nil {
 		t.Fatalf("warm read: %v", err)
 	}
@@ -398,11 +423,11 @@ func TestCache_InvalidationKeepsStaleServeFallback(t *testing.T) {
 		t.Fatalf("warm guide = %q, want old", got)
 	}
 
-	invalidateCompletionIndex(testNamespace)
+	cache.invalidate(testNamespace)
 
 	// Well inside the TTL: without the invalidation this would be a cache hit,
 	// so a second LIST proves the write still forces a refresh.
-	idx, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	idx, err := cache.get(context.Background(), testNamespace, l, false, log.DefaultLogger)
 	if calls.Load() != 2 {
 		t.Fatalf("LIST calls = %d, want 2 — invalidation must force a refresh", calls.Load())
 	}
@@ -433,18 +458,17 @@ func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
 			rec("user:1", "bundled", "new", "New", "interactive", "", "objectives", "2026-07-10T01:00:00Z", 100),
 		}}, nil
 	}}
-	resetCompletionRecordsCache()
-	t.Cleanup(resetCompletionRecordsCache)
+	cache := newCompletionCache()
 
 	firstDone := make(chan struct{})
 	go func() {
 		defer close(firstDone)
-		_, _ = getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+		_, _ = cache.get(context.Background(), testNamespace, l, false, log.DefaultLogger)
 	}()
 	<-firstStarted
 
-	invalidateCompletionIndex(testNamespace)
-	fresh, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	cache.invalidate(testNamespace)
+	fresh, err := cache.get(context.Background(), testNamespace, l, false, log.DefaultLogger)
 	if err != nil {
 		t.Fatalf("post-invalidation refresh: %v", err)
 	}
@@ -455,7 +479,7 @@ func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
 	close(releaseFirst)
 	<-firstDone
 
-	cached, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	cached, err := cache.get(context.Background(), testNamespace, l, false, log.DefaultLogger)
 	if err != nil {
 		t.Fatalf("cached read: %v", err)
 	}
@@ -469,9 +493,9 @@ func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
 	// The fenced refresh still lands in the §9 vital signs: every miss must be
 	// answered by a refresh or a failure, or the per-namespace counters an operator
 	// reads stop reconciling exactly when the write path is busiest.
-	completionCacheMu.Lock()
-	stats := *completionStatsFor(testNamespace)
-	completionCacheMu.Unlock()
+	cache.mu.Lock()
+	stats := *cache.statsFor(testNamespace)
+	cache.mu.Unlock()
 	if stats.refreshes+stats.refreshFailures != stats.misses {
 		t.Errorf("stats do not reconcile (a fenced refresh went uncounted): %+v", stats)
 	}
@@ -483,27 +507,28 @@ func TestCache_ForcedRefreshBypassAndRateLimit(t *testing.T) {
 	withLister(t, l)
 
 	// Warm the cache.
-	doMyCompletions(t, "/completion-records/my", "user:1")
+	app := newTestApp(t)
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	if l.callCount() != 1 {
 		t.Fatalf("warm-up expected 1 call, got %d", l.callCount())
 	}
 
 	// ?refresh=1 bypasses the fresh cache → second LIST.
-	doMyCompletions(t, "/completion-records/my?refresh=1", "user:1")
+	doMyCompletionsOn(t, app, "/completion-records/my?refresh=1", "user:1")
 	if l.callCount() != 2 {
 		t.Fatalf("forced refresh should bypass cache, got %d calls", l.callCount())
 	}
 
 	// A second forced refresh within the rate-limit window is ignored (served
 	// from the still-fresh cache) → no new LIST.
-	doMyCompletions(t, "/completion-records/my?refresh=1", "user:1")
+	doMyCompletionsOn(t, app, "/completion-records/my?refresh=1", "user:1")
 	if l.callCount() != 2 {
 		t.Fatalf("forced refresh rate limit should hold within window, got %d calls", l.callCount())
 	}
 
 	// After the window, a forced refresh is honoured again.
 	advance(completionForcedRefreshInterval + time.Second)
-	doMyCompletions(t, "/completion-records/my?refresh=1", "user:1")
+	doMyCompletionsOn(t, app, "/completion-records/my?refresh=1", "user:1")
 	if l.callCount() != 3 {
 		t.Fatalf("forced refresh should be allowed after the window, got %d calls", l.callCount())
 	}
@@ -542,8 +567,6 @@ func TestErrors_UnexpectedRedirectOnListIsTransient(t *testing.T) {
 		http.StatusAccepted,
 	} {
 		t.Run(fmt.Sprintf("%d", status), func(t *testing.T) {
-			resetCompletionRecordsCache()
-			t.Cleanup(resetCompletionRecordsCache)
 			withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) {
 				return nil, &appPlatformUpstreamError{status: status, msg: "unfollowed redirect"}
 			}})
@@ -596,7 +619,8 @@ func TestErrors_WarmCacheServesStaleOnUpstreamFailure(t *testing.T) {
 	withLister(t, l)
 
 	// Warm the cache successfully.
-	_, warm := doMyCompletions(t, "/completion-records/my", "user:1")
+	app := newTestApp(t)
+	_, warm := doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	warmAsOf := warm.AsOf
 	if len(warm.Completions) != 1 {
 		t.Fatalf("warm-up expected 1 entry, got %d", len(warm.Completions))
@@ -606,7 +630,7 @@ func TestErrors_WarmCacheServesStaleOnUpstreamFailure(t *testing.T) {
 	fail.Store(true)
 	advance(completionCacheTTL + time.Second)
 
-	rr, stale := doMyCompletions(t, "/completion-records/my", "user:1")
+	rr, stale := doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (stale serve)", rr.Code)
 	}
@@ -629,7 +653,8 @@ func TestErrors_ColdOutageThrottledByCooldown(t *testing.T) {
 	withLister(t, l)
 
 	// First cold request probes upstream and 503s.
-	rr, _ := doMyCompletions(t, "/completion-records/my", "user:1")
+	app := newTestApp(t)
+	rr, _ := doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("first status = %d, want 503", rr.Code)
 	}
@@ -642,7 +667,7 @@ func TestErrors_ColdOutageThrottledByCooldown(t *testing.T) {
 	// Retry-After semantics.
 	for i := 0; i < 3; i++ {
 		advance(time.Second)
-		rr, _ := doMyCompletions(t, "/completion-records/my", "user:1")
+		rr, _ := doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 		if rr.Code != http.StatusServiceUnavailable {
 			t.Fatalf("throttled status = %d, want 503", rr.Code)
 		}
@@ -653,7 +678,7 @@ func TestErrors_ColdOutageThrottledByCooldown(t *testing.T) {
 
 	// After the cooldown elapses, the next request probes again.
 	advance(completionFailureCooldown + time.Second)
-	doMyCompletions(t, "/completion-records/my", "user:1")
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	if l.callCount() != 2 {
 		t.Fatalf("expected a re-probe after cooldown, got %d LIST calls", l.callCount())
 	}
@@ -668,7 +693,8 @@ func TestErrors_ColdTerminalThrottledStaysCapabilityFalse(t *testing.T) {
 	}}
 	withLister(t, l)
 
-	rr, body := doMyCompletions(t, "/completion-records/my", "user:1")
+	app := newTestApp(t)
+	rr, body := doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	if rr.Code != http.StatusOK || body.Capability.Available {
 		t.Fatalf("first terminal cold error should yield capability=false 200, got %d %+v", rr.Code, body.Capability)
 	}
@@ -676,7 +702,7 @@ func TestErrors_ColdTerminalThrottledStaysCapabilityFalse(t *testing.T) {
 	// A throttled re-request must replay the terminal error (capability=false),
 	// not degrade to a transient 503, and must not re-probe upstream.
 	advance(time.Second)
-	rr, body = doMyCompletions(t, "/completion-records/my", "user:1")
+	rr, body = doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	if rr.Code != http.StatusOK || body.Capability.Available {
 		t.Fatalf("throttled terminal error should stay capability=false 200, got %d %+v", rr.Code, body.Capability)
 	}
@@ -698,7 +724,8 @@ func TestErrors_IdentityScopedFailureNotCachedShared(t *testing.T) {
 	}}
 	withLister(t, l)
 
-	rr, body := doMyCompletions(t, "/completion-records/my", "user:a")
+	app := newTestApp(t)
+	rr, body := doMyCompletionsOn(t, app, "/completion-records/my", "user:a")
 	if rr.Code != http.StatusOK || body.Capability.Available {
 		t.Fatalf("caller A: expected capability=false 200, got %d %+v", rr.Code, body.Capability)
 	}
@@ -709,7 +736,7 @@ func TestErrors_IdentityScopedFailureNotCachedShared(t *testing.T) {
 	// Caller B one second later: the 403 was per-request, so B gets its own
 	// upstream probe rather than A's cached denial.
 	advance(time.Second)
-	rr, body = doMyCompletions(t, "/completion-records/my", "user:b")
+	rr, body = doMyCompletionsOn(t, app, "/completion-records/my", "user:b")
 	if rr.Code != http.StatusOK || body.Capability.Available {
 		t.Fatalf("caller B: expected capability=false 200, got %d %+v", rr.Code, body.Capability)
 	}
@@ -730,7 +757,8 @@ func TestErrors_MintFailureNotCachedShared(t *testing.T) {
 
 	// A mint failure is transient (no upstream status), so caller A gets a 503
 	// hiccup rather than capability=false.
-	rr, _ := doMyCompletions(t, "/completion-records/my", "user:a")
+	app := newTestApp(t)
+	rr, _ := doMyCompletionsOn(t, app, "/completion-records/my", "user:a")
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("caller A: expected 503 for a transient mint failure, got %d", rr.Code)
 	}
@@ -739,7 +767,7 @@ func TestErrors_MintFailureNotCachedShared(t *testing.T) {
 	}
 
 	advance(time.Second)
-	rr, _ = doMyCompletions(t, "/completion-records/my", "user:b")
+	rr, _ = doMyCompletionsOn(t, app, "/completion-records/my", "user:b")
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("caller B: expected 503, got %d", rr.Code)
 	}
@@ -762,7 +790,8 @@ func TestErrors_WarmStaleOutageThrottledByCooldown(t *testing.T) {
 	withLister(t, l)
 
 	// Warm the cache, then expire it and start the outage.
-	doMyCompletions(t, "/completion-records/my", "user:1")
+	app := newTestApp(t)
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	if l.callCount() != 1 {
 		t.Fatalf("warm-up expected 1 call, got %d", l.callCount())
 	}
@@ -770,7 +799,7 @@ func TestErrors_WarmStaleOutageThrottledByCooldown(t *testing.T) {
 	advance(completionCacheTTL + time.Second)
 
 	// First expired request probes once, fails, and serves stale.
-	_, stale := doMyCompletions(t, "/completion-records/my", "user:1")
+	_, stale := doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	if len(stale.Completions) != 1 {
 		t.Fatalf("expected stale serve of 1 entry, got %d", len(stale.Completions))
 	}
@@ -782,7 +811,7 @@ func TestErrors_WarmStaleOutageThrottledByCooldown(t *testing.T) {
 	// re-probing the struggling upstream.
 	for i := 0; i < 3; i++ {
 		advance(time.Second)
-		_, s := doMyCompletions(t, "/completion-records/my", "user:1")
+		_, s := doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 		if len(s.Completions) != 1 {
 			t.Fatalf("throttled stale serve should return cached entries, got %d", len(s.Completions))
 		}
@@ -794,7 +823,7 @@ func TestErrors_WarmStaleOutageThrottledByCooldown(t *testing.T) {
 	// Once the cooldown elapses and upstream recovers, a normal refresh resumes.
 	fail.Store(false)
 	advance(completionFailureCooldown + time.Second)
-	doMyCompletions(t, "/completion-records/my", "user:1")
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:1")
 	if l.callCount() != 3 {
 		t.Fatalf("expected a successful refresh after cooldown, got %d LIST calls", l.callCount())
 	}
@@ -887,8 +916,6 @@ func TestResolveCompletionBackend_NoAppURL(t *testing.T) {
 // the exchanger gate, so this is the real resolve path.
 func TestMyCompletions_NoOBOCredentialsStructurallyUnavailable(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
-	resetCompletionRecordsCache()
-	t.Cleanup(resetCompletionRecordsCache)
 
 	rr, body := doMyCompletionsReq(t, completionRequest(t, "/completion-records/my", "user:1"))
 	if rr.Code != http.StatusOK {

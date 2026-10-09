@@ -17,6 +17,9 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/custom-guide", a.handleCustomGuide)
 	mux.HandleFunc("/pathfinder-settings", a.handlePathfinderSettings)
 	mux.HandleFunc("/assignments/my", a.handleMyAssignments)
+	mux.HandleFunc("/grafana/user", a.handleGrafanaUser)
+	mux.HandleFunc("/grafana/dashboard", a.handleGrafanaDashboard)
+	mux.HandleFunc("/grafana/dashboard-search", a.handleGrafanaDashboardSearch)
 	mux.HandleFunc("/health", a.handleHealth)
 }
 

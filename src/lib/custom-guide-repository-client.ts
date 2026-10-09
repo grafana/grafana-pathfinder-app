@@ -14,7 +14,7 @@ import { readProxyDiagnostics, reportProxyFailure, reportProxyResponse } from '.
 import { getBackendSrv } from '@grafana/runtime';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
-import { isBackendApiAvailable } from '../utils/fetchBackendGuides';
+import { isBackendApiRuledOut } from '../utils/interactive-guides-api';
 import { classifyRequestFailure } from './fetch-error';
 import { logger } from './logging';
 import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
@@ -189,7 +189,7 @@ async function requestCatalogue(): Promise<CatalogueResult> {
  * not cached.
  */
 export async function fetchCustomGuideRepository(namespace: string): Promise<CustomGuideRepositoryEntry[]> {
-  if (!isBackendApiAvailable() || !namespace) {
+  if (isBackendApiRuledOut() || !namespace) {
     return [];
   }
 

@@ -261,7 +261,7 @@ export const getConfigWithDefaults = (config: PathfinderPluginConfig): ResolvedP
  */
 const getPlatformSpecificDefault = (): boolean => {
   try {
-    const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
+    const isCloud = config.buildInfo.versionString.startsWith('Grafana Cloud');
     return isCloud; // Cloud = true (enabled), OSS = false (disabled)
   } catch (error) {
     // eslint-disable-next-line no-console -- tier 0 cannot import lib/logging (it's in the logger's own import chain)

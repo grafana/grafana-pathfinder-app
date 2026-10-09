@@ -18,13 +18,9 @@ jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
 }));
 
-jest.mock('@grafana/runtime', () => {
-  const actual = jest.requireActual('@grafana/runtime');
-  return {
-    ...actual,
-    getDataSourceSrv: () => ({ getList: () => [{ uid: 'prom-1', name: 'Prometheus', type: 'prometheus' }] }),
-  };
-});
+jest.mock('../../lib/datasource/datasource-registry', () => ({
+  listDataSources: () => Promise.resolve([{ uid: 'prom-1', name: 'Prometheus', type: 'prometheus' }]),
+}));
 
 // Grafana's Combobox sizes options through a <canvas> 2d context that jsdom
 // does not provide. Same local stub as ChallengeBlockForm.test.tsx.
@@ -57,14 +53,14 @@ function renderGuide(block: Record<string, unknown>) {
 }
 
 describe('a data check authored in guide JSON', () => {
-  it('reaches the DOM as a tracked step when the author asked it to block', () => {
+  it('reaches the DOM as a tracked step when the author asked it to block', async () => {
     renderGuide(picker({ dataCheckQuery: 'up', dataCheckBlocking: true }));
 
     expect(screen.getByTestId('datasource-check-step-metrics-check')).toBeInTheDocument();
-    expect(screen.getByTestId('datasource-check-run-metrics-check')).toBeInTheDocument();
+    expect(await screen.findByTestId('datasource-check-run-metrics-check')).toBeInTheDocument();
   });
 
-  it('carries the authored query and failure message through to the rendered step', () => {
+  it('carries the authored query and failure message through to the rendered step', async () => {
     renderGuide(
       picker({
         dataCheckQuery: 'container_cpu_usage_seconds_total',
@@ -74,19 +70,20 @@ describe('a data check authored in guide JSON', () => {
       })
     );
 
-    expect(screen.getByTestId('datasource-check-skip-metrics-check')).toBeInTheDocument();
+    expect(await screen.findByTestId('datasource-check-skip-metrics-check')).toBeInTheDocument();
     expect(screen.getByText('Pick the data source holding your metrics.')).toBeInTheDocument();
   });
 
-  it('reaches the DOM as a passive picker when the check is advisory', () => {
+  it('reaches the DOM as a passive picker when the check is advisory', async () => {
     renderGuide(picker({ dataCheckQuery: 'up' }));
 
+    expect(await screen.findByTestId('input-data-check-run-metricsDatasource')).toBeInTheDocument();
     expect(screen.queryByTestId('datasource-check-step-metrics-check')).not.toBeInTheDocument();
-    expect(screen.getByTestId('input-data-check-run-metricsDatasource')).toBeInTheDocument();
   });
 
-  it('offers no check at all when the author configured none', () => {
+  it('offers no check at all when the author configured none', async () => {
     renderGuide(picker({}));
+    await screen.findByTestId('interactive-datasource-picker-metricsDatasource');
 
     expect(screen.queryByTestId('datasource-check-step-metrics-check')).not.toBeInTheDocument();
     expect(screen.queryByTestId('input-data-check-run-metricsDatasource')).not.toBeInTheDocument();

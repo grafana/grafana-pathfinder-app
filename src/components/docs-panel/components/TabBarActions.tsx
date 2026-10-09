@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { css } from '@emotion/css';
 import { IconButton, Dropdown, Menu, Tooltip, Badge } from '@grafana/ui';
 import { t } from '@grafana/i18n';
-import { config, getAppEvents, locationService } from '@grafana/runtime';
+import { getAppEvents, locationService } from '@grafana/runtime';
 import {
   reportAppInteraction,
   UserInteraction,
@@ -25,6 +25,7 @@ import { usePrivateGuideCopy } from '../hooks/usePrivateGuideCopy';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import { useIsAssistantAvailable } from '../../../integrations/assistant-integration';
 import { buildSidebarGuideLink } from '../../../utils/guide-share-link';
+import { useCurrentUserIsAdmin } from '../../../utils/current-user-role';
 import { CustomizeGuideModal } from './CustomizeGuideModal';
 
 const previewMenuItemClass = css({
@@ -66,8 +67,7 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
 }) => {
   const privateCopy = usePrivateGuideCopy(activeTab, onOpenEditorTab);
   const isAssistantAvailable = useIsAssistantAvailable();
-  const user = config.bootData?.user;
-  const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
+  const canAccessPluginSettings = useCurrentUserIsAdmin();
 
   const contentTab = activeTab && !isNonContentTab(activeTab) ? activeTab : null;
   const reloadContentTab = contentTab && onReloadActiveTab ? () => onReloadActiveTab(contentTab) : null;

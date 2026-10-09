@@ -3,6 +3,7 @@ import {
   OpenFeature,
   ProviderEvents,
   MultiProvider,
+  NOOP_PROVIDER,
   type Client,
   type JsonValue,
 } from '@openfeature/web-sdk';
@@ -11,6 +12,7 @@ import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 import { config, createOpenFeatureLocalStorageProvider, createOpenFeatureOFREPWebProvider } from '@grafana/runtime';
 
 import { TrackingHook } from './openfeature-tracking';
+import { readBootFeatureToggle } from './boot-feature-toggles';
 import { logger } from '../lib/logging';
 import {
   EXPERIMENT_VARIANTS,
@@ -450,6 +452,24 @@ export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): bo
     logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
     return defaultValue;
   }
+};
+
+// undefined means nothing answered: no provider, not ready, or the key is not exposed to the frontend.
+export const resolveBooleanFlag = (flagName: string): boolean | undefined => {
+  try {
+    if (OpenFeature.getProvider(OPENFEATURE_DOMAIN) === NOOP_PROVIDER) {
+      return undefined;
+    }
+    const details = getFeatureFlagClient().getBooleanDetails(flagName, false);
+    return details.errorCode ? undefined : details.value;
+  } catch {
+    return undefined;
+  }
+};
+
+export const readGrafanaFeatureToggle = (name: string): boolean | undefined => {
+  const boot = readBootFeatureToggle(name);
+  return boot === true ? true : (resolveBooleanFlag(name) ?? boot);
 };
 
 /**

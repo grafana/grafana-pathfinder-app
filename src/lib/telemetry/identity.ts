@@ -1,6 +1,7 @@
 import { config } from '@grafana/runtime';
 import { hashUserData } from '../hash.util';
 import { isGrafanaCloud } from './filtering';
+import { currentUser, ensureCurrentUser } from '../../utils/current-user-role';
 
 // The one place the Cloud/OSS identity policy lives. Faro is first-party
 // (Grafana Labs) and takes the raw id/email directly; the recommender is a
@@ -17,6 +18,7 @@ export interface TelemetryIdentity {
 }
 
 export async function buildTelemetryIdentity(): Promise<TelemetryIdentity> {
+  await ensureCurrentUser();
   const isCloud = isGrafanaCloud();
   const email = isCloud ? config.bootData.user.email || '' : '';
   const hasEmail = email !== '';
@@ -34,7 +36,7 @@ export async function buildTelemetryIdentity(): Promise<TelemetryIdentity> {
     email,
     userIdHash: hashedUserId,
     emailHash: hashedEmail,
-    orgRole: config.bootData.user.orgRole || 'Viewer',
+    orgRole: currentUser().role || 'Viewer',
     orgName: config.bootData.user.orgName || '',
   };
 }
