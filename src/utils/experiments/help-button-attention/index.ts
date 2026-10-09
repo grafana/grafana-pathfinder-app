@@ -69,10 +69,8 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
   if (!config.namespace || !config.bootData.user.isSignedIn || config.analytics?.enabled === false) {
     return () => {};
   }
-  const { t } = await loadTranslatedModule(() => import('@grafana/i18n'));
+  let t: typeof import('@grafana/i18n').t;
   const contextKey = `${config.namespace}:${config.bootData.user.id}`;
-  // Core's namespace, so the label matches the rendered Help button in every locale.
-  const helpLabel = t('navigation.help.aria-label', 'Help', { ns: 'grafana' });
   const dismissalKey = `${StorageKeys.HELP_BUTTON_ATTENTION_DISMISSED_PREFIX}${contextKey}`;
   const persist = !previewVariant;
   const attentionDismissed = createTabFlag(dismissalKey, persist);
@@ -91,7 +89,7 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
       config.analytics?.enabled !== false &&
       config.bootData.user.isSignedIn &&
       document.visibilityState === 'visible' &&
-      (enrolled.get() || (!isPathfinderOpen() && Boolean(findHelpButton(helpLabel)))) &&
+      (enrolled.get() || (!isPathfinderOpen() && Boolean(findHelpButton()))) &&
       contextKey === `${config.namespace}:${config.bootData.user.id}`,
     reportExposure: ({ experiment_id, experiment_group, variant }) =>
       reportExperimentView(experiment_id, experiment_group, variant),
@@ -133,7 +131,9 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
   const observe = () =>
     observeHelpButton({
       experiment,
-      helpLabel,
+      prepareLearnUI: async () => {
+        ({ t } = await loadTranslatedModule(() => import('@grafana/i18n')));
+      },
       isOpen: isPathfinderOpen,
       subscribeToOpen: (listener) => onPathfinderSurfaceChange(listener),
       isEnrolled: enrolled.get,
@@ -142,7 +142,7 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
       dismissAttention: () => attentionDismissed.set(true),
       reportClick: (target: HelpToolbarTarget) => sdk.reportAnalytics(HELP_BUTTON_CLICK_EVENT, { target }),
       openLearning: () => {
-        if (findHelpButton(helpLabel, false)?.getAttribute('aria-expanded') === 'true') {
+        if (findHelpButton(undefined, false)?.getAttribute('aria-expanded') === 'true') {
           sidebarState.requestCloseSidebar();
           return;
         }
@@ -193,7 +193,7 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
           if (document.visibilityState !== 'visible') {
             return 'Waiting for this tab to become visible.';
           }
-          if (!findHelpButton(helpLabel, !enrolled.get())) {
+          if (!findHelpButton(undefined, !enrolled.get())) {
             return 'Waiting for the closed desktop Help button.';
           }
           const state = sdk.inspect()[0];

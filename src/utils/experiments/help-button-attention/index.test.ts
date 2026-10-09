@@ -9,6 +9,7 @@ import {
   HELP_BUTTON_EXPERIMENT_ID,
   HELP_BUTTON_CLICK_EVENT,
 } from '../../../constants/help-button-experiment';
+import { StorageKeys } from '../../../lib/storage-keys';
 import { sidebarState } from '../../../global-state/sidebar';
 import { startHelpButtonExperiment } from './index';
 import { loadTranslatedModule } from '../../../lib/plugin-translations';
@@ -132,6 +133,7 @@ it.each(['control', 'learn', 'learn_hint'])(
     stop = await startHelpButtonExperiment();
     await settle();
     expect(reportExperimentView).toHaveBeenCalledWith(HELP_BUTTON_EXPERIMENT_ID, 'closed-help-toolbar', variant);
+    expect(loadTranslatedModule).toHaveBeenCalledTimes(variant === 'control' ? 0 : 1);
     expect(Boolean(learn())).toBe(variant !== 'control');
     button.click();
     expect(document.querySelector('[data-testid="help-button-learning-hint"]')).toBeNull();
@@ -280,4 +282,46 @@ it('keeps tooltip dismissal separate from a click and preserves its assignment',
     { mirrorToFaro: false }
   );
   expect(reportExperimentView).toHaveBeenCalledTimes(1);
+});
+
+it('does not load translations for a dismissed, unenrolled user', async () => {
+  sessionStorage.setItem(`${StorageKeys.HELP_BUTTON_ATTENTION_DISMISSED_PREFIX}stacks-123:42`, 'true');
+  await flag({ variant: 'learn_hint' });
+  stop = await startHelpButtonExperiment();
+  await settle();
+  expect(loadTranslatedModule).not.toHaveBeenCalled();
+  expect(reportExperimentView).not.toHaveBeenCalled();
+  expect(learn()).toBeNull();
+});
+
+it('does not render delayed translated UI after stopping', async () => {
+  let release!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  jest.mocked(loadTranslatedModule).mockImplementationOnce(async (load) => {
+    await ready;
+    return load();
+  });
+  await flag({ variant: 'learn_hint' });
+  stop = await startHelpButtonExperiment();
+  await settle();
+  expect(loadTranslatedModule).toHaveBeenCalledTimes(1);
+  expect(learn()).toBeNull();
+  stop();
+  release();
+  await settle();
+  expect(learn()).toBeNull();
+});
+
+it('keeps native Help usable when translation loading fails', async () => {
+  jest.mocked(loadTranslatedModule).mockRejectedValueOnce(new Error('chunk unavailable'));
+  await flag({ variant: 'learn_hint' });
+  const nativeClick = jest.fn();
+  button.addEventListener('click', nativeClick);
+  stop = await startHelpButtonExperiment();
+  await settle();
+  button.click();
+  expect(nativeClick).toHaveBeenCalledTimes(1);
+  expect(learn()).toBeNull();
 });

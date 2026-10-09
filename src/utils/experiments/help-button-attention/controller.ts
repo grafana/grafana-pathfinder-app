@@ -10,7 +10,8 @@ export interface LearnButton {
 
 interface Options {
   experiment: Experiment;
-  helpLabel: string;
+  helpLabel?: string;
+  prepareLearnUI?: () => Promise<void>;
   isOpen: () => boolean;
   subscribeToOpen: (listener: () => void) => () => void;
   isEnrolled: () => boolean;
@@ -25,7 +26,7 @@ interface Options {
   dismissTooltip: () => void;
 }
 
-export function findHelpButton(helpLabel: string, requireClosed = true): HTMLButtonElement | undefined {
+export function findHelpButton(helpLabel?: string, requireClosed = true): HTMLButtonElement | undefined {
   const buttons = Array.from(document.querySelectorAll('[data-testid="icon-question-circle"]'))
     .map((icon) => icon.closest('button'))
     .filter((button): button is HTMLButtonElement => {
@@ -33,7 +34,7 @@ export function findHelpButton(helpLabel: string, requireClosed = true): HTMLBut
       if (
         !button ||
         button.disabled ||
-        button.getAttribute('aria-label') !== helpLabel ||
+        (helpLabel !== undefined && button.getAttribute('aria-label') !== helpLabel) ||
         (requireClosed ? expanded !== 'false' : expanded !== 'false' && expanded !== 'true')
       ) {
         return false;
@@ -54,6 +55,8 @@ export function findHelpButton(helpLabel: string, requireClosed = true): HTMLBut
 
 export function observeHelpButton(options: Options): () => void {
   let stopped = false;
+  let uiReady = !options.prepareLearnUI;
+  let uiRequested = false;
   let frame: number | undefined;
   let button: HTMLButtonElement | undefined;
   let learn: LearnButton | undefined;
@@ -131,6 +134,19 @@ export function observeHelpButton(options: Options): () => void {
       options.markEnrolled();
       button.addEventListener('click', onHelpClick, true);
       if (state.variant === 'control') {
+        return;
+      }
+      if (!uiReady) {
+        if (!uiRequested) {
+          uiRequested = true;
+          void options.prepareLearnUI!().then(
+            () => {
+              uiReady = true;
+              schedule();
+            },
+            () => stop()
+          );
+        }
         return;
       }
       if (!learn || !learn.element.isConnected || learn.element.nextElementSibling !== button) {
