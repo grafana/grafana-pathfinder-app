@@ -1,10 +1,13 @@
 import React, { useEffect, useCallback, useSyncExternalStore, useState } from 'react';
 import { ThemeContext } from '@grafana/data';
 import { config } from '@grafana/runtime';
+import { LoadingPlaceholder } from '@grafana/ui';
 import { createTranslatedComponent } from '../App/TranslatedComponent';
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../../lib/telemetry/surface';
 import { sidebarState } from '../../global-state/sidebar';
-import { kioskState } from '../../global-state/kiosk';
+import { kioskState, type KioskLaunch } from '../../global-state/kiosk';
+import type { PreparedKioskData } from './kiosk-rules';
+import { retryChunkImport } from '../../lib/retry-chunk-import';
 import { clearKioskLaunchParams } from '../../utils/kiosk-navigation';
 
 const KioskOverlay = createTranslatedComponent(async () => ({
@@ -25,6 +28,30 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
   }, []);
   const launch = useSyncExternalStore(kioskState.subscribe, kioskState.getSnapshot);
   const isOpen = launch !== null;
+  const [catalog, setCatalog] = useState<{
+    launch: KioskLaunch;
+    rulesUrl: string;
+    promise: Promise<PreparedKioskData>;
+  }>();
+
+  useEffect(() => {
+    if (!launch) {
+      return;
+    }
+    const controller = new AbortController();
+    const parser = retryChunkImport(() => import('./kiosk-rules'));
+    const promise = parser.then(({ prepareKioskData }) =>
+      prepareKioskData(rulesUrl, launch.rulesUrl, controller.signal)
+    );
+    // The view may still be loading when cancellation rejects the catalog request.
+    void promise.catch(() => {});
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) {
+        setCatalog({ launch, rulesUrl, promise });
+      }
+    });
+    return () => controller.abort();
+  }, [launch, rulesUrl]);
 
   const handleClose = useCallback(() => {
     clearKioskLaunchParams();
@@ -57,10 +84,14 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
   if (!launch) {
     return null;
   }
+  if (catalog?.launch !== launch || catalog.rulesUrl !== rulesUrl) {
+    return <LoadingPlaceholder text="Loading interactive learning" />;
+  }
 
   return (
     <ThemeContext.Provider value={theme}>
       <KioskOverlay
+        catalog={catalog.promise}
         rulesUrl={rulesUrl}
         overrideUrl={launch.rulesUrl}
         mode={launch.source === 'url' ? 'instance' : 'presentation'}
