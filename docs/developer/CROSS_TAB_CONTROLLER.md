@@ -94,7 +94,8 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 - `observation-subscribe` — `{ generation, subscriptionId, guideKey, revision, steps: [{ id, cursor, epoch?, actions }] }`,
   a signed controller → live command that installs passive matchers for the
   steps the controller is waiting on, in the order a shared action should
-  credit them; the live tab reports a match for the first step only. The controller batches
+  credit them; the live tab reports a match for the first step only. Each
+  action carries only `targetAction`, `refTarget` and `targetValue`. The controller batches
   coordinator changes over 50 milliseconds and re-sends every 2 seconds; the live tab drops a subscription
   it has not heard about for 6 seconds, ignores a lower `generation` for the
   same session, and accepts the inert `noop` and `popout` actions without

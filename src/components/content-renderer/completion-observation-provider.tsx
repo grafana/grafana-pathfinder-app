@@ -12,8 +12,8 @@ import {
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import { usePathfinderPluginConfig } from '../../hooks';
 import { getFeatureFlagValue } from '../../utils/openfeature';
-import React, { useEffect, useMemo, type PropsWithChildren } from 'react';
-import { CompletionCoordinator } from '../../global-state/observation/coordinator';
+import React, { useEffect, useLayoutEffect, useState, type PropsWithChildren } from 'react';
+import { CompletionCoordinator, type ObservationCheck } from '../../global-state/observation/coordinator';
 import { CompletionObservationContext } from '../../global-state/observation/context';
 import { useGuideRequirements, splitGuideScopedRequirements } from '../../requirements-manager';
 import { conditionTokens } from '../../lib/condition-input';
@@ -38,6 +38,97 @@ function outcome({ verdict }: { verdict?: string }): boolean | undefined {
   return verdict === 'satisfied' ? true : verdict === 'unsatisfied' || verdict === 'invalid' ? false : undefined;
 }
 
+interface CheckSettings {
+  checkPostconditions: ReturnType<typeof useGuideRequirements>['checkPostconditions'];
+  mode: ReturnType<typeof useInteractiveMode>;
+  channel: ReturnType<typeof useControllerChannel>;
+  timeout: number;
+}
+
+function createObservationCheck() {
+  let settings: CheckSettings | undefined;
+  const inFlight = new Map<string, Promise<boolean | undefined>>();
+  const check: ObservationCheck = async (conditions, step, signal) => {
+    if (!settings) {
+      return undefined;
+    }
+    const { checkPostconditions, mode, channel, timeout } = settings;
+    const action = step.actions[0];
+    const options = {
+      requirements: conditions,
+      stepId: step.stepId,
+      targetAction: action?.targetAction,
+      refTarget: action?.refTarget,
+      targetValue: action?.targetValue,
+      lazyRender: false,
+      maxRetries: 0,
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const evaluate = async () => {
+      if (mode !== 'controller') {
+        return outcome(await checkPostconditions(options));
+      }
+      if (!channel) {
+        return undefined;
+      }
+      const { guideScoped, remaining } = splitGuideScopedRequirements(conditions);
+      if (conditionTokens(guideScoped).length) {
+        const local = outcome(await checkPostconditions({ ...options, requirements: guideScoped }));
+        if (local !== true) {
+          return local;
+        }
+      }
+      if (!conditionTokens(remaining).length) {
+        return true;
+      }
+      const remote = await channel.requestRequirementCheck(step.stepId, remaining, { ...options, passive: true });
+      return remote === null ? undefined : outcome(remote);
+    };
+    const key = JSON.stringify([mode, conditions, step.actions[0]]);
+    let pending = inFlight.get(key);
+    if (!pending) {
+      if (inFlight.size >= 4) {
+        return undefined;
+      }
+      pending = evaluate().finally(() => {
+        if (inFlight.get(key) === pending) {
+          inFlight.delete(key);
+        }
+      });
+      inFlight.set(key, pending);
+    }
+    let onAbort = () => {};
+    try {
+      return await Promise.race([
+        new Promise<undefined>((resolve) => {
+          onAbort = () => resolve(undefined);
+          if (signal.aborted) {
+            onAbort();
+          } else {
+            signal.addEventListener('abort', onAbort, { once: true });
+          }
+        }),
+        pending,
+        new Promise<undefined>((resolve) => {
+          timer = setTimeout(() => resolve(undefined), timeout);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      if (inFlight.get(key) === pending) {
+        inFlight.delete(key);
+      }
+    }
+  };
+  return {
+    check,
+    configure: (next: CheckSettings) => {
+      settings = next;
+    },
+  };
+}
+
 export function CompletionObservationProvider({ children, contentKey }: PropsWithChildren<{ contentKey: string }>) {
   const { checkPostconditions } = useGuideRequirements();
   const mode = useInteractiveMode();
@@ -45,78 +136,12 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
   const connected = useControllerConnected();
   const { config } = usePathfinderPluginConfig();
   const enabled = config.enableAutoDetection !== false && getFeatureFlagValue('pathfinder.passive-completion', true);
-  const coordinator = useMemo(() => {
-    const inFlight = new Map<string, Promise<boolean | undefined>>();
-    return new CompletionCoordinator(async (conditions, step, signal) => {
-      const action = step.actions[0];
-      const options = {
-        requirements: conditions,
-        stepId: step.stepId,
-        targetAction: action?.targetAction,
-        refTarget: action?.refTarget,
-        targetValue: action?.targetValue,
-        lazyRender: false,
-        maxRetries: 0,
-      };
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const evaluate = async () => {
-        if (mode !== 'controller') {
-          return outcome(await checkPostconditions(options));
-        }
-        if (!channel) {
-          return undefined;
-        }
-        const { guideScoped, remaining } = splitGuideScopedRequirements(conditions);
-        if (conditionTokens(guideScoped).length) {
-          const local = outcome(await checkPostconditions({ ...options, requirements: guideScoped }));
-          if (local !== true) {
-            return local;
-          }
-        }
-        if (!conditionTokens(remaining).length) {
-          return true;
-        }
-        const remote = await channel.requestRequirementCheck(step.stepId, remaining, { ...options, passive: true });
-        return remote === null ? undefined : outcome(remote);
-      };
-      const key = JSON.stringify([conditions, step.actions[0]]);
-      let pending = inFlight.get(key);
-      if (!pending) {
-        if (inFlight.size >= 4) {
-          return undefined;
-        }
-        pending = evaluate().finally(() => {
-          if (inFlight.get(key) === pending) {
-            inFlight.delete(key);
-          }
-        });
-        inFlight.set(key, pending);
-      }
-      let onAbort = () => {};
-      try {
-        return await Promise.race([
-          new Promise<undefined>((resolve) => {
-            onAbort = () => resolve(undefined);
-            if (signal.aborted) {
-              onAbort();
-            } else {
-              signal.addEventListener('abort', onAbort, { once: true });
-            }
-          }),
-          pending,
-          new Promise<undefined>((resolve) => {
-            timer = setTimeout(() => resolve(undefined), config.requirementsCheckTimeout ?? 4000);
-          }),
-        ]);
-      } finally {
-        clearTimeout(timer);
-        signal.removeEventListener('abort', onAbort);
-        if (inFlight.get(key) === pending) {
-          inFlight.delete(key);
-        }
-      }
-    });
-  }, [checkPostconditions, mode, channel, config.requirementsCheckTimeout]);
+  const timeout = config.requirementsCheckTimeout ?? 4000;
+  const [observationCheck] = useState(createObservationCheck);
+  useLayoutEffect(() => {
+    observationCheck.configure({ checkPostconditions, mode, channel, timeout });
+  });
+  const [coordinator] = useState(() => new CompletionCoordinator(observationCheck.check));
 
   useEffect(() => {
     if (!enabled || (mode !== 'controller' && new URLSearchParams(window.location.search).get('controller') === '1')) {

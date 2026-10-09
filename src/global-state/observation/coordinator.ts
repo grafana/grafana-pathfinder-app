@@ -398,7 +398,16 @@ export class CompletionCoordinator {
         ({ step, committed }) =>
           !committed && !step.completed && step.eligible && !step.executing && !hasObjectives(step.objectives)
       )
-      .map((entry) => ({ id: entry.step.id, actions: entry.step.actions, cursor: entry.cursor, epoch: entry.epoch }));
+      .map((entry) => ({
+        id: entry.step.id,
+        actions: entry.step.actions.map(({ targetAction, refTarget, targetValue }) => ({
+          targetAction,
+          ...(refTarget !== undefined && { refTarget }),
+          ...(targetValue !== undefined && { targetValue }),
+        })),
+        cursor: entry.cursor,
+        epoch: entry.epoch,
+      }));
   }
 
   observe(matches: (action: ObservedAction, since: number) => boolean) {

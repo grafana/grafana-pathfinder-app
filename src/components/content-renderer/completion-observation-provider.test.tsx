@@ -10,6 +10,7 @@ import { dispatchProgress } from '../../global-state/progress-events';
 import { CompletionCoordinator, resetHeldRequestsForTests } from '../../global-state/observation/coordinator';
 
 const mockCheck = jest.fn();
+let mockCheckOverride: jest.Mock | undefined;
 let mockAutoDetection: boolean | undefined = true;
 let mockPassiveFlag = true;
 let mockCheckTimeout = 4000;
@@ -28,7 +29,7 @@ let mockControllerChannel: { post: jest.Mock; onObservation: jest.Mock; requestR
 const mockListen = jest.fn(() => () => {});
 jest.mock('@grafana/runtime', () => ({ locationService: { getHistory: () => ({ listen: mockListen }) } }));
 jest.mock('../../requirements-manager', () => ({
-  useGuideRequirements: () => ({ checkPostconditions: mockCheck }),
+  useGuideRequirements: () => ({ checkPostconditions: mockCheckOverride ?? mockCheck }),
   splitGuideScopedRequirements: jest.requireActual('../../requirements-manager/controller-requirements')
     .splitGuideScopedRequirements,
 }));
@@ -93,6 +94,7 @@ beforeEach(() => {
   mockAutoDetection = true;
   mockCheckTimeout = 4000;
   mockPassiveFlag = true;
+  mockCheckOverride = undefined;
   jest.clearAllMocks();
   mockCheck.mockResolvedValue({ pass: false, verdict: 'unmet' });
 });
@@ -692,4 +694,47 @@ it('coalesces controller subscription updates when several steps register togeth
   } finally {
     jest.useRealTimers();
   }
+});
+
+it('keeps one coordinator and its session progress when the requirement checker changes', async () => {
+  const done = jest.fn();
+  const { useCompletionCoordinator } = jest.requireActual('../../global-state/observation/context');
+  const seen = new Set<unknown>();
+  function Probe() {
+    seen.add(useCompletionCoordinator());
+    return null;
+  }
+  function ObjectiveStep() {
+    useObservedCompletion({
+      stepId: 'objective',
+      objectives: ['has-datasources'],
+      executing: false,
+      eligible: true,
+      actions: [{ targetAction: 'noop' }],
+      analytics: { location: 'test', targetAction: 'noop', stepMeta: { stepId: 'objective' } },
+    });
+    return null;
+  }
+  const tree = () => (
+    <>
+      <button id="first">First</button>
+      <button id="last">Last</button>
+      <CompletionObservationProvider contentKey="guide">
+        <Probe />
+        <Step onComplete={done} />
+        <ObjectiveStep />
+      </CompletionObservationProvider>
+    </>
+  );
+  const root = render(tree());
+  fireEvent.click(screen.getByText('First'));
+  mockCheckOverride = jest.fn().mockResolvedValue({ pass: false, verdict: 'unsatisfied' });
+  root.rerender(tree());
+  act(() => {
+    window.dispatchEvent(new Event('focus'));
+  });
+  await waitFor(() => expect(mockCheckOverride).toHaveBeenCalled());
+  fireEvent.click(screen.getByText('Last'));
+  await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+  expect(seen.size).toBe(1);
 });

@@ -891,3 +891,21 @@ it('re-arms observed completion from a fully restored action cursor', async () =
   expect(item.commit).toHaveBeenCalledWith('observed', 'change');
   coordinator.stop();
 });
+
+it('subscribes the live tab with only the wire fields of each action', () => {
+  const coordinator = new CompletionCoordinator(async () => false);
+  const engineAction = {
+    targetAction: 'button',
+    refTarget: 'Save',
+    requirements: 'exists-reftarget',
+    targetComment: 'Click save',
+    targetState: 'enabled',
+  } as ObservationStep['actions'][number];
+  coordinator.register(
+    step({ actions: [engineAction, { targetAction: 'formfill', refTarget: '#name', targetValue: 'prod' }] })
+  );
+  expect(coordinator.pendingActions()[0]!.actions).toEqual([
+    { targetAction: 'button', refTarget: 'Save' },
+    { targetAction: 'formfill', refTarget: '#name', targetValue: 'prod' },
+  ]);
+});
