@@ -934,10 +934,9 @@ export function resolveSurfaceGuideIdentity(input: SurfaceCompletionInput): Regi
 }
 
 /**
- * The single surface-neutral completion emitter. Wired by each content-owning
- * component (DocsPanelContentArea, FloatingPanelContent, GuideReaderOverlay) so
- * every surface routes terminal completion through the same decision, rather
- * than each surface re-deciding (or forgetting to emit).
+ * The single surface-neutral completion emitter. ContentRenderer calls it for
+ * every tracked mount, so every surface routes terminal completion through the
+ * same decision, rather than each surface re-deciding (or forgetting to emit).
  */
 export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): void {
   const { metadata } = input;
