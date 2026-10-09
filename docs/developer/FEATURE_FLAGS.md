@@ -27,7 +27,7 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 - **`true`**: Pathfinder loads normally — sidebar is available, the highlighted-guide experiment runs as configured
 - **`false`**: Plugin is dismounted, the native Grafana help menu takes over
 
-**Important**: This is the only gate on whether Pathfinder mounts. It is evaluated independently of the highlighted-guide experiment: setting `pathfinder.enabled` to `false` dismounts the plugin regardless; when `true`, the experiment applies as normal.
+**Important**: This is the only flag that gates whether Pathfinder mounts. It is evaluated independently of the highlighted-guide experiment: setting `pathfinder.enabled` to `false` dismounts the plugin regardless; when `true`, the experiment applies as normal. A headless image-renderer session (the page's user has `authenticatedBy: 'render'`) is treated the same as `false` and never reads tenant settings. Detection uses the render key, not the `render=1` query parameter, so a person who opens a render URL in a normal browser still gets Pathfinder.
 
 **Tracking key**: `pathfinder_enabled`
 
@@ -337,6 +337,60 @@ Enrollment also re-stamps the Faro session `experiments` attribute, because `ini
 **Tracking key**: `interactive_learning_banner_experiment`
 
 ---
+
+### `pathfinder.help-button-nudge-experiment`
+
+Object flag, default `{ "variant": "excluded" }`. `control` leaves the toolbar unchanged.
+`learn` inserts a separate **Learn** button (graduation cap and label, Grafana's theme-aware orange)
+immediately before the unchanged question-mark Help button; it opens the interactive learning panel
+with open source `help_button_learn`. Until its attention ends, the Learn button shows three small
+twinkling sparkles (static for reduced motion, hidden in forced colors). `learn_hint` adds the
+dismissible “Try interactive learning” hint below the Learn button.
+
+The Learn button stays for the rest of the tab session once the tab is enrolled, including while the
+panel is open and after a reload. Attention (sparkle and hint) ends for the tab on the first toolbar
+click or when any route opens Pathfinder. Closing the hint, or pressing Escape while focus is on the
+hint or its button, hides only the hint; the sparkle stays and a later toolbar click remains
+attributable. State is scoped by namespace and signed-in user.
+
+Enrollment happens only when the unique, visible question-mark Help button exposes
+`aria-expanded="false"` while Pathfinder is closed; a tab that opens Pathfinder first is not enrolled. Mobile Help dropdowns, hidden tabs, ambiguous matches, anonymous sessions,
+missing namespaces, disabled analytics, and unavailable Pathfinder Faro instances do not enroll.
+The DOM adapter depends on Grafana's question-circle icon test ID, localized Help label (read from
+core's `grafana` namespace), and expanded-state contract, and inserts the Learn button as a sibling in
+Grafana's top bar; unsupported markup fails closed.
+
+This experiment uses `@grafana-experiments/sdk@0.3.0` with Pathfinder's existing OpenFeature client
+and isolated Faro instance. It deliberately has **no `trackingKey`**: the SDK owns the single
+`experiment_viewed` denominator through `reportExperimentView` and Faro. Experiment ID:
+`pathfinder-help-button-nudge-v1`; group: `closed-help-toolbar`. SDK exposure deduplication is per
+Faro session and assignment, with sessionStorage persistence when available. Pathfinder's Faro
+sessions are volatile, so a full reload can create a new session and exposure. Dismissal survives
+reloads within the same tab. Do not interpret exposure rows as unique people or allocation units.
+
+The primary outcome is `pathfinder_help_button_clicked_toolbar`, once per tab on the first toolbar
+click before Pathfinder opens any other way, in all three arms. `toolbar_target` says which button:
+`help` or `learn` (control can only report `help`). Later Learn opens are visible as
+`docs_panel_interaction` opens with source `help_button_learn`. RudderStack properties include
+`experiment_help_button_nudge`, `exposure_id`, `event_id`, and `toolbar_target`; Faro receives the SDK's full assignment snapshot. The SDK owns this event's Faro mirror,
+so `reportAppInteraction` skips its normal mirror for this call. The closed-surface Faro gate admits
+only this experiment's exposure, click, and hint dismissal; it does not activate replay or general page telemetry.
+
+Remote provisioning is separate: create a public object flag with excluded/control/learn/learn_hint values,
+excluded outside the chosen population, and the intended three-arm split inside it. Assignment uses
+the existing stack/org OpenFeature context, never client-side user bucketing. Verify the deployed
+bucketing field and allocation before declaring randomized inference. Keep the experiment's allocation
+stable after launch; changing variation weights or ordering can change assignment boundaries.
+The SDK accepts any caller-defined list of variation names; this integration declares these three.
+Analysis is performed independently of Odin's two-arm analysis model. Verify ingestion for all arms
+before launch. Hint dismissal emits `pathfinder_help_button_dismissed_hint` with the same attribution
+properties as the click. A RudderStack dashboard needs staging models for these outcome events.
+
+Retirement removes the flag registry entry, `help-button-attention/`, its bootstrap call, the shared
+constants and dismissal key, the click event and mirror option (if unused elsewhere), the narrow
+Faro filter exception and getter, the closed-surface experiment note in `TELEMETRY.md`, these documentation
+sections, and the remote flag/experiment. If no other experiment uses it, also remove `@grafana-experiments/sdk`
+and `src/lib/telemetry/experiments.ts`.
 
 ## Backend aggregation toggles (not MTFF)
 

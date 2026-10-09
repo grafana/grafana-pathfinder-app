@@ -34,6 +34,10 @@ const GLOBAL_OBJECT_KEY = 'grafanaPathfinderApp';
 let faroInstance: Faro | null = null;
 let initialization: Promise<void> | undefined;
 
+export function getPathfinderFaro(): Faro | null {
+  return faroInstance;
+}
+
 export function guardTelemetry(fn: () => void): void {
   try {
     fn();

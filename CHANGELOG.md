@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.22.0
+
+### Fixed
+
+- **Guide progress from floating, full-screen, and guide-reader surfaces**: Record progress, percentage, and Mark complete under the guide each surface renders, and fire guide completion at 100% even when no sidebar tab is open. (#2105)
+
+- **Section completion with multiple renderers**: Finishing a section in one renderer, such as the block-editor preview, no longer counts as progress for another mounted guide. (#2104)
+
+### Security
+
+- **MCP SDK and DOMPurify updates**: Update `@modelcontextprotocol/sdk` to 1.32.1 to fix GHSA-6qxp-vccf-f47h, where the OAuth client could send credentials to an authorization server chosen by the MCP server, and update `dompurify` to 3.4.16. (#2117)
+
+### Chore
+
+- **Dead App Platform guide fetch removal**: Remove an unused direct App Platform read and its transport ratchet exemption, with no change to startup behavior. (#2092)
+
+- **Completion-recording test coverage**: Pin that a partial progress record cannot satisfy an assignment, and cover concurrent milestone removals and rejected mutations in local storage. (#2114, #2110)
+
 ## 2.21.0
 
 ### Added

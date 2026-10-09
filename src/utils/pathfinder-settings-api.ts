@@ -111,15 +111,18 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
     return null;
   }
 
+  let readAttempt = 0;
   try {
     const response = await lastValueFrom(
-      defer(() =>
-        getBackendSrv().fetch<PathfinderSettingsResource>({
+      defer(() => {
+        readAttempt += 1;
+        return getBackendSrv().fetch<PathfinderSettingsResource>({
           url: `${PLUGIN_BACKEND_URL}/pathfinder-settings`,
           method: 'GET',
+          params: readAttempt > 1 ? { attempt: readAttempt } : undefined,
           showErrorAlert: false,
-        })
-      ).pipe(
+        });
+      }).pipe(
         retry({
           count: READ_RETRY_DELAYS_MS.length,
           delay: (err: unknown, attempt) => {

@@ -16,7 +16,7 @@ Both are Grafana-internal signals; neither is customer-visible. Every RudderStac
 `src/lib/telemetry/` is layered; `src/lib/faro.ts` is a compatibility barrel over it.
 
 - **Adapter** (`faro-adapter.ts`) — owns the SDK. Runs an isolated Faro instance (separate from Grafana core's), Cloud-only, volatile sessions. Every primitive is wrapped in `guardTelemetry`: telemetry must never break the app it observes.
-- **Filtering** (`filtering.ts`) — `beforeSend` pipeline. Attribution whitelist (only Pathfinder stack frames, `[pathfinder]`-prefixed logs, resource timings to docs/recommender hosts) plus an activity gate (nothing except errors is sent until Pathfinder is actually open).
+- **Filtering** (`filtering.ts`) — `beforeSend` pipeline. Attribution whitelist (only Pathfinder stack frames, `[pathfinder]`-prefixed logs, resource timings to docs/recommender hosts) plus an activity gate (nothing except errors and a few named experiment events is sent until Pathfinder is actually open).
 - **Typed facade** (`facade.ts` + `types.ts`) — domain operations (`recordContentFetch`, `recordRecommenderFallback`, …) over the `TELEMETRY_EVENTS` / `TELEMETRY_MEASUREMENTS` name registry. The registry is the schema surface: one reviewable file.
 - **Bridge** (`bridge.ts`) — entry-eager modules (`analytics.ts`, `logging.ts`) reach Faro through a late-bound bridge so the SDK stays out of `module.js` (enforced by `entry-bundle-boundary.test.ts`).
 - **Session replay** (`replay.ts` + `replay-scrub.ts`) — a masked rrweb recorder behind `pathfinder.session-replay`. Not part of the `instrumentations` array: it is added via `faro.instrumentations.add()` the first time Pathfinder is opened, because starting at page load would put rrweb's opening full-DOM snapshot on the wrong side of the activity gate and leave a stream of mutations with nothing to apply them to. Both the module and the instrumentation package are dynamically imported, so nothing loads when the flag is off.
@@ -156,7 +156,7 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 
 ## Gating and environments
 
-Faro initializes only when `resolveFaroEnvironment()` resolves: Grafana Cloud with analytics enabled, on `.grafana.com` / `.grafana.net` / `.grafana-ops.net` / `.grafana-dev.net` hosts, and only when the default-on `pathfinder.frontend-telemetry` flag is set. Local development sends nothing unless `localStorage['pathfinder.faro.local'] = 'true'` in a dev build. The activity gate drops everything except errors until a Pathfinder surface reports itself on mount — a persisted panel mode alone no longer opens it — so collector sessions mean "used Pathfinder or Pathfinder errored", not "loaded a Grafana page".
+Faro initializes only when `resolveFaroEnvironment()` resolves: Grafana Cloud with analytics enabled, on `.grafana.com` / `.grafana.net` / `.grafana-ops.net` / `.grafana-dev.net` hosts, and only when the default-on `pathfinder.frontend-telemetry` flag is set. Local development sends nothing unless `localStorage['pathfinder.faro.local'] = 'true'` in a dev build. The activity gate drops everything except errors until a Pathfinder surface reports itself on mount — a persisted panel mode alone no longer opens it — so collector sessions mean "used Pathfinder, Pathfinder errored, or was enrolled in a closed-surface experiment", not "loaded a Grafana page". The one closed-surface experiment today is the Help button nudge (`pathfinder.help-button-nudge-experiment`, see `FEATURE_FLAGS.md`): its `experiment_viewed` exposure and its click and hint-dismissal outcomes pass the gate, in every arm including control, so each enrolled user starts a collector session carrying the usual user meta without opening Pathfinder. Those items do not latch the gate, so replay and general page telemetry still wait for a real open.
 
 Session replay adds a second remote switch (`pathfinder.session-replay`, also default-on) plus a volume dial (`pathfinder.session-replay-sampling-rate`, default `1`, range-checked at the point of use), but no new environment gate: it is registered from inside `initFaro`, after the `resolveFaroEnvironment()` early return, so a self-hosted or OSS Grafana never reaches it — such an instance does not construct a Faro instance in the first place, and the rrweb chunk is never fetched. The first Pathfinder surface open latches the activity gate and starts recording; closing the panel pauses recording after five seconds, while reopening resumes it immediately.
 
@@ -228,9 +228,10 @@ supplies the plugin version. Older backend responses without diagnostics remain 
 
 Backend `event=pathfinder_proxy_failure` logs contain `stack_namespace` (the trusted
 plugin-context namespace), `resource`, `operation`, `stage`, `reason`, and
-`upstream_status`. Unexpected errors also carry `error_type`, the Go type of the
-unwrapped error, never its message. `outcome` and `cache` belong to the response/Faro
-envelope, not this per-operation log. Grafana supplies plugin version and trace context.
+`upstream_status`, plus optional `error_type` and `attempt`. `error_type` is the Go type
+of the unwrapped error on unexpected errors, never its message. `attempt` is set only on
+frontend retries of a settings read, which log `event=pathfinder_proxy_retry_failure`
+instead. `outcome` and `cache` belong to the response/Faro envelope, not this per-operation log. Grafana supplies plugin version and trace context.
 These backend logs are the primary alert source, so browser
 initialization and Faro activity gating are not detection prerequisites. A silent period
 is not recovery proof; verify successful endpoint/user flows. Frontend degraded rendering

@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import type { RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
 import { ContentRenderer } from './content-renderer';
+import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
@@ -33,7 +34,7 @@ function makeContent(overrides: Partial<RawContent> = {}): RawContent {
 
 describe('ContentRenderer cover-page table of contents', () => {
   it('renders on a learning journey cover with milestones', () => {
-    render(<ContentRenderer content={makeContent()} />);
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={makeContent()} />);
 
     expect(screen.getByTestId(testIds.learningPaths.tableOfContents)).toBeInTheDocument();
   });
@@ -46,7 +47,7 @@ describe('ContentRenderer cover-page table of contents', () => {
       },
     });
 
-    render(<ContentRenderer content={content} />);
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
 
     expect(screen.getByTestId(testIds.learningPaths.tableOfContents)).toBeInTheDocument();
   });
@@ -72,13 +73,13 @@ describe('ContentRenderer cover-page table of contents', () => {
     ],
     ['non-journey content', makeContent({ type: 'single-doc' })],
   ])('does not render on %s', (_label, content) => {
-    render(<ContentRenderer content={content} />);
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
 
     expect(screen.queryByTestId(testIds.learningPaths.tableOfContents)).not.toBeInTheDocument();
   });
 
   it('does not duplicate the title once the hero card owns it', () => {
-    render(<ContentRenderer content={makeContent({ isNativeJson: true })} />);
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={makeContent({ isNativeJson: true })} />);
 
     // The hero renders its own <h1> with the title; the standalone one above
     // it must be suppressed, not both — a document-wide role query catches
@@ -88,7 +89,12 @@ describe('ContentRenderer cover-page table of contents', () => {
   });
 
   it('still shows the standalone title on non-cover content', () => {
-    render(<ContentRenderer content={makeContent({ isNativeJson: true, type: 'single-doc' })} />);
+    render(
+      <ContentRenderer
+        completion={UNTRACKED_COMPLETION}
+        content={makeContent({ isNativeJson: true, type: 'single-doc' })}
+      />
+    );
 
     expect(screen.getAllByRole('heading', { level: 1, name: 'Demo' })).toHaveLength(1);
     expect(screen.queryByTestId(testIds.learningPaths.coverHero)).not.toBeInTheDocument();
