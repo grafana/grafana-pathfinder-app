@@ -1,26 +1,5 @@
-/**
- * Centralized test identifiers for e2e testing.
- *
- * These IDs provide stable selectors for Playwright tests and conform to
- * Grafana plugin e2e testing best practices.
- *
- * @see https://grafana.com/developers/plugin-tools/e2e-test-a-plugin/selecting-elements
- *
- * Naming Convention:
- * - Use kebab-case (lowercase with hyphens)
- * - Prefix with component/feature name (e.g., "docs-panel-", "config-")
- * - Be descriptive but concise
- * - Group related elements under a namespace
- *
- * @example
- * ```typescript
- * // In tests:
- * await page.getByTestId(testIds.docsPanel.container).click();
- *
- * // In components:
- * <div data-testid={testIds.docsPanel.container}>...</div>
- * ```
- */
+import { KIOSK_OVERLAY_TEST_ID } from './surface-selectors';
+
 export const testIds = {
   // Docs Panel - Main container and shell elements
   docsPanel: {
@@ -448,7 +427,7 @@ export const testIds = {
   // Kiosk Mode
   kioskMode: {
     button: 'kiosk-mode-button',
-    overlay: 'kiosk-mode-overlay',
+    overlay: KIOSK_OVERLAY_TEST_ID,
     closeButton: 'kiosk-mode-close',
     header: 'kiosk-mode-header',
     tileGrid: 'kiosk-mode-tile-grid',
