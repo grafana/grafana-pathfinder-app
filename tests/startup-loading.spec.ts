@@ -230,7 +230,17 @@ test('places the Learn experiment beside toolbar Help despite page help icons', 
   );
   await page.goto('/dashboards?featureControl=true&pathfinderHelpPreview=learn');
   const toolbar = page.getByTestId('data-testid Nav toolbar');
+  const help = toolbar.getByRole('button', { name: 'Help', exact: true });
+  await expect(help).toBeVisible();
   const learn = toolbar.getByTestId('help-button-learn');
+  if ((await help.getByTestId('icon-question-circle').count()) === 0) {
+    expect(await page.evaluate(() => window.grafanaBootData.settings.buildInfo.version)).toMatch(/^12\.3\./);
+    await expect(page.getByText('Waiting for the closed desktop Help button.', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('help-button-learn')).toHaveCount(0);
+    await help.click();
+    await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible({ timeout: 20_000 });
+    return;
+  }
   await expect(learn).toBeVisible({ timeout: 20_000 });
   await learn.click();
   await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible({ timeout: 20_000 });
