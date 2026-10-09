@@ -33,6 +33,7 @@ import {
   isJourneyCoverPage,
   getCurrentMilestone,
   resolveSurfaceCompletionIdentity,
+  recordGuideCompletionForSurface,
   type SurfaceCompletionInput,
 } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
@@ -76,6 +77,8 @@ import {
 } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { useGuideIdentityRegistration } from './useGuideIdentityRegistration';
 import { GuideContentKeyContext } from '../interactive-tutorial/guide-content-key-context';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import {
@@ -132,11 +135,36 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
   }
 }
 
+/**
+ * How a mount takes part in completion recording. Required, so a surface that
+ * renders a guide cannot silently record nothing. `onComplete` runs after the
+ * completion is recorded, for UI that reacts to it.
+ */
+export type ContentRendererCompletion =
+  | { kind: 'tracked'; input: SurfaceCompletionInput; onComplete?: () => void }
+  | { kind: 'untracked'; reason: 'preview' };
+
+function recordCompletion(
+  completion: ContentRendererCompletion,
+  source: CompletionSource | undefined,
+  contentKey: string
+): void {
+  switch (completion.kind) {
+    case 'tracked':
+      recordGuideCompletionForSurface({ ...completion.input, source, contentKey });
+      completion.onComplete?.();
+      return;
+    case 'untracked':
+      return;
+    default:
+      assertExhaustive(completion);
+  }
+}
+
 interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
-  onGuideComplete?: (source?: CompletionSource, contentKey?: string) => void;
-  completionSurface?: Pick<SurfaceCompletionInput, 'baseUrl' | 'currentUrl'>;
+  completion: ContentRendererCompletion;
   /**
    * Advance to the next milestone, for the milestone form of the Mark complete
    * control. Surfaces that cannot navigate — or that are on the last milestone
@@ -165,6 +193,7 @@ const selectionStyle = css`
 export const ContentRenderer = React.memo(function ContentRenderer(props: ContentRendererProps) {
   const context = props.content.loadContext;
   const paused = useIsAlignmentPaused();
+  useGuideIdentityRegistration(props.content.url, props.completion.kind === 'tracked' ? props.completion.input : null);
   useEffect(() => {
     if (paused) {
       pauseGuideLoad(context, true);
@@ -187,8 +216,7 @@ const stripTrailingSlashes = (key: string): string => key.replace(/\/+$/, '');
 const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
-  onGuideComplete,
-  completionSurface,
+  completion,
   onContinueToNextMilestone,
   onActiveTrackChange,
   initialActiveTrackId,
@@ -210,12 +238,12 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   // (inline callbacks in parent cause effect to re-mount - R12 anti-pattern protection)
   const completedSectionsRef = useRef<Set<string>>(new Set());
 
-  // Store onGuideComplete in a ref so we can use the latest version without it
+  // Store completion in a ref so we can use the latest version without it
   // causing the event listener effect to re-mount (which would lose tracked sections)
-  const onGuideCompleteRef = useRef(onGuideComplete);
+  const completionRef = useRef(completion);
   useEffect(() => {
-    onGuideCompleteRef.current = onGuideComplete;
-  }, [onGuideComplete]);
+    completionRef.current = completion;
+  }, [completion]);
 
   const markCompleteRearmedRef = useRef(false);
 
@@ -228,7 +256,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
       guideCompleteCalledRef.current = true;
       markCompleteRearmedRef.current = false;
       const contentKey = resolveGuideContentKey(content.url);
-      onGuideCompleteRef.current?.(source ?? getGuideCompletionSource(contentKey), contentKey);
+      recordCompletion(completionRef.current, source ?? getGuideCompletionSource(contentKey), contentKey);
     },
     [content.url]
   );
@@ -446,7 +474,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
         clearTimeout(debounceTimer);
       }
     };
-  }, [activeRef, content?.url, triggerGuideComplete]); // Removed onGuideComplete - using ref instead
+  }, [activeRef, content?.url, triggerGuideComplete]); // completion is read through a ref
 
   // Expose current content key globally for interactive persistence.
   // MUST be useLayoutEffect so the global is set before children's useEffect
@@ -521,9 +549,8 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   // decision 2). A path's cover page is the one thing it is absent from, and
   // that is not the deleted predicate: a table of contents is neither a guide
   // nor a milestone, and marking it complete would record a guide nobody read.
-  const { baseUrl: completionBaseUrl, currentUrl: completionCurrentUrl } = completionSurface ?? {
-    currentUrl: content.url,
-  };
+  const { baseUrl: completionBaseUrl, currentUrl: completionCurrentUrl } =
+    completion.kind === 'tracked' ? completion.input : { baseUrl: undefined, currentUrl: content.url };
   const completionIdentity = useMemo(
     () =>
       resolveSurfaceCompletionIdentity({
@@ -1898,26 +1925,4 @@ function renderParsedElement(
         );
       }
   }
-}
-
-export function useContentRenderer(content: RawContent | null) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isReady, setIsReady] = React.useState(false);
-
-  const handleContentReady = React.useCallback(() => {
-    setIsReady(true);
-  }, []);
-
-  const renderer = React.useMemo(() => {
-    if (!content) {
-      return null;
-    }
-    return <ContentRenderer content={content} containerRef={containerRef} onContentReady={handleContentReady} />;
-  }, [content, handleContentReady]);
-
-  return {
-    renderer,
-    containerRef,
-    isReady,
-  };
 }

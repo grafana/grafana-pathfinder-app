@@ -1,10 +1,8 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
-import { useGuideIdentityRegistration } from '../content-renderer/useGuideIdentityRegistration';
 import { usePublishSurfaceContentKey } from '../../hooks';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
-import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -124,7 +122,6 @@ export function FloatingPanelContent({
       }
     : null;
   usePublishSurfaceContentKey(content ? activeTab?.currentUrl || activeTab?.baseUrl : undefined);
-  useGuideIdentityRegistration(content?.url, surfaceCompletionInput);
 
   if (!content || !surfaceCompletionInput) {
     return (
@@ -181,14 +178,7 @@ export function FloatingPanelContent({
           content={content}
           containerRef={contentRef}
           className={contentClassName}
-          completionSurface={{ baseUrl: activeTab?.baseUrl, currentUrl: activeTab?.currentUrl }}
-          onGuideComplete={(source, contentKey) => {
-            // Emit the completion fact beneath the surface: floating and
-            // full-screen both render through here, so neither manager needs to
-            // wire emission and neither can silently drop it.
-            recordGuideCompletionForSurface({ ...surfaceCompletionInput, source, contentKey });
-            onGuideComplete?.();
-          }}
+          completion={{ kind: 'tracked', input: surfaceCompletionInput, onComplete: onGuideComplete }}
           onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}
           onActiveTrackChange={
             activeTab

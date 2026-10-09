@@ -138,5 +138,10 @@
     "disabled": "Interactive learning is disabled",
     "disabledDescription": "Interactive learning is turned off for this organization.",
     "openSettings": "Open interactive learning settings"
+  },
+  "helpButtonHint": {
+    "message": "Prueba el aprendizaje interactivo",
+    "dismiss": "Descartar sugerencia de aprendizaje",
+    "learn": "Aprender"
   }
 }
