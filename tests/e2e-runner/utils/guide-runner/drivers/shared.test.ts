@@ -58,4 +58,18 @@ it('names the waiting objective when completion times out', async () => {
   await expect(waitForCompletion(page, 'step', 0)).rejects.toThrow(
     'Step step is waiting for completion after 0ms: Waiting for completion: Save a dashboard'
   );
+  expect(locator.getAttribute).toHaveBeenCalledWith('data-test-step-state', { timeout: 2000 });
+  expect(locator.textContent).toHaveBeenCalledWith({ timeout: 1000 });
+});
+
+it('still fails with the unmet-objective message when the waiting banner is missing', async () => {
+  const { waitForCompletion } = await import('./shared');
+  const locator = {
+    getAttribute: jest.fn().mockResolvedValue('waiting'),
+    textContent: jest.fn().mockRejectedValue(new Error('Timeout 1000ms exceeded')),
+  };
+  const page = { getByTestId: jest.fn().mockReturnValue(locator) } as unknown as Page;
+  await expect(waitForCompletion(page, 'step', 0)).rejects.toThrow(
+    'Step step is waiting for completion after 0ms: objectives remain unmet'
+  );
 });
