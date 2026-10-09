@@ -78,7 +78,7 @@ The EchoSrv subscription, inferred datasource/visualization values, and change-l
 
 ### `context-event-bus`
 
-**Location**: `src/context-engine/context-event-bus.ts`
+**Location**: `src/lib/context-event-bus.ts`
 
 **Purpose**: Owns the EchoSrv subscription that watches Grafana's user-interaction stream for "what's the user currently working with?" signals (datasource selection, panel/visualization picker, query execution) and exposes the inferred values plus a change-listener API. Module-scoped state ensures the EchoSrv backend is registered exactly once per page load and every caller (UI hook, requirements checker, assistant tool) observes the same values.
 
@@ -404,7 +404,7 @@ Configuration is managed through plugin settings (`PathfinderPluginConfig`):
 **Core Implementation**:
 
 - `src/context-engine/context.service.ts` - Orchestrator class with recommendation, tag generation, and context-data collection logic
-- `src/context-engine/context-event-bus.ts` - Module-singleton owning EchoSrv subscription and inferred datasource/visualization state
+- `src/lib/context-event-bus.ts` - Module-singleton owning EchoSrv subscription and inferred datasource/visualization state
 - `src/context-engine/context.hook.ts` - React hook for UI integration
 - `src/context-engine/context.init.ts` - Plugin lifecycle initialization
 - `src/context-engine/context-event-bus.test.ts` - Event bus unit tests
