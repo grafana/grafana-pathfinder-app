@@ -1,10 +1,16 @@
 import React from 'react';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
 import { reportStepSkipped } from '../../lib/analytics';
 import { InteractiveMultiStep } from './interactive-multi-step';
+import { markStepCompleted } from '../../global-state/completion-store';
+import {
+  clearHeldCompletionRequests,
+  createCoordinatorWrapper,
+  renderWithCoordinator as render,
+} from '../../test-utils/completion-coordinator';
 
 jest.mock('../../lib/dom/selector-retry', () => ({ resolveWithRetry: jest.fn() }));
 
@@ -62,6 +68,7 @@ jest.mock('../../global-state/completion-store', () => ({
   resetStep: jest.fn(() => {
     mockStoredCompleted = false;
   }),
+  readStepCompletion: jest.fn(async () => false),
 }));
 
 jest.mock('../../requirements-manager', () => ({
@@ -78,6 +85,7 @@ jest.mock('../../requirements-manager', () => ({
     maxRetries: 3,
   })),
   validateInteractiveRequirements: jest.fn(),
+  getPostVerifyExplanation: (condition: string) => condition,
 }));
 
 const mockExecuteInteractiveAction = jest.fn();
@@ -94,7 +102,6 @@ jest.mock('../../interactive-engine', () => ({
     stopSectionBlocking: mockStopSectionBlocking,
     isSectionBlocking: () => false,
   })),
-  useAutoDetection: jest.fn(),
   NavigationManager: jest.fn(() => ({ clearAllHighlights: mockClearAllHighlights })),
 }));
 
@@ -123,6 +130,7 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.restoreAllMocks();
+  clearHeldCompletionRequests();
 });
 
 function CompleteEarlyHarness({ skippable = false }: { skippable?: boolean }) {
@@ -275,6 +283,15 @@ describe('InteractiveMultiStep — full-screen fallback location', () => {
     const [showCall, doCall] = mockExecuteInteractiveAction.mock.calls.map((call) => call[0]);
     expect(showCall).toMatchObject({ buttonType: 'show', fullScreenFallbackLocation: '/connections' });
     expect(doCall).toMatchObject({ buttonType: 'do', fullScreenFallbackLocation: '/connections' });
+    await waitFor(() =>
+      expect(markStepCompleted).toHaveBeenCalledWith(
+        'multi-fallback',
+        undefined,
+        'manual',
+        expect.any(String),
+        'change'
+      )
+    );
   });
 });
 
@@ -341,5 +358,72 @@ describe('InteractiveMultiStep cancellation', () => {
       'error'
     );
     expect(mockStoredCompleted).toBe(false);
+  });
+});
+
+describe('InteractiveMultiStep — under the completion coordinator', () => {
+  it('persists completeEarly before the first action runs', async () => {
+    const order: string[] = [];
+    mockExecuteInteractiveAction.mockImplementation(async () => {
+      order.push('action');
+      return 'ok';
+    });
+    render(
+      <InteractiveMultiStep
+        stepId="managed-early"
+        sectionId="section"
+        completeEarly={true}
+        onStepComplete={() => order.push('completed')}
+        internalActions={[{ targetAction: 'highlight', refTarget: '#a' }]}
+      />
+    );
+    fireEvent.click(screen.getByTestId(testIds.interactive.doItButton('managed-early')));
+    await waitFor(() => expect(order).toContain('action'));
+    expect(order[0]).toBe('completed');
+  });
+
+  it('persists a run that finishes after its host unmounted', async () => {
+    const onStepComplete = jest.fn();
+    let unmount = () => {};
+    mockExecuteInteractiveAction.mockImplementation(async () => {
+      unmount();
+      return 'ok';
+    });
+    const view = render(
+      <InteractiveMultiStep
+        stepId="managed-handoff"
+        sectionId="section"
+        onStepComplete={onStepComplete}
+        internalActions={[{ targetAction: 'highlight', refTarget: '#a' }]}
+      />
+    );
+    unmount = () => view.unmount();
+    fireEvent.click(screen.getByTestId(testIds.interactive.doItButton('managed-handoff')));
+    await waitFor(() => expect(onStepComplete).toHaveBeenCalledTimes(1));
+  });
+
+  it('reports waiting while an objective gates a finished run', async () => {
+    let satisfied = false;
+    const onComplete = jest.fn();
+    render(
+      <InteractiveMultiStep
+        stepId="managed-gated"
+        objectives={['has-datasources']}
+        onComplete={onComplete}
+        internalActions={[{ targetAction: 'highlight', refTarget: '#a' }]}
+      />,
+      { wrapper: createCoordinatorWrapper(async () => satisfied) }
+    );
+    fireEvent.click(screen.getByTestId(testIds.interactive.doItButton('managed-gated')));
+
+    const step = screen.getByTestId(testIds.interactive.step('managed-gated'));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'waiting'));
+    expect(onComplete).not.toHaveBeenCalled();
+
+    satisfied = true;
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(testIds.interactive.checkCompletionButton('managed-gated')));
+    });
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
   });
 });

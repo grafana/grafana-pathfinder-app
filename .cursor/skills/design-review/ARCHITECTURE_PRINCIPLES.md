@@ -88,7 +88,7 @@ Established patterns:
 
 - Ctrl+C cancellation for section execution
 - "Fix this" as a prompt rather than silent correction (for medium-recoverability divergences)
-- Auto-detection is opt-in
+- Passive completion is on by default but can be turned off: per tenant with `enableAutoDetection: false`, fleet-wide with the `pathfinder.passive-completion` flag
 
 **Review question**: Does this design respect user intent? Could the system's helpfulness become aggressive or disorienting? Are automated actions reversible or cancellable?
 

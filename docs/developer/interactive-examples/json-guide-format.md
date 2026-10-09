@@ -216,7 +216,7 @@ A single interactive step with "Show me" and "Do it" buttons.
 | `validateInput`   | boolean  | ❌       | `false`             | Require input to match `targetvalue` pattern                       |
 | `showMe`          | boolean  | ❌       | `true`              | Show the "Show me" button                                          |
 | `doIt`            | boolean  | ❌       | `true`              | Show the "Do it" button                                            |
-| `completeEarly`   | boolean  | ❌       | `false`             | Mark step complete BEFORE action executes                          |
+| `completeEarly`   | boolean  | ❌       | `false`             | Mark step complete BEFORE action executes (objectives still gate)  |
 | `verify`          | string   | ❌       | —                   | Post-action verification (e.g., `"on-page:/path"`)                 |
 | `lazyRender`      | boolean  | ❌       | `false`             | Enable progressive scroll discovery for virtualized containers     |
 | `scrollContainer` | string   | ❌       | `".scrollbar-view"` | CSS selector for the scroll container when `lazyRender` is enabled |

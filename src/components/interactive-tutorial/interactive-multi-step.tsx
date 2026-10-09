@@ -1,15 +1,11 @@
+import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 
-import {
-  useInteractiveElements,
-  useAutoDetection,
-  type DetectedActionEvent,
-  type MatchResult,
-} from '../../interactive-engine';
+import { useInteractiveElements } from '../../interactive-engine';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import {
   reportAppInteraction,
@@ -29,11 +25,11 @@ import { testIds } from '../../constants/testIds';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
-import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { CompletionWaitingStatus } from './completion-waiting-status';
+import { resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
-import type { ProgressReason } from '../../global-state/progress-events';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 let anonymousMultiStepCounter = 0;
@@ -86,6 +82,7 @@ interface MultiStepUiStateInput {
   hasError: boolean;
   isChecking: boolean;
   isEnabled: boolean;
+  isWaiting?: boolean;
 }
 
 export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateValue {
@@ -100,6 +97,9 @@ export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateV
   }
   if (input.isCompleted) {
     return STEP_STATES.COMPLETED;
+  }
+  if (input.isWaiting) {
+    return STEP_STATES.WAITING;
   }
   if (input.isChecking) {
     return STEP_STATES.CHECKING;
@@ -175,7 +175,7 @@ export const InteractiveMultiStep = forwardRef<
       stepId,
       isEligibleForChecking = true,
       isCurrentlyExecuting = false,
-      onStepComplete,
+      onStepComplete: notifyStepComplete,
       onStepReset, // New callback for individual step reset
       title, // Add title prop
       children,
@@ -184,7 +184,7 @@ export const InteractiveMultiStep = forwardRef<
       hints,
       requirements,
       objectives,
-      onComplete,
+      onComplete: notifyComplete,
       skippable = false, // Whether this multi-step can be skipped
       completeEarly = false, // Default to false - only mark early if explicitly set
       stepDelay = INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay, // Default delay between steps
@@ -221,21 +221,31 @@ export const InteractiveMultiStep = forwardRef<
 
     // Completion lives in the store.
     const { completed: storedCompleted, reason: storedReason } = useStepCompletion(renderedStepId, sectionId);
-    const isStandalone = !onStepComplete;
+    const isStandalone = !notifyStepComplete;
     // `reason` flows into the unified `pathfinder:progress` event so
     // downstream consumers can distinguish a normal completion
     // (`'manual'`) from a user-initiated skip (`'skipped'`). The
     // checker's own skip bridge writes `'skipped'` first; without this
     // reason plumbing the standalone store write here would silently
     // overwrite it with `'manual'`, making the event lie about intent.
-    const persistCompletion = useCallback(
-      (reason: ProgressReason = 'manual') => {
-        if (isStandalone) {
-          markStepCompleted(renderedStepId, sectionId, reason);
-        }
+    const observation = useObservedCompletion({
+      stepId: renderedStepId,
+      sectionId,
+      objectives,
+      actions: internalActions,
+      eligible: isEligibleForChecking && !disabled,
+      executing: isExecuting || isCurrentlyExecuting,
+      resetTrigger,
+      onStepComplete: notifyStepComplete,
+      onComplete: notifyComplete,
+      analytics: {
+        location: 'interactive_multi_step_auto',
+        targetAction: 'multistep',
+        refTarget: renderedStepId,
+        stepMeta: analyticsStepMeta,
       },
-      [isStandalone, renderedStepId, sectionId]
-    );
+    });
+    const { complete: persistCompletion, onStepComplete, onComplete } = observation;
     const persistReset = useCallback(() => {
       if (isStandalone) {
         resetStep(renderedStepId, sectionId);
@@ -244,9 +254,6 @@ export const InteractiveMultiStep = forwardRef<
     const [currentActionIndex, setCurrentActionIndex] = useState(-1);
     const [failedStepIndex, setFailedStepIndex] = useState(-1); // Track which step failed for error display
     const [executionError, setExecutionError] = useState<string | null>(null);
-
-    // Track which internal actions have been auto-completed by user
-    const [autoCompletedActions, setAutoCompletedActions] = useState<Set<number>>(new Set());
 
     // Use ref for cancellation to avoid closure issues
     const isCancelledRef = React.useRef(false);
@@ -263,7 +270,6 @@ export const InteractiveMultiStep = forwardRef<
         persistReset();
         setExecutionError(null); // Also clear any execution errors
         setFailedStepIndex(-1); // Reset failed step tracking
-        setAutoCompletedActions(new Set()); // Clear auto-completed actions
         isCancelledRef.current = false; // Reset cancellation state
       }
     }, [resetTrigger, stepId, persistReset]);
@@ -298,10 +304,10 @@ export const InteractiveMultiStep = forwardRef<
     }, [requirements, renderedStepId, firstActionRefTarget]);
 
     // Use step checker hook for overall multi-step requirements and objectives
-    // Auto-completion when objectives are met is handled internally by useStepChecker
-    const checker = useStepChecker({
+    const rawChecker = useStepChecker({
+      observedCompletion: observation.completion,
       requirements,
-      objectives,
+      objectives: observation.managed ? undefined : objectives,
       hints,
       stepId: stepId || renderedStepId,
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
@@ -314,6 +320,7 @@ export const InteractiveMultiStep = forwardRef<
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });
+    const checker = { ...rawChecker, isEnabled: rawChecker.isEnabled && !observation.waiting };
 
     const aiFixEnabled = useAiFixEnabled();
 
@@ -386,7 +393,7 @@ export const InteractiveMultiStep = forwardRef<
             if (controller.signal.aborted) {
               return false;
             }
-            persistCompletion();
+            persistCompletion('manual', true);
             if (onStepComplete && stepId) {
               onStepComplete(stepId);
             }
@@ -614,104 +621,6 @@ export const InteractiveMultiStep = forwardRef<
       [executeStep]
     );
 
-    // Convert internalActions to ActionToDetect format for the auto-detection hook
-    const actionsToDetect = useMemo(
-      () =>
-        internalActions.map((action) => ({
-          targetAction: action.targetAction,
-          refTarget: action.refTarget || '',
-          targetValue: action.targetValue,
-        })),
-      [internalActions]
-    );
-
-    // Handler for auto-detected actions - tracks completion of each internal action
-    const handleMultiStepActionDetected = useCallback(
-      (result: MatchResult, _detectedAction: DetectedActionEvent) => {
-        if (!result.matched) {
-          return;
-        }
-
-        const matchedIndex = result.actionIndex;
-
-        // Skip if this action was already completed
-        if (autoCompletedActions.has(matchedIndex)) {
-          return;
-        }
-
-        // For sequential multi-steps: if a later action is detected, assume earlier actions
-        // were also completed (e.g., dropdown menu was opened before clicking an option)
-        // This handles cases where earlier clicks happened before auto-detection was enabled
-        const indicesToMark: number[] = [];
-        for (let i = 0; i <= matchedIndex; i++) {
-          if (!autoCompletedActions.has(i)) {
-            indicesToMark.push(i);
-          }
-        }
-
-        // Mark this action (and all preceding actions) as completed
-        setAutoCompletedActions((prev) => {
-          const newSet = new Set(prev);
-          for (const idx of indicesToMark) {
-            newSet.add(idx);
-          }
-          return newSet;
-        });
-
-        // Check if all actions are now completed
-        const newCompletedCount = autoCompletedActions.size + indicesToMark.length;
-        if (newCompletedCount >= internalActions.length) {
-          // Mark entire multi-step as completed
-          persistCompletion();
-
-          // Notify parent if we have the callback (section coordination)
-          if (onStepComplete && stepId) {
-            onStepComplete(stepId);
-          }
-
-          // Call the original onComplete callback if provided
-          if (onComplete) {
-            onComplete();
-          }
-
-          // Track auto-completion in analytics
-          reportAppInteraction(
-            UserInteraction.StepAutoCompleted,
-            buildInteractiveStepProperties(
-              {
-                target_action: 'multistep',
-                ref_target: renderedStepId,
-                interaction_location: 'interactive_multi_step_auto',
-                completion_method: 'auto_detected',
-                internal_actions_count: internalActions.length,
-              },
-              analyticsStepMeta
-            )
-          );
-        }
-      },
-      [
-        autoCompletedActions,
-        internalActions.length,
-        stepId,
-        onStepComplete,
-        onComplete,
-        renderedStepId,
-        analyticsStepMeta,
-        persistCompletion,
-      ]
-    );
-
-    // Use shared auto-detection hook for tracking user actions
-    useAutoDetection({
-      actions: actionsToDetect,
-      isEnabled: checker.isEnabled,
-      isCompleted: isCompletedWithObjectives,
-      isExecuting: isCurrentlyExecuting,
-      disabled,
-      onActionDetected: handleMultiStepActionDetected,
-    });
-
     // Handle "Do it" button click
     const handleDoAction = useCallback(async () => {
       if (disabled || isExecuting || isCompletedWithObjectives || !checker.isEnabled) {
@@ -865,6 +774,7 @@ export const InteractiveMultiStep = forwardRef<
       hasError: Boolean(executionError),
       isChecking: checker.isChecking,
       isEnabled: checker.isEnabled,
+      isWaiting: observation.waiting,
     });
 
     // Generate button title/tooltip based on current state
@@ -907,11 +817,14 @@ export const InteractiveMultiStep = forwardRef<
         data-test-substep-index={isExecuting ? currentActionIndex : undefined}
         data-test-substep-total={internalActions.length}
         data-test-requirements-state={
-          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+          checker.isChecking ? 'checking' : rawChecker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
         }
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
+          {observation.waiting && (
+            <CompletionWaitingStatus id={renderedStepId} unmet={observation.unmet} onCheck={observation.retry} />
+          )}
           {children}
         </div>
 

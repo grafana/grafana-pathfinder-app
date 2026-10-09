@@ -1,3 +1,4 @@
+import { CompletionObservationProvider } from './completion-observation-provider';
 import type { CompletionSource } from '../../completion-records/types';
 
 import { handleKioskLinkClick } from '../../utils/kiosk-navigation';
@@ -583,22 +584,24 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     <GuideContentKeyContext.Provider value={resolveOwnerContentKey}>
       <GuideResponseProvider guideId={guideId}>
         <GuideRequirementsProvider guideId={guideId}>
-          <ContentWithVariables
-            processedContent={processedContent}
-            countingSource={content.countingSource}
-            contentType={content.type}
-            baseUrl={content.url}
-            title={content.metadata.title}
-            isNativeJson={content.isNativeJson ?? false}
-            onContentReady={onContentReady}
-            activeRef={activeRef}
-            className={className}
-            selectionState={selectionState}
-            documentContext={documentContext}
-            beforeContent={beforeContent}
-            afterContent={afterContent}
-            fullScreenFallbackLocation={fullScreenFallbackLocation}
-          />
+          <CompletionObservationProvider key={content.url} contentKey={content.url}>
+            <ContentWithVariables
+              processedContent={processedContent}
+              countingSource={content.countingSource}
+              contentType={content.type}
+              baseUrl={content.url}
+              title={content.metadata.title}
+              isNativeJson={content.isNativeJson ?? false}
+              onContentReady={onContentReady}
+              activeRef={activeRef}
+              className={className}
+              selectionState={selectionState}
+              documentContext={documentContext}
+              beforeContent={beforeContent}
+              afterContent={afterContent}
+              fullScreenFallbackLocation={fullScreenFallbackLocation}
+            />
+          </CompletionObservationProvider>
         </GuideRequirementsProvider>
       </GuideResponseProvider>
     </GuideContentKeyContext.Provider>

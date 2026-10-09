@@ -377,7 +377,10 @@ Applied to `InteractiveStep`, `InteractiveMultiStep`, and `InteractiveGuided` el
 - `completed` - Step successfully completed
 - `error` - Execution failed
 - `cancelled` - User cancelled execution
+- `waiting` - The run finished, or the reader's actions were observed, and completion waits for authored objectives or `verify`. Keep polling: it is not a failure. The status row is `interactive-completion-waiting-{stepId}` and its button is `interactive-check-completion-{stepId}`
 - `requirements-unmet` - Prerequisites not satisfied
+
+Steps inside a collapsed section stay mounted with the `hidden` attribute so completion observation keeps running. Their roots, including `data-test-step-state`, are attached but not visible; count visible roots when a check depends on what the reader sees.
 
 **Example**:
 
@@ -658,7 +661,7 @@ React components derive attributes from existing UI state:
 />
 ```
 
-For multi-step components, `executing` takes precedence over `completed`. A multi-step `completeEarly` write can occur before its automated actions settle.
+For multi-step components, `executing` takes precedence over `completed`. A multi-step `completeEarly` write can occur before its automated actions settle; authored objectives still gate it, and the step reports `waiting` until they hold.
 
 For guided components, `executing` also takes precedence during a narrower final-action window. Final click activation can persist while the application handler and guided cleanup settle.
 

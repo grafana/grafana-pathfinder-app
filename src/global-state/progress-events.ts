@@ -21,7 +21,7 @@
 
 import { StorageEvents } from '../lib/event-names';
 
-export type ProgressReason = 'none' | 'objectives' | 'manual' | 'skipped';
+export type ProgressReason = 'none' | 'objectives' | 'observed' | 'manual' | 'skipped';
 
 /**
  * Why a guide percentage was announced: `'change'` for a step or section write

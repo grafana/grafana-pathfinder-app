@@ -231,6 +231,25 @@ Implementation: `src/completion-records/guide-attempts.ts`, `progress-records-ca
 
 ---
 
+### `pathfinder.passive-completion`
+
+**Type**: Boolean
+
+**Purpose**: Fleet kill switch for passive guide completion — the renderer-owned completion coordinator that observes objectives and the reader's own actions while a guide is open (`src/components/content-renderer/completion-observation-provider.tsx`).
+
+**Default**: `true`
+
+**Behavior**:
+
+- **`true`**: passive completion runs unless the tenant stored `enableAutoDetection: false` (the **Automatic completion** setting), which is the per-tenant opt-out.
+- **`false`**: no coordinator is provided. Steps complete only through their own objective checks, Show me, Do it, and Mark complete, as before passive completion; no passive polling, DOM observation or pop-out observation subscriptions run.
+
+The provider reads the flag when it renders, so a flip applies to guides opened after the new value arrives. The flag only becomes operable once it is registered in deployment_tools; until then every stack gets the default.
+
+**Tracking key**: `passive_completion`
+
+---
+
 ### `pathfinder.highlighted-guide-experiment`
 
 **Type**: Object (`HighlightedGuideConfig`)

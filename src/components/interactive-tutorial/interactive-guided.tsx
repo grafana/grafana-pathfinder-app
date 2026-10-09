@@ -1,7 +1,7 @@
+import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { getActiveTabUrl, getContentKey, getContentKeyOverride } from '../../global-state/content-key';
 import { getGuidedSession } from './guided-session';
-import { usePathfinderPluginConfig } from '../../hooks';
 import type { ConditionInput } from '../../types/requirements.types';
 import React, {
   useState,
@@ -23,7 +23,7 @@ import {
   buildInteractiveStepProperties,
   type StepSkipReason,
 } from '../../lib/analytics';
-import { NavigationManager, matchesStepAction, type DetectedActionEvent } from '../../interactive-engine';
+import { NavigationManager } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
 import {
@@ -32,21 +32,19 @@ import {
   useGuideRequirements,
   dispatchFix,
 } from '../../requirements-manager';
-import { getInteractiveConfig } from '../../constants/interactive-config';
-import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
-import { type AuthoredGuidedAction, isGuidedDomActionType } from '../../types/interactive-actions.types';
+import { type AuthoredGuidedAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
-import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { CompletionWaitingStatus } from './completion-waiting-status';
+import { resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
-import type { ProgressReason } from '../../global-state/progress-events';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 /**
@@ -148,6 +146,7 @@ interface GuidedUiStateInput {
   wasCancelled: boolean;
   isChecking: boolean;
   isEnabled: boolean;
+  isWaiting?: boolean;
 }
 
 export function deriveGuidedUiState(input: GuidedUiStateInput): StepStateValue {
@@ -165,6 +164,9 @@ export function deriveGuidedUiState(input: GuidedUiStateInput): StepStateValue {
   }
   if (input.isCompleted) {
     return STEP_STATES.COMPLETED;
+  }
+  if (input.isWaiting) {
+    return STEP_STATES.WAITING;
   }
   if (input.isChecking) {
     return STEP_STATES.CHECKING;
@@ -186,7 +188,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       stepId,
       isEligibleForChecking = true,
       isCurrentlyExecuting = false,
-      onStepComplete,
+      onStepComplete: notifyStepComplete,
       onStepReset,
       title,
       children,
@@ -195,7 +197,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       hints,
       requirements,
       objectives,
-      onComplete,
+      onComplete: notifyComplete,
       skippable = false,
       completeEarly = false, // Default to false - only mark early if explicitly set
       stepTimeout = 120000, // 2 minute default timeout per step
@@ -262,23 +264,30 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // reason plumbing the standalone store write here would silently
     // overwrite it with `'manual'`, making the event lie about intent.
     const { completed: storedCompleted, reason: storedReason } = useStepCompletion(renderedStepId, sectionId);
-    const isStandalone = !onStepComplete;
-    const persistCompletion = useCallback(
-      (reason: ProgressReason = 'manual') => {
-        if (isStandalone) {
-          markStepCompleted(renderedStepId, sectionId, reason);
-        }
+    const isStandalone = !notifyStepComplete;
+    const observation = useObservedCompletion({
+      stepId: renderedStepId,
+      sectionId,
+      objectives,
+      actions: internalActions,
+      eligible: isEligibleForChecking && !disabled,
+      executing: isExecuting || isCurrentlyExecuting,
+      resetTrigger,
+      onStepComplete: notifyStepComplete,
+      onComplete: notifyComplete,
+      analytics: {
+        location: 'interactive_guided_auto',
+        targetAction: 'guided',
+        refTarget: renderedStepId,
+        stepMeta: analyticsStepMeta,
       },
-      [isStandalone, renderedStepId, sectionId]
-    );
+    });
+    const { complete: persistCompletion, onStepComplete, onComplete } = observation;
     const persistReset = useCallback(() => {
       if (isStandalone) {
         resetStep(renderedStepId, sectionId);
       }
     }, [isStandalone, renderedStepId, sectionId]);
-
-    const { config: pluginConfig } = usePathfinderPluginConfig();
-    const interactiveConfig = useMemo(() => getInteractiveConfig(pluginConfig), [pluginConfig]);
 
     useEffect(() => {
       const mountedLocation = window.location.href;
@@ -347,10 +356,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     }, [requirements, renderedStepId, firstActionRefTarget]);
 
     // Use step checker hook for requirements and objectives
-    // Auto-completion when objectives are met is handled internally by useStepChecker
-    const checker = useStepChecker({
+    const rawChecker = useStepChecker({
+      observedCompletion: observation.completion,
       requirements,
-      objectives,
+      objectives: observation.managed ? undefined : objectives,
       hints,
       stepId: stepId || renderedStepId,
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
@@ -364,6 +373,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });
+    const checker = { ...rawChecker, isEnabled: rawChecker.isEnabled && !observation.waiting };
 
     const { checkRequirements } = useGuideRequirements();
     const aiFixEnabled = useAiFixEnabled();
@@ -591,154 +601,6 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         executeStep,
       };
     }, [executeStep]);
-
-    // Auto-detection: Listen for user actions and auto-advance through guided steps
-    useEffect(() => {
-      // Only enable auto-detection if:
-      // 1. Feature is enabled in config
-      // 2. Step is eligible and enabled
-      // 3. Step is not already completed
-      // 4. Step is currently executing (guided mode - waiting for user)
-      if (
-        !interactiveConfig.autoDetection.enabled ||
-        !checker.isEnabled ||
-        isCompletedWithObjectives ||
-        !isExecuting || // Only listen while executing (in guided mode)
-        disabled
-      ) {
-        return;
-      }
-
-      const handleActionDetected = async (event: Event) => {
-        const customEvent = event as CustomEvent<DetectedActionEvent>;
-        const detectedAction = customEvent.detail;
-
-        // Check if the detected action matches the current step
-        const currentAction = internalActions[currentStepIndex];
-        if (!currentAction) {
-          return;
-        }
-
-        // Skip auto-detection for noop actions - they don't have a target element
-        if (currentAction.targetAction === 'noop') {
-          return;
-        }
-
-        // A pre-gate guide can carry a verb no detector matches; the handler
-        // reports that step failed, so there is nothing to auto-detect here.
-        if (!isGuidedDomActionType(currentAction.targetAction)) {
-          return;
-        }
-
-        // Non-noop actions require refTarget
-        const selector = currentAction.refTarget;
-        if (!selector) {
-          return;
-        }
-
-        // Try to find target element for coordinate-based matching
-        // Using synchronous resolution to avoid timing issues with dynamic menus/dropdowns
-        let targetElement: HTMLElement | null = null;
-        try {
-          const actionType = currentAction.targetAction;
-
-          if (actionType === 'button') {
-            // Try text matching on primary
-            const buttons = findButtonByText(selector);
-            if (buttons.length > 0) {
-              targetElement = buttons[0] || null;
-            } else {
-              // Try CSS selector matching
-              const result = querySelectorAllEnhanced(selector);
-              const btnElements = result.elements.filter(
-                (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
-              );
-              if (btnElements.length > 0) {
-                targetElement = btnElements[0] || null;
-              }
-            }
-          } else if (actionType === 'highlight' || actionType === 'hover') {
-            // Use enhanced selector for other action types
-            const result = querySelectorAllEnhanced(selector);
-            if (result.elements.length > 0) {
-              targetElement = result.elements[0] || null;
-            }
-          } else if (actionType === 'formfill') {
-            // Find form elements for formfill actions
-            const result = querySelectorAllEnhanced(selector);
-            const formElements = result.elements.filter((el) => {
-              const tag = el.tagName.toLowerCase();
-              return tag === 'input' || tag === 'textarea' || tag === 'select';
-            });
-            if (formElements.length > 0) {
-              targetElement = formElements[0] || null;
-            }
-          }
-        } catch (error) {
-          // Element resolution failed, fall back to selector-based matching
-          logger.warn('Failed to resolve target element for coordinate matching', { error });
-        }
-
-        // Check if action matches (with coordinate support)
-        const matches = matchesStepAction(
-          detectedAction,
-          {
-            targetAction: currentAction.targetAction,
-            refTarget: selector,
-            targetValue: currentAction.targetValue,
-          },
-          targetElement
-        );
-
-        if (!matches) {
-          return; // Not a match for current step
-        }
-
-        // Notify the guided handler that user completed the step
-        // The handler is listening for this event to proceed
-        const stepCompletedEvent = new CustomEvent('guided-step-completed', {
-          detail: {
-            stepIndex: currentStepIndex,
-            stepId,
-          },
-        });
-        document.dispatchEvent(stepCompletedEvent);
-
-        // Track auto-completion in analytics
-        reportAppInteraction(
-          UserInteraction.StepAutoCompleted,
-          buildInteractiveStepProperties(
-            {
-              target_action: 'guided',
-              ref_target: renderedStepId,
-              interaction_location: 'interactive_guided_auto',
-              completion_method: 'auto_detected',
-              internal_step_number: currentStepIndex + 1,
-              internal_actions_count: internalActions.length,
-            },
-            analyticsStepMeta
-          )
-        );
-      };
-
-      // Subscribe to user-action-detected events
-      document.addEventListener('user-action-detected', handleActionDetected);
-
-      return () => {
-        document.removeEventListener('user-action-detected', handleActionDetected);
-      };
-    }, [
-      interactiveConfig.autoDetection.enabled,
-      checker.isEnabled,
-      isCompletedWithObjectives,
-      isExecuting,
-      disabled,
-      currentStepIndex,
-      internalActions,
-      stepId,
-      renderedStepId,
-      analyticsStepMeta,
-    ]);
 
     // Handle "Do it" button click
     const handleDoAction = useCallback(
@@ -976,6 +838,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       wasCancelled,
       isChecking: checker.isChecking,
       isEnabled: checker.isEnabled,
+      isWaiting: observation.waiting,
     });
 
     return (
@@ -989,12 +852,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         data-test-substep-index={isExecuting ? currentStepIndex : undefined}
         data-test-substep-total={internalActions.length}
         data-test-requirements-state={
-          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+          checker.isChecking ? 'checking' : rawChecker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
         }
       >
         {/* Title and description - always shown */}
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
+          {observation.waiting && (
+            <CompletionWaitingStatus id={renderedStepId} unmet={observation.unmet} onCheck={observation.retry} />
+          )}
           {children}
         </div>
 

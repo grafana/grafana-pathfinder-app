@@ -32,7 +32,7 @@ export async function waitForGuidedExecutionStart(
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const state = await stepLocator.getAttribute('data-test-step-state');
-    if (state === 'executing' || state === 'completed') {
+    if (state === 'executing' || state === 'completed' || state === 'waiting') {
       return;
     }
     if (state === 'error' || state === 'cancelled') {
@@ -120,7 +120,7 @@ async function resolveGuidedTarget(page: Page, reftarget: string, actionType: st
   return revealGuidedTarget(page, guidedSelectorLocator(page, selector), timeout);
 }
 
-async function waitForSubstepAdvance(
+export async function waitForSubstepAdvance(
   page: Page,
   stepLocator: Locator,
   previousSubstepIndex: number,
@@ -160,7 +160,7 @@ async function waitForSubstepAdvance(
     if (!Number.isNaN(index) && index > previousSubstepIndex) {
       return;
     }
-    if (lastState === 'completed' && lastIndex === null) {
+    if (lastState === 'waiting' || (lastState === 'completed' && lastIndex === null)) {
       return;
     }
 
@@ -328,6 +328,9 @@ export async function runGuidedSubstepLoop(
     if (state === 'cancelled') {
       await captureLoopArtifacts();
       throw new Error('Guided step was cancelled');
+    }
+    if (state === 'waiting') {
+      return { completed: false };
     }
     if (state !== 'executing') {
       await captureLoopArtifacts();

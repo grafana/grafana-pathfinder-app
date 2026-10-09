@@ -9,11 +9,6 @@ import { InteractiveConditional } from './interactive-conditional';
 import { wrapSectionChildrenForNumbering } from './section-numbering';
 
 const checkRequirementsFromData = jest.fn();
-const mockActionMonitor = {
-  enable: jest.fn(),
-  forceEnable: jest.fn(),
-};
-
 const ConditionalStepCard = () => <div className="interactive-step">Interactive branch</div>;
 
 function NestedPassiveConditional({ depth, keyPrefix }: { depth: number; keyPrefix: string }) {
@@ -53,9 +48,6 @@ jest.mock('../../interactive-engine', () => ({
   useInteractiveElements: () => ({
     checkRequirementsFromData,
   }),
-  ActionMonitor: {
-    getInstance: () => mockActionMonitor,
-  },
   outcomeFromLoopExit: jest.fn(),
 }));
 

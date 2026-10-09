@@ -722,3 +722,37 @@ describe('ControllerChannelProvider', () => {
     expect(screen.getByTestId('outside')).toHaveTextContent('null');
   });
 });
+
+describe('observation evidence', () => {
+  it('delivers evidence only from the paired live tab', async () => {
+    const transport = new FakeCrossTabTransport();
+    const received = jest.fn();
+    function ObservationProbe() {
+      const channel = useControllerChannel();
+      React.useEffect(() => channel?.onObservation('sub-1', received), [channel]);
+      return null;
+    }
+    render(
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+        <ObservationProbe />
+      </ControllerChannelProvider>
+    );
+    await pairWithLive(transport, 'live-A');
+    const evidence = (senderId: string): CrossTabMessage => ({
+      source: 'pathfinder',
+      senderId,
+      timestamp: 0,
+      kind: 'observation-evidence',
+      subscriptionId: 'sub-1',
+      guideKey: 'bundled:guide',
+      id: 'step',
+      index: 0,
+    });
+
+    act(() => transport.emit(evidence('live-B')));
+    expect(received).not.toHaveBeenCalled();
+
+    act(() => transport.emit(evidence('live-A')));
+    expect(received).toHaveBeenCalledWith(expect.objectContaining({ senderId: 'live-A', id: 'step' }));
+  });
+});

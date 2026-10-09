@@ -48,15 +48,6 @@ export {
   findInteractiveParent,
   canHaveFocus,
   canBeTabbed,
-  matchesStepAction,
-  matchesElementBounds,
-  isNonFocusableInteractive,
-  ActionMatcher,
-  ActionMonitor,
-  getActionMonitor,
-  // Auto-detection hooks
-  useAutoDetection,
-  useSingleActionDetection,
   resolveTargetElement,
   // Regex pattern matching utilities
   isRegexPattern,
@@ -69,11 +60,6 @@ export {
 } from './auto-completion';
 export type {
   DetectedAction,
-  StepActionConfig,
-  DetectedActionEvent,
-  ActionToDetect,
-  MatchResult,
-  UseAutoDetectionOptions,
   FormfillMatchResult,
   FormValidationState,
   FormValidationResult,
@@ -82,3 +68,11 @@ export type {
 
 // Modal detection + watcher (companion mode)
 export { detectModalActive, getVisibleModalRects, startModalWatch, stopModalWatch } from './modal-watcher';
+
+export {
+  matchesFormfillState,
+  matchesPassiveAction,
+  observePassiveActions,
+  matchesPassiveNavigation,
+  observePassiveNavigation,
+} from './auto-completion/passive-action';

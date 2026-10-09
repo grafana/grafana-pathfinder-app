@@ -186,6 +186,8 @@ Checks for a specific data source by name or type (case-insensitive). Searches n
 
 Does **not** test connectivity -- use `datasource-configured` for that.
 
+It reads the page's own data-source list first, ignoring Grafana's built-in sources (`-- Grafana --`, `-- Mixed --`, `-- Dashboard --`), and makes no request when the source is there. Otherwise it asks `/api/datasources`, so a source created from a terminal, by provisioning or in another tab still counts. That read is shared by every caller for two seconds, so a new source is visible within two seconds of the next check. If the read is denied (401 or 403), the page's list is treated as everything this user can see; any other failure reports `unavailable` instead of treating the source as missing.
+
 ### `datasource-configured:<identifier>`
 
 Checks that a specific data source exists **and** passes a connection test. Searches by name or type (case-insensitive), then runs the data source's health check endpoint.
@@ -457,7 +459,7 @@ Objectives declare what a guide step will accomplish. They use the same syntax a
 
 ### Purpose
 
-1. **Auto-completion**: if an objective is already met when a user visits a guide, the step is automatically marked complete with an "Already done!" message
+1. **Auto-completion**: if an objective is already met when a user visits a guide, the step is automatically marked complete with an "Already done!" message. While a guide is open, objectives also gate completion from the reader's own actions and from Show me or Do it
 2. **Skip unnecessary work**: users do not need to redo steps they have already accomplished
 
 ### Syntax
@@ -477,15 +479,19 @@ Objectives declare what a guide step will accomplish. They use the same syntax a
 
 - **Objectives always win**: if objectives are met, the step is marked complete regardless of requirements state
 - **All-or-nothing**: when multiple objectives are specified, ALL must be met
-- **Same syntax as requirements**: use any requirement type as an objective
+- **Completion authority**: authored objectives must pass after manual actions and assisted execution alike. Clicking Save is not evidence that saving succeeded.
+- **Automatic observation**: opening a guide starts read-only checks, including existing outcomes and later steps. An unsatisfied or unavailable objective leaves the step incomplete. Tokens that are not condition types, such as legacy prose, are dropped at load with an authoring diagnostic and never gate completion.
+- **Action fallback**: without objectives, supported user actions and authored verification can complete a step. A formfill action counts once its field shows the authored value, typed or picked from a dropdown. Guided and multistep blocks require each observable action in order; `noop` and `popout` actions cannot be observed and are skipped.
+- **Same syntax as requirements**: use the condition vocabulary to express the outcome. `exists-reftarget` proves a target is available, not that the intended action succeeded.
+- **Explicit command checks**: `coda-exit-zero:` is never polled by the observer. It can run after explicit assistance or when the reader chooses **Check completion**.
 
 ### Objectives vs requirements
 
-| Aspect        | Requirements               | Objectives                         |
-| ------------- | -------------------------- | ---------------------------------- |
-| Purpose       | Gate when step CAN execute | Gate WHETHER step NEEDS to execute |
-| When met      | Step becomes enabled       | Step is auto-completed             |
-| Empty/missing | Always allowed to execute  | Must be manually completed         |
+| Aspect        | Requirements               | Objectives                                                         |
+| ------------- | -------------------------- | ------------------------------------------------------------------ |
+| Purpose       | Gate when step CAN execute | Gate WHETHER step NEEDS to execute                                 |
+| When met      | Step becomes enabled       | Step is auto-completed                                             |
+| Empty/missing | Always allowed to execute  | Completes from observed actions, `verify`, Do it, or Mark complete |
 
 ## Validation rules
 
