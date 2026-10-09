@@ -271,11 +271,13 @@ describe('completion origin parity across completable block types', () => {
       publishIndexFor(block);
       render(block.mount());
       await settle();
+      expect(announced.filter((detail) => detail.origin === 'change')).toEqual([]);
       announced.length = 0;
 
       await block.complete();
 
       await waitFor(() => expect(announced.length).toBeGreaterThan(0), { timeout: 5000 });
+      await settle();
       expect(announced.map((detail) => detail.origin)).toEqual(['change']);
       expect(announced[0]).toMatchObject({ contentKey: CONTENT_KEY, hasProgress: true });
     }

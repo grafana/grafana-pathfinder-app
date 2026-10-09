@@ -53,6 +53,7 @@ const SEAM_ENTRY_POINTS: Readonly<Record<string, string>> = {
   recordGuideCompletion: 'completion-records/completion-recorder.ts',
   invalidateEmittedCompletion: 'completion-records/completion-recorder.ts',
   invalidateAllEmittedCompletions: 'completion-records/completion-recorder.ts',
+  discardPendingCompletions: 'completion-records/completion-recorder.ts',
   clearAttempt: 'completion-records/guide-attempts.ts',
   clearAllAttempts: 'completion-records/guide-attempts.ts',
   discardQueuedCompletionWrites: 'completion-records/completion-write-hook.ts',
@@ -98,6 +99,12 @@ const ALLOWED_SEAM_USES: readonly AllowedArchitectureEntry[] = [
     violation: 'discardQueuedCompletionWrites used in components/LearningPaths/MyLearningTab.tsx',
     reason:
       'Reset-all drops queued partials before any await, because a scheduled drain can fire between the reset and the clear.',
+    tracking: ARCHITECTURE_BY_DESIGN,
+  },
+  {
+    violation: 'discardPendingCompletions used in completion-records/completion-write-hook.ts',
+    reason:
+      'discardQueuedCompletionWrites is the only outside caller: it drops pending completions together with queued partial writes.',
     tracking: ARCHITECTURE_BY_DESIGN,
   },
   {
