@@ -1,40 +1,5 @@
-import { getBackendSrv, config } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
 import { initializeEchoLogging, initializeFromRecentEvents } from './context-event-bus';
-import { collectionUrl } from '../utils/interactive-guides-api';
-import { extractFetchErrorStatus } from '../lib/fetch-error';
 import { logger } from '../lib/logging';
-
-/**
- * Fetch interactive guides from Pathfinder backend
- */
-export async function fetchInteractiveGuidesFromBackend(): Promise<void> {
-  const namespace = config.namespace;
-
-  if (!namespace) {
-    return;
-  }
-
-  try {
-    await lastValueFrom(
-      getBackendSrv().fetch({
-        url: collectionUrl(namespace),
-        method: 'GET',
-        // Optional rollout endpoint: don't show global toast when absent.
-        showErrorAlert: false,
-      })
-    );
-  } catch (error) {
-    const status = extractFetchErrorStatus(error);
-    const unavailableStatuses = new Set([400, 403, 404, 405, 501, 503]);
-
-    if (status && unavailableStatuses.has(status)) {
-      return;
-    }
-
-    logger.error('[Pathfinder] Failed to fetch interactive guides', { error });
-  }
-}
 
 /**
  * Initialize context services at plugin startup

@@ -367,8 +367,8 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   constants in `pkg/plugin/` are the definition, and the front-end gates on `available` and
   ignores the string.
   A bare 503 conflates "never works here" with "blip": the front-end already lumps 503 into its
-  not-rolled-out status set (`UNAVAILABLE_STATUSES` in `src/utils/fetchBackendGuides.ts`, mirrored
-  in `src/context-engine/context.init.ts`) and silently renders empty with no retry, so a
+  not-rolled-out status set (`UNAVAILABLE_STATUSES` in `src/utils/fetchBackendGuides.ts`)
+  and silently renders empty with no retry, so a
   transient 503 darkens the feature for that load exactly as if it were structurally absent. This
   is also why missing identity on a GET read is soft-200, not 401: these routes gate whether a
   feature renders at all.
@@ -740,6 +740,101 @@ and cancellations are excluded. Internal logs retain trusted
 stack and trace context; diagnostic responses never include tokens or upstream bodies.
 An empty successful LIST is not classified as an authorization failure.
 
+### 11.1 Attempt upserts (incremental progress)
+
+A write body that carries `attemptId` is one guide attempt's progress, not a one-off completion.
+The handler is in `pkg/plugin/completion_records_attempt.go`. A body without `attemptId` takes the
+create-only path above, unchanged.
+
+- **One record per attempt.** The name is `hash(userID ‖ 0x00 ‖ "attempt" ‖ 0x00 ‖ attemptId)`. It
+  is scoped to the verified user like the create name, and disjoint from every create name.
+- **Read, then write.** The plugin GETs the record. A JSON `Status` with `reason: NotFound` means
+  create it; any other 404 is structural and passes through as for a create. A 409 on the create
+  means another write won the race, so it reads again.
+- **Never lower progress.** A stored percent at or above the incoming one is a `200` no-op. That
+  covers replays, retries and out-of-order arrivals.
+- **Optimistic concurrency.** Otherwise it PUTs the full object it read, minus
+  `metadata.managedFields`, at the `resourceVersion` it read. A stale version is a 409; the plugin
+  reads and retries, up to 3 tries, then answers `503 completion-write-contended` (retried).
+  A PUT `404` with a `NotFound` Status also restarts the loop, so a concurrent deletion permits recreation.
+  A structural `404` remains a route failure.
+- **Completion fields at 100% only.** A partial stores no `completedAt`, `source: objectives` and
+  `durationSeconds: 0`. The write that reaches 100% sets all three.
+- **Schema skew.** A partial's `422` maps to `503 schema-not-ready` only for an `Invalid` Status whose causes all require `spec.completedAt`.
+  Other validation errors remain terminal, including malformed Status bodies and every `422` on a completion.
+- **Foreign record.** A stored record for another user or guide is `409 attempt-conflict`
+  (terminal; the client drops it).
+- **One token.** GET, create and PUT share one on-behalf-of token per inbound request.
+
+Responses add `200` (updated or no-op) to the create path's `201`.
+A completed record triggers cache invalidation and assignment synchronization even on a no-op retry.
+Synchronization uses the stored completion fields, not a replay's timestamp or source. `capability.progressRecords: true` advertises that the build accepts attempt
+bodies; it says nothing about the caller's permissions.
+
+**Read side.** `/completion-records/my` counts only records with a `completedAt` as completions,
+so legacy records, which always have one, collate as before. `inProgress[]` (always present)
+lists the newest unfinished attempt per guide only when its start time is later than the latest `completedAt`.
+Attempt writes carry an optional `attemptStartedAt`, stored in the immutable `pathfinder.grafana.com/attempt-started-at` annotation.
+The plugin validates this client timestamp and preserves it through updates. It does not require a new CRD spec field.
+Older queued bodies use their client `completedAt` as the initial start-time fallback.
+Records without the annotation retain the legacy last-update ordering. Their original attempt order cannot be reconstructed reliably.
+The displayed `lastUpdatedAt` still uses `grafana.app/updatedTimestamp`, falling back to `spec.recordedAt`.
+
+The browser serializes attempt minting, completion, and reset through an origin-wide Web Lock.
+Without Web Locks, new attempts use analytics mode and send only legacy completions.
+A queue replacement must persist before the queue removes its predecessors or enforces capacity.
+Failed enqueueing does not advance the progress high-water mark. Reset removes unsent partials for the affected guide.
+Immutable attempt start times prevent a delayed, in-flight write from making an older attempt appear newer than a completion.
+
+### Rollout and rollback of attempt records
+
+The records and analytics flags both default to false. Local attempt tracking still persists on the device.
+The records flag controls partial transmission, not backend authorization or existing durable records.
+
+Before enabling partial writes:
+
+1. Deploy the schema that permits an absent `completedAt`.
+2. Deploy partial-aware collation and attempt upserts to every serving plugin replica.
+3. Verify one record across partial progress and completion, including assignment satisfaction.
+
+Costa confirmed the required Viewer OBO permissions through the RBAC permission set in Slack, as reported by Tom.
+This resolves the permission-model question, not the live end-to-end verification.
+A capability response advertises build support, not an authorization test. A 403 still disarms the session queue.
+The queue retains items for later retry, subject to its 30-day expiry.
+
+**CAUTION: Do not restore an older reader while partial records exist.** Older collation counts these records as completions.
+A new annotation cannot protect an older reader that ignores it.
+
+Before a plugin rollback:
+
+1. Disable `pathfinder.progress-records`.
+2. Stop writes at the deployment boundary, including requests from stale tabs.
+3. Wait for in-flight writes to finish.
+4. Back up the namespace's CompletionRecords with their names, UIDs, and resource versions.
+5. List all pages and identify unfinished records by absent or empty `spec.completedAt`.
+6. Delete only those records, with UID and resource-version preconditions from the inspected objects.
+7. If a precondition fails, read the record again before deciding whether it remains unfinished.
+8. Verify that no unfinished records remain.
+9. Restore the older plugin and resume writes.
+
+Cleanup requires authorized operator access, not a new browser-facing deletion route.
+If writer quiescence or safe cleanup is unavailable, retain the partial-aware reader and disable partial writes instead.
+Disabling the frontend flag alone does not remove stored partials or stop stale tabs.
+
+Accepted limitation: a completion can commit without its response reaching the browser.
+If its queued retry reaches a legacy writer after a downgrade, that writer can create a duplicate completion.
+Cross-version retry deduplication is out of scope.
+
+### Partial-record retention
+
+Abandoned partial records currently persist without expiry. Each attempt adds a record to the namespace's 50,000-record collation budget.
+The queue's 30-day expiry applies to unsent items, not stored records.
+
+Retention follow-up: define a stale-attempt age and owner before broad enablement.
+The cleanup design must use paginated discovery, last-update timestamps, dry-run counts, backups, and conditional deletion.
+Acceptance requires that a concurrent completion survives cleanup and that completed records remain unchanged.
+Capacity monitoring must report the total record count and warn before the collation budget is exhausted.
+
 ## Mechanically enforced: reads proxied, writes direct
 
 The read/write split this document describes — a GET must go through a plugin-backend proxy,
@@ -752,5 +847,5 @@ provider that predates and sits outside the #1966 contract. That test is the aut
 rule's exact precision (how a conditional method, a url builder, or a variable-held request
 object is resolved); see it rather than this paragraph for the mechanics.
 
-Two pre-existing direct reads are grandfathered in that test's allowlist, tracked for pay-down in
+One pre-existing direct read remains grandfathered in that test's allowlist, tracked for pay-down in
 [#1975](https://github.com/grafana/grafana-pathfinder-app/issues/1975).

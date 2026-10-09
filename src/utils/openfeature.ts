@@ -65,6 +65,11 @@ export const DEFAULT_HIGHLIGHTED_GUIDE_CONFIG: HighlightedGuideConfig = {
  * Naming convention: prefix with component name (e.g., pathfinder.feature-name)
  */
 const pathfinderFeatureFlags = {
+  'pathfinder.help-button-nudge-experiment': {
+    valueType: 'object',
+    values: ['excluded', 'control', 'learn', 'learn_hint'].map((variant) => ({ variant })),
+    defaultValue: { variant: 'excluded' },
+  },
   /**
    * Global kill-switch for the Pathfinder plugin in Grafana Cloud.
    * When true: Pathfinder loads normally (sidebar available)
@@ -189,6 +194,29 @@ const pathfinderFeatureFlags = {
     values: [true, false],
     defaultValue: false,
     trackingKey: 'intercept_docs_links',
+  },
+  /**
+   * Kill switch for the `guide_progress` and `guide_completed` analytics
+   * events. Only stops the events: guide attempts are still tracked locally,
+   * and completion records are unaffected.
+   */
+  'pathfinder.progress-analytics': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'progress_analytics',
+  },
+  /**
+   * Saves guide progress as it happens: new guide attempts are minted in
+   * `records` mode, so their partial percentages are written to one durable
+   * record per attempt. Off by default; enable per environment only once the
+   * optional-`completedAt` CompletionRecord schema is deployed there.
+   */
+  'pathfinder.progress-records': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'progress_records',
   },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 

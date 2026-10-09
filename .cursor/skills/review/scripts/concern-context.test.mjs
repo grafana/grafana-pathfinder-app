@@ -64,8 +64,8 @@ test('includes the concern anchor and named invariants', () => {
     concern: 'completion-records',
   });
 
-  assert.equal(context.contract_anchor.evidence, '#1411 → #1700');
-  assert.equal(context.named_invariants.length, 7);
+  assert.equal(context.contract_anchor.evidence, '#1411 → #1700 → #2090');
+  assert.equal(context.named_invariants.length, 11);
   assert.equal(context.named_invariants[0].name, 'payload-boundary-normalization');
 });
 
@@ -255,6 +255,7 @@ test('emits every completion-records doc as one loadable path', () => {
   });
 
   assert.deepEqual(context.load_docs, [
+    'docs/developer/COMPLETION_RECORDING.md',
     'docs/design/BACKEND_PROXY_PATTERN.md',
     '.cursor/rules/systemPatterns.mdc (tier-1 lib/ guide-stats bullet)',
     'docs/developer/STEP_MODEL.md',

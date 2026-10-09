@@ -1,9 +1,12 @@
+import { LOCAL_BUNDLED_GUIDE_IDS } from '../../../constants/local-bundled-guides';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import { parseUrlSafely } from '../../../security/url-validator';
 
+const BUNDLED_PREFIX = 'bundled:';
+
 function isPublicGuideUrl(value: string): boolean {
-  if (value.startsWith('bundled:')) {
-    return value !== 'bundled:wysiwyg-preview' && value !== 'bundled:e2e-test';
+  if (value.startsWith(BUNDLED_PREFIX)) {
+    return !LOCAL_BUNDLED_GUIDE_IDS.has(value.slice(BUNDLED_PREFIX.length));
   }
   const url = parseUrlSafely(value);
   return Boolean(

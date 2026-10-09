@@ -27,7 +27,8 @@ export type CompletionWriteDegradation =
   | 'eviction'
   | 'expired-drop'
   | 'enqueue-failed'
-  | 'drain-failed';
+  | 'drain-failed'
+  | 'partial-unsupported-drop';
 
 export type KioskCatalogTier = 'override' | 'configured' | 'generic' | 'bundled';
 

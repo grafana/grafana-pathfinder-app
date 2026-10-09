@@ -16,12 +16,12 @@ jest.mock('../content-renderer/content-renderer', () => ({
     onActiveTrackChange,
     initialActiveTrackId,
   }: {
-    onGuideComplete?: () => void;
+    onGuideComplete?: (source: 'manual', contentKey: string) => void;
     onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
     initialActiveTrackId?: string | null;
   }) => (
     <>
-      <button onClick={onGuideComplete}>Complete rendered guide</button>
+      <button onClick={() => onGuideComplete?.('manual', 'rendered-guide')}>Complete rendered guide</button>
       <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
       <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
     </>
@@ -30,6 +30,17 @@ jest.mock('../content-renderer/content-renderer', () => ({
 
 jest.mock('../../docs-retrieval', () => ({
   recordGuideCompletionForSurface: jest.fn(),
+  resolveSurfaceGuideIdentity: jest.fn(() => null),
+}));
+
+// The real hook pulls @grafana/runtime in through completion-records.
+jest.mock('../content-renderer/useGuideIdentityRegistration', () => ({
+  useGuideIdentityRegistration: jest.fn(),
+}));
+
+// The hooks barrel pulls @grafana/runtime in through user-storage.
+jest.mock('../../hooks', () => ({
+  usePublishSurfaceContentKey: jest.fn(),
 }));
 
 jest.mock('../docs-panel/link-handler.hook', () => ({
@@ -54,6 +65,7 @@ jest.mock('@grafana/ui', () => ({
 const { recordGuideCompletionForSurface } = jest.requireMock('../../docs-retrieval');
 const { useLinkClickHandler } = jest.requireMock('../docs-panel/link-handler.hook');
 const { LearningJourneyMilestoneToolbar } = jest.requireMock('../docs-panel/components');
+const { usePublishSurfaceContentKey } = jest.requireMock('../../hooks');
 
 function content(overrides: Record<string, unknown> = {}): any {
   return {
@@ -103,6 +115,27 @@ beforeEach(() => {
   recordGuideCompletionForSurface.mockClear();
   useLinkClickHandler.mockClear();
   LearningJourneyMilestoneToolbar.mockClear();
+  usePublishSurfaceContentKey.mockClear();
+});
+
+describe('FloatingPanelContent content key publication', () => {
+  it("publishes the active tab's currentUrl", () => {
+    render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith('https://example.com/remote-guide/content.json');
+  });
+
+  it('falls back to baseUrl when the tab has no currentUrl', () => {
+    render(<FloatingPanelContent content={content()} activeTab={activeTab({ currentUrl: '' })} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith('https://example.com/remote-guide');
+  });
+
+  it('publishes nothing when no content is loaded', () => {
+    render(<FloatingPanelContent content={null} activeTab={activeTab()} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith(undefined);
+  });
 });
 
 describe('FloatingPanelContent completion emission', () => {
@@ -118,6 +151,8 @@ describe('FloatingPanelContent completion emission', () => {
       contentType: 'docs',
       metadata: content().metadata,
       guideTitle: 'My guide',
+      source: 'manual',
+      contentKey: 'rendered-guide',
     });
   });
 });

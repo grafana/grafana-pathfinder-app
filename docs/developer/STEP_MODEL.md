@@ -32,7 +32,7 @@ Step completion lives in `src/global-state/completion-store.ts`. The store is th
 
 ### Progress key shape
 
-The four per-section namespaces — interactive steps, section collapse, section acknowledgement, section done — all key records as `{prefix}{len(contentKey)}:{contentKey}:{sectionId}`. The character count in front of the content key marks the boundary, which matters because content keys contain hyphens (`bundled:welcome-to-grafana`) or are whole tab URLs: the shape this replaced joined content key and section id with a hyphen and marked neither end, so a scan for `bundled:welcome-to-grafana` also matched every record belonging to `bundled:welcome-to-grafana-cloud` (#1846).
+The per-section namespaces — interactive steps, skipped steps, section collapse, section acknowledgement, section done — all key records as `{prefix}{len(contentKey)}:{contentKey}:{sectionId}`. The character count in front of the content key marks the boundary, which matters because content keys contain hyphens (`bundled:welcome-to-grafana`) or are whole tab URLs: the shape this replaced joined content key and section id with a hyphen and marked neither end, so a scan for `bundled:welcome-to-grafana` also matched every record belonging to `bundled:welcome-to-grafana-cloud` (#1846).
 
 Records in the superseded shape are not read. Which guide one belongs to cannot be recovered — the information was never stored — so they are discarded rather than migrated, in one pass per page load (`sweepDiscardedProgressRecords`, called from `useUserStorage`). The same pass removes the `CONTENT_PROGRESS_V2_PREFIX` markers the interim scheme used. What a reader loses is their position inside a guide they started and did not finish; completed guides, badges and the streak live under `LEARNING_PROGRESS`, finished milestones under `MILESTONE_COMPLETION`, and durable completions in the completion-record queue, none of which the sweep can reach.
 
@@ -50,10 +50,13 @@ Public API:
 - `resetSteps(stepIds, sectionId)` — atomic tail-reset used by the section's individual-step redo path.
 - `resetSection(sectionId)` — atomic clear used by the section's full-reset path.
 - `peekGuidePercentage(contentKey)` — the guide's percentage as an integer 0..100, derived by bridging stored evidence (completed steps and acknowledged sections) into the frozen block index's own position calculation in `src/lib/guide-stats`; the store is the only producer of that number. `0` when no index has been published for the key yet. A guide carrying the `guideCompletionMarkStorage` mark reports `100` whatever the evidence says, and `refreshGuidePercentage` persists the same, so a later step write cannot move a marked guide back down. Rationale: `docs/design/COMPLETION-MODEL.md`, decision 2.
+- `getGuideCompletionSource(contentKey)` — explicit guide marks report `manual`; otherwise, any credited skipped step reports `skipped`, and other completions report `objectives`. Skipped IDs from blocks absent from the frozen index are ignored.
 - `refreshAndNotifyGuideProgress(contentKey)` — recompute, persist and announce the percentage for callers outside the step-write path (an all-passive section acknowledgement, for instance, which `persistSection` never sees).
 - `evictSectionCache(sectionId)` — drop a section's cache + hydration marker without writing storage. Called by `InteractiveSection`'s preview-mode unmount path so a remount under the same preview key starts fresh.
 - `evictContentCache(contentKey)` — drop one content key's cache + hydration state + version counters. Called by per-guide reset paths so subscribers re-render against an empty completion set immediately.
 - `evictAllContentCaches()` — drop every active content key's cache. Counterpart to `interactiveStepStorage.clearAll`.
+
+Completed-step arrays retain their existing shape. A separate per-section skipped-ID array preserves skip attribution across reloads; only IDs also present in the completed-step array count. Hydration restores `skipped` reasons from these annotations and leaves other restored reasons `null`. Writes that only know completed IDs preserve existing skip annotations until the step is reset. Section, guide, path and full resets clear both namespaces. Legacy arrays without annotations do not acquire inferred skip reasons.
 
 Hydration is lazy and per-section. Preview-mode content keys (`block-editor://preview/...`, `devtools`) bypass storage writes entirely — the in-memory cache still updates so ephemeral preview UI keeps reacting.
 
@@ -116,11 +119,11 @@ The store handles completion writes; the reducer coordinates the ack bit. Call s
 ```ts
 type ProgressEventDetail =
   | { kind: 'step'; stepId; sectionId?; completed; reason }
-  | { kind: 'section'; sectionId; completed; percentage? }
-  | { kind: 'guide'; contentKey; percentage; hasProgress };
+  | { kind: 'section'; contentKey; sectionId; completed; percentage? }
+  | { kind: 'guide'; contentKey; percentage; hasProgress; origin? };
 ```
 
-Listeners use `subscribeProgressEvent(detail => ...)`. The store fires `kind: 'step'` from `markStepCompleted` / `resetStep`, `kind: 'guide'` from its `persistSection` writes. `interactive-section.tsx` fires `kind: 'section'` when the section transitions to a terminal state. The four legacy events (`interactive-step-completed`, `section-completed`, `interactive-section-completed`, `interactive-progress-saved`) are gone.
+Listeners use `subscribeProgressEvent(detail => ...)`. The store fires `kind: 'step'` from `markStepCompleted` / `resetStep`, `kind: 'guide'` from its `persistSection` writes. `origin` is `'change'` only for a write the reader just made and `'load'` for a recompute of stored evidence; only `'change'` can start partial-progress tracking — see `COMPLETION_RECORDING.md`. `interactive-section.tsx` fires `kind: 'section'` when the section transitions to a terminal state, tagged with the owning renderer's key from `GuideContentKeyContext`, resolved by `resolveGuideContentKey(content.url)`. A block-editor preview resolves its own key; any other guide resolves the ambient `getContentKey()`. Listeners match section events on that `contentKey`, so a preview's section cannot complete the sidebar guide. Two non-preview renderers mounted at once share the ambient key and are not separated by it ([#2099](https://github.com/grafana/grafana-pathfinder-app/issues/2099), deferred). The four legacy events (`interactive-step-completed`, `section-completed`, `interactive-section-completed`, `interactive-progress-saved`) are gone.
 
 The orphan `step-auto-skipped` listener at `step-checker.hook.ts:746` was removed in C3 — there were no dispatchers anywhere in the repo.
 
@@ -132,7 +135,7 @@ The orphan `step-auto-skipped` listener at `step-checker.hook.ts:746` was remove
 
 ## Content-key resolution
 
-`src/global-state/content-key.ts` is the typed module that owns `getContentKey()`. It reads from the typed module state first, falling back to the legacy `window.__DocsPluginActiveTabUrl` / `__DocsPluginContentKey` globals so consumers can migrate piecemeal.
+`src/global-state/content-key.ts` is the typed module that owns `getContentKey()`. It reads from the typed module state first, falling back to the legacy `window.__DocsPluginActiveTabUrl` / `__DocsPluginContentKey` globals so consumers can migrate piecemeal. Each guide-rendering surface (sidebar, floating, full screen, guide reader) publishes its own key while mounted.
 
 ## Importing the types
 
