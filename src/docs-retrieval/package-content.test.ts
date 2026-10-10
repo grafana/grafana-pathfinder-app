@@ -537,6 +537,8 @@ describe('resolvePackageMilestones', () => {
       title: 'Title for step-one',
       url: 'bundled:step-one/content.json',
       isActive: false,
+      packageManifest: { id: 'step-one', type: 'guide' },
+      repository: 'bundled',
     });
     expect(result[1]!.number).toBe(2);
     expect(result[2]!.number).toBe(3);
@@ -900,19 +902,20 @@ describe('fetchPackageContent path-type enrichment', () => {
       milestones: ['step-1'],
       tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
     };
-    setPackageResolver({
-      resolve: jest.fn().mockImplementation((id: string) =>
-        Promise.resolve({
-          ok: true,
-          id,
-          contentUrl: `bundled:${id}/content.json`,
-          manifestUrl: `bundled:${id}/manifest.json`,
-          repository: 'bundled',
-          content: { id, title: `Milestone: ${id}`, blocks: [] },
+    const resolve = jest.fn().mockImplementation((id: string, options?: ResolveOptions) =>
+      Promise.resolve({
+        ok: true,
+        id,
+        contentUrl: `bundled:${id}/content.json`,
+        manifestUrl: `bundled:${id}/manifest.json`,
+        repository: 'bundled',
+        content: { id, title: `Milestone: ${id}`, blocks: [] },
+        ...(options?.loadContent === 'metadata-only' && {
           manifest: id === packageManifest.id ? packageManifest : { id, type: 'guide' },
-        })
-      ),
-    });
+        }),
+      })
+    );
+    setPackageResolver({ resolve });
 
     const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
       id: 'first-dashboard',
@@ -923,6 +926,8 @@ describe('fetchPackageContent path-type enrichment', () => {
     expect(result.content!.metadata.learningJourney!.tracks).toEqual([
       expect.objectContaining({ trackId: 'builder', label: 'Builder' }),
     ]);
+    expect(resolve).toHaveBeenCalledWith(packageManifest.id, { loadContent: 'metadata-only' });
+    expect(resolve).toHaveBeenCalledWith(packageManifest.id, { loadContent: false });
   });
 
   it('uses an App Platform caller manifest as-is, without re-resolving the path for its tracks', async () => {

@@ -57,6 +57,12 @@ export interface Author {
   team?: string;
 }
 
+export interface Prerequisite {
+  id: string;
+  /** Displayed literally; Markdown and HTML formatting are not interpreted. */
+  label: string;
+}
+
 // ============ TARGETING ============
 
 /**
@@ -248,6 +254,7 @@ export interface PackageMetadataFields {
   provides?: string[];
   conflicts?: string[];
   replaces?: string[];
+  prerequisites?: Prerequisite[];
 }
 
 // ============ MANIFEST (manifest.json) ============
@@ -286,6 +293,7 @@ export interface ManifestJson {
   provides?: string[];
   conflicts?: string[];
   replaces?: string[];
+  prerequisites?: Prerequisite[];
 
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;
