@@ -1,0 +1,12 @@
+FAIL	github.com/grafana/grafana-pathfinder-app/pkg/plugin [build failed]
+FAIL
+
+# github.com/grafana/grafana-pathfinder-app/pkg/plugin [github.com/grafana/grafana-pathfinder-app/pkg/plugin.test]
+pkg/plugin/app_platform_client.go:188:88: too many arguments in call to logAppPlatformResult
+	have ("github.com/grafana/grafana-plugin-sdk-go/backend/log".Logger, string, string, string, int, error)
+	want ("github.com/grafana/grafana-plugin-sdk-go/backend/log".Logger, string, string, string, error)
+pkg/plugin/app_platform_client.go:260:90: too many arguments in call to logAppPlatformResult
+	have ("github.com/grafana/grafana-plugin-sdk-go/backend/log".Logger, string, string, string, int, error)
+	want ("github.com/grafana/grafana-plugin-sdk-go/backend/log".Logger, string, string, string, error)
+pkg/plugin/pathfinder_settings.go:66:87: too many arguments in call to logAppPlatformResult
+	have ("github.com/grafana/grafana-plugin-sdk-go/backend/log".Logger, string, string, string, int, error)

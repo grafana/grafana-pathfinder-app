@@ -1,0 +1,19 @@
+{
+  "case_id": "pr-2074-head",
+  "repo": "grafana/grafana-pathfinder-app",
+  "pr": 2074,
+  "category": "comparison",
+  "base_sha": "65b9c6ddcf66e3a1a9716448c1782b357eca34c9",
+  "head_sha": "35193e935b9e70fdbbbfeb61c580f8032808e253",
+  "evidence_cutoff": "2026-10-05T20:46:52Z",
+  "prior_review": null,
+  "environment": {
+    "node": "24",
+    "setup": [
+      ["npm", "ci"],
+      ["go", "mod", "download"]
+    ]
+  },
+  "adjudication_status": "unadjudicated",
+  "candidate_reason": "Production /review approved at this head; a comparison case."
+}

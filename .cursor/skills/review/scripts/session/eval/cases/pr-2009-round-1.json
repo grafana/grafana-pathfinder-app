@@ -1,0 +1,19 @@
+{
+  "case_id": "pr-2009-round-1",
+  "repo": "grafana/grafana-pathfinder-app",
+  "pr": 2009,
+  "category": "multi-round",
+  "base_sha": "0755bc86ec208baebfb34385beaf0c945979c7a8",
+  "head_sha": "b4ea9d784ca656a251d2294fe14cf6cf9d43e54e",
+  "evidence_cutoff": "2026-09-29T16:48:23Z",
+  "prior_review": null,
+  "environment": {
+    "node": "24",
+    "setup": [
+      ["npm", "ci"],
+      ["go", "mod", "download"]
+    ]
+  },
+  "adjudication_status": "unadjudicated",
+  "candidate_reason": "Reported hand-rolled-review miss of three blockers; first of two review rounds."
+}

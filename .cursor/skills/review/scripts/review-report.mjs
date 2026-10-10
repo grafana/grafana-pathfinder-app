@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { renderCoverageLines } from './review-ledger.mjs';
 
 function normalizePurpose(title) {
   const purpose = title
@@ -42,6 +43,7 @@ const REPORT_FIELDS = new Set([
   'deferred',
   'cleared',
   'assessment',
+  'stage_ledger',
 ]);
 const FINDING_FIELDS = new Set([
   'id',
@@ -407,7 +409,7 @@ function validateReport(report) {
 }
 
 function assembleBody(context) {
-  const { assessment, grouped, deferred, cleared, purpose, round, report, counts, verdict } = context;
+  const { assessment, grouped, deferred, cleared, purpose, round, report, counts, verdict, coverage } = context;
   const sections = [];
   if (assessment.status === 'incomplete') {
     sections.push(
@@ -433,6 +435,7 @@ function assembleBody(context) {
     sections.push('', `${heading}:`, '', findings.map(renderFinding).join('\n\n'));
   }
   if (assessment.status === 'complete') {
+    sections.push('', ...coverage);
     const base = {
       version: 2,
       round,
@@ -455,6 +458,7 @@ export function renderReviewReport(report) {
   const assessment = readAssessment(report);
   const deferred = readDeferred(report);
   const cleared = readCleared(report);
+  const coverage = assessment.status === 'complete' ? renderCoverageLines(report.stage_ledger) : [];
   const purpose = normalizePurpose(report.pr_title);
   const grouped = Object.fromEntries(DISPOSITIONS.map((disposition) => [disposition, []]));
   for (const finding of report.findings) {
@@ -486,7 +490,18 @@ export function renderReviewReport(report) {
           grouped.suggestion.length,
           grouped.nit.length
         );
-  const body = assembleBody({ assessment, grouped, deferred, cleared, purpose, round, report, counts, verdict });
+  const body = assembleBody({
+    assessment,
+    grouped,
+    deferred,
+    cleared,
+    purpose,
+    round,
+    report,
+    counts,
+    verdict,
+    coverage,
+  });
 
   const expectedMarkers = assessment.status === 'complete' ? 1 : 0;
   if (markerLineCount(body) !== expectedMarkers) {

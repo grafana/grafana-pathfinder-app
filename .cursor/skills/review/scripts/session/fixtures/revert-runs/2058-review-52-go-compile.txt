@@ -1,0 +1,15 @@
+pkg/plugin/guide_diagnostics_test.go:131:75: too many arguments in call to logAppPlatformResult
+	have (capturingLogger, string, string, string, number, error)
+	want ("github.com/grafana/grafana-plugin-sdk-go/backend/log".Logger, string, string, string, error)
+pkg/plugin/guide_diagnostics_test.go:151:77: too many arguments in call to logAppPlatformResult
+	have (*diagnosticLogger, string, string, string, number, *tokenExchangeError)
+	want ("github.com/grafana/grafana-plugin-sdk-go/backend/log".Logger, string, string, string, error)
+pkg/plugin/guide_diagnostics_test.go:166:75: too many arguments in call to logAppPlatformResult
+	have (*diagnosticLogger, string, string, string, number, *appPlatformUpstreamError)
+	want ("github.com/grafana/grafana-plugin-sdk-go/backend/log".Logger, string, string, string, error)
+pkg/plugin/guide_diagnostics_test.go:178:74: too many arguments in call to logAppPlatformResult
+	have (*diagnosticLogger, string, string, string, number, error)
+	want ("github.com/grafana/grafana-plugin-sdk-go/backend/log".Logger, string, string, string, error)
+pkg/plugin/pathfinder_settings_test.go:148:13: undefined: readAttempt
+FAIL	github.com/grafana/grafana-pathfinder-app/pkg/plugin [build failed]
+FAIL
