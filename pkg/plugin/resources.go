@@ -15,6 +15,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/completion-records/capability", a.handleCompletionCapability)
 	mux.HandleFunc("/custom-guide-repository", a.handleCustomGuideRepository)
 	mux.HandleFunc("/custom-guide", a.handleCustomGuide)
+	mux.HandleFunc("/custom-guides", a.handleCustomGuides)
 	mux.HandleFunc("/pathfinder-settings", a.handlePathfinderSettings)
 	mux.HandleFunc("/assignments/my", a.handleMyAssignments)
 	mux.HandleFunc("/health", a.handleHealth)
