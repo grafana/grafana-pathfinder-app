@@ -743,7 +743,10 @@ queue behavior remain unchanged. A 503 is still retryable; its diagnostics ident
 failed hop. Token-exchange failure does not prove an invalid provisioned credential.
 
 The shared upstream client emits `event=pathfinder_proxy_failure` once per failed operation
-(including a completion refresh that serves stale data), not once per cached response.
+(including a completion refresh that serves stale data), not once per cached response or
+frontend retry: a retried settings read sends `?attempt=N`, and attempts after the first log
+`event=pathfinder_proxy_retry_failure` with `attempt` instead. A read whose first attempt never
+reaches the plugin (a gateway 502 or 504) logs only retry events, so the alert undercounts it.
 Expected settings absence, unsupported collection routes, idempotent write conflicts,
 and cancellations are excluded. Internal logs retain trusted
 stack and trace context; diagnostic responses never include tokens or upstream bodies.

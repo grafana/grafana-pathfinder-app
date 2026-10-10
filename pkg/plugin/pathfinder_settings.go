@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -24,6 +25,7 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 	if client == nil {
 		return
 	}
+	client.attempt = readAttempt(r)
 	body, err := client.getItem(r.Context(), namespace, resource, name, maxBytes)
 	if err != nil {
 		status := appPlatformReadErrorStatus(err)
@@ -69,7 +71,7 @@ func (c *appPlatformListClient) getSettings(ctx context.Context, namespace strin
 }
 
 func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource, name string, maxBytes int64) (body json.RawMessage, err error) {
-	defer func() { logAppPlatformResult(c.logger, namespace, resource, "get", err) }()
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "get", c.attempt, err) }()
 	ctx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 	token, err := mintAccessToken(ctx, c.minter, namespace, c.idToken)
@@ -102,6 +104,14 @@ func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource
 		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("invalid app platform upstream response")}
 	}
 	return json.RawMessage(body), nil
+}
+
+func readAttempt(r *http.Request) int {
+	attempt, err := strconv.Atoi(r.URL.Query().Get("attempt"))
+	if err != nil || attempt < 1 {
+		return 1
+	}
+	return min(attempt, 10)
 }
 
 func appPlatformReadErrorStatus(err error) int {

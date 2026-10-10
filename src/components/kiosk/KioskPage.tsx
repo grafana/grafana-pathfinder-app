@@ -10,7 +10,7 @@ import type { GrafanaTheme2 } from '@grafana/data';
 import type { KioskPage as Page, KioskPageBlock, KioskMode } from '../../types/kiosk-page.schema';
 import { reportKioskInteraction } from '../../lib/kiosk-analytics';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
-import { KioskFormError, MAX_INPUT_LENGTH } from '../../lib/input-value';
+import { KioskFormError, MAX_INPUT_LENGTH, describeHttpInput } from '../../lib/input-value';
 import { filterDatasourcesByType, toDatasourceOptions } from '../interactive-tutorial/datasource-options';
 import type { KioskRule } from './kiosk-rules';
 import { launchKioskGuide } from './launch-kiosk-guide';
@@ -282,6 +282,7 @@ function LaunchForm({
           <Field
             key={input.variableName}
             label={input.prompt}
+            description={describeHttpInput(draft[input.variableName] ?? '', input.format)}
             htmlFor={`${id}-${input.variableName}`}
             required={input.required}
           >

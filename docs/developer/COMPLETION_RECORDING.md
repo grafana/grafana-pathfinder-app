@@ -12,7 +12,7 @@ This page is the map. The contracts it routes to live elsewhere and win when the
 
 ## Why this seam is fragile
 
-Most of the pipeline is reached by **convention**, not by types. A surface that never registers an identity, a block that never calls the store, or a renderer mount without `onGuideComplete` all type-check, render correctly, and record nothing. Nothing throws; the progress observer logs at debug level and returns. Review routing cannot see an omission either, because an omission adds no lines to a diff. Treat every extension checklist below as mandatory, and prefer a change that turns an omission into a compile or test failure.
+Most of the pipeline is reached by **convention**, not by types. A block that never calls the store, a surface that never publishes its content key, or a new reset path that skips the attempt all type-check, render correctly, and record nothing. Nothing throws; the progress observer logs at debug level and returns. Review routing cannot see an omission either, because an omission adds no lines to a diff. Treat every extension checklist below as mandatory, and prefer a change that turns an omission into a compile or test failure. Surface wiring is one such change: `ContentRenderer` takes a required `completion` prop and owns identity registration and terminal recording, so a surface cannot omit them, and `src/validation/completion-wiring.test.ts` fails if a second caller appears.
 
 ## Two signals, one pipeline
 
@@ -30,7 +30,7 @@ completion-store ──dispatchProgress({kind:'guide', origin})──▶ pathfin
          ContentRenderer terminal triggers              progress-observer (origin 'change' only)
                          │                                          │ lookupGuideIdentity(contentKey)
                          ▼                                          ▼
-     surface onGuideComplete                              guide-attempts (mint, high-water)
+     ContentRenderer (completion prop)                    guide-attempts (mint, high-water)
      → recordGuideCompletionForSurface                              │
      → completion-recorder (attemptEligible)                        │ records mode + flag
                          │                                          ▼
@@ -53,7 +53,7 @@ completion-store ──dispatchProgress({kind:'guide', origin})──▶ pathfin
 
 - `markStepCompleted(stepId, sectionId, reason)` — one step. Persists with origin `'change'`.
 - `markStepsCompleted(stepIds, sectionId, reason)` — bulk (Do section, objectives auto-complete). Persists with origin `'change'`.
-- `refreshAndNotifyGuideProgress(contentKey, 'change')` — a section acknowledgement (`interactive-section.tsx`), which writes no step.
+- `refreshAndNotifyGuideProgress(contentKey, 'change')` — a section acknowledgement (`interactive-section.tsx`), which writes no step. A section that storage already held complete at mount (`hydrated` on its section event) refreshes through `refreshGuidePercentageOnLoad` instead, announcing `'load'`.
 
 The Mark complete control (`src/components/mark-complete/MarkCompleteFooter.tsx`), `markMilestoneDone` and `backfillLegacyMilestoneCompletion` (`src/docs-retrieval/learning-journey-helpers.ts`, folding legacy milestone data into the store) write 100 to the percentage namespace themselves and announce it with no origin. They are terminal paths, not progress: the observer ignores 100. Any other direct `dispatchProgress({ kind: 'guide' })` outside the store is a bypass.
 
@@ -77,7 +77,7 @@ A new path that replays stored evidence — cross-device resume, sync, migration
 
 The event names a **content key** (a URL or path), not a guide. The key is ambient: `getContentKey()` in `src/global-state/content-key.ts` prefers the active tab URL and falls back to the renderer's `__DocsPluginContentKey`. `resolveGuideContentKey` lets a block-editor preview URL win. The sidebar publishes it through `useGlobalActiveTabExposure`; the floating, full-screen and guide-reader surfaces publish their own guide's key in the sidebar's spelling (`currentUrl || baseUrl`) through `usePublishSurfaceContentKey` (`src/hooks/`). Both run in a layout effect.
 
-Only the surface rendering a guide holds the manifest that turns a key into an identity. Each surface calls `useGuideIdentityRegistration(content.url, surfaceCompletionInput)` (`src/components/content-renderer/`), which:
+Only the surface rendering a guide holds the manifest that turns a key into an identity. The surface hands its `SurfaceCompletionInput` to `ContentRenderer` in the `completion` prop, and `ContentRenderer` calls `useGuideIdentityRegistration(content.url, input)` (`src/components/content-renderer/`), which:
 
 - resolves the identity through `resolveSurfaceGuideIdentity` — the **same** derivation `recordGuideCompletionForSurface` uses, so live progress and the terminal record key on one identity;
 - resolves the content key in a passive effect, relying on the surface's key already being published by a layout effect;
@@ -98,13 +98,13 @@ An attempt's **mode is fixed at mint**. It is `records` only when there is a que
 
 ### 5. Terminal completion
 
-`ContentRenderer` (`src/components/content-renderer/content-renderer.tsx`) fires `onGuideComplete(source, contentKey)` once per content, from the first of:
+`ContentRenderer` (`src/components/content-renderer/content-renderer.tsx`) records a completion once per content, from the first of:
 
 - every interactive section in its container completed;
 - a `kind: 'guide'` event at 100% whose key matches the ambient key the surface published (`resolveGuideContentKey(content.url)`);
 - the Mark complete control.
 
-A reset re-arms it. Each surface forwards to `recordGuideCompletionForSurface` (`src/docs-retrieval/learning-journey-helpers.ts`), the single surface-neutral router. It decides milestone versus bundled versus standalone guide, and calls the recorder with `attemptEligible` true only for an ordinary guide. Journey refreshes pass `attemptEligible: false`.
+A reset re-arms it. For a `tracked` mount, `ContentRenderer` forwards the surface's input, the trigger's source and the content key to `recordGuideCompletionForSurface` (`src/docs-retrieval/learning-journey-helpers.ts`), the single surface-neutral router, then runs the mount's optional `onComplete` for UI that reacts to a completion. An `untracked` mount (a block-editor preview) records nothing. The router decides milestone versus bundled versus standalone guide, and calls the recorder with `attemptEligible` true only for an ordinary guide. Journey refreshes pass `attemptEligible: false`.
 
 `src/completion-records/completion-recorder.ts` emits once per `(kind, guideSource, guideId)`. It attaches the guide's attempt (minting one if none exists and the fact is eligible), reports the `guide_completed` analytics event under its own guard, and — only once a subscriber durably accepts the fact — sets the durable guard, closes the attempt, and raises its high-water mark to 100.
 
@@ -149,15 +149,15 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 
 ### Adding or refactoring a guide-rendering surface
 
-- [ ] Build one `SurfaceCompletionInput` and pass it to both `useGuideIdentityRegistration` and `recordGuideCompletionForSurface` (via `onGuideComplete`). `onGuideComplete` is optional on `ContentRenderer`; omitting it silently records nothing.
-- [ ] Call the registration hook unconditionally, above any early return.
-- [ ] Publish this surface's content key with `usePublishSurfaceContentKey`, in the sidebar's spelling, so the store writes under this surface's guide and not the sidebar's. The hook's layout effect runs before registration's passive effect.
+- [ ] Build one `SurfaceCompletionInput` and pass `completion={{ kind: 'tracked', input }}` to `ContentRenderer`. The prop is required; a mount that must record nothing says so with `{ kind: 'untracked', reason: 'preview' }`. Do not call `useGuideIdentityRegistration`, `registerGuideIdentity` or `recordGuideCompletionForSurface` from the surface: `completion-wiring.test.ts` fails if you do.
+- [ ] Publish this surface's content key with `usePublishSurfaceContentKey`, in the sidebar's spelling, so the store writes under this surface's guide and not the sidebar's. The hook's layout effect runs before `ContentRenderer`'s registration effect.
 - [ ] Keep `ContentRenderer`'s `key` stable per content; a remount re-arms terminal completion.
-- [ ] Mirror an existing surface test: `DocsPanelContentArea.test.tsx`, `FloatingPanelContent.test.tsx`, `GuideReaderOverlay.test.tsx`.
+- [ ] Add a row to `SURFACES` in `src/components/content-renderer/surface-conformance.test.tsx`. Its checks (identity registered under the key steps persist to, a step starts an attempt, Mark complete records once, unmounting keeps another surface's registration) must pass unchanged.
+- [ ] Mirror an existing surface test for what the surface itself owns: `DocsPanelContentArea.test.tsx`, `FloatingPanelContent.test.tsx`, `GuideReaderOverlay.test.tsx`.
 
 ### Adding a way to finish a guide
 
-- [ ] Route through `ContentRenderer`'s terminal trigger or `recordGuideCompletionForSurface`. Do not call `recordGuideCompletion` directly from a component.
+- [ ] Route through `ContentRenderer`'s terminal triggers. Do not call `recordGuideCompletionForSurface` or `recordGuideCompletion` from a component.
 - [ ] Keep `attemptEligible` false for milestones and journeys.
 
 ### Adding a reset or clear path
@@ -172,14 +172,14 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 
 ## Tests that protect each hop
 
-| Hop                      | Tests                                                                                                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Evidence and percentage  | `src/global-state/completion-store.test.tsx`, `src/lib/guide-stats/progress.parity.test.ts`, `completion-affordance.parity.test.ts`                              |
-| Identity registration    | `src/completion-records/guide-identity-registry.test.ts`, `src/components/content-renderer/useGuideIdentityRegistration.test.tsx`, the three surface tests above |
-| Observation and attempts | `progress-observer.test.ts`, `guide-attempts.test.ts`, `guide-attempt-coordination.test.ts`, `progress-records.test.ts`                                          |
-| Terminal routing         | `src/docs-retrieval/learning-journey-helpers.completion-boundary.test.ts`, `completion-recorder.test.ts`                                                         |
-| Queue and write          | `completion-write-queue.test.ts`, `completion-write-queue.attempts.test.ts`, `completion-write-hook.test.ts`                                                     |
-| Backend                  | `pkg/plugin/completion_records_attempt_test.go`, `completion_records_test.go`, `assignment_satisfaction_test.go`                                                 |
-| Reset                    | `src/components/docs-panel/hooks/resetGuideProgress.test.ts`                                                                                                     |
+| Hop                      | Tests                                                                                                                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Evidence and percentage  | `src/global-state/completion-store.test.tsx`, `src/lib/guide-stats/progress.parity.test.ts`, `completion-affordance.parity.test.ts`                                                                           |
+| Identity registration    | `src/completion-records/guide-identity-registry.test.ts`, `src/components/content-renderer/useGuideIdentityRegistration.test.tsx`, `surface-conformance.test.tsx`, `src/validation/completion-wiring.test.ts` |
+| Observation and attempts | `progress-observer.test.ts`, `guide-attempts.test.ts`, `guide-attempt-coordination.test.ts`, `progress-records.test.ts`                                                                                       |
+| Terminal routing         | `src/docs-retrieval/learning-journey-helpers.completion-boundary.test.ts`, `completion-recorder.test.ts`                                                                                                      |
+| Queue and write          | `completion-write-queue.test.ts`, `completion-write-queue.attempts.test.ts`, `completion-write-hook.test.ts`                                                                                                  |
+| Backend                  | `pkg/plugin/completion_records_attempt_test.go`, `completion_records_test.go`, `assignment_satisfaction_test.go`                                                                                              |
+| Reset                    | `src/components/docs-panel/hooks/resetGuideProgress.test.ts`                                                                                                                                                  |
 
 Known gap, tracked in [#2095](https://github.com/grafana/grafana-pathfinder-app/issues/2095): no runtime test proves each completable block's component reaches the store with `origin: 'change'`.

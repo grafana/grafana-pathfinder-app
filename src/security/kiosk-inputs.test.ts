@@ -25,17 +25,9 @@ it.each([
   'data:text/plain,x',
   'https://a:b@example.com',
   'https://@example.com',
-  'https://example.com/path',
-  'https://example.com/.',
-  'https://example.com/?',
-  'https://example.com/#',
-  'https://example.com?token=secret',
-  'https://example.com\n',
   'https://example.com\\foo',
-  ' https://example.com',
-  'example.com',
   'https://' + 'a'.repeat(2048),
-])('rejects unsafe or non-origin input %s', (value) => expect(normalizeHttpOrigin(value)).toBeNull());
+])('rejects unsafe input %s', (value) => expect(normalizeHttpOrigin(value)).toBeNull());
 it('normalizes only submitted keys and rejects missing, reserved and oversized inputs', () => {
   expect(validateKioskValues([input], { appUrl: 'https://example.com/', ignored: 'secret' })).toEqual({
     appUrl: 'https://example.com',
@@ -113,4 +105,36 @@ it('accepts supported nested form-fill aliases while rejecting aliased executabl
       [input]
     )
   ).toThrow();
+});
+
+it('preserves the HTTP check target while deriving an exact frontend origin', () => {
+  const fullUrlInput = { ...input, format: 'http-url' as const };
+  expect(validateKioskValues([fullUrlInput], { appUrl: ' example.com:8443/shop?q=boots#details ' })).toEqual({
+    appUrl: 'https://example.com:8443/shop?q=boots',
+  });
+  expect(validateKioskValues([input], { appUrl: ' example.com:8443/shop?q=boots#details ' })).toEqual({
+    appUrl: 'https://example.com:8443',
+  });
+});
+it('validates origin substitutions against the same sink restrictions', () => {
+  const fullUrlInput = { ...input, format: 'http-url' as const };
+  const declaration = { type: 'input', ...fullUrlInput };
+  expect(() =>
+    validateKioskDestination(
+      guide([
+        declaration,
+        { type: 'markdown', content: 'Allowed origin: {{appUrl:origin}}' },
+        { type: 'interactive', action: 'formfill', targetvalue: '{{appUrl:origin}}', reftarget: '#origin' },
+      ]),
+      [fullUrlInput]
+    )
+  ).not.toThrow();
+  for (const block of [
+    { type: 'terminal', command: 'curl {{appUrl:origin}}' },
+    { type: 'markdown', content: '[Open]({{appUrl:origin}})' },
+    { type: 'interactive', action: 'navigate', reftarget: '{{appUrl:origin}}' },
+    { type: 'interactive', action: 'formfill', reftarget: '#{{appUrl:origin}}' },
+  ]) {
+    expect(() => validateKioskDestination(guide([declaration, block]), [fullUrlInput])).toThrow();
+  }
 });

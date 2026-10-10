@@ -155,11 +155,9 @@ type appPlatformListClient struct {
 	idToken    string
 	httpClient *http.Client
 	logger     log.Logger
+	attempt    int
 
-	// objectToken is the access token single-object calls (get, create,
-	// replace) share. The client is built per inbound request, so this is one
-	// exchange per request however many upstream calls an upsert makes. LIST
-	// keeps minting per page: a long drain can outlive one token.
+	// Object calls share one token per request; LIST drains may outlive a token.
 	objectTokenMu sync.Mutex
 	objectToken   string
 }
@@ -212,7 +210,7 @@ func (c *appPlatformListClient) listRawPage(ctx context.Context, namespace, cont
 }
 
 func (c *appPlatformListClient) listPageInto(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64, page any) (err error) {
-	defer func() { logAppPlatformResult(c.logger, namespace, resource, "list", err) }()
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "list", c.attempt, err) }()
 	if namespace == "" {
 		return fmt.Errorf("app platform list: empty namespace")
 	}
@@ -283,7 +281,7 @@ func (c *appPlatformListClient) listPageInto(ctx context.Context, groupVersion, 
 // present) so the caller can classify transient/terminal/identity-scoped and
 // echo the upstream backpressure hint.
 func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) (err error) {
-	defer func() { logAppPlatformResult(c.logger, namespace, resource, "create", err) }()
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "create", c.attempt, err) }()
 	if namespace == "" {
 		return fmt.Errorf("app platform create: empty namespace")
 	}
@@ -300,12 +298,9 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 	})
 }
 
-// get GETs one named object and returns its raw body on 200. Any other status,
-// including 404, is an appPlatformUpstreamError carrying the status and the
-// (bounded) response body, so the caller can tell a NotFound Status from a
-// structural 404.
+// A 404 body distinguishes a missing object from a missing API route.
 func (c *appPlatformListClient) get(ctx context.Context, groupVersion, namespace, resource, name string, maxBytes int64) (body []byte, err error) {
-	defer func() { logAppPlatformResult(c.logger, namespace, resource, "get", err) }()
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "get", c.attempt, err) }()
 	if namespace == "" || name == "" {
 		return nil, fmt.Errorf("app platform get: empty name")
 	}
@@ -350,10 +345,9 @@ func (c *appPlatformListClient) get(ctx context.Context, groupVersion, namespace
 	return body, nil
 }
 
-// replace PUTs a full object over a named one. The object must carry the
-// metadata.resourceVersion it was read at; a stale one comes back as a 409.
+// The object must retain its resourceVersion for optimistic concurrency.
 func (c *appPlatformListClient) replace(ctx context.Context, groupVersion, namespace, resource, name string, obj []byte, maxBytes int64) (err error) {
-	defer func() { logAppPlatformResult(c.logger, namespace, resource, "update", err) }()
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "update", c.attempt, err) }()
 	if namespace == "" || name == "" {
 		return fmt.Errorf("app platform update: empty name")
 	}

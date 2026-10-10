@@ -21,6 +21,18 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
 
+const mockRefreshSpy = jest.fn();
+jest.mock('../../global-state/completion-store', () => {
+  const actual = jest.requireActual('../../global-state/completion-store');
+  return {
+    ...actual,
+    refreshAndNotifyGuideProgress: (...args: unknown[]) => {
+      mockRefreshSpy(...args);
+      return actual.refreshAndNotifyGuideProgress(...args);
+    },
+  };
+});
+
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
 jest.mock('@grafana/ui', () => {
@@ -113,7 +125,10 @@ import {
   resetSectionHarness,
   silenceSectionWarnings,
   setCheckRequirementsResult,
+  setStepCheckerCompletionReason,
 } from '../../test-utils/interactive-section-harness';
+import { evictAllContentCaches } from '../../global-state/completion-store';
+import { subscribeProgressEvent, type ProgressEventDetail } from '../../global-state/progress-events';
 
 // ─── Setup ──────────────────────────────────────────────────────────────────
 
@@ -126,6 +141,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  mockRefreshSpy.mockClear();
   resetSectionHarness();
   resetInteractiveCounters();
   (window as any).__DocsPluginActiveTabUrl = undefined;
@@ -543,5 +559,140 @@ describe('InteractiveSection — section requirements fix button (#476)', () => 
       const instance = results[results.length - 1].value;
       expect(instance.fixLocationRequirement).toHaveBeenCalledWith('/explore');
     });
+  });
+});
+// ─── Hydrated completion is not a reader change (#2100) ─────────────────────
+
+const announcedAsChange = () => mockRefreshSpy.mock.calls.filter(([, origin]) => origin === 'change');
+
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+}
+
+function collectSectionEvents() {
+  const events: Array<Extract<ProgressEventDetail, { kind: 'section' }>> = [];
+  const unsubscribe = subscribeProgressEvent((detail) => {
+    if (detail.kind === 'section') {
+      events.push(detail);
+    }
+  });
+  return { events, unsubscribe };
+}
+
+describe('InteractiveSection — hydrated completion versus a reader completion (#2100)', () => {
+  it('announces a real completion as a change exactly once', async () => {
+    renderNoGateSection();
+    await click(complete(STEP_NOGATE));
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await settle();
+
+    expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+  });
+
+  it('does not announce a remounted completed section as a change', async () => {
+    const first = renderNoGateSection();
+    await click(complete(STEP_NOGATE));
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    first.unmount();
+    evictAllContentCaches();
+    mockRefreshSpy.mockClear();
+
+    renderNoGateSection();
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await settle();
+
+    expect(announcedAsChange()).toEqual([]);
+  });
+
+  it('does not announce a stored no-gate completion as a change, and marks its section event hydrated', async () => {
+    memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::${SECTION_NOGATE}`, new Set([STEP_NOGATE]));
+    const { events, unsubscribe } = collectSectionEvents();
+    try {
+      renderNoGateSection();
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+      await settle();
+
+      expect(announcedAsChange()).toEqual([]);
+      expect(events).toEqual([
+        {
+          kind: 'section',
+          contentKey: expect.any(String),
+          sectionId: SECTION_NOGATE,
+          completed: true,
+          hydrated: true,
+        },
+      ]);
+      expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_NOGATE}`)).toBe(true);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('does not announce a stored gated completion (restored acknowledgement) as a change', async () => {
+    memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::${SECTION_GATED}`, new Set([STEP_GATED]));
+    memoryStore.set(`section-ack::${NON_PREVIEW_KEY}::${SECTION_GATED}`, true);
+    const { events, unsubscribe } = collectSectionEvents();
+    try {
+      renderTrailingGateSection();
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      await settle();
+
+      expect(announcedAsChange()).toEqual([]);
+      expect(events.map((e) => e.hydrated)).toEqual([true]);
+      expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_GATED}`)).toBe(true);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('announces a gated completion through the Mark button as a change, hydrated false', async () => {
+    const { events, unsubscribe } = collectSectionEvents();
+    try {
+      renderTrailingGateSection();
+      await click(complete(STEP_GATED));
+      await click(markButton(SECTION_GATED));
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      await settle();
+
+      expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+      expect(events.map((e) => e.hydrated)).toEqual([false]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('announces a completion made after a reset as a change even when the section mounted complete', async () => {
+    memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::${SECTION_NOGATE}`, new Set([STEP_NOGATE]));
+    renderNoGateSection();
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await settle();
+    expect(announcedAsChange()).toEqual([]);
+
+    await click(redo(STEP_NOGATE));
+    await waitFor(() => expect(screen.getByTestId(doButton(SECTION_NOGATE))).toBeInTheDocument());
+    await click(complete(STEP_NOGATE));
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await settle();
+
+    expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+  });
+
+  it('keeps announcing an objectives-completed section as a change (decision pending in #2102)', async () => {
+    setStepCheckerCompletionReason('objectives');
+    const { events, unsubscribe } = collectSectionEvents();
+    try {
+      renderNoGateSection();
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_NOGATE))).toHaveClass('completed')
+      );
+      await settle();
+
+      expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+      expect(events.map((e) => e.hydrated)).toEqual([false]);
+    } finally {
+      unsubscribe();
+    }
   });
 });

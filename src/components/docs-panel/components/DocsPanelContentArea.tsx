@@ -35,14 +35,9 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import {
-  recordGuideCompletionForSurface,
-  journeyProgressFromMilestones,
-  resolveActiveMilestoneToolbarContext,
-} from '../../../docs-retrieval';
+import { journeyProgressFromMilestones, resolveActiveMilestoneToolbarContext } from '../../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
-import { useGuideIdentityRegistration } from '../../content-renderer/useGuideIdentityRegistration';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
@@ -149,7 +144,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
         guideTitle: activeTab?.title,
       }
     : null;
-  useGuideIdentityRegistration(stableContent?.url, surfaceCompletionInput);
 
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
@@ -455,7 +449,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
               {/* Unified Content Renderer - works for both learning journeys and docs! */}
               <div id="inner-docs-content" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                {stableContent && (
+                {stableContent && surfaceCompletionInput && (
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
                     <GuideVersionNotice
                       manifests={[activeTab?.packageInfo?.packageManifest, stableContent.metadata.packageManifest]}
@@ -488,12 +482,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onContentReady={() => {
                         restoreScrollPosition();
                       }}
-                      completionSurface={{ baseUrl: activeTab?.baseUrl, currentUrl: activeTab?.currentUrl }}
-                      onGuideComplete={(source, contentKey) => {
-                        if (surfaceCompletionInput) {
-                          recordGuideCompletionForSurface({ ...surfaceCompletionInput, source, contentKey });
-                        }
-                      }}
+                      completion={{ kind: 'tracked', input: surfaceCompletionInput }}
                       onContinueToNextMilestone={
                         model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
                       }

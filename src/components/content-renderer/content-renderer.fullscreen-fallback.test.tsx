@@ -15,6 +15,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { RawContent } from '../../types/content.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { ContentRenderer } from './content-renderer';
+import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 import { resetCompletionStoreForTests } from '../../global-state/completion-store';
 
 jest.mock('@grafana/i18n', () => ({
@@ -78,7 +79,7 @@ function renderGuide(content: Partial<RawContent> = {}): void {
     metadata: { title: 'Fullscreen fallback guide' },
     ...content,
   };
-  render(<ContentRenderer content={raw} />);
+  render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={raw} />);
 }
 
 describe('fullScreenFallbackLocation reaches a rendered InteractiveStep', () => {
@@ -148,7 +149,7 @@ function renderButtonGuide(): void {
     lastFetched: '2026-08-14T00:00:00.000Z',
     metadata: { title: 'Fullscreen handoff button guide' },
   };
-  render(<ContentRenderer content={raw} />);
+  render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={raw} />);
 }
 
 describe('full-screen handoff gate reaches the handler for non-navigate actions', () => {

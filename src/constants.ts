@@ -278,8 +278,6 @@ export const isRecommenderEnabled = (pluginConfig: PathfinderPluginConfig): bool
 export const getRecommenderServiceUrl = (config: PathfinderPluginConfig) =>
   getConfigWithDefaults(config).recommenderServiceUrl;
 export const getTutorialUrl = (config: PathfinderPluginConfig) => getConfigWithDefaults(config).tutorialUrl;
-export const getTermsAccepted = (config: PathfinderPluginConfig) =>
-  getConfigWithDefaults(config).acceptedTermsAndConditions;
 export const getTermsVersion = (config: PathfinderPluginConfig) => getConfigWithDefaults(config).termsVersion;
 
 // Get dev mode setting from config
@@ -287,7 +285,6 @@ export const getDevMode = (config: PathfinderPluginConfig) => config.devMode ?? 
 
 // Legacy exports for backward compatibility
 export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;
-export const DOCS_BASE_URL = DEFAULT_DOCS_BASE_URL;
 
 export enum ROUTES {
   Home = '',

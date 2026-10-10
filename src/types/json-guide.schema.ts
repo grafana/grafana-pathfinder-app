@@ -543,7 +543,7 @@ export const JsonInputBlockSchema = z
     id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
     prompt: z.string().min(1, 'Input prompt is required').describe('Prompt shown above the input'),
     inputType: z.enum(['text', 'boolean', 'datasource']).describe('Kind of input to render'),
-    format: z.literal('http-origin').optional(),
+    format: z.enum(['http-origin', 'http-url']).optional(),
     variableName: z
       .string()
       .min(1, 'Variable name is required')
