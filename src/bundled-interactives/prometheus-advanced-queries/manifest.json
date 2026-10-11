@@ -24,7 +24,7 @@
     "minVersion": "12.2.0"
   },
   "stats": {
-    "version": 1,
+    "version": 2,
     "blockCount": 59,
     "sectionCount": 19,
     "completableBlockCount": 38,
