@@ -68,10 +68,22 @@ function failure(result) {
   return null;
 }
 
+function runNpmScript(step) {
+  const options = { stdio: 'inherit', cwd: root };
+  const npmExecPath = process.env.npm_execpath;
+
+  // npm.cmd cannot be spawned directly on Windows; npm provides its JS entry point.
+  if (npmExecPath) {
+    return spawnSync(process.execPath, [npmExecPath, 'run', step], options);
+  }
+
+  return spawnSync('npm', ['run', step], options);
+}
+
 function run() {
   for (const [index, step] of STEPS.entries()) {
     console.log(`\ncheck [${index + 1}/${STEPS.length}] npm run ${step}`);
-    const result = spawnSync('npm', ['run', step], { stdio: 'inherit', cwd: root });
+    const result = runNpmScript(step);
     const failed = failure(result);
     if (failed) {
       console.error(
