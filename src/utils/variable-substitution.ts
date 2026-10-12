@@ -5,6 +5,7 @@
  * Used for dynamic content that adapts based on user input from input blocks.
  */
 
+import { normalizeHttpOrigin } from '../lib/input-value';
 import { GuideResponseValue } from '../lib/user-storage';
 
 /**
@@ -12,7 +13,7 @@ import { GuideResponseValue } from '../lib/user-storage';
  * Using a factory avoids shared state issues with the `g` flag's lastIndex.
  */
 function createVariablePattern(): RegExp {
-  return /\{\{(\w+)\}\}/g;
+  return /\{\{(\w+)(?::(origin))?\}\}/g;
 }
 
 /**
@@ -48,14 +49,17 @@ export function substituteVariables(
 ): string {
   const { fallback = '[not set]', preserveUnmatched = false } = options;
 
-  return content.replace(createVariablePattern(), (match, variableName: string) => {
+  return content.replace(createVariablePattern(), (match, variableName: string, transform?: string) => {
     const value = responses[variableName];
 
     if (value === undefined || value === null) {
       return preserveUnmatched ? match : fallback;
     }
 
-    // Convert boolean and number to string
+    if (transform === 'origin') {
+      const origin = typeof value === 'string' ? normalizeHttpOrigin(value) : null;
+      return origin ?? (preserveUnmatched ? match : fallback);
+    }
     return String(value);
   });
 }

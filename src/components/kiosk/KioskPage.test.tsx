@@ -323,3 +323,25 @@ it('does not prepare or launch after unmounting during the input chunk import', 
   expect(prepareKioskInputs).not.toHaveBeenCalled();
   expect(launchKioskGuide).not.toHaveBeenCalled();
 });
+
+it('shows the normalized check URL and exact allowed origin before launch', () => {
+  const urlPage: Page = {
+    version: 1,
+    blocks: [
+      {
+        type: 'launch-form',
+        ruleId: 'demo',
+        label: 'Launch',
+        inputs: [
+          { inputType: 'text', format: 'http-url', variableName: 'appUrl', prompt: 'Your website', required: true },
+        ],
+      },
+    ],
+  };
+  render(<KioskPage page={urlPage} rules={rules} mode="instance" />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'example.com/shop?q=1#details' } });
+  expect(
+    screen.getByText('Check: https://example.com/shop?q=1 · Allowed origin: https://example.com')
+  ).toBeInTheDocument();
+  expect(prepare).not.toHaveBeenCalled();
+});

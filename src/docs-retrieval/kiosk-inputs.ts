@@ -7,7 +7,9 @@ import { parseMarkdownToElements } from './json-parser';
 
 function validateDisplay(content: string, names: Set<string>): void {
   const marker = '/pathfinderkioskinputtoken';
-  const marked = content.replace(/\{\{(\w+)\}\}/g, (match, name: string) => (names.has(name) ? marker : match));
+  const marked = content.replace(/\{\{(\w+)(?::origin)?\}\}/g, (match, name: string) =>
+    names.has(name) ? marker : match
+  );
   const containsMarker = (value: unknown): boolean => {
     if (typeof value === 'string') {
       return value.includes(marker);
@@ -41,7 +43,7 @@ export function validateKioskDestination(guide: JsonGuide, inputs: KioskInput[])
   const names = new Set(inputs.map((input) => input.variableName));
   const declarations = new Map<string, Array<Record<string, unknown>>>();
   const hasVariable = (value: string) =>
-    Array.from(value.matchAll(/\{\{(\w+)\}\}/g)).some((match) => names.has(match[1]!));
+    Array.from(value.matchAll(/\{\{(\w+)(?::origin)?\}\}/g)).some((match) => names.has(match[1]!));
 
   function walk(value: unknown, parent?: Record<string, unknown>, field?: string): void {
     if (typeof value === 'string') {
