@@ -1,10 +1,13 @@
 import React, { Component, lazy, Suspense, useState, type ComponentType, type ReactNode } from 'react';
-import { Alert, Button, LoadingPlaceholder } from '@grafana/ui';
+import { Alert, Button, LoadingPlaceholder, Stack } from '@grafana/ui';
 import { loadTranslatedModule } from '../../lib/plugin-translations';
 import { logger } from '../../lib/logging';
 
 // eslint-disable-next-line no-restricted-syntax -- React error boundaries require a class lifecycle.
-class LoadingBoundary extends Component<{ children: ReactNode; onRetry: () => void }, { failed: boolean }> {
+class LoadingBoundary extends Component<
+  { children: ReactNode; onRetry: () => void; onDismiss?: () => void },
+  { failed: boolean }
+> {
   state = { failed: false };
 
   static getDerivedStateFromError() {
@@ -19,7 +22,14 @@ class LoadingBoundary extends Component<{ children: ReactNode; onRetry: () => vo
     if (this.state.failed) {
       return (
         <Alert title="Unable to load interactive learning" severity="error">
-          <Button onClick={this.props.onRetry}>Try again</Button>
+          <Stack gap={1}>
+            <Button onClick={this.props.onRetry}>Try again</Button>
+            {this.props.onDismiss && (
+              <Button variant="secondary" onClick={this.props.onDismiss}>
+                Close
+              </Button>
+            )}
+          </Stack>
         </Alert>
       );
     }
@@ -27,9 +37,13 @@ class LoadingBoundary extends Component<{ children: ReactNode; onRetry: () => vo
   }
 }
 
-export function createTranslatedComponent<P extends object>(load: () => Promise<{ default: ComponentType<P> }>) {
+export function createTranslatedComponent<P extends object>(
+  load: () => Promise<{ default: ComponentType<P> }>,
+  options: { dismiss?: (props: P) => void } = {}
+) {
   const createComponent = () => lazy(() => loadTranslatedModule(load));
   let SharedComponent = createComponent();
+  const { dismiss } = options;
 
   return function TranslatedComponent(props: P) {
     const [{ View, attempt }, setAttempt] = useState({ View: SharedComponent, attempt: 0 });
@@ -39,7 +53,7 @@ export function createTranslatedComponent<P extends object>(load: () => Promise<
     };
 
     return (
-      <LoadingBoundary key={attempt} onRetry={retry}>
+      <LoadingBoundary key={attempt} onRetry={retry} onDismiss={dismiss && (() => dismiss(props))}>
         <Suspense fallback={<LoadingPlaceholder text="Loading interactive learning" />}>
           <View {...props} />
         </Suspense>

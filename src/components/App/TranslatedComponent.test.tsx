@@ -55,3 +55,22 @@ it('offers a working retry after a rejected lazy load', async () => {
     consoleError.mockRestore();
   }
 });
+
+it('offers Close after a rejected load only when the caller can dismiss', async () => {
+  const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const load = jest.fn().mockRejectedValue(new Error('Exhausted retries'));
+    const dismiss = jest.fn();
+    const Dismissible = createTranslatedComponent<{ id: string }>(load, { dismiss });
+    const Plain = createTranslatedComponent<{ id: string }>(load);
+    const first = render(<Plain id="plain" />);
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    first.unmount();
+    render(<Dismissible id="kiosk" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    expect(dismiss).toHaveBeenCalledWith({ id: 'kiosk' });
+  } finally {
+    consoleError.mockRestore();
+  }
+});

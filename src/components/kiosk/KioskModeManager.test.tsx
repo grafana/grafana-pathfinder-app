@@ -44,10 +44,11 @@ jest.mock('./KioskOverlay', () => ({
       return mockOverlayUnmount;
     }, []);
     mockOverlay(props);
-    return (
+    return require('react-dom').createPortal(
       <button data-testid="close-overlay" onClick={props.onClose}>
         {props.overrideUrl || props.rulesUrl}
-      </button>
+      </button>,
+      document.body
     );
   },
 }));
@@ -204,4 +205,97 @@ it('passes a failed rules import to the overlay error path', async () => {
   await expect(mockOverlay.mock.calls.at(-1)![0].catalog).rejects.toBe(error);
   unmount();
   kioskState.set(null);
+});
+
+function isolatedManager() {
+  let isolated!: {
+    KioskModeManager: typeof KioskModeManager;
+    kioskState: typeof kioskState;
+    loadTranslatedModule: jest.MockedFunction<typeof loadTranslatedModule>;
+    locationService: typeof locationService;
+  };
+  jest.isolateModules(() => {
+    jest.doMock('react', () => React);
+    isolated = {
+      KioskModeManager: require('./KioskModeManager').KioskModeManager,
+      kioskState: require('../../global-state/kiosk').kioskState,
+      loadTranslatedModule: require('../../lib/plugin-translations').loadTranslatedModule,
+      locationService: require('@grafana/runtime').locationService,
+    };
+  });
+  return isolated;
+}
+
+it.each(['Close', 'Escape'] as const)(
+  'closes a URL launch with %s after the view fails to load and clears its parameters',
+  async (exit) => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      window.history.replaceState({}, '', '/?pathfinderKiosk=1&kioskRulesUrl=override&orgId=1');
+      const isolated = isolatedManager();
+      isolated.locationService.replace({ pathname: '/', search: window.location.search });
+      isolated.loadTranslatedModule.mockRejectedValueOnce(new Error('overlay chunk unavailable'));
+      isolated.kioskState.set({ source: 'url', rulesUrl: 'override' });
+      render(<isolated.KioskModeManager rulesUrl="default" />);
+      const close = await screen.findByRole('button', { name: 'Close' });
+      if (exit === 'Close') {
+        act(() => close.click());
+      } else {
+        act(() => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        });
+      }
+      expect(isolated.kioskState.getSnapshot()).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(isolated.locationService.getLocation().search).toBe('?orgId=1');
+    } finally {
+      consoleError.mockRestore();
+    }
+  }
+);
+
+it('closes with an already prevented Escape while the view is still loading', async () => {
+  const isolated = isolatedManager();
+  isolated.loadTranslatedModule.mockImplementationOnce(() => new Promise(() => {}));
+  isolated.kioskState.set({ source: 'sidebar' });
+  render(<isolated.KioskModeManager rulesUrl="default" />);
+  expect(await screen.findByText('Loading interactive learning')).toBeInTheDocument();
+  const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+  escape.preventDefault();
+  act(() => {
+    document.dispatchEvent(escape);
+  });
+  expect(isolated.kioskState.getSnapshot()).toBeNull();
+  expect(screen.queryByText('Loading interactive learning')).toBeNull();
+});
+
+it('leaves Escape to the loaded view', async () => {
+  kioskState.set({ source: 'sidebar' });
+  render(<KioskModeManager rulesUrl="default" />);
+  await screen.findByTestId('close-overlay');
+  act(() => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  expect(kioskState.getSnapshot()).not.toBeNull();
+  act(() => kioskState.set(null));
+});
+
+it('gives each launch its own pending catalog', async () => {
+  jest.mocked(retryChunkImport).mockImplementation(() => new Promise(() => {}));
+  try {
+    const first = { source: 'sidebar' } as const;
+    kioskState.set(first);
+    const view = render(<KioskModeManager rulesUrl="default" />);
+    await screen.findByTestId('close-overlay');
+    const firstPending = mockOverlay.mock.calls[0][0].catalog;
+    act(() => kioskState.set(null));
+    mockOverlay.mockClear();
+    act(() => kioskState.set({ source: 'sidebar' }));
+    await screen.findByTestId('close-overlay');
+    expect(mockOverlay.mock.calls[0][0].catalog).not.toBe(firstPending);
+    view.unmount();
+  } finally {
+    jest.mocked(retryChunkImport).mockImplementation((load: () => Promise<unknown>) => load());
+    kioskState.set(null);
+  }
 });

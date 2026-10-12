@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useSyncExternalStore, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useState } from 'react';
 import { ThemeContext } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import { createTranslatedComponent } from '../App/TranslatedComponent';
@@ -8,12 +8,25 @@ import { kioskState, type KioskLaunch } from '../../global-state/kiosk';
 import type { PreparedKioskData } from './kiosk-rules';
 import { retryChunkImport } from '../../lib/retry-chunk-import';
 import { clearKioskLaunchParams } from '../../utils/kiosk-navigation';
+import { getKioskLoadingFrameStyles } from './kiosk-mode.styles';
 
-const KioskOverlay = createTranslatedComponent(async () => ({
-  default: (await import('./KioskOverlay')).KioskOverlay,
-}));
+const KioskOverlay = createTranslatedComponent(
+  async () => ({
+    default: (await import('./KioskOverlay')).KioskOverlay,
+  }),
+  { dismiss: ({ onClose }) => onClose() }
+);
 
-const pendingCatalog = new Promise<PreparedKioskData>(() => {});
+const pendingCatalogs = new WeakMap<KioskLaunch, Promise<PreparedKioskData>>();
+
+function pendingCatalogFor(launch: KioskLaunch): Promise<PreparedKioskData> {
+  let pending = pendingCatalogs.get(launch);
+  if (!pending) {
+    pending = new Promise<PreparedKioskData>(() => {});
+    pendingCatalogs.set(launch, pending);
+  }
+  return pending;
+}
 
 interface KioskModeManagerProps {
   rulesUrl: string;
@@ -27,6 +40,8 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
     observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
   }, []);
+  const loadingFrame = useMemo(() => getKioskLoadingFrameStyles(theme), [theme]);
+  const frameRef = useRef<HTMLDivElement>(null);
   const launch = useSyncExternalStore(kioskState.subscribe, kioskState.getSnapshot);
   const isOpen = launch !== null;
   const [catalog, setCatalog] = useState<{
@@ -72,6 +87,19 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
     if (!isOpen) {
       return;
     }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && frameRef.current?.hasChildNodes()) {
+        handleClose();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, handleClose]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
     reportPathfinderSurface('kiosk');
     return () => {
       if (sidebarState.getIsSidebarMounted()) {
@@ -88,14 +116,18 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
 
   return (
     <ThemeContext.Provider value={theme}>
-      <KioskOverlay
-        catalog={catalog?.launch === launch && catalog.rulesUrl === rulesUrl ? catalog.promise : pendingCatalog}
-        rulesUrl={rulesUrl}
-        overrideUrl={launch.rulesUrl}
-        mode={launch.source === 'url' ? 'instance' : 'presentation'}
-        onClose={handleClose}
-        onLaunch={() => kioskState.set(null)}
-      />
+      <div ref={frameRef} className={loadingFrame}>
+        <KioskOverlay
+          catalog={
+            catalog?.launch === launch && catalog.rulesUrl === rulesUrl ? catalog.promise : pendingCatalogFor(launch)
+          }
+          rulesUrl={rulesUrl}
+          overrideUrl={launch.rulesUrl}
+          mode={launch.source === 'url' ? 'instance' : 'presentation'}
+          onClose={handleClose}
+          onLaunch={() => kioskState.set(null)}
+        />
+      </div>
     </ThemeContext.Provider>
   );
 };
