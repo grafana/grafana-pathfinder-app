@@ -100,6 +100,48 @@ describe('tab-storage-restore', () => {
       expect(tabs[1]!.type).toBe('learning-journey');
     });
 
+    it('restores the selected track and its path identity', async () => {
+      const persistedTabs: PersistedTabData[] = [
+        {
+          id: 'tab-1',
+          title: 'Path',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'learning-journey',
+          activeTrackId: 'builder',
+          activeTrackPathId: 'path-a',
+        },
+        {
+          id: 'tab-2',
+          title: 'Other path',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/other/',
+          type: 'learning-journey',
+        },
+      ];
+
+      const tabs = await restoreTabsFromStorage(createMockTabStorage(persistedTabs), { isDevMode: false });
+
+      expect(tabs[1]).toMatchObject({ activeTrackId: 'builder', activeTrackPathId: 'path-a' });
+      expect(tabs[2]).not.toHaveProperty('activeTrackId');
+    });
+
+    it('drops malformed persisted track values', async () => {
+      const persistedTabs = [
+        {
+          id: 'tab-1',
+          title: 'Path',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'learning-journey',
+          activeTrackId: { evil: true },
+          activeTrackPathId: 42,
+        },
+      ] as unknown as PersistedTabData[];
+
+      const tabs = await restoreTabsFromStorage(createMockTabStorage(persistedTabs), { isDevMode: false });
+
+      expect(tabs[1]).not.toHaveProperty('activeTrackId');
+      expect(tabs[1]).not.toHaveProperty('activeTrackPathId');
+    });
+
     it('should restore devtools tab without URL validation', async () => {
       const persistedTabs: PersistedTabData[] = [
         {

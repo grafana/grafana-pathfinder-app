@@ -34,8 +34,6 @@ jest.mock('../../../lib/analytics', () => ({
 }));
 
 jest.mock('../../../docs-retrieval', () => ({
-  recordGuideCompletionForSurface: jest.fn(),
-  resolveSurfaceGuideIdentity: jest.fn(() => null),
   journeyProgressFromMilestones: jest.fn(() => 0),
   // Pure logic, no `@grafana/runtime`/storage imports — see
   // `active-milestone-sequence.ts`'s own doc comment.
@@ -44,24 +42,27 @@ jest.mock('../../../docs-retrieval', () => ({
 }));
 
 // Heavy leaf children are irrelevant to these tests — stub them out so the
-// branch renders without their dependency trees. ContentRenderer exposes a
-// button that fires onGuideComplete so the completion-boundary tests can drive it.
+// branch renders without their dependency trees. ContentRenderer reports the
+// completion prop it was mounted with so the completion-boundary tests can read it.
+const mockRenderedCompletions: unknown[] = [];
 jest.mock('../../content-renderer/content-renderer', () => ({
   ContentRenderer: ({
-    onGuideComplete,
+    completion,
     onActiveTrackChange,
     initialActiveTrackId,
   }: {
-    onGuideComplete?: (source: 'manual', contentKey: string) => void;
+    completion: unknown;
     onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
     initialActiveTrackId?: string | null;
-  }) => (
-    <>
-      <button onClick={() => onGuideComplete?.('manual', 'rendered-guide')}>Complete rendered guide</button>
-      <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
-      <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
-    </>
-  ),
+  }) => {
+    mockRenderedCompletions.push(completion);
+    return (
+      <>
+        <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
+        <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
+      </>
+    );
+  },
 }));
 // Renders a real button wired to the received onOpenDocsPage so the
 // devtools-cover-open explicitGuideId derivation (DocsPanelContentArea's own
@@ -82,14 +83,11 @@ jest.mock('../../SelectorDebugPanel', () => ({
     </button>
   ),
 }));
-jest.mock('../../content-renderer/useGuideIdentityRegistration', () => ({
-  useGuideIdentityRegistration: jest.fn(),
-}));
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
 
 const { reportAppInteraction } = jest.requireMock('../../../lib/analytics');
-const { recordGuideCompletionForSurface, journeyProgressFromMilestones } = jest.requireMock('../../../docs-retrieval');
+const { journeyProgressFromMilestones } = jest.requireMock('../../../docs-retrieval');
 
 function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPanelContentAreaProps {
   const activeTab: any = {
@@ -144,6 +142,7 @@ function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPane
 describe('DocsPanelContentArea', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRenderedCompletions.length = 0;
   });
   it('uses the stable reset selector for docs-like guides', () => {
     const base = makeProps();
@@ -201,19 +200,19 @@ describe('DocsPanelContentArea', () => {
       });
 
       render(<DocsPanelContentArea {...props} />);
-      fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
 
-      // The sidebar forwards its view-level identity to the shared, surface-neutral
-      // emitter; the bundled-vs-remote / milestone decision is owned and tested there.
-      expect(recordGuideCompletionForSurface).toHaveBeenCalledWith({
-        baseUrl: 'https://example.com/remote-guide',
-        contentUrl: 'https://example.com/remote-guide/content.json',
-        currentUrl: 'https://example.com/remote-guide/content.json',
-        contentType: 'docs',
-        metadata: { packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
-        guideTitle: 'My guide',
-        source: 'manual',
-        contentKey: 'rendered-guide',
+      // The sidebar hands its view-level identity to ContentRenderer, which owns the shared,
+      // surface-neutral emitter; the bundled-vs-remote / milestone decision is owned and tested there.
+      expect(mockRenderedCompletions.at(-1)).toEqual({
+        kind: 'tracked',
+        input: {
+          baseUrl: 'https://example.com/remote-guide',
+          contentUrl: 'https://example.com/remote-guide/content.json',
+          currentUrl: 'https://example.com/remote-guide/content.json',
+          contentType: 'docs',
+          metadata: { packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
+          guideTitle: 'My guide',
+        },
       });
     });
 
@@ -237,20 +236,20 @@ describe('DocsPanelContentArea', () => {
       });
 
       render(<DocsPanelContentArea {...props} />);
-      fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
 
-      expect(recordGuideCompletionForSurface).toHaveBeenCalledWith({
-        baseUrl: 'bundled:select-platform',
-        contentUrl: 'bundled:select-platform',
-        currentUrl: 'https://example.com/select-platform/content.json',
-        contentType: 'learning-journey',
-        metadata: {
-          packageManifest: { id: 'linux-journey', repository: 'app-platform' },
-          learningJourney: { totalMilestones: 3 },
+      expect(mockRenderedCompletions.at(-1)).toEqual({
+        kind: 'tracked',
+        input: {
+          baseUrl: 'bundled:select-platform',
+          contentUrl: 'bundled:select-platform',
+          currentUrl: 'https://example.com/select-platform/content.json',
+          contentType: 'learning-journey',
+          metadata: {
+            packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+            learningJourney: { totalMilestones: 3 },
+          },
+          guideTitle: 'My guide',
         },
-        guideTitle: 'My guide',
-        source: 'manual',
-        contentKey: 'rendered-guide',
       });
     });
   });

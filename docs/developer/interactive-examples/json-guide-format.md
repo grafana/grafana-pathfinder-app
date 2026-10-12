@@ -787,21 +787,21 @@ Collects user responses that can be stored as variables and used elsewhere in th
 }
 ```
 
-| Field               | Type                                      | Required | Default | Description                                                                                                                                          |
-| ------------------- | ----------------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prompt`            | string                                    | ✅       | —       | Question/instruction shown to user (supports markdown)                                                                                               |
-| `inputType`         | `"text"` \| `"boolean"` \| `"datasource"` | ✅       | —       | Input type: text field, checkbox, or datasource picker                                                                                               |
-| `variableName`      | string                                    | ✅       | —       | Identifier for storing/referencing the response                                                                                                      |
-| `format`            | `"http-origin"`                           | ❌       | —       | For text inputs: validate and normalize an HTTP(S) origin; rejects paths, credentials, queries, fragments, and whitespace. Maximum 2,048 characters. |
-| `placeholder`       | string                                    | ❌       | —       | Placeholder text for text input                                                                                                                      |
-| `checkboxLabel`     | string                                    | ❌       | —       | Label for boolean checkbox                                                                                                                           |
-| `defaultValue`      | string \| boolean                         | ❌       | —       | Default value for the input                                                                                                                          |
-| `required`          | boolean                                   | ❌       | `false` | Whether a response is required to proceed                                                                                                            |
-| `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                                                                                                    |
-| `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                                                                                           |
-| `datasourceFilter`  | string                                    | ❌       | —       | Filter datasources by type (e.g., `"prometheus"`). Only for `"datasource"` inputType                                                                 |
-| `requirements`      | string[]                                  | ❌       | —       | Honoured only on a blocking data check; inert on every other input (see below)                                                                       |
-| `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                                                                                                    |
+| Field               | Type                                      | Required | Default | Description                                                                                                                                                                       |
+| ------------------- | ----------------------------------------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`            | string                                    | ✅       | —       | Question/instruction shown to user (supports markdown)                                                                                                                            |
+| `inputType`         | `"text"` \| `"boolean"` \| `"datasource"` | ✅       | —       | Input type: text field, checkbox, or datasource picker                                                                                                                            |
+| `variableName`      | string                                    | ✅       | —       | Identifier for storing/referencing the response                                                                                                                                   |
+| `format`            | `"http-origin"` \| `"http-url"`           | ❌       | —       | For text inputs: normalize a website URL or derive its origin. Accepts bare hosts and surrounding whitespace; rejects credentials and non-HTTP schemes. Maximum 2,048 characters. |
+| `placeholder`       | string                                    | ❌       | —       | Placeholder text for text input                                                                                                                                                   |
+| `checkboxLabel`     | string                                    | ❌       | —       | Label for boolean checkbox                                                                                                                                                        |
+| `defaultValue`      | string \| boolean                         | ❌       | —       | Default value for the input                                                                                                                                                       |
+| `required`          | boolean                                   | ❌       | `false` | Whether a response is required to proceed                                                                                                                                         |
+| `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                                                                                                                                 |
+| `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                                                                                                                        |
+| `datasourceFilter`  | string                                    | ❌       | —       | Filter datasources by type (e.g., `"prometheus"`). Only for `"datasource"` inputType                                                                                              |
+| `requirements`      | string[]                                  | ❌       | —       | Honoured only on a blocking data check; inert on every other input (see below)                                                                                                    |
+| `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                                                                                                                                 |
 
 Data check fields, all for `"datasource"` inputType only. `dataCheckQuery` is what enables the check; the rest are rejected without it.
 
@@ -1597,3 +1597,9 @@ The prescriptive coupling checklist and the limits of the automated drift checks
 - [Selectors reference](./selectors-reference.md) — targeting DOM elements with the enhanced selector engine
 - [Requirements reference](./requirements-reference.md) — pre-condition and post-condition system
 - [Guided interactions](./guided-interactions.md) — user-performed action mode
+
+### Website URL inputs
+
+Text input blocks support `format: "http-url"` to store a normalized HTTP(S) URL and `format: "http-origin"` to store only its origin. Both accept a bare hostname (defaulting to HTTPS) or a pasted URL with surrounding whitespace. Paths and queries are preserved for `http-url`; fragments are omitted because they are not sent in HTTP requests. Credentials and non-HTTP schemes are rejected. The input previews the normalized values before saving.
+
+Use `{{appUrl}}` for the full saved URL and `{{appUrl:origin}}` to derive its exact origin for an allowed-origin field. The origin modifier returns the normal missing-value fallback when the response cannot be parsed as an HTTP(S) URL. Keep kiosk and destination input formats identical. These formats apply to JSON-served guides; the current App Platform CRD does not preserve the `format` field.

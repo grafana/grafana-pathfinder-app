@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/config"
@@ -20,6 +21,7 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 	if !ok {
 		return
 	}
+	client.attempt = readAttempt(r)
 	body, err := client.getItem(r.Context(), namespace, resource, name, maxBytes)
 	if err != nil {
 		status := appPlatformReadErrorStatus(err)
@@ -65,6 +67,14 @@ func (c *appPlatformListClient) getSettings(ctx context.Context, namespace strin
 
 func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource, name string, maxBytes int64) (json.RawMessage, error) {
 	return c.getPath(ctx, appPlatformGroup+"/v1alpha1", namespace, resource, name, nil, maxBytes)
+}
+
+func readAttempt(r *http.Request) int {
+	attempt, err := strconv.Atoi(r.URL.Query().Get("attempt"))
+	if err != nil || attempt < 1 {
+		return 1
+	}
+	return min(attempt, 10)
 }
 
 func appPlatformReadErrorStatus(err error) int {

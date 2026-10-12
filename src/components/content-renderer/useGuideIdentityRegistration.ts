@@ -8,9 +8,9 @@ import { resolveGuideContentKey } from '../../global-state/guide-content-key';
  * Register the rendered guide's completion identity under the content key its
  * progress is announced on, for as long as this surface renders it.
  *
- * Pass the same input the surface hands `recordGuideCompletionForSurface`, so
- * live progress and the terminal completion key on one identity. `null` input
- * registers nothing.
+ * ContentRenderer passes the input its mount supplies, which it also hands
+ * `recordGuideCompletionForSurface`, so live progress and the terminal
+ * completion key on one identity. `null` input registers nothing.
  */
 export function useGuideIdentityRegistration(
   contentUrl: string | undefined,

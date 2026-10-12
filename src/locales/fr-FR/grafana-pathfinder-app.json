@@ -200,5 +200,10 @@
     "disabled": "L’apprentissage interactif est désactivé",
     "disabledDescription": "L’apprentissage interactif est désactivé pour cette organisation.",
     "openSettings": "Ouvrir les paramètres de l’apprentissage interactif"
+  },
+  "helpButtonHint": {
+    "message": "Essayez l’apprentissage interactif",
+    "dismiss": "Ignorer la suggestion d’apprentissage",
+    "learn": "Apprendre"
   }
 }

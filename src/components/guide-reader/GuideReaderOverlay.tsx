@@ -6,8 +6,7 @@ import { config } from '@grafana/runtime';
 import { Icon, useStyles2 } from '@grafana/ui';
 
 import { ContentRenderer } from '../content-renderer/content-renderer';
-import { useGuideIdentityRegistration } from '../content-renderer/useGuideIdentityRegistration';
-import { fetchUnifiedContent, recordGuideCompletionForSurface } from '../../docs-retrieval';
+import { fetchUnifiedContent } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -15,7 +14,8 @@ import { InteractiveModeContext, type InteractiveMode } from '../../global-state
 import { ControllerChannelProvider, useControllerConnected } from '../../global-state/controller-channel';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
-import { useDocumentOutline, useActiveOutlineItem } from '../../hooks';
+import { useDocumentOutline, useActiveOutlineItem, usePublishSurfaceContentKey } from '../../hooks';
+import { findDocPage } from '../../utils/find-doc-page';
 import type { RawContent } from '../../types/content.types';
 import type { ControllerPairingLaunch } from '../../lib/pairing-manager';
 import { getGuideReaderStyles } from './guide-reader.styles';
@@ -195,7 +195,8 @@ function GuideReaderInner({
         guideTitle: content.metadata?.title,
       }
     : null;
-  useGuideIdentityRegistration(content?.url, surfaceCompletionInput);
+  // The sidebar's tab for this launch: baseUrl is findDocPage(doc).url, currentUrl is the fetched content.url.
+  usePublishSurfaceContentKey(content ? content.url || findDocPage(doc)?.url || doc : undefined);
 
   const contentClassName = content
     ? `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`
@@ -209,9 +210,7 @@ function GuideReaderInner({
           containerRef={contentRef}
           className={contentClassName}
           onContentReady={handleContentReady}
-          onGuideComplete={(source, contentKey) =>
-            recordGuideCompletionForSurface({ ...surfaceCompletionInput, source, contentKey })
-          }
+          completion={{ kind: 'tracked', input: surfaceCompletionInput }}
         />
       </div>
     ) : null;

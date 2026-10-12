@@ -34,7 +34,7 @@ import {
   fetchCustomGuideRepository,
   invalidateCustomGuideRepositoryCache,
 } from '../lib/custom-guide-repository-client';
-import type { PackageResolver, PackageResolution } from '../types';
+import type { PackageResolver, PackageResolution, ResolveOptions } from '../types';
 
 // Mock AbortSignal.timeout for Node environments
 if (!AbortSignal.timeout) {
@@ -869,7 +869,7 @@ describe('fetchPackageContent path-type enrichment', () => {
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'bundled',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
-          manifest: { id, type: 'guide' },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
         })
       ),
     };
@@ -891,6 +891,66 @@ describe('fetchPackageContent path-type enrichment', () => {
     expect(journey.tracks![0]).toMatchObject({ trackId: 'builder', label: 'Builder' });
     expect(journey.tracks![0]!.milestones).toHaveLength(1);
     expect(journey.tracks![0]!.milestones[0]!.title).toBe('Milestone: builder-1');
+  });
+
+  it('reads tracks from the package manifest when the caller manifest is a slim recommender projection', async () => {
+    const packageManifest = {
+      id: 'first-dashboard',
+      type: 'path',
+      milestones: ['step-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
+    };
+    setPackageResolver({
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: id === packageManifest.id ? packageManifest : { id, type: 'guide' },
+        })
+      ),
+    });
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      id: 'first-dashboard',
+      type: 'path',
+      milestones: ['step-1'],
+    });
+
+    expect(result.content!.metadata.learningJourney!.tracks).toEqual([
+      expect.objectContaining({ trackId: 'builder', label: 'Builder' }),
+    ]);
+  });
+
+  it('uses an App Platform caller manifest as-is, without re-resolving the path for its tracks', async () => {
+    const resolve = jest.fn().mockImplementation((id: string) =>
+      Promise.resolve({
+        ok: true,
+        id,
+        contentUrl: `bundled:${id}/content.json`,
+        manifestUrl: `bundled:${id}/manifest.json`,
+        repository: 'bundled',
+        content: { id, title: `Milestone: ${id}`, blocks: [] },
+        manifest: { id, type: 'guide' },
+      })
+    );
+    setPackageResolver({ resolve });
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      id: 'first-dashboard',
+      type: 'path',
+      repository: 'app-platform',
+      milestones: ['step-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
+    });
+
+    expect(result.content!.metadata.learningJourney!.tracks).toEqual([
+      expect.objectContaining({ trackId: 'builder', label: 'Builder' }),
+    ]);
+    expect(resolve).not.toHaveBeenCalledWith('first-dashboard', { loadContent: 'metadata-only' });
   });
 
   it('omits learningJourney.tracks for a journey manifest even when tracks is present (regression: RFC restricts tracks to paths)', async () => {
@@ -960,7 +1020,7 @@ describe('fetchPackageContent path-type enrichment', () => {
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'bundled',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
-          manifest: { id, type: 'guide' },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
         })
       ),
     };
@@ -1017,7 +1077,7 @@ describe('fetchPackageContent path-type enrichment', () => {
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'bundled',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
-          manifest: { id, type: 'guide' },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
         })
       ),
     };
@@ -1135,8 +1195,8 @@ describe('fetchPackageContent path-type enrichment', () => {
   it("retries the path's own resolve past a cached failure and recovers trackMemberBaseUrl when knownBaseUrl is absent (direct/deep-link entry point)", async () => {
     let callCount = 0;
     const underlyingResolver: PackageResolver = {
-      resolve: jest.fn().mockImplementation((id: string) => {
-        if (id === 'test-path') {
+      resolve: jest.fn().mockImplementation((id: string, options?: ResolveOptions) => {
+        if (id === 'test-path' && options?.loadContent !== 'metadata-only') {
           callCount += 1;
           if (callCount === 1) {
             return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'transient hiccup' } });
@@ -1158,7 +1218,7 @@ describe('fetchPackageContent path-type enrichment', () => {
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'bundled',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
-          manifest: { id, type: 'guide' },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
         });
       }),
     };
@@ -1379,7 +1439,7 @@ describe('fetchPackageContent path-type enrichment', () => {
           manifestUrl: `bundled:${id}/manifest.json`,
           repository: 'bundled',
           content: { id, title: `Milestone: ${id}`, blocks: [] },
-          manifest: { id, type: 'path' },
+          manifest: id === manifest.id ? manifest : { id, type: 'path' },
         });
       }),
     };

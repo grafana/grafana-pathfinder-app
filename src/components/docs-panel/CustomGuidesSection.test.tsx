@@ -4,6 +4,7 @@ import { CustomGuidesSection } from './CustomGuidesSection';
 import type { PublishedGuide } from '../../utils/usePublishedGuides';
 import type { Milestone } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
+import type { ResolvedAssignment } from '../../types/learning-paths.types';
 import { fetchPackageContent } from '../../docs-retrieval/content-fetcher/package-content';
 import { resolveDocsLoadAlignment } from './utils/docs-load-finalizer';
 
@@ -351,6 +352,65 @@ describe('CustomGuidesSection — member starting location', () => {
       launchSource: 'custom_guide',
     });
     expect(JSON.stringify(path.manifest)).toBe(originalManifest);
+  });
+});
+
+describe('CustomGuidesSection — assigned paths', () => {
+  const assignment = (overrides: Partial<ResolvedAssignment> = {}): ResolvedAssignment => ({
+    targetId: 'fe-alerting-path',
+    title: 'Alerting enablement',
+    trackId: 'engineer',
+    overdue: false,
+    satisfied: false,
+    progress: 0,
+    ...overrides,
+  });
+
+  const renderPaths = (assignments: ResolvedAssignment[], openDocsPage = jest.fn()) => {
+    render(
+      <CustomGuidesSection
+        guides={[pathGuide]}
+        paths={[pathGuide]}
+        orphanGuides={[]}
+        isLoading={false}
+        expanded
+        onToggleExpanded={jest.fn()}
+        openDocsPage={openDocsPage}
+        assignments={assignments}
+      />
+    );
+    return openDocsPage;
+  };
+
+  it('badges an assigned path and opens it on the assigned track', () => {
+    const openDocsPage = renderPaths([assignment()]);
+
+    expect(screen.getByText('Assigned')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+
+    expect(openDocsPage).toHaveBeenCalledWith(
+      'backend-guide:fe-alerting-path',
+      'Alerting enablement',
+      expect.objectContaining({ packageId: 'fe-alerting-path', trackId: 'engineer' })
+    );
+  });
+
+  it('shows no badge and no track when the assignment targets another path', () => {
+    const openDocsPage = renderPaths([assignment({ targetId: 'some-other-path' })]);
+
+    expect(screen.queryByText('Assigned')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+
+    expect(openDocsPage.mock.calls[0][2]).not.toHaveProperty('trackId');
+  });
+
+  it('opens on the base sequence when the assignment names no resolvable track', () => {
+    const openDocsPage = renderPaths([assignment({ trackId: undefined })]);
+
+    expect(screen.getByText('Assigned')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+
+    expect(openDocsPage.mock.calls[0][2]).not.toHaveProperty('trackId');
   });
 });
 

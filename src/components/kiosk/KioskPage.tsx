@@ -10,7 +10,7 @@ import type { GrafanaTheme2 } from '@grafana/data';
 import type { KioskPage as Page, KioskPageBlock, KioskMode } from '../../types/kiosk-page.schema';
 import { reportKioskInteraction } from '../../lib/kiosk-analytics';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
-import { KioskFormError, MAX_INPUT_LENGTH } from '../../lib/input-value';
+import { KioskFormError, MAX_INPUT_LENGTH, describeHttpInput } from '../../lib/input-value';
 import { useDataSourceList } from '../interactive-tutorial/use-data-source-list';
 import { filterDatasourcesByType, toDatasourceOptions } from '../interactive-tutorial/datasource-options';
 import type { KioskRule } from './kiosk-rules';
@@ -284,6 +284,7 @@ function LaunchForm({
           <Field
             key={input.variableName}
             label={input.prompt}
+            description={describeHttpInput(draft[input.variableName] ?? '', input.format)}
             htmlFor={`${id}-${input.variableName}`}
             required={input.required}
           >
@@ -410,6 +411,7 @@ export function KioskPage({ page, rules, mode, onLaunch }: Props) {
                         index={rules.indexOf(rule)}
                         mode={mode}
                         onLaunch={onLaunch}
+                        blockIndex={index}
                       />
                     );
                   }
@@ -417,7 +419,7 @@ export function KioskPage({ page, rules, mode, onLaunch }: Props) {
                     <Button
                       key={link.ruleId}
                       variant="secondary"
-                      onClick={() => launchKioskGuide(rule, mode, onLaunch)}
+                      onClick={() => launchKioskGuide(rule, mode, onLaunch, undefined, index)}
                     >
                       {link.label ?? rule.title}
                       {rule.interactiveLearning === false && ' — Open product'}

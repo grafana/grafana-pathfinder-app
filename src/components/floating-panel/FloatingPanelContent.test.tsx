@@ -10,32 +10,30 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { DocsPanelModelOperations } from '../docs-panel/types';
 import { FloatingPanelContent } from './FloatingPanelContent';
 
+const mockRenderedCompletions: unknown[] = [];
 jest.mock('../content-renderer/content-renderer', () => ({
   ContentRenderer: ({
-    onGuideComplete,
+    completion,
     onActiveTrackChange,
     initialActiveTrackId,
   }: {
-    onGuideComplete?: (source: 'manual', contentKey: string) => void;
+    completion: unknown;
     onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
     initialActiveTrackId?: string | null;
-  }) => (
-    <>
-      <button onClick={() => onGuideComplete?.('manual', 'rendered-guide')}>Complete rendered guide</button>
-      <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
-      <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
-    </>
-  ),
+  }) => {
+    mockRenderedCompletions.push(completion);
+    return (
+      <>
+        <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
+        <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
+      </>
+    );
+  },
 }));
 
-jest.mock('../../docs-retrieval', () => ({
-  recordGuideCompletionForSurface: jest.fn(),
-  resolveSurfaceGuideIdentity: jest.fn(() => null),
-}));
-
-// The real hook pulls @grafana/runtime in through completion-records.
-jest.mock('../content-renderer/useGuideIdentityRegistration', () => ({
-  useGuideIdentityRegistration: jest.fn(),
+// The hooks barrel pulls @grafana/runtime in through user-storage.
+jest.mock('../../hooks', () => ({
+  usePublishSurfaceContentKey: jest.fn(),
 }));
 
 jest.mock('../docs-panel/link-handler.hook', () => ({
@@ -57,9 +55,9 @@ jest.mock('@grafana/ui', () => ({
   useTheme2: () => ({}),
 }));
 
-const { recordGuideCompletionForSurface } = jest.requireMock('../../docs-retrieval');
 const { useLinkClickHandler } = jest.requireMock('../docs-panel/link-handler.hook');
 const { LearningJourneyMilestoneToolbar } = jest.requireMock('../docs-panel/components');
+const { usePublishSurfaceContentKey } = jest.requireMock('../../hooks');
 
 function content(overrides: Record<string, unknown> = {}): any {
   return {
@@ -106,27 +104,64 @@ function panelModel(): DocsPanelModelOperations {
 }
 
 beforeEach(() => {
-  recordGuideCompletionForSurface.mockClear();
+  mockRenderedCompletions.length = 0;
   useLinkClickHandler.mockClear();
   LearningJourneyMilestoneToolbar.mockClear();
+  usePublishSurfaceContentKey.mockClear();
+});
+
+describe('FloatingPanelContent content key publication', () => {
+  it("publishes the active tab's currentUrl", () => {
+    render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith('https://example.com/remote-guide/content.json');
+  });
+
+  it('falls back to baseUrl when the tab has no currentUrl', () => {
+    render(<FloatingPanelContent content={content()} activeTab={activeTab({ currentUrl: '' })} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith('https://example.com/remote-guide');
+  });
+
+  it('publishes nothing when no content is loaded', () => {
+    render(<FloatingPanelContent content={null} activeTab={activeTab()} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith(undefined);
+  });
 });
 
 describe('FloatingPanelContent completion emission', () => {
-  it('routes a completed guide through the shared surface-neutral emitter', () => {
+  it('hands the renderer its view-level identity for the shared surface-neutral emitter', () => {
     render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
-
-    expect(recordGuideCompletionForSurface).toHaveBeenCalledWith({
-      baseUrl: 'https://example.com/remote-guide',
-      contentUrl: 'https://example.com/remote-guide/content.json',
-      currentUrl: 'https://example.com/remote-guide/content.json',
-      contentType: 'docs',
-      metadata: content().metadata,
-      guideTitle: 'My guide',
-      source: 'manual',
-      contentKey: 'rendered-guide',
+    expect(mockRenderedCompletions.at(-1)).toEqual({
+      kind: 'tracked',
+      input: {
+        baseUrl: 'https://example.com/remote-guide',
+        contentUrl: 'https://example.com/remote-guide/content.json',
+        currentUrl: 'https://example.com/remote-guide/content.json',
+        contentType: 'docs',
+        metadata: content().metadata,
+        guideTitle: 'My guide',
+      },
+      onComplete: undefined,
     });
+  });
+
+  it('passes its onGuideComplete callback to run after the completion is recorded', () => {
+    const onGuideComplete = jest.fn();
+    render(
+      <FloatingPanelContent
+        content={content()}
+        activeTab={activeTab()}
+        model={panelModel()}
+        onGuideComplete={onGuideComplete}
+      />
+    );
+
+    expect(mockRenderedCompletions.at(-1)).toEqual(
+      expect.objectContaining({ kind: 'tracked', onComplete: onGuideComplete })
+    );
   });
 });
 

@@ -37,6 +37,7 @@ jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: {
     KioskDemoStarted: 'kiosk_demo_started',
+    KioskInteraction: 'kiosk_interaction',
   },
 }));
 
@@ -305,6 +306,7 @@ describe('KioskTile', () => {
 
 describe('product navigation', () => {
   const product: KioskRule = {
+    id: 'synthetic',
     title: 'Product',
     description: 'Explore',
     type: 'interactive',
@@ -319,10 +321,20 @@ describe('product navigation', () => {
   it('opens the product without guide side effects and retains the panel preference', () => {
     panelModeManager.setModePersisted('floating');
     const close = jest.fn();
-    render(<KioskTile rule={product} index={0} mode="instance" onLaunch={close} />);
+    render(<KioskTile rule={product} index={0} mode="instance" onLaunch={close} blockIndex={4} />);
     fireEvent.click(screen.getByRole('button', { name: /Open product/ }));
     expect(mockPush).toHaveBeenCalledWith('/a/product?view=all&orgId=2#tab');
     expect(reportAppInteraction).not.toHaveBeenCalledWith(UserInteraction.KioskDemoStarted, expect.anything());
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskInteraction, {
+      launch_mode: 'instance',
+      block_index: 4,
+      component: 'guide-links',
+      action: 'open_product',
+      rule_id: 'synthetic',
+    });
+    expect((reportAppInteraction as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+      close.mock.invocationCallOrder[0]!
+    );
     expect(localStorage.getItem(StorageKeys.PANEL_MODE)).toBe('floating');
     expect(panelModeManager.getMode()).toBe('sidebar');
     expect(close).toHaveBeenCalledTimes(1);
@@ -342,6 +354,26 @@ describe('product navigation', () => {
       '_blank',
       'noopener,noreferrer'
     );
+  });
+  it.each(['instance', 'presentation'] as const)('attributes a %s product open to the kiosk session', (mode) => {
+    const session = startKioskSession('dem');
+    launchKioskGuide({ ...product, targetUrl: 'https://example.com/grafana/' }, mode, undefined, undefined, 2);
+    expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskInteraction, {
+      kiosk_session_id: session.id,
+      kiosk_name: 'dem',
+      launch_mode: mode,
+      block_index: 2,
+      component: 'guide-links',
+      action: 'open_product',
+      rule_id: 'synthetic',
+    });
+    session.end();
+  });
+  it('does not report a rejected product launch', () => {
+    launchKioskGuide({ ...product, targetUrl: 'javascript:alert(1)' }, 'presentation');
+    expect(window.open).not.toHaveBeenCalled();
+    expect(reportAppInteraction).not.toHaveBeenCalled();
   });
   it('closes only the Pathfinder sidebar', () => {
     sidebarState.setIsSidebarMounted(true);
@@ -373,6 +405,7 @@ describe('product navigation', () => {
     (page) => {
       launchKioskGuide({ ...product, page }, 'instance');
       expect(mockPush).not.toHaveBeenCalled();
+      expect(reportAppInteraction).not.toHaveBeenCalled();
     }
   );
 });

@@ -182,5 +182,10 @@
     "disabled": "Interactive learning is disabled",
     "disabledDescription": "Interactive learning is turned off for this organization.",
     "openSettings": "Open interactive learning settings"
+  },
+  "helpButtonHint": {
+    "message": "대화형 학습 사용해 보기",
+    "dismiss": "학습 힌트 닫기",
+    "learn": "학습"
   }
 }

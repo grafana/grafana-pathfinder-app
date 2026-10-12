@@ -127,6 +127,41 @@ func TestGuideProgress_AcceptCompletionsFrom(t *testing.T) {
 	}
 }
 
+func TestGuideProgress_PartialRecordDoesNotSatisfyAssignment(t *testing.T) {
+	ev := newTestEvaluator(bundledPathGuides(log.DefaultLogger))
+	var path bundledPath
+	for _, candidate := range activeCatalogue(t) {
+		if len(candidate.Guides) == 1 {
+			path = candidate
+			break
+		}
+	}
+	if len(path.Guides) != 1 {
+		t.Fatal("catalogue has no single-guide path")
+	}
+	guideID := path.Guides[0]
+	asg := assignmentSpec{TargetType: "path", TargetID: path.ID}
+	met := func(completions ...completionRecordSpec) bool {
+		return satisfiedFromGuides(mustGuideProgress(t, ev, asg, completions))
+	}
+	partial := rec("user:1", "bundled", guideID, guideID, "interactive", "", "objectives", "", 60)
+	otherGuide := rec("user:1", "bundled", guideID+"-other", guideID, "interactive", "", "objectives", "2026-06-01T15:00:00Z", 100)
+	completed := rec("user:1", "bundled", guideID, guideID, "interactive", "", "objectives", "2026-06-01T15:00:00Z", 100)
+
+	if met(partial) {
+		t.Error("a matching partial record does not satisfy the assignment")
+	}
+	if met(partial, otherGuide) {
+		t.Error("a completed record for a different guide does not satisfy the assignment")
+	}
+	if !met(completed) {
+		t.Error("a completed record satisfies the assignment")
+	}
+	if !met(partial, completed) {
+		t.Error("a completed record satisfies the assignment alongside a partial record for the same guide")
+	}
+}
+
 func TestBundledPathGuides_FallsBackToPathIndex(t *testing.T) {
 	prev := pathIndexFetch
 	pathIndexFetch = func(context.Context, string) ([]string, error) {

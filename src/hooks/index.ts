@@ -9,6 +9,7 @@ export { usePersistedBoolean, usePersistedLocalState, usePersistedString } from 
 export { useDocumentOutline, type OutlineItem } from './useDocumentOutline';
 export { useActiveOutlineItem, type ActiveOutlineItem } from './useActiveOutlineItem';
 export { useVerticalOverflow } from './useVerticalOverflow';
+export { usePublishSurfaceContentKey } from './usePublishSurfaceContentKey';
 export {
   usePathfinderPluginConfig,
   publishPathfinderPluginConfig,

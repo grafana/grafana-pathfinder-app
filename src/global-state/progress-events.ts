@@ -40,8 +40,12 @@ export type ProgressEventDetail =
     }
   | {
       kind: 'section';
+      /** Progress key of the guide that owns the section; non-preview renderers resolve it from the ambient key (#2099). */
+      contentKey: string;
       sectionId: string;
       completed: boolean;
+      /** True when the section came back complete from storage rather than the reader completing it just now. */
+      hydrated: boolean;
       percentage?: number;
     }
   | {

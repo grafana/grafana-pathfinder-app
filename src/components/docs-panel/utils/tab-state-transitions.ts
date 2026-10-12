@@ -80,5 +80,6 @@ export function projectPersistedTabs(tabs: LearningJourneyTab[]): PersistedTabDa
       currentUrl: tab.currentUrl,
       type: tab.type,
       packageInfo: tab.packageInfo,
+      ...(tab.activeTrackId && { activeTrackId: tab.activeTrackId, activeTrackPathId: tab.activeTrackPathId }),
     }));
 }

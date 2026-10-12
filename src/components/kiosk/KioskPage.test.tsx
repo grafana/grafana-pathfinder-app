@@ -277,13 +277,38 @@ it.each(['instance', 'presentation'] as const)('launches product rules from the 
   const onLaunch = jest.fn();
   render(
     <KioskPage
-      page={{ version: 1, blocks: [{ type: 'guide-links', layout: 'links', links: [{ ruleId: 'product' }] }] }}
+      page={{
+        version: 1,
+        blocks: [{ type: 'divider' }, { type: 'guide-links', layout: 'links', links: [{ ruleId: 'product' }] }],
+      }}
       rules={[product]}
       mode={mode}
       onLaunch={onLaunch}
     />
   );
   fireEvent.click(screen.getByRole('button', { name: 'Product — Open product' }));
-  expect(launchKioskGuide).toHaveBeenCalledWith(product, mode, onLaunch);
+  expect(launchKioskGuide).toHaveBeenCalledWith(product, mode, onLaunch, undefined, 1);
   expect(prepareKioskInputs).not.toHaveBeenCalled();
+});
+
+it('shows the normalized check URL and exact allowed origin before launch', () => {
+  const urlPage: Page = {
+    version: 1,
+    blocks: [
+      {
+        type: 'launch-form',
+        ruleId: 'demo',
+        label: 'Launch',
+        inputs: [
+          { inputType: 'text', format: 'http-url', variableName: 'appUrl', prompt: 'Your website', required: true },
+        ],
+      },
+    ],
+  };
+  render(<KioskPage page={urlPage} rules={rules} mode="instance" />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'example.com/shop?q=1#details' } });
+  expect(
+    screen.getByText('Check: https://example.com/shop?q=1 · Allowed origin: https://example.com')
+  ).toBeInTheDocument();
+  expect(prepare).not.toHaveBeenCalled();
 });

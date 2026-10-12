@@ -194,6 +194,11 @@ export async function restoreTabsFromStorage(
         error: null,
         type,
         packageInfo: data.packageInfo,
+        // Storage is untrusted; the cover page only honors a track that exists in the manifest.
+        ...(typeof data.activeTrackId === 'string' && {
+          activeTrackId: data.activeTrackId,
+          activeTrackPathId: typeof data.activeTrackPathId === 'string' ? data.activeTrackPathId : undefined,
+        }),
       });
     });
 

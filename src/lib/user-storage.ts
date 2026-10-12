@@ -809,6 +809,14 @@ function getStoredMilestoneSlugs(
   return new Set(slugs);
 }
 
+// Serializes milestone mutations so each sees the previous write, not a stale record.
+let milestoneMutationQueue: Promise<unknown> = Promise.resolve();
+function serializeMilestoneMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = milestoneMutationQueue.then(operation);
+  milestoneMutationQueue = result.catch(() => undefined);
+  return result;
+}
+
 /**
  * Milestone completion storage operations
  *
@@ -828,24 +836,26 @@ export const milestoneCompletionStorage = {
   },
 
   async markCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
-      const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
-      const existing = getStoredMilestoneSlugs(data, canonicalKey);
-      existing.add(milestoneSlug);
-      const completedSlugs = Array.from(existing);
-      for (const storedKey of Object.keys(data)) {
-        if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
-          data[storedKey] = completedSlugs;
+    return serializeMilestoneMutation(async () => {
+      try {
+        const storage = createUserStorage();
+        const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
+        const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+        const existing = getStoredMilestoneSlugs(data, canonicalKey);
+        existing.add(milestoneSlug);
+        const completedSlugs = Array.from(existing);
+        for (const storedKey of Object.keys(data)) {
+          if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
+            data[storedKey] = completedSlugs;
+          }
         }
+        data[canonicalKey] = completedSlugs;
+        data[journeyBaseUrl] = completedSlugs;
+        await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
+      } catch (error) {
+        logger.warn('Failed to save milestone completion', { error });
       }
-      data[canonicalKey] = completedSlugs;
-      data[journeyBaseUrl] = completedSlugs;
-      await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
-    } catch (error) {
-      logger.warn('Failed to save milestone completion', { error });
-    }
+    });
   },
 
   async isCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<boolean> {
@@ -871,29 +881,31 @@ export const milestoneCompletionStorage = {
    * canonicalizes to the journey base.
    */
   async removeCompleted(journeyBaseUrl: string, milestoneSlug: string, milestoneUrls: string[] = []): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
-      const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
-      const exactKeys = new Set([journeyBaseUrl, ...milestoneUrls].map((key) => key.replace(/\/+$/, '')));
-      let mutated = false;
-      for (const storedKey of Object.keys(data)) {
-        const storedSlugs = data[storedKey];
-        if (
-          storedSlugs &&
-          (getLearningJourneyBaseUrl(storedKey) === canonicalKey || exactKeys.has(storedKey.replace(/\/+$/, ''))) &&
-          storedSlugs.includes(milestoneSlug)
-        ) {
-          data[storedKey] = storedSlugs.filter((slug) => slug !== milestoneSlug);
-          mutated = true;
+    return serializeMilestoneMutation(async () => {
+      try {
+        const storage = createUserStorage();
+        const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
+        const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+        const exactKeys = new Set([journeyBaseUrl, ...milestoneUrls].map((key) => key.replace(/\/+$/, '')));
+        let mutated = false;
+        for (const storedKey of Object.keys(data)) {
+          const storedSlugs = data[storedKey];
+          if (
+            storedSlugs &&
+            (getLearningJourneyBaseUrl(storedKey) === canonicalKey || exactKeys.has(storedKey.replace(/\/+$/, ''))) &&
+            storedSlugs.includes(milestoneSlug)
+          ) {
+            data[storedKey] = storedSlugs.filter((slug) => slug !== milestoneSlug);
+            mutated = true;
+          }
         }
+        if (mutated) {
+          await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
+        }
+      } catch (error) {
+        logger.warn('Failed to remove milestone completion', { error });
       }
-      if (mutated) {
-        await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
-      }
-    } catch (error) {
-      logger.warn('Failed to remove milestone completion', { error });
-    }
+    });
   },
 
   /**
@@ -914,28 +926,32 @@ export const milestoneCompletionStorage = {
   },
 
   async clear(journeyBaseUrl: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
-      const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
-      for (const storedKey of Object.keys(data)) {
-        if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
-          delete data[storedKey];
+    return serializeMilestoneMutation(async () => {
+      try {
+        const storage = createUserStorage();
+        const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
+        const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
+        for (const storedKey of Object.keys(data)) {
+          if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
+            delete data[storedKey];
+          }
         }
+        await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
+      } catch (error) {
+        logger.warn('Failed to clear milestone completion', { error });
       }
-      await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
-    } catch (error) {
-      logger.warn('Failed to clear milestone completion', { error });
-    }
+    });
   },
 
   async clearAll(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await storage.removeItem(StorageKeys.MILESTONE_COMPLETION);
-    } catch (error) {
-      logger.warn('Failed to clear all milestone completion', { error });
-    }
+    return serializeMilestoneMutation(async () => {
+      try {
+        const storage = createUserStorage();
+        await storage.removeItem(StorageKeys.MILESTONE_COMPLETION);
+      } catch (error) {
+        logger.warn('Failed to clear all milestone completion', { error });
+      }
+    });
   },
 };
 

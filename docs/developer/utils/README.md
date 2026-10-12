@@ -119,7 +119,6 @@ async function fetchBackendGuides(namespace: string, publishedOnly?: boolean): P
 
 **Used by**:
 
-- `src/context-engine/context.init.ts`
 - `src/docs-retrieval/content-fetcher/backend-guide.ts`
 - `src/components/block-editor/hooks/useBackendGuides.ts`
 - `src/utils/fetchBackendGuides.ts`
