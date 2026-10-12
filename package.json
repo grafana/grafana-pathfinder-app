@@ -61,7 +61,7 @@
     "@grafana/sign-plugin": "^3.3.3",
     "@grafana/tsconfig": "^2.2.0",
     "@jest/test-sequencer": "^30.5.2",
-    "@playwright/test": "~1.63.0",
+    "@playwright/test": "~1.64.0",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@swc/core": "^1.16.13",
     "@swc/helpers": "^0.5.23",
