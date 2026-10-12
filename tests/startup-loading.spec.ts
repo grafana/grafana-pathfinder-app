@@ -233,8 +233,9 @@ test('places the Learn experiment beside toolbar Help despite page help icons', 
   const help = toolbar.getByRole('button', { name: 'Help', exact: true });
   await expect(help).toBeVisible();
   const learn = toolbar.getByTestId('help-button-learn');
+  // Grafana renders an untagged placeholder svg until the icon loads; before 12.4 the loaded icon is untagged too.
+  await expect(help.locator('svg > *').first()).toBeAttached();
   if ((await help.getByTestId('icon-question-circle').count()) === 0) {
-    expect(await page.evaluate(() => window.grafanaBootData.settings.buildInfo.version)).toMatch(/^12\.3\./);
     await expect(page.getByText('Waiting for the closed desktop Help button.', { exact: true })).toBeVisible();
     await expect(page.getByTestId('help-button-learn')).toHaveCount(0);
     await help.click();
