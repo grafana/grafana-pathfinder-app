@@ -21,8 +21,10 @@ import { computeGuideBlockIndex, type CountableBlock, type GuideBlockIndex } fro
  * are byte-indistinguishable.
  *
  * NOT a content version: it says nothing about whether the guide changed.
+ *
+ * v2 separates stamps before and after conditional branch-child credit.
  */
-export const GUIDE_STATS_VERSION = 1;
+export const GUIDE_STATS_VERSION = 2;
 
 /**
  * Re-exported from tier 0, where the Zod schema owns the shape so the writer
