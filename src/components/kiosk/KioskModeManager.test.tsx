@@ -269,14 +269,37 @@ it('closes with an already prevented Escape while the view is still loading', as
   expect(screen.queryByText('Loading interactive learning')).toBeNull();
 });
 
+it('keeps a loading-view Escape from reaching Grafana key bindings', async () => {
+  const grafanaEscape = jest.fn();
+  document.addEventListener('keydown', grafanaEscape);
+  try {
+    const isolated = isolatedManager();
+    isolated.loadTranslatedModule.mockImplementationOnce(() => new Promise(() => {}));
+    isolated.kioskState.set({ source: 'sidebar' });
+    render(<isolated.KioskModeManager rulesUrl="default" />);
+    await screen.findByText('Loading interactive learning');
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      document.dispatchEvent(escape);
+    });
+    expect(isolated.kioskState.getSnapshot()).toBeNull();
+    expect(escape.defaultPrevented).toBe(true);
+    expect(grafanaEscape).not.toHaveBeenCalled();
+  } finally {
+    document.removeEventListener('keydown', grafanaEscape);
+  }
+});
+
 it('leaves Escape to the loaded view', async () => {
   kioskState.set({ source: 'sidebar' });
   render(<KioskModeManager rulesUrl="default" />);
   await screen.findByTestId('close-overlay');
+  const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
   act(() => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.dispatchEvent(escape);
   });
   expect(kioskState.getSnapshot()).not.toBeNull();
+  expect(escape.defaultPrevented).toBe(false);
   act(() => kioskState.set(null));
 });
 

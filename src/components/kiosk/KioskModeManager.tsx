@@ -89,11 +89,13 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
     }
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && frameRef.current?.hasChildNodes()) {
+        e.preventDefault();
+        e.stopPropagation();
         handleClose();
       }
     };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    window.addEventListener('keydown', handleEscape, true);
+    return () => window.removeEventListener('keydown', handleEscape, true);
   }, [isOpen, handleClose]);
 
   useEffect(() => {
