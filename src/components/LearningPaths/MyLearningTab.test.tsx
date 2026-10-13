@@ -1,3 +1,5 @@
+jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
+
 /**
  * Tests for MyLearningTab:
  *  - the launch flow: the pending affordance while `prepareGuideLaunch` runs,
@@ -19,6 +21,9 @@ import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { pushFaroLog } from '../../lib/telemetry/bridge';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
+import { openCatalogBrowser } from '../docs-panel/utils/open-catalog-browser';
+import type { CatalogPackage } from '../../types/package-catalog.types';
 import { testIds } from '../../constants/testIds';
 import {
   guideCompletionMarkStorage,
@@ -32,6 +37,11 @@ jest.mock('../../lib/telemetry/facade', () => ({
   recordGuideRender: jest.fn(),
   recordGuideRequest: jest.fn(),
 }));
+
+jest.mock('../docs-panel/utils/open-prepared-guide', () => ({ openGuideInSidebar: jest.fn() }));
+jest.mock('../docs-panel/utils/open-catalog-browser', () => ({ openCatalogBrowser: jest.fn() }));
+jest.mock('../PackageBrowser/CatalogDetails', () => ({ CatalogDetails: () => <p>Module list</p> }));
+jest.mock('../../package-engine', () => ({ AppPlatformPackageResolver: jest.fn() }));
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
@@ -77,6 +87,9 @@ jest.mock('@grafana/i18n', () => ({
 
 // Style keys come back as their own names so tests can assert on composition.
 jest.mock('@grafana/ui', () => ({
+  Button: ({ children, icon: _icon, size: _size, variant: _variant, ...props }: any) => (
+    <button {...props}>{children}</button>
+  ),
   useStyles2: () => new Proxy({}, { get: (_target, prop) => String(prop) }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
   ConfirmModal: ({ isOpen, body, confirmText, dismissText, onConfirm, onDismiss }: any) =>
@@ -100,6 +113,8 @@ const mockGetPathProgress = jest.fn();
 const mockIsPathCompleted = jest.fn();
 const mockGetGuideUrlForPath = jest.fn();
 const mockResetPathGuides = jest.fn();
+let mockCatalogItems: CatalogPackage[] = [];
+let mockCatalogProgress = new Map<string, { percent: number }>();
 let mockDiscoverItems: Array<{
   id: string;
   title: string;
@@ -107,8 +122,9 @@ let mockDiscoverItems: Array<{
   milestoneCount?: number;
   description?: string;
   manifest?: Record<string, unknown>;
+  catalogPackage?: CatalogPackage;
 }> = [];
-let mockDiscoverExcludeTitles: Set<string> | undefined;
+let mockDiscoverExcludeIdentities: Set<string> | undefined;
 type MockAssignment = {
   targetType: string;
   targetId: string;
@@ -128,10 +144,13 @@ let mockOnlinePaths: any[] = [];
 
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
+  pathCatalogIdentities: jest.requireActual('../../learning-paths/catalog-learning-core').pathCatalogIdentities,
+  selectContinueLearning: jest.requireActual('../../learning-paths/catalog-learning-core').selectContinueLearning,
+  useCatalogProgress: () => mockCatalogProgress,
   getPathsData: () => ({ guideMetadata: mockGuideMetadata }),
-  useDiscoverMore: ({ excludeTitles }: { excludeTitles?: Set<string> }) => {
-    mockDiscoverExcludeTitles = excludeTitles;
-    return { items: mockDiscoverItems, isLoading: false };
+  useDiscoverMore: ({ excludeIdentities }: { excludeIdentities?: Set<string> }) => {
+    mockDiscoverExcludeIdentities = excludeIdentities;
+    return { items: mockDiscoverItems, isLoading: false, catalog: { items: mockCatalogItems, scope: 'test' } };
   },
   useLearningPaths: () => ({
     paths: mockPaths,
@@ -235,7 +254,9 @@ beforeEach(() => {
   mockCompletedGuides = ['guide-2'];
   mockBadges = [];
   mockDiscoverItems = [];
-  mockDiscoverExcludeTitles = undefined;
+  mockCatalogItems = [];
+  mockCatalogProgress = new Map();
+  mockDiscoverExcludeIdentities = undefined;
   mockAssignments = [];
   mockAssignedCompleted = [];
   mockGetPathGuides.mockImplementation((id: string) =>
@@ -402,8 +423,8 @@ describe('MyLearningTab launch flow', () => {
 
     // Everything shown in My Courses / Completed is suppressed from Discover
     // More, so a bundled path never double-lists.
-    expect(mockDiscoverExcludeTitles).toEqual(
-      new Set(['New path', 'Barely started', 'Started path', 'Almost done', 'Done path'])
+    expect(mockDiscoverExcludeIdentities).toEqual(
+      new Set(['grafana:path-new', 'grafana:edge-low', 'grafana:path-1', 'grafana:edge-high', 'grafana:path-done'])
     );
   });
 
@@ -781,7 +802,7 @@ describe('MyLearningTab launch flow', () => {
     expect(card).not.toHaveTextContent('Seller Track');
   });
 
-  it('labels Discover more path metadata as milestones', () => {
+  it('labels Discover more path contents consistently as modules', () => {
     mockDiscoverItems = [
       { id: 'pkg-1', title: 'Package one', contentUrl: 'https://cdn.example/pkg-1/content.json', milestoneCount: 1 },
       { id: 'pkg-2', title: 'Package two', contentUrl: 'https://cdn.example/pkg-2/content.json', milestoneCount: 2 },
@@ -791,8 +812,8 @@ describe('MyLearningTab launch flow', () => {
 
     const firstCard = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-1'));
     const secondCard = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-2'));
-    expect(firstCard).toHaveTextContent('1 milestone');
-    expect(secondCard).toHaveTextContent('2 milestones');
+    expect(firstCard).toHaveTextContent('1 modules');
+    expect(secondCard).toHaveTextContent('2 modules');
     expect(firstCard).not.toHaveTextContent('guide');
     expect(secondCard).not.toHaveTextContent('guide');
   });
@@ -816,7 +837,7 @@ describe('MyLearningTab launch flow', () => {
     );
   });
 
-  it('discloses a Discover more description behind an expand toggle', () => {
+  it('shows short Discover descriptions directly without an empty disclosure', () => {
     mockDiscoverItems = [
       {
         id: 'pkg-described',
@@ -824,21 +845,12 @@ describe('MyLearningTab launch flow', () => {
         contentUrl: 'https://cdn.example/pkg-1/content.json',
         description: 'Ship your first dashboard',
       },
-      { id: 'pkg-bare', title: 'Package two', contentUrl: 'https://cdn.example/pkg-2/content.json' },
     ];
-
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
-
-    const expand = screen.getByTestId(testIds.learningPaths.discoverMoreExpand('pkg-described'));
-    expect(expand).toHaveAttribute('aria-label', 'Expand');
-    fireEvent.click(expand);
-    expect(expand).toHaveAttribute('aria-label', 'Collapse');
     expect(screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-described'))).toHaveTextContent(
       'Ship your first dashboard'
     );
-
-    // Nothing to reveal without a description, so no dead disclosure control.
-    expect(screen.queryByTestId(testIds.learningPaths.discoverMoreExpand('pkg-bare'))).not.toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.learningPaths.discoverMoreExpand('pkg-described'))).not.toBeInTheDocument();
   });
 
   it('keeps the badge overlay outside the container-query context', () => {
@@ -903,67 +915,85 @@ describe('MyLearningTab launch flow', () => {
     expect(region).toHaveAttribute('aria-hidden', 'false');
   });
 
-  it('toggles a Discover more card from the keyboard', () => {
+  it('expands modules in place without launching and keeps Start accessible', () => {
     mockDiscoverItems = [
       {
         id: 'pkg-1',
         title: 'Package one',
         contentUrl: 'https://cdn.example/pkg-1/content.json',
-        description: 'Ship your first dashboard',
+        catalogPackage: {
+          id: 'pkg-1',
+          key: 'online-cdn:pkg-1',
+          title: 'Package one',
+          source: 'grafana',
+          format: 'path',
+          url: 'https://cdn.example/pkg-1/content.json',
+          memberIds: ['module-1'],
+        },
       },
     ];
-
-    render(<MyLearningTab onOpenGuide={jest.fn()} />);
-    const expand = screen.getByTestId(testIds.learningPaths.discoverMoreExpand('pkg-1'));
-
-    // The chevron is a real button, so Enter reaches it as an activation click.
-    fireEvent.keyDown(expand, { key: 'Enter' });
-    fireEvent.click(expand);
-
-    expect(expand).toHaveAttribute('aria-label', 'Collapse');
-    expect(expand).toHaveAttribute('aria-expanded', 'true');
-  });
-
-  it('exposes the Discover more Start button to assistive tech', () => {
-    mockDiscoverItems = [
-      {
-        id: 'pkg-1',
-        title: 'Package one',
-        contentUrl: 'https://cdn.example/pkg-1/content.json',
-        description: 'Ship your first dashboard',
-      },
-    ];
-
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
     const card = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-1'));
-
-    // `role="button"` on the header would be Children Presentational, hiding the
-    // nested Start and chevron and leaving the card expandable but unlaunchable.
-    expect(card.querySelector('[role="button"]')).toBeNull();
-
-    // The disclosure state belongs to the chevron, and the collapsed region is
-    // hidden from the accessibility tree to match it.
-    const expand = screen.getByTestId(testIds.learningPaths.discoverMoreExpand('pkg-1'));
+    const expand = within(card).getByRole('button', { name: /Show modules/ });
     expect(expand).toHaveAttribute('aria-expanded', 'false');
-    const region = card.querySelector(`#${CSS.escape(expand.getAttribute('aria-controls')!)}`);
-    expect(region).toHaveAttribute('aria-hidden', 'true');
-    expect(region).toHaveTextContent('Ship your first dashboard');
+    fireEvent.click(expand);
+    expect(expand).toHaveAttribute('aria-expanded', 'true');
+    expect(card).toHaveTextContent('Module list');
+    expect(within(card).getByRole('button', { name: 'Start path' })).toBeInTheDocument();
+    expect(prepareMock).not.toHaveBeenCalled();
   });
 
-  it('expanding a Discover more card does not launch it', () => {
-    mockDiscoverItems = [
-      {
-        id: 'pkg-1',
-        title: 'Package one',
-        contentUrl: 'https://cdn.example/pkg-1/content.json',
-        description: 'Ship your first dashboard',
-      },
-    ];
-
+  it('opens Browse all in the sidebar', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
-    fireEvent.click(screen.getByTestId(testIds.learningPaths.discoverMoreExpand('pkg-1')));
+    fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+    expect(openCatalogBrowser).toHaveBeenCalledWith({ source: 'my_learning_discover_more' });
+  });
 
+  it('surfaces arbitrary incomplete official content without duplicating courses or minting attempts', async () => {
+    const entry = (
+      id: string,
+      format: 'guide' | 'path',
+      source: 'grafana' | 'organization' = 'grafana'
+    ): CatalogPackage => ({
+      id,
+      key: `${source}:${id}`,
+      title: `Catalog ${id}`,
+      source,
+      format,
+      url: `https://cdn.example/${id}/content.json`,
+    });
+    mockCatalogItems = [
+      entry('new-guide', 'guide'),
+      entry('new-path', 'path'),
+      entry('third-guide', 'guide'),
+      entry('path-1', 'path'),
+      entry('done', 'guide'),
+      entry('untouched', 'path'),
+      entry('private', 'guide', 'organization'),
+    ];
+    mockCatalogProgress = new Map([
+      ['grafana:new-guide', { percent: 20 }],
+      ['grafana:new-path', { percent: 40 }],
+      ['grafana:third-guide', { percent: 30 }],
+      ['grafana:path-1', { percent: 50 }],
+      ['grafana:done', { percent: 100 }],
+      ['organization:private', { percent: 60 }],
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    const shelf = screen.getByTestId('continue-learning-section');
+    expect(shelf).toHaveTextContent('Catalog new-guide');
+    expect(shelf).toHaveTextContent('Catalog new-path');
+    expect(shelf).toHaveTextContent('Catalog third-guide');
+    expect(shelf.querySelector('.scrollRegion')).toContainElement(within(shelf).getAllByRole('article')[2]!);
+    expect(within(shelf).getAllByRole('article')).toHaveLength(3);
+    expect(shelf).not.toHaveTextContent('Catalog path-1');
+    expect(shelf).not.toHaveTextContent('Catalog done');
+    expect(shelf).not.toHaveTextContent('Catalog untouched');
+    expect(shelf).not.toHaveTextContent('Catalog private');
     expect(prepareMock).not.toHaveBeenCalled();
+    fireEvent.click(within(shelf).getAllByRole('button', { name: 'Resume' })[0]!);
+    await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledWith(okResult.ok ? okResult.launch : undefined));
   });
 
   it('launches a Discover More item through prepareGuideLaunch', async () => {
@@ -977,7 +1007,7 @@ describe('MyLearningTab launch flow', () => {
     await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
     expect(prepareMock).toHaveBeenCalledWith(
       'https://cdn.example/pkg-1/content.json',
-      expect.objectContaining({ title: 'Package one', packageInfo: undefined })
+      expect.objectContaining({ title: 'Package one', packageInfo: undefined, source: 'package_browser' })
     );
   });
 
@@ -1032,7 +1062,7 @@ describe('MyLearningTab — private paths split', () => {
 
     // Still suppressed from Discover more — the split must not reopen the
     // double-listing the exclude set exists to prevent.
-    expect(mockDiscoverExcludeTitles).toContain('Alerting enablement');
+    expect(mockDiscoverExcludeIdentities).toContain('organization:ap-path');
   });
 
   it('moves a completed private path to Completed rather than keeping it in Private paths', () => {

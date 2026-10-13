@@ -16,11 +16,32 @@ jest.mock('./logging', () => ({
 }));
 
 import { getBackendSrv } from '@grafana/runtime';
-import { fetchCustomGuideRepository, invalidateCustomGuideRepositoryCache } from './custom-guide-repository-client';
+import {
+  fetchCustomGuideRepository,
+  fetchCustomGuideCatalogue,
+  invalidateCustomGuideRepositoryCache,
+} from './custom-guide-repository-client';
 import { logger } from './logging';
 import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
 
 const mockGet = jest.fn();
+
+it('preserves availability and refreshes a cached unavailable response without a wire change', async () => {
+  mockGet.mockResolvedValueOnce({ capability: { available: false, reason: 'upstream-503' }, guides: [] });
+  expect(await fetchCustomGuideCatalogue('stacks-123')).toEqual({
+    available: false,
+    reason: 'upstream-503',
+    entries: [],
+  });
+  await fetchCustomGuideCatalogue('stacks-123');
+  expect(mockGet).toHaveBeenCalledTimes(1);
+  mockGet.mockResolvedValueOnce({ capability: { available: true }, guides: [{ id: 'team', status: 'published' }] });
+  expect(await fetchCustomGuideCatalogue('stacks-123', { refresh: true })).toMatchObject({
+    available: true,
+    entries: [{ id: 'team' }],
+  });
+  expect(mockGet).toHaveBeenCalledTimes(2);
+});
 
 beforeEach(() => {
   jest.clearAllMocks();

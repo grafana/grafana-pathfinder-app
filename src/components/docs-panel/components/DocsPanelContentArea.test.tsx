@@ -1,3 +1,5 @@
+jest.mock('../../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
+
 /**
  * Tests for DocsPanelContentArea.
  *

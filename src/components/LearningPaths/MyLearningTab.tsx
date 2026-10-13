@@ -20,6 +20,9 @@ import type { LearningPath } from '../../types/learning-paths.types';
 import {
   useLearningPaths,
   useDiscoverMore,
+  useCatalogProgress,
+  selectContinueLearning,
+  pathCatalogIdentities,
   useMyAssignments,
   BADGES,
   getPathsData,
@@ -52,6 +55,8 @@ import { MyCoursesSection } from './sections/MyCoursesSection';
 import { PrivatePathsSection } from './sections/PrivatePathsSection';
 import { BadgesSection } from './sections/BadgesSection';
 import { DiscoverMoreSection } from './sections/DiscoverMoreSection';
+import { useCatalogLaunch } from './useCatalogLaunch';
+import { ContinueLearningSection } from './sections/ContinueLearningSection';
 import { CompletedSection } from './sections/CompletedSection';
 
 interface MyLearningTabProps {
@@ -136,11 +141,25 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     return [...local, ...online];
   }, [paths, onlinePaths, isPathCompleted, assignmentByTargetId]);
 
-  const excludeTitles = useMemo(
-    () => new Set([...inProgress, ...completedPaths].map((path) => path.title)),
+  const excludeIdentities = useMemo(
+    () => pathCatalogIdentities([...inProgress, ...completedPaths]),
     [inProgress, completedPaths]
   );
-  const { items: discoverItems, isLoading: discoverLoading } = useDiscoverMore({ excludeTitles });
+  const {
+    items: discoverCandidates,
+    isLoading: discoverLoading,
+    catalog,
+  } = useDiscoverMore({ excludeIdentities, count: Number.MAX_SAFE_INTEGER });
+  const catalogProgress = useCatalogProgress(catalog.items, catalog.scope);
+  const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress);
+  const continueItems = useMemo(
+    () => selectContinueLearning(catalog.items, catalogProgress, excludeIdentities),
+    [catalog.items, catalogProgress, excludeIdentities]
+  );
+  const discoverItems = useMemo(
+    () => discoverCandidates.filter((item) => (catalogProgress.get(item.key ?? '')?.percent ?? 0) === 0).slice(0, 5),
+    [discoverCandidates, catalogProgress]
+  );
 
   const performLaunch = useCallback(
     async (url: string, title: string, packageInfo?: PackageOpenInfo) => {
@@ -343,25 +362,21 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     [launch, allPaths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
   );
 
-  const handleDiscoverStart = useCallback(
-    (item: DiscoverMoreItem) => {
-      reportAppInteraction(UserInteraction.OpenResourceClick, {
-        content_title: item.title,
-        content_url: item.contentUrl,
-        content_type: AnalyticsContentType.LearningJourney,
-        interaction_location: 'my_learning_discover_more',
-      });
-
-      // prepareGuideLaunch backfills packageInfo from the URL when absent, but
-      // the manifest is already inlined here — passing it saves that re-fetch.
-      const packageInfo: PackageOpenInfo | undefined = item.manifest
+  const handleDiscoverStart = (item: DiscoverMoreItem) => {
+    const entry = item.catalogPackage ?? {
+      key: item.key ?? `online-cdn:${item.id}`,
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      format: 'path' as const,
+      source: 'grafana' as const,
+      url: item.contentUrl,
+      packageInfo: item.manifest
         ? { packageId: item.id, packageManifest: { ...item.manifest, id: item.id } }
-        : undefined;
-
-      void launch(item.contentUrl, item.title, item.id, packageInfo);
-    },
-    [launch]
-  );
+        : undefined,
+    };
+    return catalogLaunch.launch(entry);
+  };
 
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('Reset all learning progress? This will clear completed guides, badges, and streaks.')) {
@@ -479,7 +494,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         onContinue={handleOpenGuide}
         onReset={resetPath}
         launchingPathId={launchingId}
-        launchDisabled={launchingId !== null}
+        launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
         styles={styles}
       />
 
@@ -495,7 +510,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
             onReset={resetPath}
             onResetGuides={resetPathGuides}
             launchingPathId={launchingId}
-            launchDisabled={launchingId !== null}
+            launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
             styles={styles}
           />
 
@@ -510,12 +525,28 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         </div>
       </div>
 
+      <ContinueLearningSection
+        items={continueItems}
+        catalogItems={catalog.items}
+        scope={catalog.scope}
+        progress={catalogProgress}
+        onContinue={catalogLaunch.launch}
+        launchingKey={catalogLaunch.launchingKey}
+        launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
+        launchError={catalogLaunch.launchError}
+        styles={styles}
+      />
+
       <DiscoverMoreSection
         items={discoverItems}
         isLoading={discoverLoading}
         onStart={handleDiscoverStart}
-        startingId={launchingId}
-        startDisabled={launchingId !== null}
+        startingId={catalogLaunch.launchingKey}
+        startDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
+        catalogItems={catalog.items}
+        scope={catalog.scope}
+        progress={catalogProgress}
+        launchError={catalogLaunch.launchError}
         styles={styles}
       />
 

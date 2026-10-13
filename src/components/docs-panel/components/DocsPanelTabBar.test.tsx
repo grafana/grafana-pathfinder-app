@@ -1,3 +1,5 @@
+jest.mock('../../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
+
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DocsPanelTabBar, type DocsPanelTabBarProps } from './DocsPanelTabBar';
@@ -84,6 +86,14 @@ describe('DocsPanelTabBar', () => {
     jest.clearAllMocks();
     localStorage.clear();
     resetEditorChromeStatus();
+  });
+
+  it('opens Browse from permanent navigation without using a guide tab slot', () => {
+    const props = makeProps();
+    render(<DocsPanelTabBar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+    expect(props.onSetActiveTab).toHaveBeenCalledWith('browse');
+    expect(props.onCloseTab).not.toHaveBeenCalled();
   });
 
   it('navigates to the My Learning page when the "My learning" button is clicked', () => {

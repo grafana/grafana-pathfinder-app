@@ -284,7 +284,7 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
 
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
     expect((panel as any).state.activeTabId).toBe('tab-guide-1');
-    expect((panel as any).state.tabs).toHaveLength(2);
+    expect((panel as any).state.tabs).toHaveLength(3);
     expect((panel as any).state.tabs[1].id).toBe('tab-guide-1');
   });
 
@@ -295,6 +295,37 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     await panel.restoreTabsAsync();
 
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps concurrent callers waiting until the shared workspace has finished restoring', async () => {
+    let finish!: (tabs: typeof RESTORED_TABS) => void;
+    mockRestoreTabsFromStorage.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const panel = new CombinedLearningJourneyPanel();
+    const first = panel.restoreTabsAsync();
+    let secondFinished = false;
+    const second = panel.restoreTabsAsync().then(() => {
+      secondFinished = true;
+    });
+    await Promise.resolve();
+    expect(secondFinished).toBe(false);
+    finish(RESTORED_TABS);
+    await Promise.all([first, second]);
+    expect(secondFinished).toBe(true);
+    expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
+    expect(panel.state.activeTabId).toBe('tab-guide-1');
+  });
+
+  it('allows restoration to retry after storage rejects', async () => {
+    mockRestoreTabsFromStorage.mockRejectedValueOnce(new Error('storage unavailable'));
+    const panel = new CombinedLearningJourneyPanel();
+    await expect(panel.restoreTabsAsync()).rejects.toThrow('storage unavailable');
+    await panel.restoreTabsAsync();
+    expect(panel.state.activeTabId).toBe('tab-guide-1');
+    expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(2);
   });
 
   it('force-refreshes an existing model after another surface updates storage', async () => {
@@ -426,7 +457,7 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     // The fix (instance-level guard) lets panelB restore independently.
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(2);
     expect((panelB as any).state.activeTabId).toBe('tab-guide-1');
-    expect((panelB as any).state.tabs).toHaveLength(2);
+    expect((panelB as any).state.tabs).toHaveLength(3);
     expect((panelB as any).state.tabs[1].id).toBe('tab-guide-1');
   });
 
