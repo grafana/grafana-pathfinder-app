@@ -1107,3 +1107,67 @@ describe('CombinedLearningJourneyPanel — package resolver config source', () =
     expect(jest.requireMock('../../package-engine').createCompositeResolver).toHaveBeenCalledWith(constructorConfig);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Acceptance: starting location follows the page the reader is on
+// ---------------------------------------------------------------------------
+
+describe('CombinedLearningJourneyPanel — learning path starting-location inheritance', () => {
+  const PATH_START = '/x-start';
+  const MILESTONE_A_START = '/a-start';
+  const MILESTONE_B_START = '/b-start';
+
+  function makePathOrMilestoneContent(url: string, startingLocation: string): RawContent {
+    return {
+      content: '{"id":"guide","title":"Guide","blocks":[]}',
+      type: 'interactive',
+      url,
+      lastFetched: '2026-10-13T00:00:00.000Z',
+      metadata: {
+        title: url,
+        learningJourney: { currentMilestone: 1, totalMilestones: 2, milestones: [], baseUrl: 'bundled:x' },
+        packageManifest: { startingLocation },
+      },
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetLocation.mockReturnValue({ pathname: '/explore', search: '' });
+    jest.requireMock('../../global-state/panel-mode').panelModeManager.getMode.mockReturnValue('sidebar');
+    jest.requireMock('../../types/package.types').getPackageRenderType.mockReturnValue('learning-journey');
+    jest.requireMock('./utils').shouldUseDocsLoader.mockReturnValue(true);
+  });
+
+  async function settle() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it('prompts with X on the landing page, A on milestone A, and B on milestone B', async () => {
+    const docsRetrieval = jest.requireMock('../../docs-retrieval');
+    mockLoadDocsTabContentResult
+      .mockResolvedValueOnce({ content: makePathOrMilestoneContent('bundled:x/content.json', PATH_START) })
+      .mockResolvedValueOnce({ content: makePathOrMilestoneContent('bundled:a/content.json', MILESTONE_A_START) })
+      .mockResolvedValueOnce({ content: makePathOrMilestoneContent('bundled:b/content.json', MILESTONE_B_START) });
+    docsRetrieval.getNextMilestoneUrlFromContent
+      .mockReturnValueOnce('bundled:a/content.json')
+      .mockReturnValueOnce('bundled:b/content.json');
+
+    const panel = new CombinedLearningJourneyPanel();
+    const tabId = await openTabAndLoad(panel, 'bundled:x/content.json', 'home_page', {
+      packageManifest: { type: 'path', startingLocation: PATH_START },
+    });
+    await settle();
+    expect(getTab(panel, tabId).pendingAlignment?.startingLocation).toBe(PATH_START);
+
+    await panel.navigateToNextMilestone();
+    await settle();
+    expect(getTab(panel, tabId).currentUrl).toBe('bundled:a/content.json');
+    expect(getTab(panel, tabId).pendingAlignment?.startingLocation).toBe(MILESTONE_A_START);
+
+    await panel.navigateToNextMilestone();
+    await settle();
+    expect(getTab(panel, tabId).currentUrl).toBe('bundled:b/content.json');
+    expect(getTab(panel, tabId).pendingAlignment?.startingLocation).toBe(MILESTONE_B_START);
+  });
+});

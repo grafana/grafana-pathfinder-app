@@ -46,6 +46,28 @@ describe('resolveDocsLoadAlignment', () => {
     ).toEqual({ startingLocation: '/connections', currentPath: '/explore', launchSource: 'home_page' });
   });
 
+  it('prefers the fetched manifest when the package manifest is inherited from the tab', () => {
+    expect(
+      resolveDocsLoadAlignment({
+        ...alignmentInput,
+        packageManifest: { startingLocation: '/connections' },
+        fetchedManifest: { startingLocation: '/alerting' },
+        packageManifestIsInherited: true,
+      })
+    ).toEqual({ startingLocation: '/alerting', currentPath: '/explore', launchSource: 'home_page' });
+  });
+
+  it('falls back to the inherited package manifest when the fetched manifest declares none', () => {
+    expect(
+      resolveDocsLoadAlignment({
+        ...alignmentInput,
+        packageManifest: { startingLocation: '/connections' },
+        fetchedManifest: { id: 'guide-1' },
+        packageManifestIsInherited: true,
+      })
+    ).toEqual({ startingLocation: '/connections', currentPath: '/explore', launchSource: 'home_page' });
+  });
+
   it('falls back to the fetched manifest', () => {
     expect(
       resolveDocsLoadAlignment({
