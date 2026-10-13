@@ -102,7 +102,7 @@ func logAppPlatformResult(logger log.Logger, namespace, resource, operation stri
 	if d == nil || errors.Is(err, context.Canceled) || d.Reason == "cancelled" {
 		return
 	}
-	if d.UpstreamStatus == 405 || d.UpstreamStatus == 501 || (d.UpstreamStatus == 404 && (operation != "get" || (resource == "pathfindersettings" && isSettingsNotConfigured(err)))) || (d.UpstreamStatus == 409 && resource == "completionrecords" && operation == "create") {
+	if d.UpstreamStatus == 405 || d.UpstreamStatus == 501 || (d.UpstreamStatus == 404 && (resource == "pathfindersettings" || operation != "get")) || (d.UpstreamStatus == 409 && resource == "completionrecords" && operation == "create") {
 		return
 	}
 	event, retry := "pathfinder_proxy_failure", []interface{}{}

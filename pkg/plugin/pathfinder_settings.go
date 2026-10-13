@@ -50,13 +50,11 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 		status := appPlatformReadErrorStatus(err)
 
 		message := "app platform read failed"
-		if resource == "pathfindersettings" && isSettingsNotConfigured(err) {
-			if r.URL.Query().Get("absence") == "explicit" {
-				a.writeJSON(w, map[string]string{"state": "not-configured"}, http.StatusOK)
-				return
-			}
-			message = "settings-upstream-unavailable"
-		} else if resource == "pathfindersettings" && (status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented) {
+		if resource == "pathfindersettings" && r.URL.Query().Get("absence") == "explicit" && isSettingsNotConfigured(err) {
+			a.writeJSON(w, map[string]string{"state": "not-configured"}, http.StatusOK)
+			return
+		}
+		if resource == "pathfindersettings" && (status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented) {
 			message = "settings-upstream-unavailable"
 		}
 		a.writeProxyError(w, message, status, appPlatformDiagnostic(err, resource, "get"))

@@ -112,6 +112,10 @@ export function configToSpec(cfg: PathfinderPluginConfig): Partial<PathfinderSet
   return spec as Partial<PathfinderSettingsSpec>;
 }
 
+export function hasCachedSettingsAbsence(): boolean {
+  return isSettingsApiAvailable() && readSettingsAbsenceCache()?.absent === true;
+}
+
 export async function fetchPathfinderSettingsSnapshot({
   useCachedAbsence = false,
 }: { useCachedAbsence?: boolean } = {}): Promise<PathfinderSettingsSnapshot | null> {

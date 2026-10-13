@@ -9,6 +9,7 @@ import {
 } from './pathfinder-settings-api';
 import { isBackendApiAvailable } from './interactive-guides-api';
 import { saveTenantSettings } from '../components/AppConfig/save-settings';
+import { resolveTenantSettings } from './resolve-tenant-settings';
 
 const fetchMock = jest.fn();
 jest.mock('@grafana/runtime', () => ({
@@ -348,6 +349,23 @@ describe('confirmed settings absence', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('expires absence after ten minutes so a save from another browser is picked up', async () => {
+    const now = jest.spyOn(Date, 'now');
+    try {
+      now.mockReturnValue(1_000_000);
+      fetchMock.mockReturnValueOnce(absent()).mockReturnValue(saved());
+      await startupRead();
+      now.mockReturnValue(1_000_000 + 10 * 60 * 1000 - 1);
+      await expect(startupRead()).resolves.toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      now.mockReturnValue(1_000_000 + 10 * 60 * 1000);
+      await expect(startupRead()).resolves.toEqual(base);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('does not share absence across namespaces', async () => {
     fetchMock.mockReturnValueOnce(absent()).mockReturnValue(saved());
     await startupRead();
@@ -388,5 +406,42 @@ describe('confirmed settings absence', () => {
     await saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { pathfinderEnabled: false } });
     expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(3);
     expect(fetchMock.mock.calls.filter(([request]) => request.method === 'POST')).toHaveLength(1);
+  });
+});
+
+describe('the kind is not served (structural upstream 404)', () => {
+  const structural404 = () => throwError(() => ({ status: 404, data: { error: 'settings-upstream-unavailable' } }));
+  const routes = (writes: Array<{ url: string; data: unknown }>) =>
+    fetchMock.mockImplementation(({ url, method, data }: { url: string; method: string; data: unknown }) => {
+      if (url.endsWith('/settings')) {
+        if (method === 'POST') {
+          writes.push({ url, data });
+          return of({ data: {} });
+        }
+        return of({ data: { jsonData: { stackId: '123', pathfinderEnabled: false }, enabled: true, pinned: true } });
+      }
+      return method === 'POST' ? error(404) : structural404();
+    });
+
+  it('resolves from jsonData without caching the absence', async () => {
+    routes([]);
+    await expect(resolveTenantSettings('grafana-pathfinder-app', { useCachedAbsence: true })).resolves.toMatchObject({
+      config: { pathfinderEnabled: false },
+      tenant: null,
+    });
+    await resolveTenantSettings('grafana-pathfinder-app', { useCachedAbsence: true });
+    expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(2);
+  });
+
+  it('saves to jsonData rather than failing', async () => {
+    const writes: Array<{ url: string; data: unknown }> = [];
+    routes(writes);
+    await saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { tutorialUrl: 'new' } });
+    expect(writes).toEqual([
+      {
+        url: '/api/plugins/grafana-pathfinder-app/settings',
+        data: expect.objectContaining({ jsonData: expect.objectContaining({ stackId: '123', tutorialUrl: 'new' }) }),
+      },
+    ]);
   });
 });

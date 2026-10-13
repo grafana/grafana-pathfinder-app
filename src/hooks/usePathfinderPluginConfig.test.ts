@@ -5,7 +5,7 @@ import { resolvePathfinderAvailability, getPathfinderStartupDecision } from '../
 import { initializeConfiguredSurfaces } from '../utils/configured-bootstrap';
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { fetchPluginSettings } from '../utils/utils.plugin';
-import { fetchPathfinderSettingsSnapshot } from '../utils/pathfinder-settings-api';
+import { fetchPathfinderSettingsSnapshot, hasCachedSettingsAbsence } from '../utils/pathfinder-settings-api';
 import { adoptLegacyDevModeOptIn, hasLegacyDevModeOptIn, resolveDevModeOptIn } from '../utils/dev-mode';
 import {
   __resetPathfinderPluginConfigForTests,
@@ -24,6 +24,7 @@ jest.mock('../utils/utils.plugin', () => ({
 
 jest.mock('../utils/pathfinder-settings-api', () => ({
   fetchPathfinderSettingsSnapshot: jest.fn(),
+  hasCachedSettingsAbsence: jest.fn(),
 }));
 
 // Kept hermetic: the real module reads localStorage and Grafana boot data, and
@@ -41,6 +42,7 @@ jest.mock('@grafana/data', () => ({
 
 const mockFetchPluginSettings = fetchPluginSettings as jest.MockedFunction<typeof fetchPluginSettings>;
 const mockFetchTenant = fetchPathfinderSettingsSnapshot as jest.MockedFunction<typeof fetchPathfinderSettingsSnapshot>;
+const mockCachedAbsence = hasCachedSettingsAbsence as jest.MockedFunction<typeof hasCachedSettingsAbsence>;
 const mockOptIn = resolveDevModeOptIn as jest.MockedFunction<typeof resolveDevModeOptIn>;
 const mockLegacyOptIn = hasLegacyDevModeOptIn as jest.MockedFunction<typeof hasLegacyDevModeOptIn>;
 const mockAdoptLegacy = adoptLegacyDevModeOptIn as jest.MockedFunction<typeof adoptLegacyDevModeOptIn>;
@@ -74,6 +76,7 @@ beforeEach(() => {
   mockFetchPluginSettings.mockResolvedValue(pluginSettings());
   // Default posture: no App Platform resource, so the jsonData tier is in play.
   mockFetchTenant.mockResolvedValue(null);
+  mockCachedAbsence.mockReturnValue(false);
   mockOptIn.mockReturnValue(false);
   mockLegacyOptIn.mockReturnValue(false);
   mockPluginContext.mockReturnValue(null);
@@ -514,20 +517,40 @@ it.each([403, 503])(
   }
 );
 
-describe('startup absence cache and fresh configuration reads', () => {
-  it('lets configuration bypass a settled startup read and shares the fresh request', async () => {
+describe('panel and configuration opens after a cached absence', () => {
+  const openPanel = () => renderHook(() => usePathfinderPluginConfig({ refreshOnMount: true }));
+  const flush = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+  it('does not re-read when startup already read from the server', async () => {
+    await readPathfinderStartupPreference();
+    openPanel();
+    openPanel();
+    await flush();
+    expect(mockFetchTenant).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads once after a cached startup, shared by concurrent opens and later opens', async () => {
+    mockCachedAbsence.mockReturnValue(true);
     mockFetchTenant.mockResolvedValueOnce(null).mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
     await readPathfinderStartupPreference();
     expect(mockFetchTenant).toHaveBeenLastCalledWith({ useCachedAbsence: true });
-    const first = refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
-    const second = refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
-    expect(first).toBe(second);
-    await first;
+    const first = openPanel();
+    openPanel();
+    await flush();
+    expect(mockFetchTenant).toHaveBeenCalledTimes(2);
     expect(mockFetchTenant).toHaveBeenLastCalledWith({ useCachedAbsence: false });
-    expect(readGlobal()?.pathfinderEnabled).toBe(false);
+    expect(first.result.current.config.pathfinderEnabled).toBe(false);
+    first.rerender();
+    openPanel();
+    await flush();
+    expect(mockFetchTenant).toHaveBeenCalledTimes(2);
   });
 
-  it('queues one fresh configuration read after an in-flight startup read', async () => {
+  it('waits for an in-flight cached startup read before re-reading', async () => {
+    mockCachedAbsence.mockReturnValue(true);
     let finishStartup!: (value: null) => void;
     mockFetchTenant
       .mockImplementationOnce(
@@ -538,50 +561,25 @@ describe('startup absence cache and fresh configuration reads', () => {
       )
       .mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
     const startup = readPathfinderStartupPreference();
-    const fresh = refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
-    expect(refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true })).toBe(fresh);
+    openPanel();
+    await flush();
     expect(mockFetchTenant).toHaveBeenCalledTimes(1);
     finishStartup(null);
-    await Promise.all([startup, fresh]);
+    await startup;
+    await flush();
     expect(mockFetchTenant).toHaveBeenCalledTimes(2);
-    expect(mockFetchTenant).toHaveBeenLastCalledWith({ useCachedAbsence: false });
     expect(readGlobal()?.pathfinderEnabled).toBe(false);
   });
-});
 
-it('refreshes on each panel open, sharing pending reads without refreshing on rerender', async () => {
-  await readPathfinderStartupPreference();
-  const first = renderHook(() => usePathfinderPluginConfig({ refreshOnMount: true }));
-  const second = renderHook(() => usePathfinderPluginConfig({ refreshOnMount: true }));
-  await act(async () => {
-    await Promise.resolve();
+  it('keeps the startup preference when the re-read fails', async () => {
+    mockCachedAbsence.mockReturnValue(true);
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ pathfinderEnabled: false }));
+    mockFetchTenant.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('refresh unavailable'));
+    await readPathfinderStartupPreference();
+    const panel = openPanel();
+    await flush();
+    expect(mockFetchTenant).toHaveBeenCalledTimes(2);
+    expect(readGlobal()?.pathfinderEnabled).toBe(false);
+    expect(panel.result.current.isResolved).toBe(true);
   });
-  expect(mockFetchTenant).toHaveBeenCalledTimes(2);
-  expect(mockFetchTenant).toHaveBeenLastCalledWith({ useCachedAbsence: false });
-  first.rerender();
-  expect(mockFetchTenant).toHaveBeenCalledTimes(2);
-  first.unmount();
-  second.unmount();
-  renderHook(() => usePathfinderPluginConfig({ refreshOnMount: true }));
-  await act(async () => {
-    await Promise.resolve();
-  });
-  expect(mockFetchTenant).toHaveBeenCalledTimes(3);
-});
-
-it('retains a successful startup preference when a queued fresh read fails', async () => {
-  let finishStartup!: (value: ReturnType<typeof tenantSnapshot>) => void;
-  mockFetchTenant
-    .mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishStartup = resolve;
-        })
-    )
-    .mockRejectedValueOnce(new Error('refresh unavailable'));
-  const startup = readPathfinderStartupPreference();
-  const fresh = refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
-  finishStartup(tenantSnapshot({ pathfinderEnabled: false }));
-  await Promise.allSettled([startup, fresh]);
-  expect(readGlobal()?.pathfinderEnabled).toBe(false);
 });

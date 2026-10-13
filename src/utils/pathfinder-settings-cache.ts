@@ -2,6 +2,8 @@ import { config } from '@grafana/runtime';
 
 import { StorageKeys } from '../lib/storage-keys';
 
+const SETTINGS_ABSENCE_TTL_MS = 10 * 60 * 1000;
+
 export interface SettingsAbsenceCache {
   key: string;
   generationKey: string;
@@ -19,7 +21,13 @@ export function readSettingsAbsenceCache(): SettingsAbsenceCache | undefined {
   const key = `${StorageKeys.SETTINGS_ABSENT_PREFIX}${JSON.stringify([scope, user?.orgId, user?.id])}`;
   try {
     const generation = localStorage.getItem(generationKey) ?? 'initial';
-    return { key, generationKey, generation, absent: sessionStorage.getItem(key) === generation };
+    const [markedGeneration, expiresAt] = (sessionStorage.getItem(key) ?? '').split('|');
+    return {
+      key,
+      generationKey,
+      generation,
+      absent: markedGeneration === generation && Number(expiresAt) > Date.now(),
+    };
   } catch {
     return undefined;
   }
@@ -32,7 +40,7 @@ export function rememberSettingsAbsence(cache: SettingsAbsenceCache | undefined)
   try {
     // A save or authoritative read in another tab must win over an older missing-record response.
     if ((localStorage.getItem(cache.generationKey) ?? 'initial') === cache.generation) {
-      sessionStorage.setItem(cache.key, cache.generation);
+      sessionStorage.setItem(cache.key, `${cache.generation}|${Date.now() + SETTINGS_ABSENCE_TTL_MS}`);
     }
   } catch {
     // Unavailable storage costs another read, never a failed settings operation.
@@ -56,7 +64,10 @@ export function invalidateSettingsAbsence(cache: SettingsAbsenceCache | undefine
     return;
   }
   try {
-    localStorage.setItem(cache.generationKey, crypto.randomUUID());
+    localStorage.setItem(
+      cache.generationKey,
+      typeof crypto?.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
+    );
   } catch {
     // The current tab is cleared even when cross-tab invalidation is unavailable.
   }

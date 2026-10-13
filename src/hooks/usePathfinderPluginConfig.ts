@@ -4,6 +4,7 @@ import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import pluginJson from '../plugin.json';
 import { resolveTenantSettings, TenantSettingsReadError } from '../utils/resolve-tenant-settings';
+import { hasCachedSettingsAbsence } from '../utils/pathfinder-settings-api';
 import { adoptLegacyDevModeOptIn, hasLegacyDevModeOptIn, resolveDevModeOptIn } from '../utils/dev-mode';
 
 // Re-exported so existing importers keep a stable path; `constants` owns the shape.
@@ -83,14 +84,12 @@ export function publishPathfinderPluginConfig(jsonData: PathfinderPluginConfig):
 }
 
 let refreshInFlight: Promise<ResolvedPathfinderConfig | undefined> | null = null;
-let freshRefreshQueued: Promise<ResolvedPathfinderConfig | undefined> | null = null;
-let refreshUsesCachedAbsence = false;
-let refreshPending = false;
+let publishedFromCachedAbsence = false;
 let refreshFailed = false;
 let startupReadError: TenantSettingsReadError | undefined;
 
 export async function readPathfinderStartupPreference(): Promise<PathfinderPluginConfig | undefined> {
-  const resolved = await refreshPathfinderPluginConfig({ useCachedAbsence: true });
+  const resolved = await refreshPathfinderPluginConfig();
   if (!resolved && startupReadError) {
     throw startupReadError;
   }
@@ -99,39 +98,17 @@ export async function readPathfinderStartupPreference(): Promise<PathfinderPlugi
 
 export function refreshPathfinderPluginConfig({
   useCachedAbsence = true,
-  force = false,
-}: { useCachedAbsence?: boolean; force?: boolean } = {}): Promise<ResolvedPathfinderConfig | undefined> {
-  if (!useCachedAbsence && refreshPending && refreshUsesCachedAbsence && refreshInFlight) {
-    if (!freshRefreshQueued) {
-      const queued: Promise<ResolvedPathfinderConfig | undefined> = refreshInFlight.then(() => {
-        if (freshRefreshQueued !== queued) {
-          return refreshInFlight ?? undefined;
-        }
-        freshRefreshQueued = null;
-        return refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
-      });
-      freshRefreshQueued = queued;
-    }
-    return freshRefreshQueued;
-  }
-  if (!refreshInFlight || (force && !refreshPending) || (!useCachedAbsence && refreshUsesCachedAbsence)) {
-    refreshUsesCachedAbsence = useCachedAbsence;
-    refreshPending = true;
-    const request: Promise<ResolvedPathfinderConfig | undefined> = resolvePathfinderSettings(useCachedAbsence)
+}: { useCachedAbsence?: boolean } = {}): Promise<ResolvedPathfinderConfig | undefined> {
+  if (!refreshInFlight) {
+    const fromCachedAbsence = useCachedAbsence && hasCachedSettingsAbsence();
+    refreshInFlight = resolvePathfinderSettings(useCachedAbsence)
       .then((resolved) => {
-        if (refreshInFlight !== request) {
-          return refreshInFlight ?? undefined;
-        }
-        refreshPending = false;
+        publishedFromCachedAbsence = fromCachedAbsence;
         startupReadError = undefined;
         refreshFailed = false;
         return publishPathfinderPluginConfig(resolved);
       })
       .catch((error) => {
-        if (refreshInFlight !== request) {
-          return refreshInFlight ?? undefined;
-        }
-        refreshPending = false;
         startupReadError = error instanceof TenantSettingsReadError ? error : undefined;
         refreshInFlight = null;
         refreshFailed = true;
@@ -139,11 +116,21 @@ export function refreshPathfinderPluginConfig({
         document.dispatchEvent(new CustomEvent(PATHFINDER_CONFIG_UPDATED_EVENT));
         return undefined;
       });
-    refreshInFlight = request;
     document.dispatchEvent(new CustomEvent(PATHFINDER_CONFIG_UPDATED_EVENT));
   }
 
   return refreshInFlight;
+}
+
+function revalidateCachedAbsence(): Promise<ResolvedPathfinderConfig | undefined> {
+  return refreshPathfinderPluginConfig().then((resolved) => {
+    if (!publishedFromCachedAbsence) {
+      return resolved;
+    }
+    publishedFromCachedAbsence = false;
+    refreshInFlight = null;
+    return refreshPathfinderPluginConfig({ useCachedAbsence: false });
+  });
 }
 
 // Startup keeps waiting after a failed read so a later successful refresh can finish mounting.
@@ -160,7 +147,7 @@ export function waitForPathfinderPluginConfig(): Promise<ResolvedPathfinderConfi
       }
     };
     document.addEventListener(PATHFINDER_CONFIG_UPDATED_EVENT, onConfig);
-    void refreshPathfinderPluginConfig({ useCachedAbsence: true });
+    void refreshPathfinderPluginConfig();
   });
 }
 
@@ -196,7 +183,7 @@ export function usePathfinderPluginConfig({
 
     document.addEventListener(PATHFINDER_CONFIG_UPDATED_EVENT, sync);
     sync();
-    void refreshPathfinderPluginConfig({ useCachedAbsence: !refreshOnMount, force: refreshOnMount }).then(sync);
+    void (refreshOnMount ? revalidateCachedAbsence() : refreshPathfinderPluginConfig()).then(sync);
 
     return () => {
       cancelled = true;
@@ -212,9 +199,7 @@ export function usePathfinderPluginConfig({
  */
 export function __resetPathfinderPluginConfigForTests(): void {
   refreshInFlight = null;
-  freshRefreshQueued = null;
-  refreshUsesCachedAbsence = false;
-  refreshPending = false;
+  publishedFromCachedAbsence = false;
   refreshFailed = false;
   startupReadError = undefined;
   unresolvedState = undefined;

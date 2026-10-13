@@ -711,34 +711,42 @@ deadline, a 1 MiB response bound, disabled redirects, and no shared cache.
 Settings distinguish a missing singleton from a missing route. The bounded upstream
 error body (2 KiB) must be a Kubernetes v1 `Status`, `Failure`, code 404,
 `reason: NotFound`, naming group `pathfinderbackend.ext.grafana.app`, resource
-`pathfindersettings`, and name `default`, with no causes. Unrecognized, malformed,
-oversized, namespace, and route 404s remain errors and emit proxy-failure diagnostics.
-Confirmed absence is excluded from failure logs.
-
-Clients request `?absence=explicit` to receive `200 {"state":"not-configured"}`.
-Without that opt-in, confirmed absence retains the legacy tagged 404 for older
-frontends. Upstream 405/501 also retain `error: "settings-upstream-unavailable"`.
-New frontends accept an older proxy's tagged 404/405/501 without caching it;
-only the explicit successful absence response can populate the session cache.
+`pathfindersettings`, and name `default`, with no causes. Clients request
+`?absence=explicit` to receive `200 {"state":"not-configured"}` for that case only.
+Every other upstream 404 (unrecognized, malformed, oversized, namespace or route),
+and confirmed absence without the opt-in, keeps the legacy
+`error: "settings-upstream-unavailable"` 404, as do upstream 405/501. The client
+falls back to `jsonData` for those without caching them, so a stack whose
+aggregation toggle is on but whose backend does not serve the kind keeps reading
+and saving through `jsonData`. Settings 404/405/501 are excluded from failure logs.
+Only the explicit successful absence response can populate the session cache.
 A missing plugin route, missing OBO configuration, or rejected identity must not
 permit a fallback write. Writes remain direct App Platform requests with existing
 authorization and optimistic concurrency checks.
 
-Startup may reuse confirmed absence from browser `sessionStorage`, scoped by
-namespace, Grafana subpath, organization, and user. Real records and errors are
-never cached there. Opening the learning panel or configuration form refreshes
-from the server; concurrent refreshes share one pending read. A fresh read requested
-during startup queues behind it, so a later refresh failure cannot discard a
-successful startup preference. Every pre-save and
-read-after-save check also bypasses absence. Saves and authoritative record reads
-invalidate absence through a namespace/subpath-scoped `localStorage` generation,
-so another tab detects invalidation even after suspension or reload. A response
-started before invalidation cannot restore the marker. Storage failures degrade
-to reads rather than failing settings operations; cross-tab invalidation requires
-writable local storage. No settings values or credentials are persisted in this cache.
-A save from another browser becomes visible on the next panel/configuration open
-or a new tab session. Existing startup enablement decisions remain fixed for the
-page load; this cache does not change that contract.
+Startup may reuse confirmed absence from browser `sessionStorage` for ten minutes,
+scoped by namespace, Grafana subpath, organization, and user. Real records and
+errors are never cached there. Opening the learning panel or configuration form
+re-reads from the server only when the configuration on screen came from that
+cache, after the cached read has settled; concurrent opens share the re-read, and
+nothing supersedes a pending read, so a failed re-read keeps the published
+startup result. Every pre-save and read-after-save check also bypasses absence.
+Saves and authoritative record reads invalidate absence through a
+namespace/subpath-scoped `localStorage` generation, so another tab detects
+invalidation even after suspension or reload. A response started before
+invalidation cannot restore the marker. Storage failures degrade to reads rather
+than failing settings operations; cross-tab invalidation requires writable local
+storage. No settings values or credentials are persisted in this cache.
+
+Read budget per page load, against one settings read and one plugin-settings read
+before the cache: absence not cached (first load, a saved record, or expiry) is
+unchanged and later panel opens add nothing; cached absence with no panel or
+configuration open makes no settings read; cached absence with an open makes one
+settings read and a second plugin-settings read. The cost is propagation: a save
+from another browser, including `pathfinderEnabled: false`, reaches a tab's
+page-load registration decision within ten minutes, on the next panel or
+configuration open, or in a new tab session, where it previously applied on the
+next load.
 
 `GET /custom-guide?name=<resource name>` uses the same bounded, caller-scoped
 item reader for full InteractiveGuide resources. The backend fixes the resource

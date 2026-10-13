@@ -120,7 +120,7 @@ func TestProxyFailureLogsExcludeExpectedOutcomes(t *testing.T) {
 		{"cancel", "completionrecords", "list", context.Canceled, false},
 		{"exchange cancel", "completionrecords", "list", &tokenExchangeError{err: context.Canceled}, false},
 		{"settings absent", "pathfindersettings", "get", &appPlatformUpstreamError{status: 404, body: []byte(missingSettingsStatus)}, false},
-		{"settings route missing", "pathfindersettings", "get", &appPlatformUpstreamError{status: 404}, true},
+		{"settings kind not served", "pathfindersettings", "get", &appPlatformUpstreamError{status: 404}, false},
 		{"collection unsupported", "completionrecords", "list", &appPlatformUpstreamError{status: 404}, false},
 		{"method unsupported", "interactiveguides", "list", &appPlatformUpstreamError{status: 405}, false},
 		{"unsupported", "interactiveguides", "list", &appPlatformUpstreamError{status: 501}, false},

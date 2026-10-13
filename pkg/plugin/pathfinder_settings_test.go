@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -192,7 +193,14 @@ func TestSettingsProxyLogsRetriesUnderSeparateEvent(t *testing.T) {
 	}
 }
 
-const missingSettingsStatus = `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404,"details":{"group":"pathfinderbackend.ext.grafana.app","kind":"pathfindersettings","name":"default"}}`
+// Captured from a live stack's GET of a missing pathfindersettings object, renamed to "default".
+var missingSettingsStatus = func() string {
+	body, err := os.ReadFile("testdata/upstream/pathfindersettings-not-found.json")
+	if err != nil {
+		panic(err)
+	}
+	return string(body)
+}()
 
 func TestSettingsProxyDistinguishesAbsence(t *testing.T) {
 	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -206,20 +214,20 @@ func TestSettingsProxyDistinguishesAbsence(t *testing.T) {
 	for _, tc := range []struct {
 		name, body, query string
 		upstream, want    int
-		absent            bool
+		fallback, logged  bool
 	}{
-		{"confirmed absence", missingSettingsStatus, "?absence=explicit", 404, 200, true},
-		{"old client", missingSettingsStatus, "", 404, 404, true},
-		{"route missing", `404 page not found`, "?absence=explicit", 404, 404, false},
-		{"generic status", `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`, "?absence=explicit", 404, 404, false},
-		{"namespace missing", strings.ReplaceAll(missingSettingsStatus, `"kind":"pathfindersettings"`, `"kind":"namespaces"`), "?absence=explicit", 404, 404, false},
-		{"wrong name", strings.ReplaceAll(missingSettingsStatus, `"name":"default"`, `"name":"other"`), "?absence=explicit", 404, 404, false},
-		{"wrong group", strings.ReplaceAll(missingSettingsStatus, appPlatformGroup, "other.app"), "?absence=explicit", 404, 404, false},
-		{"unexpected server response", strings.ReplaceAll(missingSettingsStatus, `"name":"default"`, `"name":"default","causes":[{"reason":"UnexpectedServerResponse"}]`), "?absence=explicit", 404, 404, false},
-		{"oversized", missingSettingsStatus + strings.Repeat(" ", 2048), "?absence=explicit", 404, 404, false},
-		{"malformed", missingSettingsStatus[:len(missingSettingsStatus)-1], "?absence=explicit", 404, 404, false},
-		{"forbidden", missingSettingsStatus, "?absence=explicit", 403, 403, false},
-		{"server failure", missingSettingsStatus, "?absence=explicit", 503, 503, false},
+		{"confirmed absence", missingSettingsStatus, "?absence=explicit", 404, 200, false, false},
+		{"old client", missingSettingsStatus, "", 404, 404, true, false},
+		{"route missing", `404 page not found`, "?absence=explicit", 404, 404, true, false},
+		{"generic status", `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`, "?absence=explicit", 404, 404, true, false},
+		{"namespace missing", strings.ReplaceAll(missingSettingsStatus, `"kind":"pathfindersettings"`, `"kind":"namespaces"`), "?absence=explicit", 404, 404, true, false},
+		{"wrong name", strings.ReplaceAll(missingSettingsStatus, `"name":"default"`, `"name":"other"`), "?absence=explicit", 404, 404, true, false},
+		{"wrong group", strings.ReplaceAll(missingSettingsStatus, `"group":"`+appPlatformGroup, `"group":"other.app`), "?absence=explicit", 404, 404, true, false},
+		{"unexpected server response", strings.ReplaceAll(missingSettingsStatus, `"name":"default"`, `"name":"default","causes":[{"reason":"UnexpectedServerResponse"}]`), "?absence=explicit", 404, 404, true, false},
+		{"oversized", missingSettingsStatus + strings.Repeat(" ", 2048), "?absence=explicit", 404, 404, true, false},
+		{"malformed", missingSettingsStatus[:len(missingSettingsStatus)-1], "?absence=explicit", 404, 404, true, false},
+		{"forbidden", missingSettingsStatus, "?absence=explicit", 403, 403, false, true},
+		{"server failure", missingSettingsStatus, "?absence=explicit", 503, 503, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			keys := jwksBody(testSigningKeyID, testSigningKey())
@@ -240,14 +248,14 @@ func TestSettingsProxyDistinguishesAbsence(t *testing.T) {
 			if recorder.Code != tc.want {
 				t.Fatalf("status %d: %s", recorder.Code, recorder.Body.String())
 			}
-			if tc.absent && tc.want == 200 && !strings.Contains(recorder.Body.String(), `"state":"not-configured"`) {
-				t.Fatalf("unexpected response: %s", recorder.Body.String())
+			if strings.Contains(recorder.Body.String(), `"state":"not-configured"`) != (tc.want == 200) {
+				t.Fatalf("only confirmed absence may be cacheable: %s", recorder.Body.String())
 			}
-			if strings.Contains(recorder.Body.String(), "settings-upstream-unavailable") != (tc.absent && tc.want == 404) {
-				t.Fatalf("unsafe fallback: %s", recorder.Body.String())
+			if strings.Contains(recorder.Body.String(), "settings-upstream-unavailable") != tc.fallback {
+				t.Fatalf("fallback tag mismatch: %s", recorder.Body.String())
 			}
-			if logger.warnedWith("Pathfinder proxy operation failed") == tc.absent {
-				t.Fatal("absence and errors must have different log outcomes")
+			if logger.warnedWith("Pathfinder proxy operation failed") != tc.logged {
+				t.Fatal("only real failures may emit proxy-failure diagnostics")
 			}
 			if recorder.Header().Get("Cache-Control") != "no-store" {
 				t.Fatal("HTTP caches must not cache settings")
