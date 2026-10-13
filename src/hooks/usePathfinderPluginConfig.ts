@@ -61,23 +61,11 @@ function withPerUserSettings(jsonData: PathfinderPluginConfig): PathfinderPlugin
   return { ...jsonData, devModeOptIn: legacy };
 }
 
-/**
- * The tenant half of the config, resolved through the same helper the config
- * tabs save through so read and write precedence cannot drift. Per-user state is
- * layered on by `withPerUserSettings` at publish; missing values fall through to
- * `getConfigWithDefaults`.
- */
-async function resolvePathfinderSettings(): Promise<PathfinderPluginConfig> {
-  return (await resolveTenantSettings(pluginJson.id)).config;
+async function resolvePathfinderSettings(useCachedAbsence: boolean): Promise<PathfinderPluginConfig> {
+  return (await resolveTenantSettings(pluginJson.id, { useCachedAbsence })).config;
 }
 
-/**
- * The only writer of `window.__pathfinderPluginConfig`, which is the readiness
- * signal documented in `docs/developer/E2E_TESTING_CONTRACT.md` and the config
- * source for callers that run outside React (scene construction, dev-mode
- * helpers, url-validator). Returns the published config so callers can use it
- * without re-reading the global.
- */
+// This is the sole publisher of the configuration readiness signal.
 export function publishPathfinderPluginConfig(jsonData: PathfinderPluginConfig): ResolvedPathfinderConfig {
   const target = window;
   const next = getConfigWithDefaults(withPerUserSettings(jsonData));
@@ -95,26 +83,41 @@ export function publishPathfinderPluginConfig(jsonData: PathfinderPluginConfig):
 }
 
 let refreshInFlight: Promise<ResolvedPathfinderConfig | undefined> | null = null;
+let refreshUsesCachedAbsence = false;
+let refreshPending = false;
 let refreshFailed = false;
 let startupReadError: TenantSettingsReadError | undefined;
 
 export async function readPathfinderStartupPreference(): Promise<PathfinderPluginConfig | undefined> {
-  const resolved = await refreshPathfinderPluginConfig();
+  const resolved = await refreshPathfinderPluginConfig({ useCachedAbsence: true });
   if (!resolved && startupReadError) {
     throw startupReadError;
   }
   return resolved;
 }
 
-export function refreshPathfinderPluginConfig(): Promise<ResolvedPathfinderConfig | undefined> {
-  if (!refreshInFlight) {
-    refreshInFlight = resolvePathfinderSettings()
+export function refreshPathfinderPluginConfig({
+  useCachedAbsence = true,
+  force = false,
+}: { useCachedAbsence?: boolean; force?: boolean } = {}): Promise<ResolvedPathfinderConfig | undefined> {
+  if (!refreshInFlight || (force && !refreshPending) || (!useCachedAbsence && refreshUsesCachedAbsence)) {
+    refreshUsesCachedAbsence = useCachedAbsence;
+    refreshPending = true;
+    const request: Promise<ResolvedPathfinderConfig | undefined> = resolvePathfinderSettings(useCachedAbsence)
       .then((resolved) => {
+        if (refreshInFlight !== request) {
+          return refreshInFlight ?? undefined;
+        }
+        refreshPending = false;
         startupReadError = undefined;
         refreshFailed = false;
         return publishPathfinderPluginConfig(resolved);
       })
       .catch((error) => {
+        if (refreshInFlight !== request) {
+          return refreshInFlight ?? undefined;
+        }
+        refreshPending = false;
         startupReadError = error instanceof TenantSettingsReadError ? error : undefined;
         refreshInFlight = null;
         refreshFailed = true;
@@ -122,6 +125,7 @@ export function refreshPathfinderPluginConfig(): Promise<ResolvedPathfinderConfi
         document.dispatchEvent(new CustomEvent(PATHFINDER_CONFIG_UPDATED_EVENT));
         return undefined;
       });
+    refreshInFlight = request;
     document.dispatchEvent(new CustomEvent(PATHFINDER_CONFIG_UPDATED_EVENT));
   }
 
@@ -142,7 +146,7 @@ export function waitForPathfinderPluginConfig(): Promise<ResolvedPathfinderConfi
       }
     };
     document.addEventListener(PATHFINDER_CONFIG_UPDATED_EVENT, onConfig);
-    void refreshPathfinderPluginConfig();
+    void refreshPathfinderPluginConfig({ useCachedAbsence: true });
   });
 }
 
@@ -154,7 +158,9 @@ function resolveState(): PathfinderPluginConfigState {
   return refreshFailed ? { ...unresolved(), hasError: true } : unresolved();
 }
 
-export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
+export function usePathfinderPluginConfig({
+  refreshOnMount = false,
+}: { refreshOnMount?: boolean } = {}): PathfinderPluginConfigState {
   const [state, setState] = useState<PathfinderPluginConfigState>(() => resolveState());
 
   useEffect(() => {
@@ -176,13 +182,13 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
 
     document.addEventListener(PATHFINDER_CONFIG_UPDATED_EVENT, sync);
     sync();
-    void refreshPathfinderPluginConfig().then(sync);
+    void refreshPathfinderPluginConfig({ useCachedAbsence: !refreshOnMount, force: refreshOnMount }).then(sync);
 
     return () => {
       cancelled = true;
       document.removeEventListener(PATHFINDER_CONFIG_UPDATED_EVENT, sync);
     };
-  }, []);
+  }, [refreshOnMount]);
 
   return state;
 }
@@ -192,6 +198,8 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
  */
 export function __resetPathfinderPluginConfigForTests(): void {
   refreshInFlight = null;
+  refreshUsesCachedAbsence = false;
+  refreshPending = false;
   refreshFailed = false;
   startupReadError = undefined;
   unresolvedState = undefined;

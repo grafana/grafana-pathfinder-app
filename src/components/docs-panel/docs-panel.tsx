@@ -1063,7 +1063,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Get plugin configuration for dev mode check. `isResolved` distinguishes a
   // known config from "not known yet"; without it an all-defaults config would
   // read as an explicit "dev mode off" and prune authorized tabs.
-  const { config: pluginConfig, isResolved: isPluginConfigResolved } = usePathfinderPluginConfig();
+  const { config: pluginConfig, isResolved: isPluginConfigResolved } = usePathfinderPluginConfig({
+    refreshOnMount: true,
+  });
 
   const isDevMode = isDevModeEnabled(pluginConfig);
 

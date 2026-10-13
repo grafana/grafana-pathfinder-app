@@ -12,6 +12,12 @@ import {
 import { logger } from '../lib/logging';
 import type { SettingsStoreOutcome } from '../lib/telemetry/facade';
 import { APP_PLATFORM_API_VERSION, isBackendApiAvailable } from './interactive-guides-api';
+import {
+  readSettingsAbsenceCache,
+  rememberSettingsAbsence,
+  forgetSettingsAbsence,
+  invalidateSettingsAbsence,
+} from './pathfinder-settings-cache';
 
 const RESOURCE = 'pathfindersettings';
 
@@ -31,6 +37,7 @@ export interface PathfinderSettingsSpec extends Omit<PathfinderTenantSettings, '
 }
 
 interface PathfinderSettingsResource {
+  state?: 'not-configured';
   metadata?: { name?: string; resourceVersion?: string };
   spec?: Partial<PathfinderSettingsSpec>;
 }
@@ -105,12 +112,20 @@ export function configToSpec(cfg: PathfinderPluginConfig): Partial<PathfinderSet
   return spec as Partial<PathfinderSettingsSpec>;
 }
 
-export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSettingsSnapshot | null> {
+export async function fetchPathfinderSettingsSnapshot({
+  useCachedAbsence = false,
+}: { useCachedAbsence?: boolean } = {}): Promise<PathfinderSettingsSnapshot | null> {
   if (!isSettingsApiAvailable()) {
     recordSettingsStoreResolved('api-unavailable');
     return null;
   }
 
+  const absenceCache = readSettingsAbsenceCache();
+  if (useCachedAbsence && absenceCache?.absent) {
+    recordSettingsStoreResolved('not-created');
+    return null;
+  }
+  forgetSettingsAbsence(absenceCache);
   let readAttempt = 0;
   try {
     const response = await lastValueFrom(
@@ -119,7 +134,7 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
         return getBackendSrv().fetch<PathfinderSettingsResource>({
           url: `${PLUGIN_BACKEND_URL}/pathfinder-settings`,
           method: 'GET',
-          params: readAttempt > 1 ? { attempt: readAttempt } : undefined,
+          params: { absence: 'explicit', ...(readAttempt > 1 ? { attempt: readAttempt } : {}) },
           showErrorAlert: false,
         });
       }).pipe(
@@ -148,6 +163,12 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
       )
     );
 
+    if (response.data?.state === 'not-configured' && !response.data.spec && !response.data.metadata) {
+      rememberSettingsAbsence(absenceCache);
+      recordSettingsStoreResolved('not-created');
+      return null;
+    }
+
     const spec = response.data?.spec;
     if (!spec) {
       recordSettingsStoreResolved('empty-spec');
@@ -157,6 +178,7 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
       throw new Error('Pathfinder settings response has no resource version');
     }
 
+    invalidateSettingsAbsence(absenceCache);
     recordSettingsStoreResolved('resource');
     return { config: specToConfig(spec), spec, resourceVersion: response.data?.metadata?.resourceVersion };
   } catch (err) {
@@ -210,11 +232,15 @@ export async function savePathfinderSettings(
     data: requestBody(spec, base?.resourceVersion),
     showErrorAlert: false,
   };
+  const absenceCache = readSettingsAbsenceCache();
+  invalidateSettingsAbsence(absenceCache);
   for (let attempt = 0; ; attempt++) {
     try {
       await lastValueFrom(getBackendSrv().fetch(request));
+      invalidateSettingsAbsence(absenceCache);
       return true;
     } catch (err) {
+      invalidateSettingsAbsence(absenceCache);
       const status = statusOf(err);
       if (base && status && RETRYABLE_UPDATE_STATUSES.has(status) && attempt < UPDATE_RETRY_DELAYS_MS.length) {
         // Reuse the read version: even an ambiguous prior success cannot overwrite a concurrent edit.

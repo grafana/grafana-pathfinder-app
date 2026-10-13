@@ -1,4 +1,4 @@
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { config } from '@grafana/runtime';
 
 import {
@@ -26,6 +26,8 @@ const error = (status: number) => throwError(() => ({ status }));
 
 beforeEach(() => {
   jest.clearAllMocks();
+  sessionStorage.clear();
+  localStorage.clear();
   jest.mocked(isBackendApiAvailable).mockReturnValue(true);
   config.namespace = 'stacks-123';
 });
@@ -88,9 +90,9 @@ describe('settings read recovery', () => {
     await rejected;
     const url = '/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings';
     expect(settingsReads().map((request) => [request.url, request.params])).toEqual([
-      [url, undefined],
-      [url, { attempt: 2 }],
-      [url, { attempt: 3 }],
+      [url, { absence: 'explicit' }],
+      [url, { absence: 'explicit', attempt: 2 }],
+      [url, { absence: 'explicit', attempt: 3 }],
     ]);
     expect(fetchMock.mock.calls.every(([request]) => request.method === 'GET')).toBe(true);
   });
@@ -276,4 +278,115 @@ it('does not call the settings resource without a namespace', async () => {
 it.each([404, 405, 501])('rejects missing proxy routes instead of treating settings as absent (%i)', async (status) => {
   fetchMock.mockReturnValueOnce(error(status));
   await expect(fetchPathfinderSettingsSnapshot()).rejects.toMatchObject({ status });
+});
+
+describe('confirmed settings absence', () => {
+  const startupRead = () => fetchPathfinderSettingsSnapshot({ useCachedAbsence: true });
+  const absent = () => of({ data: { state: 'not-configured' } });
+  const saved = () => of({ data: { metadata: { resourceVersion: '42' }, spec: base.spec } });
+
+  it('reuses only explicit absence for the tab session', async () => {
+    fetchMock.mockReturnValue(absent());
+    await expect(startupRead()).resolves.toBeNull();
+    await expect(startupRead()).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    sessionStorage.clear();
+    await startupRead();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('always reads fresh for configuration and then invalidates absence', async () => {
+    fetchMock.mockReturnValueOnce(absent()).mockReturnValue(saved());
+    await startupRead();
+    await expect(fetchPathfinderSettingsSnapshot()).resolves.toEqual(base);
+    await expect(startupRead()).resolves.toEqual(base);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([404, 405, 501])('never caches an old or unsupported proxy response (%i)', async (status) => {
+    fetchMock.mockReturnValue(throwError(() => ({ status, data: { error: 'settings-upstream-unavailable' } })));
+    await startupRead();
+    await startupRead();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([403, 404])('never caches a real failure (%i)', async (status) => {
+    fetchMock.mockReturnValue(error(status));
+    await expect(startupRead()).rejects.toMatchObject({ status });
+    await expect(startupRead()).rejects.toMatchObject({ status });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('never caches a real record', async () => {
+    fetchMock.mockReturnValue(saved());
+    await startupRead();
+    await startupRead();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidates the cached absence after a save, including another tab on reload', async () => {
+    fetchMock.mockReturnValueOnce(absent()).mockReturnValue(saved());
+    await startupRead();
+    const entries = Object.entries(sessionStorage);
+    await savePathfinderSettings({ enableLiveSessions: true });
+    for (const [key, value] of entries) {
+      sessionStorage.setItem(key, value);
+    }
+    await expect(startupRead()).resolves.toEqual(base);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not let an in-flight absent response restore a cache invalidated by a save', async () => {
+    const pending = new Subject<{ data: { state: string } }>();
+    fetchMock.mockReturnValueOnce(pending).mockReturnValue(saved());
+    const read = startupRead();
+    await savePathfinderSettings({ enableLiveSessions: true });
+    pending.next({ data: { state: 'not-configured' } });
+    pending.complete();
+    await read;
+    await expect(startupRead()).resolves.toEqual(base);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not share absence across namespaces', async () => {
+    fetchMock.mockReturnValueOnce(absent()).mockReturnValue(saved());
+    await startupRead();
+    config.namespace = 'stacks-456';
+    await expect(startupRead()).resolves.toEqual(base);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to network reads when browser storage is unavailable', async () => {
+    const blocked = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    try {
+      fetchMock.mockReturnValue(absent());
+      await startupRead();
+      await startupRead();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      blocked.mockRestore();
+    }
+  });
+
+  it('reads fresh before saving and verifies the first enablement save without cached absence', async () => {
+    let exists = false;
+    fetchMock.mockImplementation(({ method, url }) => {
+      if (url.endsWith('/settings')) {
+        return of({ data: { jsonData: {}, enabled: true, pinned: true } });
+      }
+      if (method === 'POST') {
+        exists = true;
+        return of({ data: {} });
+      }
+      return exists
+        ? of({ data: { metadata: { resourceVersion: '1' }, spec: { pathfinderEnabled: false } } })
+        : absent();
+    });
+    await startupRead();
+    await saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { pathfinderEnabled: false } });
+    expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(3);
+    expect(fetchMock.mock.calls.filter(([request]) => request.method === 'POST')).toHaveLength(1);
+  });
 });

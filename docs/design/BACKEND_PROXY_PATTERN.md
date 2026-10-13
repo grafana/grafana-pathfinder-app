@@ -708,13 +708,35 @@ uses the trusted plugin-context namespace, preserving the full spec and
 `metadata.resourceVersion` for optimistic concurrency. Reads have a 15-second
 deadline, a 1 MiB response bound, disabled redirects, and no shared cache.
 
-Unlike the optional catalogue, settings failures remain HTTP errors: callers
-must not interpret failed authoritative reads as permission to write legacy
-settings. Only upstream 404/405/501 responses carry
-`error: "settings-upstream-unavailable"`, permitting existing absent-store
-behavior. A missing plugin route, missing OBO configuration, or rejected identity
-must not trigger that behavior. Settings writes continue to use the direct
-App Platform API and its existing authorization and concurrency checks.
+Settings distinguish a missing singleton from a missing route. The bounded upstream
+error body (2 KiB) must be a Kubernetes v1 `Status`, `Failure`, code 404,
+`reason: NotFound`, naming group `pathfinderbackend.ext.grafana.app`, resource
+`pathfindersettings`, and name `default`, with no causes. Unrecognized, malformed,
+oversized, namespace, and route 404s remain errors and emit proxy-failure diagnostics.
+Confirmed absence is excluded from failure logs.
+
+Clients request `?absence=explicit` to receive `200 {"state":"not-configured"}`.
+Without that opt-in, confirmed absence retains the legacy tagged 404 for older
+frontends. Upstream 405/501 also retain `error: "settings-upstream-unavailable"`.
+New frontends accept an older proxy's tagged 404/405/501 without caching it;
+only the explicit successful absence response can populate the session cache.
+A missing plugin route, missing OBO configuration, or rejected identity must not
+permit a fallback write. Writes remain direct App Platform requests with existing
+authorization and optimistic concurrency checks.
+
+Startup may reuse confirmed absence from browser `sessionStorage`, scoped by
+namespace, Grafana subpath, organization, and user. Real records and errors are
+never cached there. Opening the learning panel or configuration form refreshes
+from the server; concurrent refreshes share one pending read. Every pre-save and
+read-after-save check also bypasses absence. Saves and authoritative record reads
+invalidate absence through a namespace/subpath-scoped `localStorage` generation,
+so another tab detects invalidation even after suspension or reload. A response
+started before invalidation cannot restore the marker. Storage failures degrade
+to reads rather than failing settings operations; cross-tab invalidation requires
+writable local storage. No settings values or credentials are persisted in this cache.
+A save from another browser becomes visible on the next panel/configuration open
+or a new tab session. Existing startup enablement decisions remain fixed for the
+page load; this cache does not change that contract.
 
 `GET /custom-guide?name=<resource name>` uses the same bounded, caller-scoped
 item reader for full InteractiveGuide resources. The backend fixes the resource

@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,7 +50,13 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 		status := appPlatformReadErrorStatus(err)
 
 		message := "app platform read failed"
-		if resource == "pathfindersettings" && (status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented) {
+		if resource == "pathfindersettings" && isSettingsNotConfigured(err) {
+			if r.URL.Query().Get("absence") == "explicit" {
+				a.writeJSON(w, map[string]string{"state": "not-configured"}, http.StatusOK)
+				return
+			}
+			message = "settings-upstream-unavailable"
+		} else if resource == "pathfindersettings" && (status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented) {
 			message = "settings-upstream-unavailable"
 		}
 		a.writeProxyError(w, message, status, appPlatformDiagnostic(err, resource, "get"))
@@ -83,7 +90,11 @@ func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, &appPlatformUpstreamError{status: resp.StatusCode, msg: fmt.Sprintf("app platform upstream status %d", resp.StatusCode)}
+		errBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2049))
+		if readErr != nil || len(errBody) > 2048 {
+			errBody = nil
+		}
+		return nil, &appPlatformUpstreamError{status: resp.StatusCode, msg: fmt.Sprintf("app platform upstream status %d", resp.StatusCode), body: errBody}
 	}
 	body, err = io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
@@ -96,6 +107,31 @@ func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource
 		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("invalid app platform upstream response")}
 	}
 	return json.RawMessage(body), nil
+}
+
+func isSettingsNotConfigured(err error) bool {
+	var upstream *appPlatformUpstreamError
+	if !errors.As(err, &upstream) || upstream.status != http.StatusNotFound {
+		return false
+	}
+	var status struct {
+		Kind       string `json:"kind"`
+		APIVersion string `json:"apiVersion"`
+		Status     string `json:"status"`
+		Reason     string `json:"reason"`
+		Code       int    `json:"code"`
+		Details    struct {
+			Group  string            `json:"group"`
+			Kind   string            `json:"kind"`
+			Name   string            `json:"name"`
+			Causes []json.RawMessage `json:"causes"`
+		} `json:"details"`
+	}
+	return json.Unmarshal(upstream.body, &status) == nil &&
+		status.Kind == "Status" && status.APIVersion == "v1" && status.Status == "Failure" &&
+		status.Reason == "NotFound" && status.Code == http.StatusNotFound &&
+		status.Details.Group == appPlatformGroup && status.Details.Kind == "pathfindersettings" &&
+		status.Details.Name == "default" && len(status.Details.Causes) == 0
 }
 
 func readAttempt(r *http.Request) int {

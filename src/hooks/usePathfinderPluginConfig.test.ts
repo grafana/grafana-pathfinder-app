@@ -513,3 +513,54 @@ it.each([403, 503])(
     expect(readGlobal()).toBeUndefined();
   }
 );
+
+describe('startup absence cache and fresh configuration reads', () => {
+  it('lets configuration bypass a settled startup read and shares the fresh request', async () => {
+    mockFetchTenant.mockResolvedValueOnce(null).mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
+    await readPathfinderStartupPreference();
+    expect(mockFetchTenant).toHaveBeenLastCalledWith({ useCachedAbsence: true });
+    const first = refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
+    const second = refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
+    expect(first).toBe(second);
+    await first;
+    expect(mockFetchTenant).toHaveBeenLastCalledWith({ useCachedAbsence: false });
+    expect(readGlobal()?.pathfinderEnabled).toBe(false);
+  });
+
+  it('does not let an older startup read overwrite a fresh configuration read', async () => {
+    let finishStartup!: (value: null) => void;
+    mockFetchTenant
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishStartup = resolve;
+          })
+      )
+      .mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
+    const startup = readPathfinderStartupPreference();
+    await refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
+    finishStartup(null);
+    await startup;
+    expect(readGlobal()?.pathfinderEnabled).toBe(false);
+  });
+});
+
+it('refreshes on each panel open, sharing pending reads without refreshing on rerender', async () => {
+  await readPathfinderStartupPreference();
+  const first = renderHook(() => usePathfinderPluginConfig({ refreshOnMount: true }));
+  const second = renderHook(() => usePathfinderPluginConfig({ refreshOnMount: true }));
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(mockFetchTenant).toHaveBeenCalledTimes(2);
+  expect(mockFetchTenant).toHaveBeenLastCalledWith({ useCachedAbsence: false });
+  first.rerender();
+  expect(mockFetchTenant).toHaveBeenCalledTimes(2);
+  first.unmount();
+  second.unmount();
+  renderHook(() => usePathfinderPluginConfig({ refreshOnMount: true }));
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(mockFetchTenant).toHaveBeenCalledTimes(3);
+});
