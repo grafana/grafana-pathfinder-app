@@ -14,6 +14,7 @@
 import { useCallback } from 'react';
 import type { JsonGuide } from '../types';
 import type { ModalName } from './useModalManager';
+import { copyTextToClipboard } from '../../../lib/clipboard';
 import blockEditorTutorial from '../../../bundled-interactives/block-editor-tutorial/content.json';
 
 /**
@@ -109,9 +110,10 @@ export function useGuideOperations(options: UseGuideOperationsOptions): UseGuide
     if (onCopy) {
       onCopy(json);
     } else {
-      navigator.clipboard.writeText(json).then(() => {
-        // Could add a toast notification here
-        console.log('Copied to clipboard');
+      copyTextToClipboard(json).then((copied) => {
+        if (!copied) {
+          console.log('Could not copy to clipboard');
+        }
       });
     }
   }, [editor, onCopy]);
