@@ -60,6 +60,7 @@ jest.mock('../../interactive-engine', () => ({
 }));
 
 jest.mock('../../requirements-manager', () => ({
+  useGuideRequirements: () => ({ checkPostconditions: jest.fn() }),
   useStepChecker: () => ({ completionReason: undefined }),
   stripTabLocalRequirements: (requirements: string | undefined) => requirements,
 }));

@@ -101,6 +101,7 @@ import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
 import { useSectionPersistence } from './hooks/use-section-persistence';
 import { useStoredSectionCompletion } from './hooks/use-stored-section-completion';
 import { useSectionRequirements } from './hooks/use-section-requirements';
+import { useSectionCheckpoint } from './hooks/use-section-checkpoint';
 import { useSectionScroll } from './hooks/use-section-scroll';
 import {
   evictSectionCache,
@@ -160,6 +161,7 @@ export function InteractiveSection({
   className,
   id, // HTML id attribute from parsed content
   sectionId: derivedSectionId, // `sectionRuntimeId`, stamped on by the JSON parser
+  checkpoint,
   autoCollapse, // Author control for auto-collapse behavior
 }: InteractiveSectionProps) {
   const sectionId = useMemo(() => {
@@ -249,6 +251,15 @@ export function InteractiveSection({
     hints,
     checkRequirementsFromData,
   });
+
+  const sectionCheckpoint = useSectionCheckpoint(
+    checkpoint,
+    sectionId,
+    sectionRequirementsStatus.passed,
+    mode === 'controller'
+  );
+  const sectionReady = sectionRequirementsStatus.passed && sectionCheckpoint.passed;
+  const checkCheckpoint = sectionCheckpoint.recheck;
 
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
@@ -801,6 +812,12 @@ export function InteractiveSection({
         }
       }
 
+      if (checkpoint && !(await checkCheckpoint())) {
+        ActionMonitor.getInstance().forceEnable();
+        setIsRunning(false);
+        return;
+      }
+
       // Start section-level blocking (persists for entire section)
       const dummyData: InteractiveElementData = {
         refTarget: `section-${sectionId}`,
@@ -857,6 +874,10 @@ export function InteractiveSection({
         async () => {
           try {
             for (let i = startIndex; i < stepComponents.length; i++) {
+              if (checkpoint && !(await checkCheckpoint())) {
+                handleSectionCancel();
+                break;
+              }
               // Check for cancellation before each step
               if (isCancelledRef.current) {
                 break;
@@ -1146,6 +1167,8 @@ export function InteractiveSection({
     handleSectionCancel,
     currentStepIndex,
     controllerRequirements,
+    checkpoint,
+    checkCheckpoint,
     checkRequirementsFromData,
     scrollToStep,
     beginProgrammaticScroll,
@@ -1308,7 +1331,7 @@ export function InteractiveSection({
           sectionTitle: title,
           baseDisabled: disabled,
           isRunning,
-          sectionRequirementsPassed: sectionRequirementsStatus.passed,
+          sectionRequirementsPassed: sectionReady,
           resetTrigger,
           onStepComplete: handleStepComplete,
           onStepReset: handleStepReset,
@@ -1324,6 +1347,7 @@ export function InteractiveSection({
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child as React.ReactElement<any>).props,
           ...enhancedProps,
+          ...(schema.kind === 'guided' ? { checkpointPaused: !!checkpoint && !sectionCheckpoint.passed } : {}),
           key: stepInfo.stepId,
           ...(refCallback ? { ref: refCallback } : {}),
         });
@@ -1341,7 +1365,9 @@ export function InteractiveSection({
     resetTrigger,
     sectionId,
     title,
-    sectionRequirementsStatus.passed,
+    sectionReady,
+    checkpoint,
+    sectionCheckpoint.passed,
   ]);
 
   // Computed once per render so the catch-all action button's `title`
@@ -1408,6 +1434,38 @@ export function InteractiveSection({
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {!isCollapsed && checkpoint && sectionRequirementsStatus.passed && !sectionCheckpoint.passed && (
+        <div className="interactive-section-requirements-banner" role="status">
+          <div className="interactive-section-requirements-message">
+            {checkpoint.message || sectionCheckpoint.status.explanation || 'Restore the section state to continue.'}
+          </div>
+          {checkpoint.message && <p>{sectionCheckpoint.status.explanation}</p>}
+          {checkpoint.manualRecovery && <p>{checkpoint.manualRecovery}</p>}
+          <div className="interactive-step-requirement-buttons">
+            {sectionCheckpoint.restoring ? (
+              <button type="button" onClick={sectionCheckpoint.cancel}>
+                Cancel recovery
+              </button>
+            ) : (
+              <>
+                {sectionCheckpoint.status.canRestore && (
+                  <button
+                    type="button"
+                    className="interactive-requirement-retry-btn"
+                    onClick={sectionCheckpoint.restore}
+                  >
+                    Restore this section
+                  </button>
+                )}
+                <button type="button" className="interactive-requirement-retry-btn" onClick={sectionCheckpoint.recheck}>
+                  Check again
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -1513,7 +1571,7 @@ export function InteractiveSection({
             onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
             disabled={
               disabled ||
-              !sectionRequirementsStatus.passed ||
+              !sectionReady ||
               isCompletedByObjectives ||
               (!(stepsCompleted && !isCompletedByObjectives) && stepComponents.length === 0)
             }

@@ -963,7 +963,30 @@ export const PresentationalBlockSchema = z.union([
 // ============ RECURSIVE BLOCK SCHEMAS ============
 
 // Common properties for recursive blocks to avoid duplication
+export const JsonSectionCheckpointSchema = z.strictObject({
+  checks: z
+    .array(
+      z.union([
+        z.strictObject({
+          requirement: RequirementTokenSchema.refine(
+            (token) => !token.startsWith('coda-exit-zero:') && token !== 'exists-reftarget',
+            'Checkpoint requirements must be read-only; use a target check for element visibility'
+          ),
+        }),
+        z.strictObject({
+          target: z.string().trim().min(1).max(2000),
+          state: z.enum(['visible', 'expanded', 'selected']),
+        }),
+      ])
+    )
+    .min(1)
+    .max(12),
+  message: z.string().max(500).optional(),
+  manualRecovery: z.string().max(1000).optional(),
+});
+
 const SectionProps = {
+  checkpoint: JsonSectionCheckpointSchema.optional(),
   type: z.literal('section'),
   id: z.string().optional().describe('Stable identifier for the section (required for container blocks via CLI)'),
   title: z.string().optional().describe('Section heading'),
@@ -1293,7 +1316,17 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'completeEarly',
     'authorNote',
   ]),
-  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse', 'authorNote']),
+  section: new Set([
+    'type',
+    'id',
+    'title',
+    'blocks',
+    'requirements',
+    'objectives',
+    'autoCollapse',
+    'checkpoint',
+    'authorNote',
+  ]),
   collapsible: new Set(['type', 'id', 'title', 'collapsed', 'blocks', 'authorNote']),
   conditional: new Set([
     'type',

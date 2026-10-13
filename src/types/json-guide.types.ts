@@ -181,7 +181,17 @@ export interface JsonAssistantBlock extends AuthorAnnotated {
  * Sections group related interactive steps and provide
  * sequential execution with "Do Section" functionality.
  */
+export type JsonCheckpointCheck =
+  { requirement: string } | { target: string; state: 'visible' | 'expanded' | 'selected' };
+
+export interface JsonSectionCheckpoint {
+  checks: JsonCheckpointCheck[];
+  message?: string;
+  manualRecovery?: string;
+}
+
 export interface JsonSectionBlock extends AuthorAnnotated {
+  checkpoint?: JsonSectionCheckpoint;
   type: 'section';
   /** Optional HTML id for the section */
   id?: string;

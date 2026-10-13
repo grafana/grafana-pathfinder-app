@@ -1447,6 +1447,7 @@ function renderParsedElement(
           id={element.props.id} // Pass the HTML id attribute
           sectionId={element.props.sectionId}
           autoCollapse={element.props.autoCollapse}
+          checkpoint={element.props.checkpoint}
         >
           {renderChildren(element.children)}
         </InteractiveSection>

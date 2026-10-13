@@ -1517,3 +1517,25 @@ describe('InteractiveGuided — successor ownership', () => {
     }
   });
 });
+
+it('cancels an active guided interaction when its section checkpoint drifts', async () => {
+  let finish!: (result: string) => void;
+  mockExecuteGuidedStep.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  const actions = [{ targetAction: 'highlight' as const, refTarget: '#target' }];
+  const { rerender } = render(
+    <InteractiveGuided stepId="checkpoint-drift" internalActions={actions} checkpointPaused={false} />
+  );
+  fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+  await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalled());
+  rerender(<InteractiveGuided stepId="checkpoint-drift" internalActions={actions} checkpointPaused />);
+  await waitFor(() => expect(mockCancel).toHaveBeenCalled());
+  await act(async () => {
+    finish('cancelled');
+  });
+  expect(mockStoredCompleted).toBe(false);
+});

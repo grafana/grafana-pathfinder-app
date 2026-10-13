@@ -563,6 +563,7 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
         requirements,
         objectives,
         autoCollapse: block.autoCollapse,
+        checkpoint: block.checkpoint,
       },
       children,
     },

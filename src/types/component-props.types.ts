@@ -1,3 +1,4 @@
+import type { JsonSectionCheckpoint } from './json-guide.types';
 /**
  * Component prop type definitions
  * Centralized prop interfaces for components used across the application
@@ -69,6 +70,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
  * Container for multiple interactive steps
  */
 export interface InteractiveSectionProps extends BaseInteractiveProps {
+  checkpoint?: JsonSectionCheckpoint;
   title: string;
   description?: string;
   children: React.ReactNode;

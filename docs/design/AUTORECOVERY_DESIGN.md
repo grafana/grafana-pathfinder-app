@@ -1,5 +1,48 @@
 # Auto-recovery system design
 
+## Section checkpoints (implemented pilot)
+
+A section can now declare an optional `checkpoint` containing ordered live checks. This is an invariant for the section, separate from historical completion. Conditions must remain valid throughout the section; put a condition that the next action intentionally consumes on that step's requirements instead. Existing guides without checkpoints retain their behavior.
+
+The implementation is based on an October 13, 2026 scan of 724 tracked `content.json` guide files in `interactive-tutorials` (including journey content; excluding assets). These contain 734 sections, 195 with requirements; 1,160 page conditions; 1,716 target-presence conditions; 187 navigation-menu conditions; and 398 form-fill actions. Selector-text heuristics found tab candidates in 78 guide files, dialog candidates in 11, and save/create/delete/install candidates in 74. These candidate counts are authoring leads, not verified DOM compatibility or recovery coverage.
+
+Common patterns and their treatment:
+
+| Catalog pattern                            | Checkpoint support                                                                 | Examples                                                                               |
+| ------------------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Leaving the expected page                  | Existing `on-page:` condition and validated navigation repair                      | Playlist creation; Adaptive Metrics rule management                                    |
+| Closing the navigation menu                | Existing `navmenu-open` condition and menu repair                                  | Playlists and dashboard snapshots                                                      |
+| Collapsing an options control              | Unique visible control with `aria-expanded`; set false to true once                | Prometheus query options in `dpm-explore-up-metric`                                    |
+| Selecting another tab                      | Unique visible button or non-link tab with `aria-selected`; select only when false | Adaptive Logs Patterns/Exemptions/Segments (verify the actual control before adoption) |
+| Losing a dialog or editor                  | Visible target check plus author-provided manual recovery                          | Alert activity details; query and panel editors                                        |
+| Clearing dashboard grouping/filters        | Dashboard state adapter from the filtering pilot                                   | `dashboard-interactive-filtering`                                                      |
+| Form input, missing resources, permissions | Read-only requirements and manual instructions; no automatic write replay          | Playlist forms; alert creation; data source setup                                      |
+
+```json
+{
+  "type": "section",
+  "id": "inspect-query-options",
+  "title": "Inspect query options",
+  "checkpoint": {
+    "checks": [
+      { "requirement": "on-page:/explore" },
+      { "target": "div[data-testid='data-testid prometheus options'] button[aria-expanded]", "state": "expanded" }
+    ],
+    "message": "Return to the query options to continue.",
+    "manualRecovery": "If the query editor was closed, reopen your Prometheus query, then check again."
+  },
+  "blocks": []
+}
+```
+
+List location checks before controls so recovery never clicks a matching control on the wrong page. Target selectors must remain stable when the control changes state: use `[aria-expanded]`, not `[aria-expanded='false']`. Checks support `visible`, `expanded`, and `selected`; visibility never guesses a trigger action. Ambiguous, missing, disabled, or hidden controls require manual recovery. Submit/reset buttons and links are not clicked. Terminal command conditions are excluded because evaluating them can itself write state.
+
+The coordinator checks in order, restores only the first unsatisfied repairable condition, waits for observed readiness, and checks the whole checkpoint again before proceeding. Each condition is repaired at most once per request; drift or verification timeout returns control to the learner. Cancel and unmount stop subsequent repairs. Recovery does not call completion or reset APIs. The section gate polls every five seconds and on focus/history events; the section runner also checks at execution boundaries. Existing automated section click protection remains in use.
+
+Author checkpoints through JSON mode. They survive JSON import, validation, parsing, and rendering. No automatic catalog migration or recovery inference is performed. No checkpoint state or learner form values are persisted. The two-tab controller currently blocks checkpointed sections with an instruction to open the guide in the Grafana tab, rather than incorrectly checking the controller DOM. A dedicated editor form and live-tab checkpoint transport are follow-up work.
+
+New content requires a runtime and validator release containing checkpoint support. Cloud persistence also requires the [companion InteractiveGuide CRD schema update](https://github.com/grafana/grafana-pathfinder-backend/pull/107); older backend schemas silently prune `checkpoint` when saving. The deployment script allowlist targets that companion schema. Older runtimes may ignore the field: keep ordinary requirements on critical steps and do not publish checkpoint-dependent guides ahead of those releases.
+
 ## Vision
 
 A generalized "Fix this" capability that detects when users diverge from the tutorial happy path, diagnoses what went wrong, and either automatically recovers or guides users back on track - going far beyond the current navigation-only fixes.

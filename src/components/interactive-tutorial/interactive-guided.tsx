@@ -119,6 +119,7 @@ interface InteractiveGuidedProps {
   children?: React.ReactNode;
   className?: string;
   disabled?: boolean;
+  checkpointPaused?: boolean;
   hints?: string;
   requirements?: ConditionInput;
   objectives?: ConditionInput;
@@ -192,6 +193,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       children,
       className,
       disabled = false,
+      checkpointPaused = false,
       hints,
       requirements,
       objectives,
@@ -961,6 +963,12 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setCurrentStepStatus,
       setWasCancelled,
     ]);
+
+    useEffect(() => {
+      if (checkpointPaused && isExecuting) {
+        void handleCancel();
+      }
+    }, [checkpointPaused, isExecuting, handleCancel]);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 

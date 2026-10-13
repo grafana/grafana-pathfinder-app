@@ -337,6 +337,8 @@ export function createInteractiveEngineMock() {
 /** Factory for `jest.mock('../../requirements-manager', ...)`. */
 export function createRequirementsManagerMock() {
   return {
+    useGuideRequirements: require('../requirements-manager/guide-requirements-context').useGuideRequirements,
+    createCheckpointAdapter: require('../requirements-manager/checkpoint-adapter').createCheckpointAdapter,
     useStepChecker: () => ({
       isEnabled: true,
       isCompleted: false,
