@@ -23,6 +23,7 @@ export interface V1AuthorInfo {
 export interface V1Prerequisite {
   id: string;
   label: string;
+  format?: 'markdown';
 }
 
 /**

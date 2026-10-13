@@ -227,7 +227,10 @@ describe('ContextService: online package recommendations (recommender-disabled b
               { id: ' \t ', label: 'Nonblank label' },
               { id: 'first', label: 'Duplicate ID' },
               { id: 'bad-shape', label: 42 },
-              { id: 'second', label: '[literal](url)' },
+              { id: 'second', label: '[literal](url)', format: 'markdown' },
+              { id: 'unknown-format', label: '<em>literal</em>', format: 'html' },
+              { id: 'numeric-format', label: ' **exact numeric fallback** ', format: 42 },
+              { id: 'object-format', label: '<b>exact object fallback</b>', format: { value: 'markdown' } },
             ],
           },
         },
@@ -258,7 +261,10 @@ describe('ContextService: online package recommendations (recommender-disabled b
       type: 'guide',
       prerequisites: [
         { id: 'first', label: '<strong>literal</strong> **text**' },
-        { id: 'second', label: '[literal](url)' },
+        { id: 'second', label: '[literal](url)', format: 'markdown' },
+        { id: 'unknown-format', label: '<em>literal</em>' },
+        { id: 'numeric-format', label: ' **exact numeric fallback** ' },
+        { id: 'object-format', label: '<b>exact object fallback</b>' },
       ],
     });
   });

@@ -57,10 +57,13 @@ export interface Author {
   team?: string;
 }
 
+export type PrerequisiteFormat = 'markdown';
+
 export interface Prerequisite {
   id: string;
-  /** Displayed literally; Markdown and HTML formatting are not interpreted. */
+  /** Literal by default; only the explicitly supported format opts into Markdown. */
   label: string;
+  format?: PrerequisiteFormat;
 }
 
 // ============ TARGETING ============

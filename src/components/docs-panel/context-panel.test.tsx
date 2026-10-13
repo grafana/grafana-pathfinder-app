@@ -165,7 +165,13 @@ describe('RecommendationsSection', () => {
             manifest: {
               id: 'prometheus-lj',
               type: 'path',
-              prerequisites: [{ id: 'prometheus', label: 'A running Prometheus server.' }],
+              prerequisites: [
+                {
+                  id: 'prometheus',
+                  label: 'A running [Prometheus server](https://example.com/prometheus).',
+                  format: 'markdown',
+                },
+              ],
             },
             summaryExpanded: true,
             totalSteps: 1,
@@ -193,8 +199,10 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    const prerequisite = screen.getByText('A running Prometheus server.');
+    const prerequisite = screen.getByRole('link', { name: 'Prometheus server' });
     const milestones = screen.getByTestId(testIds.contextPanel.recommendationMilestones(0));
+    expect(prerequisite).toHaveAttribute('target', '_blank');
+    expect(prerequisite).toHaveAttribute('rel', 'noopener noreferrer');
     expect(prerequisite.compareDocumentPosition(milestones) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

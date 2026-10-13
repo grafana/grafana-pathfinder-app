@@ -66,14 +66,14 @@ const SUPPORTED_MATCH_PREDICATE_KEYS: ReadonlySet<string> = new Set([
 // failures in getOnlinePackageRecommendations' catch.
 export const ONLINE_PACKAGES_TIMEOUT_MESSAGE = 'Online package recommendations timed out; continuing without them';
 
-function normalizePrerequisites(value: unknown): Array<{ id: string; label: string }> | undefined {
+function normalizePrerequisites(value: unknown): Array<{ id: string; label: string; format?: 'markdown' }> | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
 
   const seenIds = new Set<string>();
   return value
-    .filter((item): item is { id: string; label: string } => {
+    .filter((item): item is { id: string; label: string; format?: unknown } => {
       if (
         item == null ||
         typeof item !== 'object' ||
@@ -89,7 +89,11 @@ function normalizePrerequisites(value: unknown): Array<{ id: string; label: stri
       seenIds.add(item.id);
       return true;
     })
-    .map(({ id, label }) => ({ id, label }));
+    .map(({ id, label, format }) => ({
+      id,
+      label,
+      ...(format === 'markdown' ? { format } : {}),
+    }));
 }
 
 export class ContextService {

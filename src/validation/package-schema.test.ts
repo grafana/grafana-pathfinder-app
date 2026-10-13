@@ -142,7 +142,7 @@ describe('ManifestJsonSchema', () => {
   it('preserves valid prerequisite strings and order', () => {
     const prerequisites = [
       { id: ' mysql-server ', label: '<strong>text</strong>' },
-      { id: 'second', label: '**text** and [text](url)' },
+      { id: 'second', label: '**text** and [text](url)', format: 'markdown' as const },
     ];
     const result = ManifestJsonObjectSchema.safeParse({ ...minimalGuideManifest, prerequisites });
     expect(result.success).toBe(true);
@@ -167,8 +167,21 @@ describe('ManifestJsonSchema', () => {
     expect(ManifestJsonObjectSchema.safeParse({ ...minimalGuideManifest, prerequisites }).success).toBe(false);
   });
 
-  it('validates a single prerequisite entry', () => {
+  it('validates omitted and supported prerequisite formats and rejects unsupported values', () => {
     expect(PrerequisiteSchema.safeParse({ id: 'mysql-server', label: 'A running MySQL server.' }).success).toBe(true);
+    expect(
+      PrerequisiteSchema.safeParse({ id: 'mysql-server', label: '**A running MySQL server**', format: 'markdown' })
+        .success
+    ).toBe(true);
+    expect(
+      PrerequisiteSchema.safeParse({ id: 'mysql-server', label: 'A running MySQL server.', format: 'html' }).success
+    ).toBe(false);
+    expect(
+      ManifestJsonObjectSchema.safeParse({
+        ...minimalGuideManifest,
+        prerequisites: [{ id: 'mysql-server', label: 'Label', format: 'plain' }],
+      }).success
+    ).toBe(false);
   });
 
   it('should apply defaults during parsing', () => {

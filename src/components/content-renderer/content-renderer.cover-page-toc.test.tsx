@@ -41,6 +41,7 @@ describe('ContentRenderer cover-page table of contents', () => {
 
   it('renders path prerequisites before the cover actions', () => {
     const content = makeContent({
+      isNativeJson: true,
       metadata: {
         ...makeContent().metadata,
         packageManifest: {
@@ -57,11 +58,35 @@ describe('ContentRenderer cover-page table of contents', () => {
     const tableOfContents = screen.getByTestId(testIds.learningPaths.tableOfContents);
     expect(prerequisite.tagName).toBe('LI');
     expect(container.querySelector('li b')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 1, name: 'Demo' })).toHaveLength(1);
+    expect(screen.getByTestId(testIds.learningPaths.coverHero)).toHaveTextContent('Demo');
     expect(prerequisite.compareDocumentPosition(tableOfContents) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders Markdown prerequisite links on the path cover as secure new-tab links', () => {
+    const content = makeContent({
+      metadata: {
+        ...makeContent().metadata,
+        packageManifest: {
+          id: 'demo-path',
+          type: 'path',
+          prerequisites: [
+            { id: 'docs', label: '[Read the docs](https://example.com/prerequisites)', format: 'markdown' },
+          ],
+        },
+      },
+    });
+
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
+
+    const link = screen.getByRole('link', { name: 'Read the docs' });
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('shows a directly opened milestone’s own prerequisites without path inheritance', () => {
     const content = makeContent({
+      isNativeJson: true,
       metadata: {
         ...makeContent().metadata,
         learningJourney: { ...makeContent().metadata.learningJourney!, currentMilestone: 1 },
@@ -78,9 +103,30 @@ describe('ContentRenderer cover-page table of contents', () => {
     const prerequisite = screen.getByText('Guide-only need');
     const body = screen.getByText('Body');
     expect(prerequisite).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 1, name: 'Demo' })).toHaveLength(1);
     expect(screen.queryByText('Path-only need')).not.toBeInTheDocument();
     expect(prerequisite.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByTestId(testIds.markComplete.button)).toBeInTheDocument();
+  });
+
+  it('renders Markdown prerequisite links in the guide body as secure new-tab links', () => {
+    const content = makeContent({
+      metadata: {
+        ...makeContent().metadata,
+        learningJourney: { ...makeContent().metadata.learningJourney!, currentMilestone: 1 },
+        packageManifest: {
+          id: 'milestone-guide',
+          type: 'guide',
+          prerequisites: [{ id: 'docs', label: '[Guide prerequisite](https://example.com/guide)', format: 'markdown' }],
+        },
+      },
+    });
+
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
+
+    const link = screen.getByRole('link', { name: 'Guide prerequisite' });
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('does not repeat path prerequisites on a later milestone', () => {
@@ -161,6 +207,51 @@ describe('ContentRenderer cover-page table of contents', () => {
     // duplication regardless of which element it comes from.
     expect(screen.getAllByRole('heading', { level: 1, name: 'Demo' })).toHaveLength(1);
     expect(screen.getByTestId(testIds.learningPaths.coverHero)).toHaveTextContent('Demo');
+  });
+
+  it('keeps the native standalone title when a guide has valid prerequisites', () => {
+    const content = makeContent({
+      isNativeJson: true,
+      type: 'single-doc',
+      metadata: {
+        ...makeContent().metadata,
+        packageManifest: {
+          id: 'standalone-guide',
+          type: 'guide',
+          prerequisites: [{ id: 'server', label: 'A running server' }],
+        },
+      },
+    });
+
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
+
+    const title = screen.getByRole('heading', { level: 1, name: 'Demo' });
+    const prerequisite = screen.getByText('A running server');
+    expect(screen.getAllByRole('heading', { level: 1, name: 'Demo' })).toHaveLength(1);
+    expect(prerequisite.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(
+      prerequisite.compareDocumentPosition(screen.getByText('Body')) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it('keeps the native title when a cover has no table of contents', () => {
+    const content = makeContent({
+      isNativeJson: true,
+      metadata: {
+        ...makeContent().metadata,
+        learningJourney: { ...makeContent().metadata.learningJourney!, milestones: [], totalMilestones: 0 },
+        packageManifest: {
+          id: 'empty-path',
+          type: 'path',
+          prerequisites: [{ id: 'server', label: 'A running server' }],
+        },
+      },
+    });
+
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
+
+    expect(screen.getAllByRole('heading', { level: 1, name: 'Demo' })).toHaveLength(1);
+    expect(screen.queryByTestId(testIds.learningPaths.tableOfContents)).not.toBeInTheDocument();
   });
 
   it('still shows the standalone title on non-cover content', () => {

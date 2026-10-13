@@ -204,7 +204,10 @@ describe('V1 /api/v1/recommend endpoint integration', () => {
             id: 'sm-setting-up-your-first-check',
             type: 'guide',
             prerequisites: [
-              { id: 'valid', label: '<strong>literal</strong> **text**' },
+              { id: 'valid', label: '<strong>literal</strong> **text**', format: 'markdown' },
+              { id: 'unknown-format', label: '[still literal](https://example.com)', format: 'unsupported' as never },
+              { id: 'numeric-format', label: ' **exact numeric fallback** ', format: 42 as never },
+              { id: 'object-format', label: '<b>exact object fallback</b>', format: { value: 'markdown' } as never },
               { id: 'bad-label', label: ' \t ' },
               { id: ' \t ', label: 'Nonblank label' },
               { id: 'valid', label: 'duplicate id' },
@@ -245,7 +248,12 @@ describe('V1 /api/v1/recommend endpoint integration', () => {
     expect(featured!.manifest).toEqual({
       id: 'sm-setting-up-your-first-check',
       type: 'guide',
-      prerequisites: [{ id: 'valid', label: '<strong>literal</strong> **text**' }],
+      prerequisites: [
+        { id: 'valid', label: '<strong>literal</strong> **text**', format: 'markdown' },
+        { id: 'unknown-format', label: '[still literal](https://example.com)' },
+        { id: 'numeric-format', label: ' **exact numeric fallback** ' },
+        { id: 'object-format', label: '<b>exact object fallback</b>' },
+      ],
     });
     const ordinary = result.recommendations.find((item) => item.type === 'package');
     expect(ordinary?.manifest).toEqual(featured!.manifest);

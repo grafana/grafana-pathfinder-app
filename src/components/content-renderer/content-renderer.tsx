@@ -542,7 +542,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   const prerequisites =
     !isCoverPage && journey && packageManifest?.type === 'path' ? undefined : packageManifest?.prerequisites;
   const hasPrerequisites = Array.isArray(prerequisites) && prerequisites.length > 0;
-  const hasCoverContents = isCoverPage && journey && journey.milestones.length > 0;
+  const hasCoverContents = Boolean(isCoverPage && journey && journey.milestones.length > 0);
   const beforeContent =
     hasPrerequisites || hasCoverContents ? (
       <>
@@ -607,6 +607,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
             selectionState={selectionState}
             documentContext={documentContext}
             beforeContent={beforeContent}
+            coverTocSuppliesTitle={hasCoverContents}
             afterContent={afterContent}
             fullScreenFallbackLocation={fullScreenFallbackLocation}
           />
@@ -631,6 +632,7 @@ interface ContentWithVariablesProps {
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
   beforeContent?: React.ReactNode;
+  coverTocSuppliesTitle: boolean;
   afterContent?: React.ReactNode;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
@@ -649,6 +651,7 @@ function ContentWithVariables({
   selectionState,
   documentContext,
   beforeContent,
+  coverTocSuppliesTitle,
   afterContent,
   fullScreenFallbackLocation,
 }: ContentWithVariablesProps) {
@@ -728,7 +731,7 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
-      {title && isNativeJson && !beforeContent && <h1 className={titleStyle}>{title}</h1>}
+      {title && isNativeJson && !coverTocSuppliesTitle && <h1 className={titleStyle}>{title}</h1>}
       {beforeContent}
       <ContentProcessor
         html={processedContent}

@@ -24,7 +24,7 @@ describe('buildRepository prerequisites', () => {
     );
     const prerequisites = [
       { id: 'first', label: 'Literal **text**' },
-      { id: 'second', label: '<strong>text</strong>' },
+      { id: 'second', label: '<strong>text</strong>', format: 'markdown' },
     ];
     fs.writeFileSync(
       path.join(packageDir, 'manifest.json'),

@@ -91,6 +91,7 @@ export const DependencyListSchema = z.array(DependencyClauseSchema) satisfies z.
 export const PrerequisiteSchema = z.object({
   id: z.string().refine((value) => value.trim().length > 0, 'Prerequisite id must not be blank'),
   label: z.string().refine((value) => value.trim().length > 0, 'Prerequisite label must not be blank'),
+  format: z.literal('markdown').optional(),
 }) satisfies z.ZodType<Prerequisite>;
 
 export const PrerequisitesSchema = z.array(PrerequisiteSchema).superRefine((prerequisites, ctx) => {
