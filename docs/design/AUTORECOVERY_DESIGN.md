@@ -43,30 +43,48 @@ A check can declare `recover`, a compact sequence using the existing `button` an
 
 ```json
 {
-  "target": "[role='dialog'][aria-label='Drawer title Share internally']",
+  "target": "[aria-label='Legend combobox']",
   "state": "visible",
   "recover": [
     {
       "action": "button",
-      "reftarget": "button[data-testid='data-testid new share button arrow menu']",
+      "reftarget": "[data-testid='data-testid Query editor row'] button[aria-label$='query row']",
       "replaySafe": true,
-      "objectives": [{ "target": "[data-testid='data-testid new share button share internally']", "state": "visible" }]
+      "objectives": [
+        {
+          "target": "[data-testid='data-testid Query editor row'] button[aria-label$='query row']",
+          "state": "expanded"
+        }
+      ]
     },
     {
       "action": "button",
-      "reftarget": "[data-testid='data-testid new share button share internally']",
+      "reftarget": "[data-testid='data-testid prometheus options'] button[aria-expanded]",
       "replaySafe": true,
-      "objectives": [{ "target": "[role='dialog'][aria-label='Drawer title Share internally']", "state": "visible" }]
+      "objectives": [
+        {
+          "target": "[aria-label='Legend combobox']",
+          "state": "visible"
+        }
+      ]
     }
   ]
 }
 ```
 
-Recovery checks the final view before every replay action, so an already-open dialog never causes its transient setup menu to reopen. Actions whose live objectives hold are skipped. Earlier checkpoint conditions are rechecked before each action; a failed objective or cancellation stops the sequence. Only verified checkpoint readiness unblocks the learner; replay does not complete learning steps.
+Recovery checks the final view before every replay action, so already-visible query options never cause their query row to toggle closed. Actions whose live objectives hold are skipped. Earlier checkpoint conditions are rechecked before each action; a failed objective or cancellation stops the sequence. Only verified checkpoint readiness unblocks the learner; replay does not complete learning steps.
 
 The button/navigation handlers expose a recovery path with no teaching tooltips, scrolling animation, completion writes, selector-relaxation retries, or fixed settling sleeps. It advances immediately when objectives hold, waking on DOM changes with a 50 ms fallback for non-DOM state and a five-second verification deadline. Navigation stays inside Grafana and cannot switch guides. Recovery buttons must be unique, visible, enabled, and unable to submit/reset a form; an implicit button outside a form is allowed.
 
 Author checkpoints through JSON mode. They survive JSON import, validation, parsing, and rendering. No automatic catalog migration or recovery inference is performed. No checkpoint state or learner form values are persisted. The two-tab controller currently blocks checkpointed sections with an instruction to open the guide in the Grafana tab, rather than incorrectly checking the controller DOM. A dedicated editor form and live-tab checkpoint transport are follow-up work.
+
+### Recovery storage and OSS
+
+Recovery instructions are part of the guide's JSON, not per-user snapshots or an action log. OSS uses the same frontend coordinator with bundled, CDN, or imported guides; it does not need App Platform or a new local/user-storage fallback for recovery. Cloud stores the same recipe with the authored guide through the existing guide backend. Runtime readiness, the current repair, and cancellation are memory-only and are recomputed from the live page after remount.
+
+Each attempt is bounded by the validated recipe limits (12 checks, 12 actions per check, 12 objectives per action), one repair per condition, and readiness timeouts. Cancellation and unmount abort outstanding work; observers, timers, and window listeners are released. No recovery history, form values, or snapshots are saved, so no TTL or storage migration is needed. Learner-progress storage, saved drafts, and guide-library retention are outside this change.
+
+Recovery appears as a compact inline notice with a single Restore action. Manual guidance and Check again appear only when automatic restoration is unavailable. While the checkpoint blocks a section, duplicate step requirement notices are hidden; they return once the checkpoint is ready.
 
 New content requires a runtime and validator release containing checkpoint support. Cloud persistence also requires the [companion InteractiveGuide CRD schema update](https://github.com/grafana/grafana-pathfinder-backend/pull/107); older backend schemas silently prune `checkpoint` when saving. The deployment script allowlist targets that companion schema. Older runtimes may ignore the field: keep ordinary requirements on critical steps and do not publish checkpoint-dependent guides ahead of those releases.
 

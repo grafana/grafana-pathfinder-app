@@ -522,6 +522,34 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     lineHeight: 1.4,
   },
 
+  '.interactive-section-checkpoint': {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    margin: `${theme.spacing(1)} ${theme.spacing(2)} 0`,
+    padding: theme.spacing(1),
+    background: theme.colors.info.transparent,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+  },
+
+  '.interactive-section-checkpoint-label': {
+    flex: '1 1 auto',
+  },
+
+  '.interactive-section-checkpoint-help': {
+    flexBasis: '100%',
+    color: theme.colors.text.secondary,
+    margin: 0,
+    overflowWrap: 'anywhere',
+  },
+
+  '.checkpoint-paused .interactive-section-content .interactive-step-requirement-explanation, .checkpoint-paused .interactive-section-content .interactive-guided-requirement-box':
+    {
+      display: 'none',
+    },
+
   // Alignment paused banner (implied 0th step) — info-blue to match the top
   // AlignmentPrompt (which uses Alert severity="info"), no icon, with link
   // back to the top prompt. Distinct from the generic requirements banner

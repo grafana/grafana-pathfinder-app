@@ -75,3 +75,58 @@ it('does not change existing guides without checkpoints', () => {
   expect(result.current.passed).toBe(true);
   expect(createCheckpointAdapter).not.toHaveBeenCalled();
 });
+
+it('recomputes readiness on remount without persisting recovery records', async () => {
+  const storageWrite = jest.spyOn(Storage.prototype, 'setItem');
+  let ready = false;
+  const adapter = {
+    check: jest.fn(async () => ({ passed: ready, canRestore: !ready })),
+    restore: jest.fn(async () => {
+      ready = true;
+      return true;
+    }),
+  };
+  jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+  try {
+    const first = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false));
+    await waitFor(() => expect(first.result.current.status.canRestore).toBe(true));
+    await act(async () => {
+      await first.result.current.restore();
+    });
+    expect(first.result.current.passed).toBe(true);
+    first.unmount();
+    ready = false;
+    const second = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false));
+    await waitFor(() => expect(second.result.current.status.canRestore).toBe(true));
+    expect(second.result.current.passed).toBe(false);
+    expect(storageWrite).not.toHaveBeenCalled();
+    second.unmount();
+  } finally {
+    storageWrite.mockRestore();
+  }
+});
+
+it('releases polling and listeners when the guide closes', async () => {
+  jest.useFakeTimers();
+  const intervals = jest.spyOn(global, 'setInterval');
+  const clear = jest.spyOn(global, 'clearInterval');
+  const adapter = { check: jest.fn(async () => ({ passed: true, canRestore: false })), restore: jest.fn() };
+  jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+  try {
+    const { unmount } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false));
+    await act(async () => {});
+    expect(adapter.check).toHaveBeenCalledTimes(1);
+    unmount();
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      jest.advanceTimersByTime(15000);
+    });
+    expect(adapter.check).toHaveBeenCalledTimes(1);
+    expect(clear).toHaveBeenCalledWith(intervals.mock.results[0]!.value);
+  } finally {
+    intervals.mockRestore();
+    clear.mockRestore();
+    jest.useRealTimers();
+  }
+});

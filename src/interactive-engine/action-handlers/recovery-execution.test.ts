@@ -86,15 +86,13 @@ it('allows an implicit button only outside forms', async () => {
   button.setAttribute('role', 'menuitem');
   const click = jest.fn();
   button.addEventListener('click', click);
-  jest
-    .mocked(resolveWithRetry)
-    .mockResolvedValue({
-      element: button,
-      elements: [button],
-      resolvedSelector: '#open',
-      usedFallback: false,
-      retryCount: 0,
-    });
+  jest.mocked(resolveWithRetry).mockResolvedValue({
+    element: button,
+    elements: [button],
+    resolvedSelector: '#open',
+    usedFallback: false,
+    retryCount: 0,
+  });
   const handler = new ButtonHandler(new InteractiveStateManager(), new NavigationManager(), jest.fn());
   const request = { targetAction: 'button' as const, refTarget: '#open', tagName: 'button' };
   expect(await handler.executeRecovery(request)).toEqual({ outcome: 'ok' });

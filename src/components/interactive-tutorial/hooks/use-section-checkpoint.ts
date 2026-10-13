@@ -101,6 +101,12 @@ export function useSectionCheckpoint(
       };
       const task = execute();
       inFlight.current = task;
+      const release = () => {
+        if (inFlight.current === task) {
+          inFlight.current = null;
+        }
+      };
+      void task.then(release, release);
       return task;
     },
     [checkpoint, enabled, controllerMode, checkPostconditions, sectionId]
@@ -120,6 +126,7 @@ export function useSectionCheckpoint(
     return () => {
       operation.current?.abort();
       operation.current = null;
+      inFlight.current = null;
       busy.current = false;
       clearInterval(timer);
       window.removeEventListener('popstate', recheck);
@@ -130,6 +137,7 @@ export function useSectionCheckpoint(
   const cancel = useCallback(() => {
     operation.current?.abort();
     operation.current = null;
+    inFlight.current = null;
     busy.current = false;
     setRestoring(false);
     setStatus({

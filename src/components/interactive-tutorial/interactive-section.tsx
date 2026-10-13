@@ -1314,7 +1314,8 @@ export function InteractiveSection({
           return child;
         }
 
-        const isEligibleForChecking = stepEligibility[stepIndex] ?? false;
+        const isEligibleForChecking =
+          (stepEligibility[stepIndex] ?? false) && (!checkpoint || sectionCheckpoint.passed);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
         const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
           sectionId,
@@ -1379,7 +1380,7 @@ export function InteractiveSection({
       id={sectionId}
       className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}${
         isCollapsed ? ' collapsed' : ''
-      }`}
+      }${checkpoint && sectionRequirementsStatus.passed && !sectionCheckpoint.passed ? ' checkpoint-paused' : ''}`}
       data-testid={testIds.interactive.section(sectionId)}
       data-interactive-section="true"
     >
@@ -1438,34 +1439,29 @@ export function InteractiveSection({
       )}
 
       {!isCollapsed && checkpoint && sectionRequirementsStatus.passed && !sectionCheckpoint.passed && (
-        <div className="interactive-section-requirements-banner" role="status">
-          <div className="interactive-section-requirements-message">
-            {checkpoint.message || sectionCheckpoint.status.explanation || 'Restore the section state to continue.'}
-          </div>
-          {checkpoint.message && <p>{sectionCheckpoint.status.explanation}</p>}
-          {checkpoint.manualRecovery && <p>{checkpoint.manualRecovery}</p>}
-          <div className="interactive-step-requirement-buttons">
-            {sectionCheckpoint.restoring ? (
-              <button type="button" onClick={sectionCheckpoint.cancel}>
-                Cancel recovery
-              </button>
-            ) : (
-              <>
-                {sectionCheckpoint.status.canRestore && (
-                  <button
-                    type="button"
-                    className="interactive-requirement-retry-btn"
-                    onClick={sectionCheckpoint.restore}
-                  >
-                    Restore this section
-                  </button>
-                )}
-                <button type="button" className="interactive-requirement-retry-btn" onClick={sectionCheckpoint.recheck}>
-                  Check again
-                </button>
-              </>
-            )}
-          </div>
+        <div className="interactive-section-checkpoint">
+          <span role="status" className="interactive-section-checkpoint-label">
+            {sectionCheckpoint.restoring ? 'Restoring…' : 'Let’s get you back on track'}
+          </span>
+          {sectionCheckpoint.restoring ? (
+            <Button size="sm" variant="secondary" onClick={sectionCheckpoint.cancel}>
+              Cancel
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={sectionCheckpoint.status.canRestore ? 'history' : 'sync'}
+              onClick={sectionCheckpoint.status.canRestore ? sectionCheckpoint.restore : sectionCheckpoint.recheck}
+            >
+              {sectionCheckpoint.status.canRestore ? 'Restore' : 'Check again'}
+            </Button>
+          )}
+          {!sectionCheckpoint.restoring && !sectionCheckpoint.status.canRestore && (
+            <p className="interactive-section-checkpoint-help" role="status">
+              {checkpoint.manualRecovery || sectionCheckpoint.status.explanation}
+            </p>
+          )}
         </div>
       )}
 
