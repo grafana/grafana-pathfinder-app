@@ -1,4 +1,5 @@
 import { logger } from '../lib/logging';
+import { getFeatureFlagValue } from '../utils/openfeature';
 
 import { discardPendingCompletions, onCompletionRecorded } from './completion-recorder';
 import {
@@ -8,7 +9,7 @@ import {
   type CompletionWriteBody,
   type WriteOutcome,
 } from './completion-write-client';
-import { createWriteQueue, type WriteQueue } from './completion-write-queue';
+import { attemptWriteId, createWriteQueue, type WriteQueue } from './completion-write-queue';
 import { MAX_ID_BYTES, MAX_TITLE_BYTES, isValidIdentifier, normalizeField } from './completion-write-normalize';
 import {
   createCompletionWriteStorage,
@@ -16,6 +17,14 @@ import {
   type CompletionWriteStorage,
 } from './completion-write-storage';
 import { reportCompletionWriteDegradation } from './completion-write-telemetry';
+import { onAttemptReset, readAttempt } from './guide-attempts';
+import type { RegisteredGuideIdentity } from './guide-identity-registry';
+import { installProgressObserver } from './progress-observer';
+import {
+  watchProgressRecordsCapability,
+  progressRecordsCapability,
+  type ProgressRecordsCapability,
+} from './progress-records-capability';
 import type { CompletionFact } from './types';
 
 export interface WriteHookDeps {
@@ -27,6 +36,10 @@ export interface WriteHookDeps {
   random: () => number;
   setTimer: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   clearTimer: (handle: ReturnType<typeof setTimeout>) => void;
+  /** Whether the backend accepts partial attempt writes. */
+  progressRecords: () => ProgressRecordsCapability;
+  /** Starts resolving progressRecords; calls back once it is yes or no. */
+  loadProgressRecords: (onResolved: () => void) => void | (() => void);
 }
 
 const publishedListeners = new Set<() => void>();
@@ -58,12 +71,16 @@ const defaultDeps: WriteHookDeps = {
   random: Math.random,
   setTimer: (fn, ms) => setTimeout(fn, ms),
   clearTimer: (handle) => clearTimeout(handle),
+  progressRecords: progressRecordsCapability,
+  loadProgressRecords: watchProgressRecordsCapability,
 };
 
 class CompletionWriteController {
   private readonly queue: WriteQueue | null;
   private unsubscribe: (() => void) | null = null;
   private unsubscribeStorage: (() => void) | null = null;
+  private stopCapabilityWatch: (() => void) | null = null;
+  private unsubscribeAttemptReset: (() => void) | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private timerFireAt: number | null = null;
   private draining = false;
@@ -79,6 +96,9 @@ class CompletionWriteController {
           random: deps.random,
           storage: deps.storage(ownerKey),
           onCreated: notifyCompletionPublished,
+          partialsSupported: deps.progressRecords,
+          partialsEnabled: () => getFeatureFlagValue('pathfinder.progress-records', false),
+          isAttemptCurrent: (body) => readAttempt(body)?.attemptId === body.attemptId,
         })
       : null;
   }
@@ -90,6 +110,15 @@ class CompletionWriteController {
     this.started = true;
     this.unsubscribe = onCompletionRecorded((fact) => this.onFact(fact));
     this.unsubscribeStorage = this.queue.subscribe(() => this.scheduleDrain(0));
+    this.unsubscribeAttemptReset = onAttemptReset((key) => {
+      if (key) {
+        this.queue?.discardAttemptPartials(key);
+      } else {
+        this.queue?.clear();
+      }
+    });
+    // Held partials wait on this; drain once it is known.
+    this.stopCapabilityWatch = this.deps.loadProgressRecords(() => this.scheduleDrain(0)) ?? null;
     // Unconditional: the queue no longer scans storage when constructed, so its
     // in-memory size is always 0 here and says nothing about what a previous
     // load persisted. This first drain is what reconciles them — under the
@@ -106,6 +135,51 @@ class CompletionWriteController {
     this.queue?.clear();
   }
 
+  /**
+   * Queue one partial of a `records`-mode attempt. The queue debounces it and
+   * lets later progress of the same attempt supersede it.
+   */
+  enqueueAttemptProgress(
+    identity: RegisteredGuideIdentity,
+    attemptId: string,
+    percent: number,
+    startedAt: number
+  ): boolean {
+    try {
+      if (this.disposed || !this.queue || !getFeatureFlagValue('pathfinder.progress-records', false)) {
+        return false;
+      }
+      if (!isValidIdentifier(identity.guideSource) || !isValidIdentifier(identity.guideId)) {
+        return false;
+      }
+      const body: CompletionWriteBody = {
+        guideSource: normalizeField(identity.guideSource, MAX_ID_BYTES),
+        guideId: normalizeField(identity.guideId, MAX_ID_BYTES),
+        guideTitle: normalizeField(identity.guideTitle, MAX_TITLE_BYTES),
+        guideCategory: identity.guideCategory,
+        pathId: identity.pathId !== undefined ? normalizeField(identity.pathId, MAX_ID_BYTES) : undefined,
+        completionPercent: percent,
+        // A partial is earned by objectives; the real source arrives at 100%.
+        source: 'objectives',
+        // Client time of this increase: keeps the queue's retention check and
+        // the backend's validation unchanged. The plugin stores it only at 100%.
+        completedAt: new Date(this.deps.now()).toISOString(),
+        platform: this.deps.platform(),
+        attemptId,
+        attemptStartedAt: new Date(startedAt).toISOString(),
+      };
+      const persisted = this.queue.enqueue(body, { id: attemptWriteId(attemptId, percent) });
+      if (!this.queue.isDisarmed()) {
+        this.scheduleDrain(0);
+      }
+      return persisted;
+    } catch (error) {
+      logger.warn('completion write: enqueue of attempt progress failed (ignored)', { error: String(error) });
+      reportCompletionWriteDegradation('enqueue-failed');
+      return false;
+    }
+  }
+
   dispose(): void {
     if (this.timer !== null) {
       this.deps.clearTimer(this.timer);
@@ -116,6 +190,10 @@ class CompletionWriteController {
     this.unsubscribe = null;
     this.unsubscribeStorage?.();
     this.unsubscribeStorage = null;
+    this.unsubscribeAttemptReset?.();
+    this.unsubscribeAttemptReset = null;
+    this.stopCapabilityWatch?.();
+    this.stopCapabilityWatch = null;
     this.disposed = true;
   }
 
@@ -153,7 +231,11 @@ class CompletionWriteController {
       // Always enqueue+persist, even after a structural-404 disarm: the fact
       // survives to the next load and drains once the route exists. Only skip
       // scheduling a drain that would immediately no-op while network-disarmed.
-      const persisted = this.queue.enqueue(this.toBody(fact));
+      const body = this.toBody(fact);
+      const persisted = this.queue.enqueue(
+        body,
+        body.attemptId !== undefined ? { id: attemptWriteId(body.attemptId, body.completionPercent) } : undefined
+      );
       if (!this.queue.isDisarmed()) {
         this.scheduleDrain(0);
       }
@@ -167,8 +249,11 @@ class CompletionWriteController {
 
   // Clamp descriptive/identifier fields at emission to the backend's byte bounds
   // (stripping control characters) so an oversized value can't fill the queue
-  // and then be terminally rejected.
+  // and then be terminally rejected. `attemptId` goes on the wire only for an
+  // attempt minted in `records` mode; every other body is byte-identical to
+  // what released plugins accept.
   private toBody(fact: CompletionFact): CompletionWriteBody {
+    const attemptId = fact.attemptMode === 'records' ? fact.attemptId : undefined;
     return {
       guideSource: normalizeField(fact.guideSource, MAX_ID_BYTES),
       guideId: normalizeField(fact.guideId, MAX_ID_BYTES),
@@ -180,6 +265,10 @@ class CompletionWriteController {
       completedAt: fact.completedAt,
       durationMs: fact.durationMs,
       platform: this.deps.platform(),
+      ...(attemptId !== undefined && {
+        attemptId,
+        ...(fact.attemptStartedAt !== undefined && { attemptStartedAt: new Date(fact.attemptStartedAt).toISOString() }),
+      }),
     };
   }
 
@@ -227,6 +316,9 @@ class CompletionWriteController {
 let controller: CompletionWriteController | null = null;
 
 export function armCompletionWriteHook(overrides?: Partial<WriteHookDeps>): void {
+  // Progress analytics need no user/org identity, so this precedes both early
+  // returns. The sink is a no-op until a controller exists.
+  installProgressObserver(enqueueAttemptProgress);
   if (controller) {
     return;
   }
@@ -260,6 +352,19 @@ export function discardQueuedCompletionWrites(): void {
   if (ownerKey) {
     defaultDeps.storage(ownerKey).clear();
   }
+}
+
+/**
+ * Queue one partial of a `records`-mode attempt. A no-op until the write hook
+ * is armed with an identity. Called by the progress observer.
+ */
+export function enqueueAttemptProgress(
+  identity: RegisteredGuideIdentity,
+  attemptId: string,
+  percent: number,
+  startedAt: number
+): boolean {
+  return controller?.enqueueAttemptProgress(identity, attemptId, percent, startedAt) ?? false;
 }
 
 export function __resetCompletionWriteHookForTests(): void {

@@ -41,7 +41,7 @@ export async function prepareKioskInputs(
   }
   const result = await prepareGuideLaunch(rule.url, {
     title: rule.title,
-    source: 'url_param',
+    source: 'kiosk_session',
     requireResolvedSnippets: true,
   });
   signal.throwIfAborted();

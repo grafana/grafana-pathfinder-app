@@ -12,6 +12,11 @@ import {
 import { currentPlatform } from '../platform';
 import { hasReportedPathfinderSurface, isPathfinderOpen } from './surface';
 import { normalizeTelemetryUrl, stripUrlSecrets } from './url';
+import {
+  HELP_BUTTON_EXPERIMENT_ID,
+  HELP_BUTTON_CLICK_EVENT,
+  HELP_BUTTON_DISMISS_EVENT,
+} from '../../constants/help-button-experiment';
 
 const APP_NAME = packageJson.name;
 const LOCAL_OVERRIDE_KEY = 'pathfinder.faro.local';
@@ -233,6 +238,15 @@ export function markPathfinderActive(): void {
 
 // Explicit launch diagnostics can precede the first mounted Pathfinder surface.
 export function passesActivityGate(item: TransportItem<APIEvent>): boolean {
+  if (
+    isEventItem(item) &&
+    ((item.payload.name === 'experiment_viewed' &&
+      item.payload.attributes?.experiment_id === HELP_BUTTON_EXPERIMENT_ID) ||
+      item.payload.name === HELP_BUTTON_CLICK_EVENT ||
+      item.payload.name === HELP_BUTTON_DISMISS_EVENT)
+  ) {
+    return true;
+  }
   if (
     isEventItem(item) &&
     ((item.payload.name === TELEMETRY_EVENTS.guideRequest && Boolean(item.payload.attributes?.load_id)) ||

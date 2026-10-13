@@ -32,22 +32,26 @@ describe('guide completion bridge', () => {
     const bridge = loadBridge();
 
     await expect(bridge.markGuideCompleted('grafana-basics')).resolves.toBeUndefined();
+    await expect(bridge.awardBadge('basics-badge')).resolves.toBe(false);
     expect(bridge.findPathByUrl(pathUrl)).toBeUndefined();
-    expect(warnMock).toHaveBeenCalledTimes(2);
+    expect(warnMock).toHaveBeenCalledTimes(3);
   });
 
   it('forwards to the registered implementation', async () => {
     const bridge = loadBridge();
     const impl = {
       markGuideCompleted: jest.fn().mockResolvedValue(undefined),
+      awardBadge: jest.fn().mockResolvedValue(true),
       findPathByUrl: jest.fn().mockReturnValue(path),
     };
     bridge.registerGuideCompletionBridge(impl);
 
     await bridge.markGuideCompleted('grafana-basics');
+    await expect(bridge.awardBadge('basics-badge')).resolves.toBe(true);
     expect(bridge.findPathByUrl(pathUrl)).toBe(path);
 
     expect(impl.markGuideCompleted).toHaveBeenCalledWith('grafana-basics');
+    expect(impl.awardBadge).toHaveBeenCalledWith('basics-badge');
     expect(impl.findPathByUrl).toHaveBeenCalledWith(pathUrl);
     expect(warnMock).not.toHaveBeenCalled();
   });
@@ -56,10 +60,12 @@ describe('guide completion bridge', () => {
     const bridge = loadBridge();
     const first = {
       markGuideCompleted: jest.fn().mockResolvedValue(undefined),
+      awardBadge: jest.fn().mockResolvedValue(false),
       findPathByUrl: jest.fn().mockReturnValue(undefined),
     };
     const second = {
       markGuideCompleted: jest.fn().mockResolvedValue(undefined),
+      awardBadge: jest.fn().mockResolvedValue(false),
       findPathByUrl: jest.fn().mockReturnValue(path),
     };
 

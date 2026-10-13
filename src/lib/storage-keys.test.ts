@@ -25,6 +25,7 @@ describe('StorageKeys — stable string contract', () => {
       INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion',
       TABS: 'grafana-pathfinder-app-tabs',
       ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
+      INTERACTIVE_SKIPPED_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-skipped-steps-',
       INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-',
       CONTENT_PROGRESS_V2_PREFIX: 'grafana-pathfinder-app-content-progress-v2:',
       WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview',
@@ -35,6 +36,8 @@ describe('StorageKeys — stable string contract', () => {
       SECTION_DONE_PREFIX: 'grafana-pathfinder-app-section-done-',
       GUIDE_COMPLETION_MARK_PREFIX: 'grafana-pathfinder-app-guide-complete-mark-',
       COMPLETION_EMITTED_PREFIX: 'grafana-pathfinder-app-completion-emitted-',
+      GUIDE_ATTEMPT_PREFIX: 'grafana-pathfinder-app-guide-attempt-',
+      COMPLETION_REPORTED_PREFIX: 'grafana-pathfinder-app-completion-reported-',
       FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
       FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
       FULLSCREEN_BUNDLING_ACTION: 'grafana-pathfinder-app-fullscreen-bundling-action',
@@ -45,6 +48,7 @@ describe('StorageKeys — stable string contract', () => {
       GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
 
       // Experiment / feature-flag state
+      HELP_BUTTON_ATTENTION_DISMISSED_PREFIX: 'pathfinder-help-button-nudge-v1:dismissed:',
       EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
       HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
       HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',

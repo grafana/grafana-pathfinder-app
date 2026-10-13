@@ -32,6 +32,7 @@ declare global {
     __pathfinderPluginConfig?: ResolvedPathfinderConfig;
     __pathfinderKioskConfig?: { rulesUrl: string };
     __pathfinderKioskSessionId?: string;
+    __pathfinderKioskName?: string;
     __pathfinderExperiment?: PathfinderExperimentDebugger;
     __pathfinderAutoOpenUnlisten?: () => void;
     __pathfinderDeepLinkNavUnlisten?: () => void;

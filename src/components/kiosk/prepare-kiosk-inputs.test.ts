@@ -58,7 +58,10 @@ beforeEach(() => {
 it('validates and saves before returning the exact prepared payload', async () => {
   const prepared = await prepareKioskInputs(rule, 'instance', [input], draft, signal());
   expect(prepared).toEqual({ launch: result().launch, inputTransfer: 'saved' });
-  expect(prepareGuideLaunch).toHaveBeenCalledWith(rule.url, expect.objectContaining({ requireResolvedSnippets: true }));
+  expect(prepareGuideLaunch).toHaveBeenCalledWith(
+    rule.url,
+    expect.objectContaining({ requireResolvedSnippets: true, source: 'kiosk_session' })
+  );
   expect(guideResponseStorage.mergeResponses).toHaveBeenCalledWith('packages-demo-content.json', {
     appUrl: 'https://example.com',
   });
@@ -114,4 +117,30 @@ it.each([
     reason,
   });
   expect(guideResponseStorage.mergeResponses).not.toHaveBeenCalled();
+});
+
+it('transfers a full URL once and derives its frontend origin from the transferred value', async () => {
+  const urlInput = { ...input, format: 'http-url' as const };
+  const response = result();
+  response.launch.preparedContent.content = JSON.stringify({
+    id: 'demo',
+    title: 'Demo',
+    blocks: [
+      { type: 'input', ...urlInput },
+      { type: 'interactive', action: 'formfill', reftarget: '#target', targetvalue: '{{appUrl}}' },
+      { type: 'interactive', action: 'formfill', reftarget: '#origin', targetvalue: '{{appUrl:origin}}' },
+    ],
+  });
+  jest.mocked(prepareGuideLaunch).mockResolvedValue(response as Awaited<ReturnType<typeof prepareGuideLaunch>>);
+  const prepared = await prepareKioskInputs(
+    rule,
+    'instance',
+    [urlInput],
+    { appUrl: ' example.com:8443/shop?q=1#details ' },
+    signal()
+  );
+  expect(prepared.inputTransfer).toBe('saved');
+  expect(guideResponseStorage.mergeResponses).toHaveBeenCalledWith('packages-demo-content.json', {
+    appUrl: 'https://example.com:8443/shop?q=1',
+  });
 });

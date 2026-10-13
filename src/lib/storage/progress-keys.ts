@@ -1,5 +1,5 @@
 /**
- * Keys for the four per-section progress namespaces — interactive steps,
+ * Keys for the per-section progress namespaces — interactive steps, skipped steps,
  * section collapse, section acknowledgement, section done.
  *
  * There is one shape, and every read and write uses it:
@@ -78,11 +78,11 @@ export function listProgressEntries(prefix: string, contentKey: string): RawProg
 const DISCARDABLE_PREFIXES: readonly string[] = [...PROGRESS_SECTION_PREFIXES, StorageKeys.CONTENT_PROGRESS_V2_PREFIX];
 
 /**
- * True for a key in one of the four progress namespaces that is not a
+ * True for a key in one of the progress namespaces that is not a
  * well-formed section key, and for the per-content marker the previous scheme
  * used to retire records it could not identify. Both are discarded shapes.
  *
- * Deliberately narrow: it never looks at a key outside those five prefixes, so
+ * Deliberately narrow: it never looks at a key outside the registered progress prefixes, so
  * the sweep cannot reach the learning-progress record (badges, streak,
  * completed guides), the durable completion queue, journey or milestone
  * completion, or anything else the plugin stores.

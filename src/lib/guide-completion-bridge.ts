@@ -8,6 +8,7 @@ import { logger } from './logging';
 
 export interface GuideCompletionBridge {
   markGuideCompleted: (guideId: string) => Promise<void>;
+  awardBadge: (badgeId: string) => Promise<boolean>;
   findPathByUrl: (url: string) => LearningPath | undefined;
 }
 
@@ -27,6 +28,14 @@ export async function markGuideCompleted(guideId: string): Promise<void> {
     return;
   }
   return bridge.markGuideCompleted(guideId);
+}
+
+export async function awardBadge(badgeId: string): Promise<boolean> {
+  if (!bridge) {
+    warnUnregistered('awardBadge');
+    return false;
+  }
+  return bridge.awardBadge(badgeId);
 }
 
 export function findPathByUrl(url: string): LearningPath | undefined {

@@ -140,6 +140,48 @@ describe('openfeature', () => {
           'interactive_learning_banner_experiment'
         );
         expect(pathfinderFeatureFlags['pathfinder.coda-terminal'].trackingKey).toBe('coda_terminal');
+        expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].trackingKey).toBe('intercept_docs_links');
+        expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].trackingKey).toBe('progress_analytics');
+        expect(pathfinderFeatureFlags['pathfinder.progress-records'].trackingKey).toBe('progress_records');
+      });
+    });
+
+    it('pathfinder.intercept-docs-links must default to false so only the tenant setting turns it on', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].valueType).toBe('boolean');
+        expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].defaultValue).toBe(false);
+      });
+    });
+
+    it('pathfinder.progress-analytics is a boolean kill switch that defaults to false', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].valueType).toBe('boolean');
+        expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].defaultValue).toBe(false);
+      });
+    });
+
+    it('pathfinder.progress-records must default to false so partial writes stay off until enabled', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.progress-records'].valueType).toBe('boolean');
+        expect(pathfinderFeatureFlags['pathfinder.progress-records'].defaultValue).toBe(false);
       });
     });
 

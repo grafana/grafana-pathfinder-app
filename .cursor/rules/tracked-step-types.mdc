@@ -49,9 +49,11 @@ Assume you're adding a `FooStep` component:
 
 8. **Registry site 4** — if the block emits completion evidence, add a matching `case 'foo':` to `resolveStepIdForBlock` in `src/global-state/guide-step-id-resolver.ts`, deriving the id exactly as the parser's own case does. The completion numerator keys block positions by that step id, so a completable type the resolver misses resolves position 0 and every guide built on it reads 0% while looking healthy. `src/lib/guide-stats/progress.parity.test.ts` iterates the union of unconditional and conditional registries, so it fails until both the resolver case and a fixture exist.
 
-9. **Block editor** (optional) — if authors should create this block via the WYSIWYG editor, add a form in `src/components/block-editor/forms/`.
+9. **Runtime evidence** — the component records completion only through `markStepCompleted` / `markStepsCompleted` under the forwarded `stepId`. It never dispatches `kind: 'guide'` progress or computes a guide percentage of its own; a block-local metric such as "watched %" is not guide progress. No test yet proves a component reaches the store, so verify it by hand. `docs/developer/COMPLETION_RECORDING.md` traces what happens downstream.
 
-10. **CLI validation** (optional) — if the block needs CLI authoring support, register it in `src/cli/`.
+10. **Block editor** (optional) — if authors should create this block via the WYSIWYG editor, add a form in `src/components/block-editor/forms/`.
+
+11. **CLI validation** (optional) — if the block needs CLI authoring support, register it in `src/cli/`.
 
 ## What counts as "interactive" vs "passive"
 

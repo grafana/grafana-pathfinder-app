@@ -30,6 +30,7 @@ import {
   type WriteHookDeps,
 } from './completion-write-hook';
 import { createCompletionWriteStorage } from './completion-write-storage';
+import { readAttempt } from './guide-attempts';
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
 import type { GuideCompletionFact, JourneyCompletionFact } from './types';
 
@@ -504,6 +505,88 @@ describe('drain timer preemption (regression: fresh completion not stranded behi
     // The clock has NOT advanced past the backoff, yet the fresh item drains.
     await runTimer();
     expect(sent.map((b) => b.guideId)).toContain('fresh');
+  });
+});
+
+describe('wire format is unchanged by guide attempts', () => {
+  // The exact body released plugins accept. An attempt id rides on the fact but
+  // must not reach the wire until the plugin can name a record by it.
+  const BODY_KEY_ORDER = [
+    'guideSource',
+    'guideId',
+    'guideTitle',
+    'guideCategory',
+    'pathId',
+    'completionPercent',
+    'source',
+    'completedAt',
+    'durationMs',
+    'platform',
+  ];
+
+  async function sendEligibleCompletion(over: Partial<GuideCompletionFact>) {
+    const captured: Array<{ body: CompletionWriteBody; idempotencyKey: string }> = [];
+    armCompletionWriteHook(
+      deps({
+        send: async (body, idempotencyKey) => {
+          captured.push({ body, idempotencyKey });
+          return { kind: 'created' };
+        },
+      })
+    );
+    await runTimer();
+
+    recordGuideCompletion(guideFact(over), { attemptEligible: true });
+    const queued = createCompletionWriteStorage('user-7:org-3').list();
+    await runTimer();
+
+    return { captured, queued, attempt: readAttempt({ guideSource: 'bundled', guideId: 'g1' }) };
+  }
+
+  it('sends the same body, keyed on the queue item id, with a path and duration', async () => {
+    const { captured, queued, attempt } = await sendEligibleCompletion({ pathId: 'linux-path', durationMs: 1234 });
+
+    expect(attempt).not.toBeNull();
+    expect(captured).toHaveLength(1);
+    const { body, idempotencyKey } = captured[0]!;
+    expect(Object.keys(body)).toEqual(BODY_KEY_ORDER);
+    expect(JSON.stringify(body)).toBe(
+      '{"guideSource":"bundled","guideId":"g1","guideTitle":"G1","guideCategory":"interactive",' +
+        '"pathId":"linux-path","completionPercent":100,"source":"objectives",' +
+        '"completedAt":"2026-07-20T00:00:00.000Z","durationMs":1234,"platform":"cloud"}'
+    );
+    expect(body).not.toHaveProperty('attemptId');
+    expect(body).not.toHaveProperty('attemptMode');
+    expect(idempotencyKey).toBe(queued[0]!.id);
+    expect(idempotencyKey).not.toBe(attempt!.attemptId);
+  });
+
+  it('sends the same body, keyed on the queue item id, without a path or duration', async () => {
+    const { captured, queued, attempt } = await sendEligibleCompletion({});
+
+    expect(attempt).not.toBeNull();
+    expect(captured).toHaveLength(1);
+    const { body, idempotencyKey } = captured[0]!;
+    const record = body as unknown as Record<string, unknown>;
+    expect(Object.keys(body).filter((key) => record[key] !== undefined)).toEqual(
+      BODY_KEY_ORDER.filter((key) => key !== 'pathId' && key !== 'durationMs')
+    );
+    expect(JSON.stringify(body)).toBe(
+      '{"guideSource":"bundled","guideId":"g1","guideTitle":"G1","guideCategory":"interactive",' +
+        '"completionPercent":100,"source":"objectives","completedAt":"2026-07-20T00:00:00.000Z","platform":"cloud"}'
+    );
+    expect(body).not.toHaveProperty('attemptId');
+    expect(body).not.toHaveProperty('attemptMode');
+    expect(idempotencyKey).toBe(queued[0]!.id);
+    expect(idempotencyKey).not.toBe(attempt!.attemptId);
+  });
+
+  it('persists no attempt id in the queued item', async () => {
+    const { queued } = await sendEligibleCompletion({});
+
+    expect(queued).toHaveLength(1);
+    expect(JSON.stringify(queued)).not.toContain('attemptId');
+    expect(JSON.stringify(queued)).not.toContain('attemptMode');
   });
 });
 

@@ -5,7 +5,7 @@ import { runInNewContext } from 'vm';
 import * as ts from 'typescript';
 import { render, screen, waitFor } from '@testing-library/react';
 import { getConfigWithDefaults } from '../constants';
-import { resolvePathfinderAvailability } from './pathfinder-enablement';
+import { isImageRendererSession, resolvePathfinderAvailability } from './pathfinder-enablement';
 import { retryChunkImport } from '../lib/retry-chunk-import';
 
 // Wrap the compiled entrypoint to execute its top-level awaits under Jest's CommonJS runtime.
@@ -26,7 +26,9 @@ async function boot(
   dockedPlugin = 'grafana-pathfinder-app',
   surfaceReported?: boolean,
   panelMode = 'floating',
-  failedImports: Record<string, number> = {}
+  failedImports: Record<string, number> = {},
+  flags: Record<string, boolean> = {},
+  authenticatedBy = 'password'
 ) {
   const settings = readFailed ? undefined : getConfigWithDefaults({ pathfinderEnabled: tenant });
   const root = { component: undefined as React.ComponentType | undefined };
@@ -50,7 +52,10 @@ async function boot(
     clearExtensionSidebarDocked: jest.fn(),
     setPendingOpenSource: jest.fn(),
     recordStartupSettings: jest.fn(),
+    startHelpButtonExperiment: jest.fn().mockResolvedValue(jest.fn()),
     onPathfinderSurfaceChange: jest.fn().mockReturnValue(jest.fn()),
+    setInterceptionEnabled: jest.fn(),
+    readPathfinderStartupPreference: jest.fn(async () => (read ? await read : settings)),
   };
   const modules: Record<string, unknown> = {
     react: React,
@@ -60,6 +65,7 @@ async function boot(
       },
       PluginExtensionPoints: { CommandPalette: 'command-palette' },
     },
+    '@grafana/runtime': { config: { bootData: { user: { authenticatedBy } } } },
     '@grafana/ui': { LoadingPlaceholder: () => null },
     '@grafana/i18n': { initPluginTranslations: async () => {} },
     './lib/analytics': { reportAppInteraction: jest.fn(), UserInteraction: {}, bindExperimentsProvider: jest.fn() },
@@ -68,16 +74,17 @@ async function boot(
     './plugin.json': { id: 'grafana-pathfinder-app' },
     './utils/configured-bootstrap': effects,
     './hooks/usePathfinderPluginConfig': {
-      readPathfinderStartupPreference: async () => (read ? await read : settings),
+      readPathfinderStartupPreference: effects.readPathfinderStartupPreference,
       waitForPathfinderPluginConfig: async () => (read ? await read : settings),
     },
     './utils/pathfinder-enablement': {
+      isImageRendererSession,
       resolvePathfinderAvailability,
       getPathfinderStartupDecision: () => ({ durationMs: 10, outcome: 'resolved' }),
     },
     './docs-retrieval/content-fetcher/package-resolver-registry': effects,
     './lib/event-names': { PANEL_MODE_CHANGE_EVENT: 'test-panel-mode-change' },
-    './global-state/link-interception': { linkInterceptionState: { setInterceptionEnabled: jest.fn() } },
+    './global-state/link-interception': { linkInterceptionState: effects },
     'global-state/sidebar': { sidebarState: effects },
     './global-state/panel-mode': { panelModeManager: { getMode: () => panelMode } },
     './global-state/suggestion': { suggestionState: {} },
@@ -104,10 +111,11 @@ async function boot(
       getFeatureFlagValue: (key: string) =>
         key === 'pathfinder.enabled'
           ? remote
-          : key === 'pathfinder.frontend-telemetry' && surfaceReported !== undefined,
+          : (flags[key] ?? (key === 'pathfinder.frontend-telemetry' && surfaceReported !== undefined)),
       getNumberFlagValue: () => 1,
     },
     './utils/experiments/active-experiments': { getActiveExperiments: jest.fn() },
+    './utils/experiments/help-button-attention': effects,
     './utils/experiments': {
       ...effects,
       createExperimentDebugger: jest.fn(),
@@ -175,6 +183,38 @@ it.each([true, undefined])('registers learning surfaces when remote enabled and 
   );
 });
 
+it('stays dormant without reading settings in an image-renderer session', async () => {
+  const { plugin, effects } = await boot(
+    true,
+    true,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'render'
+  );
+  plugin.init();
+  expect(effects.readPathfinderStartupPreference).not.toHaveBeenCalled();
+  expect(plugin.addComponent).not.toHaveBeenCalled();
+  expect(plugin.addLink).not.toHaveBeenCalled();
+  expect(effects.initializeConfiguredSurfaces).not.toHaveBeenCalled();
+});
+
+it('keeps the docked sidebar when a person opens a render=1 URL in a normal session', async () => {
+  window.history.replaceState(null, '', '/d/abc/home?render=1&kiosk=1');
+  try {
+    const { plugin, effects } = await boot(true, true, false, undefined, undefined, undefined, 'sidebar');
+    expect(effects.readPathfinderStartupPreference).toHaveBeenCalledTimes(1);
+    expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+    expect(effects.clearExtensionSidebarDocked).not.toHaveBeenCalled();
+  } finally {
+    window.history.replaceState(null, '', '/');
+  }
+});
+
 it('registers baseline learning surfaces after an unsuccessful settings read', async () => {
   const { plugin } = await boot(true, undefined, true);
   expect(plugin.addComponent).toHaveBeenCalledTimes(1);
@@ -206,6 +246,22 @@ it('keeps the page-load decision after timeout, while late opt-out reaches confi
   } finally {
     jest.useRealTimers();
   }
+});
+
+it.each([
+  [false, false, false],
+  [false, true, true],
+  [true, false, true],
+])('intercepts docs links with flag=%s and tenant setting=%s: %s', async (flag, setting, expected) => {
+  const { plugin, effects } = await boot(true, true, false, undefined, undefined, undefined, undefined, undefined, {
+    'pathfinder.intercept-docs-links': flag,
+  });
+  plugin.init();
+
+  const [, , surfaceEffects] = effects.initializeConfiguredSurfaces.mock.calls[0];
+  surfaceEffects.applySettings(getConfigWithDefaults({ interceptGlobalDocsLinks: setting }));
+
+  expect(effects.setInterceptionEnabled).toHaveBeenCalledWith(expected);
 });
 
 it('does not clear another plugin’s docked entry', async () => {
@@ -247,6 +303,22 @@ it('records immediately when the surface has already reported its mount', async 
   await Promise.resolve();
   await waitFor(() => expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved'));
   expect(effects.onPathfinderSurfaceChange).not.toHaveBeenCalled();
+});
+
+it('records startup telemetry while the help-button experiment chunk retries', async () => {
+  jest.useFakeTimers();
+  try {
+    const { effects } = await boot(true, true, false, undefined, 'grafana-pathfinder-app', true, 'sidebar', {
+      './utils/experiments/help-button-attention': 1,
+    });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(effects.recordStartupSettings).toHaveBeenCalledWith(10, 'resolved');
+    expect(effects.startHelpButtonExperiment).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(effects.startHelpButtonExperiment).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 it('restores a legacy title-only dock when enabled in sidebar mode', async () => {

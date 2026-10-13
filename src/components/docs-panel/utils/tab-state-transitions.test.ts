@@ -258,6 +258,23 @@ describe('projectPersistedTabs', () => {
     expect(guide.packageInfo).toBe(packageInfo);
   });
 
+  it('persists the selected track and its path identity, but not the derived milestones', () => {
+    const selected: LearningJourneyTab = {
+      ...tab('path-1', 'learning-journey'),
+      activeTrackId: 'builder',
+      activeTrackPathId: 'path-a',
+      activeTrackMilestones: [],
+    };
+    const foundations: LearningJourneyTab = { ...tab('path-2', 'learning-journey'), activeTrackId: null };
+
+    const [persistedSelected, persistedFoundations] = projectPersistedTabs([selected, foundations]);
+
+    expect(persistedSelected).toMatchObject({ activeTrackId: 'builder', activeTrackPathId: 'path-a' });
+    expect(persistedSelected).not.toHaveProperty('activeTrackMilestones');
+    expect(persistedFoundations).not.toHaveProperty('activeTrackId');
+    expect(persistedFoundations).not.toHaveProperty('activeTrackPathId');
+  });
+
   it.each([{ tabs: [] }, { tabs: [recommendations] }])(
     'returns an empty array for non-persistable input %#',
     ({ tabs }) => {

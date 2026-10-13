@@ -5,7 +5,12 @@ import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 
 import { useStepChecker } from '../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+} from '../../lib/analytics';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
@@ -391,16 +396,32 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     evaluateAndApply(isCorrect, wrongChoice);
   }, [selectedIds, checkAnswer, choices, evaluateAndApply]);
 
-  // Handle skip
   const handleSkip = useCallback(() => {
+    if (isCompleted) {
+      return;
+    }
     if (markSkipped) {
       markSkipped();
     }
     persistCompletion('skipped');
+    reportStepSkipped(
+      { targetAction: 'quiz', interactionLocation: 'interactive_quiz', skipReason: 'user' },
+      { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+    );
     if (onStepComplete && stepId) {
       onStepComplete(stepId);
     }
-  }, [markSkipped, onStepComplete, stepId, persistCompletion]);
+  }, [
+    isCompleted,
+    markSkipped,
+    onStepComplete,
+    stepId,
+    persistCompletion,
+    stepIndex,
+    totalSteps,
+    sectionId,
+    sectionTitle,
+  ]);
 
   // Choice state type
   type ChoiceState = 'default' | 'selected' | 'correct' | 'incorrect' | 'revealed';

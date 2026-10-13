@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, renderHook, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CodeBlockStep } from './code-block-step';
 import {
   STANDALONE_SECTION_ID,
@@ -7,6 +7,13 @@ import {
   resetCompletionStoreForTests,
   useStepCompletion,
 } from '../../global-state/completion-store';
+import { reportStepSkipped } from '../../lib/analytics';
+import { testIds } from '../../constants/testIds';
+
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportStepSkipped: jest.fn(),
+}));
 
 const mockClearAndInsertCode = jest.fn();
 jest.mock('../../interactive-engine', () => ({
@@ -63,6 +70,39 @@ describe('CodeBlockStep: hints', () => {
 
     expect(await screen.findByText(/Navigate to the .* page first/, {}, { timeout: 10000 })).toBeInTheDocument();
   });
+});
+
+describe('CodeBlockStep: step_skipped', () => {
+  afterEach(() => {
+    resetCompletionStoreForTests();
+  });
+
+  it('reports one requirements_unmet skip however often Skip is clicked, then stops offering it', async () => {
+    jest.mocked(reportStepSkipped).mockClear();
+    render(
+      <CodeBlockStep
+        stepId="code-skip"
+        code="query_range(up)"
+        refTarget="#editor"
+        requirements="on-page:/pathfinder-code-block-skip-never-here"
+        skippable
+      />
+    );
+
+    const skip = await screen.findByTestId(testIds.interactive.skipButton('code-skip'), {}, { timeout: 10000 });
+    fireEvent.click(skip);
+    fireEvent.click(skip);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId(testIds.interactive.skipButton('code-skip'))).not.toBeInTheDocument()
+    );
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'code-block', interactionLocation: 'code_block_step', skipReason: 'requirements_unmet' },
+      expect.objectContaining({ stepId: 'code-skip' })
+    );
+    expect(renderHook(() => useStepCompletion('code-skip')).result.current.reason).toBe('skipped');
+  }, 20000);
 });
 
 describe('CodeBlockStep: full-screen sidebar handoff on Insert', () => {

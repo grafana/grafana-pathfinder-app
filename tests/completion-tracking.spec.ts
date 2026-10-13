@@ -230,6 +230,8 @@ test.describe('completion tracking', () => {
         guideId: BUNDLED_GUIDE_ID,
         completionPercent: 100,
       });
+      // The guide attempt this completion minted stays on the device.
+      expect(facts[0]!.body).not.toHaveProperty('attemptId');
     });
 
     /**

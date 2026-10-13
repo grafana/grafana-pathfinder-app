@@ -94,6 +94,7 @@ func contractCases() []contractCase {
 		{"custom-guide-repository.unavailable", captureCustomGuideUnavailable},
 		{"completion-records-my.default", captureMyCompletionsDefault},
 		{"completion-records-my.empty", captureMyCompletionsEmpty},
+		{"completion-records-my.in-progress", captureMyCompletionsInProgress},
 		{"completion-records-my.unavailable", captureMyCompletionsUnavailable},
 		{"completion-records-capability.available", captureCapabilityAvailable},
 		{"completion-records-capability.unavailable", captureCapabilityUnavailable},
@@ -817,6 +818,22 @@ func captureMyCompletionsDefault(t *testing.T) *httptest.ResponseRecorder {
 		rec("user:1", "app-platform", "fe-alerting-01", "Alerting module 1", "interactive", "fe-alerting-path", "manual", "2026-03-29T09:00:00Z", 60),
 		rec("user:1", "bundled", "linux", "Linux server integration", "interactive", "", "objectives", "2026-03-28T09:00:00Z", 80),
 		rec("user:2", "bundled", "loki", "Loki basics", "interactive", "", "objectives", "2026-03-27T09:00:00Z", 100),
+	)
+}
+
+func captureMyCompletionsInProgress(t *testing.T) *httptest.ResponseRecorder {
+	freezeContractTime(t)
+	partial := func(guideSource, guideID, title string, percent int64, updated string) completionRecordSpec {
+		r := rec("user:1", guideSource, guideID, title, "interactive", "", "objectives", "", percent)
+		r.LastUpdatedAt = updated
+		return r
+	}
+	done := rec("user:1", "bundled", "linux", "Linux server integration", "interactive", "", "manual", "2026-03-28T09:00:00Z", 100)
+	done.LastUpdatedAt = "2026-03-28T09:00:00Z"
+	return doCompletionGolden(t, completionRequest(t, "/completion-records/my", "user:1"), myCompletions,
+		done,
+		partial("bundled", "linux", "Linux server integration", 40, "2026-03-29T09:00:00Z"),
+		partial("app-platform", "fe-alerting-01", "Alerting module 1", 60, "2026-03-30T09:00:00Z"),
 	)
 }
 

@@ -16,7 +16,13 @@ import React, {
 import { Button } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+  type StepSkipReason,
+} from '../../lib/analytics';
 import { NavigationManager, matchesStepAction, type DetectedActionEvent } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
@@ -255,7 +261,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // checker's own skip bridge writes `'skipped'` first; without this
     // reason plumbing the standalone store write here would silently
     // overwrite it with `'manual'`, making the event lie about intent.
-    const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
+    const { completed: storedCompleted, reason: storedReason } = useStepCompletion(renderedStepId, sectionId);
     const isStandalone = !onStepComplete;
     const persistCompletion = useCallback(
       (reason: ProgressReason = 'manual') => {
@@ -882,30 +888,42 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     ]);
 
     const markSkipped = checker.markSkipped;
-    const handleSkipStep = useCallback(async () => {
-      await markSkipped?.();
-      setExecutionError(null);
-      setFailedStepIndex(-1);
-      setWasCancelled(false);
-      persistCompletion('skipped');
+    const handleSkipStep = useCallback(
+      async (skipReason: StepSkipReason) => {
+        if (!markSkipped || storedReason === 'skipped') {
+          return;
+        }
+        await markSkipped();
+        setExecutionError(null);
+        setFailedStepIndex(-1);
+        setWasCancelled(false);
+        persistCompletion('skipped');
+        reportStepSkipped(
+          { targetAction: 'guided', interactionLocation: 'interactive_guided', skipReason },
+          analyticsStepMeta
+        );
 
-      if (onStepComplete && stepId) {
-        onStepComplete(stepId);
-      }
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
 
-      if (onComplete) {
-        onComplete();
-      }
-    }, [
-      stepId,
-      onStepComplete,
-      onComplete,
-      persistCompletion,
-      markSkipped,
-      setExecutionError,
-      setFailedStepIndex,
-      setWasCancelled,
-    ]);
+        if (onComplete) {
+          onComplete();
+        }
+      },
+      [
+        stepId,
+        onStepComplete,
+        onComplete,
+        persistCompletion,
+        markSkipped,
+        storedReason,
+        analyticsStepMeta,
+        setExecutionError,
+        setFailedStepIndex,
+        setWasCancelled,
+      ]
+    );
 
     // Handle retry after timeout or cancellation
     const handleRetry = useCallback(async () => {
@@ -1001,18 +1019,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               </Button>
               {skippable && (
                 <Button
-                  onClick={async () => {
-                    if (checker.markSkipped) {
-                      await checker.markSkipped();
-                      persistCompletion('skipped');
-                      if (onStepComplete && stepId) {
-                        onStepComplete(stepId);
-                      }
-                      if (onComplete) {
-                        onComplete();
-                      }
-                    }
-                  }}
+                  onClick={() => handleSkipStep('user')}
                   disabled={disabled || isAnyActionRunning}
                   size="sm"
                   variant="secondary"
@@ -1195,7 +1202,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               )}
               {skippable && (
                 <Button
-                  onClick={handleSkipStep}
+                  onClick={() => handleSkipStep('after_failure')}
                   size="sm"
                   variant="secondary"
                   className="interactive-guided-skip-btn"
@@ -1228,7 +1235,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               </Button>
               {skippable && (
                 <Button
-                  onClick={handleSkipStep}
+                  onClick={() => handleSkipStep('user')}
                   size="sm"
                   variant="secondary"
                   className="interactive-guided-skip-btn"

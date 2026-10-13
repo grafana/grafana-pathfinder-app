@@ -48,6 +48,14 @@ export function setCheckRequirementsResult(result: typeof _checkRequirementsResu
  *  per-test via `setExecuteInteractiveActionOutcome()`; reset in `resetSectionHarness()`. */
 let _executeInteractiveActionOutcome: 'ok' | 'error' = 'ok';
 
+/** Completion reason the mocked `useStepChecker` reports. `'objectives'` makes a
+ *  section complete through its objectives; reset in `resetSectionHarness()`. */
+let _stepCheckerCompletionReason: 'none' | 'objectives' = 'none';
+
+export function setStepCheckerCompletionReason(reason: typeof _stepCheckerCompletionReason) {
+  _stepCheckerCompletionReason = reason;
+}
+
 export function setExecuteInteractiveActionOutcome(outcome: 'ok' | 'error') {
   _executeInteractiveActionOutcome = outcome;
 }
@@ -94,6 +102,7 @@ function sweepContent(contentKey: string) {
 export function createUserStorageMock() {
   return {
     interactiveStepStorage: {
+      getSkipped: jest.fn(() => new Set<string>()),
       getCompleted: jest.fn(async (contentKey: string, sectionId: string) => {
         const v = memoryStore.get(stepsKey(contentKey, sectionId));
         return v ? new Set(v as Set<string>) : new Set<string>();
@@ -332,7 +341,7 @@ export function createRequirementsManagerMock() {
       isEnabled: true,
       isCompleted: false,
       explanation: null,
-      completionReason: 'none',
+      completionReason: _stepCheckerCompletionReason,
       canSkip: false,
       markSkipped: jest.fn(),
       resetStep: jest.fn(),
@@ -383,6 +392,7 @@ export function createAlignmentContextMock() {
 export function createAnalyticsMock() {
   return {
     reportAppInteraction: jest.fn(),
+    reportStepSkipped: jest.fn(),
     createInteractionName: jest.fn((type: string) => `pathfinder_${type}`),
     UserInteraction: {
       DoSectionButtonClick: 'do_section_button_click',
@@ -465,6 +475,7 @@ export function resetSectionHarness() {
   memoryStore.clear();
   _checkRequirementsResult = { pass: true, error: [] };
   _executeInteractiveActionOutcome = 'ok';
+  _stepCheckerCompletionReason = 'none';
   executeInteractiveActionCalls.length = 0;
   _stableCheckRequirementsFromData?.mockClear();
   // The completion store keeps its own module-scope cache + hydration

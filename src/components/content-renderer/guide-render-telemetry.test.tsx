@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { ContentRenderer } from './content-renderer';
+import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 import { GuideRenderBoundary } from './GuideRenderBoundary';
 import { beginGuideLoad, finishGuideLoad } from '../../lib/telemetry/guide-load';
 import { recordGuideRender } from '../../lib/telemetry/facade';
@@ -35,10 +36,10 @@ afterEach(() => jest.restoreAllMocks());
 it('reports a committed render once and calls readiness only after valid content', async () => {
   const raw = content([{ type: 'markdown', content: 'Visible guide text' }]);
   const ready = jest.fn();
-  const view = render(<ContentRenderer content={raw} onContentReady={ready} />);
+  const view = render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={raw} onContentReady={ready} />);
   await screen.findByText('Visible guide text');
   await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
-  view.rerender(<ContentRenderer content={raw} onContentReady={ready} />);
+  view.rerender(<ContentRenderer completion={UNTRACKED_COMPLETION} content={raw} onContentReady={ready} />);
   expect(recordGuideRender).toHaveBeenCalledTimes(1);
   expect(recordGuideRender).toHaveBeenCalledWith(raw.loadContext, 'rendered', expect.any(Number), undefined);
   expect(JSON.stringify((recordGuideRender as jest.Mock).mock.calls)).not.toContain('Private title');
@@ -47,7 +48,7 @@ it('reports a committed render once and calls readiness only after valid content
 it('reports empty output as an error without a false readiness callback', async () => {
   const raw = content([]);
   const ready = jest.fn();
-  render(<ContentRenderer content={raw} onContentReady={ready} />);
+  render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={raw} onContentReady={ready} />);
   await waitFor(() =>
     expect(recordGuideRender).toHaveBeenCalledWith(
       raw.loadContext,
@@ -63,13 +64,13 @@ it('waits for alignment before declaring a render successful', async () => {
   const raw = content([{ type: 'markdown', content: 'Visible guide text' }]);
   const view = render(
     <AlignmentPendingContext.Provider value={{ isPending: true, startingLocation: '/connections' }}>
-      <ContentRenderer content={raw} />
+      <ContentRenderer completion={UNTRACKED_COMPLETION} content={raw} />
     </AlignmentPendingContext.Provider>
   );
   expect(recordGuideRender).not.toHaveBeenCalledWith(raw.loadContext, 'rendered', expect.any(Number), undefined);
   view.rerender(
     <AlignmentPendingContext.Provider value={{ isPending: false, startingLocation: null }}>
-      <ContentRenderer content={raw} />
+      <ContentRenderer completion={UNTRACKED_COMPLETION} content={raw} />
     </AlignmentPendingContext.Provider>
   );
   await waitFor(() =>
@@ -112,7 +113,7 @@ it('does not reuse snippet degradation when content changes on the same renderer
     { type: 'snippet-ref', snippetId: 'unavailable' },
     { type: 'markdown', content: 'Original content' },
   ]);
-  const view = render(<ContentRenderer content={raw} />);
+  const view = render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={raw} />);
   await waitFor(() =>
     expect(finishGuideLoad).toHaveBeenCalledWith(raw.loadContext, 'degraded', {
       source: 'app-platform',
@@ -123,6 +124,7 @@ it('does not reuse snippet degradation when content changes on the same renderer
   jest.mocked(finishGuideLoad).mockClear();
   view.rerender(
     <ContentRenderer
+      completion={UNTRACKED_COMPLETION}
       content={{
         ...raw,
         content: JSON.stringify({

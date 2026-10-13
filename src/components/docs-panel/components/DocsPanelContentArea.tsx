@@ -35,11 +35,7 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import {
-  recordGuideCompletionForSurface,
-  journeyProgressFromMilestones,
-  resolveActiveMilestoneToolbarContext,
-} from '../../../docs-retrieval';
+import { journeyProgressFromMilestones, resolveActiveMilestoneToolbarContext } from '../../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
@@ -137,6 +133,17 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   // out of storage during render, so this re-render is what keeps it from
   // painting a stale fill once evidence lands while the tab stays mounted.
   useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
+
+  const surfaceCompletionInput = stableContent
+    ? {
+        baseUrl: activeTab?.baseUrl,
+        contentUrl: stableContent.url,
+        currentUrl: activeTab?.currentUrl,
+        contentType: stableContent.type,
+        metadata: stableContent.metadata,
+        guideTitle: activeTab?.title,
+      }
+    : null;
 
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
@@ -442,7 +449,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
               {/* Unified Content Renderer - works for both learning journeys and docs! */}
               <div id="inner-docs-content" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                {stableContent && (
+                {stableContent && surfaceCompletionInput && (
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
                     <GuideVersionNotice
                       manifests={[activeTab?.packageInfo?.packageManifest, stableContent.metadata.packageManifest]}
@@ -475,16 +482,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onContentReady={() => {
                         restoreScrollPosition();
                       }}
-                      onGuideComplete={() =>
-                        recordGuideCompletionForSurface({
-                          baseUrl: activeTab?.baseUrl,
-                          contentUrl: stableContent.url,
-                          currentUrl: activeTab?.currentUrl,
-                          contentType: stableContent.type,
-                          metadata: stableContent.metadata,
-                          guideTitle: activeTab?.title,
-                        })
-                      }
+                      completion={{ kind: 'tracked', input: surfaceCompletionInput }}
                       onContinueToNextMilestone={
                         model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
                       }

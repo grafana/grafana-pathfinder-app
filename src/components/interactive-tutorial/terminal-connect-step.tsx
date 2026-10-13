@@ -14,7 +14,12 @@ import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+} from '../../lib/analytics';
 import { useStepChecker } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { GcxReadyLine, GcxSetupPanel } from '../../integrations/coda/GcxSetupPanel';
@@ -26,6 +31,7 @@ import {
   useCodaTerminalGate,
 } from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
+import type { ProgressReason } from '../../global-state/progress-events';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
@@ -176,18 +182,22 @@ export const TerminalConnectStep = forwardRef<
       sectionId,
     });
 
-    const markComplete = useCallback(() => {
-      if (isCompleted) {
-        return;
-      }
-      if (isStandalone) {
-        markStepCompleted(renderedStepId, sectionId, 'manual');
-      }
-      if (onStepComplete && renderedStepId) {
-        onStepComplete(renderedStepId);
-      }
-      onComplete?.();
-    }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
+    const completeStep = useCallback(
+      (reason: ProgressReason) => {
+        if (isCompleted) {
+          return;
+        }
+        if (isStandalone) {
+          markStepCompleted(renderedStepId, sectionId, reason);
+        }
+        if (onStepComplete && renderedStepId) {
+          onStepComplete(renderedStepId);
+        }
+        onComplete?.();
+      },
+      [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]
+    );
+    const markComplete = useCallback(() => completeStep('manual'), [completeStep]);
 
     const {
       state: gcxState,
@@ -226,6 +236,9 @@ export const TerminalConnectStep = forwardRef<
     );
 
     const handleGcxSkip = useCallback(() => {
+      if (isCompleted) {
+        return;
+      }
       reportAppInteraction(
         UserInteraction.GcxSetupSkipped,
         buildInteractiveStepProperties(
@@ -233,8 +246,16 @@ export const TerminalConnectStep = forwardRef<
           analyticsStepMeta
         )
       );
-      markComplete();
-    }, [gcxState, markComplete, analyticsStepMeta]);
+      completeStep('skipped');
+      reportStepSkipped(
+        {
+          targetAction: 'terminal-connect',
+          interactionLocation: 'terminal_connect_step',
+          skipReason: gcxState === 'failed' || gcxState === 'needs-token' ? 'after_failure' : 'user',
+        },
+        analyticsStepMeta
+      );
+    }, [isCompleted, gcxState, completeStep, analyticsStepMeta]);
 
     const persistReset = useCallback(() => {
       if (isStandalone) {

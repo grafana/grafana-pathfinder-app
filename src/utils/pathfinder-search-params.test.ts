@@ -26,6 +26,7 @@ describe('PATHFINDER_PARAMS', () => {
         'controller',
         'doc',
         'kiosk_session',
+        'kiosk_name',
         'page',
         'panelMode',
         'source',
@@ -45,6 +46,7 @@ describe('parsePathfinderDeepLink', () => {
       source: undefined,
       page: undefined,
       kioskSession: undefined,
+      kioskName: undefined,
       panelMode: undefined,
       controller: false,
       pathfinderKiosk: false,
@@ -61,6 +63,7 @@ describe('parsePathfinderDeepLink', () => {
       source: 'learning-hub',
       page: '/explore',
       kioskSession: 'abc123',
+      kioskName: undefined,
       panelMode: 'fullscreen',
       controller: true,
       pathfinderKiosk: false,
@@ -72,6 +75,16 @@ describe('parsePathfinderDeepLink', () => {
     expect(parsePathfinderDeepLink('?controller=1').controller).toBe(true);
     expect(parsePathfinderDeepLink('?controller=0').controller).toBe(false);
     expect(parsePathfinderDeepLink('').controller).toBe(false);
+  });
+
+  it('validates and strips the kiosk name alongside its session', () => {
+    expect(parsePathfinderDeepLink('?kiosk_session=abc&kiosk_name=Customer-Onboarding').kioskName).toBe(
+      'customer-onboarding'
+    );
+    expect(parsePathfinderDeepLink('?kiosk_name=private%20title').kioskName).toBeUndefined();
+    const url = new URL('https://example.com/?kiosk_session=abc&kiosk_name=dem&keep=1');
+    stripPathfinderParams(url);
+    expect(url.search).toBe('?keep=1');
   });
 
   it('rejects unknown `type` values (typos drop to undefined rather than poisoning consumers)', () => {

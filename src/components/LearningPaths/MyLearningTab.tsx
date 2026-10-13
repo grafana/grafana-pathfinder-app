@@ -28,7 +28,7 @@ import {
 import { testIds } from '../../constants/testIds';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
-import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction, AnalyticsContentType, type ResetScope } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
 import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { StorageEvents } from '../../lib/event-names';
@@ -372,9 +372,13 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       // second lever to stop it.
       discardQueuedCompletionWrites();
 
+      reportAppInteraction(UserInteraction.ResetProgressClick, {
+        reset_scope: 'all' satisfies ResetScope,
+        interaction_location: 'my_learning_footer',
+      });
+
       await learningProgressStorage.clear();
 
-      // Clear journey completion percentages
       const completions = await journeyCompletionStorage.getAll();
       for (const url of Object.keys(completions)) {
         await journeyCompletionStorage.clear(url);

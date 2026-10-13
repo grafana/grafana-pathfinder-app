@@ -34,10 +34,12 @@ jest.mock('../../lib/logging', () => ({
 // The real module pulls @grafana/runtime in, and that reaches into @grafana/ui
 // internals this suite's partial mock does not carry.
 const mockReportAppInteraction = jest.fn();
+const mockReportStepSkipped = jest.fn();
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
   UserInteraction: { DoItButtonClick: 'do_it_button_click' },
   buildInteractiveStepProperties: jest.fn((props: unknown) => props),
+  reportStepSkipped: (...args: unknown[]) => mockReportStepSkipped(...args),
 }));
 
 const mockCheckerResetStep = jest.fn();
@@ -185,10 +187,16 @@ describe('TerminalStep', () => {
     if (skippable) {
       expect(skip).toBeVisible();
       fireEvent.click(skip!);
-      expect(markStepCompleted).toHaveBeenCalledWith('optional-unavailable', undefined, 'manual');
+      expect(markStepCompleted).toHaveBeenCalledWith('optional-unavailable', undefined, 'skipped');
+      expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
+      expect(mockReportStepSkipped).toHaveBeenCalledWith(
+        { targetAction: 'terminal', interactionLocation: 'terminal_step', skipReason: 'requirements_unmet' },
+        expect.objectContaining({ stepId: 'optional-unavailable' })
+      );
     } else {
       expect(skip).not.toBeInTheDocument();
       expect(markStepCompleted).not.toHaveBeenCalled();
+      expect(mockReportStepSkipped).not.toHaveBeenCalled();
     }
     expect(mockSendCommand).not.toHaveBeenCalled();
     expect(mockOpenTerminal).not.toHaveBeenCalled();
@@ -206,7 +214,12 @@ describe('TerminalStep', () => {
     mockCheckerOverrides = { isEnabled: false, explanation: 'Missing prerequisite', canSkip: true };
     render(<TerminalStep stepId="unmet" command="echo hello" skippable />);
     fireEvent.click(screen.getByTestId(testIds.interactive.terminalSkipButton('unmet')));
-    expect(markStepCompleted).toHaveBeenCalledWith('unmet', undefined, 'manual');
+    expect(markStepCompleted).toHaveBeenCalledWith('unmet', undefined, 'skipped');
+    expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(mockReportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'terminal', interactionLocation: 'terminal_step', skipReason: 'requirements_unmet' },
+      expect.objectContaining({ stepId: 'unmet' })
+    );
   });
 
   it('limits shared connection errors to eligible steps without duplicating the panel alert', () => {

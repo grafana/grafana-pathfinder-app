@@ -1,6 +1,6 @@
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { usePathfinderPluginConfig } from '../../hooks';
-import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef, useContext } from 'react';
 import { Button } from '@grafana/ui';
 
 import {
@@ -72,11 +72,13 @@ function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
 }
 import {
   reportAppInteraction,
+  reportStepSkipped,
   UserInteraction,
   getSourceDocument,
   calculateStepCompletion,
   AnalyticsContentType,
   createInteractionName,
+  STEP_PERCENTAGE_RULE_VERSION,
 } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
@@ -86,6 +88,7 @@ import type { InteractiveElementData } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
+import { GuideContentKeyContext } from './guide-content-key-context';
 import {
   analyzeAcknowledgement,
   getResumeInfo as computeResumeInfo,
@@ -96,6 +99,7 @@ import { classifySectionChild, mapSectionChild, unwrapSectionChild } from './sec
 import { useDocumentStepProgress } from './hooks/use-document-step-progress';
 import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
 import { useSectionPersistence } from './hooks/use-section-persistence';
+import { useStoredSectionCompletion } from './hooks/use-stored-section-completion';
 import { useSectionRequirements } from './hooks/use-section-requirements';
 import { useSectionScroll } from './hooks/use-section-scroll';
 import {
@@ -104,6 +108,7 @@ import {
   markStepsCompleted,
   reconcileSection,
   refreshAndNotifyGuideProgress,
+  refreshGuidePercentageOnLoad,
   resetSection as resetSectionStore,
   resetSteps,
   useSectionCompletion,
@@ -204,6 +209,8 @@ export function InteractiveSection({
 
   // --- Persistence helpers (restore across refresh) ---
   // Content key resolved via shared utility to ensure persist/restore consistency
+
+  const resolveOwnerContentKey = useContext(GuideContentKeyContext);
 
   // Detect if we're in preview mode (block editor preview)
   // Preview mode uses a special URL pattern: block-editor://preview/{guide-id}
@@ -393,6 +400,7 @@ export function InteractiveSection({
   );
   const sectionKind = derived.kind;
   const isCompleted = derived.isCompleted;
+  const doneVia = derived.doneVia;
   // `stepsCompleted` preserves the historical meaning ("all interactive
   // steps are done") so existing call sites that care about that
   // specific question keep working. Note that this no longer implies
@@ -457,12 +465,17 @@ export function InteractiveSection({
 
   // Track if we've emitted the guide-level completion event for this section
   const hasEmittedGuideCompletionRef = useRef(false);
+  const hydrationSpentRef = useRef(false);
+  const storedCompletion = useStoredSectionCompletion({ sectionId, isPreviewMode, stepComponents, gateAnalysis });
 
   // Reset the emission flag when section becomes incomplete (e.g., after reset).
   // Also clear the persisted done bit so `section-completed:` checks on
   // dependent steps re-block until the user re-completes the section.
   useEffect(() => {
     if (!isCompleted) {
+      if (hasEmittedGuideCompletionRef.current) {
+        hydrationSpentRef.current = true;
+      }
       hasEmittedGuideCompletionRef.current = false;
       if (!isPreviewMode) {
         sectionDoneStorage.clear(getContentKey(), sectionId);
@@ -474,7 +487,7 @@ export function InteractiveSection({
   // The `gateAnalysis.isAllPassive` branch lets sections with zero
   // interactive steps reach this at all (F-1, #909 follow-up).
   useEffect(() => {
-    if (isCompleted && (stepComponents.length > 0 || gateAnalysis.isAllPassive)) {
+    if (isCompleted && storedCompletion !== 'pending' && (stepComponents.length > 0 || gateAnalysis.isAllPassive)) {
       // Single unified event — replaces the two legacy CustomEvents
       // (`section-completed` on document + `interactive-section-completed`
       // on window). The `!hasEmittedGuideCompletionRef.current` guard
@@ -483,7 +496,14 @@ export function InteractiveSection({
       // belt-and-braces against future re-dispatch effects.
       if (!hasEmittedGuideCompletionRef.current) {
         hasEmittedGuideCompletionRef.current = true;
-        dispatchProgress({ kind: 'section', sectionId, completed: true });
+        const hydrated = storedCompletion === 'complete' && !hydrationSpentRef.current && doneVia !== 'objectives';
+        dispatchProgress({
+          kind: 'section',
+          contentKey: resolveOwnerContentKey?.() ?? '',
+          sectionId,
+          completed: true,
+          hydrated,
+        });
         // Persist the section's done state so `section-completed:`
         // requirement checks work without the section being mounted
         // (other milestones, virtualized regions, conditional branches).
@@ -494,7 +514,11 @@ export function InteractiveSection({
           // section shape — it credits the section's last block — and no
           // ack write goes through `persistSection`, so refresh here for
           // all of them, not only the all-passive ones.
-          refreshAndNotifyGuideProgress(getContentKey());
+          if (hydrated) {
+            refreshGuidePercentageOnLoad(getContentKey());
+          } else {
+            refreshAndNotifyGuideProgress(getContentKey(), 'change');
+          }
         }
       }
 
@@ -505,7 +529,16 @@ export function InteractiveSection({
         SequentialRequirementsManager.getInstance().watchNextStep(3000); // Watch for 3 seconds
       });
     }
-  }, [isCompleted, sectionId, stepComponents.length, isPreviewMode, gateAnalysis.isAllPassive]);
+  }, [
+    isCompleted,
+    doneVia,
+    storedCompletion,
+    sectionId,
+    stepComponents.length,
+    isPreviewMode,
+    gateAnalysis.isAllPassive,
+    resolveOwnerContentKey,
+  ]);
 
   // PRE-COMPUTE eligibility for ALL steps once (React best practice)
   // This prevents expensive recalculation on every render
@@ -780,6 +813,28 @@ export function InteractiveSection({
       };
       startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
+      const autoSkipStep = (stepInfo: StepInfo): void => {
+        const stepRef = stepRefs.current.get(stepInfo.stepId);
+        if (!stepRef?.markSkipped) {
+          return;
+        }
+        stepRef.markSkipped();
+        handleStepComplete(stepInfo.stepId, true);
+        reportStepSkipped(
+          {
+            targetAction: stepInfo.targetAction ?? 'unknown',
+            interactionLocation: 'interactive_section',
+            skipReason: 'section_run_auto',
+          },
+          {
+            stepId: stepInfo.stepId,
+            ...getDocumentStepPosition(sectionId, stepInfo.index),
+            sectionId,
+            sectionTitle: title,
+          }
+        );
+      };
+
       let loopExitReason: LoopExitReason = 'ok';
       let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
       // The completion store handles per-step persistence synchronously via
@@ -884,13 +939,8 @@ export function InteractiveSection({
                           // Fix didn't work - check if step is skippable
                           // Priority 3: Skip if possible
                           if (stepInfo.skippable) {
-                            // Skip this step properly using the step's own markSkipped function
-                            const stepRef = stepRefs.current.get(stepInfo.stepId);
-                            if (stepRef?.markSkipped) {
-                              stepRef.markSkipped(); // This handles the blue state properly
-                              handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                            }
-                            continue; // Continue to next step
+                            autoSkipStep(stepInfo);
+                            continue;
                           } else {
                             loopExitReason = 'requirements_exhausted';
                             break;
@@ -905,12 +955,7 @@ export function InteractiveSection({
 
                         // Fix failed - check if step is skippable
                         if (stepInfo.skippable) {
-                          // Skip this step properly using the step's own markSkipped function
-                          const stepRef = stepRefs.current.get(stepInfo.stepId);
-                          if (stepRef?.markSkipped) {
-                            stepRef.markSkipped(); // This handles the blue state properly
-                            handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                          }
+                          autoSkipStep(stepInfo);
                           continue;
                         } else {
                           loopExitReason = 'requirements_exhausted';
@@ -921,13 +966,8 @@ export function InteractiveSection({
                       // No fix available - check if step is skippable
                       // Priority 3: Skip if possible
                       if (stepInfo.skippable) {
-                        // Skip this step properly using the step's own markSkipped function
-                        const stepRef = stepRefs.current.get(stepInfo.stepId);
-                        if (stepRef?.markSkipped) {
-                          stepRef.markSkipped(); // This handles the blue state properly
-                          handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
-                        }
-                        continue; // Continue to next step
+                        autoSkipStep(stepInfo);
+                        continue;
                       } else {
                         loopExitReason = 'requirements_exhausted';
                         break;
@@ -1069,6 +1109,7 @@ export function InteractiveSection({
               current_step: documentStepIndex + 1, // 1-indexed for analytics
               ...(documentCompletionPercentage !== undefined && {
                 completion_percentage: documentCompletionPercentage,
+                percentage_rule_version: STEP_PERCENTAGE_RULE_VERSION,
               }),
               // Completion status
               canceled: wasCanceled,

@@ -3,6 +3,7 @@ import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
+import { reportStepSkipped } from '../../lib/analytics';
 import { InteractiveMultiStep } from './interactive-multi-step';
 
 jest.mock('../../lib/dom/selector-retry', () => ({ resolveWithRetry: jest.fn() }));
@@ -23,6 +24,7 @@ jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: { DoItButtonClick: 'do_it', StepAutoCompleted: 'auto' },
   buildInteractiveStepProperties: jest.fn(() => ({})),
+  reportStepSkipped: jest.fn(),
 }));
 
 jest.mock('../../lib/logging', () => ({
@@ -128,6 +130,8 @@ function CompleteEarlyHarness({ skippable = false }: { skippable?: boolean }) {
   return (
     <InteractiveMultiStep
       stepId="multi-step"
+      stepIndex={2}
+      totalSteps={5}
       completeEarly={true}
       skippable={skippable}
       onComplete={forceRender}
@@ -217,6 +221,7 @@ describe('InteractiveMultiStep — completeEarly lifecycle', () => {
       expect(step).toHaveAttribute('data-test-step-state', 'error');
     });
 
+    jest.mocked(reportStepSkipped).mockClear();
     fireEvent.click(screen.getByTestId(testIds.interactive.requirementSkipButton('multi-step')));
 
     expect(mockMarkSkipped).toHaveBeenCalledTimes(1);
@@ -224,6 +229,28 @@ describe('InteractiveMultiStep — completeEarly lifecycle', () => {
       expect(step).toHaveAttribute('data-test-step-state', 'completed');
     });
     expect(screen.queryByTestId(testIds.interactive.errorMessage('multi-step'))).not.toBeInTheDocument();
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'multistep', interactionLocation: 'interactive_multi_step', skipReason: 'after_failure' },
+      expect.objectContaining({ stepId: 'multi-step', stepIndex: 2, totalSteps: 5 })
+    );
+  });
+
+  it('reports a skip from the idle state as a user skip', async () => {
+    jest.mocked(reportStepSkipped).mockClear();
+    render(<CompleteEarlyHarness skippable={true} />);
+    const step = screen.getByTestId(testIds.interactive.step('multi-step'));
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.skipButton('multi-step')));
+
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'completed');
+    });
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'multistep', interactionLocation: 'interactive_multi_step', skipReason: 'user' },
+      expect.objectContaining({ stepId: 'multi-step', stepIndex: 2, totalSteps: 5 })
+    );
   });
 });
 

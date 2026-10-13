@@ -13,7 +13,12 @@ import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+} from '../../lib/analytics';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import {
@@ -23,6 +28,7 @@ import {
   useCodaTerminalGate,
 } from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
+import type { ProgressReason } from '../../global-state/progress-events';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { logger } from '../../lib/logging';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
@@ -202,18 +208,32 @@ export const TerminalStep = forwardRef<
       }
     }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep and persistReset are stable but including checker rebuilds every render
 
-    const markComplete = useCallback(() => {
+    const markComplete = useCallback(
+      (reason: ProgressReason = 'manual') => {
+        if (isCompleted) {
+          return;
+        }
+        if (isStandalone) {
+          markStepCompleted(renderedStepId, sectionId, reason);
+        }
+        if (onStepComplete && renderedStepId) {
+          onStepComplete(renderedStepId);
+        }
+        onComplete?.();
+      },
+      [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]
+    );
+
+    const handleSkip = useCallback(() => {
       if (isCompleted) {
         return;
       }
-      if (isStandalone) {
-        markStepCompleted(renderedStepId, sectionId, 'manual');
-      }
-      if (onStepComplete && renderedStepId) {
-        onStepComplete(renderedStepId);
-      }
-      onComplete?.();
-    }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
+      markComplete('skipped');
+      reportStepSkipped(
+        { targetAction: 'terminal', interactionLocation: 'terminal_step', skipReason: 'requirements_unmet' },
+        analyticsStepMeta
+      );
+    }, [isCompleted, markComplete, analyticsStepMeta]);
 
     const handleCopy = useCallback(async () => {
       reportAppInteraction(
@@ -346,7 +366,7 @@ export const TerminalStep = forwardRef<
                 size="sm"
                 variant="secondary"
                 fill="text"
-                onClick={markComplete}
+                onClick={handleSkip}
                 data-testid={testIds.interactive.terminalSkipButton(renderedStepId)}
               >
                 Skip
@@ -406,7 +426,7 @@ export const TerminalStep = forwardRef<
                 size="sm"
                 variant="secondary"
                 fill="text"
-                onClick={markComplete}
+                onClick={handleSkip}
                 data-testid={testIds.interactive.terminalSkipButton(renderedStepId)}
               >
                 Skip

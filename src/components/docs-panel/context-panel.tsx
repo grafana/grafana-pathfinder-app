@@ -225,7 +225,10 @@ function getManifestNavigation(recommendation: Recommendation): {
 const getNavLinkIcon = (link: ResolvedNavLink): IconName =>
   getPackageRenderType(link.manifest) === 'learning-journey' ? 'graph-bar' : 'link';
 
-const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOpenInfo | undefined => {
+const getRecommendationPackageInfo = (
+  recommendation: Recommendation,
+  trackId?: string
+): PackageOpenInfo | undefined => {
   if (recommendation.type !== 'package') {
     return undefined;
   }
@@ -239,6 +242,7 @@ const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOp
     packageManifest: recommendation.manifest,
     repository: recommendation.repository,
     resolvedMilestones: Array.isArray(recommendation.milestones) ? recommendation.milestones : undefined,
+    ...(trackId && { trackId }),
   };
 };
 
@@ -424,6 +428,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
             expanded={customGuidesExpanded}
             onToggleExpanded={toggleCustomGuidesExpansion}
             openDocsPage={openDocsPage}
+            assignments={assignments}
           />
         )}
 
@@ -456,7 +461,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
             <div className={styles.featuredGrid}>
               {featuredRecommendations.map((recommendation, index) => {
                 const contentUrl = getRecommendationContentUrl(recommendation);
-                const packageInfo = getRecommendationPackageInfo(recommendation);
+                const assignment = assignmentForPath(recommendation, assignments);
+                const packageInfo = getRecommendationPackageInfo(recommendation, assignment?.trackId);
                 const displayType = getEffectiveDisplayType(recommendation);
                 const isExpandable = isSummaryExpandable(recommendation);
                 const isExpanded = isExpandable && Boolean(recommendation.summaryExpanded);
@@ -478,10 +484,13 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                       >
                         <div className={styles.cardTitleSection}>
                           <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
-                          <span className={getCategoryTagStyle(styles, displayType)}>
-                            {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
-                            {getCategoryLabel(displayType)}
-                          </span>
+                          <div className={styles.cardTagRow}>
+                            <span className={getCategoryTagStyle(styles, displayType)}>
+                              {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
+                              {getCategoryLabel(displayType)}
+                            </span>
+                            {assignment && <AssignmentBadges assignment={assignment} />}
+                          </div>
                         </div>
                         <div className={styles.cardActions}>
                           <button
@@ -740,9 +749,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
           <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
             {finalPrimaryRecommendations.map((recommendation, index) => {
               const contentUrl = getRecommendationContentUrl(recommendation);
-              const packageInfo = getRecommendationPackageInfo(recommendation);
-              const displayType = getEffectiveDisplayType(recommendation);
               const assignment = assignmentForPath(recommendation, assignments);
+              const packageInfo = getRecommendationPackageInfo(recommendation, assignment?.trackId);
+              const displayType = getEffectiveDisplayType(recommendation);
               const isExpandable = isSummaryExpandable(recommendation);
               const isExpanded = isExpandable && Boolean(recommendation.summaryExpanded);
               return (
@@ -1070,7 +1079,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                 <div className={styles.otherDocsList} data-testid={testIds.contextPanel.otherDocsList}>
                   {secondaryDocs.map((item, index) => {
                     const contentUrl = getRecommendationContentUrl(item);
-                    const packageInfo = getRecommendationPackageInfo(item);
+                    const packageInfo = getRecommendationPackageInfo(
+                      item,
+                      assignmentForPath(item, assignments)?.trackId
+                    );
                     const displayType = getEffectiveDisplayType(item);
                     return (
                       <div

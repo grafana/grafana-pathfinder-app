@@ -23,6 +23,13 @@ import { StorageEvents } from '../lib/event-names';
 
 export type ProgressReason = 'none' | 'objectives' | 'manual' | 'skipped';
 
+/**
+ * Why a guide percentage was announced: `'change'` for a step or section write
+ * the reader just made, `'load'` for a recompute of evidence already stored.
+ * Absent on resets and anything else; a consumer must treat absent as not a change.
+ */
+export type ProgressOrigin = 'change' | 'load';
+
 export type ProgressEventDetail =
   | {
       kind: 'step';
@@ -33,8 +40,12 @@ export type ProgressEventDetail =
     }
   | {
       kind: 'section';
+      /** Progress key of the guide that owns the section; non-preview renderers resolve it from the ambient key (#2099). */
+      contentKey: string;
       sectionId: string;
       completed: boolean;
+      /** True when the section came back complete from storage rather than the reader completing it just now. */
+      hydrated: boolean;
       percentage?: number;
     }
   | {
@@ -42,6 +53,7 @@ export type ProgressEventDetail =
       contentKey: string;
       percentage: number;
       hasProgress: boolean;
+      origin?: ProgressOrigin;
     };
 
 export const PROGRESS_EVENT = 'pathfinder:progress' as const;

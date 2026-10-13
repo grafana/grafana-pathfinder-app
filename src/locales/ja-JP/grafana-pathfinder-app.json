@@ -130,5 +130,10 @@
     "disabled": "Interactive learning is disabled",
     "disabledDescription": "Interactive learning is turned off for this organization.",
     "openSettings": "Open interactive learning settings"
+  },
+  "helpButtonHint": {
+    "message": "対話型学習を試す",
+    "dismiss": "学習のヒントを閉じる",
+    "learn": "学習"
   }
 }

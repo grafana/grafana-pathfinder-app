@@ -61,9 +61,9 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
   }
   // Storage removal does not invalidate mounted completion-store subscribers.
   evictContentCache(contentKey);
-  // Lifts the write-side exactly-once guard so re-marking this guide after
-  // the reset emits a fresh durable record instead of deduping against the
-  // completion this reset just erased. A milestone's identity is derived
+  // Lifts the write-side exactly-once guard and forgets the guide's attempt, so
+  // re-marking this guide after the reset emits a fresh durable record instead
+  // of deduping against the completion this reset just erased. A milestone's identity is derived
   // through the SAME function markMilestoneDone uses, not resolved here
   // independently — a manifest, if present, is never allowed to outrank the
   // slug for a milestone the way it correctly does for an ordinary guide.

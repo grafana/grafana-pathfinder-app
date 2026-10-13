@@ -9,6 +9,7 @@
  */
 import type { TransportItem, APIEvent } from '@grafana/faro-web-sdk';
 import pluginJson from '../plugin.json';
+import { HELP_BUTTON_EXPERIMENT_ID, HELP_BUTTON_CLICK_EVENT } from '../constants/help-button-experiment';
 
 jest.mock('../../package.json', () => ({ name: 'grafana-pathfinder-app', version: '9.9.9-test' }));
 
@@ -1241,6 +1242,18 @@ describe('setFaroSessionAttributes', () => {
 });
 
 describe('passesActivityGate', () => {
+  it('keeps help-button exposure and click events without admitting other closed-surface telemetry', () => {
+    const faro = freshFaro();
+    const exposure = eventItem();
+    (exposure.payload as any).name = 'experiment_viewed';
+    (exposure.payload as any).attributes = { experiment_id: HELP_BUTTON_EXPERIMENT_ID };
+    expect(faro.passesActivityGate(exposure)).toBe(true);
+    (exposure.payload as any).attributes = { experiment_id: 'another-experiment' };
+    expect(faro.passesActivityGate(exposure)).toBe(false);
+    (exposure.payload as any).name = HELP_BUTTON_CLICK_EVENT;
+    expect(faro.passesActivityGate(exposure)).toBe(true);
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+  });
   it('keeps explicit launch failures before a destination mounts without opening the activity gate', () => {
     const faro = freshFaro();
     const failure = eventItem();
