@@ -387,7 +387,7 @@ export async function fetchPackageContent(
     .find((milestone) => (explicitGuideId ? milestone.id === explicitGuideId : milestone.url === contentUrl));
   const resolvedMember = memberMilestone ?? trackMember;
   const resolvedRepository =
-    resolvedMember?.repository ?? repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
+    repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined) ?? resolvedMember?.repository;
 
   let learningJourney: LearningJourneyMetadata | undefined;
   // Set only for a track-only member (see the isTrackOnlyMember branch

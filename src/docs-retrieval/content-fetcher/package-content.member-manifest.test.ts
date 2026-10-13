@@ -8,7 +8,7 @@
  * the alignment prompt never appeared.
  */
 import { of } from 'rxjs';
-import { fetchPackageContent } from './package-content';
+import { fetchPackageContent, setPackageResolver } from './package-content';
 import { resolveStartingLocation } from '../../recovery/starting-location';
 
 const mockFetch = jest.fn();
@@ -52,6 +52,34 @@ function backendGuideResource(manifest: Record<string, unknown>) {
 beforeEach(() => {
   jest.clearAllMocks();
 });
+
+function usePathResolver(repository: string) {
+  setPackageResolver({
+    resolve: jest.fn().mockResolvedValue({
+      ok: true,
+      id: 'path-id',
+      contentUrl: 'https://example.test/path/content.json',
+      manifestUrl: 'https://example.test/path/manifest.json',
+      repository,
+      manifest: { tracks: [] },
+    }),
+  });
+}
+
+const pathManifest = { id: 'path-id', type: 'path', milestones: ['member-id'], tracks: [] };
+const resolvedMember = {
+  id: 'member-id',
+  number: 1,
+  title: 'Member',
+  url: 'backend-guide:member-id',
+  isActive: false,
+  repository: 'member-source',
+  packageManifest: {
+    id: 'member-id',
+    repository: 'member-source',
+    prerequisites: [{ id: 'own', label: 'Member prerequisite' }],
+  },
+};
 
 describe('member launch keeps the loader manifest reachable', () => {
   it('does not let the slim path manifest bury the loader starting location', async () => {
@@ -111,6 +139,44 @@ describe('member launch keeps the loader manifest reachable', () => {
     mockFetch.mockReturnValue(backendGuideResource({ prerequisites: loadedPrerequisites }));
     const loadedOnly = await fetchPackageContent('backend-guide:fe-alerting-01');
     expect(loadedOnly.content?.metadata.packageManifest?.prerequisites).toEqual(loadedPrerequisites);
+  });
+
+  it('keeps the explicitly supplied path repository as the member completion source', async () => {
+    usePathResolver('base-source');
+    mockFetch.mockReturnValue(backendGuideResource({}));
+
+    const result = await fetchPackageContent(
+      'backend-guide:member-id',
+      pathManifest,
+      [resolvedMember],
+      'explicit-source',
+      undefined,
+      'member-id'
+    );
+
+    expect(result.content?.metadata.repository).toBe('explicit-source');
+    expect(result.content?.metadata.packageManifest?.prerequisites).toEqual([
+      { id: 'own', label: 'Member prerequisite' },
+    ]);
+  });
+
+  it('uses the owning path resolution before a member manifest repository fallback', async () => {
+    usePathResolver('base-source');
+    mockFetch.mockReturnValue(backendGuideResource({}));
+
+    const result = await fetchPackageContent(
+      'backend-guide:member-id',
+      pathManifest,
+      [resolvedMember],
+      undefined,
+      undefined,
+      'member-id'
+    );
+
+    expect(result.content?.metadata.repository).toBe('base-source');
+    expect(result.content?.metadata.packageManifest?.prerequisites).toEqual([
+      { id: 'own', label: 'Member prerequisite' },
+    ]);
   });
 
   it('still resolves to null when no manifest declares one', async () => {
