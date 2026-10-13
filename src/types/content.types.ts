@@ -93,6 +93,9 @@ export interface ContentMetadata {
    */
   packageManifest?: Record<string, unknown>;
 
+  /** Owning path/journey manifest retained when packageManifest describes a loaded member. */
+  journeyManifest?: Record<string, unknown>;
+
   /**
    * Recommendation-level repository (sibling of the manifest in the V1 wire
    * shape; V1PackageManifest has no repository of its own). Carried alongside

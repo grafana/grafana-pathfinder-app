@@ -155,6 +155,8 @@ describe('member launch keeps the loader manifest reachable', () => {
     );
 
     expect(result.content?.metadata.repository).toBe('explicit-source');
+    expect(result.content?.metadata.packageManifest).toMatchObject({ id: 'member-id', type: 'guide' });
+    expect(result.content?.metadata.journeyManifest).toMatchObject({ id: 'path-id', type: 'path' });
     expect(result.content?.metadata.packageManifest?.prerequisites).toEqual([
       { id: 'own', label: 'Member prerequisite' },
     ]);
@@ -174,6 +176,7 @@ describe('member launch keeps the loader manifest reachable', () => {
     );
 
     expect(result.content?.metadata.repository).toBe('base-source');
+    expect(result.content?.metadata.journeyManifest).toMatchObject({ id: 'path-id', type: 'path' });
     expect(result.content?.metadata.packageManifest?.prerequisites).toEqual([
       { id: 'own', label: 'Member prerequisite' },
     ]);

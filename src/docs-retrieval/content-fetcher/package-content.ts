@@ -563,6 +563,7 @@ export async function fetchPackageContent(
         // Merge, not replace: a catalogue entry is a slim projection and would
         // otherwise bury fields the loader resolved in full (issue #1681).
         ...(packageManifestMetadata !== undefined && { packageManifest: packageManifestMetadata }),
+        ...(resolvedMember && packageManifest !== undefined && { journeyManifest: packageManifest }),
         // Fall back to the repository the baseUrl resolution already carries, so
         // an entry path that supplies no explicit one still keys the durable
         // completion on the true source instead of the manifest schema default.
