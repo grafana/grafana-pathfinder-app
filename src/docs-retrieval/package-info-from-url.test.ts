@@ -99,6 +99,29 @@ describe('fetchPackageInfoFromUrl — backend-guide: scheme', () => {
   });
 });
 
+it.each(['not-supported', 42, { type: 'markdown' }])(
+  'keeps malformed prerequisite format %p as literal metadata from CDN manifests',
+  async (format) => {
+    const url = 'https://interactive-learning.grafana.net/packages/example/content.json';
+    const prerequisites = [{ id: 'runtime-format', label: '[Read docs](https://example.com)', format }];
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ id: 'example', type: 'guide', prerequisites }),
+    });
+
+    try {
+      const info = await fetchPackageInfoFromUrl(url);
+
+      expect(info?.packageManifest?.prerequisites).toEqual([
+        { id: 'runtime-format', label: '[Read docs](https://example.com)' },
+      ]);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  }
+);
+
 it('keeps an optional manifest failure non-terminal so content can still render', async () => {
   const url = 'https://interactive-learning.grafana.net/packages/example/content.json';
   const context = beginGuideLoad(url);
