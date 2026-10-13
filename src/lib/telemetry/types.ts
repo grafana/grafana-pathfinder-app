@@ -59,6 +59,7 @@ export const TELEMETRY_EVENTS = {
 export const TELEMETRY_MEASUREMENTS = {
   startupSettings: 'pathfinder_startup_settings',
   recommender: 'pathfinder_recommender',
+  recommendCompletionsWait: 'pathfinder_recommend_completions_wait',
   contentFetch: 'pathfinder_content_fetch',
   step: 'pathfinder_step',
   requirements: 'pathfinder_requirements',

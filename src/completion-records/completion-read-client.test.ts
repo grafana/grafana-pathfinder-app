@@ -81,9 +81,27 @@ describe('loadMyCompletions', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('reports unavailable when the capability is off', async () => {
+  it('reports unavailable when the capability is off and does not ask again', async () => {
     mockFetch.mockReturnValue(of({ data: body(false) }));
     expect((await loadMyCompletions()).kind).toBe('unavailable');
+    jest.setSystemTime(Date.now() + 10 * 60_000);
+    expect((await loadMyCompletions()).kind).toBe('unavailable');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('probes again after a published completion clears a structural unavailable answer', async () => {
+    mockFetch.mockReturnValue(of({ data: body(false) }));
+    await loadMyCompletions();
+    publishedListener?.();
+    await loadMyCompletions();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries after a transient failure', async () => {
+    mockFetch.mockReturnValueOnce(throwError(() => new Error('503'))).mockReturnValue(of({ data: body() }));
+    expect((await loadMyCompletions()).kind).toBe('unavailable');
+    expect((await loadMyCompletions()).kind).toBe('ok');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it('shares one in-flight request between concurrent callers', async () => {

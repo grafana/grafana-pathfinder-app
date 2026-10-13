@@ -9,20 +9,20 @@ export const COMPLETIONS_BUDGET_MS = 500;
 
 type Settled = { kind: 'timeout' } | Awaited<ReturnType<typeof loadMyCompletions>>;
 
-function finish(outcome: RecommendCompletionsOutcome, value?: RecommendCompletionsWire): undefined {
-  recordRecommendCompletions(outcome, value?.items.length, value?.truncated);
-  return undefined;
+export interface CompletionsAttachment {
+  completions?: RecommendCompletionsWire;
+  outcome: RecommendCompletionsOutcome;
 }
 
 /**
- * Resolves to the `completions` payload field, or undefined when it must be omitted. Never throws.
+ * Resolves to the `completions` payload field (absent when it must be omitted) and its outcome. Never throws.
  * The `/my` load is deliberately not aborted at the budget: it finishes in the background and warms
- * the per-tab cache for the next request.
+ * the per-tab cache for the next request. Telemetry is reported separately, with the caller's measured wait.
  */
-export async function completionsForRecommend(): Promise<RecommendCompletionsWire | undefined> {
+export async function completionsForRecommend(): Promise<CompletionsAttachment> {
   try {
     if (!getFeatureFlagValue('pathfinder.recommend-completions', true)) {
-      return finish('disabled');
+      return { outcome: 'disabled' };
     }
 
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -37,7 +37,7 @@ export async function completionsForRecommend(): Promise<RecommendCompletionsWir
     }
 
     if (settled.kind !== 'ok') {
-      return finish(settled.kind);
+      return { outcome: settled.kind };
     }
 
     const parsed = RecommendCompletionsWireSchema.safeParse(projectRecommendCompletions(settled.data));
@@ -45,11 +45,21 @@ export async function completionsForRecommend(): Promise<RecommendCompletionsWir
       logger.warn('recommend completions: projection failed validation', {
         paths: parsed.error.issues.map((issue) => issue.path.join('.')),
       });
-      return finish('invalid');
+      return { outcome: 'invalid' };
     }
-    recordRecommendCompletions('ok', parsed.data.items.length, parsed.data.truncated);
-    return parsed.data;
+    return { completions: parsed.data, outcome: 'ok' };
   } catch {
-    return finish('invalid');
+    return { outcome: 'invalid' };
   }
+}
+
+/** `waitMs` is how long the recommend request was blocked on the attachment; disabled never waits. */
+export function reportCompletionsAttachment(attachment: CompletionsAttachment, waitMs: number): void {
+  const { completions, outcome } = attachment;
+  recordRecommendCompletions(
+    outcome,
+    completions?.items.length,
+    completions?.truncated,
+    outcome === 'disabled' ? undefined : Math.round(waitMs)
+  );
 }

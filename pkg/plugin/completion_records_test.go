@@ -1070,6 +1070,17 @@ func TestCollation_RecordedAndAttemptFields(t *testing.T) {
 			wantStarted:  "2026-09-01T00:00:00Z",
 		},
 		{
+			name: "hidden partial that started before the completion still feeds recency",
+			records: []completionRecordSpec{
+				done("2026-09-01T14:03:22Z", 10, "2026-09-01T14:03:22Z", ""),
+				attempt("2026-09-10T00:00:00Z", "2026-08-01T00:00:00Z", 60),
+			},
+			wantCount:    1,
+			wantDuration: 10,
+			wantRecorded: "2026-09-10T00:00:00Z",
+			wantStarted:  "2026-08-01T00:00:00Z",
+		},
+		{
 			name: "partial row at 60 percent does not count as done",
 			records: []completionRecordSpec{
 				done("2026-09-01T00:00:00Z", 10, "2026-09-01T00:00:00Z", ""),

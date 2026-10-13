@@ -50,9 +50,10 @@ jest.mock('../lib/learning-journey-content-bridge', () => ({
 }));
 
 const mockRecordRecommendCompletions = jest.fn();
+const mockRecordRecommenderRequest = jest.fn();
 jest.mock('../lib/telemetry', () => ({
   ...jest.requireActual('../lib/telemetry'),
-  recordRecommenderRequest: jest.fn(),
+  recordRecommenderRequest: (...args: unknown[]) => mockRecordRecommenderRequest(...args),
   recordRecommenderFallback: jest.fn(),
   recordRecommendCompletions: (...args: unknown[]) => mockRecordRecommendCompletions(...args),
 }));
@@ -154,7 +155,7 @@ describe('recommend request completions', () => {
 
     expect(mockLoadMyCompletions).not.toHaveBeenCalled();
     expect(await sentBody()).not.toHaveProperty('completions');
-    expect(mockRecordRecommendCompletions).toHaveBeenCalledWith('disabled', undefined, undefined);
+    expect(mockRecordRecommendCompletions).toHaveBeenCalledWith('disabled', undefined, undefined, undefined);
   });
 
   it('omits the key when the capability is unavailable', async () => {
@@ -163,7 +164,12 @@ describe('recommend request completions', () => {
     await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
 
     expect(await sentBody()).not.toHaveProperty('completions');
-    expect(mockRecordRecommendCompletions).toHaveBeenCalledWith('unavailable', undefined, undefined);
+    expect(mockRecordRecommendCompletions).toHaveBeenCalledWith(
+      'unavailable',
+      undefined,
+      undefined,
+      expect.any(Number)
+    );
   });
 
   it('omits the key and still returns recommendations when /my rejects', async () => {
@@ -188,7 +194,44 @@ describe('recommend request completions', () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(await sentBody()).not.toHaveProperty('completions');
-    expect(mockRecordRecommendCompletions).toHaveBeenCalledWith('timeout', undefined, undefined);
+    expect(mockRecordRecommendCompletions).toHaveBeenCalledWith('timeout', undefined, undefined, expect.any(Number));
+  });
+
+  it('keeps the completions wait out of recommender_ms and measures it separately', async () => {
+    jest.useFakeTimers();
+    mockLoadMyCompletions.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve({ kind: 'ok', data: myResponse() }), 300))
+    );
+    mockFetch.mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(() => resolve({ ok: true, json: () => Promise.resolve({ recommendations: [] }) }), 40)
+        )
+    );
+
+    const pending = ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+    await jest.advanceTimersByTimeAsync(1000);
+    await pending;
+
+    const [recommenderMs, outcome] = mockRecordRecommenderRequest.mock.calls[0] as [number, string];
+    expect(outcome).toBe('ok');
+    expect(recommenderMs).toBeLessThan(150);
+    const [, , , waitMs] = mockRecordRecommendCompletions.mock.calls[0] as unknown[];
+    expect(waitMs).toBeGreaterThanOrEqual(290);
+  });
+
+  it('keeps the wait out of the recommender duration on the fail path too', async () => {
+    jest.useFakeTimers();
+    mockLoadMyCompletions.mockReturnValue(new Promise(() => {}));
+    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+
+    const pending = ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
+    await jest.advanceTimersByTimeAsync(1000);
+    await pending;
+
+    const [recommenderMs, outcome] = mockRecordRecommenderRequest.mock.calls[0] as [number, string];
+    expect(outcome).toBe('other');
+    expect(recommenderMs).toBeLessThan(150);
   });
 
   it('sends an empty items list for a known user with no history', async () => {
@@ -213,7 +256,7 @@ describe('recommend request completions', () => {
     const body = await sentBody();
     expect(body.completions).toEqual(projectRecommendCompletions(data));
     expect(JSON.stringify(body)).not.toContain('user:secret');
-    expect(mockRecordRecommendCompletions).toHaveBeenCalledWith('ok', 1, false);
+    expect(mockRecordRecommendCompletions).toHaveBeenCalledWith('ok', 1, false, expect.any(Number));
   });
 
   it('drops the key and warns with paths only when the projection is invalid', async () => {
@@ -230,7 +273,7 @@ describe('recommend request completions', () => {
     expect(await sentBody()).not.toHaveProperty('completions');
     expect(warn).toHaveBeenCalled();
     expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET-GUIDE');
-    expect(mockRecordRecommendCompletions).toHaveBeenCalledWith('invalid', undefined, undefined);
+    expect(mockRecordRecommendCompletions).toHaveBeenCalledWith('invalid', undefined, undefined, expect.any(Number));
     warn.mockRestore();
   });
 });

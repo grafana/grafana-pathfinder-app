@@ -127,7 +127,8 @@ type collatedCompletion struct {
 	// 0 because legacy writes made it optional.
 	LatestDurationSeconds int64 `json:"latestDurationSeconds,omitempty"`
 	// LastRecordedAt is the newest LastUpdatedAt across every record of the
-	// guide, completions and attempts alike.
+	// guide, completions and attempts alike. Superseded attempts hidden from
+	// inProgress still count toward recency.
 	LastRecordedAt string `json:"lastRecordedAt,omitempty"`
 	// LatestAttemptStartedAt is the newest AttemptStartedAt across every
 	// record of the guide.

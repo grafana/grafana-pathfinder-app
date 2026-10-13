@@ -15,11 +15,18 @@ const CACHE_TTL_MS = 60_000;
 
 let cached: { result: Extract<MyCompletionsResult, { kind: 'ok' }>; fetchedAt: number } | null = null;
 let inflight: Promise<MyCompletionsResult> | null = null;
+// The backend answered available:false: a standing condition, so it is not re-probed until reload or a clear.
+let structurallyUnavailable = false;
 // A clear during a load must stop that load from re-populating the cache with pre-clear data.
 let generation = 0;
 let unsubscribe: (() => void) | null = null;
 
-async function fetchMyCompletions(): Promise<MyCompletionsResult> {
+interface Fetched {
+  result: MyCompletionsResult;
+  structural: boolean;
+}
+
+async function fetchMyCompletions(): Promise<Fetched> {
   try {
     const response = await lastValueFrom(
       getBackendSrv()
@@ -28,25 +35,34 @@ async function fetchMyCompletions(): Promise<MyCompletionsResult> {
     );
     const parsed = MyCompletionsResponseWireSchema.safeParse(response.data);
     if (!parsed.success) {
-      return { kind: 'invalid' };
+      return { result: { kind: 'invalid' }, structural: false };
     }
-    return parsed.data.capability.available ? { kind: 'ok', data: parsed.data } : { kind: 'unavailable' };
+    return parsed.data.capability.available
+      ? { result: { kind: 'ok', data: parsed.data }, structural: false }
+      : { result: { kind: 'unavailable' }, structural: true };
   } catch {
-    return { kind: 'unavailable' };
+    return { result: { kind: 'unavailable' }, structural: false };
   }
 }
 
 export function loadMyCompletions(): Promise<MyCompletionsResult> {
   unsubscribe ??= onCompletionPublished(clearMyCompletionsCache);
+  if (structurallyUnavailable) {
+    return Promise.resolve({ kind: 'unavailable' });
+  }
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
     return Promise.resolve(cached.result);
   }
   if (!inflight) {
     const startedIn = generation;
     const request: Promise<MyCompletionsResult> = fetchMyCompletions()
-      .then((result) => {
-        if (result.kind === 'ok' && startedIn === generation) {
-          cached = { result, fetchedAt: Date.now() };
+      .then(({ result, structural }) => {
+        if (startedIn === generation) {
+          if (result.kind === 'ok') {
+            cached = { result, fetchedAt: Date.now() };
+          } else if (structural) {
+            structurallyUnavailable = true;
+          }
         }
         logger.debug('my completions: load finished', { outcome: result.kind });
         return result;
@@ -64,6 +80,7 @@ export function loadMyCompletions(): Promise<MyCompletionsResult> {
 export function clearMyCompletionsCache(): void {
   generation++;
   cached = null;
+  structurallyUnavailable = false;
   inflight = null;
 }
 

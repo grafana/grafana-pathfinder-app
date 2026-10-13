@@ -50,7 +50,7 @@ import {
   type PackageMatchExpr,
 } from '../lib/package-recommendations-client';
 import { getHighlightedGuideConfig } from '../utils/openfeature';
-import { completionsForRecommend } from './recommend-completions-attachment';
+import { completionsForRecommend, reportCompletionsAttachment } from './recommend-completions-attachment';
 import { buildSyntheticFeaturedRecommendation, matchesHighlightedGuidePage } from '../utils/experiments';
 
 // Hoisted to module scope so the recursive `usesOnlySupportedMatchPredicates`
@@ -285,6 +285,9 @@ export class ContextService {
     usingFallbackRecommendations: boolean;
   }> {
     const recommenderStart = performance.now();
+    // Time spent blocked on the completions attachment is not recommender latency.
+    let completionsWaitMs = 0;
+    const elapsedMs = () => performance.now() - recommenderStart - completionsWaitMs;
     // One request settles telemetry exactly once — post-parse processing can
     // still throw into the fail path after a successful fetch.
     let telemetrySettled = false;
@@ -301,7 +304,7 @@ export class ContextService {
       }
     };
     const fail = (errorType: 'unavailable' | 'rate-limit' | 'other', errorMessage: string) => {
-      settleTelemetry(errorType, performance.now() - recommenderStart);
+      settleTelemetry(errorType, elapsedMs());
       return this.handleRecommenderError(errorType, errorMessage, contextData, bundledRecommendations);
     };
     try {
@@ -343,7 +346,11 @@ export class ContextService {
       const hashedSource = await getHashedSource();
 
       const identity = await buildTelemetryIdentity();
-      const completions = await completionsPromise;
+      const waitStart = performance.now();
+      const attachment = await completionsPromise;
+      completionsWaitMs = performance.now() - waitStart;
+      reportCompletionsAttachment(attachment, completionsWaitMs);
+      const { completions } = attachment;
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
@@ -389,7 +396,7 @@ export class ContextService {
         const data: V1RecommenderResponse = await response.json();
         // Captured here (processLearningJourneys does its own fetches, which
         // would skew ok durations) but only emitted once processing succeeds.
-        const okDurationMs = performance.now() - recommenderStart;
+        const okDurationMs = elapsedMs();
 
         const mappedExternalRecommendations = (data.recommendations ?? []).map((rec) =>
           this.sanitizeV1Recommendation(rec)

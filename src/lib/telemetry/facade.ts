@@ -52,13 +52,21 @@ function completionItemBucket(count: number): string {
 export function recordRecommendCompletions(
   outcome: RecommendCompletionsOutcome,
   itemCount?: number,
-  truncated?: boolean
+  truncated?: boolean,
+  waitMs?: number
 ): void {
   pushFaroEvent(TELEMETRY_EVENTS.recommendCompletions, {
     outcome,
     ...(itemCount !== undefined && { item_bucket: completionItemBucket(itemCount) }),
     ...(truncated !== undefined && { truncated: String(truncated) }),
   });
+  if (waitMs !== undefined) {
+    pushFaroMeasurement(
+      TELEMETRY_MEASUREMENTS.recommendCompletionsWait,
+      { recommend_completions_wait_ms: waitMs },
+      { outcome }
+    );
+  }
 }
 
 export function recordContentFetch(params: {

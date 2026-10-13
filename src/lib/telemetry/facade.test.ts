@@ -65,6 +65,18 @@ describe('measurement and event domain operations', () => {
     ]);
   });
 
+  it('recordRecommendCompletions emits the wait as a namespaced measurement only when given', () => {
+    recordRecommendCompletions('timeout', undefined, undefined, 500);
+    recordRecommendCompletions('disabled');
+
+    expect(mockPushFaroMeasurement).toHaveBeenCalledTimes(1);
+    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+      'pathfinder_recommend_completions_wait',
+      { recommend_completions_wait_ms: 500 },
+      { outcome: 'timeout' }
+    );
+  });
+
   it('recordContentFetch and recordContentFetchFallback normalize the URL before it crosses the boundary', () => {
     recordContentFetch({
       url: 'https://user:pw@grafana.com/docs/x/?q=1#f',
