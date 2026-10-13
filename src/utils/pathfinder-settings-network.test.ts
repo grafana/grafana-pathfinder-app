@@ -104,6 +104,15 @@ describe('settings read recovery', () => {
     }
   );
 
+  it.each([
+    [502, { reason: 'timeout' }],
+    [504, { reason: 'http-error', upstreamStatus: 504 }],
+  ])('does not re-queue a read the upstream timed out on (%i)', async (status, diagnostics) => {
+    fetchMock.mockReturnValueOnce(throwError(() => ({ status, data: { diagnostics } })));
+    await expect(fetchPathfinderSettingsSnapshot()).rejects.toMatchObject({ status });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('accepts an absent singleton after the API becomes ready', async () => {
     fetchMock
       .mockReturnValueOnce(error(503))

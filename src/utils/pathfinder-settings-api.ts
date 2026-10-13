@@ -128,15 +128,17 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
           delay: (err: unknown, attempt) => {
             const status = statusOf(err);
             const delay = READ_RETRY_DELAYS_MS[attempt - 1];
-            const upstreamStatus = (err as { data?: { diagnostics?: { upstreamStatus?: number } } })?.data?.diagnostics
-              ?.upstreamStatus;
+            const diagnostics = (err as { data?: { diagnostics?: { reason?: string; upstreamStatus?: number } } })?.data
+              ?.diagnostics;
             // The proxy maps upstream 401 to 502 to avoid expiring the Grafana session.
             if (
               delay === undefined ||
               !status ||
               !RETRYABLE_READ_STATUSES.has(status) ||
-              upstreamStatus === 401 ||
-              upstreamStatus === 403
+              diagnostics?.upstreamStatus === 401 ||
+              diagnostics?.upstreamStatus === 403 ||
+              diagnostics?.upstreamStatus === 504 ||
+              diagnostics?.reason === 'timeout'
             ) {
               return throwError(() => err);
             }
