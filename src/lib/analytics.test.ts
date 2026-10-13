@@ -212,7 +212,7 @@ describe('reportAppInteraction Faro mirroring', () => {
 });
 
 describe('reportAppInteraction experiment enrichment', () => {
-  const HIGHLIGHTED = 'pathfinder.highlighted-guide-experiment';
+  const HIGHLIGHTED = 'pathfinder.auto-open-guide-experiment';
 
   beforeEach(() => {
     jest.clearAllMocks();

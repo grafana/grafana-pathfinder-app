@@ -12,15 +12,10 @@ import { config, createOpenFeatureLocalStorageProvider, createOpenFeatureOFREPWe
 
 import { TrackingHook } from './openfeature-tracking';
 import { logger } from '../lib/logging';
-import {
-  EXPERIMENT_VARIANTS,
-  type ExperimentConfig,
-  type HighlightedGuideConfig,
-  type HighlightedGuideDocType,
-} from '../types/openfeature.types';
+import { EXPERIMENT_VARIANTS, type ExperimentConfig } from '../types/openfeature.types';
 
 export { EXPERIMENT_VARIANTS };
-export type { ExperimentConfig, HighlightedGuideConfig, HighlightedGuideDocType };
+export type { ExperimentConfig };
 
 // ============================================================================
 // TYPES
@@ -39,18 +34,6 @@ type FeatureFlag =
   | { valueType: 'object'; values: readonly JsonValue[]; defaultValue: JsonValue; trackingKey?: string }
   | { valueType: 'number'; values: readonly number[]; defaultValue: number; trackingKey?: string }
   | { valueType: 'string'; values: readonly string[]; defaultValue: string; trackingKey?: string };
-
-/**
- * Default highlighted-guide config when flag is not set or errors.
- * Defaults to 'excluded' so the auto-open + injection are no-ops.
- */
-export const DEFAULT_HIGHLIGHTED_GUIDE_CONFIG: HighlightedGuideConfig = {
-  variant: 'excluded',
-  pages: [],
-  guideId: '',
-  autoOpen: true,
-  resetCache: false,
-};
 
 // ============================================================================
 // FEATURE FLAG DEFINITIONS
@@ -140,17 +123,15 @@ const pathfinderFeatureFlags = {
     trackingKey: 'auto_open_sidebar',
   },
   /**
-   * Highlighted-guide popout A/B experiment
-   * - "excluded": Not in experiment, normal Pathfinder behavior (no popout, no Featured-slot injection)
-   * - "control": In experiment, popout + Featured-slot injection on matched pages with `guideId` (variant A)
-   * - "treatment": In experiment, popout + Featured-slot injection on matched pages with `guideId` (variant B)
-   * Both arms keep Pathfinder visible — they differ only in which guide is featured.
+   * Auto-open guide A/B experiment, run on `@grafana-experiments/sdk`. Treatment
+   * pops Pathfinder open with a configured guide on matched pages; control and
+   * excluded keep today's behaviour. No trackingKey: the SDK owns the exposure.
+   * Payload schema and enrollment live in `src/utils/experiments/auto-open-guide/`.
    */
-  'pathfinder.highlighted-guide-experiment': {
+  'pathfinder.auto-open-guide-experiment': {
     valueType: 'object',
-    values: [DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue],
-    defaultValue: DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue,
-    trackingKey: 'highlighted_guide_experiment',
+    values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
+    defaultValue: { variant: 'excluded' },
   },
   /**
    * Interactive-learning banner A/B experiment
@@ -159,8 +140,8 @@ const pathfinderFeatureFlags = {
    * - "treatment": In experiment, explanatory banner at the top of the context
    *   page (variant B)
    *
-   * Unlike the highlighted-guide flag, this one is read lazily at the sidebar-mount
-   * seam rather than at boot. Everything else about it lives in
+   * Read lazily at the sidebar-mount seam rather than at boot. Everything else
+   * about it lives in
    * `src/utils/experiments/interactive-learning-banner.ts`.
    */
   'pathfinder.interactive-learning-banner-experiment': {
@@ -498,45 +479,7 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
   }
 };
 
-/**
- * Get the highlighted-guide experiment configuration.
- *
- * Reads `pathfinder.highlighted-guide-experiment` and validates the extra fields
- * (`guideId`, `autoOpen`) on top of the base `ExperimentConfig` shape. A payload
- * is rejected when it is not an object, is missing `variant` / `pages` /
- * `guideId`, or carries a variant outside the known arms. Rejection is
- * whole-payload — `resetCache` and `pages` are discarded with the rest.
- *
- * A rejected remote payload or evaluation error returns
- * `DEFAULT_HIGHLIGHTED_GUIDE_CONFIG` (variant: 'excluded').
- *
- * @returns The validated highlighted-guide config or the safe default
- *
- * @example
- * const config = getHighlightedGuideConfig();
- * if (config.variant !== 'excluded' && matchesHighlightedGuidePage(config.pages, path)) {
- *   // pop out + inject config.guideId
- * }
- */
-export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
-  const flagName = 'pathfinder.highlighted-guide-experiment';
-  try {
-    const client = getFeatureFlagClient();
-    const value = client.getObjectValue(flagName, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue);
-    const validatedRemote = validateHighlightedGuideValue(value);
-    if (!validatedRemote) {
-      warnExperimentRejection('remote', flagName, value);
-    }
-    return validatedRemote ?? DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
-  } catch (error) {
-    logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
-    return DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
-  }
-};
-
 const VALID_VARIANTS: ReadonlySet<string> = new Set(EXPERIMENT_VARIANTS);
-
-const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set(['docs-page', 'learning-journey', 'interactive']);
 
 export type ExperimentRejectionSource = 'remote';
 
@@ -585,34 +528,6 @@ export function warnExperimentRejection(source: ExperimentRejectionSource, flagN
       reason: classifyExperimentRejection(value),
     }
   );
-}
-
-function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig | null {
-  const variant = parseExperimentVariant(value);
-  if (!variant) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  if (
-    !Array.isArray(record.pages) ||
-    !record.pages.every((p): p is string => typeof p === 'string') ||
-    typeof record.guideId !== 'string'
-  ) {
-    return null;
-  }
-  const docType =
-    typeof record.docType === 'string' && VALID_DOC_TYPES.has(record.docType as HighlightedGuideDocType)
-      ? (record.docType as HighlightedGuideDocType)
-      : undefined;
-
-  return {
-    variant,
-    pages: record.pages,
-    guideId: record.guideId,
-    autoOpen: typeof record.autoOpen === 'boolean' ? record.autoOpen : true,
-    resetCache: typeof record.resetCache === 'boolean' ? record.resetCache : false,
-    ...(docType ? { docType } : {}),
-  };
 }
 
 // ============================================================================

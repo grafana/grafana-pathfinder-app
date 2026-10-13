@@ -2,12 +2,13 @@
  * Tests for experiment-debug module
  *
  * Tests the debug surface exposed on window.__pathfinderExperiment:
- * analytics exposure inspection for the highlighted-guide experiment.
+ * analytics exposure inspection and the auto-open guide experiment's markers.
  */
 
 jest.mock('../../lib/storage-keys', () => ({
   StorageKeys: {
     EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
+    AUTO_OPEN_GUIDE_SHOWN_PREFIX: 'grafana-pathfinder-auto-open-guide-shown-',
   },
 }));
 
@@ -15,52 +16,59 @@ jest.mock('../openfeature', () => ({
   pathfinderFeatureFlags: {
     'pathfinder.enabled': { valueType: 'boolean', defaultValue: true },
     'pathfinder.auto-open-sidebar': { valueType: 'boolean', defaultValue: false },
-    'pathfinder.highlighted-guide-experiment': { valueType: 'object', defaultValue: {} },
+    'pathfinder.interactive-learning-banner-experiment': { valueType: 'object', defaultValue: {} },
   },
 }));
 
 import { createExperimentDebugger } from './experiment-debug';
-import type { HighlightedGuideConfig } from '../openfeature';
+import { setAutoOpenGuideEnrollment } from './auto-open-guide/state';
 
 describe('experiment-debug', () => {
-  const mockConfig: HighlightedGuideConfig = {
-    variant: 'treatment',
-    pages: ['/a/grafana-irm-app*'],
-    guideId: 'bundled:test-guide',
-    autoOpen: true,
-    resetCache: false,
-  };
-
   beforeEach(() => {
     sessionStorage.clear();
     localStorage.clear();
     jest.clearAllMocks();
     delete (window as any).__pathfinderExperiment;
+    setAutoOpenGuideEnrollment(null);
   });
 
   describe('createExperimentDebugger', () => {
     it('should expose debug object on window', () => {
-      createExperimentDebugger(mockConfig);
+      createExperimentDebugger();
 
       expect((window as any).__pathfinderExperiment).toBeDefined();
     });
 
-    it('should expose highlighted-guide config properties', () => {
-      createExperimentDebugger(mockConfig);
-
+    it('reads the auto-open guide arm lazily, so a later activation shows up', () => {
+      createExperimentDebugger();
       const debugger_ = (window as any).__pathfinderExperiment;
 
-      expect(debugger_.config).toEqual(mockConfig);
-      expect(debugger_.variant).toBe('treatment');
-      expect(debugger_.loadedAt).toBeDefined();
+      expect(debugger_.autoOpenGuide()).toEqual({ variant: 'not-enrolled', shown: [] });
+
+      setAutoOpenGuideEnrollment({ variant: 'control', experiences: [] });
+      expect(debugger_.autoOpenGuide().variant).toBe('control');
+    });
+
+    it('lists and clears auto-open guide markers for the current hostname only', () => {
+      const prefix = 'grafana-pathfinder-auto-open-guide-shown-';
+      localStorage.setItem(`${prefix}${window.location.hostname}:bundled:first-dashboard`, 'true');
+      localStorage.setItem(`${prefix}other.host.net:bundled:first-dashboard`, 'true');
+      jest.spyOn(console, 'log').mockImplementation();
+      createExperimentDebugger();
+      const debugger_ = (window as any).__pathfinderExperiment;
+
+      expect(debugger_.autoOpenGuide().shown).toEqual(['bundled:first-dashboard']);
+      expect(debugger_.clearAutoOpenGuideMarkers()).toEqual({ cleared: 1 });
+      expect(debugger_.autoOpenGuide().shown).toEqual([]);
+      expect(localStorage.getItem(`${prefix}other.host.net:bundled:first-dashboard`)).toBe('true');
     });
 
     it('should expose known flag names', () => {
-      createExperimentDebugger(mockConfig);
+      createExperimentDebugger();
 
       const debugger_ = (window as any).__pathfinderExperiment;
       expect(debugger_.flags).toContain('pathfinder.auto-open-sidebar');
-      expect(debugger_.flags).toContain('pathfinder.highlighted-guide-experiment');
+      expect(debugger_.flags).toContain('pathfinder.interactive-learning-banner-experiment');
     });
 
     describe('analytics exposure helpers', () => {
@@ -68,26 +76,35 @@ describe('experiment-debug', () => {
       const prefix = 'grafana-pathfinder-experiment-exposure-reported-';
 
       it('showExposures lists markers for the current hostname, parsing flag + variant', () => {
-        localStorage.setItem(`${prefix}${hostname}:pathfinder.highlighted-guide-experiment:control`, 'true');
-        localStorage.setItem(`${prefix}${hostname}:pathfinder.highlighted-guide-experiment:treatment`, 'true');
+        localStorage.setItem(`${prefix}${hostname}:pathfinder.interactive-learning-banner-experiment:control`, 'true');
+        localStorage.setItem(
+          `${prefix}${hostname}:pathfinder.interactive-learning-banner-experiment:treatment`,
+          'true'
+        );
         // Marker for a different hostname should NOT appear
-        localStorage.setItem(`${prefix}other.host.net:pathfinder.highlighted-guide-experiment:control`, 'true');
+        localStorage.setItem(
+          `${prefix}other.host.net:pathfinder.interactive-learning-banner-experiment:control`,
+          'true'
+        );
 
-        createExperimentDebugger(mockConfig);
+        createExperimentDebugger();
         const result = (window as any).__pathfinderExperiment.showExposures();
 
         expect(result).toHaveLength(2);
         expect(result).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ flag: 'pathfinder.highlighted-guide-experiment', variant: 'control' }),
-            expect.objectContaining({ flag: 'pathfinder.highlighted-guide-experiment', variant: 'treatment' }),
+            expect.objectContaining({ flag: 'pathfinder.interactive-learning-banner-experiment', variant: 'control' }),
+            expect.objectContaining({
+              flag: 'pathfinder.interactive-learning-banner-experiment',
+              variant: 'treatment',
+            }),
           ])
         );
       });
 
       it('showExposures returns empty list and explains no exposures deduped', () => {
         const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-        createExperimentDebugger(mockConfig);
+        createExperimentDebugger();
 
         const result = (window as any).__pathfinderExperiment.showExposures();
 
@@ -99,9 +116,9 @@ describe('experiment-debug', () => {
       });
 
       it('clearExposures removes markers for the current hostname only', () => {
-        const myKey1 = `${prefix}${hostname}:pathfinder.highlighted-guide-experiment:control`;
-        const myKey2 = `${prefix}${hostname}:pathfinder.highlighted-guide-experiment:treatment`;
-        const otherKey = `${prefix}other.host.net:pathfinder.highlighted-guide-experiment:control`;
+        const myKey1 = `${prefix}${hostname}:pathfinder.interactive-learning-banner-experiment:control`;
+        const myKey2 = `${prefix}${hostname}:pathfinder.interactive-learning-banner-experiment:treatment`;
+        const otherKey = `${prefix}other.host.net:pathfinder.interactive-learning-banner-experiment:control`;
         const unrelatedKey = 'some-other-pathfinder-key';
 
         localStorage.setItem(myKey1, 'true');
@@ -109,7 +126,7 @@ describe('experiment-debug', () => {
         localStorage.setItem(otherKey, 'true');
         localStorage.setItem(unrelatedKey, 'keep-me');
 
-        createExperimentDebugger(mockConfig);
+        createExperimentDebugger();
         const result = (window as any).__pathfinderExperiment.clearExposures();
 
         expect(result).toEqual({ cleared: 2 });
@@ -120,7 +137,7 @@ describe('experiment-debug', () => {
       });
 
       it('clearExposures is a no-op when there are no markers', () => {
-        createExperimentDebugger(mockConfig);
+        createExperimentDebugger();
         const result = (window as any).__pathfinderExperiment.clearExposures();
         expect(result).toEqual({ cleared: 0 });
       });

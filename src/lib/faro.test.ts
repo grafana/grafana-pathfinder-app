@@ -10,6 +10,7 @@
 import type { TransportItem, APIEvent } from '@grafana/faro-web-sdk';
 import pluginJson from '../plugin.json';
 import { HELP_BUTTON_EXPERIMENT_ID, HELP_BUTTON_CLICK_EVENT } from '../constants/help-button-experiment';
+import { AUTO_OPEN_GUIDE_ELIGIBLE_EVENT, AUTO_OPEN_GUIDE_EXPERIMENT_ID } from '../constants/auto-open-guide-experiment';
 
 jest.mock('../../package.json', () => ({ name: 'grafana-pathfinder-app', version: '9.9.9-test' }));
 
@@ -670,7 +671,7 @@ describe('initFaro', () => {
 
   it('stamps active experiment cohorts onto the session as the versioned schema', async () => {
     mockGetActiveExperiments.mockReturnValueOnce([
-      { flag: 'pathfinder.highlighted-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome', pages: [] },
+      { flag: 'pathfinder.auto-open-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome', pages: [] },
     ]);
     const faro = freshFaro();
     await faro.initFaro();
@@ -682,7 +683,7 @@ describe('initFaro', () => {
           experiments: JSON.stringify({
             v: 1,
             cohorts: [
-              { flag: 'pathfinder.highlighted-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome' },
+              { flag: 'pathfinder.auto-open-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome' },
             ],
           }),
         }),
@@ -1253,6 +1254,15 @@ describe('passesActivityGate', () => {
     (exposure.payload as any).name = HELP_BUTTON_CLICK_EVENT;
     expect(faro.passesActivityGate(exposure)).toBe(true);
     expect(faro.passesActivityGate(eventItem())).toBe(false);
+  });
+  it('keeps auto-open guide exposure and eligibility events so control arms are measured', () => {
+    const faro = freshFaro();
+    const exposure = eventItem();
+    (exposure.payload as any).name = 'experiment_viewed';
+    (exposure.payload as any).attributes = { experiment_id: AUTO_OPEN_GUIDE_EXPERIMENT_ID };
+    expect(faro.passesActivityGate(exposure)).toBe(true);
+    (exposure.payload as any).name = AUTO_OPEN_GUIDE_ELIGIBLE_EVENT;
+    expect(faro.passesActivityGate(exposure)).toBe(true);
   });
   it('keeps explicit launch failures before a destination mounts without opening the activity gate', () => {
     const faro = freshFaro();

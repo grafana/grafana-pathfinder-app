@@ -8,7 +8,7 @@ describe('buildSessionExperimentsValue', () => {
   it('serializes the compact versioned cohort schema, dropping bulky fields', () => {
     const value = buildSessionExperimentsValue([
       {
-        flag: 'pathfinder.highlighted-guide-experiment',
+        flag: 'pathfinder.auto-open-guide-experiment',
         variant: 'treatment',
         guideId: 'bundled:welcome',
         pages: ['/dashboards', '/explore'],
@@ -19,7 +19,7 @@ describe('buildSessionExperimentsValue', () => {
 
     expect(JSON.parse(value!)).toEqual({
       v: SESSION_EXPERIMENTS_SCHEMA_VERSION,
-      cohorts: [{ flag: 'pathfinder.highlighted-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome' }],
+      cohorts: [{ flag: 'pathfinder.auto-open-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome' }],
     });
   });
 

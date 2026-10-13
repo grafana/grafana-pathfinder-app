@@ -67,15 +67,10 @@ try {
   logger.exception(e, { source: 'OpenFeature init' });
 }
 
-// Highlighted-guide experiment + config-driven auto-open (dynamic imports keep
-// zod/user-storage out of module.js).
-const {
-  createExperimentDebugger,
-  enrollInteractiveLearningBannerExperiment,
-  initializeHighlightedGuideExperiment,
-  setupHighlightedGuideAutoOpen,
-  subscribeToEnrollment,
-} = await import('./utils/experiments');
+// Experiments + config-driven auto-open (dynamic imports keep zod/user-storage
+// out of module.js).
+const { createExperimentDebugger, enrollInteractiveLearningBannerExperiment, subscribeToEnrollment } =
+  await import('./utils/experiments');
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
 const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
@@ -85,7 +80,6 @@ const pathfinderAvailability = await resolvePathfinderAvailability(
   readPathfinderStartupPreference
 );
 const pathfinderEnabled = pathfinderAvailability === 'enabled';
-const hostname = window.location.hostname;
 
 // Telemetry chunk retries must never delay plugin registration.
 void (async () => {
@@ -108,6 +102,12 @@ void (async () => {
         window.addEventListener('pagehide', stopHelpButtonExperiment, { once: true });
       })
       .catch((error: unknown) => logger.exception(error, { source: 'Help button experiment init' }));
+    void retryChunkImport(() => import('./utils/experiments/auto-open-guide'))
+      .then(async ({ startAutoOpenGuideExperiment }) => {
+        const stopAutoOpenGuideExperiment = await startAutoOpenGuideExperiment();
+        window.addEventListener('pagehide', stopAutoOpenGuideExperiment, { once: true });
+      })
+      .catch((error: unknown) => logger.exception(error, { source: 'Auto-open guide experiment init' }));
   }
   const { recordStartupSettings } = await retryChunkImport(() => import('./lib/telemetry/facade'));
   const record = () => {
@@ -126,12 +126,7 @@ void (async () => {
   }
 })().catch((error: unknown) => logger.exception(error, { source: 'Faro init' }));
 
-// Initialize highlighted-guide experiment (reads flag, processes resetCache).
-// The popout half is set up later, after the sidebar-mount decision, so it
-// short-circuits when Pathfinder is dismounted.
-const highlightedGuideConfig = initializeHighlightedGuideExperiment(hostname);
-
-createExperimentDebugger(highlightedGuideConfig);
+createExperimentDebugger();
 
 if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) {
   const persistedMode = panelModeManager.getMode();
@@ -335,11 +330,6 @@ plugin.init = function () {
       mountFloatingPanel();
     }
   }) as EventListener);
-
-  if (!docsParam) {
-    const currentPath = getCurrentPath();
-    setupHighlightedGuideAutoOpen(highlightedGuideConfig, currentPath, hostname);
-  }
 };
 
 export { plugin };
