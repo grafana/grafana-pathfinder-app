@@ -211,7 +211,7 @@ Each `POST {recommenderServiceUrl}/api/v1/recommend` may carry an optional `comp
 - **Present with `items: []` means a known user with no history.**
 - **Flag.** `pathfinder.recommend-completions` (default on) is a kill switch, evaluated on every request. Off makes no `/my` request. See [Feature flags](../FEATURE_FLAGS.md#pathfinderrecommend-completions).
 - **Budget.** The `/my` load starts right after the recommender URL is validated, so it overlaps the identity hashing, and the request waits at most 500 ms for it. The load is not aborted at the budget: it finishes in the background and fills a per-tab cache for the next request. A cold `/my` triggers a full-namespace listing on the backend and often takes longer than 500 ms.
-- **Cache.** 60 seconds per tab, successful results only, single-flight, cleared when a completion is published. Partial-attempt writes do not publish, so in-progress percentages can lag by up to 60 seconds.
+- **Cache.** 60 seconds per tab, successful results only (`available: false` is remembered separately, see below), single-flight, cleared when a completion is published. Partial-attempt writes do not publish, so in-progress percentages can lag by up to 60 seconds.
 - **Availability** comes from the `capability.available` field embedded in the `/my` response, not from a separate capability call. An `available: false` answer is structural, so it is remembered for the session (a reload or a published completion re-probes) and reported as outcome `unavailable`. Failed, timed-out and invalid loads are not remembered and retry on the next request.
 - **Telemetry.** The wait is reported as `recommend_completions_wait_ms`, and `recommender_ms` excludes it. See [Telemetry](../TELEMETRY.md).
 
@@ -449,6 +449,7 @@ Configuration is managed through plugin settings (`PathfinderPluginConfig`):
 - `src/context-engine/context-security.test.ts` - Security test suite
 - `src/context-engine/context.service.completion.test.ts` - Completion storage selection tests
 - `src/context-engine/context.service.completions.test.ts` - Completion history on recommend requests tests
+- `src/context-engine/context.service.completions-warm-cache.test.ts` - A `/my` load that outlives the budget warms the cache, with the real read client
 - `src/completion-records/recommend-completions.test.ts`, `recommend-completions.golden.test.ts`, `completion-read-client.test.ts` - Projection, wire golden and read-client tests
 - `src/types/context.types.ts` - TypeScript type definitions
 
