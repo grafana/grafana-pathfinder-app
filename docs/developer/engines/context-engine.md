@@ -213,7 +213,7 @@ Each `POST {recommenderServiceUrl}/api/v1/recommend` may carry an optional `comp
 - **Budget.** The `/my` load starts right after the recommender URL is validated, so it overlaps the identity hashing, and the request waits at most 500 ms for it. The load is not aborted at the budget: it finishes in the background and fills a per-tab cache for the next request. A cold `/my` triggers a full-namespace listing on the backend and often takes longer than 500 ms.
 - **Cache.** 60 seconds per tab, successful results only (`available: false` is remembered separately, see below), single-flight, cleared when a completion is published. Partial-attempt writes do not publish, so in-progress percentages can lag by up to 60 seconds.
 - **Availability** comes from the `capability.available` field embedded in the `/my` response, not from a separate capability call. An `available: false` answer is structural, so it is remembered for the session (a reload or a published completion re-probes) and reported as outcome `unavailable`. Failed, timed-out and invalid loads are not remembered and retry on the next request.
-- **Telemetry.** The wait is reported as `recommend_completions_wait_ms`, and `recommender_ms` excludes it. See [Telemetry](../TELEMETRY.md).
+- **Telemetry.** The wait is reported as `recommend_completions_wait_ms`, and `recommender_ms` excludes it. The outcome event and the wait measurement are emitted only when the recommend payload is built, so a request that fails earlier (for example identity hashing throwing) emits neither. See [Telemetry](../TELEMETRY.md).
 
 Implementation: `src/context-engine/recommend-completions-attachment.ts`, `src/completion-records/completion-read-client.ts`, `src/completion-records/recommend-completions.ts`.
 
