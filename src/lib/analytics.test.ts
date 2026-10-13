@@ -212,7 +212,7 @@ describe('reportAppInteraction Faro mirroring', () => {
 });
 
 describe('reportAppInteraction experiment enrichment', () => {
-  const HIGHLIGHTED = 'pathfinder.auto-open-guide-experiment';
+  const EXPERIMENT = 'pathfinder.interactive-learning-banner-experiment';
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -232,7 +232,7 @@ describe('reportAppInteraction experiment enrichment', () => {
 
   it('passes the enrolled experiment through and rolls variant up to treatment', () => {
     bindExperimentsProvider(() => [
-      { flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
+      { flag: EXPERIMENT, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
     ]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
@@ -240,12 +240,12 @@ describe('reportAppInteraction experiment enrichment', () => {
     const props = mockReportInteraction.mock.calls[0][1];
     expect(props.variant).toBe('treatment');
     expect(props.experiments).toEqual([
-      expect.objectContaining({ flag: HIGHLIGHTED, variant: 'treatment', guideId: 'g', docType: 'learning-journey' }),
+      expect.objectContaining({ flag: EXPERIMENT, variant: 'treatment', guideId: 'g', docType: 'learning-journey' }),
     ]);
   });
 
   it('rolls variant up to control when no enrolled experiment is treatment', () => {
-    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'control', pages: [], guideId: 'g' }]);
+    bindExperimentsProvider(() => [{ flag: EXPERIMENT, variant: 'control', pages: [], guideId: 'g' }]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
 
@@ -256,7 +256,7 @@ describe('reportAppInteraction experiment enrichment', () => {
     ['control before treatment', ['control', 'treatment']],
     ['treatment before control', ['treatment', 'control']],
   ] as const)('rolls multiple experiments up to treatment with %s', (_order, variants) => {
-    bindExperimentsProvider(() => variants.map((variant) => ({ flag: HIGHLIGHTED, variant, pages: [], guideId: 'g' })));
+    bindExperimentsProvider(() => variants.map((variant) => ({ flag: EXPERIMENT, variant, pages: [], guideId: 'g' })));
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
 
@@ -264,7 +264,7 @@ describe('reportAppInteraction experiment enrichment', () => {
   });
 
   it('rolls variant up to excluded when every experiment is excluded', () => {
-    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'excluded', pages: [], guideId: 'g' }]);
+    bindExperimentsProvider(() => [{ flag: EXPERIMENT, variant: 'excluded', pages: [], guideId: 'g' }]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
 
@@ -283,7 +283,7 @@ describe('reportAppInteraction experiment enrichment', () => {
 
   it('strips experiments from the Faro mirror but keeps it in the RudderStack payload', () => {
     bindExperimentsProvider(() => [
-      { flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
+      { flag: EXPERIMENT, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
     ]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
@@ -297,18 +297,18 @@ describe('reportAppInteraction experiment enrichment', () => {
   });
 
   it('does not enrich FeatureFlagEvaluated events (recursion guard)', () => {
-    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g' }]);
+    bindExperimentsProvider(() => [{ flag: EXPERIMENT, variant: 'treatment', pages: [], guideId: 'g' }]);
 
-    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
+    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: EXPERIMENT });
 
     const props = mockReportInteraction.mock.calls[0][1];
     expect(props).not.toHaveProperty('experiments');
     expect(props).not.toHaveProperty('variant');
-    expect(props.flag_key).toBe(HIGHLIGHTED);
+    expect(props.flag_key).toBe(EXPERIMENT);
   });
 
   it('still mirrors flag exposures to Faro (beforeSend gates delivery, not the mirror)', () => {
-    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
+    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: EXPERIMENT });
     expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
   });
 });

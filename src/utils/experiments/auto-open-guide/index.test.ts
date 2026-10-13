@@ -11,14 +11,21 @@ import {
   AUTO_OPEN_GUIDE_EXPERIMENT_ID,
 } from '../../../constants/auto-open-guide-experiment';
 import { sidebarState } from '../../../global-state/sidebar';
+import { logger } from '../../../lib/logging';
 import { attemptAutoOpen } from '../../sidebar-auto-open';
 import { installAutoLaunchOnMount } from './auto-launch';
 import { getAutoOpenGuideEnrollment, setAutoOpenGuideEnrollment } from './state';
 import { startAutoOpenGuideExperiment } from './index';
 
 const mockPushEvent = jest.fn();
+let mockSessionId: string | undefined = 'test-session';
+const mockGetFeatureFlagClient = jest.fn();
 const mockFaro = {
-  api: { getSession: () => ({ id: 'test-session' }), pushEvent: mockPushEvent, getActiveUserAction: () => undefined },
+  api: {
+    getSession: () => (mockSessionId ? { id: mockSessionId } : undefined),
+    pushEvent: mockPushEvent,
+    getActiveUserAction: () => undefined,
+  },
   metas: { addListener: jest.fn(), removeListener: jest.fn() },
 };
 let mockPathfinderOpen = false;
@@ -31,9 +38,12 @@ jest.mock('../../../lib/analytics', () => ({
   UserInteraction: { AutoOpenGuideEligible: 'auto_open_guide_eligible' },
 }));
 jest.mock('../../openfeature-tracking', () => ({ TrackingHook: jest.fn() }));
+jest.mock('../../../lib/logging', () => ({
+  logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn(), exception: jest.fn() },
+}));
 jest.mock('../../openfeature', () => ({
   ...jest.requireActual('../../openfeature'),
-  getFeatureFlagClient: () => OpenFeature.getClient('auto-open-guide-test'),
+  getFeatureFlagClient: () => mockGetFeatureFlagClient(),
 }));
 jest.mock('../../find-doc-page', () => ({
   findDocPage: (guide: string) =>
@@ -107,6 +117,8 @@ beforeEach(() => {
   globalThis.structuredClone = (value) => deserialize(serialize(value));
   jest.useFakeTimers();
   jest.clearAllMocks();
+  mockGetFeatureFlagClient.mockImplementation(() => OpenFeature.getClient('auto-open-guide-test'));
+  mockSessionId = 'test-session';
   sessionStorage.clear();
   localStorage.clear();
   mockPathfinderOpen = false;
@@ -207,6 +219,9 @@ it('offers each guide once per browser, and the next guide on its own page', asy
   expect(attemptAutoOpen).not.toHaveBeenCalled();
 });
 
+const offers = () =>
+  (reportAppInteraction as jest.Mock).mock.calls.filter(([name]) => name === UserInteraction.AutoOpenGuideEligible);
+
 it('makes one offer per page visit when several experiences match it', async () => {
   const overlapping = [
     { guide: 'bundled:first', pages: ['/explore*'] },
@@ -215,8 +230,6 @@ it('makes one offer per page visit when several experiences match it', async () 
   await start('/explore', { variant: 'control', experiences: overlapping });
   await navigate('/explore');
 
-  const offers = () =>
-    (reportAppInteraction as jest.Mock).mock.calls.filter(([name]) => name === UserInteraction.AutoOpenGuideEligible);
   expect(offers()).toHaveLength(1);
   expect(getAutoOpenGuideEnrollment()?.offeredGuide).toBe('bundled:first');
 
@@ -227,17 +240,87 @@ it('makes one offer per page visit when several experiences match it', async () 
   expect(getAutoOpenGuideEnrollment()?.offeredGuide).toBe('bundled:second');
 });
 
-it('re-activates an already-offered browser at boot so later guide events keep the arm', async () => {
+it.each(['control', 'treatment'])(
+  'treats sub-paths of one pattern as the same visit in the %s arm',
+  async (variant) => {
+    const overlapping = [
+      { guide: 'bundled:first', pages: ['/explore*'] },
+      { guide: 'bundled:second', pages: ['/explore*'] },
+    ];
+    await start('/explore', { variant, experiences: overlapping });
+    await navigate('/explore/metrics');
+    await navigate('/explore/logs');
+
+    expect(offers()).toHaveLength(1);
+    expect(localStorage.getItem(`grafana-pathfinder-auto-open-guide-shown-localhost:bundled:second`)).toBeNull();
+  }
+);
+
+it('restores the arm at boot for an already-offered browser without a new exposure', async () => {
   await start('/explore', { variant: 'treatment', experiences: EXPERIENCES });
   stop?.();
   jest.clearAllMocks();
+  sessionStorage.clear();
   setAutoOpenGuideEnrollment(null);
 
   await start('/alerting', { variant: 'treatment', experiences: EXPERIENCES });
 
   expect(getAutoOpenGuideEnrollment()?.variant).toBe('treatment');
+  expect(reportExperimentView).not.toHaveBeenCalled();
+  expect(mockPushEvent).not.toHaveBeenCalled();
   expect(attemptAutoOpen).not.toHaveBeenCalled();
-  expect(reportAppInteraction).not.toHaveBeenCalled();
+});
+
+it('opens the live guide, and stays bounded, when the session cached an older payload', async () => {
+  await start('/alerting', { variant: 'treatment', experiences: EXPERIENCES });
+  await navigate('/dashboards');
+  stop?.();
+  jest.clearAllMocks();
+
+  const edited = [{ guide: 'bundled:new-explore-guide', pages: ['/explore*'] }, ...EXPERIENCES];
+  await start('/explore', { variant: 'treatment', experiences: edited });
+  await settle();
+
+  expect(installAutoLaunchOnMount).toHaveBeenCalledWith(expect.objectContaining({ url: 'bundled:new-explore-guide' }));
+  expect(offers()).toHaveLength(1);
+  expect(mockGetFeatureFlagClient.mock.calls.length).toBeLessThan(5);
+});
+
+it('makes one bounded attempt per visit and warns once when the SDK is unavailable', async () => {
+  mockSessionId = undefined;
+  await start('/explore', { variant: 'treatment', experiences: EXPERIENCES });
+  await navigate('/explore/metrics');
+  await settle();
+
+  expect(reportExperimentView).not.toHaveBeenCalled();
+  expect(attemptAutoOpen).not.toHaveBeenCalled();
+  expect(localStorage.getItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:explore-guide')).toBeNull();
+  expect(mockGetFeatureFlagClient.mock.calls.length).toBeLessThan(5);
+  expect(logger.warn).toHaveBeenCalledTimes(1);
+  expect(logger.warn).toHaveBeenCalledWith('[Pathfinder] Auto-open guide experiment unavailable', {
+    reason: 'no-session',
+  });
+});
+
+it('ignores an activation that resolves after stop()', async () => {
+  window.history.replaceState(null, '', '/explore');
+  await flag({ variant: 'treatment', experiences: EXPERIENCES });
+  const pendingStop = await startAutoOpenGuideExperiment();
+  pendingStop();
+  await settle();
+
+  expect(attemptAutoOpen).not.toHaveBeenCalled();
+  expect(getAutoOpenGuideEnrollment()).toBeNull();
+});
+
+it('warns once per page load for a rejected payload', async () => {
+  await start('/explore', { variant: 'treatment', experiences: [] });
+  await navigate('/alerting');
+
+  expect(logger.warn).toHaveBeenCalledWith(
+    expect.stringContaining("Rejected the remote payload for 'pathfinder.auto-open-guide-experiment'"),
+    { reason: 'invalid_shape' }
+  );
 });
 
 it.each([

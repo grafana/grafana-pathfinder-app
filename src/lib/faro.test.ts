@@ -671,7 +671,7 @@ describe('initFaro', () => {
 
   it('stamps active experiment cohorts onto the session as the versioned schema', async () => {
     mockGetActiveExperiments.mockReturnValueOnce([
-      { flag: 'pathfinder.auto-open-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome', pages: [] },
+      { flag: 'pathfinder.example-experiment', variant: 'treatment', pages: [] },
     ]);
     const faro = freshFaro();
     await faro.initFaro();
@@ -682,9 +682,7 @@ describe('initFaro', () => {
         attributes: expect.objectContaining({
           experiments: JSON.stringify({
             v: 1,
-            cohorts: [
-              { flag: 'pathfinder.auto-open-guide-experiment', variant: 'treatment', guideId: 'bundled:welcome' },
-            ],
+            cohorts: [{ flag: 'pathfinder.example-experiment', variant: 'treatment' }],
           }),
         }),
       })
