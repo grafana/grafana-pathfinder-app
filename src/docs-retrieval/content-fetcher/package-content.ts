@@ -20,6 +20,7 @@ import { fetchContent } from '../content-fetcher';
 import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
+import { readDeclaredStartingLocation } from '../../recovery/starting-location';
 import { getPackageResolver, setPackageResolver, setPackageResolverFactory } from './package-resolver-registry';
 
 export { setPackageResolver, setPackageResolverFactory };
@@ -374,6 +375,7 @@ export async function fetchPackageContent(
   }
 
   const resolvedRepository = repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
+  const loaderStartingLocation = readDeclaredStartingLocation(result.content.metadata.packageManifest);
 
   let learningJourney: LearningJourneyMetadata | undefined;
   // Set only for a track-only member (see the isTrackOnlyMember branch
@@ -536,9 +538,14 @@ export async function fetchPackageContent(
       metadata: {
         ...result.content.metadata,
         // Merge, not replace: a catalogue entry is a slim projection and would
-        // otherwise bury fields the loader resolved in full (issue #1681).
+        // otherwise bury fields the loader resolved in full (issue #1681). The
+        // loaded guide's own starting location narrows an enclosing path's.
         ...(packageManifest !== undefined && {
-          packageManifest: { ...result.content.metadata.packageManifest, ...packageManifest },
+          packageManifest: {
+            ...result.content.metadata.packageManifest,
+            ...packageManifest,
+            ...(loaderStartingLocation && { startingLocation: loaderStartingLocation }),
+          },
         }),
         // Fall back to the repository the baseUrl resolution already carries, so
         // an entry path that supplies no explicit one still keys the durable

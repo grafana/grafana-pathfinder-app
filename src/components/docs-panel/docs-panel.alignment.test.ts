@@ -238,6 +238,7 @@ jest.mock('../../constants/testIds', () => ({
 }));
 
 jest.mock('../../types/package.types', () => ({
+  ...jest.requireActual('../../types/package.types'),
   getPackageRenderType: jest.fn(() => 'interactive'),
 }));
 
@@ -1112,7 +1113,7 @@ describe('CombinedLearningJourneyPanel — package resolver config source', () =
 // Acceptance: starting location follows the page the reader is on
 // ---------------------------------------------------------------------------
 
-describe('CombinedLearningJourneyPanel — learning path starting-location inheritance', () => {
+describe('CombinedLearningJourneyPanel — a milestone narrows its path starting location', () => {
   const PATH_START = '/x-start';
   const MILESTONE_A_START = '/a-start';
   const MILESTONE_B_START = '/b-start';
@@ -1145,10 +1146,18 @@ describe('CombinedLearningJourneyPanel — learning path starting-location inher
 
   it('prompts with X on the landing page, A on milestone A, and B on milestone B', async () => {
     const docsRetrieval = jest.requireMock('../../docs-retrieval');
-    mockLoadDocsTabContentResult
-      .mockResolvedValueOnce({ content: makePathOrMilestoneContent('bundled:x/content.json', PATH_START) })
-      .mockResolvedValueOnce({ content: makePathOrMilestoneContent('bundled:a/content.json', MILESTONE_A_START) })
-      .mockResolvedValueOnce({ content: makePathOrMilestoneContent('bundled:b/content.json', MILESTONE_B_START) });
+    const { fetchPackageContent } = jest.requireActual('../../docs-retrieval/content-fetcher/package-content');
+    const ownStartingLocations: Record<string, string> = {
+      'bundled:x/content.json': PATH_START,
+      'bundled:a/content.json': MILESTONE_A_START,
+      'bundled:b/content.json': MILESTONE_B_START,
+    };
+    mockLoadDocsTabContentResult.mockImplementation(
+      (url: string, options: { packageInfo?: { packageManifest?: Record<string, unknown> } }) =>
+        fetchPackageContent(url, options.packageInfo?.packageManifest, undefined, undefined, {
+          content: makePathOrMilestoneContent(url, ownStartingLocations[url]!),
+        })
+    );
     docsRetrieval.getNextMilestoneUrlFromContent
       .mockReturnValueOnce('bundled:a/content.json')
       .mockReturnValueOnce('bundled:b/content.json');

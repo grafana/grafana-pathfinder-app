@@ -7,7 +7,7 @@ export interface DocsLoadAlignmentInput {
   requestedUrl: string;
   packageManifest?: Record<string, unknown>;
   fetchedManifest?: Record<string, unknown>;
-  packageManifestIsInherited?: boolean;
+  packageManifestIsFromEnclosingPath?: boolean;
   currentPath: string;
   launchSource: LaunchSource | null;
   isAdmin: boolean;
@@ -41,7 +41,7 @@ export function resolveDocsLoadAlignment({
   requestedUrl,
   packageManifest,
   fetchedManifest,
-  packageManifestIsInherited,
+  packageManifestIsFromEnclosingPath,
   currentPath,
   launchSource,
   isAdmin,
@@ -49,7 +49,7 @@ export function resolveDocsLoadAlignment({
 }: DocsLoadAlignmentInput): PendingAlignmentDecision | undefined {
   const startingLocation = resolveStartingLocation(
     requestedUrl,
-    packageManifestIsInherited ? [fetchedManifest, packageManifest] : [packageManifest, fetchedManifest],
+    packageManifestIsFromEnclosingPath ? [fetchedManifest, packageManifest] : [packageManifest, fetchedManifest],
     { isAdmin }
   );
   const evaluation = evaluateAlignment({

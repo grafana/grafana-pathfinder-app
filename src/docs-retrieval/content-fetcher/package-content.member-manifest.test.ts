@@ -109,3 +109,32 @@ describe('member launch keeps the loader manifest reachable', () => {
     ).toBeNull();
   });
 });
+
+describe('a milestone narrows its path starting location', () => {
+  const pathManifest = { ...slimCatalogueManifest, startingLocation: '/x-start' };
+
+  it("keeps the milestone's own starting location over the path's", async () => {
+    mockFetch.mockReturnValue(backendGuideResource({ startingLocation: '/a-start' }));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', pathManifest);
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/a-start');
+    expect(result.content?.metadata.packageManifest?.id).toBe('fe-alerting-path');
+  });
+
+  it('keeps a starting location App Platform left under additionalFields over the path one', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({ additionalFields: { startingLocation: '/a-start' } }));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', pathManifest);
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/a-start');
+  });
+
+  it("falls back to the path's starting location when the milestone declares none", async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', pathManifest);
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/x-start');
+  });
+});
