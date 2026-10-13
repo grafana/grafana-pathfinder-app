@@ -124,7 +124,13 @@ The hook returns a comprehensive state object including:
 - `exists-reftarget` - Target element exists in DOM (supports lazy rendering)
 - `navmenu-open` - Navigation menu is open and docked
 - `on-page:<path>` - User is on specific page/URL path
+- `dashboard-group-by:<uid>:<variable>:<key>` - Combined dashboard filter variable renders the grouping, with matching URL state when a variable URL override is present
+- `dashboard-filter-absent:<uid>:<variable>:<key>` - Combined dashboard filter variable has no filter for the key in either its URL or rendered control
 - `form-valid` - Form is valid and ready for submission
+
+These dashboard conditions require the exact dashboard UID and one visible, enabled combined filter control. Use grouping requirements on dependent sections and steps; historical section completion alone does not establish current dashboard readiness. Use filter absence as a cleanup step objective so an already-cleared filter completes without a missing-target error. Include the preceding section's completion in that objective when an earlier section creates the filter, so cleanup does not complete before the filter is added. For example, `dashboard-group-by:canvvlh:filter:job` pairs with `dashboard-filter-absent:canvvlh:filter:job`. Identifiers contain only letters, digits, underscores, and hyphens.
+
+A `dashboard-state` fix restores only the named grouping or removes only the named filter, preserving other URL parameters and guide completion. Recovery is offered only when rendered selections are represented in the URL; ambiguous, hidden, or loading controls cannot be restored. It does not save the dashboard. These conditions need a runtime and CLI release that includes their handlers before guide publication.
 
 **Environment & Features:**
 

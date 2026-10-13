@@ -43,6 +43,7 @@ import {
   dashboardExistsCheck,
   datasourceConfiguredCheck,
 } from './checks/grafana-api';
+import { dashboardStateCheck } from './checks/dashboard-state';
 import { onPageCheck } from './checks/location';
 import { hasFeatureCheck, inEnvironmentCheck, minVersionCheck, rendererCheck } from './checks/env';
 import { guideVariableCheck } from './checks/vars';
@@ -124,6 +125,12 @@ const CHECK_HANDLERS: readonly CheckHandler[] = [
     run: (c) => hasDashboardNamedCheck(c),
   },
   { id: 'dashboard-exists', match: (c) => c === 'dashboard-exists', run: (c) => dashboardExistsCheck(c) },
+  { id: 'dashboard-group-by:', match: (c) => c.startsWith('dashboard-group-by:'), run: (c) => dashboardStateCheck(c) },
+  {
+    id: 'dashboard-filter-absent:',
+    match: (c) => c.startsWith('dashboard-filter-absent:'),
+    run: (c) => dashboardStateCheck(c),
+  },
   { id: 'on-page:', match: (c) => c.startsWith('on-page:'), run: (c) => onPageCheck(c) },
   { id: 'has-feature:', match: (c) => c.startsWith('has-feature:'), run: (c) => hasFeatureCheck(c) },
   { id: 'in-environment:', match: (c) => c.startsWith('in-environment:'), run: (c) => inEnvironmentCheck(c) },

@@ -1,4 +1,5 @@
 import { expandParentNavigationHandler } from './expand-parent-navigation';
+import { dashboardStateHandler } from './dashboard-state';
 import { locationHandler } from './location';
 import { expandOptionsGroupHandler } from './expand-options-group';
 import { navigationHandler } from './navigation';
@@ -15,6 +16,7 @@ import type { FixHandler } from './types';
 export const FIX_HANDLERS: readonly FixHandler[] = [
   expandParentNavigationHandler,
   locationHandler,
+  dashboardStateHandler,
   expandOptionsGroupHandler,
   navigationHandler,
 ];

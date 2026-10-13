@@ -1119,7 +1119,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     const isFragile = INTERACTIVE_CONFIG.requirements.heartbeat.onlyForFragile
       ? hasConditionToken(requirements, FixedRequirementType.NAVMENU_OPEN) ||
         hasConditionToken(requirements, FixedRequirementType.EXISTS_REFTARGET) ||
-        hasConditionPrefix(requirements, ParameterizedRequirementPrefix.ON_PAGE)
+        hasConditionPrefix(requirements, ParameterizedRequirementPrefix.ON_PAGE) ||
+        hasConditionPrefix(requirements, ParameterizedRequirementPrefix.DASHBOARD_GROUP_BY) ||
+        hasConditionPrefix(requirements, ParameterizedRequirementPrefix.DASHBOARD_FILTER_ABSENT)
       : reqTokens.length > 0;
 
     // A controller's fragile step often starts blocked; poll the live tab while

@@ -9,7 +9,14 @@
 // tab instead of stripped (F-1063-2).
 import type { ConditionInput } from '../types/requirements.types';
 import { conditionTokens } from '../lib/condition-input';
-export const TAB_LOCAL_REQUIREMENTS = ['exists-reftarget', 'navmenu-open', 'on-page', 'form-valid'];
+export const TAB_LOCAL_REQUIREMENTS = [
+  'exists-reftarget',
+  'navmenu-open',
+  'on-page',
+  'form-valid',
+  'dashboard-group-by',
+  'dashboard-filter-absent',
+];
 
 function isTabLocal(token: string): boolean {
   return TAB_LOCAL_REQUIREMENTS.some((id) => token === id || token.startsWith(`${id}:`));

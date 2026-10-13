@@ -12,6 +12,7 @@ export const FIX_TYPES = {
   NAVIGATION: 'navigation',
   LAZY_SCROLL: 'lazy-scroll',
   LOCATION: 'location',
+  DASHBOARD_STATE: 'dashboard-state',
   EXPAND_PARENT_NAVIGATION: 'expand-parent-navigation',
   EXPAND_OPTIONS_GROUP: 'expand-options-group',
 } as const;

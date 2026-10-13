@@ -1404,7 +1404,7 @@ export function InteractiveSection({
                 data-testid={testIds.interactive.requirementFixButton(sectionId)}
                 onClick={fixSectionRequirements}
               >
-                Fix this
+                {sectionRequirementsStatus.fixType === 'dashboard-state' ? 'Restore this section' : 'Fix this'}
               </button>
             </div>
           )}

@@ -12,7 +12,14 @@ describe('TAB_LOCAL_REQUIREMENTS drift guard (F-1063-2)', () => {
   // tab instead of stripped. Update both together; this test is the reminder.
   it('contains exactly the known DOM/URL/navigation-probing requirements', () => {
     expect([...TAB_LOCAL_REQUIREMENTS].sort()).toEqual(
-      ['exists-reftarget', 'form-valid', 'navmenu-open', 'on-page'].sort()
+      [
+        'exists-reftarget',
+        'form-valid',
+        'navmenu-open',
+        'on-page',
+        'dashboard-group-by',
+        'dashboard-filter-absent',
+      ].sort()
     );
   });
 
