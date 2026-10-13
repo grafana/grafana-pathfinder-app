@@ -108,6 +108,7 @@ type inProgressCompletion struct {
 	PathID            string `json:"pathId"`
 	CompletionPercent int64  `json:"completionPercent"`
 	LastUpdatedAt     string `json:"lastUpdatedAt"`
+	AttemptStartedAt  string `json:"attemptStartedAt,omitempty"`
 }
 
 // collatedCompletion is one entry per (guideSource, guideId) for a single user.
@@ -121,6 +122,16 @@ type collatedCompletion struct {
 	LatestCompletedAt    string `json:"latestCompletedAt"`
 	LatestSource         string `json:"latestSource"`
 	MaxCompletionPercent int64  `json:"maxCompletionPercent"`
+
+	// LatestDurationSeconds is the latest completion's duration; omitted when
+	// 0 because legacy writes made it optional.
+	LatestDurationSeconds int64 `json:"latestDurationSeconds,omitempty"`
+	// LastRecordedAt is the newest LastUpdatedAt across every record of the
+	// guide, completions and attempts alike.
+	LastRecordedAt string `json:"lastRecordedAt,omitempty"`
+	// LatestAttemptStartedAt is the newest AttemptStartedAt across every
+	// record of the guide.
+	LatestAttemptStartedAt string `json:"latestAttemptStartedAt,omitempty"`
 }
 
 // myCompletionsResponse is the GET /completion-records/my envelope.
@@ -484,6 +495,9 @@ func collateCompletions(records []completionRecordSpec) (map[string][]collatedCo
 		partialTime time.Time
 		partialOK   bool
 		hasPartial  bool
+
+		recorded       latestStamp
+		attemptStarted latestStamp
 	}
 
 	perUser := map[string]map[key]*acc{}
@@ -503,6 +517,9 @@ func collateCompletions(records []completionRecordSpec) (map[string][]collatedCo
 			groups[k] = a
 		}
 
+		a.recorded.offer(rec.LastUpdatedAt)
+		a.attemptStarted.offer(rec.AttemptStartedAt)
+
 		updated, updatedOK := parseCompletionTime(rec.CompletedAt)
 		if rec.CompletedAt == "" {
 			updated, updatedOK = parseCompletionTime(rec.AttemptStartedAt)
@@ -519,6 +536,7 @@ func collateCompletions(records []completionRecordSpec) (map[string][]collatedCo
 					PathID:            rec.PathID,
 					CompletionPercent: rec.CompletionPercent,
 					LastUpdatedAt:     rec.LastUpdatedAt,
+					AttemptStartedAt:  rec.AttemptStartedAt,
 				}
 			}
 			continue
@@ -537,6 +555,7 @@ func collateCompletions(records []completionRecordSpec) (map[string][]collatedCo
 			a.latestTime, a.latestOK, a.has = t, ok, true
 			a.entry.LatestCompletedAt = rec.CompletedAt
 			a.entry.LatestSource = rec.Source
+			a.entry.LatestDurationSeconds = rec.DurationSeconds
 			a.entry.GuideTitle = rec.GuideTitle
 			a.entry.GuideCategory = rec.GuideCategory
 			a.entry.PathID = rec.PathID
@@ -550,6 +569,8 @@ func collateCompletions(records []completionRecordSpec) (map[string][]collatedCo
 		var partials []inProgressCompletion
 		for _, a := range groups {
 			if a.entry.Count > 0 {
+				a.entry.LastRecordedAt = a.recorded.raw
+				a.entry.LatestAttemptStartedAt = a.attemptStarted.raw
 				entries = append(entries, a.entry)
 			}
 			// A partial shows when nothing is completed yet, or when it is
@@ -590,6 +611,26 @@ func inProgressLess(x, y inProgressCompletion) bool {
 		return x.GuideSource > y.GuideSource
 	}
 	return x.GuideID > y.GuideID
+}
+
+// latestStamp tracks the newest of a series of timestamp strings with
+// shouldReplaceLatest's rules, keeping the winner's original text. An empty
+// string is never offered; an unparseable one never beats a parseable one.
+type latestStamp struct {
+	raw string
+	t   time.Time
+	ok  bool
+	has bool
+}
+
+func (l *latestStamp) offer(s string) {
+	if s == "" {
+		return
+	}
+	t, ok := parseCompletionTime(s)
+	if shouldReplaceLatest(l.t, l.ok, l.has, t, ok) {
+		l.raw, l.t, l.ok, l.has = s, t, ok, true
+	}
 }
 
 // shouldReplaceLatest reports whether a candidate record should become the

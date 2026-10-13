@@ -43,8 +43,8 @@ const (
 var completionRecordsAggregationToggle = aggregationToggle(appPlatformGroup)
 
 // completionRecordSpec mirrors the fields of the CompletionRecord `spec` that
-// this read proxy consumes. Unlisted spec fields (durationSeconds, userLogin,
-// recordedAt, orgId, …) are ignored by encoding/json. Field names track
+// this read proxy consumes. Unlisted spec fields (userLogin, orgId, …) are
+// ignored by encoding/json. Field names track
 // kinds/completionrecord.cue.
 //
 // CompletedAt is empty on an in-progress attempt record (the CRD makes it
@@ -60,6 +60,7 @@ type completionRecordSpec struct {
 	CompletedAt       string `json:"completedAt"`
 	RecordedAt        string `json:"recordedAt"`
 	CompletionPercent int64  `json:"completionPercent"`
+	DurationSeconds   int64  `json:"durationSeconds"`
 
 	// LastUpdatedAt is when the record last changed: the server-stamped
 	// grafana.app/updatedTimestamp annotation when present and parseable, else

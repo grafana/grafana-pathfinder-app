@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1002,5 +1003,126 @@ func TestCapability_ColdTerminalFailureUnavailable(t *testing.T) {
 	}
 	if cap.Reason != reasonBackendUnavailable {
 		t.Errorf("reason = %q, want %q", cap.Reason, reasonBackendUnavailable)
+	}
+}
+
+// --- Recommend-projection fields ----------------------------------------------
+
+func TestCollation_RecordedAndAttemptFields(t *testing.T) {
+	done := func(completedAt string, duration int64, updated, started string) completionRecordSpec {
+		r := rec("user:1", "bundled", "linux", "Linux", "interactive", "", "objectives", completedAt, 100)
+		r.DurationSeconds, r.LastUpdatedAt, r.AttemptStartedAt = duration, updated, started
+		return r
+	}
+	attempt := func(updated, started string, percent int64) completionRecordSpec {
+		r := rec("user:1", "bundled", "linux", "Linux", "interactive", "", "objectives", "", percent)
+		r.LastUpdatedAt, r.AttemptStartedAt = updated, started
+		return r
+	}
+
+	tests := []struct {
+		name         string
+		records      []completionRecordSpec
+		wantCount    int
+		wantDuration int64
+		wantRecorded string
+		wantStarted  string
+		wantPartial  string
+	}{
+		{
+			name: "newer attempt after a completion feeds recorded and started",
+			records: []completionRecordSpec{
+				done("2026-09-01T14:03:22Z", 742, "2026-09-01T14:03:22Z", "2026-09-01T13:50:00Z"),
+				attempt("2026-10-02T09:12:40Z", "2026-10-02T09:01:10Z", 40),
+			},
+			wantCount:    1,
+			wantDuration: 742,
+			wantRecorded: "2026-10-02T09:12:40Z",
+			wantStarted:  "2026-10-02T09:01:10Z",
+			wantPartial:  "2026-10-02T09:01:10Z",
+		},
+		{
+			name: "duration comes from the newest completion, not the largest",
+			records: []completionRecordSpec{
+				done("2026-09-01T00:00:00Z", 900, "2026-09-01T00:00:00Z", ""),
+				done("2026-09-05T00:00:00Z", 30, "2026-09-05T00:00:00Z", ""),
+			},
+			wantCount:    2,
+			wantDuration: 30,
+			wantRecorded: "2026-09-05T00:00:00Z",
+		},
+		{
+			name: "legacy records without annotations leave the new fields empty",
+			records: []completionRecordSpec{
+				done("2026-09-01T00:00:00Z", 0, "", ""),
+			},
+			wantCount: 1,
+		},
+		{
+			name: "unparseable timestamps never beat parseable ones",
+			records: []completionRecordSpec{
+				done("2026-09-01T00:00:00Z", 5, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z"),
+				done("2026-09-02T00:00:00Z", 5, "not-a-time", "garbage"),
+			},
+			wantCount:    2,
+			wantDuration: 5,
+			wantRecorded: "2026-09-01T00:00:00Z",
+			wantStarted:  "2026-09-01T00:00:00Z",
+		},
+		{
+			name: "partial row at 60 percent does not count as done",
+			records: []completionRecordSpec{
+				done("2026-09-01T00:00:00Z", 10, "2026-09-01T00:00:00Z", ""),
+				attempt("2026-09-01T00:00:00Z", "2026-08-01T00:00:00Z", 60),
+			},
+			wantCount:    1,
+			wantDuration: 10,
+			wantRecorded: "2026-09-01T00:00:00Z",
+			wantStarted:  "2026-08-01T00:00:00Z",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			completions, inProgress := collateCompletions(tc.records)
+			entries := completions["user:1"]
+			if len(entries) != 1 {
+				t.Fatalf("completions = %d, want 1", len(entries))
+			}
+			e := entries[0]
+			if e.Count != tc.wantCount {
+				t.Errorf("count = %d, want %d (attempt rows never count)", e.Count, tc.wantCount)
+			}
+			if e.LatestDurationSeconds != tc.wantDuration {
+				t.Errorf("latestDurationSeconds = %d, want %d", e.LatestDurationSeconds, tc.wantDuration)
+			}
+			if e.LastRecordedAt != tc.wantRecorded {
+				t.Errorf("lastRecordedAt = %q, want %q", e.LastRecordedAt, tc.wantRecorded)
+			}
+			if e.LatestAttemptStartedAt != tc.wantStarted {
+				t.Errorf("latestAttemptStartedAt = %q, want %q", e.LatestAttemptStartedAt, tc.wantStarted)
+			}
+			got := ""
+			if p := inProgress["user:1"]; len(p) == 1 {
+				got = p[0].AttemptStartedAt
+			}
+			if got != tc.wantPartial {
+				t.Errorf("inProgress attemptStartedAt = %q, want %q", got, tc.wantPartial)
+			}
+		})
+	}
+}
+
+func TestCollation_NewFieldsOmittedFromJSONWhenEmpty(t *testing.T) {
+	completions, _ := collateCompletions([]completionRecordSpec{
+		rec("user:1", "bundled", "linux", "Linux", "interactive", "", "objectives", "2026-09-01T00:00:00Z", 100),
+	})
+	raw, err := json.Marshal(completions["user:1"][0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"latestDurationSeconds", "lastRecordedAt", "latestAttemptStartedAt"} {
+		if strings.Contains(string(raw), k) {
+			t.Errorf("%s present in %s, want omitted", k, raw)
+		}
 	}
 }
