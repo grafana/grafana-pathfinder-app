@@ -88,7 +88,7 @@ for (const theme of ['light', 'dark']) {
     await expect(page.getByLabel('Your website')).toBeFocused();
     await page.getByLabel('Your website').fill('ftp://example.com');
     await page.getByLabel('Your website').press('Enter');
-    await expect(page.getByRole('dialog', { name: 'Kiosk mode' }).getByRole('alert')).toContainText(
+    await expect(page.getByTestId(testIds.kioskMode.overlay).getByRole('alert')).toContainText(
       'Enter a website address'
     );
     await page.getByLabel('Your website').fill('https://example.com');

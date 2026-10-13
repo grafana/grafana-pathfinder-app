@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { StorageKeys } from '../src/lib/storage-keys';
 import { test, expect } from './fixtures';
 import genericCatalog from '../src/components/kiosk/default-kiosk.json';
@@ -11,6 +12,61 @@ const catalog = (title: string) => ({
     { title: `${title} guide`, url: 'bundled:welcome-to-grafana', description: 'Learn Grafana', type: 'interactive' },
   ],
 });
+
+async function mockCoreConceptsPackage(page: Page) {
+  const baseUrl = 'https://interactive-learning.grafana.net/packages/';
+  const path = 'core-grafana-concepts-lj';
+  const milestoneId = 'core-grafana-concepts-data-sources';
+  const milestoneManifest = {
+    schemaVersion: '1.1.0',
+    id: milestoneId,
+    type: 'guide',
+    description: 'Learn how data source connections work.',
+  };
+  const responses: Record<string, unknown> = {
+    [`${path}/content.json`]: {
+      schemaVersion: '1.1.0',
+      id: path,
+      title: 'Core Grafana concepts',
+      blocks: [{ type: 'markdown', content: 'Explore the core concepts in this learning path.' }],
+    },
+    [`${path}/manifest.json`]: {
+      schemaVersion: '1.1.0',
+      id: path,
+      type: 'path',
+      milestones: [milestoneId],
+    },
+    [`${path}/data-sources/manifest.json`]: milestoneManifest,
+    [`${path}/data-sources/content.json`]: {
+      schemaVersion: '1.1.0',
+      id: milestoneId,
+      title: 'Data sources',
+      blocks: [{ type: 'markdown', content: 'Data source milestone loaded.' }],
+    },
+  };
+  await page.route(`${baseUrl}${path}/**`, (route) => {
+    const response = responses[route.request().url().slice(baseUrl.length)];
+    return response
+      ? route.fulfill({ json: response })
+      : route.fulfill({ status: 404, body: 'Unknown fixture resource' });
+  });
+  await page.route('**/api/plugins/grafana-pathfinder-app/resources/package-recommendations', (route) =>
+    route.fulfill({
+      json: {
+        baseUrl,
+        packages: [
+          {
+            id: milestoneId,
+            path: `${path}/data-sources/`,
+            title: 'Data sources',
+            type: 'guide',
+            manifest: milestoneManifest,
+          },
+        ],
+      },
+    })
+  );
+}
 
 function kioskSearch(rulesUrl?: string): string {
   const params = new URLSearchParams({ pathfinderKiosk: '1', orgId: '1' });
@@ -171,6 +227,7 @@ for (const theme of ['light', 'dark']) {
 
 for (const offline of [false, true]) {
   test(`shows the generic ${offline ? 'bundled' : 'CDN'} catalog when selected catalogs fail`, async ({ page }) => {
+    await mockCoreConceptsPackage(page);
     await page.route(customUrl, (route) => route.fulfill({ status: 404, body: 'Missing' }));
     await page.route(defaultUrl, (route) => route.fulfill({ status: 404, body: 'Missing' }));
     await page.route('https://interactive-learning.grafana.net/guides/kiosk/default/rules.json', (route) =>
@@ -189,7 +246,8 @@ for (const offline of [false, true]) {
     expect(new URL(page.url()).pathname).toBe('/a/grafana-pathfinder-app');
     await expect(page.getByTestId(testIds.docsPanel.container)).toContainText('Core Grafana concepts');
     await expect(page.getByRole('button', { name: 'Next milestone', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Data sources Learn how/ })).toBeVisible();
+    await page.getByRole('button', { name: /^Data sources Learn how/ }).click();
+    await expect(page.getByTestId(testIds.docsPanel.container)).toContainText('Data source milestone loaded.');
     expect(new URL(page.url()).searchParams.has('pathfinderKiosk')).toBe(false);
     expect(page.context().pages()).toHaveLength(pagesBefore);
   });

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IconButton, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { copyTextToClipboard } from '../../lib/clipboard';
 import { testIds } from '../../constants/testIds';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
 import { getFullScreenStyles } from './full-screen.styles';
@@ -46,7 +47,7 @@ export function FullScreenLayout({
   children,
 }: FullScreenLayoutProps) {
   const styles = useStyles2(getFullScreenStyles);
-  const [linkCopied, setLinkCopied] = useState(false);
+  const [linkCopy, setLinkCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const handleCopyLink = useCallback(() => {
@@ -54,17 +55,14 @@ export function FullScreenLayout({
       return;
     }
     const shareUrl = buildPathfinderShareUrl({ doc: guideUrl, panelMode: 'fullscreen', guideType });
-    navigator.clipboard
-      .writeText(shareUrl)
-      .then(() => {
-        setLinkCopied(true);
-        clearTimeout(copyTimerRef.current);
-        copyTimerRef.current = setTimeout(() => setLinkCopied(false), 2000);
+    copyTextToClipboard(shareUrl).then((copied) => {
+      setLinkCopy(copied ? 'copied' : 'failed');
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setLinkCopy('idle'), 2000);
+      if (copied) {
         reportAppInteraction(UserInteraction.FullScreenCopyLink, { guide_url: guideUrl });
-      })
-      .catch(() => {
-        // Clipboard may be unavailable in some contexts
-      });
+      }
+    });
   }, [guideUrl, guideType]);
 
   useEffect(
@@ -109,12 +107,14 @@ export function FullScreenLayout({
           <div className={styles.headerActions}>
             {hasActiveGuide && guideUrl && (
               <IconButton
-                name={linkCopied ? 'check' : 'link'}
+                name={linkCopy === 'copied' ? 'check' : linkCopy === 'failed' ? 'exclamation-triangle' : 'link'}
                 size="sm"
                 tooltip={
-                  linkCopied
+                  linkCopy === 'copied'
                     ? t('fullScreen.copyLinkCopied', 'Copied!')
-                    : t('fullScreen.copyLinkTooltip', 'Copy link to this guide')
+                    : linkCopy === 'failed'
+                      ? t('fullScreen.copyLinkFailed', 'Could not copy the link')
+                      : t('fullScreen.copyLinkTooltip', 'Copy link to this guide')
                 }
                 onClick={handleCopyLink}
                 aria-label={t('fullScreen.copyLinkTooltip', 'Copy link to this guide')}
