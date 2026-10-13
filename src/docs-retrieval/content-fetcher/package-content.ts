@@ -376,9 +376,10 @@ export async function fetchPackageContent(
 
   const resolvedRepository = repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
   const knownMilestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
-  const loadedMilestone = knownMilestones?.find((m) =>
-    explicitGuideId ? m.id === explicitGuideId : m.url === contentUrl
-  );
+  const loadedMilestone = [
+    ...(knownMilestones ?? []),
+    ...(pathTracks?.resolved ?? []).flatMap((track) => track.milestones),
+  ].find((m) => (explicitGuideId ? m.id === explicitGuideId : m.url === contentUrl));
   const ownStartingLocation =
     readDeclaredStartingLocation(result.content.metadata.packageManifest) ??
     (loadedMilestone?.startingLocation || null);

@@ -8,7 +8,7 @@
  * the alignment prompt never appeared.
  */
 import { of } from 'rxjs';
-import { fetchPackageContent } from './package-content';
+import { fetchPackageContent, setPackageResolver } from './package-content';
 import { resolveStartingLocation } from '../../recovery/starting-location';
 
 const mockFetch = jest.fn();
@@ -185,5 +185,30 @@ describe('a CDN milestone narrows its path starting location', () => {
 
   it("keeps the path's starting location on its own landing page", async () => {
     expect(await startingLocationFor(pathUrl)).toBe('/x-start');
+  });
+
+  it("uses a track-only guide's own starting location over the path's", async () => {
+    const tUrl = `${CDN}/t-guide/content.json`;
+    setPackageResolver({
+      resolve: async (id: string) =>
+        id === 't-guide'
+          ? {
+              ok: true,
+              id,
+              contentUrl: tUrl,
+              manifestUrl: '',
+              repository: 'cdn',
+              manifest: { startingLocation: '/t-start' },
+            }
+          : { ok: false, id, error: { code: 'not-found', message: 'not found' } },
+    } as never);
+    const trackedPath = {
+      ...pathManifest,
+      tracks: [{ trackId: 'deep-dive', label: 'Deep dive', guides: ['t-guide'] }],
+    };
+
+    const result = await fetchPackageContent(tUrl, trackedPath, milestones, undefined, cdnContent(tUrl), 't-guide');
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/t-start');
   });
 });
