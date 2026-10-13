@@ -319,6 +319,28 @@ export function validateBlockConditions(guide: JsonGuide): ConditionIssue[] {
         if ('requirement' in check) {
           issues.push(...validateConditions([check.requirement], [...path, 'checkpoint', 'checks', i, 'requirement']));
         }
+        check.recover?.forEach((step, stepIndex) => {
+          step.objectives.forEach((objective, objectiveIndex) => {
+            if ('requirement' in objective) {
+              issues.push(
+                ...validateConditions(
+                  [objective.requirement],
+                  [
+                    ...path,
+                    'checkpoint',
+                    'checks',
+                    i,
+                    'recover',
+                    stepIndex,
+                    'objectives',
+                    objectiveIndex,
+                    'requirement',
+                  ]
+                )
+              );
+            }
+          });
+        });
       });
     }
 

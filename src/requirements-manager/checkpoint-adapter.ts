@@ -42,7 +42,8 @@ function readControl(check: Extract<JsonCheckpointCheck, { target: string }>) {
 export function createCheckpointAdapter(
   checkRequirements: (options: RequirementsCheckOptions) => Promise<RequirementsCheckResult>,
   fixContext: () => Promise<Omit<FixContext, 'requirements'>>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  replay?: CheckpointAdapter['replay']
 ): CheckpointAdapter {
   const readRequirement = async (requirement: string) => {
     if (requirement.startsWith('coda-exit-zero:') || requirement === 'exists-reftarget') {
@@ -51,6 +52,7 @@ export function createCheckpointAdapter(
     return checkRequirements({ requirements: [requirement], maxRetries: 0, targetAction: 'section' });
   };
   return {
+    replay,
     check: async (check): Promise<CheckpointResult> => {
       if (signal.aborted) {
         return { passed: false, canRestore: false };

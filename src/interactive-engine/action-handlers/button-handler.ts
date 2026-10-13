@@ -18,6 +18,40 @@ export class ButtonHandler {
     private context?: InteractiveElementData
   ) {}
 
+  async executeRecovery(data: InteractiveElementData): Promise<ActionExecutionResult> {
+    try {
+      data.signal?.throwIfAborted();
+      const resolved = await resolveWithRetry(data.refTarget, 'button', {
+        signal: data.signal,
+        delays: [],
+        relaxOnRetry: false,
+      });
+      data.signal?.throwIfAborted();
+      const button = resolved?.elements.length === 1 ? resolved.elements[0] : undefined;
+      if (
+        !button ||
+        !isElementVisible(button) ||
+        button.matches(':disabled, [aria-disabled="true"]') ||
+        button.closest('a[href]') ||
+        !button.matches('button, [role="button"], [role="tab"], [role="menuitem"]') ||
+        (button instanceof HTMLButtonElement &&
+          button.type !== 'button' &&
+          (button.form !== null || button.hasAttribute('type')))
+      ) {
+        return { outcome: 'error', reason: 'target_missing' };
+      }
+      const target = parseTargetState(data.targetState);
+      if (target) {
+        await clickToTargetState(button, target, async () => {});
+      } else {
+        button.click();
+      }
+      return { outcome: data.signal?.aborted ? 'cancelled' : 'ok' };
+    } catch {
+      return data.signal?.aborted ? { outcome: 'cancelled' } : { outcome: 'error', reason: 'action_failed' };
+    }
+  }
+
   async execute(data: InteractiveElementData, click: boolean): Promise<ActionExecutionResult> {
     if (data !== this.context && (data.signal || data.lazyRender)) {
       return new ButtonHandler(this.stateManager, this.navigationManager, this.waitForReactUpdates, data).execute(

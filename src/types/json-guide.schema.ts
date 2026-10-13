@@ -963,20 +963,43 @@ export const PresentationalBlockSchema = z.union([
 // ============ RECURSIVE BLOCK SCHEMAS ============
 
 // Common properties for recursive blocks to avoid duplication
+const CheckpointRequirementSchema = RequirementTokenSchema.refine(
+  (token) => !token.startsWith('coda-exit-zero:') && token !== 'exists-reftarget',
+  'Checkpoint requirements must be read-only; use a target check for element visibility'
+);
+const CheckpointTargetProps = {
+  target: z.string().trim().min(1).max(2000),
+  state: z.enum(['visible', 'expanded', 'selected']),
+};
+const CheckpointObjectiveSchema = z.union([
+  z.strictObject({
+    requirement: CheckpointRequirementSchema.refine(
+      (token) => !token.startsWith('section-completed:'),
+      'Recovery objectives must describe live state, not historical completion'
+    ),
+  }),
+  z.strictObject(CheckpointTargetProps),
+]);
+const CheckpointRecoverySchema = z
+  .array(
+    z.strictObject({
+      action: z.enum(['button', 'navigate']),
+      reftarget: z.string().trim().min(1).max(2000),
+      targetstate: TargetStateSchema,
+      replaySafe: z
+        .literal(true)
+        .describe('Author reviewed this action as safe to repeat; no resource writes or destructive actions'),
+      objectives: z.array(CheckpointObjectiveSchema).min(1).max(12),
+    })
+  )
+  .min(1)
+  .max(12);
 export const JsonSectionCheckpointSchema = z.strictObject({
   checks: z
     .array(
       z.union([
-        z.strictObject({
-          requirement: RequirementTokenSchema.refine(
-            (token) => !token.startsWith('coda-exit-zero:') && token !== 'exists-reftarget',
-            'Checkpoint requirements must be read-only; use a target check for element visibility'
-          ),
-        }),
-        z.strictObject({
-          target: z.string().trim().min(1).max(2000),
-          state: z.enum(['visible', 'expanded', 'selected']),
-        }),
+        z.strictObject({ requirement: CheckpointRequirementSchema, recover: CheckpointRecoverySchema.optional() }),
+        z.strictObject({ ...CheckpointTargetProps, recover: CheckpointRecoverySchema.optional() }),
       ])
     )
     .min(1)

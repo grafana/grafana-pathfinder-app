@@ -1,4 +1,4 @@
-import type { JsonCheckpointCheck, JsonSectionCheckpoint } from '../types/json-guide.types';
+import type { JsonCheckpointCheck, JsonCheckpointRecoveryStep, JsonSectionCheckpoint } from '../types/json-guide.types';
 
 export interface CheckpointResult {
   passed: boolean;
@@ -10,6 +10,7 @@ export interface CheckpointResult {
 export interface CheckpointAdapter {
   check: (check: JsonCheckpointCheck) => Promise<CheckpointResult>;
   restore: (check: JsonCheckpointCheck) => Promise<boolean>;
+  replay?: (step: JsonCheckpointRecoveryStep) => Promise<boolean>;
 }
 
 const cancelled = (): CheckpointResult => ({
@@ -32,7 +33,15 @@ export async function inspectCheckpoint(
       return cancelled();
     }
     if (!result.passed) {
-      return { ...result, checkIndex };
+      const hasRecipe = !!(check.recover?.length && adapter.replay);
+      return {
+        ...result,
+        canRestore: result.canRestore || hasRecipe,
+        explanation: hasRecipe
+          ? "Recovery can restore this state using the guide's saved actions."
+          : result.explanation,
+        checkIndex,
+      };
     }
   }
   return { passed: true, canRestore: false };
@@ -42,15 +51,61 @@ function waitForRender(signal: AbortSignal): Promise<void> {
   return new Promise<void>((resolve) => {
     const finish = () => {
       clearTimeout(timer);
+      observer?.disconnect();
       signal.removeEventListener('abort', finish);
       resolve();
     };
-    const timer = setTimeout(finish, 100);
+    const observer = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(finish);
+    const timer = setTimeout(finish, 50);
+    observer?.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
     signal.addEventListener('abort', finish, { once: true });
     if (signal.aborted) {
       finish();
     }
   });
+}
+
+async function replayRecovery(
+  checkpoint: JsonSectionCheckpoint,
+  checkIndex: number,
+  adapter: CheckpointAdapter,
+  signal: AbortSignal
+): Promise<boolean> {
+  const check = checkpoint.checks[checkIndex]!;
+  for (const step of check.recover ?? []) {
+    if (signal.aborted) {
+      return false;
+    }
+    // An open final view makes transient setup (such as its now-closed menu) unnecessary.
+    if ((await adapter.check(check)).passed) {
+      return true;
+    }
+    if (!(await inspectCheckpoint({ checks: checkpoint.checks.slice(0, checkIndex) }, adapter, signal)).passed) {
+      return false;
+    }
+    if ((await inspectCheckpoint({ checks: step.objectives }, adapter, signal)).passed) {
+      continue;
+    }
+    if (signal.aborted || !step.replaySafe || !(await adapter.replay?.(step))) {
+      return false;
+    }
+    let satisfied = false;
+    const deadline = Date.now() + 5000;
+    while (!signal.aborted) {
+      if ((await adapter.check(check)).passed) {
+        return true;
+      }
+      satisfied = (await inspectCheckpoint({ checks: step.objectives }, adapter, signal)).passed;
+      if (satisfied || Date.now() >= deadline) {
+        break;
+      }
+      await waitForRender(signal);
+    }
+    if (!satisfied) {
+      return false;
+    }
+  }
+  return !signal.aborted && (await adapter.check(check)).passed;
 }
 
 export async function restoreCheckpoint(
@@ -59,14 +114,13 @@ export async function restoreCheckpoint(
   signal: AbortSignal
 ): Promise<CheckpointResult> {
   const attempted = new Set<number>();
-  let settlingChecks = 0;
+  let settlingDeadline: number | undefined;
   while (!signal.aborted) {
     const result = await inspectCheckpoint(checkpoint, adapter, signal);
     if (signal.aborted) {
       return cancelled();
     }
-    if (!result.passed && !result.canRestore && attempted.size > 0 && settlingChecks < 50) {
-      settlingChecks++;
+    if (!result.passed && !result.canRestore && settlingDeadline !== undefined && Date.now() < settlingDeadline) {
       await waitForRender(signal);
       continue;
     }
@@ -78,14 +132,19 @@ export async function restoreCheckpoint(
     }
     attempted.add(result.checkIndex);
     const check = checkpoint.checks[result.checkIndex]!;
-    if (!(await adapter.restore(check))) {
+    const restored = check.recover?.length
+      ? await replayRecovery(checkpoint, result.checkIndex, adapter, signal)
+      : await adapter.restore(check);
+    if (!restored) {
       return {
         ...result,
         explanation: 'This condition could not be restored. Follow the recovery instructions and check again.',
       };
     }
+    settlingDeadline = Date.now() + 5000;
     // A dispatched action is not evidence that React has rendered the requested state.
-    for (let attempt = 0; attempt < 20 && !signal.aborted; attempt++) {
+    const verificationDeadline = Date.now() + 5000;
+    while (!signal.aborted && Date.now() < verificationDeadline) {
       if ((await adapter.check(check)).passed) {
         break;
       }

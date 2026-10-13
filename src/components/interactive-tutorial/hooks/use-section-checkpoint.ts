@@ -51,7 +51,27 @@ export function useSectionCheckpoint(
               fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(),
             };
           },
-          controller.signal
+          controller.signal,
+          async (step) => {
+            const { ButtonHandler, NavigateHandler, NavigationManager, InteractiveStateManager } =
+              await import('../../../interactive-engine');
+            if (controller.signal.aborted) {
+              return false;
+            }
+            const stateManager = new InteractiveStateManager();
+            const handler =
+              step.action === 'button'
+                ? new ButtonHandler(stateManager, new NavigationManager(), async () => {})
+                : new NavigateHandler(stateManager, async () => {});
+            const result = await handler.executeRecovery({
+              targetAction: step.action,
+              refTarget: step.reftarget,
+              targetState: step.targetstate,
+              signal: controller.signal,
+              tagName: 'button',
+            });
+            return result.outcome === 'ok';
+          }
         );
         try {
           const result = restore

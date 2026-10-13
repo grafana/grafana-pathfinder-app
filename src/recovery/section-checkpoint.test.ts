@@ -109,3 +109,94 @@ it('waits for controls to mount after navigation before restoring the next condi
   expect(adapter.restore).toHaveBeenCalledTimes(2);
   jest.useRealTimers();
 });
+
+const dialogCheckpoint: JsonSectionCheckpoint = {
+  checks: [
+    { requirement: 'on-page:/dashboards' },
+    {
+      target: '#dialog',
+      state: 'visible',
+      recover: [
+        {
+          action: 'button',
+          reftarget: '#menu-button',
+          replaySafe: true,
+          objectives: [{ target: '#menu', state: 'visible' }],
+        },
+        {
+          action: 'button',
+          reftarget: '#details',
+          replaySafe: true,
+          objectives: [{ target: '#dialog', state: 'visible' }],
+        },
+      ],
+    },
+  ],
+};
+
+function dialogAdapter(initial: string[]) {
+  const visible = new Set(initial);
+  const adapter: CheckpointAdapter = {
+    check: jest.fn(async (check) => ({
+      passed: 'requirement' in check || visible.has(check.target),
+      canRestore: false,
+    })),
+    restore: jest.fn(),
+    replay: jest.fn(async (step) => {
+      visible.add(step.reftarget === '#menu-button' ? '#menu' : '#dialog');
+      return true;
+    }),
+  };
+  return { adapter, visible };
+}
+
+it('offers an authored recovery recipe and skips actions whose live objectives already hold', async () => {
+  const { adapter } = dialogAdapter(['#menu']);
+  const signal = new AbortController().signal;
+  expect(await inspectCheckpoint(dialogCheckpoint, adapter, signal)).toMatchObject({ canRestore: true });
+  expect(await restoreCheckpoint(dialogCheckpoint, adapter, signal)).toMatchObject({ passed: true });
+  expect(adapter.replay).toHaveBeenCalledTimes(1);
+  expect(adapter.replay).toHaveBeenCalledWith(dialogCheckpoint.checks[1]!.recover![1]);
+});
+
+it('skips the entire recipe when the final view is ready, even if its setup menu has closed', async () => {
+  const { adapter } = dialogAdapter(['#dialog']);
+  expect(await restoreCheckpoint(dialogCheckpoint, adapter, new AbortController().signal)).toMatchObject({
+    passed: true,
+  });
+  expect(adapter.replay).not.toHaveBeenCalled();
+});
+
+it('stops immediately when an earlier action achieves the final checkpoint', async () => {
+  const { adapter, visible } = dialogAdapter([]);
+  adapter.replay = jest.fn(async () => {
+    visible.add('#dialog');
+    return true;
+  });
+  expect(await restoreCheckpoint(dialogCheckpoint, adapter, new AbortController().signal)).toMatchObject({
+    passed: true,
+  });
+  expect(adapter.replay).toHaveBeenCalledTimes(1);
+});
+
+it('does not replay the next action when an objective never appears', async () => {
+  jest.useFakeTimers();
+  const { adapter } = dialogAdapter([]);
+  adapter.replay = jest.fn(async () => true);
+  const result = restoreCheckpoint(dialogCheckpoint, adapter, new AbortController().signal);
+  await jest.runAllTimersAsync();
+  expect(await result).toMatchObject({ passed: false });
+  expect(adapter.replay).toHaveBeenCalledTimes(1);
+  jest.useRealTimers();
+});
+
+it('cancels while waiting for a replay objective without running the next action', async () => {
+  const { adapter } = dialogAdapter([]);
+  const controller = new AbortController();
+  adapter.replay = jest.fn(async () => {
+    controller.abort();
+    return true;
+  });
+  expect(await restoreCheckpoint(dialogCheckpoint, adapter, controller.signal)).toMatchObject({ passed: false });
+  expect(adapter.replay).toHaveBeenCalledTimes(1);
+});

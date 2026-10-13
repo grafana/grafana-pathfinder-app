@@ -136,3 +136,20 @@ it('does not perform a delayed repair after cancellation', async () => {
   expect(await delayed.restore({ requirement: 'on-page:/playlists' })).toBe(false);
   expect(navigate).not.toHaveBeenCalled();
 });
+
+it('requires explicit replay eligibility and live objectives for recovery actions', () => {
+  const step = {
+    action: 'button',
+    reftarget: '#open-dialog',
+    replaySafe: true,
+    objectives: [{ target: '#dialog', state: 'visible' }],
+  };
+  const parse = (recovery: unknown) =>
+    JsonSectionCheckpointSchema.safeParse({ checks: [{ target: '#dialog', state: 'visible', recover: [recovery] }] });
+  expect(parse(step).success).toBe(true);
+  expect(parse({ ...step, replaySafe: false }).success).toBe(false);
+  expect(parse({ ...step, objectives: [] }).success).toBe(false);
+  expect(parse({ ...step, objectives: [{ requirement: 'section-completed:old-step' }] }).success).toBe(false);
+  expect(parse({ ...step, objectives: [{ requirement: 'coda-exit-zero:touch file' }] }).success).toBe(false);
+  expect(parse({ ...step, action: 'formfill', targetvalue: 'overwrite' }).success).toBe(false);
+});

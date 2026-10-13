@@ -14,7 +14,7 @@ Common patterns and their treatment:
 | Closing the navigation menu                | Existing `navmenu-open` condition and menu repair                                  | Playlists and dashboard snapshots                                                      |
 | Collapsing an options control              | Unique visible control with `aria-expanded`; set false to true once                | Prometheus query options in `dpm-explore-up-metric`                                    |
 | Selecting another tab                      | Unique visible button or non-link tab with `aria-selected`; select only when false | Adaptive Logs Patterns/Exemptions/Segments (verify the actual control before adoption) |
-| Losing a dialog or editor                  | Visible target check plus author-provided manual recovery                          | Alert activity details; query and panel editors                                        |
+| Losing a dialog or editor                  | Visible target check with an objective-driven recovery recipe                      | Alert activity details; query and panel editors                                        |
 | Clearing dashboard grouping/filters        | Dashboard state adapter from the filtering pilot                                   | `dashboard-interactive-filtering`                                                      |
 | Form input, missing resources, permissions | Read-only requirements and manual instructions; no automatic write replay          | Playlist forms; alert creation; data source setup                                      |
 
@@ -35,9 +35,36 @@ Common patterns and their treatment:
 }
 ```
 
-List location checks before controls so recovery never clicks a matching control on the wrong page. Target selectors must remain stable when the control changes state: use `[aria-expanded]`, not `[aria-expanded='false']`. Checks support `visible`, `expanded`, and `selected`; visibility never guesses a trigger action. Ambiguous, missing, disabled, or hidden controls require manual recovery. Submit/reset buttons and links are not clicked. Terminal command conditions are excluded because evaluating them can itself write state.
+List location checks before controls so recovery never clicks a matching control on the wrong page. Target selectors must remain stable when the control changes state: use `[aria-expanded]`, not `[aria-expanded='false']`. Checks support `visible`, `expanded`, and `selected`; visibility never guesses a trigger action. Ambiguous, disabled, or hidden action targets are never clicked. Missing views can declare an explicit recovery recipe. Submit/reset buttons and links are not clicked. Terminal command conditions are excluded because evaluating them can itself write state.
 
 The coordinator checks in order, restores only the first unsatisfied repairable condition, waits for observed readiness, and checks the whole checkpoint again before proceeding. Each condition is repaired at most once per request; drift or verification timeout returns control to the learner. Cancel and unmount stop subsequent repairs. Recovery does not call completion or reset APIs. The section gate polls every five seconds and on focus/history events; the section runner also checks at execution boundaries. Existing automated section click protection remains in use.
+
+A check can declare `recover`, a compact sequence using the existing `button` and `navigate` actions. Each action must have `replaySafe: true` (an author review of repeat safety) and live `objectives`, using the same requirement/target condition shapes as checkpoints. Historical `section-completed:` objectives and command probes are rejected. No automatic import of all preceding steps occurs: resource writes and form overwrites must not be marked replay-safe.
+
+```json
+{
+  "target": "[role='dialog'][aria-label='Drawer title Share internally']",
+  "state": "visible",
+  "recover": [
+    {
+      "action": "button",
+      "reftarget": "button[data-testid='data-testid new share button arrow menu']",
+      "replaySafe": true,
+      "objectives": [{ "target": "[data-testid='data-testid new share button share internally']", "state": "visible" }]
+    },
+    {
+      "action": "button",
+      "reftarget": "[data-testid='data-testid new share button share internally']",
+      "replaySafe": true,
+      "objectives": [{ "target": "[role='dialog'][aria-label='Drawer title Share internally']", "state": "visible" }]
+    }
+  ]
+}
+```
+
+Recovery checks the final view before every replay action, so an already-open dialog never causes its transient setup menu to reopen. Actions whose live objectives hold are skipped. Earlier checkpoint conditions are rechecked before each action; a failed objective or cancellation stops the sequence. Only verified checkpoint readiness unblocks the learner; replay does not complete learning steps.
+
+The button/navigation handlers expose a recovery path with no teaching tooltips, scrolling animation, completion writes, selector-relaxation retries, or fixed settling sleeps. It advances immediately when objectives hold, waking on DOM changes with a 50 ms fallback for non-DOM state and a five-second verification deadline. Navigation stays inside Grafana and cannot switch guides. Recovery buttons must be unique, visible, enabled, and unable to submit/reset a form; an implicit button outside a form is allowed.
 
 Author checkpoints through JSON mode. They survive JSON import, validation, parsing, and rendering. No automatic catalog migration or recovery inference is performed. No checkpoint state or learner form values are persisted. The two-tab controller currently blocks checkpointed sections with an instruction to open the guide in the Grafana tab, rather than incorrectly checking the controller DOM. A dedicated editor form and live-tab checkpoint transport are follow-up work.
 
