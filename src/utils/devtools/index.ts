@@ -10,7 +10,7 @@ export type { RecordedStep, SelectorInfo, ExtractedSelector } from './dev-tools.
 
 // Selector generator
 export type { SelectorGenerationResult } from './selector-generator.util';
-export { generateSelectorFromEvent } from './selector-generator.util';
+export { generateSelectorFromEvent, generateSelectorForElement } from './selector-generator.util';
 
 // Element inspector hook
 export type { UseElementInspectorOptions, UseElementInspectorReturn } from './element-inspector.hook';
