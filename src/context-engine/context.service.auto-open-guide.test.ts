@@ -1,5 +1,8 @@
 jest.mock('../utils/find-doc-page', () => ({
-  findDocPage: (guide: string) => (guide === 'bundled:x' ? { url: 'bundled:x', title: 'X', type: 'docs-page' } : null),
+  findDocPage: (guide: string) =>
+    guide === 'bundled:x' || guide === 'bundled:y'
+      ? { url: guide, title: guide === 'bundled:x' ? 'X' : 'Y', type: 'docs-page' }
+      : null,
 }));
 
 import { ContextService } from './context.service';
@@ -52,6 +55,18 @@ describe('ContextService.injectAutoOpenGuide', () => {
   it('prepends the matched guide for the treatment arm', () => {
     enroll('treatment');
     expect(callInject([rec({ url: 'a' })], '/explore/metrics', [])).toEqual([synthetic, rec({ url: 'a' })]);
+  });
+
+  it('features the guide that was offered when several experiences match the page', () => {
+    setAutoOpenGuideEnrollment({
+      variant: 'treatment',
+      experiences: [
+        { guide: 'bundled:x', pages: ['/explore*'] },
+        { guide: 'bundled:y', pages: ['/explore*'] },
+      ],
+      offeredGuide: 'bundled:y',
+    });
+    expect(callInject([], '/explore', [])[0]?.url).toBe('bundled:y');
   });
 
   it('promotes an existing card for the same URL instead of duplicating it', () => {

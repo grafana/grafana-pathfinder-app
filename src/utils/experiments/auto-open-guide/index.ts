@@ -20,7 +20,7 @@ import { notifyEnrollment } from '../enrollment-notifier';
 import { installAutoLaunchOnMount } from './auto-launch';
 import { isAutoOpenGuideConfig, matchesExperience, type AutoOpenGuideConfig } from './config';
 import { hasAutoOpenGuideShown, markAutoOpenGuideShown } from './markers';
-import { setAutoOpenGuideEnrollment } from './state';
+import { getAutoOpenGuideEnrollment, setAutoOpenGuideEnrollment } from './state';
 
 interface Offer {
   index: number;
@@ -117,17 +117,25 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
 
   let stopped = false;
   let pending: AbortController | undefined;
+  // One offer per page visit, even when several experiences match it.
+  let offeredPath: string | undefined;
 
   const apply = (offer: Offer | null, enrolled: AutoOpenGuideConfig) => {
     const { variant } = enrolled;
     if (variant !== 'control' && variant !== 'treatment') {
       return;
     }
-    setAutoOpenGuideEnrollment({ variant, experiences: enrolled.experiences });
+    const applies = offer !== null && enrolled.experiences[offer.index]?.guide === offer.guide;
+    setAutoOpenGuideEnrollment({
+      variant,
+      experiences: enrolled.experiences,
+      offeredGuide: applies ? offer.guide : getAutoOpenGuideEnrollment()?.offeredGuide,
+    });
     notifyEnrollment();
-    if (!offer || enrolled.experiences[offer.index]?.guide !== offer.guide) {
+    if (!applies) {
       return;
     }
+    offeredPath = offer.path;
     markAutoOpenGuideShown(hostname, offer.guide);
     const docPage = findDocPage(offer.guide);
     const opened = variant === 'treatment' && docPage !== null && getCurrentPath() === offer.path && canPopOut();
@@ -162,11 +170,15 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
   };
 
   const check = () => {
-    if (stopped || pending || !canPopOut()) {
+    const path = getCurrentPath();
+    if (path !== offeredPath) {
+      offeredPath = undefined;
+    }
+    if (stopped || pending || offeredPath !== undefined || !canPopOut()) {
       return;
     }
     const targeting = readTargeting();
-    const offer = targeting ? findOffer(targeting, hostname, getCurrentPath()) : null;
+    const offer = targeting ? findOffer(targeting, hostname, path) : null;
     if (offer) {
       activate(offer);
     }

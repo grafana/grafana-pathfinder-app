@@ -8,7 +8,8 @@ export function getAutoOpenGuideFeatured(currentPath: string): Recommendation | 
   if (enrollment?.variant !== 'treatment') {
     return null;
   }
-  const experience = enrollment.experiences.find((candidate) => matchesExperience(candidate, currentPath));
+  const matching = enrollment.experiences.filter((candidate) => matchesExperience(candidate, currentPath));
+  const experience = matching.find((candidate) => candidate.guide === enrollment.offeredGuide) ?? matching[0];
   const docPage = experience ? findDocPage(experience.guide) : null;
   if (!docPage) {
     return null;

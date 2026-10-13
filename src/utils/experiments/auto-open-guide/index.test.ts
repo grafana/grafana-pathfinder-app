@@ -207,6 +207,26 @@ it('offers each guide once per browser, and the next guide on its own page', asy
   expect(attemptAutoOpen).not.toHaveBeenCalled();
 });
 
+it('makes one offer per page visit when several experiences match it', async () => {
+  const overlapping = [
+    { guide: 'bundled:first', pages: ['/explore*'] },
+    { guide: 'bundled:second', pages: ['/explore*'] },
+  ];
+  await start('/explore', { variant: 'control', experiences: overlapping });
+  await navigate('/explore');
+
+  const offers = () =>
+    (reportAppInteraction as jest.Mock).mock.calls.filter(([name]) => name === UserInteraction.AutoOpenGuideEligible);
+  expect(offers()).toHaveLength(1);
+  expect(getAutoOpenGuideEnrollment()?.offeredGuide).toBe('bundled:first');
+
+  await navigate('/alerting');
+  await navigate('/explore');
+  expect(offers()).toHaveLength(2);
+  expect(offers()[1]![1]).toEqual(expect.objectContaining({ experience_index: 1 }));
+  expect(getAutoOpenGuideEnrollment()?.offeredGuide).toBe('bundled:second');
+});
+
 it('re-activates an already-offered browser at boot so later guide events keep the arm', async () => {
   await start('/explore', { variant: 'treatment', experiences: EXPERIENCES });
   stop?.();
