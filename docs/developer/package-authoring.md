@@ -81,7 +81,9 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `testEnvironment`   | `TestEnvironment`                    | Recommended                   | `{ tier: "cloud" }`       | Test infrastructure requirements (see [testEnvironment](#testenvironment))                                                                                                                                                |
 | `minGrafanaVersion` | `string` (semver)                    | No                            | —                         | Lowest Grafana this guide is written for — the docs panel warns readers below it (see [minGrafanaVersion](#mingrafanaversion))                                                                                            |
 
-Each prerequisite has `id: string`, `label: string`, and an optional `format: "markdown"`. Without the format field, labels display as literal text. With `format: "markdown"`, labels support inline links, bold, italics, and inline code. Links support only absolute HTTPS URLs without credentials. They open in a new browser tab. Unsupported destinations display as text. HTML, headings, lists, images, embeds, interactive content, and other Markdown syntax are not supported.
+Prerequisites are display-only metadata. They do not check completion, control access, filter content, affect progress, or change test execution. They apply only to the manifest that declares them; a path's notices do not pass to its members.
+
+Each prerequisite has `id: string`, `label: string`, and an optional `format: "markdown"`. Both values must be nonblank; validation preserves the retained strings exactly. IDs must be stable and unique by their exact string value within one manifest. Without the format field, labels display as literal text. With `format: "markdown"`, labels support inline links, bold, italics, and inline code. Links support only absolute HTTPS URLs without credentials. They open in a new browser tab. Unsupported destinations display as text. HTML, headings, lists, images, embeds, interactive content, and other Markdown syntax are not supported.
 
 ### Extension fields
 
