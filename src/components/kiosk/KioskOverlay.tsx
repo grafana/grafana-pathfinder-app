@@ -7,7 +7,7 @@ import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { getKioskOverlayStyles } from './kiosk-mode.styles';
-import { loadKioskData, DEFAULT_BANNER, type KioskData } from './kiosk-rules';
+import { loadKioskData, DEFAULT_BANNER, type KioskData, type PreparedKioskData } from './kiosk-rules';
 import { KioskTile } from './KioskTile';
 import type { KioskMode } from '../../types/kiosk-page.schema';
 
@@ -18,6 +18,7 @@ const BANNER_SANITIZE_CONFIG: DOMPurifyConfig = {
 };
 
 interface KioskOverlayProps {
+  catalog?: Promise<PreparedKioskData>;
   rulesUrl: string;
   overrideUrl?: string;
   onClose: () => void;
@@ -26,6 +27,7 @@ interface KioskOverlayProps {
 }
 
 export const KioskOverlay: React.FC<KioskOverlayProps> = ({
+  catalog,
   rulesUrl,
   overrideUrl,
   onClose,
@@ -38,9 +40,13 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
   const [result, setResult] = useState<{
     rulesUrl: string;
     overrideUrl?: string;
+    catalog?: Promise<PreparedKioskData>;
     data: KioskData & { warning?: string };
   } | null>(null);
-  const current = result?.rulesUrl === rulesUrl && result?.overrideUrl === overrideUrl ? result.data : null;
+  const current =
+    result?.rulesUrl === rulesUrl && result?.overrideUrl === overrideUrl && result?.catalog === catalog
+      ? result.data
+      : null;
   const loading = current === null;
   const rules = current?.rules ?? [];
   const page = current?.page;
@@ -62,10 +68,10 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
   useEffect(() => {
     const controller = new AbortController();
     const session = startKioskSession(getKioskNameFromCatalogUrl(overrideUrl || rulesUrl));
-    loadKioskData(rulesUrl, overrideUrl, controller.signal, { sessionId: session.id, mode })
+    loadKioskData(rulesUrl, overrideUrl, controller.signal, { sessionId: session.id, mode }, catalog)
       .then((data) => {
         if (!controller.signal.aborted) {
-          setResult({ rulesUrl, overrideUrl, data });
+          setResult({ rulesUrl, overrideUrl, catalog, data });
         }
       })
       .catch(() => {
@@ -73,6 +79,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
           setResult({
             rulesUrl,
             overrideUrl,
+            catalog,
             data: { rules: [], banner: '', warning: 'The kiosk could not be loaded. Try opening it again.' },
           });
         }
@@ -81,7 +88,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
       controller.abort();
       session.end();
     };
-  }, [rulesUrl, overrideUrl, mode]);
+  }, [rulesUrl, overrideUrl, mode, catalog]);
 
   const handleExit = useCallback(
     (method: 'button' | 'escape') => {

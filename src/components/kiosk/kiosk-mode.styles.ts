@@ -169,3 +169,13 @@ export const getKioskOverlayStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
   }),
 });
+
+export const getKioskLoadingFrameStyles = (theme: GrafanaTheme2) =>
+  css({
+    position: 'fixed',
+    top: theme.spacing(8),
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 100000,
+    width: `min(480px, calc(100vw - ${theme.spacing(4)}))`,
+  });
