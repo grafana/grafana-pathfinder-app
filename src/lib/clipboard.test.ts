@@ -26,8 +26,21 @@ describe('copyTextToClipboard', () => {
     expect(writeText).toHaveBeenCalledWith('hello');
   });
 
-  it('resolves false when writeText rejects', async () => {
+  it('falls back to execCommand when writeText rejects', async () => {
     setClipboard({ writeText: jest.fn().mockRejectedValue(new Error('denied')) });
+    let copiedValue: string | undefined;
+    document.execCommand = jest.fn((command: string) => {
+      copiedValue = document.querySelector('textarea')?.value;
+      return command === 'copy';
+    });
+
+    await expect(copyTextToClipboard('hello')).resolves.toBe(true);
+    expect(copiedValue).toBe('hello');
+  });
+
+  it('resolves false when writeText rejects and execCommand does not copy', async () => {
+    setClipboard({ writeText: jest.fn().mockRejectedValue(new Error('denied')) });
+    document.execCommand = jest.fn().mockReturnValue(false);
 
     await expect(copyTextToClipboard('hello')).resolves.toBe(false);
   });

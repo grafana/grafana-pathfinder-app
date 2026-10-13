@@ -68,7 +68,7 @@ function findDirectClipboardCalls(): Set<string> {
     if (relative === HELPER) {
       continue;
     }
-    const source = fs.readFileSync(file, 'utf-8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+    const source = fs.readFileSync(file, 'utf-8').replace(/\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gm, '');
     if (DIRECT_CLIPBOARD_RE.test(source)) {
       violations.add(relative);
     }

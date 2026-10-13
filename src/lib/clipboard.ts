@@ -1,5 +1,4 @@
-// Call synchronously from the click handler, not after an `await`: the
-// execCommand fallback only works while the user activation lasts.
+// Call from the click handler before any `await`: the execCommand fallback needs the user activation.
 export function copyTextToClipboard(text: string): Promise<boolean> {
   const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
   if (typeof clipboard?.writeText !== 'function') {
@@ -8,7 +7,7 @@ export function copyTextToClipboard(text: string): Promise<boolean> {
   try {
     return clipboard.writeText(text).then(
       () => true,
-      () => false
+      () => copyWithExecCommand(text)
     );
   } catch {
     return Promise.resolve(copyWithExecCommand(text));
@@ -21,8 +20,7 @@ function copyWithExecCommand(text: string): boolean {
     return false;
   }
 
-  // Mount next to the focused element: Grafana modals trap focus, so a
-  // textarea on document.body cannot be selected from inside one.
+  // Grafana modals trap focus, so a textarea on document.body could not be selected from inside one.
   const active = document.activeElement;
   const container =
     active instanceof HTMLElement && active !== document.body && active.parentElement
