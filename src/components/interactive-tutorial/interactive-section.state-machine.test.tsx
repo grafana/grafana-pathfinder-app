@@ -785,3 +785,104 @@ describe('InteractiveSection — objectives without a completion coordinator', (
     expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`)).toBe(true);
   });
 });
+
+// ─── Section objective origin (#2102) ───────────────────────────────────────
+
+function collectGuideOrigins() {
+  const origins: Array<string | undefined> = [];
+  const unsubscribe = subscribeProgressEvent((detail) => {
+    if (detail.kind === 'guide') {
+      origins.push(detail.origin);
+    }
+  });
+  return { origins, unsubscribe };
+}
+
+async function renderObjectiveSectionWithCoordinator(check: () => Promise<boolean | undefined>) {
+  const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+  const { CompletionObservationContext } = await import('../../global-state/observation/context');
+  const coordinator = new CompletionCoordinator(check);
+  render(
+    <CompletionObservationContext.Provider value={coordinator}>
+      <InteractiveSection
+        id="objective"
+        title="Objective section"
+        objectives={['has-datasource:testdata']}
+        autoCollapse={false}
+      >
+        <InteractiveStep targetAction="highlight" refTarget=".a">
+          Step
+        </InteractiveStep>
+      </InteractiveSection>
+    </CompletionObservationContext.Provider>
+  );
+  await act(async () => {
+    coordinator.start();
+  });
+  return coordinator;
+}
+
+describe('InteractiveSection — section objective origin', () => {
+  it('announces an objective already met on the first check as a load, never a reader change', async () => {
+    const sections = collectSectionEvents();
+    const guide = collectGuideOrigins();
+    try {
+      const coordinator = await renderObjectiveSectionWithCoordinator(async () => true);
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+      );
+      await settle();
+
+      expect(announcedAsChange()).toEqual([]);
+      expect(sections.events.map((e) => e.hydrated)).toEqual([true]);
+      expect(guide.origins).not.toContain('change');
+      coordinator.stop();
+    } finally {
+      sections.unsubscribe();
+      guide.unsubscribe();
+    }
+  });
+
+  it('announces an objective the reader meets after opening as a change', async () => {
+    let met = false;
+    const sections = collectSectionEvents();
+    try {
+      const coordinator = await renderObjectiveSectionWithCoordinator(async () => met);
+      await settle();
+      met = true;
+      await act(async () => {
+        coordinator.recheck();
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+      );
+      await settle();
+
+      expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+      expect(sections.events.map((e) => e.hydrated)).toEqual([false]);
+      coordinator.stop();
+    } finally {
+      sections.unsubscribe();
+    }
+  });
+
+  it('announces a section restored as done as hydrated, with no reader change', async () => {
+    memoryStore.set(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`, true);
+    const sections = collectSectionEvents();
+    const guide = collectGuideOrigins();
+    try {
+      renderObjectiveSection();
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+      );
+      await settle();
+
+      expect(announcedAsChange()).toEqual([]);
+      expect(sections.events.map((e) => e.hydrated)).toEqual([true]);
+      expect(guide.origins).not.toContain('change');
+    } finally {
+      sections.unsubscribe();
+      guide.unsubscribe();
+    }
+  });
+});

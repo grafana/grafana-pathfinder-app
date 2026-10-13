@@ -448,6 +448,8 @@ export function InteractiveSection({
 
   const isCompletedByObjectives =
     observedObjectives !== false || restoredObjectives === true || objectivesChecker.completionReason === 'objectives';
+  const objectivesOrigin: ProgressOrigin =
+    observedObjectives !== false ? observedObjectives : restoredObjectives === true ? 'load' : 'change';
   const gatesOnObjectives = completionCoordinator !== null && hasSectionObjectives;
 
   // Derive the high-level state kind from the reducer's ack bit + the
@@ -489,10 +491,10 @@ export function InteractiveSection({
       const allStepIds = stepComponents.map((step) => step.stepId);
       if (completedSteps.size !== allStepIds.length) {
         // Single bulk write — the store persists + notifies once.
-        markStepsCompleted(allStepIds, sectionId, 'objectives', observedObjectives || 'change');
+        markStepsCompleted(allStepIds, sectionId, 'objectives', objectivesOrigin);
       }
     }
-  }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps, observedObjectives]);
+  }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps, objectivesOrigin]);
 
   const { config: pluginConfig } = usePathfinderPluginConfig();
 
@@ -541,7 +543,9 @@ export function InteractiveSection({
       // belt-and-braces against future re-dispatch effects.
       if (!hasEmittedGuideCompletionRef.current) {
         hasEmittedGuideCompletionRef.current = true;
-        const hydrated = storedCompletion === 'complete' && !hydrationSpentRef.current && doneVia !== 'objectives';
+        const hydrated =
+          (isCompletedByObjectives && objectivesOrigin === 'load') ||
+          (storedCompletion === 'complete' && !hydrationSpentRef.current && doneVia !== 'objectives');
         dispatchProgress({
           kind: 'section',
           contentKey: resolveOwnerContentKey?.() ?? '',
@@ -577,6 +581,8 @@ export function InteractiveSection({
   }, [
     isCompleted,
     doneVia,
+    isCompletedByObjectives,
+    objectivesOrigin,
     storedCompletion,
     sectionId,
     stepComponents.length,

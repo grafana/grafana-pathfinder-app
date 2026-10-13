@@ -53,7 +53,7 @@ completion-store ──dispatchProgress({kind:'guide', origin})──▶ pathfin
 
 - `markStepCompleted(stepId, sectionId, reason)` — one step. Persists with origin `'change'`.
 - `markStepsCompleted(stepIds, sectionId, reason)` — bulk (Do section, objectives auto-complete). Persists with origin `'change'`.
-- `refreshAndNotifyGuideProgress(contentKey, 'change')` — a section acknowledgement (`interactive-section.tsx`), which writes no step. A section that storage already held complete at mount (`hydrated` on its section event) refreshes through `refreshGuidePercentageOnLoad` instead, announcing `'load'`.
+- `refreshAndNotifyGuideProgress(contentKey, 'change')` — a section acknowledgement (`interactive-section.tsx`), which writes no step. A section that storage already held complete at mount, that reopens with its done bit set, or whose objectives the coordinator committed as `'load'` (`hydrated` on its section event) refreshes through `refreshGuidePercentageOnLoad` instead, announcing `'load'`; its child-step write carries the same origin.
 
 The Mark complete control (`src/components/mark-complete/MarkCompleteFooter.tsx`), `markMilestoneDone` and `backfillLegacyMilestoneCompletion` (`src/docs-retrieval/learning-journey-helpers.ts`, folding legacy milestone data into the store) write 100 to the percentage namespace themselves and announce it with no origin. They are terminal paths, not progress: the observer ignores 100. Any other direct `dispatchProgress({ kind: 'guide' })` outside the store is a bypass.
 
