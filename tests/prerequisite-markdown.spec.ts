@@ -7,9 +7,9 @@ import { StorageKeys } from '../src/lib/storage-keys';
 import { openDocsPanel } from './helpers/completion.helpers';
 
 const CDN_BASE_URL = 'https://interactive-learning.grafana.net/packages/';
-const DESTINATION_ORIGIN = 'https://prerequisite-ui.test';
+const DESTINATION_ORIGIN = 'https://interactive-learning.grafana.net';
 const PLAIN_LABEL =
-  '[Literal prerequisite](https://prerequisite-ui.test/literal) **must stay literal** <strong>too</strong>';
+  '[Literal prerequisite](https://interactive-learning.grafana.net/literal) **must stay literal** <strong>too</strong>';
 
 interface FixturePackage {
   id: string;

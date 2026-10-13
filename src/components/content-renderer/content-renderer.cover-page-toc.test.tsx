@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 import type { RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
@@ -127,6 +127,62 @@ describe('ContentRenderer cover-page table of contents', () => {
     const link = screen.getByRole('link', { name: 'Guide prerequisite' });
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it.each([
+    { placement: 'path cover', packageType: 'path' as const, currentMilestone: 0 },
+    { placement: 'member guide', packageType: 'guide' as const, currentMilestone: 1 },
+  ])('does not intercept a new-tab prerequisite link on the $placement', ({ packageType, currentMilestone }) => {
+    const href = 'https://interactive-learning.grafana.net/packages/setup/content.json';
+    const content = makeContent({
+      metadata: {
+        ...makeContent().metadata,
+        learningJourney: { ...makeContent().metadata.learningJourney!, currentMilestone },
+        packageManifest: {
+          id: 'prerequisite-link-test',
+          type: packageType,
+          prerequisites: [{ id: 'setup', label: `[Setup documentation](${href})`, format: 'markdown' }],
+        },
+      },
+    });
+    const openDocs = jest.fn();
+    document.addEventListener('pathfinder-auto-open-docs', openDocs);
+
+    try {
+      render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
+      const link = screen.getByRole('link', { name: 'Setup documentation' });
+      expect(link).toHaveAttribute('href', href);
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+
+      expect(fireEvent(link, click)).toBe(true);
+      expect(click.defaultPrevented).toBe(false);
+      expect(openDocs).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('pathfinder-auto-open-docs', openDocs);
+    }
+  });
+
+  it('still opens an ordinary interactive-learning content link inside the panel', () => {
+    const href = 'https://interactive-learning.grafana.net/packages/setup/content.json';
+    const content = makeContent({ content: `<p><a href="${href}">Open guide</a></p>` });
+    const openDocs = jest.fn();
+    document.addEventListener('pathfinder-auto-open-docs', openDocs);
+
+    try {
+      render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
+      const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+
+      expect(fireEvent(screen.getByRole('link', { name: 'Open guide' }), click)).toBe(false);
+      expect(click.defaultPrevented).toBe(true);
+      expect(openDocs).toHaveBeenCalledTimes(1);
+      expect((openDocs.mock.calls[0][0] as CustomEvent).detail).toEqual(
+        expect.objectContaining({ url: href, source: 'content_link' })
+      );
+    } finally {
+      document.removeEventListener('pathfinder-auto-open-docs', openDocs);
+    }
   });
 
   it('does not repeat path prerequisites on a later milestone', () => {

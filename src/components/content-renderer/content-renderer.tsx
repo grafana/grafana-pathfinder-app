@@ -666,7 +666,7 @@ function ContentWithVariables({
       return;
     }
     const anchor = (e.target as Element).closest?.('a[href]');
-    if (!anchor) {
+    if (!anchor || anchor.getAttribute('target')?.toLowerCase() === '_blank') {
       return;
     }
     const href = anchor.getAttribute('href');
