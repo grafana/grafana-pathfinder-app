@@ -27,8 +27,9 @@ test.beforeEach(async ({ page }) => {
     const body = await response.json();
     await route.fulfill({ response, json: { ...body, jsonData: { ...body.jsonData, ...settings } } });
   });
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
-    route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: settings } })
+  await page.route(
+    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
+    (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: settings } })
   );
   await page.route(defaultUrl, (route) => route.fulfill({ json: catalog('Default kiosk') }));
   await page.route(customUrl, (route) => route.fulfill({ json: catalog('Custom kiosk') }));

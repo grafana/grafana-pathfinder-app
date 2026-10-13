@@ -24,8 +24,9 @@ test('copies a public guide, protects the draft and publishes a separate private
       },
     });
   });
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
-    route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
+  await page.route(
+    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
+    (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
   );
   await page.route(
     '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/*/interactiveguides**',

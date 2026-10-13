@@ -58,8 +58,9 @@ for (const repair of [false, true]) {
         },
       });
     }, repair);
-    await page.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
-      route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
+    await page.route(
+      (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
+      (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
     );
     const writes: unknown[] = [];
     await page.route(
