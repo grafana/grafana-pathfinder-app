@@ -375,7 +375,13 @@ export async function fetchPackageContent(
   }
 
   const resolvedRepository = repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
-  const loaderStartingLocation = readDeclaredStartingLocation(result.content.metadata.packageManifest);
+  const knownMilestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
+  const loadedMilestone = knownMilestones?.find((m) =>
+    explicitGuideId ? m.id === explicitGuideId : m.url === contentUrl
+  );
+  const ownStartingLocation =
+    readDeclaredStartingLocation(result.content.metadata.packageManifest) ??
+    (loadedMilestone?.startingLocation || null);
 
   let learningJourney: LearningJourneyMetadata | undefined;
   // Set only for a track-only member (see the isTrackOnlyMember branch
@@ -386,7 +392,7 @@ export async function fetchPackageContent(
   let contentString = result.content.content;
 
   if (needsMilestones) {
-    const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
+    const milestones = knownMilestones;
     const tracks = pathTracks?.resolved ?? [];
 
     if (milestones && milestones.length > 0) {
@@ -544,7 +550,7 @@ export async function fetchPackageContent(
           packageManifest: {
             ...result.content.metadata.packageManifest,
             ...packageManifest,
-            ...(loaderStartingLocation && { startingLocation: loaderStartingLocation }),
+            ...(ownStartingLocation && { startingLocation: ownStartingLocation }),
           },
         }),
         // Fall back to the repository the baseUrl resolution already carries, so

@@ -138,3 +138,52 @@ describe('a milestone narrows its path starting location', () => {
     expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/x-start');
   });
 });
+
+describe('a CDN milestone narrows its path starting location', () => {
+  const CDN = 'https://interactive-learning.grafana.net/packages';
+  const pathUrl = `${CDN}/x-path/content.json`;
+  const aUrl = `${CDN}/a-guide/content.json`;
+  const bUrl = `${CDN}/b-guide/content.json`;
+  const pathManifest = { id: 'x-path', type: 'path', milestones: ['a-guide', 'b-guide'], startingLocation: '/x-start' };
+  const milestones = [
+    { id: 'a-guide', number: 1, title: 'A', url: aUrl, isActive: false, startingLocation: '/a-start' },
+    { id: 'b-guide', number: 2, title: 'B', url: bUrl, isActive: false },
+  ];
+
+  function cdnContent(url: string) {
+    return {
+      content: {
+        content: '{"id":"guide","title":"Guide","blocks":[]}',
+        type: 'interactive' as const,
+        url,
+        lastFetched: '2026-10-13T00:00:00.000Z',
+        metadata: { title: url },
+      },
+    };
+  }
+
+  async function startingLocationFor(url: string, explicitGuideId?: string) {
+    const result = await fetchPackageContent(
+      url,
+      pathManifest,
+      milestones,
+      undefined,
+      cdnContent(url),
+      explicitGuideId
+    );
+    return result.content?.metadata.packageManifest?.startingLocation;
+  }
+
+  it("uses the resolved milestone's own starting location when the loader attaches no manifest", async () => {
+    expect(await startingLocationFor(aUrl)).toBe('/a-start');
+    expect(await startingLocationFor(aUrl, 'a-guide')).toBe('/a-start');
+  });
+
+  it("falls back to the path's starting location for a milestone that declares none", async () => {
+    expect(await startingLocationFor(bUrl, 'b-guide')).toBe('/x-start');
+  });
+
+  it("keeps the path's starting location on its own landing page", async () => {
+    expect(await startingLocationFor(pathUrl)).toBe('/x-start');
+  });
+});
