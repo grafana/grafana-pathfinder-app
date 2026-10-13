@@ -51,7 +51,7 @@ describe('ContentRenderer cover-page table of contents', () => {
       },
     });
 
-    const { container } = render(<ContentRenderer content={content} />);
+    const { container } = render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
 
     const prerequisite = screen.getByText('<b>Literal</b> & **plain text**');
     const tableOfContents = screen.getByTestId(testIds.learningPaths.tableOfContents);
@@ -73,7 +73,7 @@ describe('ContentRenderer cover-page table of contents', () => {
       },
     });
 
-    render(<ContentRenderer content={content} />);
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
 
     const prerequisite = screen.getByText('Guide-only need');
     const body = screen.getByText('Body');
@@ -96,7 +96,7 @@ describe('ContentRenderer cover-page table of contents', () => {
       },
     });
 
-    render(<ContentRenderer content={content} />);
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
 
     expect(screen.queryByText('Path-only need')).not.toBeInTheDocument();
   });
@@ -109,7 +109,7 @@ describe('ContentRenderer cover-page table of contents', () => {
       },
     });
 
-    render(<ContentRenderer content={content} />);
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
 
     expect(screen.queryByRole('heading', { name: 'Prerequisites' })).not.toBeInTheDocument();
   });
