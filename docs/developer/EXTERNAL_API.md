@@ -438,6 +438,10 @@ typed field the catalogue manifest WOULD declare it, it would settle resolution
 at the first candidate, and a member would be prompted towards the cover's entry
 page. Tracked as
 [#1681](https://github.com/grafana/grafana-pathfinder-app/issues/1681).
+Milestone next/previous navigation is not exposed to this: it reuses the tab's
+`packageInfo`, so `resolveDocsLoadAlignment` tries the fetched manifest first,
+and `fetchPackageContent` keeps the loaded guide's own `startingLocation` over
+the path's when it merges the two.
 
 Promoting a key out of `additionalFields` into a real CUE field is additive and
 safe, and is the fix for the inert rows generally.
