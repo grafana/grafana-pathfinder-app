@@ -4,6 +4,7 @@ import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 import pluginJson from '../src/plugin.json';
 import { StorageKeys } from '../src/lib/storage-keys';
+import { openDocsPanel } from './helpers/completion.helpers';
 
 const CDN_BASE_URL = 'https://interactive-learning.grafana.net/packages/';
 const DESTINATION_ORIGIN = 'https://prerequisite-ui.test';
@@ -102,11 +103,13 @@ function content(fixture: FixturePackage): Record<string, unknown> {
   };
 }
 
-async function stubPrerequisitePackages(page: Page): Promise<void> {
+async function stubPrerequisitePackages(page: Page): Promise<{ packageFeedRequests: () => number }> {
   const packageRecommendationsUrl = `/api/plugins/${pluginJson.id}/resources/package-recommendations`;
   const byId = new Map(packageFixtures.map((fixture) => [fixture.id, fixture]));
+  let packageFeedRequests = 0;
 
   await page.route(`**${packageRecommendationsUrl}`, async (route) => {
+    packageFeedRequests++;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -145,6 +148,8 @@ async function stubPrerequisitePackages(page: Page): Promise<void> {
   await page.context().route(`${DESTINATION_ORIGIN}/**`, async (route) => {
     await route.fulfill({ status: 200, contentType: 'text/html', body: '<h1>Mock prerequisite destination</h1>' });
   });
+
+  return { packageFeedRequests: () => packageFeedRequests };
 }
 
 async function clearPathfinderStorage(page: Page): Promise<void> {
@@ -209,16 +214,17 @@ test.describe('restricted Markdown prerequisites', () => {
     page,
   }) => {
     await clearPathfinderStorage(page);
-    await stubPrerequisitePackages(page);
+    const routes = await stubPrerequisitePackages(page);
     await page.goto('/dashboards');
 
-    const helpButton = page.locator('button[aria-label="Help"]');
-    await helpButton.click();
+    await openDocsPanel(page);
+    await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible();
 
     const card = page
       .getByTestId(/context-panel-recommendation-card-/)
       .filter({ has: page.getByText(summaryFixture.title, { exact: true }) });
     await expect(card).toBeVisible({ timeout: 30_000 });
+    expect(routes.packageFeedRequests()).toBeGreaterThan(0);
     await card.getByRole('button', { name: 'Summary' }).click();
 
     await expectLiteralPrerequisite(card);
