@@ -727,7 +727,9 @@ authorization and optimistic concurrency checks.
 Startup may reuse confirmed absence from browser `sessionStorage`, scoped by
 namespace, Grafana subpath, organization, and user. Real records and errors are
 never cached there. Opening the learning panel or configuration form refreshes
-from the server; concurrent refreshes share one pending read. Every pre-save and
+from the server; concurrent refreshes share one pending read. A fresh read requested
+during startup queues behind it, so a later refresh failure cannot discard a
+successful startup preference. Every pre-save and
 read-after-save check also bypasses absence. Saves and authoritative record reads
 invalidate absence through a namespace/subpath-scoped `localStorage` generation,
 so another tab detects invalidation even after suspension or reload. A response

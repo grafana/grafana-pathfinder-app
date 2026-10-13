@@ -527,7 +527,7 @@ describe('startup absence cache and fresh configuration reads', () => {
     expect(readGlobal()?.pathfinderEnabled).toBe(false);
   });
 
-  it('does not let an older startup read overwrite a fresh configuration read', async () => {
+  it('queues one fresh configuration read after an in-flight startup read', async () => {
     let finishStartup!: (value: null) => void;
     mockFetchTenant
       .mockImplementationOnce(
@@ -538,9 +538,13 @@ describe('startup absence cache and fresh configuration reads', () => {
       )
       .mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
     const startup = readPathfinderStartupPreference();
-    await refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
+    const fresh = refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
+    expect(refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true })).toBe(fresh);
+    expect(mockFetchTenant).toHaveBeenCalledTimes(1);
     finishStartup(null);
-    await startup;
+    await Promise.all([startup, fresh]);
+    expect(mockFetchTenant).toHaveBeenCalledTimes(2);
+    expect(mockFetchTenant).toHaveBeenLastCalledWith({ useCachedAbsence: false });
     expect(readGlobal()?.pathfinderEnabled).toBe(false);
   });
 });
@@ -563,4 +567,21 @@ it('refreshes on each panel open, sharing pending reads without refreshing on re
     await Promise.resolve();
   });
   expect(mockFetchTenant).toHaveBeenCalledTimes(3);
+});
+
+it('retains a successful startup preference when a queued fresh read fails', async () => {
+  let finishStartup!: (value: ReturnType<typeof tenantSnapshot>) => void;
+  mockFetchTenant
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishStartup = resolve;
+        })
+    )
+    .mockRejectedValueOnce(new Error('refresh unavailable'));
+  const startup = readPathfinderStartupPreference();
+  const fresh = refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
+  finishStartup(tenantSnapshot({ pathfinderEnabled: false }));
+  await Promise.allSettled([startup, fresh]);
+  expect(readGlobal()?.pathfinderEnabled).toBe(false);
 });

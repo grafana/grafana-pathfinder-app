@@ -83,6 +83,7 @@ export function publishPathfinderPluginConfig(jsonData: PathfinderPluginConfig):
 }
 
 let refreshInFlight: Promise<ResolvedPathfinderConfig | undefined> | null = null;
+let freshRefreshQueued: Promise<ResolvedPathfinderConfig | undefined> | null = null;
 let refreshUsesCachedAbsence = false;
 let refreshPending = false;
 let refreshFailed = false;
@@ -100,6 +101,19 @@ export function refreshPathfinderPluginConfig({
   useCachedAbsence = true,
   force = false,
 }: { useCachedAbsence?: boolean; force?: boolean } = {}): Promise<ResolvedPathfinderConfig | undefined> {
+  if (!useCachedAbsence && refreshPending && refreshUsesCachedAbsence && refreshInFlight) {
+    if (!freshRefreshQueued) {
+      const queued: Promise<ResolvedPathfinderConfig | undefined> = refreshInFlight.then(() => {
+        if (freshRefreshQueued !== queued) {
+          return refreshInFlight ?? undefined;
+        }
+        freshRefreshQueued = null;
+        return refreshPathfinderPluginConfig({ useCachedAbsence: false, force: true });
+      });
+      freshRefreshQueued = queued;
+    }
+    return freshRefreshQueued;
+  }
   if (!refreshInFlight || (force && !refreshPending) || (!useCachedAbsence && refreshUsesCachedAbsence)) {
     refreshUsesCachedAbsence = useCachedAbsence;
     refreshPending = true;
@@ -198,6 +212,7 @@ export function usePathfinderPluginConfig({
  */
 export function __resetPathfinderPluginConfigForTests(): void {
   refreshInFlight = null;
+  freshRefreshQueued = null;
   refreshUsesCachedAbsence = false;
   refreshPending = false;
   refreshFailed = false;
