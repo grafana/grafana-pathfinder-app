@@ -50,6 +50,7 @@ import {
   type PackageMatchExpr,
 } from '../lib/package-recommendations-client';
 import { getHighlightedGuideConfig } from '../utils/openfeature';
+import { completionsForRecommend } from './recommend-completions-attachment';
 import { buildSyntheticFeaturedRecommendation, matchesHighlightedGuidePage } from '../utils/experiments';
 
 // Hoisted to module scope so the recursive `usesOnlySupportedMatchPredicates`
@@ -311,6 +312,9 @@ export class ContextService {
         return fail('other', 'Recommender service URL failed security validation');
       }
 
+      // Started before the hashing awaits so the /my load overlaps them; never aborted at its budget.
+      const completionsPromise = completionsForRecommend();
+
       const isCloud = currentPlatform() === 'cloud';
 
       // Extract and hash source hostname for privacy
@@ -339,6 +343,7 @@ export class ContextService {
       const hashedSource = await getHashedSource();
 
       const identity = await buildTelemetryIdentity();
+      const completions = await completionsPromise;
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
@@ -350,6 +355,7 @@ export class ContextService {
         platform: this.getCurrentPlatform(),
         source: hashedSource,
         language: this.getCurrentLanguage(),
+        ...(completions && { completions }),
       };
 
       // Add timeout to prevent hanging in air-gapped or slow connection scenarios

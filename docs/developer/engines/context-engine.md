@@ -203,6 +203,43 @@ The recommendation system follows a three-tier approach with automatic fallback:
 3. **Platform Filtering** - Filter by target platform (Cloud/OSS)
 4. **Top-Level Only** - Exclude tag-based rules (only navigation-level recommendations)
 
+## Completion history in recommend requests
+
+Each `POST {recommenderServiceUrl}/api/v1/recommend` may carry an optional `completions` object built from the plugin backend's `GET /completion-records/my`.
+
+- **Absent means unknown.** The key is omitted when the flag is off, the feature is unavailable, the load fails or times out, or the projection fails validation. The request is then byte-identical to one without this feature.
+- **Present with `items: []` means a known user with no history.**
+- **Flag.** `pathfinder.recommend-completions` (default on) is a kill switch, evaluated on every request. Off makes no `/my` request. See [Feature flags](../FEATURE_FLAGS.md#pathfinderrecommend-completions).
+- **Budget.** The `/my` load starts right after the recommender URL is validated, so it overlaps the identity hashing, and the request waits at most 500 ms for it. The load is not aborted at the budget: it finishes in the background and fills a per-tab cache for the next request. A cold `/my` triggers a full-namespace listing on the backend and often takes longer than 500 ms.
+- **Cache.** 60 seconds per tab, successful results only, single-flight, cleared when a completion is published. Partial-attempt writes do not publish, so in-progress percentages can lag by up to 60 seconds.
+- **Availability** comes from the `capability.available` field embedded in the `/my` response, not from a separate capability call.
+
+Implementation: `src/context-engine/recommend-completions-attachment.ts`, `src/completion-records/completion-read-client.ts`, `src/completion-records/recommend-completions.ts`.
+
+### What is sent and what is not
+
+| Sent                                                                                               | Why                                                  |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Guide identity: `guide_source`, `guide_id`                                                         | What the user did                                    |
+| Write-time snapshots: `guide_title`, `guide_category`, `path_id`                                   | Recommender needs no catalogue lookup                |
+| Progress: `percent`, `method`, `count`, `duration_seconds`                                         | Distinguishes done, restarted and abandoned          |
+| Timing: `completed_at`, `started_at`, `recorded_at`, and `as_of` (backend snapshot, not the clock) | Recency; compared with `Date.parse`, never rewritten |
+
+| Not sent                                                                 | Why                                                                                                                                                                            |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `userId`, `userLogin`, `userDisplayName`, `metadata.name`                | Identity. The request already carries the hashed `user_id`.                                                                                                                    |
+| `orgId`, `stackNamespace`                                                | Customer identifiers                                                                                                                                                           |
+| `platform`, `schemaVersion`                                              | Redundant                                                                                                                                                                      |
+| Any guide whose stored `guideSource` is not public, local bundled guides | Private content. Only `bundled`, `interactive-tutorials` and `online-cdn` pass; `online-cdn` is sent as `interactive-tutorials`. `wysiwyg-preview` and `e2e-test` are dropped. |
+
+Items are built field by field with no object spread from backend rows, so a new backend field cannot leak. At most 250 items are sent, newest `recorded_at` first; `truncated` says whether any were dropped.
+
+**Known residual risk.** The filter uses the stored `guideSource` only. `sourceConfirmed` is analytics-only and never stored, and the write path stores an unresolved source as `interactive-tutorials`, so a private guide whose source was unresolved at write time is sent. The fix is to stamp `guideSource` at write time, which is out of scope here.
+
+### Wire contract and versioning
+
+The golden `src/completion-records/testdata/recommend-completions.v1.golden.json` is the producer-owned contract with grafana-recommender, generated from `my-completions.input.json` by the projection. Regenerate with `UPDATE_GOLDENS=1 npx jest src/completion-records/recommend-completions.golden.test.ts --coverage=false`. Additive optional fields keep `v: 1`. A rename, removal or change of meaning bumps `v` and needs a grafana-recommender follow-up. The schema is `src/types/recommender-completions.schema.ts`.
+
 ## Timeout Management
 
 The engine uses a centralized `TimeoutManager` (`src/utils/timeout-manager.ts`) to prevent competing debounce mechanisms:
@@ -410,6 +447,8 @@ Configuration is managed through plugin settings (`PathfinderPluginConfig`):
 - `src/lib/context-event-bus.test.ts` - Event bus unit tests
 - `src/context-engine/context-security.test.ts` - Security test suite
 - `src/context-engine/context.service.completion.test.ts` - Completion storage selection tests
+- `src/context-engine/context.service.completions.test.ts` - Completion history on recommend requests tests
+- `src/completion-records/recommend-completions.test.ts`, `recommend-completions.golden.test.ts`, `completion-read-client.test.ts` - Projection, wire golden and read-client tests
 - `src/types/context.types.ts` - TypeScript type definitions
 
 **Bundled Content**:

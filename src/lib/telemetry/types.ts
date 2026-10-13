@@ -15,6 +15,8 @@ export interface SequenceErrorClassification {
 export type RecommenderErrorType = 'unavailable' | 'rate-limit' | 'other';
 export type RecommenderOutcome = 'ok' | RecommenderErrorType;
 
+export type RecommendCompletionsOutcome = 'ok' | 'disabled' | 'unavailable' | 'timeout' | 'invalid';
+
 export type ContentFetchTier = 'bundled' | 'backend-guide' | 'content-json' | 'unstyled-html' | 'other';
 export type ContentFetchOutcome = 'ok' | 'error';
 
@@ -38,6 +40,7 @@ export const TELEMETRY_EVENTS = {
   packageIndex: 'pathfinder_package_index',
   kioskCatalogLoaded: 'pathfinder_kiosk_catalog_loaded',
   recommenderFallback: 'pathfinder_recommender_fallback',
+  recommendCompletions: 'pathfinder_recommend_completions',
   contentFetchFallback: 'pathfinder_content_fetch_fallback',
   requirementsExhausted: 'pathfinder_requirements_exhausted',
   sequenceActionError: 'pathfinder_sequence_action_error',

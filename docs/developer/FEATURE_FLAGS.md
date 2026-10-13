@@ -231,6 +231,27 @@ Implementation: `src/completion-records/guide-attempts.ts`, `progress-records-ca
 
 ---
 
+### `pathfinder.recommend-completions`
+
+**Type**: Boolean
+
+**Purpose**: Kill switch for attaching the user's completion history to `POST /api/v1/recommend`. See [Completion history in recommend requests](engines/context-engine.md#completion-history-in-recommend-requests).
+
+**Default**: `true`
+
+**Behavior**:
+
+- **`true`**: each recommend request carries a `completions` object built from `GET /completion-records/my`, when that route reports the feature available.
+- **`false`**: no `/completion-records/my` request is made for recommendations and the request body has no `completions` key.
+
+The flag is read each time a recommend request is built, so a flip takes effect on the next request. No GOFF entry is needed for the default-on value unless operators want to override it.
+
+Implementation: `src/context-engine/recommend-completions-attachment.ts`.
+
+**Tracking key**: `recommend_completions`
+
+---
+
 ### `pathfinder.highlighted-guide-experiment`
 
 **Type**: Object (`HighlightedGuideConfig`)

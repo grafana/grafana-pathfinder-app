@@ -33,6 +33,9 @@ export type {
   ResolveGuideCompletionIdentityInput,
 } from './completion-identity';
 export type { PathAnalyticsIdentity } from './types';
+export { projectRecommendCompletions } from './recommend-completions';
+export { loadMyCompletions, clearMyCompletionsCache } from './completion-read-client';
+export type { MyCompletionsResult } from './completion-read-client';
 export { armCompletionWriteHook, discardQueuedCompletionWrites } from './completion-write-hook';
 export type {
   CompletionKey,

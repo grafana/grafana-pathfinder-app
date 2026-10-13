@@ -195,6 +195,13 @@ export function resolveJourneyCompletionIdentity(input: ResolveGuideCompletionId
 // Privacy boundary: only these sources may send a guide identifier or title to RudderStack.
 const PUBLIC_GUIDE_SOURCES = new Set(['bundled', 'interactive-tutorials', 'online-cdn']);
 
+export function isPublicGuideSource(guideSource: string, guideId: string): boolean {
+  return (
+    PUBLIC_GUIDE_SOURCES.has(guideSource) &&
+    !(guideSource === 'bundled' && LOCAL_BUNDLED_GUIDE_IDS.has(normalizeGuideId(guideId)))
+  );
+}
+
 export function guideIdentityAnalyticsProperties({
   kind,
   guideSource,
