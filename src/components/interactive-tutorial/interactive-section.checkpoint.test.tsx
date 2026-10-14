@@ -193,3 +193,26 @@ it('stays quiet on a section the learner has not reached yet', async () => {
   expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
   expect(container.querySelector('.checkpoint-paused')).not.toBeInTheDocument();
 });
+
+it('keeps a later reading-only section quiet until the learner reaches it', async () => {
+  const { container } = render(
+    <>
+      <InteractiveSection id="first" title="First" autoCollapse={false}>
+        <InteractiveStep targetAction="highlight" refTarget=".first">
+          First step.
+        </InteractiveStep>
+      </InteractiveSection>
+      <InteractiveSection
+        id="reading"
+        title="Reading"
+        autoCollapse={false}
+        checkpoint={{ checks: [{ requirement: 'on-page:/explore' }] }}
+      >
+        <p>Read about the options.</p>
+      </InteractiveSection>
+    </>
+  );
+  await waitFor(() => expect(container.querySelectorAll('.interactive-section')).toHaveLength(2));
+  expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+  expect(container.querySelector('.checkpoint-paused')).not.toBeInTheDocument();
+});

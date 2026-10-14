@@ -439,7 +439,7 @@ export function InteractiveSection({
   }, [sectionId, isCompleted]);
   useLayoutEffect(() => () => clearSectionDone(sectionId), [sectionId]);
   const previousSectionsDone = useSyncExternalStore(subscribeSectionDone, () => arePreviousSectionsDone(sectionId));
-  const reached = previousSectionsDone || isRunning || sectionKind !== 'init';
+  const reached = previousSectionsDone || isRunning || completedSteps.size > 0;
   const activeCheckpoint = isCompleted || !reached ? undefined : checkpoint;
   const analyticsIdentity = useContext(GuideAnalyticsIdentityContext);
   const onCheckpointEvent = useCallback(

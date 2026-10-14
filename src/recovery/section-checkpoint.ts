@@ -96,7 +96,21 @@ async function replayRecovery(
     if ((await inspectCheckpoint({ checks: step.objectives }, adapter, signal)).passed) {
       continue;
     }
-    if (signal.aborted || !step.replaySafe || !(await adapter.replay?.(step))) {
+    if (!step.replaySafe || !adapter.replay) {
+      return false;
+    }
+    const mountDeadline = Date.now() + 5000;
+    let replayed = false;
+    while (!signal.aborted && !(replayed = await adapter.replay(step)) && Date.now() < mountDeadline) {
+      await waitForRender(signal);
+      if ((await inspectCheckpoint({ checks: step.objectives }, adapter, signal)).passed) {
+        break;
+      }
+    }
+    if (signal.aborted) {
+      return false;
+    }
+    if (!replayed && !(await inspectCheckpoint({ checks: step.objectives }, adapter, signal)).passed) {
       return false;
     }
     let satisfied = false;

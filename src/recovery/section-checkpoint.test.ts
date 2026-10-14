@@ -216,3 +216,14 @@ it('passes over checks the guide cannot verify and reports them', async () => {
     unverifiableChecks: [{ checkIndex: 1, reason: 'ambiguous' }],
   });
 });
+
+it('waits for a recipe action to mount after a page repair instead of giving up', async () => {
+  const { adapter } = dialogAdapter(['#menu']);
+  let mounted = 0;
+  const replay = adapter.replay!;
+  adapter.replay = jest.fn(async (step) => (++mounted < 3 ? false : replay(step)));
+  expect(await restoreCheckpoint(dialogCheckpoint, adapter, new AbortController().signal)).toMatchObject({
+    passed: true,
+  });
+  expect(adapter.replay).toHaveBeenCalledTimes(3);
+});
