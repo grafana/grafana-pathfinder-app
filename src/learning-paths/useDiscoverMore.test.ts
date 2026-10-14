@@ -1,139 +1,87 @@
-/**
- * Tests for useDiscoverMore: mapping the upstream package index into
- * path-shaped items, skipping entries with no usable content URL, honoring
- * excludeTitles, and capping to `count`.
- */
-
-import { renderHook, waitFor } from '@testing-library/react';
-
+import { renderHook } from '@testing-library/react';
 import { useDiscoverMore } from './useDiscoverMore';
-import {
-  fetchOnlinePackageRecommendations,
-  type PackageRecommendationsResponse,
-} from '../lib/package-recommendations-client';
+import { usePackageCatalog } from './package-catalog.hook';
+import { onlineCatalog } from '../lib/package-catalog';
+import type { CatalogPackage } from '../types/package-catalog.types';
 
-jest.mock('../lib/package-recommendations-client', () => {
-  const actual = jest.requireActual('../lib/package-recommendations-client');
-  return {
-    ...actual,
-    fetchOnlinePackageRecommendations: jest.fn(),
-  };
+jest.mock('./package-catalog.hook', () => ({ usePackageCatalog: jest.fn() }));
+const catalogMock = usePackageCatalog as jest.Mock;
+const makeItem = (
+  id: string,
+  source: CatalogPackage['source'] = 'grafana',
+  format: CatalogPackage['format'] = 'path'
+): CatalogPackage => ({
+  id,
+  key: `${source}:${id}`,
+  title: 'Same title',
+  source,
+  format,
+  url: `${source}:${id}`,
+  memberIds: ['one', 'two'],
 });
 
-const fetchMock = fetchOnlinePackageRecommendations as jest.MockedFunction<typeof fetchOnlinePackageRecommendations>;
+beforeEach(() =>
+  catalogMock.mockReturnValue({
+    items: [makeItem('a'), makeItem('b'), makeItem('a', 'organization'), makeItem('g', 'grafana', 'guide')],
+    loading: false,
+    scope: 'org:1',
+  })
+);
 
-const response: PackageRecommendationsResponse = {
-  baseUrl: 'https://cdn.example/base/',
-  packages: [
-    {
-      id: 'a',
-      path: 'packages/a',
-      title: 'A',
-      type: 'path',
-      description: 'first',
-      manifest: { id: 'a', type: 'path', milestones: ['m1', 'm2'] },
-    },
-    { id: 'b', path: 'packages/b', title: 'B', type: 'path' },
-    // Individual guide, not a whole path → filtered out.
-    { id: 'g', path: 'packages/g', title: 'G', type: 'guide' },
-    // No usable path → buildPackageFileUrl fails closed and the entry is skipped.
-    { id: 'c', path: '', title: 'C', type: 'path' },
-  ],
-};
-
-describe('useDiscoverMore', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    fetchMock.mockResolvedValue(response);
-  });
-
-  it('maps path-typed entries, skips guides and those without a content URL', async () => {
-    const { result } = renderHook(() => useDiscoverMore());
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    // The 'guide'-typed entry is excluded; only whole paths surface.
-    expect(result.current.items.map((i) => i.id)).not.toContain('g');
-    // toMatchObject, not toEqual: a schema-valid manifest parses with its
-    // .default() fields applied, so the parsed object has more keys than the
-    // raw fixture — only the fields under test need to match.
-    expect(result.current.items).toMatchObject([
-      {
-        id: 'a',
-        title: 'A',
-        description: 'first',
-        contentUrl: 'https://cdn.example/base/packages/a/content.json',
-        milestoneCount: 2,
-        manifest: { milestones: ['m1', 'm2'] },
-      },
-      {
-        id: 'b',
-        title: 'B',
-        description: undefined,
-        contentUrl: 'https://cdn.example/base/packages/b/content.json',
-        milestoneCount: undefined,
-        manifest: undefined,
-      },
-    ]);
-  });
-
-  it('threads the inlined manifest through so launch can build packageInfo from it', async () => {
-    const { result } = renderHook(() => useDiscoverMore());
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    expect(result.current.items.find((i) => i.id === 'a')?.manifest).toMatchObject({ milestones: ['m1', 'm2'] });
-  });
-
-  it.each(['future', 42, { future: true }, 'markdown'])(
-    'retains inline path metadata for format %p',
-    async (format) => {
-      const label = '  Literal <b> & **syntax**  ';
-      fetchMock.mockResolvedValue({
-        ...response,
-        packages: [
-          {
-            ...response.packages[0]!,
-            manifest: {
-              id: 'a',
-              type: 'path',
-              milestones: ['m1', 'm2'],
-              prerequisites: [{ id: 'notice', label, format }],
-            },
+it('retains runtime-normalized prerequisite metadata from the shared catalog', () => {
+  const label = '  Literal <b> & **syntax**  ';
+  catalogMock.mockReturnValue({
+    items: onlineCatalog({
+      baseUrl: 'https://interactive-learning.grafana.net/packages/',
+      packages: [
+        {
+          id: 'test-path',
+          path: 'test-path/',
+          type: 'path',
+          manifest: {
+            id: 'test-path',
+            type: 'path',
+            milestones: ['first', 'second'],
+            prerequisites: [{ id: 'notice', label, format: 42 }],
           },
-        ],
-      });
-
-      const { result } = renderHook(() => useDiscoverMore());
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-      expect(result.current.items[0]?.manifest).toMatchObject({
-        id: 'a',
-        type: 'path',
-        milestones: ['m1', 'm2'],
-        prerequisites: [{ id: 'notice', label, ...(format === 'markdown' ? { format } : {}) }],
-      });
-      expect(result.current.items[0]?.manifest?.prerequisites?.[0]?.format).toBe(
-        format === 'markdown' ? 'markdown' : undefined
-      );
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    }
-  );
-
-  it('excludes items whose title is already shown elsewhere', async () => {
-    const { result } = renderHook(() => useDiscoverMore({ excludeTitles: new Set(['A']) }));
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    expect(result.current.items.map((i) => i.id)).toEqual(['b']);
+        },
+      ],
+    }),
+    loading: false,
+    scope: 'org:1',
   });
-
-  it('caps the number of items to count', async () => {
-    const { result } = renderHook(() => useDiscoverMore({ count: 1 }));
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    expect(result.current.items).toHaveLength(1);
-    expect(result.current.items[0]!.id).toBe('a');
+  const { result } = renderHook(() => useDiscoverMore());
+  expect(result.current.items[0]).toMatchObject({
+    milestoneCount: 2,
+    manifest: {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['first', 'second'],
+      prerequisites: [{ id: 'notice', label }],
+    },
   });
+});
+
+it('uses the same catalog for published official and organization paths', () => {
+  const { result } = renderHook(() => useDiscoverMore());
+  expect(result.current.items.map((item) => item.key)).toEqual(['grafana:a', 'grafana:b', 'organization:a']);
+  expect(result.current.items[0]).toMatchObject({ milestoneCount: 2, catalogPackage: { id: 'a' } });
+});
+
+it('excludes source/package identity while retaining same-title and source-collision paths', () => {
+  const { result } = renderHook(() => useDiscoverMore({ excludeIdentities: new Set(['grafana:a']) }));
+  expect(result.current.items.map((item) => item.key)).toEqual(['grafana:b', 'organization:a']);
+});
+
+it('caps the preview and exposes the full catalog for Continue learning', () => {
+  const { result } = renderHook(() => useDiscoverMore({ count: 1 }));
+  expect(result.current.items).toHaveLength(1);
+  expect(result.current.catalog.items).toHaveLength(4);
+});
+
+it('renders available bundled paths while remote sources load', () => {
+  catalogMock.mockReturnValue({ items: [makeItem('local')], loading: true, scope: 'org:1' });
+  const { result } = renderHook(() => useDiscoverMore());
+  expect(result.current.isLoading).toBe(false);
+  expect(result.current.items[0]?.id).toBe('local');
 });

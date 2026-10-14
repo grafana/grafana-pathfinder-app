@@ -1,130 +1,58 @@
-/**
- * Discover More Hook
- *
- * Surfaces novel, external learning paths in the My Learning page. Unlike the
- * context recommender — which targets the user's current path and can return
- * nothing on the home surface — this pulls the full upstream package index
- * (`repository.json`, proxied by the backend), keeps only `path`-typed entries
- * (whole learning paths, not individual guides), and picks a handful, so there
- * is always a new path to explore.
- */
-
-import { useState, useEffect } from 'react';
-
-import {
-  fetchOnlinePackageRecommendations,
-  buildPackageFileUrl,
-  type OnlinePackageEntry,
-} from '../lib/package-recommendations-client';
-import { RuntimeManifestJsonObjectSchema } from '../lib/runtime-manifest';
+import { useMemo } from 'react';
+import type { CatalogPackage } from '../types/package-catalog.types';
 import type { ManifestJson } from '../types/package.types';
-import { logger } from '../lib/logging';
+import { catalogIdentity } from './catalog-learning-core';
+import { usePackageCatalog } from './package-catalog.hook';
 
-const DEFAULT_DISCOVER_COUNT = 5;
-
-/**
- * A path-shaped item ready to render as a Discover More card. `contentUrl`
- * points at the package's `content.json` and is safe to hand to
- * `prepareGuideLaunch`, which derives package context from the URL.
- */
 export interface DiscoverMoreItem {
   id: string;
+  key?: string;
   title: string;
   description?: string;
   contentUrl: string;
-  /** Milestone count from the inlined manifest, when available. */
   milestoneCount?: number;
-  /** The package's inlined manifest, when available and schema-valid — threaded into launch as `packageInfo` to save a redundant re-fetch. */
   manifest?: ManifestJson;
+  catalogPackage?: CatalogPackage;
 }
 
 export interface UseDiscoverMoreOptions {
-  /** Titles already surfaced elsewhere (My Courses / Completed) to skip. */
-  excludeTitles?: Set<string>;
-  /** How many items to surface. */
+  excludeIdentities?: ReadonlySet<string>;
   count?: number;
 }
 
-export interface UseDiscoverMoreReturn {
-  items: DiscoverMoreItem[];
-  isLoading: boolean;
-}
-
-function milestoneCountOf(entry: OnlinePackageEntry): number | undefined {
-  const milestones = entry.manifest?.milestones;
-  return Array.isArray(milestones) ? milestones.length : undefined;
-}
-
-// Mirrors online-cdn-resolver.ts's handling of the same OnlinePackageEntry.manifest shape.
-function parseManifest(manifest: Record<string, unknown> | undefined): ManifestJson | undefined {
-  if (!manifest) {
-    return undefined;
-  }
-  const parsed = RuntimeManifestJsonObjectSchema.safeParse(manifest);
-  return parsed.success ? (parsed.data as ManifestJson) : undefined;
-}
-
-function toDiscoverItem(entry: OnlinePackageEntry, baseUrl: string): DiscoverMoreItem | null {
-  const contentUrl = buildPackageFileUrl(baseUrl, entry.path, 'content.json');
-  if (!contentUrl) {
-    return null;
-  }
+export function toDiscoverMoreItem(item: CatalogPackage): DiscoverMoreItem {
   return {
-    id: entry.id,
-    title: entry.title ?? entry.id,
-    description: entry.description,
-    contentUrl,
-    milestoneCount: milestoneCountOf(entry),
-    manifest: parseManifest(entry.manifest),
+    id: item.id,
+    key: item.key,
+    title: item.title,
+    description: item.description,
+    contentUrl: item.url,
+    milestoneCount: item.memberIds?.length,
+    manifest: item.packageInfo?.packageManifest as ManifestJson | undefined,
+    catalogPackage: item,
   };
 }
 
-/**
- * Fetches the upstream package index once and returns up to `count` items,
- * skipping any whose title is already shown elsewhere on the page. Fails soft:
- * the underlying client never throws and returns an empty index when offline
- * or unavailable, so callers render an empty state rather than an error.
- */
-export function useDiscoverMore(options: UseDiscoverMoreOptions = {}): UseDiscoverMoreReturn {
-  const { excludeTitles, count = DEFAULT_DISCOVER_COUNT } = options;
-  const [items, setItems] = useState<DiscoverMoreItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const excludeKey = excludeTitles ? [...excludeTitles].sort().join('|') : '';
-
-  useEffect(() => {
-    let mounted = true;
-
-    void (async () => {
-      try {
-        const { baseUrl, packages } = await fetchOnlinePackageRecommendations();
-        const exclude = excludeTitles ?? new Set<string>();
-        const mapped = packages
-          // Only whole learning paths — the index also carries individual
-          // guides (type 'guide'), which are not what Discover More surfaces.
-          .filter((entry) => entry.type === 'path')
-          .map((entry) => toDiscoverItem(entry, baseUrl))
-          .filter((item): item is DiscoverMoreItem => item !== null && !exclude.has(item.title))
-          .slice(0, count);
-
-        if (mounted) {
-          setItems(mapped);
-        }
-      } catch (error) {
-        logger.warn('[DiscoverMore] Failed to load package index', { error });
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-    // excludeKey is a stable serialization of excludeTitles; count is primitive.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [excludeKey, count]);
-
-  return { items, isLoading };
+export function selectDiscoverMore(
+  items: CatalogPackage[],
+  excludeIdentities: ReadonlySet<string> = new Set(),
+  count = 5
+): DiscoverMoreItem[] {
+  return items
+    .filter((item) => item.format === 'path' && !excludeIdentities.has(catalogIdentity(item)))
+    .sort((a, b) => a.title.localeCompare(b.title) || a.key.localeCompare(b.key))
+    .slice(0, count)
+    .map(toDiscoverMoreItem);
 }
+
+export function useDiscoverMore(options: UseDiscoverMoreOptions = {}) {
+  const catalog = usePackageCatalog();
+  const { excludeIdentities, count = 5 } = options;
+  const items = useMemo(
+    () => selectDiscoverMore(catalog.items, excludeIdentities, count),
+    [catalog.items, excludeIdentities, count]
+  );
+  return { items, isLoading: catalog.loading && items.length === 0, catalog };
+}
+
+export type UseDiscoverMoreReturn = ReturnType<typeof useDiscoverMore>;

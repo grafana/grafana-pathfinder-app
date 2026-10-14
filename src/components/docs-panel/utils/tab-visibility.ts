@@ -27,7 +27,7 @@ export function computeTabVisibility(
   activeTabId: string
 ): TabVisibilityResult {
   const guideTabs = getGuideStripTabs(tabs);
-  const homeTabs = tabs.filter((tab) => tab.type === 'recommendations');
+  const homeTabs = tabs.filter((tab) => tab.type === 'recommendations' || tab.type === 'browse');
 
   if (guideTabs.length === 0) {
     return { visibleTabs: tabs, overflowedTabs: [] };
@@ -37,7 +37,10 @@ export function computeTabVisibility(
     return { visibleTabs: tabs, overflowedTabs: [] };
   }
 
-  const availableWidth = Math.max(0, containerWidth - RESERVED_WIDTH);
+  const availableWidth = Math.max(
+    0,
+    containerWidth - RESERVED_WIDTH - (tabs.some((tab) => tab.type === 'browse') ? 40 : 0)
+  );
 
   let maxVisibleGuideTabs = 0;
   let widthUsed = 0;

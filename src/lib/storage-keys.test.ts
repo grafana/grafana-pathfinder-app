@@ -20,6 +20,8 @@ import {
 describe('StorageKeys — stable string contract', () => {
   it('matches the locked key values exactly', () => {
     expect(StorageKeys).toEqual({
+      SETTINGS_ABSENT_PREFIX: 'grafana-pathfinder-settings-absent-v1:',
+      SETTINGS_GENERATION_PREFIX: 'grafana-pathfinder-settings-generation-v1:',
       // Core learner / progress state
       JOURNEY_COMPLETION: 'grafana-pathfinder-app-journey-completion',
       INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion',

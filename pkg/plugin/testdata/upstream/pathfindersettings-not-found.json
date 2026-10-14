@@ -1,0 +1,1 @@
+{"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pathfindersettings.pathfinderbackend.ext.grafana.app \"default\" not found","reason":"NotFound","details":{"name":"default","group":"pathfinderbackend.ext.grafana.app","kind":"pathfindersettings"},"code":404}

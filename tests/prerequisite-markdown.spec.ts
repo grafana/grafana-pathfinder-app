@@ -225,7 +225,7 @@ test.describe('restricted Markdown prerequisites', () => {
       .filter({ has: page.getByText(summaryFixture.title, { exact: true }) });
     await expect(card).toBeVisible({ timeout: 30_000 });
     expect(routes.packageFeedRequests()).toBeGreaterThan(0);
-    await card.getByRole('button', { name: 'Summary' }).click();
+    await card.getByTestId(/context-panel-recommendation-summary-/).click();
 
     await expectLiteralPrerequisite(card);
     await expectSecurePopup(page, card, 'Open summary docs', `${DESTINATION_ORIGIN}/summary`);

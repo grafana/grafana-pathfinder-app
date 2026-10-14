@@ -11,7 +11,7 @@ import { readProxyDiagnostics, reportProxyFailure, reportProxyResponse } from '.
  *
  * @coupling API: GET /custom-guide-repository served by pkg/plugin/custom_guide_repository.go
  */
-import { getBackendSrv } from '@grafana/runtime';
+import { config, getBackendSrv } from '@grafana/runtime';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
 import { isBackendApiAvailable } from '../utils/fetchBackendGuides';
@@ -90,8 +90,8 @@ const APP_PLATFORM_REPOSITORY = 'app-platform';
 // concurrently. The proxy derives the namespace server-side, so keying on the
 // client-side namespace gate is safe. A full reload always refetches.
 const CACHE_TTL_MS = 30_000;
-const cache = new Map<string, { entries: CustomGuideRepositoryEntry[]; at: number }>();
-const inflight = new Map<string, Promise<CustomGuideRepositoryEntry[]>>();
+const cache = new Map<string, { result: CustomGuideCatalogue; at: number }>();
+const inflight = new Map<string, Promise<CustomGuideCatalogue>>();
 
 function reportCatalogueFetchFailure(err: unknown): void {
   reportProxyFailure(err);
@@ -109,8 +109,13 @@ function reportCatalogueFetchFailure(err: unknown): void {
   }
 }
 
-interface CatalogueResult {
+export interface CustomGuideCatalogue {
   entries: CustomGuideRepositoryEntry[];
+  available: boolean;
+  reason?: string;
+}
+
+interface CatalogueResult extends CustomGuideCatalogue {
   cacheable: boolean;
 }
 
@@ -128,15 +133,7 @@ function narrowPackageType(type: string | undefined): PackageType | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-// Every entry from this proxy is an App Platform package, but the CR manifest
-// leaves `repository` omitempty (and authoring tooling may stamp the CDN
-// default). Force it here — the launch surfaces thread this manifest into
-// packageInfo, and a missing/wrong value fails the `app-platform` gate in
-// package-content.ts (fabricated public websiteUrl) and mislabels the durable
-// completion source (completion-identity.ts guideSource). `type` is narrowed in
-// the same pass: the proxy forwards it unvalidated, so anything that isn't a
-// PackageType becomes undefined, which the `'path'`/`'journey'` comparisons
-// downstream already treat as "not a path".
+// Source identity comes from the private loader, never an authored manifest.
 function shapeEntry(entry: WireEntry): CustomGuideRepositoryEntry {
   const { manifest, ...rest } = entry;
   if (!manifest) {
@@ -157,74 +154,60 @@ async function requestCatalogue(): Promise<CatalogueResult> {
   );
   reportProxyResponse(response);
   if (!response?.capability?.available) {
-    // Surface WHY the catalogue is empty — otherwise a degraded capability (e.g.
-    // obo-unavailable) presents as "no guides" with nothing in the console, which
-    // is exactly how the stackId-wipe incident stayed invisible. The log is for a
-    // developer at a console; the Faro event is the countable, alertable signal.
     const reason = response?.capability?.reason ?? 'unknown';
     logger.warn('[custom-guides] catalogue unavailable', { reason });
     recordCustomGuideCatalogueUnavailable(reason);
-    return { entries: [], cacheable: true };
+    return { entries: [], available: false, reason, cacheable: true };
   }
   if (isMalformedGuides(response.guides)) {
-    // Schema drift between the Go proxy and this client would otherwise render
-    // as "no guides authored", with the metric at zero and a silent console.
     logger.warn('[custom-guides] catalogue malformed', { reason: MALFORMED_REASON });
     recordCustomGuideCatalogueUnavailable(MALFORMED_REASON);
-    return { entries: [], cacheable: false };
+    return { entries: [], available: false, reason: MALFORMED_REASON, cacheable: false };
   }
   const guides = Array.isArray(response.guides) ? response.guides : [];
-  return { entries: guides.map(shapeEntry), cacheable: true };
+  return { entries: guides.map(shapeEntry), available: true, cacheable: true };
 }
 
-/**
- * Fetch the caller's custom guide catalogue. The proxy derives the namespace
- * from the trusted plugin context, so none is sent here; `namespace` is only a
- * client-side gate for "am I on a provisioned stack". Returns an empty array
- * when the backend API isn't rolled out, there's no namespace, the proxy
- * reports itself unavailable, or the request fails — a best-effort listing, not
- * a hard dependency (mirrors fetchBackendGuides). Successful results are cached
- * per namespace for CACHE_TTL_MS with in-flight de-duplication so concurrent
- * callers share a single upstream drain; failures and malformed responses are
- * not cached.
- */
-export async function fetchCustomGuideRepository(namespace: string): Promise<CustomGuideRepositoryEntry[]> {
+export async function fetchCustomGuideCatalogue(
+  namespace: string,
+  options: { refresh?: boolean } = {}
+): Promise<CustomGuideCatalogue> {
   if (!isBackendApiAvailable() || !namespace) {
-    return [];
+    return { entries: [], available: false, reason: 'unsupported' };
   }
 
-  const cached = cache.get(namespace);
+  const key = `${namespace}:${config?.bootData?.user?.orgId ?? ''}:${config?.bootData?.user?.id ?? ''}`;
+  if (options.refresh) {
+    cache.delete(key);
+  }
+  const cached = cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
-    return cached.entries;
+    return cached.result;
   }
-
-  const existing = inflight.get(namespace);
+  const existing = inflight.get(key);
   if (existing) {
     return existing;
   }
-
   const request = requestCatalogue()
-    .then(({ entries, cacheable }) => {
-      // Drift may be fixed by the next deploy; caching it would keep the
-      // surface empty for the whole TTL after the backend recovered.
+    .then(({ cacheable, ...result }) => {
       if (cacheable) {
-        cache.set(namespace, { entries, at: Date.now() });
+        cache.set(key, { result, at: Date.now() });
       }
-      return entries;
+      return result;
     })
-    // Best-effort: never surface a listing failure to callers, and don't cache
-    // it so a transient error doesn't stick for the whole TTL. Still counted —
-    // `showErrorAlert: false` makes this otherwise invisible from the browser.
-    .catch((err: unknown) => {
+    .catch((err: unknown): CustomGuideCatalogue => {
       reportCatalogueFetchFailure(err);
-      return [] as CustomGuideRepositoryEntry[];
+      return { entries: [], available: false, reason: 'request-failed' };
     })
     .finally(() => {
-      inflight.delete(namespace);
+      inflight.delete(key);
     });
-
-  inflight.set(namespace, request);
+  inflight.set(key, request);
   return request;
+}
+
+export async function fetchCustomGuideRepository(namespace: string): Promise<CustomGuideRepositoryEntry[]> {
+  return (await fetchCustomGuideCatalogue(namespace)).entries;
 }
 
 /** Drop cached catalogue entries so the next fetch re-lists (e.g. after a publish, or in tests). */
