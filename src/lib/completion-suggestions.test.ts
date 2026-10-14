@@ -1,5 +1,5 @@
 import type { CatalogPackage } from '../types/package-catalog.types';
-import { selectCompletionSuggestions } from './completion-suggestions';
+import { completionSuggestionReason, selectCompletionSuggestions } from './completion-suggestions';
 
 const guide = (id: string, patch: Partial<CatalogPackage> = {}): CatalogPackage => ({
   key: `bundled:${id}`,
@@ -14,6 +14,88 @@ const guide = (id: string, patch: Partial<CatalogPackage> = {}): CatalogPackage 
 const context = { url: 'bundled:current', public: true, inPath: false };
 
 describe('selectCompletionSuggestions', () => {
+  it('prioritizes authored recommendations then suggestions in declared order above topics', () => {
+    const items = [
+      guide('current'),
+      guide('alpha'),
+      guide('z-recommended'),
+      guide('y-recommended'),
+      guide('x-suggested'),
+    ];
+    const authored = { ...context, recommends: ['z-recommended', 'y-recommended'], suggests: ['x-suggested'] };
+    const selected = selectCompletionSuggestions(items, new Map(), authored);
+    expect(selected.map((item) => item.id)).toEqual(['z-recommended', 'y-recommended']);
+    expect(completionSuggestionReason(selected[0]!, authored)).toBe('recommended');
+    expect(completionSuggestionReason(items[4]!, authored)).toBe('suggested');
+    expect(completionSuggestionReason(items[1]!, authored)).toBe('inferred');
+  });
+
+  it('chooses eligible OR alternatives and skips groups satisfied by a completed alternative', () => {
+    const items = [guide('current'), guide('done'), guide('alternative'), guide('suggested'), guide('topic')];
+    const selected = selectCompletionSuggestions(items, new Map([['bundled:done', { percent: 100 }]]), {
+      ...context,
+      recommends: [
+        ['missing', 'alternative'],
+        ['done', 'suggested'],
+      ],
+      suggests: ['topic'],
+    });
+    expect(selected.map((item) => item.id)).toEqual(['alternative', 'topic']);
+  });
+
+  it('fills partially broken authored relationships with suggestions and credible topic matches', () => {
+    const items = [guide('current'), guide('alpha'), guide('z-authored', { category: 'metrics' })];
+    expect(
+      selectCompletionSuggestions(items, new Map(), {
+        ...context,
+        recommends: ['missing'],
+        suggests: ['z-authored'],
+      }).map((item) => item.id)
+    ).toEqual(['z-authored', 'alpha']);
+  });
+
+  it('excludes completed authored candidates while retaining partially completed OR alternatives', () => {
+    const items = [guide('current'), guide('done', { category: 'metrics' }), guide('partial', { category: 'metrics' })];
+    const progress = new Map([
+      ['bundled:done', { percent: 100 }],
+      ['bundled:partial', { percent: 50 }],
+    ]);
+    expect(
+      selectCompletionSuggestions(items, progress, {
+        ...context,
+        recommends: ['done', ['missing', 'partial']],
+      }).map((item) => item.id)
+    ).toEqual(['partial']);
+  });
+
+  it('allows only explicit organization relationships for private content with colliding public ids', () => {
+    const items = [
+      guide('current'),
+      guide('next'),
+      guide('topic-private', {
+        source: 'organization',
+        key: 'app-platform:topic-private',
+        url: 'backend-guide:topic-private',
+      }),
+      guide('next', { source: 'organization', key: 'app-platform:next', url: 'backend-guide:next' }),
+    ];
+    const privateContext = {
+      ...context,
+      public: false,
+      source: 'organization' as const,
+      url: 'backend-guide:current',
+      id: 'current',
+      category: 'dashboards',
+      recommends: ['next', 'missing'],
+    };
+    const selected = selectCompletionSuggestions(items, new Map([['bundled:next', { percent: 100 }]]), privateContext);
+    expect(selected.map((item) => item.key)).toEqual(['app-platform:next']);
+    expect(completionSuggestionReason(selected[0]!, privateContext)).toBe('recommended');
+    expect(completionSuggestionReason(items[1]!, privateContext)).toBe('inferred');
+    expect(selectCompletionSuggestions(items, new Map(), { ...privateContext, recommends: [] })).toEqual([]);
+    expect(selectCompletionSuggestions(items, new Map(), { ...privateContext, source: undefined })).toEqual([]);
+  });
+
   it.each(['oss', 'cloud'] as const)('excludes only known incompatible %s platform targets', (platform) => {
     const opposite = platform === 'oss' ? 'cloud' : 'oss';
     const items = [

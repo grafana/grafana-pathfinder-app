@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
-import { config } from '@grafana/runtime';
+import React, { useMemo, useState } from 'react';
 import { Button, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import type { RawContent } from '../../types/content.types';
 import type { AnalyticsCompletionIdentity } from '../../docs-retrieval';
-import { guideIdentityAnalyticsProperties } from '../../completion-records';
-import { useCatalogProgress, usePackageCatalog } from '../../learning-paths';
-import { selectCompletionSuggestions } from '../../lib/completion-suggestions';
+import { useCatalogProgress } from '../../learning-paths';
+import { useCompletionRecommendations } from './useCompletionRecommendations';
+import { selectCompletionSuggestions, completionSuggestionReason } from '../../lib/completion-suggestions';
 import { catalogTopic } from '../../lib/catalog-discovery';
 import { getPathfinderSurface } from '../../lib/telemetry/surface';
 import { useCatalogLaunch } from '../LearningPaths/useCatalogLaunch';
@@ -18,13 +17,6 @@ interface Props {
   content: RawContent;
   completionIdentity?: AnalyticsCompletionIdentity;
   inPath?: boolean;
-}
-
-export function CompletionSuggestions(props: Props) {
-  const publicIdentity =
-    props.completionIdentity &&
-    guideIdentityAnalyticsProperties({ ...props.completionIdentity, kind: 'guide' }).guide_visibility === 'public';
-  return publicIdentity ? <PublicSuggestions {...props} /> : <SuggestionFallback />;
 }
 
 function SuggestionFallback() {
@@ -49,36 +41,32 @@ function SuggestionFallback() {
   );
 }
 
-function PublicSuggestions({ content, completionIdentity, inPath = false }: Props) {
+export function CompletionSuggestions({ content, completionIdentity, inPath = false }: Props) {
   const styles = useStyles2(getCompletionPanelStyles);
-  const catalog = usePackageCatalog();
-  const progress = useCatalogProgress(catalog.items, catalog.scope);
+  const catalog = useCompletionRecommendations(content, completionIdentity, inPath);
+  const rawProgress = useCatalogProgress(catalog.items, catalog.scope);
+  const progress = useMemo(
+    () =>
+      new Map(
+        catalog.items.map((item) => [
+          item.key,
+          item.source === 'organization' ? { percent: 0 } : (rawProgress.get(item.key) ?? { percent: 0 }),
+        ])
+      ),
+    [catalog.items, rawProgress]
+  );
   const selectionKey = JSON.stringify([
     catalog.scope,
     content.url,
     completionIdentity?.guideSource,
     completionIdentity?.guideId,
-    inPath,
+    completionIdentity?.sourceConfirmed,
+    catalog.context,
   ]);
   const [selection, setSelection] = useState<{ key: string; keys: string[] } | null>(null);
-  const ready = !catalog.loading && progress.size === catalog.items.length;
-  const manifest = content.metadata.packageManifest;
-  const category = typeof manifest?.category === 'string' ? manifest.category : undefined;
-  const pathIdentity = completionIdentity?.pathIdentity;
-  const publicPath =
-    pathIdentity &&
-    guideIdentityAnalyticsProperties({ ...pathIdentity, kind: 'journey' }).guide_visibility === 'public';
+  const ready = !catalog.loading && catalog.items.every((item) => rawProgress.has(item.key));
   if (ready && selection?.key !== selectionKey) {
-    const candidates = selectCompletionSuggestions(catalog.items, progress, {
-      url: content.url,
-      id: completionIdentity?.guideId,
-      category,
-      public: true,
-      platform: config.bootData?.settings?.cloudMigrationIsTarget ? 'cloud' : 'oss',
-      inPath,
-      pathUrl: content.metadata.learningJourney?.baseUrl ?? content.metadata.trackMemberBaseUrl,
-      pathId: publicPath ? pathIdentity.guideId : undefined,
-    });
+    const candidates = selectCompletionSuggestions(catalog.items, progress, catalog.context);
     setSelection({ key: selectionKey, keys: candidates.map((item) => item.key) });
   }
   const suggestions =
@@ -109,8 +97,15 @@ function PublicSuggestions({ content, completionIdentity, inPath = false }: Prop
           key={`${catalog.scope}:${item.key}`}
           title={item.title}
           variant={index === 0 ? 'featured' : 'compact'}
-          eyebrow={t('completionPanel.nextExplore', 'A next step to explore')}
+          eyebrow={
+            completionSuggestionReason(item, catalog.context) === 'recommended'
+              ? t('completionPanel.recommended', 'Recommended learning')
+              : completionSuggestionReason(item, catalog.context) === 'suggested'
+                ? t('completionPanel.related', 'Related learning')
+                : t('completionPanel.nextExplore', 'A next step to explore')
+          }
           kind={item.format}
+          organization={item.source === 'organization'}
           topic={catalogTopic(item)}
           description={item.description}
           effort={

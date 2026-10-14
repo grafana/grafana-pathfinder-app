@@ -46,6 +46,10 @@ With `pathfinder.completion-panel` enabled, completion and continuation are sepa
 
 The panel uses established completed state, not scroll position. Path completion follows the existing best-of-sequences calculation in decision 4, including selected tracks and exclusion of locked entries. Reaching the last module alone does not establish completion. Related suggestions do not create enrollment or progress, and author previews retain the existing footer.
 
+After path navigation, authored `recommends` and `suggests` take priority over inferred curated-path or topic relationships. Their order is preserved, alternative groups offer one eligible member, and completed groups are skipped. `depends` remains prerequisite metadata, not next-content selection. A module's manifest and its owning path's manifest remain distinct; terminal path recommendations can use both without treating the parent's metadata as the module's own.
+
+Missing catalog references resolve through bounded metadata-only requests. Official references stay in official repositories, and organization references stay in the current organization. Private content without explicit authored relationships retains the neutral Explore action rather than inferred suggestions. Legacy private percentages cannot establish organization provenance, so private suggestion cards do not infer completion from them.
+
 **A vocabulary warning before you read further.** "Journey" in decision 5 means a
 level _above_ paths — a path of paths. That is not what "journey" means in the
 code today: `milestoneCompletionStorage` — now a read-only legacy store, kept
