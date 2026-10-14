@@ -93,7 +93,7 @@ import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 import { Prerequisites } from '../Prerequisites';
 import { MarkCompleteFooter } from '../mark-complete';
-import { resolveFullScreenFallbackLocation } from './full-screen-fallback-location';
+import { resolveFullScreenFallbackLocation, resolveFullScreenManifestLocation } from './full-screen-fallback-location';
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -527,20 +527,21 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   const packageManifestDescription = content.metadata.packageManifest?.description;
   const pathId = typeof packageManifestId === 'string' ? packageManifestId : undefined;
   const pathDescription = typeof packageManifestDescription === 'string' ? packageManifestDescription : undefined;
-  // Full-screen -> sidebar handoff target (see interactive-engine/interactive.hook.ts):
-  // prefer the current milestone's own starting location, then the course's.
+  // Full-screen handoff prefers milestone, member, then owning journey location.
   // `/` and empty/missing both mean "no real signal" for this feature specifically
   // — the existing alignment system (resolveStartingLocation) treats `/` as a
   // real, confirmation-gated target for its own unrelated purpose; this handoff
   // has no confirmation step, so a bare default must not silently relocate the user.
-  const courseStartingLocation = content.metadata.packageManifest?.startingLocation;
   const fullScreenFallbackLocation =
     resolveFullScreenFallbackLocation(getCurrentMilestone(content)?.startingLocation) ??
-    resolveFullScreenFallbackLocation(typeof courseStartingLocation === 'string' ? courseStartingLocation : undefined);
+    resolveFullScreenManifestLocation(content.metadata.packageManifest) ??
+    resolveFullScreenManifestLocation(content.metadata.journeyManifest);
   const isCoverPage = isJourneyCoverPage(content);
   const packageManifest = content.metadata.packageManifest;
   const prerequisites =
-    !isCoverPage && journey && packageManifest?.type === 'path' ? undefined : packageManifest?.prerequisites;
+    !isCoverPage && journey && (packageManifest?.type === 'path' || packageManifest?.type === 'journey')
+      ? undefined
+      : packageManifest?.prerequisites;
   const hasPrerequisites = Array.isArray(prerequisites) && prerequisites.length > 0;
   const hasCoverContents = Boolean(isCoverPage && journey && journey.milestones.length > 0);
   const beforeContent =

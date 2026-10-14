@@ -10,3 +10,16 @@ export function resolveFullScreenFallbackLocation(candidate: string | undefined)
   const trimmed = candidate?.trim();
   return trimmed && trimmed !== '/' ? trimmed : undefined;
 }
+
+export function resolveFullScreenManifestLocation(manifest: Record<string, unknown> | undefined): string | undefined {
+  const typed = manifest?.startingLocation;
+  const additional = manifest?.additionalFields;
+  const nested =
+    additional && typeof additional === 'object' && !Array.isArray(additional)
+      ? (additional as Record<string, unknown>).startingLocation
+      : undefined;
+  return (
+    resolveFullScreenFallbackLocation(typeof typed === 'string' ? typed : undefined) ??
+    resolveFullScreenFallbackLocation(typeof nested === 'string' ? nested : undefined)
+  );
+}

@@ -20,6 +20,7 @@ import { fetchContent } from '../content-fetcher';
 import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
+import { getMilestoneSlug } from '../../lib/learning-journey-url';
 import { getPackageResolver, setPackageResolver, setPackageResolverFactory } from './package-resolver-registry';
 
 export { setPackageResolver, setPackageResolverFactory };
@@ -376,15 +377,18 @@ export async function fetchPackageContent(
   }
 
   const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
-  const memberIndex = needsMilestones
-    ? (milestones?.findIndex((milestone) =>
-        explicitGuideId ? milestone.id === explicitGuideId : milestone.url === contentUrl
-      ) ?? -1)
-    : -1;
+  const matchesLoadedMember = (milestone: Milestone) => {
+    if (!explicitGuideId) {
+      return milestone.url === contentUrl;
+    }
+    if (milestone.id !== undefined) {
+      return milestone.id === explicitGuideId;
+    }
+    return milestone.url !== undefined && getMilestoneSlug(milestone.url) === explicitGuideId;
+  };
+  const memberIndex = needsMilestones ? (milestones?.findIndex(matchesLoadedMember) ?? -1) : -1;
   const memberMilestone = memberIndex >= 0 ? milestones?.[memberIndex] : undefined;
-  const trackMember = pathTracks?.resolved
-    .flatMap((track) => track.milestones)
-    .find((milestone) => (explicitGuideId ? milestone.id === explicitGuideId : milestone.url === contentUrl));
+  const trackMember = pathTracks?.resolved.flatMap((track) => track.milestones).find(matchesLoadedMember);
   const resolvedMember = memberMilestone ?? trackMember;
   const resolvedRepository =
     repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined) ?? resolvedMember?.repository;

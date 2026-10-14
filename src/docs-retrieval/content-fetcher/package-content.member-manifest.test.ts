@@ -141,6 +141,81 @@ describe('member launch keeps the loader manifest reachable', () => {
     expect(loadedOnly.content?.metadata.packageManifest?.prerequisites).toEqual(loadedPrerequisites);
   });
 
+  it('recognizes a legacy URL-only milestone when the caller supplies its explicit guide id', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+
+    const result = await fetchPackageContent(
+      'backend-guide:member-id',
+      pathManifest,
+      [{ ...resolvedMember, id: undefined }],
+      undefined,
+      undefined,
+      'member-id'
+    );
+
+    expect(result.content?.metadata.packageManifest).toMatchObject({ id: 'member-id', type: 'guide' });
+    expect(result.content?.metadata.journeyManifest).toMatchObject({ id: 'path-id', type: 'path' });
+  });
+
+  it('does not let a conflicting milestone URL override an explicit member id', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+    const owner = { ...pathManifest, milestones: ['a', 'b'] };
+    const milestones = [
+      { ...resolvedMember, id: 'a', url: 'backend-guide:b', packageManifest: { id: 'a' } },
+      { ...resolvedMember, id: 'b', number: 2, url: 'backend-guide:c', packageManifest: { id: 'b' } },
+    ];
+
+    const result = await fetchPackageContent('backend-guide:c', owner, milestones, undefined, undefined, 'b');
+
+    expect(result.content?.metadata.packageManifest?.id).toBe('b');
+    expect(result.content?.metadata.journeyManifest).toEqual(owner);
+    expect(result.content?.metadata.learningJourney?.currentMilestone).toBe(2);
+  });
+
+  it('does not let a conflicting track URL override an explicit member id', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+    const owner = {
+      ...pathManifest,
+      tracks: [{ trackId: 'extra', label: 'Extra', guides: ['a', 'b'] }],
+    };
+    setPackageResolver({
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: id === 'a' ? 'backend-guide:b' : id === 'b' ? 'backend-guide:c' : `backend-guide:${id}`,
+          manifestUrl: `https://example.test/${id}/manifest.json`,
+          repository: 'member-source',
+          manifest: id === owner.id ? owner : { id, type: 'guide' },
+          content: { id, title: id, blocks: [] },
+        })
+      ),
+    });
+
+    const result = await fetchPackageContent('backend-guide:c', owner, [resolvedMember], undefined, undefined, 'b');
+
+    expect(result.content?.metadata.packageManifest?.id).toBe('b');
+    expect(result.content?.metadata.journeyManifest).toEqual(owner);
+    expect(result.content?.metadata.learningJourney).toBeUndefined();
+  });
+
+  it('keeps journey ownership separate from member metadata', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+    const owningJourney = { id: 'journey-id', type: 'journey', milestones: ['member-id'] };
+
+    const result = await fetchPackageContent(
+      'backend-guide:member-id',
+      owningJourney,
+      [resolvedMember],
+      undefined,
+      undefined,
+      'member-id'
+    );
+
+    expect(result.content?.metadata.packageManifest).toMatchObject({ id: 'member-id', type: 'guide' });
+    expect(result.content?.metadata.journeyManifest).toEqual(owningJourney);
+  });
+
   it('keeps the explicitly supplied path repository as the member completion source', async () => {
     usePathResolver('base-source');
     mockFetch.mockReturnValue(backendGuideResource({}));

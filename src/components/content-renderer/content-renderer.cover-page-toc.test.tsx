@@ -185,6 +185,48 @@ describe('ContentRenderer cover-page table of contents', () => {
     }
   });
 
+  it('suppresses owning journey prerequisites on a later milestone while preserving member prerequisites', () => {
+    const content = makeContent({
+      metadata: {
+        ...makeContent().metadata,
+        learningJourney: { ...makeContent().metadata.learningJourney!, currentMilestone: 1 },
+        packageManifest: {
+          id: 'member-guide',
+          type: 'guide',
+          prerequisites: [{ id: 'own', label: 'Member-only need' }],
+        },
+        journeyManifest: {
+          id: 'owner-journey',
+          type: 'journey',
+          prerequisites: [{ id: 'parent', label: 'Journey-only need' }],
+        },
+      },
+    });
+
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
+
+    expect(screen.getByText('Member-only need')).toBeInTheDocument();
+    expect(screen.queryByText('Journey-only need')).not.toBeInTheDocument();
+  });
+
+  it('suppresses journey-type owner prerequisites on a later milestone', () => {
+    const content = makeContent({
+      metadata: {
+        ...makeContent().metadata,
+        learningJourney: { ...makeContent().metadata.learningJourney!, currentMilestone: 1 },
+        packageManifest: {
+          id: 'owner-journey',
+          type: 'journey',
+          prerequisites: [{ id: 'journey', label: 'Journey-only need' }],
+        },
+      },
+    });
+
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
+
+    expect(screen.queryByText('Journey-only need')).not.toBeInTheDocument();
+  });
+
   it('does not repeat path prerequisites on a later milestone', () => {
     const content = makeContent({
       metadata: {
