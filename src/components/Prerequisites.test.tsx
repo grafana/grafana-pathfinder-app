@@ -3,6 +3,16 @@ import { render, screen } from '@testing-library/react';
 import { Prerequisites } from './Prerequisites';
 
 describe('Prerequisites', () => {
+  it('shows a static informational note without dismiss or confirmation controls', () => {
+    render(<Prerequisites prerequisites={[{ id: 'stack', label: 'Access to a Grafana Cloud stack.' }]} />);
+
+    expect(screen.getByRole('note')).toHaveTextContent('Prerequisites');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
   it('keeps default and unknown formats as exact literal text', () => {
     const literal = '<strong>literal</strong> and **Markdown**';
     const unknown = '[also literal](https://example.com)';

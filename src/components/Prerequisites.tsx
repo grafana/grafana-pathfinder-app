@@ -1,5 +1,6 @@
-import React, { useId } from 'react';
+import React from 'react';
 import { css } from '@emotion/css';
+import { Alert } from '@grafana/ui';
 import { MarkdownManager } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -28,14 +29,6 @@ const markdownParser = new MarkdownManager({
 
 const containerClass = css`
   margin: 0 0 16px;
-  padding: 12px 16px;
-  border-left: 2px solid var(--grafana-colors-border-strong);
-  background: var(--grafana-colors-background-secondary);
-`;
-
-const headingClass = css`
-  margin: 0 0 8px;
-  font-size: 1rem;
 `;
 
 const listClass = css`
@@ -127,22 +120,18 @@ function InlineMarkdown({ label }: { label: string }) {
 }
 
 export function Prerequisites({ prerequisites }: { prerequisites: unknown }) {
-  const headingId = useId();
   const items = getPrerequisites(prerequisites);
   if (items.length === 0) {
     return null;
   }
 
   return (
-    <section className={containerClass} aria-labelledby={headingId}>
-      <h3 className={headingClass} id={headingId}>
-        Prerequisites
-      </h3>
+    <Alert className={containerClass} severity="info" title="Prerequisites" role="note">
       <ul className={listClass} data-testid="prerequisites-list">
         {items.map(({ id, label, format }) => (
           <li key={id}>{format === 'markdown' ? <InlineMarkdown label={label} /> : label}</li>
         ))}
       </ul>
-    </section>
+    </Alert>
   );
 }
