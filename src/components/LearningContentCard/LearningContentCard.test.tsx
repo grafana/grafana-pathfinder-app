@@ -197,3 +197,17 @@ it.each(['completion-primary', 'completion-alternative'] as const)(
     }
   }
 );
+
+it('keeps visible completion verbs short while naming their destination accessibly', () => {
+  render(
+    <LearningContentCard
+      title="Next guide"
+      kind="guide"
+      variant="completion-primary"
+      actionLabel="Start"
+      actionAriaLabel="Start Next guide"
+      onLaunch={jest.fn()}
+    />
+  );
+  expect(screen.getByRole('button', { name: 'Start Next guide' })).toHaveTextContent('Start');
+});

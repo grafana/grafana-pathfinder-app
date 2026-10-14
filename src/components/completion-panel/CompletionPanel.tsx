@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Icon, useStyles2 } from '@grafana/ui';
+import { Icon, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { cx } from '@emotion/css';
 import type { Milestone, RawContent } from '../../types/content.types';
 import type { AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import { useBooleanFlag } from '../../utils/openfeature';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
-import { openLearningHome, openCatalogBrowser } from '../docs-panel/utils/open-catalog-browser';
+import { CompletionNavigation } from './CompletionNavigation';
 import { getCompletionPanelStyles } from './completion-panel.styles';
 import { CompletionSuggestions } from './CompletionSuggestions';
 
@@ -76,34 +76,19 @@ export function CompletionPanel({
         </div>
       </div>
       {nextModule && onContinue ? (
-        <NextModule key={nextModule.url} module={nextModule} onContinue={onContinue} />
+        <>
+          <NextModule key={nextModule.url} module={nextModule} onContinue={onContinue} />
+          <CompletionNavigation />
+        </>
       ) : browseEnabled ? (
         <CompletionSuggestions
           content={content}
           completionIdentity={completionIdentity}
           inPath={Boolean(moduleContext)}
         />
-      ) : null}
-      <div className={styles.footer}>
-        {browseEnabled && (
-          <Button
-            className={styles.navigationAction}
-            variant="secondary"
-            icon="arrow-right"
-            onClick={() => openCatalogBrowser({ source: 'content_completion_panel' })}
-          >
-            {t('completionPanel.explore', 'Explore learning')}
-          </Button>
-        )}
-        <Button
-          className={styles.navigationAction}
-          variant="secondary"
-          icon="book-open"
-          onClick={() => openLearningHome({ source: 'content_completion_panel' })}
-        >
-          {t('completionPanel.myLearning', 'My learning')}
-        </Button>
-      </div>
+      ) : (
+        <CompletionNavigation />
+      )}
     </section>
   );
 }
@@ -154,7 +139,8 @@ function NextModule({ module, onContinue }: { module: Milestone; onContinue: () 
             ? t('completionPanel.minutes', 'About {{minutes}} min', { minutes: module.estimatedMinutes })
             : undefined
         }
-        actionLabel={t('completionPanel.continueMilestone', 'Continue to next milestone')}
+        actionLabel={t('completionPanel.continue', 'Continue')}
+        actionAriaLabel={t('completionPanel.continueDestination', 'Continue to {{title}}', { title: module.title })}
         onLaunch={launch}
         launching={pending}
         launchDisabled={module.isLocked}

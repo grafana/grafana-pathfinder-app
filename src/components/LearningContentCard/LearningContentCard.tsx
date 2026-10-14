@@ -18,6 +18,7 @@ export interface LearningContentCardProps {
   progress?: number;
   badges?: React.ReactNode;
   actionLabel?: string;
+  actionAriaLabel?: string;
   onLaunch: () => void | Promise<void>;
   launching?: boolean;
   launchDisabled?: boolean;
@@ -48,6 +49,7 @@ export function LearningContentCard({
   badges,
   onLaunch,
   actionLabel,
+  actionAriaLabel,
   launching = false,
   launchDisabled = false,
   launchError,
@@ -149,6 +151,7 @@ export function LearningContentCard({
   const launchButton = (
     <Button
       ref={actionRef}
+      aria-label={actionAriaLabel}
       className={styles.action}
       size="sm"
       icon={kind === 'docs' ? 'file-alt' : 'play'}

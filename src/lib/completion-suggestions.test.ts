@@ -303,3 +303,23 @@ it('deduplicates authored targets that share the same content URL', () => {
     selectCompletionSuggestions([guide('current'), a, alias], new Map(), { ...context, recommends: ['a', 'alias'] })
   ).toEqual([a]);
 });
+
+it('ranks specialist catalog matches by subject overlap before alphabetical order', () => {
+  const current = guide('loki-queries', { title: 'Query logs with Loki', category: 'logs' });
+  const generic = guide('aaa-logs', { title: 'A logs overview', category: 'logs' });
+  const relevant = guide('zzz-loki-queries', { title: 'Loki queries in depth', category: 'logs' });
+  expect(
+    selectCompletionSuggestions([current, generic, relevant], new Map(), {
+      ...context,
+      url: current.url,
+      id: current.id,
+    })
+  ).toEqual([relevant]);
+});
+
+it('uses known effort to break equal relevance and never fills a second inferred slot', () => {
+  const current = guide('current');
+  const long = guide('a-long', { estimatedMinutes: 30 });
+  const short = guide('z-short', { estimatedMinutes: 5 });
+  expect(selectCompletionSuggestions([current, long, short], new Map(), context)).toEqual([short]);
+});

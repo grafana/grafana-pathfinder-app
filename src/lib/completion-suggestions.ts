@@ -24,6 +24,59 @@ interface SuggestionProgress {
 
 const RELATED_TOPICS = new Set(['dashboards', 'data-sources', 'alerting', 'metrics', 'logs', 'k6', 'getting-started']);
 
+const DISCOVERY_STOP_WORDS = new Set([
+  'grafana',
+  'cloud',
+  'guide',
+  'learning',
+  'path',
+  'getting',
+  'started',
+  'with',
+  'your',
+  'first',
+  'and',
+  'the',
+  'for',
+  'how',
+  'use',
+  'using',
+  'to',
+  'in',
+  'of',
+  'a',
+  'an',
+  'this',
+  'that',
+]);
+
+function discoveryWords(item: CatalogPackage | undefined): Set<string> {
+  return new Set(
+    `${item?.title ?? ''} ${item?.id ?? ''}`
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((word) => word.length > 2 && !DISCOVERY_STOP_WORDS.has(word))
+  );
+}
+
+function rankCatalogFallback(
+  items: CatalogPackage[],
+  current: CatalogPackage | undefined,
+  topic: string
+): CatalogPackage[] {
+  const words = discoveryWords(current);
+  const relevance = (item: CatalogPackage) => [...discoveryWords(item)].filter((word) => words.has(word)).length;
+  const formatRank = (item: CatalogPackage) =>
+    topic === 'getting-started' ? Number(item.format === 'path') : Number(item.format === 'guide');
+  return [...items].sort(
+    (a, b) =>
+      formatRank(b) - formatRank(a) ||
+      relevance(b) - relevance(a) ||
+      (a.estimatedMinutes ?? Infinity) - (b.estimatedMinutes ?? Infinity) ||
+      a.key.localeCompare(b.key)
+  );
+}
+
 function contextSource(context: CompletionSuggestionContext): CatalogPackage['source'] | undefined {
   return context.public
     ? context.source === 'organization'
@@ -153,7 +206,11 @@ export function selectCompletionSuggestions(
     return suggestions.slice(0, 2);
   }
   if (context.public && topic === 'getting-started') {
-    const introductoryPath = ordered.find((item) => item.format === 'path' && catalogTopic(item) === topic);
+    const introductoryPath = rankCatalogFallback(
+      ordered.filter((item) => item.format === 'path' && catalogTopic(item) === topic),
+      current,
+      topic
+    )[0];
     if (introductoryPath) {
       return [introductoryPath];
     }
@@ -185,7 +242,13 @@ export function selectCompletionSuggestions(
     }
   }
   if (context.public && RELATED_TOPICS.has(topic)) {
-    suggestions.push(...ordered.filter((item) => catalogTopic(item) === topic));
+    suggestions.push(
+      ...rankCatalogFallback(
+        ordered.filter((item) => catalogTopic(item) === topic),
+        current,
+        topic
+      )
+    );
   }
   const seenIds = new Set<string>();
   const seenUrls = new Set<string>();

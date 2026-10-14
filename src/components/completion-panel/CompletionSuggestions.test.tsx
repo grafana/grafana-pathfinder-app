@@ -6,6 +6,12 @@ import type { DependencyList } from '../../types/package.types';
 import type { CatalogPackage } from '../../types/package-catalog.types';
 import { CompletionSuggestions } from './CompletionSuggestions';
 
+jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
+jest.mock('../docs-panel/utils/open-catalog-browser', () => ({
+  openCatalogBrowser: jest.fn(),
+  openLearningHome: jest.fn(),
+}));
+
 const current: CatalogPackage = {
   key: 'bundled:first-dashboard',
   id: 'first-dashboard',
@@ -103,7 +109,7 @@ it('shows neutral fallback for private or unresolved identities without authored
     <CompletionSuggestions content={content} completionIdentity={{ ...identity, guideSource: 'app-platform' }} />
   );
   expect(screen.queryByRole('button', { name: candidate.title })).not.toBeInTheDocument();
-  expect(screen.getByText('Find your next thing to learn.')).toBeInTheDocument();
+  expect(screen.getByText('Keep your learning going')).toBeInTheDocument();
   rerender(<CompletionSuggestions content={content} completionIdentity={{ ...identity, sourceConfirmed: false }} />);
   expect(screen.queryByRole('button', { name: candidate.title })).not.toBeInTheDocument();
 });
@@ -118,7 +124,7 @@ it('waits for hydration so already completed guides never flash as suggestions',
     [candidate.key, { percent: 100 }],
   ]);
   rerender(<CompletionSuggestions content={content} completionIdentity={identity} />);
-  expect(screen.getByText('Find your next thing to learn.')).toBeInTheDocument();
+  expect(screen.getByText('Keep your learning going')).toBeInTheDocument();
 });
 
 it('keeps a ready shortlist stable and launches using the existing helper', () => {
