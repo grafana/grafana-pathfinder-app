@@ -1,4 +1,9 @@
-import { validateCrossTabMessage, type RemoteRequirementError, type WireMirrors } from './cross-tab.types';
+import {
+  guidedStepWaitMs,
+  validateCrossTabMessage,
+  type RemoteRequirementError,
+  type WireMirrors,
+} from './cross-tab.types';
 import type { CheckResultError } from './requirements.types';
 
 function envelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -351,5 +356,17 @@ describe('condition array transport', () => {
     expect(
       validateCrossTabMessage(envelope({ kind, requestId: 'r', stepId: 's', requirements: 'a'.repeat(16385) }))
     ).toBeNull();
+  });
+});
+
+describe('guidedStepWaitMs', () => {
+  it('never waits less than the default step wait', () => {
+    expect(guidedStepWaitMs(0)).toBe(15 * 60_000);
+    expect(guidedStepWaitMs(2)).toBe(15 * 60_000);
+  });
+
+  it('covers the live tab budget plus slack for each substep left', () => {
+    expect(guidedStepWaitMs(8)).toBe(8 * 130_000);
+    expect(guidedStepWaitMs(20)).toBe(20 * 130_000);
   });
 });

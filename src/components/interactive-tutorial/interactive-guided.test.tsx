@@ -746,6 +746,7 @@ describe('InteractiveGuided — current action recovery', () => {
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    expect(channel.awaitStepComplete).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), 900_000);
     act(() => progress(1));
     await act(async () => finish(false));
     fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('remote-retry')));
