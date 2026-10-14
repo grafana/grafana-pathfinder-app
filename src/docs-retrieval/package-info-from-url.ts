@@ -23,7 +23,7 @@ import { diagnoseGuideError, guideSource } from '../lib/guide-diagnostics';
  */
 import { isInteractiveLearningUrl } from '../security';
 import type { PackageOpenInfo } from '../types/content-panel.types';
-import { ManifestJsonObjectSchema } from '../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from '../lib/runtime-manifest';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
 import { getPackageResolver } from './content-fetcher/package-resolver-registry';
 
@@ -88,28 +88,6 @@ function deriveManifestUrl(contentUrl: string): string | undefined {
   return contentUrl.replace(/\/content\.json(?=([?#]|$))/, '/manifest.json');
 }
 
-function normalizeRuntimePrerequisiteFormats(manifest: unknown): unknown {
-  if (typeof manifest !== 'object' || manifest === null || Array.isArray(manifest)) {
-    return manifest;
-  }
-
-  const prerequisites = (manifest as Record<string, unknown>).prerequisites;
-  if (!Array.isArray(prerequisites)) {
-    return manifest;
-  }
-
-  return {
-    ...manifest,
-    prerequisites: prerequisites.map((prerequisite) => {
-      if (typeof prerequisite !== 'object' || prerequisite === null || Array.isArray(prerequisite)) {
-        return prerequisite;
-      }
-      const { format, ...literalPrerequisite } = prerequisite as Record<string, unknown>;
-      return format === 'markdown' ? prerequisite : literalPrerequisite;
-    }),
-  };
-}
-
 /**
  * Fetch and parse the sibling manifest.json for a package content URL.
  * Returns `undefined` for non-package URLs, network errors, or schema failures
@@ -153,7 +131,7 @@ export async function fetchPackageInfoFromUrl(
       return undefined;
     }
     const json: unknown = await response.json();
-    const parsed = ManifestJsonObjectSchema.safeParse(normalizeRuntimePrerequisiteFormats(json));
+    const parsed = RuntimeManifestJsonObjectSchema.safeParse(json);
     if (!parsed.success) {
       finishGuideLoad(context, 'degraded', {
         source: guideSource(url),

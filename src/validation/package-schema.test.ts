@@ -184,6 +184,20 @@ describe('ManifestJsonSchema', () => {
     ).toBe(false);
   });
 
+  it.each(['html', 42, { type: 'markdown' }])('keeps publisher validation strict for format %p', (format) => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['first', 'second'],
+      prerequisites: [{ id: 'format', label: 'Literal label', format }],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.path.join('.') === 'prerequisites.0.format')).toBe(true);
+    }
+  });
+
   it('should apply defaults during parsing', () => {
     const result = ManifestJsonObjectSchema.safeParse(minimalGuideManifest);
     expect(result.success).toBe(true);

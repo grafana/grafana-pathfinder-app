@@ -32,6 +32,78 @@ beforeEach(() => {
 });
 
 describe('OnlineCdnPackageResolver', () => {
+  it.each([
+    { source: 'inline', loadContent: false },
+    { source: 'inline', loadContent: 'metadata-only' },
+    { source: 'inline', loadContent: true },
+    { source: 'fetched', loadContent: 'metadata-only' },
+    { source: 'fetched', loadContent: true },
+    { source: 'fallback', loadContent: 'metadata-only' },
+    { source: 'fallback', loadContent: true },
+  ] as const)(
+    'preserves $source path manifests with unknown formats and loadContent=$loadContent',
+    async ({ source, loadContent }) => {
+      const manifest = {
+        ...sampleEntry.manifest,
+        type: 'path',
+        milestones: ['first', 'second'],
+        tracks: [{ trackId: 'extra', label: 'Extra', guides: ['track-guide'] }],
+        prerequisites: [
+          { id: ' first ', label: ' <b>Literal</b> ', format: 'html' },
+          { id: 'numeric', label: '**Still literal**', format: 42 },
+          { id: 'object', label: '[Literal](https://example.com)', format: { type: 'markdown' } },
+          { id: 'markdown', label: '**Markdown**', format: 'markdown' },
+          { id: 'plain', label: 'Plain' },
+        ],
+      };
+      (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
+        baseUrl,
+        packages: [
+          {
+            ...sampleEntry,
+            manifest: source === 'inline' ? manifest : source === 'fallback' ? { ...manifest, id: 'Bad_ID' } : undefined,
+          },
+        ],
+      });
+      const originalFetch = global.fetch;
+      const content = { id: sampleEntry.id, title: 'Path', blocks: [] };
+      const fetchMock = jest.fn().mockImplementation((url: string) =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(url.endsWith('/content.json') ? content : manifest),
+        })
+      );
+      global.fetch = fetchMock;
+      try {
+        const result = await new OnlineCdnPackageResolver().resolve(sampleEntry.id, { loadContent });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.manifest).toMatchObject({
+            ...manifest,
+            prerequisites: [
+              { id: ' first ', label: ' <b>Literal</b> ' },
+              { id: 'numeric', label: '**Still literal**' },
+              { id: 'object', label: '[Literal](https://example.com)' },
+              { id: 'markdown', label: '**Markdown**', format: 'markdown' },
+              { id: 'plain', label: 'Plain' },
+            ],
+          });
+          expect(result.content).toEqual(loadContent === true ? content : undefined);
+          expect(result.repository).toBe('online-cdn');
+        }
+        expect(fetchMock).toHaveBeenCalledTimes(Number(loadContent === true) + Number(source !== 'inline'));
+        if (source === 'inline') {
+          expect(fetchMock).not.toHaveBeenCalledWith(`${baseUrl}${sampleEntry.id}/manifest.json`);
+        } else {
+          expect(fetchMock).toHaveBeenLastCalledWith(`${baseUrl}${sampleEntry.id}/manifest.json`);
+        }
+      } finally {
+        global.fetch = originalFetch;
+      }
+    }
+  );
+
   it('resolves a known id to its CDN URLs without fetching content', async () => {
     const resolver = new OnlineCdnPackageResolver();
 

@@ -390,6 +390,12 @@ export async function fetchPackageContent(
   const memberMilestone = memberIndex >= 0 ? milestones?.[memberIndex] : undefined;
   const trackMember = pathTracks?.resolved.flatMap((track) => track.milestones).find(matchesLoadedMember);
   const resolvedMember = memberMilestone ?? trackMember;
+  let isMemberLoad =
+    resolvedMember !== undefined ||
+    Boolean(
+      explicitGuideId &&
+        (milestoneIds.includes(explicitGuideId) || getAllTrackGuideIds(manifestTracks).includes(explicitGuideId))
+    );
   const resolvedRepository =
     repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined) ?? resolvedMember?.repository;
 
@@ -450,6 +456,7 @@ export async function fetchPackageContent(
         }
       }
 
+      isMemberLoad = isMemberLoad || milestoneIndex >= 0 || isConfirmedTrackMember;
       const isCoverPageLoad = milestoneIndex < 0 && !isConfirmedTrackMember;
 
       // A guide that is neither a milestone nor the cover page isn't part of
@@ -544,11 +551,11 @@ export async function fetchPackageContent(
   }
 
   let packageManifestMetadata: Record<string, unknown> | undefined;
-  if (resolvedMember) {
-    if (result.content.metadata.packageManifest || resolvedMember.packageManifest) {
+  if (isMemberLoad) {
+    if (result.content.metadata.packageManifest || resolvedMember?.packageManifest) {
       packageManifestMetadata = {
         ...result.content.metadata.packageManifest,
-        ...resolvedMember.packageManifest,
+        ...resolvedMember?.packageManifest,
       };
     }
   } else if (packageManifest !== undefined) {
@@ -564,10 +571,8 @@ export async function fetchPackageContent(
       type: renderType,
       metadata: {
         ...result.content.metadata,
-        // Merge, not replace: a catalogue entry is a slim projection and would
-        // otherwise bury fields the loader resolved in full (issue #1681).
         ...(packageManifestMetadata !== undefined && { packageManifest: packageManifestMetadata }),
-        ...(resolvedMember && packageManifest !== undefined && { journeyManifest: packageManifest }),
+        ...(isMemberLoad && packageManifest !== undefined && { journeyManifest: packageManifest }),
         // Fall back to the repository the baseUrl resolution already carries, so
         // an entry path that supplies no explicit one still keys the durable
         // completion on the true source instead of the manifest schema default.

@@ -8,7 +8,8 @@
  * the alignment prompt never appeared.
  */
 import { of } from 'rxjs';
-import { fetchPackageContent, setPackageResolver } from './package-content';
+import { fetchPackageContent, setPackageResolver, setPackageResolverFactory } from './package-content';
+import { resolveSurfaceCompletionIdentity } from '../learning-journey-helpers';
 import { resolveStartingLocation } from '../../recovery/starting-location';
 
 const mockFetch = jest.fn();
@@ -255,6 +256,152 @@ describe('member launch keeps the loader manifest reachable', () => {
     expect(result.content?.metadata.packageManifest?.prerequisites).toEqual([
       { id: 'own', label: 'Member prerequisite' },
     ]);
+  });
+
+  describe('confirmed track membership without a member snapshot', () => {
+    it.each(['retry', 'declared'] as const)(
+      'preserves loaded member metadata and completion ownership for %s membership',
+      async (membership) => {
+        const owner = {
+          ...pathManifest,
+          repository: 'owner-source',
+          prerequisites: [{ id: 'parent', label: 'Parent prerequisite' }],
+          startingLocation: '/owner/start',
+          tracks: [{ trackId: 'extra', label: 'Extra', guides: ['fe-alerting-01'] }],
+        };
+        const memberPrerequisites = [{ id: 'own', label: 'Member prerequisite' }];
+        mockFetch.mockReturnValue(
+          backendGuideResource({ prerequisites: memberPrerequisites, startingLocation: '/member/start' })
+        );
+        const resolve = jest.fn().mockImplementation((id: string, options: { bypassCache?: boolean }) => {
+          if (id === 'fe-alerting-01' && !options.bypassCache) {
+            return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'missing metadata' } });
+          }
+          return Promise.resolve({
+            ok: true,
+            id,
+            contentUrl: `backend-guide:${id}`,
+            manifestUrl: `https://example.test/${id}/manifest.json`,
+            repository: 'base-source',
+            ...(id === owner.id && { manifest: owner }),
+          });
+        });
+        if (membership === 'retry') {
+          setPackageResolver({ resolve });
+        } else {
+          setPackageResolverFactory(() => Promise.reject(new Error('resolver unavailable')));
+        }
+
+        const result = await fetchPackageContent(
+          'backend-guide:fe-alerting-01',
+          owner,
+          [resolvedMember],
+          undefined,
+          undefined,
+          membership === 'declared' ? 'fe-alerting-01' : undefined
+        );
+
+        expect(result.content?.metadata.packageManifest).toMatchObject({
+          id: 'fe-alerting-01',
+          type: 'guide',
+          prerequisites: memberPrerequisites,
+          startingLocation: '/member/start',
+        });
+        expect(result.content?.metadata.journeyManifest).toEqual(owner);
+        expect(result.content?.metadata.learningJourney).toBeUndefined();
+        expect(result.content?.metadata.trackMemberBaseUrl).toBe(
+          membership === 'retry' ? 'backend-guide:path-id' : 'backend-guide:fe-alerting-01'
+        );
+        expect(
+          resolveStartingLocation('backend-guide:fe-alerting-01', [
+            result.content?.metadata.packageManifest,
+            result.content?.metadata.journeyManifest,
+          ])
+        ).toBe('/member/start');
+        const source = membership === 'retry' ? 'base-source' : 'app-platform';
+        expect(
+          resolveSurfaceCompletionIdentity({
+            currentUrl: 'backend-guide:fe-alerting-01',
+            contentUrl: result.content?.url,
+            metadata: result.content?.metadata,
+          })
+        ).toMatchObject({
+          guideId: 'fe-alerting-01',
+          guideSource: source,
+          pathIdentity: { guideId: 'path-id', guideSource: source },
+        });
+        if (membership === 'retry') {
+          expect(resolve).toHaveBeenCalledTimes(4);
+          expect(resolve).toHaveBeenCalledWith('path-id', { loadContent: false });
+          expect(resolve).toHaveBeenCalledWith('path-id', { loadContent: 'metadata-only' });
+          expect(resolve).toHaveBeenCalledWith('fe-alerting-01', { loadContent: 'metadata-only' });
+          expect(resolve).toHaveBeenCalledWith('fe-alerting-01', { loadContent: false, bypassCache: true });
+        } else {
+          expect(resolve).not.toHaveBeenCalled();
+        }
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it.each(['member-id', 'fe-alerting-01'])(
+      'keeps declared member %s ownership when no member or Foundations snapshot is available',
+      async (guideId) => {
+        const owner = {
+          ...pathManifest,
+          prerequisites: [{ id: 'parent', label: 'Parent prerequisite' }],
+          tracks: [{ trackId: 'extra', label: 'Extra', guides: ['fe-alerting-01'] }],
+        };
+        mockFetch.mockReturnValue(backendGuideResource({}));
+        setPackageResolverFactory(() => Promise.reject(new Error('resolver unavailable')));
+
+        const result = await fetchPackageContent(
+          `backend-guide:${guideId}`,
+          owner,
+          undefined,
+          'explicit-source',
+          undefined,
+          guideId
+        );
+
+        expect(result.content?.metadata.packageManifest?.type).toBe('guide');
+        expect(result.content?.metadata.packageManifest?.prerequisites).toBeUndefined();
+        expect(result.content?.metadata.journeyManifest).toEqual(owner);
+        expect(result.content?.metadata.repository).toBe('explicit-source');
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it('does not inherit owner prerequisites when the confirmed member declares none', async () => {
+      const owner = {
+        ...pathManifest,
+        prerequisites: [{ id: 'parent', label: 'Parent prerequisite' }],
+        startingLocation: '/owner/start',
+        tracks: [{ trackId: 'extra', label: 'Extra', guides: ['fe-alerting-01'] }],
+      };
+      mockFetch.mockReturnValue(backendGuideResource({}));
+      setPackageResolverFactory(() => Promise.reject(new Error('resolver unavailable')));
+
+      const result = await fetchPackageContent(
+        'backend-guide:fe-alerting-01',
+        owner,
+        [resolvedMember],
+        'explicit-source',
+        undefined,
+        'fe-alerting-01'
+      );
+
+      expect(result.content?.metadata.packageManifest).toMatchObject({ id: 'fe-alerting-01', type: 'guide' });
+      expect(result.content?.metadata.packageManifest?.prerequisites).toBeUndefined();
+      expect(result.content?.metadata.journeyManifest).toEqual(owner);
+      expect(result.content?.metadata.repository).toBe('explicit-source');
+      expect(
+        resolveStartingLocation('backend-guide:fe-alerting-01', [
+          result.content?.metadata.packageManifest,
+          result.content?.metadata.journeyManifest,
+        ])
+      ).toBe('/owner/start');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('still resolves to null when no manifest declares one', async () => {

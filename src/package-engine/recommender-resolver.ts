@@ -14,7 +14,8 @@ import { fetchGuideResource, finishGuideLoad } from '../lib/telemetry/guide-load
  */
 
 import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
-import { ContentJsonSchema, ManifestJsonObjectSchema } from '../types/package.schema';
+import { ContentJsonSchema } from '../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from '../lib/runtime-manifest';
 import type {
   ContentJson,
   ManifestJson,
@@ -165,7 +166,7 @@ export class RecommenderPackageResolver implements PackageResolver {
           const manifestResponse = await fetchGuideResource(resolutionData.manifestUrl, undefined, context, 'manifest');
           if (manifestResponse.ok) {
             const rawManifest = await manifestResponse.json();
-            const manifestResult = ManifestJsonObjectSchema.loose().safeParse(rawManifest);
+            const manifestResult = RuntimeManifestJsonObjectSchema.safeParse(rawManifest);
             if (manifestResult.success) {
               manifest = manifestResult.data as ManifestJson;
             } else {
