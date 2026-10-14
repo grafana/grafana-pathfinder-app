@@ -44,6 +44,8 @@ export type ProgressEventDetail =
       contentKey: string;
       sectionId: string;
       completed: boolean;
+      /** True when the section came back complete from storage rather than the reader completing it just now. */
+      hydrated: boolean;
       percentage?: number;
     }
   | {

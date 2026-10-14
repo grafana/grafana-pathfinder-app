@@ -97,7 +97,7 @@ func appPlatformDiagnostic(err error, resource, operation string) *guideProxyDia
 	return &d
 }
 
-func logAppPlatformResult(logger log.Logger, namespace, resource, operation string, err error) {
+func logAppPlatformResult(logger log.Logger, namespace, resource, operation string, attempt int, err error) {
 	d := appPlatformDiagnostic(err, resource, operation)
 	if d == nil || errors.Is(err, context.Canceled) || d.Reason == "cancelled" {
 		return
@@ -105,7 +105,11 @@ func logAppPlatformResult(logger log.Logger, namespace, resource, operation stri
 	if d.UpstreamStatus == 405 || d.UpstreamStatus == 501 || (d.UpstreamStatus == 404 && (resource == "pathfindersettings" || operation != "get")) || (d.UpstreamStatus == 409 && resource == "completionrecords" && operation == "create") {
 		return
 	}
-	fields := []interface{}{"event", "pathfinder_proxy_failure", "stack_namespace", namespace, "resource", resource, "operation", operation, "stage", d.Stage, "reason", d.Reason, "upstream_status", d.UpstreamStatus}
+	event, retry := "pathfinder_proxy_failure", []interface{}{}
+	if attempt > 1 {
+		event, retry = "pathfinder_proxy_retry_failure", []interface{}{"attempt", attempt}
+	}
+	fields := append([]interface{}{"event", event, "stack_namespace", namespace, "resource", resource, "operation", operation, "stage", d.Stage, "reason", d.Reason, "upstream_status", d.UpstreamStatus}, retry...)
 	if d.Reason == "unexpected-error" {
 		for errors.Unwrap(err) != nil {
 			err = errors.Unwrap(err)

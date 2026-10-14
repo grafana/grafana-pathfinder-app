@@ -21,10 +21,13 @@ export class TenantSettingsReadError extends Error {
   }
 }
 
-export async function resolveTenantSettings(pluginId: string): Promise<ResolvedTenantSettings> {
+export async function resolveTenantSettings(
+  pluginId: string,
+  options?: { useCachedAbsence?: boolean }
+): Promise<ResolvedTenantSettings> {
   const [pluginRead, tenantRead] = await Promise.allSettled([
     fetchPluginSettings(pluginId),
-    fetchPathfinderSettingsSnapshot(),
+    fetchPathfinderSettingsSnapshot(options),
   ]);
   if (pluginRead.status === 'rejected' || tenantRead.status === 'rejected') {
     // A failed tenant read cannot establish whether legacy jsonData is stale.

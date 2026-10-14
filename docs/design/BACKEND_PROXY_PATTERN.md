@@ -708,13 +708,45 @@ uses the trusted plugin-context namespace, preserving the full spec and
 `metadata.resourceVersion` for optimistic concurrency. Reads have a 15-second
 deadline, a 1 MiB response bound, disabled redirects, and no shared cache.
 
-Unlike the optional catalogue, settings failures remain HTTP errors: callers
-must not interpret failed authoritative reads as permission to write legacy
-settings. Only upstream 404/405/501 responses carry
-`error: "settings-upstream-unavailable"`, permitting existing absent-store
-behavior. A missing plugin route, missing OBO configuration, or rejected identity
-must not trigger that behavior. Settings writes continue to use the direct
-App Platform API and its existing authorization and concurrency checks.
+Settings distinguish a missing singleton from a missing route. The bounded upstream
+error body (2 KiB) must be a Kubernetes v1 `Status`, `Failure`, code 404,
+`reason: NotFound`, naming group `pathfinderbackend.ext.grafana.app`, resource
+`pathfindersettings`, and name `default`, with no causes. Clients request
+`?absence=explicit` to receive `200 {"state":"not-configured"}` for that case only.
+Every other upstream 404 (unrecognized, malformed, oversized, namespace or route),
+and confirmed absence without the opt-in, keeps the legacy
+`error: "settings-upstream-unavailable"` 404, as do upstream 405/501. The client
+falls back to `jsonData` for those without caching them, so a stack whose
+aggregation toggle is on but whose backend does not serve the kind keeps reading
+and saving through `jsonData`. Settings 404/405/501 are excluded from failure logs.
+Only the explicit successful absence response can populate the session cache.
+A missing plugin route, missing OBO configuration, or rejected identity must not
+permit a fallback write. Writes remain direct App Platform requests with existing
+authorization and optimistic concurrency checks.
+
+Startup may reuse confirmed absence from browser `sessionStorage` for ten minutes,
+scoped by namespace, Grafana subpath, organization, and user. Real records and
+errors are never cached there. Opening the learning panel or configuration form
+re-reads from the server only when the configuration on screen came from that
+cache, after the cached read has settled; concurrent opens share the re-read, and
+nothing supersedes a pending read, so a failed re-read keeps the published
+startup result. Every pre-save and read-after-save check also bypasses absence.
+Saves and authoritative record reads invalidate absence through a
+namespace/subpath-scoped `localStorage` generation, so another tab detects
+invalidation even after suspension or reload. A response started before
+invalidation cannot restore the marker. Storage failures degrade to reads rather
+than failing settings operations; cross-tab invalidation requires writable local
+storage. No settings values or credentials are persisted in this cache.
+
+Read budget per page load, against one settings read and one plugin-settings read
+before the cache: absence not cached (first load, a saved record, or expiry) is
+unchanged and later panel opens add nothing; cached absence with no panel or
+configuration open makes no settings read; cached absence with an open makes one
+settings read and a second plugin-settings read. The cost is propagation: a save
+from another browser, including `pathfinderEnabled: false`, reaches a tab's
+page-load registration decision within ten minutes, on the next panel or
+configuration open, or in a new tab session, where it previously applied on the
+next load.
 
 `GET /custom-guide?name=<resource name>` uses the same bounded, caller-scoped
 item reader for full InteractiveGuide resources. The backend fixes the resource
@@ -723,6 +755,15 @@ separators, percent escapes, or control characters. Content loading and the
 package resolver's published-status probe both use this route. The proxy
 preserves draft content for existing share links; the resolver retains its
 published-status gate. Catalogue listing continues to use `/custom-guide-repository`.
+
+`GET /custom-guides` supplies the editor with complete InteractiveGuide resources,
+including all metadata and spec fields, through the same identity gate and caller-scoped
+OBO client. It drains pages of 100 resources with an 8 MiB page cap, a 32 MiB aggregate
+resource byte budget, a 50,000-item cap, and a 30-second aggregate deadline. Budget
+truncation is logged. Responses are `Cache-Control: no-store` and never cached
+across callers. Upstream 401 maps to 502; other upstream errors retain the single-item
+reader's mapping. The browser's existing optional-endpoint status handling remains
+unchanged. Editor writes continue to use App Platform directly.
 
 ## Operational diagnostics
 
@@ -734,7 +775,10 @@ queue behavior remain unchanged. A 503 is still retryable; its diagnostics ident
 failed hop. Token-exchange failure does not prove an invalid provisioned credential.
 
 The shared upstream client emits `event=pathfinder_proxy_failure` once per failed operation
-(including a completion refresh that serves stale data), not once per cached response.
+(including a completion refresh that serves stale data), not once per cached response or
+frontend retry: a retried settings read sends `?attempt=N`, and attempts after the first log
+`event=pathfinder_proxy_retry_failure` with `attempt` instead. A read whose first attempt never
+reaches the plugin (a gateway 502 or 504) logs only retry events, so the alert undercounts it.
 Expected settings absence, unsupported collection routes, idempotent write conflicts,
 and cancellations are excluded. Internal logs retain trusted
 stack and trace context; diagnostic responses never include tokens or upstream bodies.
@@ -847,5 +891,4 @@ provider that predates and sits outside the #1966 contract. That test is the aut
 rule's exact precision (how a conditional method, a url builder, or a variable-held request
 object is resolved); see it rather than this paragraph for the mechanics.
 
-One pre-existing direct read remains grandfathered in that test's allowlist, tracked for pay-down in
-[#1975](https://github.com/grafana/grafana-pathfinder-app/issues/1975).
+That test's allowlist is empty: no direct read is grandfathered, so any new one fails the test.

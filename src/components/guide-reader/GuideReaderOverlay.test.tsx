@@ -21,13 +21,6 @@ jest.mock('../../lib/faro', () => ({
 
 jest.mock('../../docs-retrieval', () => ({
   fetchUnifiedContent: jest.fn(),
-  recordGuideCompletionForSurface: jest.fn(),
-  resolveSurfaceGuideIdentity: jest.fn(() => null),
-}));
-
-// The real hook pulls @grafana/runtime in through completion-records.
-jest.mock('../content-renderer/useGuideIdentityRegistration', () => ({
-  useGuideIdentityRegistration: jest.fn(),
 }));
 
 // Feature provider needs no real OpenFeature client for this test.
@@ -38,26 +31,27 @@ jest.mock('../OpenFeatureProvider', () => ({
 // Stand in for the real renderer so the test asserts the overlay's own
 // responsibilities (fetch → render, close, error) rather than ContentRenderer
 // internals (covered by its own suite).
+const mockRenderedCompletions: unknown[] = [];
 jest.mock('../content-renderer/content-renderer', () => ({
-  ContentRenderer: ({ content, onGuideComplete }: { content: RawContent; onGuideComplete?: () => void }) => {
+  ContentRenderer: ({ content, completion }: { content: RawContent; completion: unknown }) => {
     const { useInteractiveMode } = require('../../global-state/interactive-mode-context');
+    mockRenderedCompletions.push(completion);
     return (
       <div data-testid="mock-content" data-load-id={content.loadContext?.loadId}>
         mode:{useInteractiveMode()}
-        <button onClick={onGuideComplete}>Complete rendered guide</button>
       </div>
     );
   },
 }));
 
 const mockFetchContent = fetchUnifiedContent as jest.MockedFunction<typeof fetchUnifiedContent>;
-const { recordGuideCompletionForSurface } = jest.requireMock('../../docs-retrieval');
 
 describe('GuideReaderOverlay', () => {
   let closeSpy: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRenderedCompletions.length = 0;
     closeSpy = jest.spyOn(window, 'close').mockImplementation(() => {});
   });
 
@@ -205,7 +199,7 @@ describe('GuideReaderOverlay', () => {
     }
   });
 
-  it('routes a completed guide through the shared surface-neutral emitter', async () => {
+  it('hands the renderer its view-level identity for the shared surface-neutral emitter', async () => {
     mockFetchContent.mockResolvedValue({
       content: {
         url: 'https://example.com/remote-guide/content.json',
@@ -216,16 +210,17 @@ describe('GuideReaderOverlay', () => {
 
     render(<GuideReaderOverlay doc="https://example.com/remote-guide/content.json" />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Complete rendered guide' }));
+    await screen.findByTestId('mock-content');
 
-    expect(recordGuideCompletionForSurface).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(mockRenderedCompletions.at(-1)).toEqual({
+      kind: 'tracked',
+      input: expect.objectContaining({
         contentUrl: 'https://example.com/remote-guide/content.json',
         contentType: 'interactive',
         metadata: { title: 'Remote guide', packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
         guideTitle: 'Remote guide',
-      })
-    );
+      }),
+    });
   });
 
   it('surfaces an error when the guide cannot be loaded', async () => {

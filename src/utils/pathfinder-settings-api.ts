@@ -12,6 +12,12 @@ import {
 import { logger } from '../lib/logging';
 import type { SettingsStoreOutcome } from '../lib/telemetry/facade';
 import { APP_PLATFORM_API_VERSION, isBackendApiAvailable } from './interactive-guides-api';
+import {
+  readSettingsAbsenceCache,
+  rememberSettingsAbsence,
+  forgetSettingsAbsence,
+  invalidateSettingsAbsence,
+} from './pathfinder-settings-cache';
 
 const RESOURCE = 'pathfindersettings';
 
@@ -31,6 +37,7 @@ export interface PathfinderSettingsSpec extends Omit<PathfinderTenantSettings, '
 }
 
 interface PathfinderSettingsResource {
+  state?: 'not-configured';
   metadata?: { name?: string; resourceVersion?: string };
   spec?: Partial<PathfinderSettingsSpec>;
 }
@@ -105,35 +112,52 @@ export function configToSpec(cfg: PathfinderPluginConfig): Partial<PathfinderSet
   return spec as Partial<PathfinderSettingsSpec>;
 }
 
-export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSettingsSnapshot | null> {
+export function hasCachedSettingsAbsence(): boolean {
+  return isSettingsApiAvailable() && readSettingsAbsenceCache()?.absent === true;
+}
+
+export async function fetchPathfinderSettingsSnapshot({
+  useCachedAbsence = false,
+}: { useCachedAbsence?: boolean } = {}): Promise<PathfinderSettingsSnapshot | null> {
   if (!isSettingsApiAvailable()) {
     recordSettingsStoreResolved('api-unavailable');
     return null;
   }
 
+  const absenceCache = readSettingsAbsenceCache();
+  if (useCachedAbsence && absenceCache?.absent) {
+    recordSettingsStoreResolved('not-created');
+    return null;
+  }
+  forgetSettingsAbsence(absenceCache);
+  let readAttempt = 0;
   try {
     const response = await lastValueFrom(
-      defer(() =>
-        getBackendSrv().fetch<PathfinderSettingsResource>({
+      defer(() => {
+        readAttempt += 1;
+        return getBackendSrv().fetch<PathfinderSettingsResource>({
           url: `${PLUGIN_BACKEND_URL}/pathfinder-settings`,
           method: 'GET',
+          params: { absence: 'explicit', ...(readAttempt > 1 ? { attempt: readAttempt } : {}) },
           showErrorAlert: false,
-        })
-      ).pipe(
+        });
+      }).pipe(
         retry({
           count: READ_RETRY_DELAYS_MS.length,
           delay: (err: unknown, attempt) => {
             const status = statusOf(err);
             const delay = READ_RETRY_DELAYS_MS[attempt - 1];
-            const upstreamStatus = (err as { data?: { diagnostics?: { upstreamStatus?: number } } })?.data?.diagnostics
-              ?.upstreamStatus;
+            const diagnostics = (err as { data?: { diagnostics?: { reason?: string; upstreamStatus?: number } } })?.data
+              ?.diagnostics;
             // The proxy maps upstream 401 to 502 to avoid expiring the Grafana session.
             if (
               delay === undefined ||
               !status ||
               !RETRYABLE_READ_STATUSES.has(status) ||
-              upstreamStatus === 401 ||
-              upstreamStatus === 403
+              diagnostics?.upstreamStatus === 401 ||
+              diagnostics?.upstreamStatus === 403 ||
+              diagnostics?.upstreamStatus === 504 ||
+              diagnostics?.reason === 'timeout'
             ) {
               return throwError(() => err);
             }
@@ -142,6 +166,12 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
         })
       )
     );
+
+    if (response.data?.state === 'not-configured' && !response.data.spec && !response.data.metadata) {
+      rememberSettingsAbsence(absenceCache);
+      recordSettingsStoreResolved('not-created');
+      return null;
+    }
 
     const spec = response.data?.spec;
     if (!spec) {
@@ -152,6 +182,7 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
       throw new Error('Pathfinder settings response has no resource version');
     }
 
+    invalidateSettingsAbsence(absenceCache);
     recordSettingsStoreResolved('resource');
     return { config: specToConfig(spec), spec, resourceVersion: response.data?.metadata?.resourceVersion };
   } catch (err) {
@@ -205,11 +236,15 @@ export async function savePathfinderSettings(
     data: requestBody(spec, base?.resourceVersion),
     showErrorAlert: false,
   };
+  const absenceCache = readSettingsAbsenceCache();
+  invalidateSettingsAbsence(absenceCache);
   for (let attempt = 0; ; attempt++) {
     try {
       await lastValueFrom(getBackendSrv().fetch(request));
+      invalidateSettingsAbsence(absenceCache);
       return true;
     } catch (err) {
+      invalidateSettingsAbsence(absenceCache);
       const status = statusOf(err);
       if (base && status && RETRYABLE_UPDATE_STATUSES.has(status) && attempt < UPDATE_RETRY_DELAYS_MS.length) {
         // Reuse the read version: even an ambiguous prior success cannot overwrite a concurrent edit.

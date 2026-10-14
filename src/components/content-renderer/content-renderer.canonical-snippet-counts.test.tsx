@@ -29,6 +29,7 @@ import type { JsonBlock, JsonGuide } from '../../types/json-guide.types';
 import { loadDocsTabContentResult } from '../docs-panel/utils/docs-tab-loader';
 import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { ContentRenderer } from './content-renderer';
+import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
@@ -146,7 +147,7 @@ function PanelLike({ content }: { content: RawContent }) {
     window.__DocsPluginActiveTabUrl = content.url;
   }, [content.url]);
 
-  return <ContentRenderer key={content.url} content={content} />;
+  return <ContentRenderer completion={UNTRACKED_COMPLETION} key={content.url} content={content} />;
 }
 
 /** Renders and lets the post-mount snippet overlay land. */

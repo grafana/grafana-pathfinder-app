@@ -554,7 +554,7 @@ export const JsonInputBlockSchema = z
       )
       .max(20)
       .optional(),
-    format: z.literal('http-origin').optional(),
+    format: z.enum(['http-origin', 'http-url']).optional(),
     variableName: z
       .string()
       .min(1, 'Variable name is required')

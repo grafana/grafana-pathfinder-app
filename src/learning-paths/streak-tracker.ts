@@ -23,7 +23,7 @@ export function getTodayDateString(): string {
  */
 export function getYesterdayDateString(): string {
   const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   return yesterday.toISOString().split('T')[0]!;
 }
 

@@ -262,6 +262,7 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
           contentKey: '',
           sectionId: SECTION_ID,
           completed: true,
+          hydrated: false,
         });
 
         // Final persisted completion set covers all 3 steps.

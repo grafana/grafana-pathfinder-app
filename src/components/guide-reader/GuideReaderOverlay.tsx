@@ -6,8 +6,7 @@ import { config } from '@grafana/runtime';
 import { Icon, useStyles2 } from '@grafana/ui';
 
 import { ContentRenderer } from '../content-renderer/content-renderer';
-import { useGuideIdentityRegistration } from '../content-renderer/useGuideIdentityRegistration';
-import { fetchUnifiedContent, recordGuideCompletionForSurface } from '../../docs-retrieval';
+import { fetchUnifiedContent } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -198,7 +197,6 @@ function GuideReaderInner({
     : null;
   // The sidebar's tab for this launch: baseUrl is findDocPage(doc).url, currentUrl is the fetched content.url.
   usePublishSurfaceContentKey(content ? content.url || findDocPage(doc)?.url || doc : undefined);
-  useGuideIdentityRegistration(content?.url, surfaceCompletionInput);
 
   const contentClassName = content
     ? `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`
@@ -212,9 +210,7 @@ function GuideReaderInner({
           containerRef={contentRef}
           className={contentClassName}
           onContentReady={handleContentReady}
-          onGuideComplete={(source, contentKey) =>
-            recordGuideCompletionForSurface({ ...surfaceCompletionInput, source, contentKey })
-          }
+          completion={{ kind: 'tracked', input: surfaceCompletionInput }}
         />
       </div>
     ) : null;

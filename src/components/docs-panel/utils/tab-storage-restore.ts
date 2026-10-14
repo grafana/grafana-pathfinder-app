@@ -11,7 +11,7 @@
 import type { LearningJourneyTab, LearningJourneyTabType, PersistedTabData } from '../../../types/content-panel.types';
 import { isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../../security';
 import { logger } from '../../../lib/logging';
-import { DEVTOOLS_TAB_ID, EDITOR_TAB_ID, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
+import { DEVTOOLS_TAB_ID, EDITOR_TAB_ID, RECOMMENDATIONS_TAB_ID, BROWSE_TAB_ID } from './tab-kinds';
 import { DEFAULT_GUIDE_TITLE } from '../../block-editor/editor-chrome-status';
 
 /**
@@ -52,16 +52,13 @@ export function createUrlValidator(isDevMode: boolean): UrlValidator {
   };
 }
 
-/**
- * Validate the persisted identity/kind pair before it enters runtime state.
- *
- * Runtime behavior dispatches on `type`; singleton IDs remain stable identity
- * keys. Reserved IDs and types must therefore agree in both directions so a
- * malformed content record cannot acquire privileged singleton behavior.
- */
+// Reserved singleton IDs cannot acquire content kinds through persisted data.
 function getCanonicalPersistedTabType(data: PersistedTabData): LearningJourneyTabType | null {
   const type: unknown = data.type ?? 'learning-journey';
 
+  if (type === 'browse') {
+    return null;
+  }
   if (type === 'recommendations') {
     return data.id === RECOMMENDATIONS_TAB_ID ? type : null;
   }
@@ -72,7 +69,12 @@ function getCanonicalPersistedTabType(data: PersistedTabData): LearningJourneyTa
     return data.id === EDITOR_TAB_ID ? type : null;
   }
 
-  if (data.id === RECOMMENDATIONS_TAB_ID || data.id === DEVTOOLS_TAB_ID || data.id === EDITOR_TAB_ID) {
+  if (
+    data.id === BROWSE_TAB_ID ||
+    data.id === RECOMMENDATIONS_TAB_ID ||
+    data.id === DEVTOOLS_TAB_ID ||
+    data.id === EDITOR_TAB_ID
+  ) {
     return null;
   }
 

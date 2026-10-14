@@ -152,6 +152,19 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 
 ### Source attribution
 
+Catalog Start and Resume report `open_resource_click` once per accepted click.
+The locations are `package_browser`, `my_learning_discover_more` and
+`my_learning_continue`. Confirmed official content retains its title and URL;
+organization content omits titles, URLs and resource identifiers. Duplicate
+clicks while a launch is pending do not emit another event.
+
+`guide_launch_surface_chosen` uses the same reporting rules for sidebar card
+launches and automatic surface selection. It reports the selected surface, launch
+source and `requires_grafana_ui` when known. Confirmed public content retains its
+URL without credentials, query or fragment; private content omits it. Sidebar
+selection is intentional for discovery cards, including reading-only guides, and
+does not change the stored surface preference.
+
 `guide_source` is the repository that resolved the guide, not its URL scheme: a `backend-guide:` guide reports `app-platform`, and a CDN package reports whatever its resolver returned. Learning journeys served from the Grafana docs site resolve no repository, so their milestones fall back to `bundled` and the journey to `interactive-tutorials`; a standalone guide whose manifest names no repository also falls back to `interactive-tutorials`. Those fallbacks are used for the durable key, but analytics reports them as `unresolved` unless the journey is a curated path. The guard is per `(kind, guide_source, guide_id)`, so a guide reached through two repositories reports once under each.
 
 ### Delivery
@@ -236,9 +249,10 @@ supplies the plugin version. Older backend responses without diagnostics remain 
 
 Backend `event=pathfinder_proxy_failure` logs contain `stack_namespace` (the trusted
 plugin-context namespace), `resource`, `operation`, `stage`, `reason`, and
-`upstream_status`. Unexpected errors also carry `error_type`, the Go type of the
-unwrapped error, never its message. `outcome` and `cache` belong to the response/Faro
-envelope, not this per-operation log. Grafana supplies plugin version and trace context.
+`upstream_status`, plus optional `error_type` and `attempt`. `error_type` is the Go type
+of the unwrapped error on unexpected errors, never its message. `attempt` is set only on
+frontend retries of a settings read, which log `event=pathfinder_proxy_retry_failure`
+instead. `outcome` and `cache` belong to the response/Faro envelope, not this per-operation log. Grafana supplies plugin version and trace context.
 These backend logs are the primary alert source, so browser
 initialization and Faro activity gating are not detection prerequisites. A silent period
 is not recovery proof; verify successful endpoint/user flows. Frontend degraded rendering

@@ -16,11 +16,20 @@ import { resetContentKeyForTests } from '../../global-state/content-key';
 import { StorageEvents } from '../../lib/event-names';
 import { interactiveStepStorage } from '../../lib/user-storage';
 import { resetCompletionStoreForTests } from '../../global-state/completion-store';
+import { recordGuideCompletionForSurface } from '../../docs-retrieval';
+import { UNTRACKED_COMPLETION, trackedCompletion } from '../../test-utils/content-renderer-completion';
 import { ContentRenderer } from './content-renderer';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
 }));
+
+jest.mock('../../docs-retrieval', () => ({
+  ...jest.requireActual('../../docs-retrieval'),
+  recordGuideCompletionForSurface: jest.fn(),
+}));
+
+const recordCompletion = jest.mocked(recordGuideCompletionForSurface);
 
 const GUIDE_URL = 'https://grafana.com/docs/guides/three-sections/';
 const SECTION_IDS = ['section-1', 'section-2', 'section-3'];
@@ -36,9 +45,9 @@ const content: RawContent = {
 /** Settling time the renderer waits before any progress event may complete. */
 const SETTLE_MS = 300;
 
-async function renderWithSections(onGuideComplete: jest.Mock): Promise<void> {
+async function renderWithSections(): Promise<void> {
   const containerRef = React.createRef<HTMLDivElement>();
-  render(<ContentRenderer content={content} onGuideComplete={onGuideComplete} containerRef={containerRef} />);
+  render(<ContentRenderer content={content} completion={trackedCompletion(content)} containerRef={containerRef} />);
   for (const id of SECTION_IDS) {
     const section = document.createElement('div');
     section.setAttribute('data-interactive-section', 'true');
@@ -52,9 +61,9 @@ async function renderWithSections(onGuideComplete: jest.Mock): Promise<void> {
   });
 }
 
-function completeSection(sectionId: string, contentKey: string = GUIDE_URL) {
+function completeSection(sectionId: string, contentKey: string = GUIDE_URL, hydrated = false) {
   act(() => {
-    dispatchProgress({ kind: 'section', contentKey, sectionId, completed: true });
+    dispatchProgress({ kind: 'section', contentKey, sectionId, completed: true, hydrated });
     jest.advanceTimersByTime(SETTLE_MS);
   });
 }
@@ -66,6 +75,7 @@ async function announceCleared(contentKey: string): Promise<void> {
 }
 
 beforeEach(() => {
+  recordCompletion.mockClear();
   jest.useFakeTimers();
   localStorage.clear();
   resetCompletionStoreForTests();
@@ -81,54 +91,82 @@ afterEach(() => {
 
 describe('ContentRenderer — the automatic section route and reset', () => {
   it('completes the guide once every section has completed', async () => {
-    const onGuideComplete = jest.fn();
-    await renderWithSections(onGuideComplete);
+    await renderWithSections();
 
     completeSection('section-1');
     completeSection('section-2');
-    expect(onGuideComplete).not.toHaveBeenCalled();
+    expect(recordCompletion).not.toHaveBeenCalled();
 
     completeSection('section-3');
 
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
-    expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'objectives', contentKey: GUIDE_URL })
+    );
+  });
+
+  it('counts a hydrated section toward the tally without letting it complete the guide', async () => {
+    await renderWithSections();
+
+    completeSection('section-1', GUIDE_URL, true);
+    completeSection('section-2', GUIDE_URL, true);
+    completeSection('section-3', GUIDE_URL, true);
+    expect(recordCompletion).not.toHaveBeenCalled();
+
+    // A reader's completion of any section now finds the tally already full.
+    completeSection('section-3');
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it('completes the guide when a reader finishes the last section of a partly hydrated tally', async () => {
+    await renderWithSections();
+
+    completeSection('section-1', GUIDE_URL, true);
+    completeSection('section-2', GUIDE_URL, true);
+    expect(recordCompletion).not.toHaveBeenCalled();
+
+    completeSection('section-3');
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'objectives', contentKey: GUIDE_URL })
+    );
   });
 
   it('ignores sections from another guide, including ones whose ids match its own', async () => {
-    const onGuideComplete = jest.fn();
-    await renderWithSections(onGuideComplete);
+    await renderWithSections();
     const previewKey = 'block-editor://preview/other-guide';
 
     for (const sectionId of [...SECTION_IDS, 'preview-section-1']) {
       completeSection(sectionId, previewKey);
     }
-    expect(onGuideComplete).not.toHaveBeenCalled();
+    expect(recordCompletion).not.toHaveBeenCalled();
 
     SECTION_IDS.forEach((sectionId) => completeSection(sectionId));
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
-    expect(onGuideComplete).toHaveBeenCalledWith('objectives', GUIDE_URL);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'objectives', contentKey: GUIDE_URL })
+    );
   });
 
   it('matches its own guide key regardless of a trailing slash', async () => {
-    const onGuideComplete = jest.fn();
-    await renderWithSections(onGuideComplete);
+    await renderWithSections();
     const slashToggled = GUIDE_URL.endsWith('/') ? GUIDE_URL.slice(0, -1) : `${GUIDE_URL}/`;
     SECTION_IDS.forEach((sectionId) => completeSection(sectionId, slashToggled));
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
   });
 
   it('reports skipped when automatic completion includes a restored skipped step', async () => {
     await interactiveStepStorage.setCompleted(GUIDE_URL, 'section-1', new Set(['step-1']), new Set(['step-1']));
-    const onGuideComplete = jest.fn();
-    await renderWithSections(onGuideComplete);
+    await renderWithSections();
     SECTION_IDS.forEach((sectionId) => completeSection(sectionId));
-    expect(onGuideComplete).toHaveBeenCalledWith('skipped', GUIDE_URL);
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'skipped', contentKey: GUIDE_URL })
+    );
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the other sections completed when one of them is reset', async () => {
-    const onGuideComplete = jest.fn();
-    await renderWithSections(onGuideComplete);
+    await renderWithSections();
     completeSection('section-1');
     completeSection('section-2');
 
@@ -137,11 +175,11 @@ describe('ContentRenderer — the automatic section route and reset', () => {
     await announceCleared(GUIDE_URL);
 
     completeSection('section-1');
-    expect(onGuideComplete).not.toHaveBeenCalled();
+    expect(recordCompletion).not.toHaveBeenCalled();
 
     completeSection('section-3');
 
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
   });
 
   it('tags the section event a mounted section dispatches with the renderer own key', async () => {
@@ -167,7 +205,7 @@ describe('ContentRenderer — the automatic section route and reset', () => {
       }),
     };
     try {
-      render(<ContentRenderer content={guide} />);
+      render(<ContentRenderer content={guide} completion={UNTRACKED_COMPLETION} />);
       await act(async () => {
         jest.advanceTimersByTime(SETTLE_MS);
       });
@@ -184,18 +222,17 @@ describe('ContentRenderer — the automatic section route and reset', () => {
     ['this guide', GUIDE_URL],
     ['every guide', '*'],
   ])('leaves the route alone when a reset clears %s, so no clear can re-complete it', async (_label, clearedKey) => {
-    const onGuideComplete = jest.fn();
-    await renderWithSections(onGuideComplete);
+    await renderWithSections();
     for (const sectionId of SECTION_IDS) {
       completeSection(sectionId);
     }
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
 
     await announceCleared(clearedKey);
     for (const sectionId of SECTION_IDS) {
       completeSection(sectionId);
     }
 
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
   });
 });

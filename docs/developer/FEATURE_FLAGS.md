@@ -14,6 +14,18 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 ## Current feature flags
 
+### `pathfinder.package-browser`
+
+**Type**: Boolean
+
+**Default**: `true`
+
+Controls the sidebar Browse entry and Browse all links. Set it to `false` to hide browsing during rollout. Browse offers starter content, topic shortcuts, and the full catalog. The browser uses existing package metadata and performs no prerequisite assessment. The `/browse` route opens the sidebar browser and returns to My learning.
+
+**Tracking key**: `package_browser`
+
+---
+
 ### `pathfinder.enabled`
 
 **Type**: Boolean
@@ -27,7 +39,7 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 - **`true`**: Pathfinder loads normally — sidebar is available, the highlighted-guide experiment runs as configured
 - **`false`**: Plugin is dismounted, the native Grafana help menu takes over
 
-**Important**: This is the only gate on whether Pathfinder mounts. It is evaluated independently of the highlighted-guide experiment: setting `pathfinder.enabled` to `false` dismounts the plugin regardless; when `true`, the experiment applies as normal.
+**Important**: This is the only flag that gates whether Pathfinder mounts. It is evaluated independently of the highlighted-guide experiment: setting `pathfinder.enabled` to `false` dismounts the plugin regardless; when `true`, the experiment applies as normal. A headless image-renderer session (the page's user has `authenticatedBy: 'render'`) is treated the same as `false` and never reads tenant settings. Detection uses the render key, not the `render=1` query parameter, so a person who opens a render URL in a normal browser still gets Pathfinder.
 
 **Tracking key**: `pathfinder_enabled`
 

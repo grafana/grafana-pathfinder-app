@@ -13,7 +13,7 @@ export { useNextLearningAction, computeNextAction } from './useNextLearningActio
 export type { LearningProfileSummary, NextLearningAction } from './useNextLearningAction';
 
 // Discover More (external package index)
-export { useDiscoverMore } from './useDiscoverMore';
+export { useDiscoverMore, toDiscoverMoreItem } from './useDiscoverMore';
 export type { DiscoverMoreItem, UseDiscoverMoreReturn } from './useDiscoverMore';
 
 // Badge utilities
@@ -72,3 +72,10 @@ export {
 export type { DueStatus } from './assignments-core';
 export type { ResolvedAssignment } from '../types/learning-paths.types';
 export { markCurrentGuide } from './mark-current-guide';
+
+export { usePackageCatalog } from './package-catalog.hook';
+
+export { useCatalogProgress } from './catalog-progress.hook';
+export type { CatalogProgress } from './catalog-progress.hook';
+
+export { catalogIdentity, pathCatalogIdentities, selectContinueLearning } from './catalog-learning-core';

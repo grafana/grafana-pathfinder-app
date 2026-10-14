@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
 func TestGuideProxyDiagnosticReasons(t *testing.T) {
@@ -117,7 +119,8 @@ func TestProxyFailureLogsExcludeExpectedOutcomes(t *testing.T) {
 		{"success", "interactiveguides", "list", nil, false},
 		{"cancel", "completionrecords", "list", context.Canceled, false},
 		{"exchange cancel", "completionrecords", "list", &tokenExchangeError{err: context.Canceled}, false},
-		{"settings absent", "pathfindersettings", "get", &appPlatformUpstreamError{status: 404}, false},
+		{"settings absent", "pathfindersettings", "get", &appPlatformUpstreamError{status: 404, body: []byte(missingSettingsStatus)}, false},
+		{"settings kind not served", "pathfindersettings", "get", &appPlatformUpstreamError{status: 404}, false},
 		{"collection unsupported", "completionrecords", "list", &appPlatformUpstreamError{status: 404}, false},
 		{"method unsupported", "interactiveguides", "list", &appPlatformUpstreamError{status: 405}, false},
 		{"unsupported", "interactiveguides", "list", &appPlatformUpstreamError{status: 501}, false},
@@ -128,7 +131,7 @@ func TestProxyFailureLogsExcludeExpectedOutcomes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logger := newCapturingLogger()
-			logAppPlatformResult(logger, "stacks-1", tc.resource, tc.operation, tc.err)
+			logAppPlatformResult(logger, "stacks-1", tc.resource, tc.operation, 1, tc.err)
 			if logger.warnedWith("Pathfinder proxy operation failed") != tc.want {
 				t.Fatal("unexpected failure log")
 			}
@@ -146,9 +149,11 @@ func (l *diagnosticLogger) Warn(msg string, fields ...interface{}) {
 	l.fields = fields
 }
 
+func (l *diagnosticLogger) FromContext(context.Context) log.Logger { return l }
+
 func TestProxyFailureLogDoesNotExposeUpstreamError(t *testing.T) {
 	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
-	logAppPlatformResult(logger, "stacks-1", "completionrecords", "create", &tokenExchangeError{err: errors.New("private-token-and-body")})
+	logAppPlatformResult(logger, "stacks-1", "completionrecords", "create", 1, &tokenExchangeError{err: errors.New("private-token-and-body")})
 	fields := map[string]interface{}{}
 	for i := 0; i < len(logger.fields); i += 2 {
 		fields[logger.fields[i].(string)] = logger.fields[i+1]
@@ -161,9 +166,21 @@ func TestProxyFailureLogDoesNotExposeUpstreamError(t *testing.T) {
 	}
 }
 
+func TestRetriedFailureLogsSeparateEvent(t *testing.T) {
+	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+	logAppPlatformResult(logger, "stacks-1", "pathfindersettings", "get", 2, &appPlatformUpstreamError{status: 503})
+	fields := map[string]interface{}{}
+	for i := 0; i < len(logger.fields); i += 2 {
+		fields[logger.fields[i].(string)] = logger.fields[i+1]
+	}
+	if fields["event"] != "pathfinder_proxy_retry_failure" || fields["attempt"] != 2 || fields["upstream_status"] != 503 {
+		t.Fatalf("unexpected fields: %#v", fields)
+	}
+}
+
 func TestUnexpectedFailureLogsOnlyErrorType(t *testing.T) {
 	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
-	logAppPlatformResult(logger, "stacks-1", "interactiveguides", "get", fmt.Errorf("private wrapper: %w", errors.New("private-body")))
+	logAppPlatformResult(logger, "stacks-1", "interactiveguides", "get", 1, fmt.Errorf("private wrapper: %w", errors.New("private-body")))
 	fields := map[string]interface{}{}
 	for i := 0; i < len(logger.fields); i += 2 {
 		fields[logger.fields[i].(string)] = logger.fields[i+1]

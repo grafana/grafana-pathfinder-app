@@ -564,7 +564,7 @@ export interface JsonInputBlock extends AuthorAnnotated {
   /** Input type determines the UI: text input, checkbox, or datasource picker */
   inputType: 'text' | 'boolean' | 'datasource' | 'checkbox-group';
   choices?: Array<{ id: string; text: string }>;
-  format?: 'http-origin';
+  format?: 'http-origin' | 'http-url';
   /** Variable name for storing/referencing the response */
   variableName: string;
   /** Placeholder text (for text input) */
