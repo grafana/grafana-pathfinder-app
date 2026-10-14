@@ -110,7 +110,27 @@ describe('projectRecommendCompletions', () => {
         }),
       ])
     );
-    expect(out.items[0]).toMatchObject({ guide_title: 'New', method: 'manual', completed_at: '2026-02-01T00:00:00Z' });
+    expect(out.items[0]).toMatchObject({ method: 'manual', completed_at: '2026-02-01T00:00:00Z' });
+  });
+
+  it('never sends titles, categories or path ids, even for a public guide inside a private path', () => {
+    const out = projectRecommendCompletions(
+      my(
+        [completed({ guideTitle: 'Secret title', guideCategory: 'secret', pathId: 'private-path' })],
+        [partial({ guideId: 'p', guideTitle: 'Secret partial', pathId: 'private-path' })]
+      )
+    );
+    expect(out.items).toHaveLength(2);
+    for (const item of out.items) {
+      expect(item).not.toHaveProperty('guide_title');
+      expect(item).not.toHaveProperty('guide_category');
+      expect(item).not.toHaveProperty('path_id');
+    }
+    expect(JSON.stringify(out)).not.toMatch(/Secret|private-path/);
+  });
+
+  it('clamps a negative count to zero', () => {
+    expect(projectRecommendCompletions(my([completed({ count: -3 })])).items[0]?.count).toBe(0);
   });
 
   it('represents an in-progress-only guide with count 0 and no completion fields', () => {
@@ -118,8 +138,6 @@ describe('projectRecommendCompletions', () => {
     expect(item).toEqual({
       guide_source: 'interactive-tutorials',
       guide_id: 'g',
-      guide_title: 'G',
-      guide_category: 'interactive',
       percent: 40,
       count: 0,
       started_at: '2026-10-01T00:00:00Z',

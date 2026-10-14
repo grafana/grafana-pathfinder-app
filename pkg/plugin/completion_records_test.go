@@ -1136,4 +1136,14 @@ func TestCollation_NewFieldsOmittedFromJSONWhenEmpty(t *testing.T) {
 			t.Errorf("%s present in %s, want omitted", k, raw)
 		}
 	}
+
+	partial := rec("user:1", "bundled", "linux", "Linux", "interactive", "", "objectives", "", 40)
+	_, inProgress := collateCompletions([]completionRecordSpec{partial})
+	rawPartial, err := json.Marshal(inProgress["user:1"][0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(rawPartial), "attemptStartedAt") {
+		t.Errorf("attemptStartedAt present in %s, want omitted", rawPartial)
+	}
 }

@@ -235,16 +235,16 @@ Implementation: `src/completion-records/guide-attempts.ts`, `progress-records-ca
 
 **Type**: Boolean
 
-**Purpose**: Kill switch for attaching the user's completion history to `POST /api/v1/recommend`. See [Completion history in recommend requests](engines/context-engine.md#completion-history-in-recommend-requests).
+**Purpose**: Gate for attaching the user's completion history to `POST /api/v1/recommend`. See [Completion history in recommend requests](engines/context-engine.md#completion-history-in-recommend-requests).
 
-**Default**: `true`
+**Default**: `false`. The flag ships off until privacy and product sign-off and the terms notice cover completion history (tracked separately from this feature).
 
 **Behavior**:
 
 - **`true`**: each recommend request carries a `completions` object built from `GET /completion-records/my`, when that route reports the feature available.
 - **`false`**: no `/completion-records/my` request is made for recommendations and the request body has no `completions` key.
 
-The flag is read each time a recommend request is built, so a flip takes effect on the next request. No GOFF entry is needed for the default-on value unless operators want to override it.
+The flag is read each time a recommend request is built, so a flip takes effect on the next request. Turning it on, or off again during an incident, reaches browsers only once a `flags/` file and a `Public()` entry in `flag-definitions.libsonnet` exist in deployment_tools.
 
 Implementation: `src/context-engine/recommend-completions-attachment.ts`.
 

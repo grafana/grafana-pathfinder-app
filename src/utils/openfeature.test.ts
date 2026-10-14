@@ -195,7 +195,7 @@ describe('openfeature', () => {
 
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.recommend-completions'].valueType).toBe('boolean');
-        expect(pathfinderFeatureFlags['pathfinder.recommend-completions'].defaultValue).toBe(true);
+        expect(pathfinderFeatureFlags['pathfinder.recommend-completions'].defaultValue).toBe(false);
       });
     });
 

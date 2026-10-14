@@ -21,7 +21,7 @@ export interface CompletionsAttachment {
  */
 export async function completionsForRecommend(): Promise<CompletionsAttachment> {
   try {
-    if (!getFeatureFlagValue('pathfinder.recommend-completions', true)) {
+    if (!getFeatureFlagValue('pathfinder.recommend-completions', false)) {
       return { outcome: 'disabled' };
     }
 

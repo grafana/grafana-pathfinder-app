@@ -153,6 +153,7 @@ describe('recommend request completions', () => {
 
     await ContextService.fetchRecommendations(makeContextData(), PLUGIN_CONFIG);
 
+    expect(mockFlag).toHaveBeenCalledWith('pathfinder.recommend-completions', false);
     expect(mockLoadMyCompletions).not.toHaveBeenCalled();
     expect(await sentBody()).not.toHaveProperty('completions');
     expect(mockRecordRecommendCompletions).toHaveBeenCalledWith('disabled', undefined, undefined, undefined);

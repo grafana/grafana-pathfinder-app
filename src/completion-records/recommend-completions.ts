@@ -11,9 +11,6 @@ export { RECOMMEND_COMPLETIONS_MAX_ITEMS };
 interface Row {
   source: string;
   id: string;
-  title: string;
-  category: string;
-  pathId: string;
   percent: number;
   method: string;
   count: number;
@@ -52,14 +49,12 @@ function normalizeSource(source: string): string {
   return source === 'online-cdn' ? 'interactive-tutorials' : source;
 }
 
+// `durationSeconds` is the latest completion's snapshot, not a total across attempts.
 function mergeRows(current: Row, next: Row): Row {
   const owner = nextWins(current, next) ? next : current;
   return {
     source: current.source,
     id: current.id,
-    title: owner.title,
-    category: owner.category,
-    pathId: owner.pathId,
     percent: Math.max(current.percent, next.percent),
     method: owner.method,
     count: current.count + next.count,
@@ -81,12 +76,9 @@ function completedRow(c: MyCompletionsResponseWire['completions'][number]): Row 
   return {
     source: normalizeSource(c.guideSource),
     id: normalizeGuideId(c.guideId),
-    title: c.guideTitle,
-    category: c.guideCategory,
-    pathId: c.pathId,
     percent: clampPercent(c.maxCompletionPercent),
     method: c.latestSource,
-    count: c.count,
+    count: Math.max(0, Math.trunc(c.count)),
     completedAt: c.latestCompletedAt,
     durationSeconds: c.latestDurationSeconds ?? 0,
     startedAt: c.latestAttemptStartedAt ?? '',
@@ -98,9 +90,6 @@ function partialRow(p: MyCompletionsResponseWire['inProgress'][number]): Row {
   return {
     source: normalizeSource(p.guideSource),
     id: normalizeGuideId(p.guideId),
-    title: p.guideTitle,
-    category: p.guideCategory,
-    pathId: p.pathId,
     percent: clampPercent(p.completionPercent),
     method: '',
     count: 0,
@@ -115,9 +104,6 @@ function toItem(row: Row): RecommendCompletionItemWire {
   return {
     guide_source: row.source,
     guide_id: row.id,
-    ...(row.title !== '' && { guide_title: row.title }),
-    ...(row.category !== '' && { guide_category: row.category }),
-    ...(row.pathId !== '' && { path_id: row.pathId }),
     percent: row.percent,
     ...(row.method !== '' && { method: row.method }),
     count: row.count,

@@ -596,9 +596,9 @@ func collateCompletions(records []completionRecordSpec) (map[string][]collatedCo
 	return result, inProgress
 }
 
-// inProgressLess orders partials by LastUpdatedAt ascending, the same way
-// completionEntryLess orders completions, with a guide-identity tiebreak so
-// the order is deterministic.
+// inProgressLess orders partials by LastUpdatedAt ascending, like
+// completionEntryLess. Its guide-identity tiebreak runs the other way (">"),
+// so the descending sort in collateCompletions yields ascending identity.
 func inProgressLess(x, y inProgressCompletion) bool {
 	tx, okx := parseCompletionTime(x.LastUpdatedAt)
 	ty, oky := parseCompletionTime(y.LastUpdatedAt)

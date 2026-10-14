@@ -13,9 +13,6 @@ export const RECOMMEND_COMPLETIONS_MAX_ITEMS = 250;
 export const RecommendCompletionItemWireSchema = z.strictObject({
   guide_source: z.string().min(1),
   guide_id: z.string().min(1),
-  guide_title: z.string().optional(),
-  guide_category: z.string().optional(),
-  path_id: z.string().optional(),
   percent: z.number().int().min(0).max(100),
   method: z.string().optional(),
   count: z.number().int().min(0),

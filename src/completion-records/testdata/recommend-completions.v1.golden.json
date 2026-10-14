@@ -6,8 +6,6 @@
     {
       "guide_source": "interactive-tutorials",
       "guide_id": "prometheus-intro",
-      "guide_title": "Prometheus intro",
-      "guide_category": "interactive",
       "percent": 30,
       "count": 0,
       "started_at": "2026-10-04T11:50:00Z",
@@ -16,9 +14,6 @@
     {
       "guide_source": "interactive-tutorials",
       "guide_id": "alerting-101",
-      "guide_title": "Alerting 101",
-      "guide_category": "interactive",
-      "path_id": "observability-path",
       "percent": 100,
       "method": "objectives",
       "count": 2,
@@ -30,8 +25,6 @@
     {
       "guide_source": "bundled",
       "guide_id": "loki-basics",
-      "guide_title": "Loki basics",
-      "guide_category": "interactive",
       "percent": 100,
       "method": "manual",
       "count": 1,
@@ -41,8 +34,6 @@
     {
       "guide_source": "interactive-tutorials",
       "guide_id": "dashboards-101",
-      "guide_title": "Dashboards 101 (updated)",
-      "guide_category": "interactive",
       "percent": 100,
       "method": "manual",
       "count": 2,

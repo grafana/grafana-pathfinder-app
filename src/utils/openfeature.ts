@@ -218,11 +218,11 @@ const pathfinderFeatureFlags = {
     defaultValue: false,
     trackingKey: 'progress_records',
   },
-  /** Kill switch for attaching the user's completion history to recommender requests. */
+  /** Gate for attaching the user's completion history to recommender requests; off until consent is settled. */
   'pathfinder.recommend-completions': {
     valueType: 'boolean',
     values: [true, false],
-    defaultValue: true,
+    defaultValue: false,
     trackingKey: 'recommend_completions',
   },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
