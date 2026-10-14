@@ -138,7 +138,9 @@ it('preserves direct-URL path navigation metadata, exact strings, order, and sup
   const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(manifest) });
   global.fetch = fetchMock;
   try {
-    const info = await fetchPackageInfoFromUrl('https://interactive-learning.grafana.net/packages/test-path/content.json');
+    const info = await fetchPackageInfoFromUrl(
+      'https://interactive-learning.grafana.net/packages/test-path/content.json'
+    );
 
     expect(info?.packageManifest).toMatchObject({
       ...manifest,

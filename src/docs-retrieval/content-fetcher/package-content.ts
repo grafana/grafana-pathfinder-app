@@ -394,7 +394,7 @@ export async function fetchPackageContent(
     resolvedMember !== undefined ||
     Boolean(
       explicitGuideId &&
-        (milestoneIds.includes(explicitGuideId) || getAllTrackGuideIds(manifestTracks).includes(explicitGuideId))
+      (milestoneIds.includes(explicitGuideId) || getAllTrackGuideIds(manifestTracks).includes(explicitGuideId))
     );
   const resolvedRepository =
     repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined) ?? resolvedMember?.repository;

@@ -61,7 +61,8 @@ describe('OnlineCdnPackageResolver', () => {
         packages: [
           {
             ...sampleEntry,
-            manifest: source === 'inline' ? manifest : source === 'fallback' ? { ...manifest, id: 'Bad_ID' } : undefined,
+            manifest:
+              source === 'inline' ? manifest : source === 'fallback' ? { ...manifest, id: 'Bad_ID' } : undefined,
           },
         ],
       });

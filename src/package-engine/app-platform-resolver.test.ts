@@ -259,7 +259,9 @@ describe('AppPlatformPackageResolver — metadata-only', () => {
       );
 
       expect(result.content?.metadata.learningJourney?.currentMilestone).toBe(0);
-      expect(result.content?.metadata.learningJourney?.tracks?.[0]?.milestones[0]?.url).toBe('backend-guide:track-guide');
+      expect(result.content?.metadata.learningJourney?.tracks?.[0]?.milestones[0]?.url).toBe(
+        'backend-guide:track-guide'
+      );
       expect(result.content && getNextMilestoneUrl(result.content)).toBe('backend-guide:fe-alerting-01');
       expect(mockFetch).toHaveBeenCalledTimes(4);
     }
