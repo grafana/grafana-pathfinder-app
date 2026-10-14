@@ -37,6 +37,7 @@ import { useLearningPaths, useMyAssignments, type ResolvedAssignment } from '../
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import { LearningModuleList } from '../LearningContentCard/LearningModuleList';
 import { learningEffort } from '../LearningContentCard/learning-effort';
+import { catalogTopic } from '../../lib/catalog-discovery';
 import { AssignmentBadges } from '../LearningPaths/AssignmentBadges';
 
 /**
@@ -232,7 +233,6 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   }
 }
 
-// Memoized recommendations section to prevent unnecessary rerenders
 interface RecommendationsSectionProps {
   recommendations: Recommendation[];
   featuredRecommendations: Recommendation[];
@@ -294,6 +294,12 @@ export const RecommendationsSection = memo(function RecommendationsSection({
       <LearningContentCard
         key={contentUrl || `${featured ? 'featured' : 'main'}-${index}`}
         title={recommendation.title}
+        topic={catalogTopic({
+          id: typeof recommendation.manifest?.id === 'string' ? recommendation.manifest.id : contentUrl,
+          title: recommendation.title,
+          category:
+            typeof recommendation.manifest?.category === 'string' ? recommendation.manifest.category : undefined,
+        })}
         kind={kind}
         description={recommendation.summary}
         progress={displayType === 'docs-page' ? undefined : recommendation.completionPercentage}
@@ -556,7 +562,6 @@ export const RecommendationsSection = memo(function RecommendationsSection({
           </div>
         )}
 
-        {/* Featured Recommendations Section - Time-based featured content */}
         {suggestedGuidesExpanded && featuredRecommendations.length > 0 && (
           <div className={styles.featuredSection} data-testid="featured-section">
             <div className={styles.featuredHeader}>

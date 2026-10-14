@@ -23,6 +23,7 @@ import { getPackageBrowserStyles } from './package-browser.styles';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import { CatalogDetails } from './CatalogDetails';
+import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
 
 export interface PackageBrowserProps {
   onOpenGuide: (launch: PreparedGuideLaunch) => void;
@@ -188,11 +189,13 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
       .filter(Boolean)
       .join(' · ');
 
-  const renderCard = (item: CatalogPackage) => (
+  const renderCard = (item: CatalogPackage, variant: 'featured' | 'compact' = 'compact') => (
     <LearningContentCard
       key={`${catalog.scope}:${item.key}`}
       title={item.title}
       kind={item.format}
+      variant={variant}
+      topic={catalogTopic(item)}
       description={item.description}
       effort={effort(item)}
       organization={item.source === 'organization'}
@@ -244,31 +247,14 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
           <div>
             <h2>{t('packageBrowser.title', 'Browse guides')}</h2>
             <p className={styles.description}>
-              {t('packageBrowser.description', 'Find something to learn or build in Grafana.')}
+              {t('packageBrowser.description', 'What would you like to learn or build?')}
             </p>
           </div>
+          <span className={styles.catalogCount}>
+            {t('packageBrowser.catalogCount', '{{count}} to explore', { count: catalog.items.length })}
+          </span>
         </div>
-        <div className={styles.navigation} role="group" aria-label={t('packageBrowser.browseView', 'Browse view')}>
-          <Button
-            size="sm"
-            variant={view.mode === 'explore' ? 'primary' : 'secondary'}
-            aria-pressed={view.mode === 'explore'}
-            onClick={() =>
-              update({ mode: 'explore', query: '', format: 'all', source: 'all', category: 'all', scrollTop: 0 })
-            }
-          >
-            {t('packageBrowser.explore', 'Explore')}
-          </Button>
-          <Button
-            size="sm"
-            variant={view.mode === 'all' ? 'primary' : 'secondary'}
-            aria-pressed={view.mode === 'all'}
-            onClick={() => update({ mode: 'all', scrollTop: 0 })}
-          >
-            {t('packageBrowser.allGuides', 'All guides')}
-          </Button>
-        </div>
-        <label htmlFor={searchId} className={styles.effort}>
+        <label htmlFor={searchId} className={styles.searchLabel}>
           {t('packageBrowser.searchLabel', 'Search guides')}
         </label>
         <Input
@@ -278,6 +264,26 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
           placeholder={t('packageBrowser.searchPlaceholder', 'Search dashboards, metrics, paths…')}
           onChange={(event) => update({ query: event.currentTarget.value, scrollTop: 0 })}
         />
+        <div className={styles.navigation} role="group" aria-label={t('packageBrowser.browseView', 'Browse view')}>
+          <button
+            type="button"
+            className={styles.viewTab}
+            aria-pressed={view.mode === 'explore'}
+            onClick={() =>
+              update({ mode: 'explore', query: '', format: 'all', source: 'all', category: 'all', scrollTop: 0 })
+            }
+          >
+            {t('packageBrowser.explore', 'Explore')}
+          </button>
+          <button
+            type="button"
+            className={styles.viewTab}
+            aria-pressed={view.mode === 'all'}
+            onClick={() => update({ mode: 'all', scrollTop: 0 })}
+          >
+            {t('packageBrowser.allGuides', 'All guides')}
+          </button>
+        </div>
         {view.mode === 'all' && (
           <div className={styles.filters}>
             <label htmlFor={`${searchId}-format`}>
@@ -350,47 +356,65 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
           <>
             {starters.length > 0 && (
               <section className={styles.section} aria-labelledby={`${searchId}-starters`}>
-                <h3 id={`${searchId}-starters`}>{t('packageBrowser.gettingStarted', 'Getting started')}</h3>
-                <p className={styles.sectionDescription}>
-                  {t('packageBrowser.startersDescription', 'Learn the basics with these guided introductions.')}
-                </p>
-                <div className={styles.grid}>{starters.map(renderCard)}</div>
+                <div className={styles.sectionHeading}>
+                  <h3 id={`${searchId}-starters`}>
+                    {t('packageBrowser.startEssentials', 'Start with the essentials')}
+                  </h3>
+                  <span>{t('packageBrowser.guidedIntroductions', 'Guided introductions')}</span>
+                </div>
+                <div className={styles.grid}>
+                  {starters.map((item, index) => (
+                    <React.Fragment key={item.key}>
+                      {index > 0 && item.format === 'guide' && (
+                        <p className={styles.starterNote}>
+                          {t('packageBrowser.singleGuide', 'Prefer a single guide?')}
+                        </p>
+                      )}
+                      {renderCard(item, index === 0 && item.format === 'path' ? 'featured' : 'compact')}
+                    </React.Fragment>
+                  ))}
+                </div>
               </section>
             )}
             {shortcuts.length > 0 && (
               <section className={styles.section} aria-labelledby={`${searchId}-topics`}>
-                <h3 id={`${searchId}-topics`}>{t('packageBrowser.exploreTopics', 'Explore by topic')}</h3>
+                <div className={styles.sectionHeading}>
+                  <h3 id={`${searchId}-topics`}>{t('packageBrowser.exploreTopics', 'Explore by topic')}</h3>
+                </div>
                 <div className={styles.topics}>
                   {shortcuts.map((topic) => (
                     <button
                       key={topic.id}
+                      type="button"
                       className={styles.topicShortcut}
                       onClick={() =>
                         update({ category: topic.id, query: '', format: 'all', source: 'all', scrollTop: 0 })
                       }
                     >
-                      <span>{topicLabel(topic.id)}</span>
-                      <span className={styles.effort}>
-                        {t('packageBrowser.topicResults', '{{count}} results', { count: topic.count })}
+                      <LearningTopicIcon topic={topic.id} size="sm" />
+                      <span className={styles.topicContent}>
+                        <strong>{topicLabel(topic.id)}</strong>
+                        <small>
+                          {t('packageBrowser.topicResults', '{{count}} guides and paths', { count: topic.count })}
+                        </small>
                       </span>
-                      <Icon name="angle-right" />
                     </button>
                   ))}
                 </div>
               </section>
             )}
-            <section className={styles.section}>
-              <h3>{t('packageBrowser.moreToExplore', 'More to explore')}</h3>
-              <p className={styles.sectionDescription}>
-                {t(
-                  'packageBrowser.catalogDescription',
-                  'Browse all guides and learning paths, including content from your organization.'
-                )}
-              </p>
-              <Button variant="secondary" onClick={() => update({ mode: 'all', scrollTop: 0 })}>
+            <div className={styles.exploreFooter}>
+              <span>{t('packageBrowser.specificTask', 'Have something specific in mind?')}</span>
+              <Button
+                variant="primary"
+                fill="text"
+                size="sm"
+                icon="arrow-right"
+                onClick={() => update({ mode: 'all', scrollTop: 0 })}
+              >
                 {t('packageBrowser.browseAll', 'Browse all guides')}
               </Button>
-            </section>
+            </div>
           </>
         )}
         {view.mode === 'all' && (

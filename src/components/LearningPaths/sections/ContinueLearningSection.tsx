@@ -7,6 +7,7 @@ import type { CatalogPackage } from '../../../types/package-catalog.types';
 import type { CatalogProgress } from '../../../learning-paths';
 import { LearningContentCard } from '../../LearningContentCard/LearningContentCard';
 import { CatalogDetails } from '../../PackageBrowser/CatalogDetails';
+import { catalogTopic } from '../../../lib/catalog-discovery';
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
 
 export function ContinueLearningSection({
@@ -57,6 +58,7 @@ export function ContinueLearningSection({
           <LearningContentCard
             key={`${scope}:${item.key}`}
             title={item.title}
+            topic={catalogTopic(item)}
             description={item.description}
             kind={item.format}
             organization={item.source === 'organization'}

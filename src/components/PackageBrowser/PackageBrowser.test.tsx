@@ -242,8 +242,13 @@ it('starts with curated introductions and topic shortcuts rather than the full c
   mockItems.push(starter);
   updateCatalogView('test', { mode: 'explore' });
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  expect(screen.getByRole('heading', { name: 'Getting started', level: 3 })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Start with the essentials', level: 3 })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Getting started with Grafana' })).toBeInTheDocument();
+  expect(screen.getByText('Guided introductions')).toBeInTheDocument();
+  expect(screen.getByText('A good place to start')).toBeInTheDocument();
+  expect(screen.getByText('Prefer a single guide?')).toBeInTheDocument();
+  expect(screen.getByText('3 to explore')).toBeInTheDocument();
+  expect(screen.getByText('What would you like to learn or build?')).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Explore by topic' })).toBeInTheDocument();
   expect(screen.queryByText('Team guide')).not.toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Format' })).not.toBeInTheDocument();
@@ -265,7 +270,7 @@ it('topic shortcuts include category aliases and retain their selection on retur
   });
   updateCatalogView('test', { mode: 'explore' });
   const { unmount } = render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Dashboards 2 results' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Dashboards 2 guides and paths' }));
   expect(screen.getAllByRole('article')).toHaveLength(2);
   expect(screen.queryByText('Team guide')).not.toBeInTheDocument();
   const container = screen.getByTestId('package-browser');

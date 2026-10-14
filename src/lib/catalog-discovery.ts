@@ -34,12 +34,12 @@ const TOPIC_RULES: Array<[string, RegExp]> = [
   ['dashboards', /\bvisualizations?\b/],
 ];
 
-function topicFromTitleAndId(item: CatalogPackage): string | undefined {
+function topicFromTitleAndId(item: Pick<CatalogPackage, 'id' | 'title'>): string | undefined {
   const text = `${item.title} ${item.id}`.toLowerCase().replace(/[-_]+/g, ' ');
   return TOPIC_RULES.find(([, pattern]) => pattern.test(text))?.[0];
 }
 
-export function catalogTopic(item: CatalogPackage): string {
+export function catalogTopic(item: Pick<CatalogPackage, 'id' | 'title' | 'category'>): string {
   const category = item.category
     ?.trim()
     .toLowerCase()

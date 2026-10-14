@@ -5,6 +5,7 @@ import type { DiscoverMoreItem, CatalogProgress } from '../../learning-paths';
 import type { CatalogPackage } from '../../types/package-catalog.types';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import { CatalogDetails } from '../PackageBrowser/CatalogDetails';
+import { catalogTopic } from '../../lib/catalog-discovery';
 
 interface DiscoverMoreCardProps {
   item: DiscoverMoreItem;
@@ -41,6 +42,7 @@ export function DiscoverMoreCard({
   return (
     <LearningContentCard
       title={item.title}
+      topic={catalogTopic(entry ?? { id: item.id, title: item.title })}
       kind={entry?.format ?? 'path'}
       description={item.description}
       organization={entry?.source === 'organization'}

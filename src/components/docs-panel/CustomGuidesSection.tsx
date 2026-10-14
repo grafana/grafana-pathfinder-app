@@ -19,6 +19,7 @@ import { AssignmentBadges } from '../LearningPaths/AssignmentBadges';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import { LearningModuleList } from '../LearningContentCard/LearningModuleList';
 import { learningEffort } from '../LearningContentCard/learning-effort';
+import { catalogTopic } from '../../lib/catalog-discovery';
 
 interface CustomGuidesSectionProps {
   guides: PublishedGuide[];
@@ -134,6 +135,7 @@ function CustomGuideCard({
   return (
     <LearningContentCard
       title={title}
+      topic={catalogTopic({ id: guide.id, title, category: guide.manifest?.category })}
       kind={path ? 'path' : 'guide'}
       organization
       description={guide.manifest?.description}
