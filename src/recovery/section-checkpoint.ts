@@ -5,6 +5,7 @@ export interface CheckpointResult {
   canRestore: boolean;
   explanation?: string;
   checkIndex?: number;
+  gaveUp?: boolean;
 }
 
 export interface CheckpointAdapter {
@@ -128,7 +129,12 @@ export async function restoreCheckpoint(
       return result;
     }
     if (attempted.has(result.checkIndex)) {
-      return { ...result, explanation: 'The section changed again. Check it before trying recovery again.' };
+      return {
+        ...result,
+        canRestore: false,
+        gaveUp: true,
+        explanation: 'The section changed again. Check it before trying recovery again.',
+      };
     }
     attempted.add(result.checkIndex);
     const check = checkpoint.checks[result.checkIndex]!;
@@ -138,6 +144,8 @@ export async function restoreCheckpoint(
     if (!restored) {
       return {
         ...result,
+        canRestore: false,
+        gaveUp: true,
         explanation: 'This condition could not be restored. Follow the recovery instructions and check again.',
       };
     }

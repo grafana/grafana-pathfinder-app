@@ -56,14 +56,26 @@ it('requires the grouping pill to render before declaring recovery successful', 
   expect(await dashboardStateCheck(group)).toMatchObject({ pass: true });
 });
 
-it('accepts visible default grouping without a URL override but waits for an explicit clear to render', async () => {
+it('accepts visible default grouping without a URL override, and restores grouping the URL dropped', async () => {
   controls({ grouped: true });
   page('');
   expect(await dashboardStateCheck(group)).toMatchObject({ pass: true });
   expect(restoreDashboardState(group)).toBe(false);
   expect(locationService.partial).not.toHaveBeenCalled();
   page('?var-filter=');
-  expect(await dashboardStateCheck(group)).toMatchObject({ pass: false, canFix: false });
+  expect(await dashboardStateCheck(group)).toMatchObject({ pass: false, canFix: true });
+  expect(restoreDashboardState(group)).toBe(true);
+  expect(locationService.partial).toHaveBeenCalledWith({ 'var-filter': ['job|groupBy'] });
+});
+
+it('offers to return to the guide dashboard from another one', async () => {
+  (locationService.getLocation as jest.Mock).mockReturnValue({ pathname: '/d/other/board', search: '' });
+  expect(await dashboardStateCheck(group)).toMatchObject({
+    pass: false,
+    canFix: true,
+    fixType: 'location',
+    targetHref: '/d/canvvlh',
+  });
 });
 
 it('preserves other filters and grouping, and uses the latest state at restore time', () => {

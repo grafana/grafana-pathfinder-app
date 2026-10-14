@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { locationService } from '@grafana/runtime';
 import type { JsonSectionCheckpoint } from '../../../types/json-guide.types';
 import { inspectCheckpoint, restoreCheckpoint, type CheckpointResult } from '../../../recovery/section-checkpoint';
@@ -20,7 +20,7 @@ export function useSectionCheckpoint(
   sectionId: string,
   enabled: boolean,
   controllerMode: boolean,
-  onEvent?: (event: SectionCheckpointEvent) => void
+  { onEvent, suspended = false }: { onEvent?: (event: SectionCheckpointEvent) => void; suspended?: boolean } = {}
 ) {
   const { checkPostconditions } = useGuideRequirements();
   const [status, setStatus] = useState<CheckpointResult | null>(null);
@@ -32,6 +32,11 @@ export function useSectionCheckpoint(
   const lastReadyUrl = useRef<string | undefined>(undefined);
   const pauseReported = useRef(false);
   const restoreStartedAt = useRef(0);
+  const gaveUp = useRef<{ index?: number; explanation?: string } | null>(null);
+  const gate = useRef({ enabled, controllerMode, suspended });
+  useLayoutEffect(() => {
+    gate.current = { enabled, controllerMode, suspended };
+  });
 
   const run = useCallback(
     (restore: boolean): Promise<boolean> => {
@@ -45,11 +50,11 @@ export function useSectionCheckpoint(
         operation.current?.abort();
         const controller = new AbortController();
         operation.current = controller;
-        if (!enabled || controllerMode) {
+        if (!gate.current.enabled || gate.current.controllerMode) {
           setStatus({
             passed: false,
             canRestore: false,
-            explanation: controllerMode
+            explanation: gate.current.controllerMode
               ? 'Open this guide in the Grafana tab to restore its checkpoint.'
               : 'Complete the section prerequisites before restoring this checkpoint.',
           });
@@ -102,7 +107,16 @@ export function useSectionCheckpoint(
           if (controller.signal.aborted) {
             return false;
           }
-          setStatus(result);
+          if (result.gaveUp) {
+            gaveUp.current = { index: result.checkIndex, explanation: result.explanation };
+          } else if (result.passed || result.checkIndex !== gaveUp.current?.index) {
+            gaveUp.current = null;
+          }
+          setStatus(
+            gaveUp.current && !result.passed
+              ? { ...result, canRestore: false, explanation: gaveUp.current.explanation }
+              : result
+          );
           if (result.passed) {
             lastReadyUrl.current = currentPath();
             pauseReported.current = false;
@@ -147,16 +161,23 @@ export function useSectionCheckpoint(
       void task.then(release, release);
       return task;
     },
-    [checkpoint, enabled, controllerMode, checkPostconditions, sectionId, onEvent]
+    [checkpoint, checkPostconditions, sectionId, onEvent]
   );
+
+  useEffect(() => {
+    if (checkpoint) {
+      void run(false);
+    }
+  }, [checkpoint, run, enabled, controllerMode]);
 
   useEffect(() => {
     if (!checkpoint) {
       return;
     }
-    void run(false);
     const recheck = () => {
-      void run(false);
+      if (!gate.current.suspended) {
+        void run(false);
+      }
     };
     let settle: ReturnType<typeof setTimeout> | undefined;
     const onNavigate = () => {
@@ -173,6 +194,7 @@ export function useSectionCheckpoint(
       inFlight.current = null;
       busy.current = false;
       pauseReported.current = false;
+      gaveUp.current = null;
       setStatus(null);
       clearInterval(timer);
       clearTimeout(settle);

@@ -440,7 +440,7 @@ export function InteractiveSection({
     sectionId,
     sectionRequirementsStatus.passed,
     mode === 'controller',
-    onCheckpointEvent
+    { onEvent: onCheckpointEvent, suspended: isRunning }
   );
   const sectionReady = sectionRequirementsStatus.passed && sectionCheckpoint.passed;
   const checkCheckpoint = sectionCheckpoint.recheck;

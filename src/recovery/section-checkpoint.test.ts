@@ -60,7 +60,7 @@ it('does not declare success when an action never establishes its condition', as
   };
   const result = restoreCheckpoint(checkpoint, adapter, new AbortController().signal);
   await jest.runAllTimersAsync();
-  expect(await result).toMatchObject({ passed: false });
+  expect(await result).toMatchObject({ passed: false, canRestore: false, gaveUp: true });
   expect(adapter.restore).toHaveBeenCalledTimes(1);
   jest.useRealTimers();
 });
@@ -185,7 +185,7 @@ it('does not replay the next action when an objective never appears', async () =
   adapter.replay = jest.fn(async () => true);
   const result = restoreCheckpoint(dialogCheckpoint, adapter, new AbortController().signal);
   await jest.runAllTimersAsync();
-  expect(await result).toMatchObject({ passed: false });
+  expect(await result).toMatchObject({ passed: false, canRestore: false, gaveUp: true });
   expect(adapter.replay).toHaveBeenCalledTimes(1);
   jest.useRealTimers();
 });

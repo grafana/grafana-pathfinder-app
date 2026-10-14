@@ -4,10 +4,14 @@ import { isElementVisible } from '../../lib/dom/element-validator';
 import type { CheckResultError } from '../../types/requirements.types';
 import { FIX_TYPES } from '../fix-types';
 
+function onConditionDashboard(condition: DashboardCondition): boolean {
+  const uid = /(?:^|\/)d\/([^/]+)(?:\/|$)/.exec(locationService.getLocation().pathname)?.[1];
+  return uid === condition.dashboardUid;
+}
+
 function readDashboardState(condition: DashboardCondition) {
   const location = locationService.getLocation();
-  const uid = /(?:^|\/)d\/([^/]+)(?:\/|$)/.exec(location.pathname)?.[1];
-  if (uid !== condition.dashboardUid) {
+  if (!onConditionDashboard(condition)) {
     return null;
   }
   const labels = document.querySelectorAll<HTMLElement>(
@@ -35,9 +39,9 @@ function readDashboardState(condition: DashboardCondition) {
   return { values, groupKeys, filterKeys, hasUrlState: params.has(variableParam) };
 }
 
-function canPreserveState(state: NonNullable<ReturnType<typeof readDashboardState>>) {
+function canPreserveState(state: NonNullable<ReturnType<typeof readDashboardState>>, restoringGroup?: string) {
   return (
-    state.groupKeys.every((key) => state.values.includes(`${key}|groupBy`)) &&
+    state.groupKeys.every((key) => key === restoringGroup || state.values.includes(`${key}|groupBy`)) &&
     state.filterKeys.every((key) =>
       state.values.some((value) => value.startsWith(`${key}|`) && value !== `${key}|groupBy`)
     )
@@ -49,13 +53,23 @@ export async function dashboardStateCheck(requirement: string): Promise<CheckRes
   if (!condition) {
     return { requirement, pass: false, verdict: 'invalid', error: 'Invalid dashboard state condition.' };
   }
+  if (!onConditionDashboard(condition)) {
+    return {
+      requirement,
+      pass: false,
+      canFix: true,
+      fixType: FIX_TYPES.LOCATION,
+      targetHref: `/d/${condition.dashboardUid}`,
+      error: 'Return to the guide dashboard to continue.',
+    };
+  }
   const state = readDashboardState(condition);
   if (!state) {
     return {
       requirement,
       pass: false,
       verdict: 'unavailable',
-      error: 'Return to the guide dashboard and wait for its filter controls to load.',
+      error: 'Wait for the dashboard filter controls to load, then check again.',
     };
   }
   if (condition.kind === 'filter-absent') {
@@ -74,7 +88,7 @@ export async function dashboardStateCheck(requirement: string): Promise<CheckRes
   const inUrl = state.values.includes(`${condition.key}|groupBy`);
   const inControls = state.groupKeys.includes(condition.key);
   const pass = inControls && (inUrl || !state.hasUrlState);
-  const canFix = !inUrl && !inControls && canPreserveState(state);
+  const canFix = !inUrl && (!inControls || state.hasUrlState) && canPreserveState(state, condition.key);
   return {
     requirement,
     pass,
@@ -95,7 +109,8 @@ export function restoreDashboardState(requirement: string): boolean {
     return false;
   }
   const state = readDashboardState(condition);
-  if (!state || !canPreserveState(state)) {
+  const restoringGroup = condition.kind === 'group-by' && state?.hasUrlState ? condition.key : undefined;
+  if (!state || !canPreserveState(state, restoringGroup)) {
     return false;
   }
   const group = `${condition.key}|groupBy`;

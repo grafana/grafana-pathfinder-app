@@ -214,7 +214,7 @@ describe('navigation, resume URL and analytics events', () => {
     };
     jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
     const onEvent = jest.fn();
-    const { result } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false, onEvent));
+    const { result } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false, { onEvent }));
     await waitFor(() => expect(result.current.settled).toBe(true));
     await act(async () => {
       await result.current.recheck();
@@ -241,7 +241,7 @@ describe('navigation, resume URL and analytics events', () => {
     };
     jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
     const onEvent = jest.fn();
-    const { result } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false, onEvent));
+    const { result } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false, { onEvent }));
     await waitFor(() => expect(result.current.status.canRestore).toBe(true));
     act(() => {
       void result.current.restore();
@@ -250,5 +250,97 @@ describe('navigation, resume URL and analytics events', () => {
       result.current.cancel();
     });
     expect(onEvent).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'restore', outcome: 'cancelled' }));
+  });
+});
+
+describe('failure paths', () => {
+  it('stops offering Restore after a failed repair until the check changes', async () => {
+    let ready = false;
+    const adapter = {
+      check: jest.fn(async () => ({ passed: ready, canRestore: !ready, checkIndex: ready ? undefined : 0 })),
+      restore: jest.fn(async () => false),
+    };
+    jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+    const { result } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false));
+    await waitFor(() => expect(result.current.status.canRestore).toBe(true));
+    await act(async () => {
+      await result.current.restore();
+    });
+    expect(result.current.status).toMatchObject({
+      canRestore: false,
+      explanation: expect.stringContaining('could not be restored'),
+    });
+    await act(async () => {
+      await result.current.recheck();
+    });
+    expect(result.current.status).toMatchObject({
+      canRestore: false,
+      explanation: expect.stringContaining('could not be restored'),
+    });
+    ready = true;
+    await act(async () => {
+      await result.current.recheck();
+    });
+    expect(result.current.passed).toBe(true);
+    ready = false;
+    await act(async () => {
+      await result.current.recheck();
+    });
+    expect(result.current.status.canRestore).toBe(true);
+  });
+
+  it('keeps an in-flight restore when the section requirements flicker', async () => {
+    let ready = false;
+    let finishRepair!: () => void;
+    const adapter = {
+      check: jest.fn(async () => ({ passed: ready, canRestore: !ready, checkIndex: ready ? undefined : 0 })),
+      restore: jest.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finishRepair = () => {
+              ready = true;
+              resolve(true);
+            };
+          })
+      ),
+    };
+    jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useSectionCheckpoint(checkpoint, 'section', enabled, false),
+      { initialProps: { enabled: true } }
+    );
+    await waitFor(() => expect(result.current.status.canRestore).toBe(true));
+    let restoring!: Promise<boolean>;
+    act(() => {
+      restoring = result.current.restore();
+    });
+    await waitFor(() => expect(adapter.restore).toHaveBeenCalled());
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+    await act(async () => {
+      finishRepair();
+      await restoring;
+    });
+    expect(await restoring).toBe(true);
+    expect(result.current.passed).toBe(true);
+  });
+
+  it('skips background rechecks while the section runner is active', async () => {
+    const adapter = { check: jest.fn(async () => ({ passed: true, canRestore: false })), restore: jest.fn() };
+    jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+    const { rerender } = renderHook(
+      ({ suspended }) => useSectionCheckpoint(checkpoint, 'section', true, false, { suspended }),
+      { initialProps: { suspended: true } }
+    );
+    await waitFor(() => expect(adapter.check).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(adapter.check).toHaveBeenCalledTimes(1);
+    rerender({ suspended: false });
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(adapter.check).toHaveBeenCalledTimes(2);
   });
 });
