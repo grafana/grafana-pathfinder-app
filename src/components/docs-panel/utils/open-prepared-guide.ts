@@ -45,11 +45,20 @@ function publicLaunchUrl(url: string): string | undefined {
   return parsed.toString();
 }
 
-function reportSurfaceChoice(surface: 'sidebar' | 'floating' | 'fullscreen', launch: PreparedGuideLaunch): void {
+function reportSurfaceChoice(
+  surface: 'sidebar' | 'floating' | 'fullscreen',
+  launch: Pick<PreparedGuideLaunch, 'url' | 'source'> &
+    Partial<Pick<PreparedGuideLaunch, 'packageInfo' | 'requiresGrafanaUi'>>
+): void {
+  const contentUrl =
+    guideSource(launch.url) === 'app-platform' || launch.packageInfo?.repository === 'app-platform'
+      ? undefined
+      : publicLaunchUrl(launch.url);
   reportAppInteraction(UserInteraction.GuideLaunchSurfaceChosen, {
     surface,
-    requires_grafana_ui: launch.requiresGrafanaUi,
-    ...(launch.source === 'package_browser' ? { source: 'package_browser' } : { content_url: launch.url }),
+    source: launch.source,
+    ...(launch.requiresGrafanaUi !== undefined ? { requires_grafana_ui: launch.requiresGrafanaUi } : {}),
+    ...(contentUrl ? { content_url: contentUrl } : {}),
   });
 }
 
@@ -145,16 +154,7 @@ export function openGuideInSidebar(
     packageInfo: launch.packageInfo,
     source: launch.source,
   });
-  const contentUrl =
-    guideSource(launch.url) === 'app-platform' || launch.packageInfo?.repository === 'app-platform'
-      ? undefined
-      : publicLaunchUrl(launch.url);
-  reportAppInteraction(UserInteraction.GuideLaunchSurfaceChosen, {
-    surface: 'sidebar',
-    source: launch.source,
-    ...(launch.requiresGrafanaUi !== undefined ? { requires_grafana_ui: launch.requiresGrafanaUi } : {}),
-    ...(contentUrl ? { content_url: contentUrl } : {}),
-  });
+  reportSurfaceChoice('sidebar', launch);
   if (sidebarMounted) {
     panelModeManager.setModeTransient('sidebar');
     document.dispatchEvent(

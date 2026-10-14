@@ -1,5 +1,5 @@
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
-import { openGuideInSidebar } from './open-prepared-guide';
+import { openGuideInSidebar, openPreparedGuide } from './open-prepared-guide';
 import { panelModeManager } from '../../../global-state/panel-mode';
 import { sidebarState } from '../../../global-state/sidebar';
 import { guideLaunchStore } from '../../../global-state/guide-launch';
@@ -10,7 +10,12 @@ import { AUTO_OPEN_DOCS_EVENT } from '../../../lib/event-names';
 import type { PreparedGuideLaunch } from './prepare-guide-launch';
 
 jest.mock('../../../global-state/panel-mode', () => ({
-  panelModeManager: { getMode: jest.fn(), setModeTransient: jest.fn() },
+  panelModeManager: {
+    getMode: jest.fn(),
+    setModeTransient: jest.fn(),
+    setPendingGuide: jest.fn(),
+    capturePriorPath: jest.fn(),
+  },
 }));
 jest.mock('../../../global-state/sidebar', () => ({
   sidebarState: {
@@ -132,5 +137,54 @@ it('retains official attribution without URL credentials, query, or fragment', (
     source: 'package_browser',
     requires_grafana_ui: false,
     content_url: 'https://interactive-learning.grafana.net/path/content.json',
+  });
+});
+
+describe.each(['sidebar', 'floating', 'fullscreen'] as const)('automatic %s launch analytics', (surface) => {
+  const open = (overrides: Partial<PreparedGuideLaunch> = {}) => {
+    jest.mocked(panelModeManager.getMode).mockReturnValue(surface);
+    openPreparedGuide({ ...launch, requiresGrafanaUi: surface !== 'fullscreen', ...overrides });
+  };
+
+  it('retains public catalog attribution and the selected surface', () => {
+    open();
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.GuideLaunchSurfaceChosen, {
+      surface,
+      source: 'package_browser',
+      requires_grafana_ui: surface !== 'fullscreen',
+      content_url: launch.url,
+    });
+    expect(panelModeManager.setModeTransient).toHaveBeenCalledWith(surface);
+  });
+
+  it.each(['backend-guide:secret', 'https://custom.example/private-name?secret=token'])(
+    'omits private attribution for %s',
+    (url) => {
+      open({ url, title: 'Private title', source: 'home_page' });
+      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.GuideLaunchSurfaceChosen, {
+        surface,
+        source: 'home_page',
+        requires_grafana_ui: surface !== 'fullscreen',
+      });
+    }
+  );
+
+  it('omits App Platform identity even with an official-looking URL', () => {
+    open({ packageInfo: { repository: 'app-platform' } });
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.GuideLaunchSurfaceChosen, {
+      surface,
+      source: 'package_browser',
+      requires_grafana_ui: surface !== 'fullscreen',
+    });
+  });
+
+  it('removes credentials, query and fragment from official URLs', () => {
+    open({ url: 'https://user:secret@interactive-learning.grafana.net/path/content.json?token=secret#private' });
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.GuideLaunchSurfaceChosen, {
+      surface,
+      source: 'package_browser',
+      requires_grafana_ui: surface !== 'fullscreen',
+      content_url: 'https://interactive-learning.grafana.net/path/content.json',
+    });
   });
 });
