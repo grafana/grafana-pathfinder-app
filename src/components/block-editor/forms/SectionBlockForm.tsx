@@ -171,6 +171,7 @@ export function SectionBlockForm({
 
       <Field label="When requirements are not met">
         <Select<NonNullable<JsonSectionBlock['whenRequirementsUnmet']>>
+          aria-label="When requirements are not met"
           value={whenRequirementsUnmet}
           options={[
             { label: 'Show section, disable execution', value: 'disable' },
