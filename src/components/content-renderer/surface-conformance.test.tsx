@@ -50,7 +50,7 @@ jest.mock('../../hooks', () => ({
   usePathfinderPluginConfig: () => ({ config: { enableTwoTabController: false } }),
 }));
 
-jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(() => false) }));
+jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(() => false), useBooleanFlag: () => true }));
 
 jest.mock('../../lib/analytics', () => ({
   ...jest.requireActual('../../lib/analytics'),
