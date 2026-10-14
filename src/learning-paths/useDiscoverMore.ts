@@ -16,7 +16,7 @@ import {
   buildPackageFileUrl,
   type OnlinePackageEntry,
 } from '../lib/package-recommendations-client';
-import { ManifestJsonObjectSchema } from '../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from '../lib/runtime-manifest';
 import type { ManifestJson } from '../types/package.types';
 import { logger } from '../lib/logging';
 
@@ -60,7 +60,7 @@ function parseManifest(manifest: Record<string, unknown> | undefined): ManifestJ
   if (!manifest) {
     return undefined;
   }
-  const parsed = ManifestJsonObjectSchema.loose().safeParse(manifest);
+  const parsed = RuntimeManifestJsonObjectSchema.safeParse(manifest);
   return parsed.success ? (parsed.data as ManifestJson) : undefined;
 }
 

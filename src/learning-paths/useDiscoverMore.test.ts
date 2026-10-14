@@ -85,6 +85,41 @@ describe('useDiscoverMore', () => {
     expect(result.current.items.find((i) => i.id === 'a')?.manifest).toMatchObject({ milestones: ['m1', 'm2'] });
   });
 
+  it.each(['future', 42, { future: true }, 'markdown'])(
+    'retains inline path metadata for format %p',
+    async (format) => {
+      const label = '  Literal <b> & **syntax**  ';
+      fetchMock.mockResolvedValue({
+        ...response,
+        packages: [
+          {
+            ...response.packages[0]!,
+            manifest: {
+              id: 'a',
+              type: 'path',
+              milestones: ['m1', 'm2'],
+              prerequisites: [{ id: 'notice', label, format }],
+            },
+          },
+        ],
+      });
+
+      const { result } = renderHook(() => useDiscoverMore());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(result.current.items[0]?.manifest).toMatchObject({
+        id: 'a',
+        type: 'path',
+        milestones: ['m1', 'm2'],
+        prerequisites: [{ id: 'notice', label, ...(format === 'markdown' ? { format } : {}) }],
+      });
+      expect(result.current.items[0]?.manifest?.prerequisites?.[0]?.format).toBe(
+        format === 'markdown' ? 'markdown' : undefined
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it('excludes items whose title is already shown elsewhere', async () => {
     const { result } = renderHook(() => useDiscoverMore({ excludeTitles: new Set(['A']) }));
 
