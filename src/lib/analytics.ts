@@ -17,7 +17,7 @@ import { pushFaroUserAction } from './telemetry/bridge';
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
 import { furthestEvidencedPosition } from './guide-stats/progress';
-import { GUIDE_STATS_VERSION } from './guide-stats/summary';
+import { GUIDE_STATS_VERSION } from './guide-stats/version';
 import type { GuideBlockIndex } from './guide-stats/block-index';
 import { getGuideIndex, getHiddenGuideSections } from '../global-state/active-guide-index';
 import { choicePathCompletionKeys } from './guide-stats/choice-progress';
