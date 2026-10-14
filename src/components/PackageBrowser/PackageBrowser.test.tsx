@@ -108,7 +108,7 @@ it('renders a bounded batch while search covers the entire catalog', () => {
   expect(screen.getAllByRole('article')).toHaveLength(24);
   fireEvent.click(screen.getByText('Show more'));
   expect(screen.getAllByRole('article')).toHaveLength(48);
-  fireEvent.change(screen.getByLabelText('Search guides'), { target: { value: 'Extra guide 64' } });
+  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Extra guide 64' } });
   expect(screen.getAllByRole('article')).toHaveLength(1);
   expect(screen.getByText('Extra guide 64')).toBeInTheDocument();
 });
@@ -126,7 +126,7 @@ it('searches and filters sparse organization content without readiness badges', 
   expect(screen.queryByText('Build a dashboard')).not.toBeInTheDocument();
   expect(screen.getByText('Team guide')).toBeInTheDocument();
   expect(screen.queryByText('Requirements unknown')).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Search guides'), { target: { value: 'missing' } });
+  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'missing' } });
   expect(screen.getByText('No guides match these filters')).toBeInTheDocument();
   fireEvent.click(screen.getByText('Clear filters'));
   expect(screen.getByText('Build a dashboard')).toBeInTheDocument();
@@ -150,7 +150,7 @@ it('expands path details in the card without preparing content or moving scroll 
     },
   });
   const { unmount } = render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  fireEvent.change(screen.getByLabelText('Search guides'), { target: { value: 'Dashboard path' } });
+  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Dashboard path' } });
   const container = screen.getByTestId('package-browser');
   container.scrollTop = 420;
   fireEvent.scroll(container);
@@ -165,7 +165,7 @@ it('expands path details in the card without preparing content or moving scroll 
   expect(screen.getByRole('button', { name: 'Start path' })).toBeEnabled();
   unmount();
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  expect(screen.getByLabelText('Search guides')).toHaveValue('Dashboard path');
+  expect(screen.getByLabelText('Search guides and paths')).toHaveValue('Dashboard path');
   expect(screen.getByRole('button', { name: 'Hide modules' })).toHaveAttribute('aria-expanded', 'true');
 });
 
@@ -248,12 +248,13 @@ it('starts with curated introductions and topic shortcuts rather than the full c
   expect(screen.getByText('A good place to start')).toBeInTheDocument();
   expect(screen.getByText('Prefer a single guide?')).toBeInTheDocument();
   expect(screen.getByText('3 to explore')).toBeInTheDocument();
-  expect(screen.getByText('What would you like to learn or build?')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Explore learning' })).toBeInTheDocument();
+  expect(screen.getByText('Find something to learn or build in Grafana.')).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Explore by topic' })).toBeInTheDocument();
   expect(screen.queryByText('Team guide')).not.toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Format' })).not.toBeInTheDocument();
   expect(screen.queryByText('Expand catalog')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'All guides' }));
+  fireEvent.click(screen.getByRole('button', { name: 'All content' }));
   expect(screen.getByText('Team guide')).toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: 'Format' })).toBeInTheDocument();
 });
@@ -278,16 +279,16 @@ it('topic shortcuts include category aliases and retain their selection on retur
   fireEvent.scroll(container);
   unmount();
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  expect(screen.getByRole('button', { name: 'All guides' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'All content' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getAllByRole('article')).toHaveLength(2);
   expect(screen.getByTestId('package-browser').scrollTop).toBe(240);
 });
 
-it('search from Explore searches the whole catalog and opens All guides', () => {
+it('search from Explore searches the whole catalog and opens All content', () => {
   updateCatalogView('test', { mode: 'explore' });
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  fireEvent.change(screen.getByLabelText('Search guides'), { target: { value: 'Team' } });
+  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Team' } });
   expect(screen.getByText('Team guide')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'All guides' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'All content' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.queryByRole('heading', { name: 'Explore by topic' })).not.toBeInTheDocument();
 });

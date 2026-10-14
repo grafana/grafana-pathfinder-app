@@ -245,9 +245,9 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
       <div className={styles.inner}>
         <div className={styles.header}>
           <div>
-            <h2>{t('packageBrowser.title', 'Browse guides')}</h2>
+            <h2>{t('packageBrowser.title', 'Explore learning')}</h2>
             <p className={styles.description}>
-              {t('packageBrowser.description', 'What would you like to learn or build?')}
+              {t('packageBrowser.description', 'Find something to learn or build in Grafana.')}
             </p>
           </div>
           <span className={styles.catalogCount}>
@@ -255,7 +255,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
           </span>
         </div>
         <label htmlFor={searchId} className={styles.searchLabel}>
-          {t('packageBrowser.searchLabel', 'Search guides')}
+          {t('packageBrowser.searchLabel', 'Search guides and paths')}
         </label>
         <Input
           id={searchId}
@@ -281,7 +281,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
             aria-pressed={view.mode === 'all'}
             onClick={() => update({ mode: 'all', scrollTop: 0 })}
           >
-            {t('packageBrowser.allGuides', 'All guides')}
+            {t('packageBrowser.allContent', 'All content')}
           </button>
         </div>
         {view.mode === 'all' && (
@@ -412,7 +412,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
                 icon="arrow-right"
                 onClick={() => update({ mode: 'all', scrollTop: 0 })}
               >
-                {t('packageBrowser.browseAll', 'Browse all guides')}
+                {t('packageBrowser.browseAllContent', 'Browse all content')}
               </Button>
             </div>
           </>

@@ -21,11 +21,11 @@ function BrowsePanelRenderer() {
     }
   }, [enabled]);
   if (!enabled) {
-    return <p>{t('packageBrowser.disabled', 'The guide browser is currently unavailable.')}</p>;
+    return <p>{t('packageBrowser.disabled', 'Learning exploration is currently unavailable.')}</p>;
   }
   return (
     <Button variant="secondary" onClick={() => openCatalogBrowser()}>
-      {t('packageBrowser.openInSidebar', 'Open guide browser')}
+      {t('packageBrowser.openInSidebar', 'Explore learning')}
     </Button>
   );
 }

@@ -5,7 +5,7 @@ import { ROUTES } from '../constants';
 import { BrowsePanel } from '../components/PackageBrowser/BrowsePanel';
 
 export const browsePage = new SceneAppPage({
-  title: 'Browse guides',
+  title: 'Explore learning',
   url: prefixRoute(ROUTES.Browse),
   routePath: ROUTES.Browse,
   layout: PageLayoutType.Custom,
