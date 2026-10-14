@@ -24,3 +24,23 @@ describe('SectionBlockForm', () => {
     );
   });
 });
+
+it('lists checkpoint targets with their live selector health', () => {
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    '<button class="row-toggle" aria-expanded="true"></button><button class="row-toggle" aria-expanded="true"></button>'
+  );
+  render(
+    <SectionBlockForm
+      initialData={{
+        type: 'section',
+        blocks: [],
+        checkpoint: { checks: [{ requirement: 'on-page:/explore' }, { target: '.row-toggle', state: 'expanded' }] },
+      }}
+      onSubmit={jest.fn()}
+      onCancel={jest.fn()}
+      isEditing
+    />
+  );
+  expect(screen.getByTestId('section-block-checkpoint-targets')).toHaveTextContent('.row-toggle');
+});

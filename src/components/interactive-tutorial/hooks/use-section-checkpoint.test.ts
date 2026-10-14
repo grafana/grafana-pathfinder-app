@@ -254,6 +254,8 @@ describe('navigation, resume URL and analytics events', () => {
 });
 
 describe('failure paths', () => {
+  const { locationService } = jest.requireActual('@grafana/runtime');
+
   it('stops offering Restore after a failed repair until the check changes', async () => {
     let ready = false;
     const adapter = {
@@ -325,22 +327,45 @@ describe('failure paths', () => {
     expect(result.current.passed).toBe(true);
   });
 
-  it('skips background rechecks while the section runner is active', async () => {
+  it('skips rechecks while a step runs and checks once when it finishes', async () => {
     const adapter = { check: jest.fn(async () => ({ passed: true, canRestore: false })), restore: jest.fn() };
     jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
     const { rerender } = renderHook(
-      ({ suspended }) => useSectionCheckpoint(checkpoint, 'section', true, false, { suspended }),
-      { initialProps: { suspended: true } }
+      ({ suspended, enabled }) => useSectionCheckpoint(checkpoint, 'section', enabled, false, { suspended }),
+      { initialProps: { suspended: false, enabled: true } }
     );
     await waitFor(() => expect(adapter.check).toHaveBeenCalledTimes(1));
+    rerender({ suspended: true, enabled: true });
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
+      locationService.push('/explore?during=step');
     });
+    rerender({ suspended: true, enabled: false });
+    rerender({ suspended: true, enabled: true });
     expect(adapter.check).toHaveBeenCalledTimes(1);
-    rerender({ suspended: false });
-    await act(async () => {
-      window.dispatchEvent(new Event('focus'));
-    });
-    expect(adapter.check).toHaveBeenCalledTimes(2);
+    rerender({ suspended: false, enabled: true });
+    await waitFor(() => expect(adapter.check).toHaveBeenCalledTimes(2));
   });
+});
+
+it('reports each unverifiable check once while the section stays ungated', async () => {
+  const adapter = {
+    check: jest.fn(async (check) =>
+      'requirement' in check
+        ? { passed: true, canRestore: false }
+        : { passed: true, canRestore: false, unverifiable: 'ambiguous' }
+    ),
+    restore: jest.fn(),
+  };
+  jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+  const onEvent = jest.fn();
+  const twoChecks = { checks: [{ requirement: 'on-page:/explore' }, { target: '.row', state: 'expanded' as const }] };
+  const { result } = renderHook(() => useSectionCheckpoint(twoChecks, 'section', true, false, { onEvent }));
+  await waitFor(() => expect(result.current.passed).toBe(true));
+  await act(async () => {
+    await result.current.recheck();
+  });
+  expect(onEvent.mock.calls.filter(([event]) => event.kind === 'unverifiable')).toEqual([
+    [{ kind: 'unverifiable', checkIndex: 1, reason: 'ambiguous' }],
+  ]);
 });

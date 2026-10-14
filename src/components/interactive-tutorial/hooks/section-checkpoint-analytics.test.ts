@@ -6,8 +6,10 @@ jest.mock('../../../lib/analytics', () => ({
   UserInteraction: {
     SectionCheckpointPaused: 'section_checkpoint_paused',
     SectionCheckpointRestore: 'section_checkpoint_restore',
+    SectionCheckpointUnverifiable: 'section_checkpoint_unverifiable',
   },
 }));
+jest.mock('../../../lib/logging', () => ({ logger: { warn: jest.fn() } }));
 
 const checkpoint = {
   checks: [{ requirement: 'on-page:/explore' }, { target: '#options', state: 'expanded' as const, recover: [] }],
@@ -65,5 +67,22 @@ it('reports a cancelled restore without a check when none was evaluated', () => 
     guide_visibility: 'private',
     outcome: 'cancelled',
     duration_ms: 90,
+  });
+});
+
+it('reports a check the guide cannot verify with its reason', () => {
+  reportSectionCheckpointEvent(
+    { kind: 'unverifiable', checkIndex: 1, reason: 'ambiguous' },
+    checkpoint,
+    's',
+    undefined
+  );
+  expect(reportAppInteraction).toHaveBeenCalledWith('section_checkpoint_unverifiable', {
+    guide_source: 'unresolved',
+    guide_visibility: 'private',
+    check_index: 1,
+    check_kind: 'target',
+    check_has_recipe: false,
+    reason: 'ambiguous',
   });
 });

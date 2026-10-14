@@ -6,6 +6,8 @@ export interface CheckpointResult {
   explanation?: string;
   checkIndex?: number;
   gaveUp?: boolean;
+  unverifiable?: string;
+  unverifiableChecks?: Array<{ checkIndex: number; reason: string }>;
 }
 
 export interface CheckpointAdapter {
@@ -25,27 +27,34 @@ export async function inspectCheckpoint(
   adapter: CheckpointAdapter,
   signal?: AbortSignal
 ): Promise<CheckpointResult> {
+  const unverifiableChecks: Array<{ checkIndex: number; reason: string }> = [];
+  const withUnverifiable = (result: CheckpointResult): CheckpointResult =>
+    unverifiableChecks.length > 0 ? { ...result, unverifiableChecks } : result;
   for (const [checkIndex, check] of checkpoint.checks.entries()) {
     if (signal?.aborted) {
       return cancelled();
     }
-    const result = await adapter.check(check);
+    const { unverifiable, ...result } = await adapter.check(check);
     if (signal?.aborted) {
       return cancelled();
     }
+    if (unverifiable) {
+      unverifiableChecks.push({ checkIndex, reason: unverifiable });
+      continue;
+    }
     if (!result.passed) {
       const hasRecipe = !!(check.recover?.length && adapter.replay);
-      return {
+      return withUnverifiable({
         ...result,
         canRestore: result.canRestore || hasRecipe,
         explanation: hasRecipe
           ? "Recovery can restore this state using the guide's saved actions."
           : result.explanation,
         checkIndex,
-      };
+      });
     }
   }
-  return { passed: true, canRestore: false };
+  return withUnverifiable({ passed: true, canRestore: false });
 }
 
 function waitForRender(signal: AbortSignal): Promise<void> {

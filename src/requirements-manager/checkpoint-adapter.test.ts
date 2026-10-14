@@ -75,14 +75,30 @@ it('restores the same controls that recovery recipes may replay', async () => {
   expect(await adapter().restore({ target: '#control', state: 'expanded' })).toBe(true);
 });
 
-it('refuses ambiguous and missing controls; visibility has no inferred click action', async () => {
+it('keeps gating on missing controls; visibility has no inferred click action', async () => {
   expect(await adapter().check({ target: '#missing', state: 'visible' })).toMatchObject({
     passed: false,
     canRestore: false,
   });
-  control({ type: 'button', 'aria-expanded': 'false' });
-  control({ type: 'button', 'aria-expanded': 'false' });
-  expect(await adapter().restore({ target: '#control', state: 'expanded' })).toBe(false);
+});
+
+it('stops gating on targets the guide cannot verify, without clicking anything', async () => {
+  const first = control({ type: 'button', 'aria-expanded': 'false' });
+  const second = control({ type: 'button', 'aria-expanded': 'false' });
+  const click = jest.fn();
+  first.addEventListener('click', click);
+  second.addEventListener('click', click);
+  const ambiguous = { target: '#control', state: 'expanded' } as const;
+  expect(await adapter().check(ambiguous)).toEqual({ passed: true, canRestore: false, unverifiable: 'ambiguous' });
+  expect(await adapter().restore(ambiguous)).toBe(true);
+  second.remove();
+  first.removeAttribute('aria-expanded');
+  expect(await adapter().check(ambiguous)).toEqual({
+    passed: true,
+    canRestore: false,
+    unverifiable: 'no-state-attribute',
+  });
+  expect(click).not.toHaveBeenCalled();
 });
 
 it('does not treat an unknown or unavailable requirement as readiness', async () => {

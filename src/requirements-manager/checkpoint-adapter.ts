@@ -13,25 +13,36 @@ import { PATHFINDER_ACTIVATION_PARAMS } from '../utils/pathfinder-search-params'
 
 const RESTORABLE_FIXES = new Set(['location', 'navigation', 'expand-parent-navigation', 'dashboard-state']);
 
-function readControl(check: Extract<JsonCheckpointCheck, { target: string }>) {
+type ControlRead =
+  | { kind: 'missing' }
+  | { kind: 'unverifiable'; reason: 'ambiguous' | 'no-state-attribute' }
+  | { kind: 'found'; element: HTMLElement; passed: boolean; restorable: boolean };
+
+function readControl(check: Extract<JsonCheckpointCheck, { target: string }>): ControlRead {
   try {
     const { elements } = querySelectorAllEnhanced(resolveSelector(check.target));
-    if (elements.length !== 1) {
-      return null;
+    if (elements.length > 1) {
+      return { kind: 'unverifiable', reason: 'ambiguous' };
     }
-    const element = elements[0]!;
-    if (!isElementVisible(element) || element.matches(':disabled, [aria-disabled="true"]')) {
-      return null;
+    const element = elements[0];
+    if (!element || !isElementVisible(element) || element.matches(':disabled, [aria-disabled="true"]')) {
+      return { kind: 'missing' };
     }
-    const attribute = check.state === 'expanded' ? 'aria-expanded' : 'aria-selected';
-    const value = element.getAttribute(attribute);
+    if (check.state === 'visible') {
+      return { kind: 'found', element, passed: true, restorable: false };
+    }
+    const value = element.getAttribute(check.state === 'expanded' ? 'aria-expanded' : 'aria-selected');
+    if (value === null) {
+      return { kind: 'unverifiable', reason: 'no-state-attribute' };
+    }
     return {
+      kind: 'found',
       element,
-      passed: check.state === 'visible' || value === 'true',
+      passed: value === 'true',
       restorable: isReplaySafeControl(element) && value === 'false',
     };
   } catch {
-    return null;
+    return { kind: 'missing' };
   }
 }
 
@@ -82,14 +93,21 @@ export function createCheckpointAdapter(
         };
       }
       const control = readControl(check);
+      if (control.kind === 'unverifiable') {
+        return { passed: true, canRestore: false, unverifiable: control.reason };
+      }
+      if (control.kind === 'missing') {
+        return {
+          passed: false,
+          canRestore: false,
+          explanation: 'The required control is missing or unavailable. Return to the expected view and check again.',
+        };
+      }
       return {
-        passed: control?.passed ?? false,
-        canRestore: !!control && !control.passed && check.state !== 'visible' && control.restorable,
-        explanation: control
-          ? check.state === 'expanded'
-            ? 'A required control was collapsed.'
-            : 'The required tab is not selected.'
-          : 'The required control is missing, unavailable, or ambiguous. Return to the expected view and check again.',
+        passed: control.passed,
+        canRestore: !control.passed && control.restorable,
+        explanation:
+          check.state === 'expanded' ? 'A required control was collapsed.' : 'The required tab is not selected.',
       };
     },
     restore: async (check) => {
@@ -116,13 +134,13 @@ export function createCheckpointAdapter(
         return (await dispatchFix({ ...context, ...error, targetHref, requirements: [check.requirement] })).ok;
       }
       const control = readControl(check);
-      if (!control || signal.aborted) {
+      if (signal.aborted || control.kind === 'missing') {
         return false;
       }
-      if (control.passed) {
+      if (control.kind === 'unverifiable' || control.passed) {
         return true;
       }
-      if (!control.restorable || check.state === 'visible') {
+      if (!control.restorable) {
         return false;
       }
       control.element.click();

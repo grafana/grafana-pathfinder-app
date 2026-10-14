@@ -200,3 +200,19 @@ it('cancels while waiting for a replay objective without running the next action
   expect(await restoreCheckpoint(dialogCheckpoint, adapter, controller.signal)).toMatchObject({ passed: false });
   expect(adapter.replay).toHaveBeenCalledTimes(1);
 });
+
+it('passes over checks the guide cannot verify and reports them', async () => {
+  const adapter = {
+    check: jest.fn(async (check) =>
+      'target' in check
+        ? { passed: true, canRestore: false, unverifiable: 'ambiguous' }
+        : { passed: true, canRestore: false }
+    ),
+    restore: jest.fn(),
+  };
+  expect(await inspectCheckpoint(checkpoint, adapter)).toEqual({
+    passed: true,
+    canRestore: false,
+    unverifiableChecks: [{ checkIndex: 1, reason: 'ambiguous' }],
+  });
+});

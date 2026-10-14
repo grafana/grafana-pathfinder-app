@@ -1518,7 +1518,7 @@ describe('InteractiveGuided — successor ownership', () => {
   });
 });
 
-it('cancels an active guided interaction when its section checkpoint drifts', async () => {
+it('tells its section while a guided interaction is running', async () => {
   let finish!: (result: string) => void;
   mockExecuteGuidedStep.mockImplementation(
     () =>
@@ -1526,16 +1526,17 @@ it('cancels an active guided interaction when its section checkpoint drifts', as
         finish = resolve;
       })
   );
+  const onExecutingChange = jest.fn();
+  const cancelsBefore = mockCancel.mock.calls.length;
   const actions = [{ targetAction: 'highlight' as const, refTarget: '#target' }];
-  const { rerender } = render(
-    <InteractiveGuided stepId="checkpoint-drift" internalActions={actions} checkpointPaused={false} />
+  render(
+    <InteractiveGuided stepId="checkpoint-drift" internalActions={actions} onExecutingChange={onExecutingChange} />
   );
   fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
-  await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalled());
-  rerender(<InteractiveGuided stepId="checkpoint-drift" internalActions={actions} checkpointPaused />);
-  await waitFor(() => expect(mockCancel).toHaveBeenCalled());
+  await waitFor(() => expect(onExecutingChange).toHaveBeenLastCalledWith(true));
+  expect(mockCancel).toHaveBeenCalledTimes(cancelsBefore);
   await act(async () => {
-    finish('cancelled');
+    finish('completed');
   });
-  expect(mockStoredCompleted).toBe(false);
+  await waitFor(() => expect(onExecutingChange).toHaveBeenLastCalledWith(false));
 });

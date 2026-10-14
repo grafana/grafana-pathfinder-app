@@ -8,7 +8,8 @@ const NAVIGATION_SETTLE_MS = 750;
 
 export type SectionCheckpointEvent =
   | { kind: 'paused'; result: CheckpointResult }
-  | { kind: 'restore'; outcome: 'restored' | 'failed' | 'cancelled'; durationMs: number; result?: CheckpointResult };
+  | { kind: 'restore'; outcome: 'restored' | 'failed' | 'cancelled'; durationMs: number; result?: CheckpointResult }
+  | { kind: 'unverifiable'; checkIndex: number; reason: string };
 
 function currentPath(): string {
   const { pathname, search } = locationService.getLocation();
@@ -33,6 +34,7 @@ export function useSectionCheckpoint(
   const pauseReported = useRef(false);
   const restoreStartedAt = useRef(0);
   const gaveUp = useRef<{ index?: number; explanation?: string } | null>(null);
+  const reportedUnverifiable = useRef(new Set<string>());
   const gate = useRef({ enabled, controllerMode, suspended });
   useLayoutEffect(() => {
     gate.current = { enabled, controllerMode, suspended };
@@ -107,6 +109,13 @@ export function useSectionCheckpoint(
           if (controller.signal.aborted) {
             return false;
           }
+          for (const { checkIndex, reason } of result.unverifiableChecks ?? []) {
+            const key = `${checkIndex}:${reason}`;
+            if (!reportedUnverifiable.current.has(key)) {
+              reportedUnverifiable.current.add(key);
+              onEvent?.({ kind: 'unverifiable', checkIndex, reason });
+            }
+          }
           if (result.gaveUp) {
             gaveUp.current = { index: result.checkIndex, explanation: result.explanation };
           } else if (result.passed || result.checkIndex !== gaveUp.current?.index) {
@@ -165,10 +174,10 @@ export function useSectionCheckpoint(
   );
 
   useEffect(() => {
-    if (checkpoint) {
+    if (checkpoint && !suspended) {
       void run(false);
     }
-  }, [checkpoint, run, enabled, controllerMode]);
+  }, [checkpoint, run, enabled, controllerMode, suspended]);
 
   useEffect(() => {
     if (!checkpoint) {

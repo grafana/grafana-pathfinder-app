@@ -131,6 +131,7 @@ export enum UserInteraction {
   // Section checkpoints
   SectionCheckpointPaused = 'section_checkpoint_paused',
   SectionCheckpointRestore = 'section_checkpoint_restore',
+  SectionCheckpointUnverifiable = 'section_checkpoint_unverifiable',
 
   // Sandbox gcx credentials
   GcxCredentialInstalled = 'gcx_credential_installed',

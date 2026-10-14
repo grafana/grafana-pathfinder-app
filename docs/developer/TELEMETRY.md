@@ -101,10 +101,11 @@ Privacy protection is split between enforced normalization and caller discipline
 
 Sections with a `checkpoint` report when they pause and how a Restore ends. Both events carry guide identity through `guideIdentityAnalyticsProperties`, and add `section_id` only when `guide_visibility` is `public`, because a private guide's section ids are authored text.
 
-| Event                        | Fires                                                                        | Properties                                                                           |
-| ---------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `section_checkpoint_paused`  | Once per pause, when a live checkpoint first fails after passing or mounting | `can_restore`, plus the shared fields                                                |
-| `section_checkpoint_restore` | When a Restore finishes or is cancelled                                      | `outcome` (`restored`, `failed`, `cancelled`), `duration_ms`, plus the shared fields |
+| Event                             | Fires                                                                               | Properties                                                                           |
+| --------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `section_checkpoint_paused`       | Once per pause, when a live checkpoint first fails after passing or mounting        | `can_restore`, plus the shared fields                                                |
+| `section_checkpoint_restore`      | When a Restore finishes or is cancelled                                             | `outcome` (`restored`, `failed`, `cancelled`), `duration_ms`, plus the shared fields |
+| `section_checkpoint_unverifiable` | Once per check per section mount, when a target cannot be verified and stops gating | `reason` (`ambiguous`, `no-state-attribute`), plus the shared fields                 |
 
 Shared fields are the guide identity, `section_id` (public guides only), and, when a check was evaluated, `check_index`, `check_kind` (`requirement` or `target`) and `check_has_recipe`. No selectors, requirement strings or URLs are sent.
 

@@ -403,6 +403,7 @@ export function createAnalyticsMock() {
       StepAutoCompleted: 'step_auto_completed',
       SectionCheckpointPaused: 'section_checkpoint_paused',
       SectionCheckpointRestore: 'section_checkpoint_restore',
+      SectionCheckpointUnverifiable: 'section_checkpoint_unverifiable',
     },
     AnalyticsContentType: {
       Docs: 'docs',

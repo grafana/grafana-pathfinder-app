@@ -9,6 +9,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Button, Field, Input, useStyles2, Alert, Switch } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { ConditionChipsField } from './ConditionChipsField';
+import { SelectorHealthBadge } from '../SelectorHealthBadge';
 import {
   useFieldLint,
   ConditionLintMessages,
@@ -47,6 +48,16 @@ function generateIdFromTitle(title: string): string {
   return generated ? `section-${generated}` : '';
 }
 
+function targetsOf(checkpoint: JsonSectionBlock['checkpoint']): string[] {
+  const targets = (checkpoint?.checks ?? []).flatMap((check) => [
+    ...('target' in check ? [check.target] : []),
+    ...(check.recover ?? []).flatMap((step) =>
+      step.objectives.flatMap((objective) => ('target' in objective ? [objective.target] : []))
+    ),
+  ]);
+  return Array.from(new Set(targets));
+}
+
 /**
  * Section block form component
  */
@@ -70,6 +81,7 @@ export function SectionBlockForm({
   // Preserve nested blocks when editing (but don't display them in the form)
   const nestedBlocks = useRef<JsonBlock[]>(initial?.blocks ?? []);
   const checkpoint = useRef(initial?.checkpoint);
+  const checkpointTargets = targetsOf(initial?.checkpoint);
 
   // Build the section block from current form state
   const buildBlock = useCallback((): JsonSectionBlock => {
@@ -208,6 +220,22 @@ export function SectionBlockForm({
         onRemoveToken={removeObjectivesToken}
         testId="section-block-objectives-lint"
       />
+
+      {checkpointTargets.length > 0 && (
+        <Field
+          label="Checkpoint targets"
+          description="Checkpoints are edited in JSON mode. Each target must match exactly one element on the page it checks; a target that matches several cannot be verified and stops gating the section."
+        >
+          <div data-testid="section-block-checkpoint-targets">
+            {checkpointTargets.map((target) => (
+              <div key={target}>
+                <code>{target}</code>
+                <SelectorHealthBadge reftarget={target} />
+              </div>
+            ))}
+          </div>
+        </Field>
+      )}
 
       {/* Auto-collapse on completion */}
       <Field

@@ -217,6 +217,21 @@ export function InteractiveSection({
   );
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [executingGuided, setExecutingGuided] = useState<ReadonlySet<string>>(() => new Set());
+  const setGuidedExecuting = useCallback((stepId: string, executing: boolean) => {
+    setExecutingGuided((current) => {
+      if (current.has(stepId) === executing) {
+        return current;
+      }
+      const next = new Set(current);
+      if (executing) {
+        next.add(stepId);
+      } else {
+        next.delete(stepId);
+      }
+      return next;
+    });
+  }, []);
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
 
@@ -440,7 +455,7 @@ export function InteractiveSection({
     sectionId,
     sectionRequirementsStatus.passed,
     mode === 'controller',
-    { onEvent: onCheckpointEvent, suspended: isRunning }
+    { onEvent: onCheckpointEvent, suspended: isRunning || executingGuided.size > 0 }
   );
   const sectionReady = sectionRequirementsStatus.passed && sectionCheckpoint.passed;
   const checkCheckpoint = sectionCheckpoint.recheck;
@@ -1380,7 +1395,9 @@ export function InteractiveSection({
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child as React.ReactElement<any>).props,
           ...enhancedProps,
-          ...(schema.kind === 'guided' ? { checkpointPaused: !!activeCheckpoint && !sectionCheckpoint.passed } : {}),
+          ...(schema.kind === 'guided'
+            ? { onExecutingChange: (executing: boolean) => setGuidedExecuting(stepInfo.stepId, executing) }
+            : {}),
           key: stepInfo.stepId,
           ...(refCallback ? { ref: refCallback } : {}),
         });
@@ -1401,6 +1418,7 @@ export function InteractiveSection({
     sectionReady,
     activeCheckpoint,
     sectionCheckpoint.passed,
+    setGuidedExecuting,
   ]);
 
   // Computed once per render so the catch-all action button's `title`

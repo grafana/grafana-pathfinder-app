@@ -1,4 +1,5 @@
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
+import { logger } from '../../../lib/logging';
 import { guideIdentityAnalyticsProperties } from '../../../completion-records';
 import type { AnalyticsCompletionIdentity } from '../../../docs-retrieval';
 import type { JsonSectionCheckpoint } from '../../../types/json-guide.types';
@@ -13,7 +14,7 @@ export function reportSectionCheckpointEvent(
   const guide = identity
     ? guideIdentityAnalyticsProperties({ kind: 'guide', ...identity })
     : { guide_source: 'unresolved', guide_visibility: 'private' };
-  const checkIndex = event.result?.checkIndex;
+  const checkIndex = event.kind === 'unverifiable' ? event.checkIndex : event.result?.checkIndex;
   const check = checkIndex === undefined ? undefined : checkpoint.checks[checkIndex];
   const properties = {
     ...guide,
@@ -26,6 +27,13 @@ export function reportSectionCheckpointEvent(
         }
       : {}),
   };
+  if (event.kind === 'unverifiable') {
+    logger.warn(
+      `Checkpoint check ${event.checkIndex} in section "${sectionId}" cannot be verified (${event.reason}); it no longer gates the section.`
+    );
+    reportAppInteraction(UserInteraction.SectionCheckpointUnverifiable, { ...properties, reason: event.reason });
+    return;
+  }
   if (event.kind === 'paused') {
     reportAppInteraction(UserInteraction.SectionCheckpointPaused, {
       ...properties,
