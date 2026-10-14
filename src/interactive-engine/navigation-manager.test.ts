@@ -419,6 +419,27 @@ describe('NavigationManager', () => {
     });
 
     describe('hidden elements', () => {
+      it.each([undefined, '', '   '])('shows the visibility note without a tooltip (%p)', async (comment) => {
+        mockIsElementVisible.mockReturnValue(false);
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, comment);
+
+        const commentBox = document.querySelector('.interactive-comment-box');
+        expect(commentBox).not.toBeNull();
+        expect(commentBox?.querySelector('.interactive-comment-description')).toBeNull();
+        expect(commentBox?.querySelector('.interactive-comment-visibility-note')?.textContent).toBe(
+          'This item may be hidden until you open its menu or panel.'
+        );
+      });
+
       it('keeps a wide hidden target comment inside the viewport initially and after movement', async () => {
         mockIsElementVisible.mockReturnValue(false);
         const rect = { top: 100, left: 20, bottom: 200, right: 920, width: 900, height: 100 };

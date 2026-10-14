@@ -909,11 +909,13 @@ export class NavigationManager {
       contentSection.appendChild(titleElement);
     }
 
-    const descriptionElement = document.createElement('p');
-    descriptionElement.className = 'interactive-comment-description';
-    // eslint-disable-next-line no-restricted-syntax -- Sanitized with DOMPurify via sanitizeDocumentationHTML
-    descriptionElement.innerHTML = sanitizeDocumentationHTML(comment || '');
-    contentSection.appendChild(descriptionElement);
+    if (comment?.trim()) {
+      const descriptionElement = document.createElement('p');
+      descriptionElement.className = 'interactive-comment-description';
+      // eslint-disable-next-line no-restricted-syntax -- Sanitized with DOMPurify via sanitizeDocumentationHTML
+      descriptionElement.innerHTML = sanitizeDocumentationHTML(comment);
+      contentSection.appendChild(descriptionElement);
+    }
 
     if (isTargetHidden) {
       const visibilityNote = document.createElement('p');
