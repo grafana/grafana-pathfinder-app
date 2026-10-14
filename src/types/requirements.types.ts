@@ -65,6 +65,16 @@ export const isValidRequirement = (req: string): req is ValidRequirement => {
   return isFixedRequirement(req) || isParameterizedRequirement(req);
 };
 
+export const CHECKPOINT_REQUIREMENTS = [
+  ParameterizedRequirementPrefix.ON_PAGE,
+  FixedRequirementType.NAVMENU_OPEN,
+  ParameterizedRequirementPrefix.DASHBOARD_GROUP_BY,
+  ParameterizedRequirementPrefix.DASHBOARD_FILTER_ABSENT,
+] as const;
+
+export const isCheckpointRequirement = (req: string): boolean =>
+  CHECKPOINT_REQUIREMENTS.some((id) => (id.endsWith(':') ? req.startsWith(id) : req === id));
+
 /**
  * Result of a single requirement check. Lives here (Tier 0) so
  * `requirements-manager/checks/*` and the check router can share it without

@@ -87,8 +87,10 @@ it('refuses ambiguous and missing controls; visibility has no inferred click act
 
 it('does not treat an unknown or unavailable requirement as readiness', async () => {
   requirements.mockResolvedValue({ pass: true, verdict: 'invalid', error: [] });
+  expect(await adapter().check({ requirement: 'on-page:/explore' })).toMatchObject({ passed: false });
   expect(await adapter().check({ requirement: 'unknown:x' })).toMatchObject({ passed: false });
   expect(await adapter().check({ requirement: 'coda-exit-zero:touch file' })).toMatchObject({ passed: false });
+  expect(await adapter().check({ requirement: 'has-datasource:loki' })).toMatchObject({ passed: false });
   expect(requirements).toHaveBeenCalledTimes(1);
 });
 
@@ -174,4 +176,50 @@ it('requires explicit replay eligibility and live objectives for recovery action
   expect(parse({ ...step, objectives: [{ requirement: 'section-completed:old-step' }] }).success).toBe(false);
   expect(parse({ ...step, objectives: [{ requirement: 'coda-exit-zero:touch file' }] }).success).toBe(false);
   expect(parse({ ...step, action: 'formfill', targetvalue: 'overwrite' }).success).toBe(false);
+});
+
+describe('returning to the page the checkpoint last passed on', () => {
+  const navigate = jest.fn(async () => true);
+  beforeEach(() => {
+    requirements.mockResolvedValue({
+      pass: false,
+      verdict: 'unsatisfied',
+      error: [{ pass: false, canFix: true, fixType: 'location', targetHref: '/explore' }],
+    });
+    context.mockResolvedValue({ stepId: 'test', navigationManager: { fixLocationRequirement: navigate } });
+  });
+
+  it('keeps the query the learner had, without re-opening a guide', async () => {
+    const restoring = createCheckpointAdapter(requirements, context, controller.signal, {
+      lastReadyUrl: () => '/explore?schemaVersion=1&panes=%7B%22a%22%3A1%7D&doc=bundled%3Aother',
+    });
+    await restoring.restore({ requirement: 'on-page:/explore' });
+    expect(navigate).toHaveBeenCalledWith('/explore?schemaVersion=1&panes=%7B%22a%22%3A1%7D');
+  });
+
+  it('uses the required path when the last ready page was somewhere else', async () => {
+    const restoring = createCheckpointAdapter(requirements, context, controller.signal, {
+      lastReadyUrl: () => '/dashboards?folder=current',
+    });
+    await restoring.restore({ requirement: 'on-page:/explore' });
+    expect(navigate).toHaveBeenCalledWith('/explore');
+  });
+});
+
+it('accepts only live page-state requirements in checks and objectives', () => {
+  const parse = (requirement: string) =>
+    JsonSectionCheckpointSchema.safeParse({
+      checks: [
+        {
+          requirement,
+          recover: [{ action: 'navigate', reftarget: '/explore', replaySafe: true, objectives: [{ requirement }] }],
+        },
+      ],
+    }).success;
+  expect(parse('on-page:/explore')).toBe(true);
+  expect(parse('navmenu-open')).toBe(true);
+  expect(parse('dashboard-group-by:abc:filter:job')).toBe(true);
+  expect(parse('has-datasource:prometheus')).toBe(false);
+  expect(parse('has-plugin:grafana-clock-panel')).toBe(false);
+  expect(parse('is-admin')).toBe(false);
 });

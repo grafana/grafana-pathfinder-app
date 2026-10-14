@@ -10,7 +10,12 @@
 import { z } from 'zod';
 
 import type { JsonBlock } from './json-guide.types';
-import { isValidRequirement, unknownRequirementMessage } from './requirements.types';
+import {
+  CHECKPOINT_REQUIREMENTS,
+  isCheckpointRequirement,
+  isValidRequirement,
+  unknownRequirementMessage,
+} from './requirements.types';
 
 // ============ COMPLETENESS MESSAGES ============
 //
@@ -964,8 +969,8 @@ export const PresentationalBlockSchema = z.union([
 
 // Common properties for recursive blocks to avoid duplication
 const CheckpointRequirementSchema = RequirementTokenSchema.refine(
-  (token) => !token.startsWith('coda-exit-zero:') && token !== 'exists-reftarget',
-  'Checkpoint requirements must be read-only; use a target check for element visibility'
+  isCheckpointRequirement,
+  `Checkpoint requirements must describe live page state (${CHECKPOINT_REQUIREMENTS.join(', ')}); use a target check for element visibility and the section requirements for everything else`
 );
 const CheckpointTargetProps = {
   target: z.string().trim().min(1).max(2000),

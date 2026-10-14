@@ -8,6 +8,8 @@ import { dispatchFix } from './fix-registry';
 import { getRequirementExplanation } from './requirements-explanations';
 import type { FixContext } from './fix-handlers';
 import type { RequirementsCheckOptions, RequirementsCheckResult } from './requirements-checker.utils';
+import { isCheckpointRequirement } from '../types/requirements.types';
+import { PATHFINDER_ACTIVATION_PARAMS } from '../utils/pathfinder-search-params';
 
 const RESTORABLE_FIXES = new Set(['location', 'navigation', 'expand-parent-navigation', 'dashboard-state']);
 
@@ -33,14 +35,31 @@ function readControl(check: Extract<JsonCheckpointCheck, { target: string }>) {
   }
 }
 
+function resumeHref(lastReadyUrl: string | undefined, requiredPath: string | undefined): string | undefined {
+  if (!lastReadyUrl || !requiredPath) {
+    return undefined;
+  }
+  const url = new URL(lastReadyUrl, window.location.origin);
+  if (!url.pathname.includes(requiredPath)) {
+    return undefined;
+  }
+  PATHFINDER_ACTIVATION_PARAMS.forEach((param) => url.searchParams.delete(param));
+  return url.pathname + url.search;
+}
+
+export interface CheckpointAdapterOptions {
+  replay?: CheckpointAdapter['replay'];
+  lastReadyUrl?: () => string | undefined;
+}
+
 export function createCheckpointAdapter(
   checkRequirements: (options: RequirementsCheckOptions) => Promise<RequirementsCheckResult>,
   fixContext: () => Promise<Omit<FixContext, 'requirements'>>,
   signal: AbortSignal,
-  replay?: CheckpointAdapter['replay']
+  { replay, lastReadyUrl }: CheckpointAdapterOptions = {}
 ): CheckpointAdapter {
   const readRequirement = async (requirement: string) => {
-    if (requirement.startsWith('coda-exit-zero:') || requirement === 'exists-reftarget') {
+    if (!isCheckpointRequirement(requirement)) {
       return null;
     }
     return checkRequirements({ requirements: [requirement], maxRetries: 0, targetAction: 'section' });
@@ -90,7 +109,11 @@ export function createCheckpointAdapter(
         if (signal.aborted) {
           return false;
         }
-        return (await dispatchFix({ ...context, ...error, requirements: [check.requirement] })).ok;
+        const targetHref =
+          error.fixType === 'location'
+            ? (resumeHref(lastReadyUrl?.(), error.targetHref) ?? error.targetHref)
+            : error.targetHref;
+        return (await dispatchFix({ ...context, ...error, targetHref, requirements: [check.requirement] })).ok;
       }
       const control = readControl(check);
       if (!control || signal.aborted) {

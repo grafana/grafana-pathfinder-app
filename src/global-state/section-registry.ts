@@ -41,6 +41,13 @@ const documentStepOffsets: Map<string, number> = new Map();
  *  when callers don't provide explicit ordering. */
 let autoDocumentOrder = 0;
 
+const sectionDone: Map<string, boolean> = new Map();
+const sectionDoneListeners: Set<() => void> = new Set();
+
+function notifySectionDone(): void {
+  sectionDoneListeners.forEach((listener) => listener());
+}
+
 /** Reset every counter, map, and offset to a pristine state.
  *  Call when loading new content. Step-type-specific anonymous ID
  *  counters live in their own modules and are reset alongside this
@@ -51,6 +58,46 @@ export function resetRegistry(): void {
   totalDocumentSteps = 0;
   documentStepOffsets.clear();
   autoDocumentOrder = 0;
+  if (sectionDone.size > 0) {
+    sectionDone.clear();
+    notifySectionDone();
+  }
+}
+
+export function setSectionDone(sectionId: string, done: boolean): void {
+  if (sectionDone.get(sectionId) === done) {
+    return;
+  }
+  sectionDone.set(sectionId, done);
+  notifySectionDone();
+}
+
+export function clearSectionDone(sectionId: string): void {
+  if (sectionDone.delete(sectionId)) {
+    notifySectionDone();
+  }
+}
+
+export function subscribeSectionDone(listener: () => void): () => void {
+  sectionDoneListeners.add(listener);
+  return () => {
+    sectionDoneListeners.delete(listener);
+  };
+}
+
+/** True when every mounted section ordered before `sectionId` is done; sections that never reported are ignored. */
+export function arePreviousSectionsDone(sectionId: string): boolean {
+  const order = globalStepRegistry.get(sectionId)?.documentOrder;
+  if (order === undefined) {
+    return true;
+  }
+  for (const [otherId, done] of sectionDone) {
+    const otherOrder = globalStepRegistry.get(otherId)?.documentOrder;
+    if (!done && otherId !== sectionId && otherOrder !== undefined && otherOrder < order) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Increment and return the next sequential section counter. Used as a

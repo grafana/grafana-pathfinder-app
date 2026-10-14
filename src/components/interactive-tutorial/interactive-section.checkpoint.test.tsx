@@ -63,6 +63,7 @@ jest.mock('./hooks/use-section-checkpoint', () => ({
     const [passed, setPassed] = require('react').useState(false);
     return {
       passed,
+      settled: true,
       status: { passed, canRestore: true, explanation: 'Open the query options.' },
       restoring: false,
       restore: () => setPassed(true),
@@ -164,6 +165,31 @@ it('stops offering recovery once the section is complete', async () => {
     </InteractiveSection>
   );
   await waitFor(() => expect(container.querySelector('.interactive-section.completed')).toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+  expect(container.querySelector('.checkpoint-paused')).not.toBeInTheDocument();
+});
+
+it('stays quiet on a section the learner has not reached yet', async () => {
+  const { container } = render(
+    <>
+      <InteractiveSection id="first" title="First" autoCollapse={false}>
+        <InteractiveStep targetAction="highlight" refTarget=".first">
+          First step.
+        </InteractiveStep>
+      </InteractiveSection>
+      <InteractiveSection
+        id="later"
+        title="Later"
+        autoCollapse={false}
+        checkpoint={{ checks: [{ requirement: 'on-page:/explore' }] }}
+      >
+        <InteractiveStep targetAction="highlight" refTarget=".later">
+          Later step.
+        </InteractiveStep>
+      </InteractiveSection>
+    </>
+  );
+  await waitFor(() => expect(container.querySelectorAll('.interactive-section')).toHaveLength(2));
   expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
   expect(container.querySelector('.checkpoint-paused')).not.toBeInTheDocument();
 });

@@ -97,6 +97,17 @@ Privacy protection is split between enforced normalization and caller discipline
   - The **query is stripped**, everywhere. On a Grafana URL the query is where the user's own choices live — `var-*` template values, Explore's serialized queries, `?doc=` deep links — which is a different class of data from a title.
   - This applies on **two independent channels**. `replay-scrub.ts` covers URLs inside the rrweb payload; `redactPageUrl` in `filtering.ts` covers `meta.page.url`, which Faro sets from `location.href` on every item regardless of payload. The second one matters more than it looks: Grafana Cloud's collector explodes that query into `page.attributes`, so an unscrubbed URL arrives as first-class searchable `page_attr_var_*` fields.
 
+## Section checkpoint events
+
+Sections with a `checkpoint` report when they pause and how a Restore ends. Both events carry guide identity through `guideIdentityAnalyticsProperties`, and add `section_id` only when `guide_visibility` is `public`, because a private guide's section ids are authored text.
+
+| Event                        | Fires                                                                        | Properties                                                                           |
+| ---------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `section_checkpoint_paused`  | Once per pause, when a live checkpoint first fails after passing or mounting | `can_restore`, plus the shared fields                                                |
+| `section_checkpoint_restore` | When a Restore finishes or is cancelled                                      | `outcome` (`restored`, `failed`, `cancelled`), `duration_ms`, plus the shared fields |
+
+Shared fields are the guide identity, `section_id` (public guides only), and, when a check was evaluated, `check_index`, `check_kind` (`requirement` or `target`) and `check_has_recipe`. No selectors, requirement strings or URLs are sent.
+
 ## Completion events
 
 `guide_completed` and `journey_completed` (`pathfinder_guide_completed` and `pathfinder_journey_completed` in the warehouse) are the Track 1 events of the [Completion Records RFC](https://github.com/grafana/pathfinder-rfcs/blob/main/rfc/COMPLETION_RECORDS.md#73-track-1-event-additions). The RFC keeps completion records on the customer's stack, so these events are how Grafana sees completions across stacks. They fire from `src/completion-records/completion-recorder.ts`, the same seam as the durable write, so every completion path reports both. The report has its own persisted guard (`completionReportedStorage`) and runs before the recorder's pre-arm startup buffer, so it never waits on the write hook arming or on the durable write being accepted, and never stands in for either.

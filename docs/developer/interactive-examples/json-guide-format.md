@@ -415,13 +415,37 @@ Groups related interactive steps into a sequence with "Do Section" functionality
 }
 ```
 
-| Field          | Type        | Required | Description                               |
-| -------------- | ----------- | -------- | ----------------------------------------- |
-| `id`           | string      | ❌       | HTML id for the section                   |
-| `title`        | string      | ❌       | Section heading                           |
-| `blocks`       | JsonBlock[] | ✅       | Nested blocks (usually interactive)       |
-| `requirements` | string[]    | ❌       | Section-level requirements                |
-| `objectives`   | string[]    | ❌       | Conditions that auto-complete the section |
+| Field          | Type        | Required | Description                                        |
+| -------------- | ----------- | -------- | -------------------------------------------------- |
+| `id`           | string      | ❌       | HTML id for the section                            |
+| `title`        | string      | ❌       | Section heading                                    |
+| `blocks`       | JsonBlock[] | ✅       | Nested blocks (usually interactive)                |
+| `requirements` | string[]    | ❌       | Section-level requirements                         |
+| `objectives`   | string[]    | ❌       | Conditions that auto-complete the section          |
+| `checkpoint`   | object      | ❌       | Live state the section needs throughout; see below |
+
+**Section checkpoints.** A checkpoint lists conditions that must stay true for the whole section, such as being on a page with a control open. If the learner leaves that state, the section pauses with a single **Restore** button instead of failing its next step. Completed progress is never reset.
+
+```json
+{
+  "type": "section",
+  "id": "inspect-options",
+  "requirements": ["section-completed:open-explore"],
+  "checkpoint": {
+    "checks": [
+      { "requirement": "on-page:/explore" },
+      { "target": "[data-testid='data-testid Query editor row'] button[aria-label$='query row']", "state": "expanded" }
+    ],
+    "manualRecovery": "Reopen Explore and expand the query row, then check again."
+  },
+  "blocks": []
+}
+```
+
+- `checks` run in order, so list page checks before controls. A check is either a `requirement` (only `on-page:`, `navmenu-open`, `dashboard-group-by:` and `dashboard-filter-absent:` are accepted; other conditions belong in the section's `requirements`) or a `target` with a `state` of `visible`, `expanded` or `selected`. Targets accept the same selector syntax as steps, including `:contains()`.
+- Restore navigates back to the URL the checkpoint last passed on (so an Explore query survives), opens collapsed controls, and restores dashboard grouping. A `visible` check never guesses a click; give it a `recover` recipe of `button` or `navigate` actions, each with `replaySafe: true` and live `objectives`. See [the design](../../design/AUTORECOVERY_DESIGN.md) for the recipe rules.
+- `manualRecovery` is shown when nothing can be restored automatically.
+- The checkpoint is live only once every earlier section is complete or the learner has started this one, and it stops when the section completes.
 
 #### Collapsible Block
 

@@ -1,6 +1,16 @@
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { usePathfinderPluginConfig } from '../../hooks';
-import React, { useState, useCallback, useMemo, useEffect, useReducer, useRef, useContext } from 'react';
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useContext,
+  useSyncExternalStore,
+} from 'react';
 import { Button } from '@grafana/ui';
 
 import {
@@ -89,6 +99,8 @@ import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
 import { GuideContentKeyContext } from './guide-content-key-context';
+import { GuideAnalyticsIdentityContext } from './guide-analytics-identity-context';
+import { reportSectionCheckpointEvent } from './hooks/section-checkpoint-analytics';
 import {
   analyzeAcknowledgement,
   getResumeInfo as computeResumeInfo,
@@ -101,7 +113,7 @@ import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
 import { useSectionPersistence } from './hooks/use-section-persistence';
 import { useStoredSectionCompletion } from './hooks/use-stored-section-completion';
 import { useSectionRequirements } from './hooks/use-section-requirements';
-import { useSectionCheckpoint } from './hooks/use-section-checkpoint';
+import { useSectionCheckpoint, type SectionCheckpointEvent } from './hooks/use-section-checkpoint';
 import { useSectionScroll } from './hooks/use-section-scroll';
 import {
   evictSectionCache,
@@ -118,10 +130,14 @@ import { dispatchProgress } from '../../global-state/progress-events';
 import { computeCursor, deriveSectionState, initialSectionState, sectionReducer } from './section-state';
 import { DEFAULT_INTERACTIVE_SECTION_TITLE, PASSIVE_SECTION_TITLE } from './section-titles';
 import {
+  arePreviousSectionsDone,
+  clearSectionDone,
   getDocumentStepPosition,
   nextSectionCounter,
   registerSectionSteps,
   resetRegistry,
+  setSectionDone,
+  subscribeSectionDone,
 } from '../../global-state/section-registry';
 // Re-exports preserved for back-compat with `content-renderer.tsx`. New code
 // should import directly from `./section-registry`.
@@ -403,12 +419,28 @@ export function InteractiveSection({
   const sectionKind = derived.kind;
   const isCompleted = derived.isCompleted;
   const doneVia = derived.doneVia;
-  const activeCheckpoint = isCompleted ? undefined : checkpoint;
+  useLayoutEffect(() => {
+    setSectionDone(sectionId, isCompleted);
+  }, [sectionId, isCompleted]);
+  useLayoutEffect(() => () => clearSectionDone(sectionId), [sectionId]);
+  const previousSectionsDone = useSyncExternalStore(subscribeSectionDone, () => arePreviousSectionsDone(sectionId));
+  const reached = previousSectionsDone || isRunning || sectionKind !== 'init';
+  const activeCheckpoint = isCompleted || !reached ? undefined : checkpoint;
+  const analyticsIdentity = useContext(GuideAnalyticsIdentityContext);
+  const onCheckpointEvent = useCallback(
+    (event: SectionCheckpointEvent) => {
+      if (checkpoint) {
+        reportSectionCheckpointEvent(event, checkpoint, sectionId, analyticsIdentity);
+      }
+    },
+    [checkpoint, sectionId, analyticsIdentity]
+  );
   const sectionCheckpoint = useSectionCheckpoint(
     activeCheckpoint,
     sectionId,
     sectionRequirementsStatus.passed,
-    mode === 'controller'
+    mode === 'controller',
+    onCheckpointEvent
   );
   const sectionReady = sectionRequirementsStatus.passed && sectionCheckpoint.passed;
   const checkCheckpoint = sectionCheckpoint.recheck;
@@ -1380,7 +1412,7 @@ export function InteractiveSection({
       id={sectionId}
       className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}${
         isCollapsed ? ' collapsed' : ''
-      }${activeCheckpoint && sectionRequirementsStatus.passed && !sectionCheckpoint.passed ? ' checkpoint-paused' : ''}`}
+      }${activeCheckpoint && sectionCheckpoint.settled && sectionRequirementsStatus.passed && !sectionCheckpoint.passed ? ' checkpoint-paused' : ''}`}
       data-testid={testIds.interactive.section(sectionId)}
       data-interactive-section="true"
     >
@@ -1438,32 +1470,36 @@ export function InteractiveSection({
         </div>
       )}
 
-      {!isCollapsed && activeCheckpoint && sectionRequirementsStatus.passed && !sectionCheckpoint.passed && (
-        <div className="interactive-section-checkpoint">
-          <span role="status" className="interactive-section-checkpoint-label">
-            {sectionCheckpoint.restoring ? 'Restoring…' : 'Let’s get you back on track'}
-          </span>
-          {sectionCheckpoint.restoring ? (
-            <Button size="sm" variant="secondary" onClick={sectionCheckpoint.cancel}>
-              Cancel
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={sectionCheckpoint.status.canRestore ? 'history' : 'sync'}
-              onClick={sectionCheckpoint.status.canRestore ? sectionCheckpoint.restore : sectionCheckpoint.recheck}
-            >
-              {sectionCheckpoint.status.canRestore ? 'Restore' : 'Check again'}
-            </Button>
-          )}
-          {!sectionCheckpoint.restoring && !sectionCheckpoint.status.canRestore && (
-            <p className="interactive-section-checkpoint-help" role="status">
-              {activeCheckpoint.manualRecovery || sectionCheckpoint.status.explanation}
-            </p>
-          )}
-        </div>
-      )}
+      {!isCollapsed &&
+        activeCheckpoint &&
+        sectionCheckpoint.settled &&
+        sectionRequirementsStatus.passed &&
+        !sectionCheckpoint.passed && (
+          <div className="interactive-section-checkpoint">
+            <span role="status" className="interactive-section-checkpoint-label">
+              {sectionCheckpoint.restoring ? 'Restoring…' : 'Let’s get you back on track'}
+            </span>
+            {sectionCheckpoint.restoring ? (
+              <Button size="sm" variant="secondary" onClick={sectionCheckpoint.cancel}>
+                Cancel
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={sectionCheckpoint.status.canRestore ? 'history' : 'sync'}
+                onClick={sectionCheckpoint.status.canRestore ? sectionCheckpoint.restore : sectionCheckpoint.recheck}
+              >
+                {sectionCheckpoint.status.canRestore ? 'Restore' : 'Check again'}
+              </Button>
+            )}
+            {!sectionCheckpoint.restoring && !sectionCheckpoint.status.canRestore && (
+              <p className="interactive-section-checkpoint-help" role="status">
+                {activeCheckpoint.manualRecovery || sectionCheckpoint.status.explanation}
+              </p>
+            )}
+          </div>
+        )}
 
       {/* Implied-0th-step alignment hint: surfaces in every section while a
           prompt is up, so users who scroll past the top banner still see why

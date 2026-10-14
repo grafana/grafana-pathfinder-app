@@ -167,3 +167,88 @@ it('releases polling and listeners when the guide closes', async () => {
     jest.useRealTimers();
   }
 });
+
+describe('navigation, resume URL and analytics events', () => {
+  const { locationService } = jest.requireActual('@grafana/runtime');
+
+  it('rechecks on in-app navigation and again once the page settles', async () => {
+    jest.useFakeTimers();
+    const adapter = { check: jest.fn(async () => ({ passed: true, canRestore: false })), restore: jest.fn() };
+    jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+    try {
+      const { unmount } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false));
+      await act(async () => {});
+      expect(adapter.check).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        locationService.push('/dashboards');
+      });
+      expect(adapter.check).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        jest.advanceTimersByTime(750);
+      });
+      expect(adapter.check).toHaveBeenCalledTimes(3);
+      unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('remembers the URL the checkpoint last passed on for location recovery', async () => {
+    locationService.push('/explore?schemaVersion=1&panes=abc');
+    const adapter = { check: jest.fn(async () => ({ passed: true, canRestore: false })), restore: jest.fn() };
+    jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+    const { result } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false));
+    await waitFor(() => expect(result.current.passed).toBe(true));
+    const options = jest.mocked(createCheckpointAdapter).mock.calls.at(-1)![3]!;
+    expect(options.lastReadyUrl?.()).toBe('/explore?schemaVersion=1&panes=abc');
+  });
+
+  it('reports each pause once and the outcome of a restore', async () => {
+    let ready = false;
+    const adapter = {
+      check: jest.fn(async () => ({ passed: ready, canRestore: !ready, checkIndex: ready ? undefined : 0 })),
+      restore: jest.fn(async () => {
+        ready = true;
+        return true;
+      }),
+    };
+    jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+    const onEvent = jest.fn();
+    const { result } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false, onEvent));
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    await act(async () => {
+      await result.current.recheck();
+    });
+    expect(onEvent.mock.calls.filter(([event]) => event.kind === 'paused')).toHaveLength(1);
+    await act(async () => {
+      await result.current.restore();
+    });
+    expect(onEvent).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'restore', outcome: 'restored' }));
+    ready = false;
+    await act(async () => {
+      await result.current.recheck();
+    });
+    expect(onEvent.mock.calls.filter(([event]) => event.kind === 'paused')).toHaveLength(2);
+  });
+
+  it('reports a cancelled restore', async () => {
+    const adapter = {
+      check: jest
+        .fn()
+        .mockResolvedValueOnce({ passed: false, canRestore: true, checkIndex: 0 })
+        .mockImplementation(() => new Promise(() => {})),
+      restore: jest.fn(),
+    };
+    jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+    const onEvent = jest.fn();
+    const { result } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false, onEvent));
+    await waitFor(() => expect(result.current.status.canRestore).toBe(true));
+    act(() => {
+      void result.current.restore();
+    });
+    act(() => {
+      result.current.cancel();
+    });
+    expect(onEvent).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'restore', outcome: 'cancelled' }));
+  });
+});

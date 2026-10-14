@@ -79,6 +79,7 @@ import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { useGuideIdentityRegistration } from './useGuideIdentityRegistration';
 import { GuideContentKeyContext } from '../interactive-tutorial/guide-content-key-context';
+import { GuideAnalyticsIdentityContext } from '../interactive-tutorial/guide-analytics-identity-context';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import {
   evictGuideIndex,
@@ -581,26 +582,28 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
 
   return (
     <GuideContentKeyContext.Provider value={resolveOwnerContentKey}>
-      <GuideResponseProvider guideId={guideId}>
-        <GuideRequirementsProvider guideId={guideId}>
-          <ContentWithVariables
-            processedContent={processedContent}
-            countingSource={content.countingSource}
-            contentType={content.type}
-            baseUrl={content.url}
-            title={content.metadata.title}
-            isNativeJson={content.isNativeJson ?? false}
-            onContentReady={onContentReady}
-            activeRef={activeRef}
-            className={className}
-            selectionState={selectionState}
-            documentContext={documentContext}
-            beforeContent={beforeContent}
-            afterContent={afterContent}
-            fullScreenFallbackLocation={fullScreenFallbackLocation}
-          />
-        </GuideRequirementsProvider>
-      </GuideResponseProvider>
+      <GuideAnalyticsIdentityContext.Provider value={completionIdentity}>
+        <GuideResponseProvider guideId={guideId}>
+          <GuideRequirementsProvider guideId={guideId}>
+            <ContentWithVariables
+              processedContent={processedContent}
+              countingSource={content.countingSource}
+              contentType={content.type}
+              baseUrl={content.url}
+              title={content.metadata.title}
+              isNativeJson={content.isNativeJson ?? false}
+              onContentReady={onContentReady}
+              activeRef={activeRef}
+              className={className}
+              selectionState={selectionState}
+              documentContext={documentContext}
+              beforeContent={beforeContent}
+              afterContent={afterContent}
+              fullScreenFallbackLocation={fullScreenFallbackLocation}
+            />
+          </GuideRequirementsProvider>
+        </GuideResponseProvider>
+      </GuideAnalyticsIdentityContext.Provider>
     </GuideContentKeyContext.Provider>
   );
 });
