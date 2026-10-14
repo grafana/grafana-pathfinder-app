@@ -85,6 +85,8 @@ Prerequisites are display-only metadata. They do not check completion, control a
 
 Each prerequisite has `id: string`, `label: string`, and an optional `format: "markdown"`. Both values must be nonblank; validation preserves the retained strings exactly. IDs must be stable and unique by their exact string value within one manifest. Without the format field, labels display as literal text. With `format: "markdown"`, labels support inline links, bold, italics, and inline code. Links support only absolute HTTPS URLs without credentials. They open in a new browser tab. Unsupported destinations display as text. HTML, headings, lists, images, embeds, interactive content, and other Markdown syntax are not supported.
 
+Authoring and CLI validation reject malformed prerequisite declarations. Runtime readers omit an invalid prerequisite field without rejecting an otherwise valid guide or path. With unknown format values, otherwise valid labels display as literal text.
+
 ### Extension fields
 
 Any top-level key not listed above is extension metadata. It survives validation unchanged and `pathfinder-cli build-repository` forwards it verbatim into that package's entry in `repository.json`, so adding one costs no CLI change. Two names are refused with a warning because the build computes them itself: `path` (from the package directory) and `title` (from `content.json`). `__proto__` is refused as well, though a JSON `__proto__` key is already dropped during parsing. Named manifest fields are never forwarded generically, so `id`, `schemaVersion`, `repository`, and `language` still do not appear in a repository entry.

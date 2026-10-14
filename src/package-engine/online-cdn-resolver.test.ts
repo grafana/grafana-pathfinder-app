@@ -32,6 +32,54 @@ beforeEach(() => {
 });
 
 describe('OnlineCdnPackageResolver', () => {
+  it.each(
+    [
+      [
+        { id: 'duplicate', label: 'First' },
+        { id: 'duplicate', label: 'Second' },
+      ],
+      [null],
+      [{ id: 'numeric-label', label: 42 }],
+      { id: 'not-an-array', label: 'Setup' },
+    ].flatMap((prerequisites) => ['inline', 'fetched'].map((source) => ({ prerequisites, source })))
+  )('preserves a $source path despite invalid prerequisites $prerequisites', async ({ prerequisites, source }) => {
+    const manifest = {
+      ...sampleEntry.manifest,
+      type: 'path',
+      milestones: ['first', 'second'],
+      tracks: [{ trackId: 'extra', label: 'Extra', guides: ['track-guide'] }],
+      prerequisites,
+    };
+    (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
+      baseUrl,
+      packages: [{ ...sampleEntry, type: 'path', manifest: source === 'inline' ? manifest : undefined }],
+    });
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(manifest) });
+    global.fetch = fetchMock;
+    try {
+      const result = await new OnlineCdnPackageResolver().resolve(sampleEntry.id, { loadContent: 'metadata-only' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.id).toBe(sampleEntry.id);
+        expect(result.manifest).toMatchObject({
+          id: sampleEntry.id,
+          type: 'path',
+          milestones: manifest.milestones,
+          tracks: manifest.tracks,
+        });
+        expect(result.manifest?.prerequisites).toBeUndefined();
+        expect(result.contentUrl).toBe(`${baseUrl}${sampleEntry.id}/content.json`);
+        expect(result.content).toBeUndefined();
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(source === 'inline' ? 0 : 1);
+      expect(fetchOnlinePackageRecommendations).toHaveBeenCalledTimes(1);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it.each([
     { source: 'inline', loadContent: false },
     { source: 'inline', loadContent: 'metadata-only' },

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ManifestJsonObjectSchema } from '../types/package.schema';
+import { ManifestJsonObjectSchema, PrerequisitesSchema } from '../types/package.schema';
 
 function normalizeRuntimePrerequisiteFormats(manifest: unknown): unknown {
   if (typeof manifest !== 'object' || manifest === null || Array.isArray(manifest)) {
@@ -25,5 +25,7 @@ function normalizeRuntimePrerequisiteFormats(manifest: unknown): unknown {
 
 export const RuntimeManifestJsonObjectSchema = z.preprocess(
   normalizeRuntimePrerequisiteFormats,
-  ManifestJsonObjectSchema
+  ManifestJsonObjectSchema.extend({
+    prerequisites: PrerequisitesSchema.optional().catch(undefined),
+  })
 );
