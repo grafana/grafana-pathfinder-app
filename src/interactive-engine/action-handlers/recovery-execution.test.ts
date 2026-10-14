@@ -6,7 +6,10 @@ import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { locationService } from '@grafana/runtime';
 
 jest.mock('../../lib/dom/selector-retry', () => ({ resolveWithRetry: jest.fn() }));
-jest.mock('../../lib/dom', () => ({ isElementVisible: () => true }));
+jest.mock('../../lib/dom', () => ({
+  isElementVisible: () => true,
+  isReplaySafeControl: jest.requireActual('../../lib/dom/element-validator').isReplaySafeControl,
+}));
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
 jest.mock('@grafana/runtime', () => ({ locationService: { push: jest.fn() } }));

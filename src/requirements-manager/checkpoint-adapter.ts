@@ -1,7 +1,8 @@
 import type { JsonCheckpointCheck } from '../types/json-guide.types';
 import type { CheckpointAdapter, CheckpointResult } from '../recovery/section-checkpoint';
 import { resolveSelector } from '../lib/dom/selector-resolver';
-import { isElementVisible } from '../lib/dom/element-validator';
+import { isElementVisible, isReplaySafeControl } from '../lib/dom/element-validator';
+import { querySelectorAllEnhanced } from '../lib/dom/enhanced-selector';
 import { checkVerdict } from '../lib/check-verdict';
 import { dispatchFix } from './fix-registry';
 import { getRequirementExplanation } from './requirements-explanations';
@@ -12,7 +13,7 @@ const RESTORABLE_FIXES = new Set(['location', 'navigation', 'expand-parent-navig
 
 function readControl(check: Extract<JsonCheckpointCheck, { target: string }>) {
   try {
-    const elements = document.querySelectorAll<HTMLElement>(resolveSelector(check.target));
+    const { elements } = querySelectorAllEnhanced(resolveSelector(check.target));
     if (elements.length !== 1) {
       return null;
     }
@@ -22,17 +23,10 @@ function readControl(check: Extract<JsonCheckpointCheck, { target: string }>) {
     }
     const attribute = check.state === 'expanded' ? 'aria-expanded' : 'aria-selected';
     const value = element.getAttribute(attribute);
-    const interactive =
-      (element instanceof HTMLButtonElement && element.type === 'button') ||
-      element.matches('div[role="tab"], span[role="tab"]');
-    const safeControl =
-      interactive &&
-      !element.closest('a[href]') &&
-      !(element instanceof HTMLButtonElement && element.type !== 'button');
     return {
       element,
       passed: check.state === 'visible' || value === 'true',
-      restorable: safeControl && value === 'false',
+      restorable: isReplaySafeControl(element) && value === 'false',
     };
   } catch {
     return null;

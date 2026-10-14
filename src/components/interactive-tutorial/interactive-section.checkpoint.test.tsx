@@ -103,7 +103,11 @@ jest.mock('./interactive-conditional', () => {
 
 import { InteractiveStep } from './interactive-step';
 import { InteractiveSection, resetInteractiveCounters } from './interactive-section';
-import { resetSectionHarness, silenceSectionWarnings } from '../../test-utils/interactive-section-harness';
+import {
+  resetSectionHarness,
+  setStepCheckerCompletionReason,
+  silenceSectionWarnings,
+} from '../../test-utils/interactive-section-harness';
 
 let warnSpy: jest.SpyInstance;
 beforeAll(() => {
@@ -128,7 +132,7 @@ it('holds step checks until recovery succeeds with a single restore action', asy
       id="recovery"
       title="Inspect query options"
       autoCollapse={false}
-      checkpoint={{ checks: [{ requirement: 'on-page:/explore' }], message: 'Your options were closed.' }}
+      checkpoint={{ checks: [{ requirement: 'on-page:/explore' }] }}
     >
       <InteractiveStep targetAction="highlight" refTarget=".options">
         Inspect options.
@@ -138,9 +142,28 @@ it('holds step checks until recovery succeeds with a single restore action', asy
   await waitFor(() => expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument());
   expect(screen.getByRole('button', { name: 'Continue step' })).toBeDisabled();
   expect(document.querySelector('details')).not.toBeInTheDocument();
-  expect(screen.queryByText('Your options were closed.')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Check again' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Continue step' })).toBeEnabled());
   expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+});
+
+it('stops offering recovery once the section is complete', async () => {
+  setStepCheckerCompletionReason('objectives');
+  const { container } = render(
+    <InteractiveSection
+      id="recovery"
+      title="Inspect query options"
+      autoCollapse={false}
+      objectives={['on-page:/explore']}
+      checkpoint={{ checks: [{ requirement: 'on-page:/explore' }] }}
+    >
+      <InteractiveStep targetAction="highlight" refTarget=".options">
+        Inspect options.
+      </InteractiveStep>
+    </InteractiveSection>
+  );
+  await waitFor(() => expect(container.querySelector('.interactive-section.completed')).toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+  expect(container.querySelector('.checkpoint-paused')).not.toBeInTheDocument();
 });

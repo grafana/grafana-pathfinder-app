@@ -1004,7 +1004,6 @@ export const JsonSectionCheckpointSchema = z.strictObject({
     )
     .min(1)
     .max(12),
-  message: z.string().max(500).optional(),
   manualRecovery: z.string().max(1000).optional(),
 });
 

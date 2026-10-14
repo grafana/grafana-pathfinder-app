@@ -3,7 +3,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { describeElement, isElementVisible } from '../../lib/dom';
+import { describeElement, isElementVisible, isReplaySafeControl } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
@@ -28,16 +28,7 @@ export class ButtonHandler {
       });
       data.signal?.throwIfAborted();
       const button = resolved?.elements.length === 1 ? resolved.elements[0] : undefined;
-      if (
-        !button ||
-        !isElementVisible(button) ||
-        button.matches(':disabled, [aria-disabled="true"]') ||
-        button.closest('a[href]') ||
-        !button.matches('button, [role="button"], [role="tab"], [role="menuitem"]') ||
-        (button instanceof HTMLButtonElement &&
-          button.type !== 'button' &&
-          (button.form !== null || button.hasAttribute('type')))
-      ) {
+      if (!button || !isElementVisible(button) || !isReplaySafeControl(button)) {
         return { outcome: 'error', reason: 'target_missing' };
       }
       const target = parseTargetState(data.targetState);

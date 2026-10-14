@@ -69,6 +69,7 @@ export function SectionBlockForm({
 
   // Preserve nested blocks when editing (but don't display them in the form)
   const nestedBlocks = useRef<JsonBlock[]>(initial?.blocks ?? []);
+  const checkpoint = useRef(initial?.checkpoint);
 
   // Build the section block from current form state
   const buildBlock = useCallback((): JsonSectionBlock => {
@@ -90,6 +91,7 @@ export function SectionBlockForm({
       ...(reqArray.length > 0 && { requirements: reqArray }),
       ...(objArray.length > 0 && { objectives: objArray }),
       ...(autoCollapse === false && { autoCollapse: false }),
+      ...(checkpoint.current && { checkpoint: checkpoint.current }),
     };
   }, [sectionId, title, requirements, objectives, autoCollapse]);
 

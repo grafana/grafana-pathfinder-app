@@ -14,11 +14,12 @@ export function useSectionCheckpoint(
   const [restoring, setRestoring] = useState(false);
   const operation = useRef<AbortController | null>(null);
   const busy = useRef(false);
+  const busyRestoring = useRef(false);
   const inFlight = useRef<Promise<boolean> | null>(null);
 
   const run = useCallback(
     (restore: boolean): Promise<boolean> => {
-      if (busy.current) {
+      if (busy.current && (!restore || busyRestoring.current)) {
         return inFlight.current ?? Promise.resolve(false);
       }
       const execute = async (): Promise<boolean> => {
@@ -39,6 +40,7 @@ export function useSectionCheckpoint(
           return false;
         }
         busy.current = true;
+        busyRestoring.current = restore;
         setRestoring(restore);
         const adapter = createCheckpointAdapter(
           checkPostconditions,

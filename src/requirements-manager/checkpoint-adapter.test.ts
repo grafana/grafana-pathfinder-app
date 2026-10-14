@@ -53,6 +53,28 @@ it.each([
   expect(click).not.toHaveBeenCalled();
 });
 
+it('resolves targets written with enhanced selectors', async () => {
+  const element = control({ type: 'button', 'aria-expanded': 'false' });
+  element.textContent = 'Options';
+  const click = jest.fn(() => element.setAttribute('aria-expanded', 'true'));
+  element.addEventListener('click', click);
+  const check = { target: 'button:contains("Options")', state: 'expanded' } as const;
+  expect(await adapter().check(check)).toMatchObject({ passed: false, canRestore: true });
+  expect(await adapter().restore(check)).toBe(true);
+  expect(await adapter().check(check)).toMatchObject({ passed: true });
+});
+
+it('restores the same controls that recovery recipes may replay', async () => {
+  const element = document.createElement('div');
+  element.id = 'control';
+  element.setAttribute('role', 'button');
+  element.setAttribute('aria-expanded', 'false');
+  element.addEventListener('click', () => element.setAttribute('aria-expanded', 'true'));
+  document.body.append(element);
+  expect(await adapter().check({ target: '#control', state: 'expanded' })).toMatchObject({ canRestore: true });
+  expect(await adapter().restore({ target: '#control', state: 'expanded' })).toBe(true);
+});
+
 it('refuses ambiguous and missing controls; visibility has no inferred click action', async () => {
   expect(await adapter().check({ target: '#missing', state: 'visible' })).toMatchObject({
     passed: false,

@@ -28,7 +28,6 @@ Common patterns and their treatment:
       { "requirement": "on-page:/explore" },
       { "target": "div[data-testid='data-testid prometheus options'] button[aria-expanded]", "state": "expanded" }
     ],
-    "message": "Return to the query options to continue.",
     "manualRecovery": "If the query editor was closed, reopen your Prometheus query, then check again."
   },
   "blocks": []

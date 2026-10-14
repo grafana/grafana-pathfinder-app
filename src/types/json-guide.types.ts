@@ -196,7 +196,6 @@ export type JsonCheckpointCheck = JsonCheckpointCondition & { recover?: JsonChec
 
 export interface JsonSectionCheckpoint {
   checks: JsonCheckpointCheck[];
-  message?: string;
   manualRecovery?: string;
 }
 

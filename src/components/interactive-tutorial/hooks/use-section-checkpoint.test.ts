@@ -63,6 +63,43 @@ it('aborts recovery on unmount before a delayed condition can trigger a repair',
   expect(adapter.restore).not.toHaveBeenCalled();
 });
 
+it('restores when Restore is clicked while a background check is still running', async () => {
+  let ready = false;
+  let releaseInspection!: () => void;
+  const adapter = {
+    check: jest
+      .fn()
+      .mockResolvedValueOnce({ passed: false, canRestore: true })
+      .mockImplementationOnce(
+        () =>
+          new Promise((r) => {
+            releaseInspection = () => r({ passed: false, canRestore: true });
+          })
+      )
+      .mockImplementation(async () => ({ passed: ready, canRestore: !ready })),
+    restore: jest.fn(async () => {
+      ready = true;
+      return true;
+    }),
+  };
+  jest.mocked(createCheckpointAdapter).mockReturnValue(adapter);
+  const { result } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, false));
+  await waitFor(() => expect(result.current.status.canRestore).toBe(true));
+  let inspection!: Promise<boolean>;
+  act(() => {
+    inspection = result.current.recheck();
+  });
+  await act(async () => {
+    await result.current.restore();
+  });
+  releaseInspection();
+  await act(async () => {
+    await inspection;
+  });
+  expect(adapter.restore).toHaveBeenCalledTimes(1);
+  expect(result.current.passed).toBe(true);
+});
+
 it('blocks controller mode instead of inspecting the wrong tab', async () => {
   const { result } = renderHook(() => useSectionCheckpoint(checkpoint, 'section', true, true));
   await waitFor(() => expect(result.current.status.explanation).toContain('Grafana tab'));

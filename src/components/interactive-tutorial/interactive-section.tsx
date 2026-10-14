@@ -252,15 +252,6 @@ export function InteractiveSection({
     checkRequirementsFromData,
   });
 
-  const sectionCheckpoint = useSectionCheckpoint(
-    checkpoint,
-    sectionId,
-    sectionRequirementsStatus.passed,
-    mode === 'controller'
-  );
-  const sectionReady = sectionRequirementsStatus.passed && sectionCheckpoint.passed;
-  const checkCheckpoint = sectionCheckpoint.recheck;
-
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
     isCancelledRef.current = true;
@@ -412,6 +403,15 @@ export function InteractiveSection({
   const sectionKind = derived.kind;
   const isCompleted = derived.isCompleted;
   const doneVia = derived.doneVia;
+  const activeCheckpoint = isCompleted ? undefined : checkpoint;
+  const sectionCheckpoint = useSectionCheckpoint(
+    activeCheckpoint,
+    sectionId,
+    sectionRequirementsStatus.passed,
+    mode === 'controller'
+  );
+  const sectionReady = sectionRequirementsStatus.passed && sectionCheckpoint.passed;
+  const checkCheckpoint = sectionCheckpoint.recheck;
   // `stepsCompleted` preserves the historical meaning ("all interactive
   // steps are done") so existing call sites that care about that
   // specific question keep working. Note that this no longer implies
@@ -812,7 +812,7 @@ export function InteractiveSection({
         }
       }
 
-      if (checkpoint && !(await checkCheckpoint())) {
+      if (activeCheckpoint && !(await checkCheckpoint())) {
         ActionMonitor.getInstance().forceEnable();
         setIsRunning(false);
         return;
@@ -874,7 +874,7 @@ export function InteractiveSection({
         async () => {
           try {
             for (let i = startIndex; i < stepComponents.length; i++) {
-              if (checkpoint && !(await checkCheckpoint())) {
+              if (activeCheckpoint && !(await checkCheckpoint())) {
                 handleSectionCancel();
                 break;
               }
@@ -1167,7 +1167,7 @@ export function InteractiveSection({
     handleSectionCancel,
     currentStepIndex,
     controllerRequirements,
-    checkpoint,
+    activeCheckpoint,
     checkCheckpoint,
     checkRequirementsFromData,
     scrollToStep,
@@ -1315,7 +1315,7 @@ export function InteractiveSection({
         }
 
         const isEligibleForChecking =
-          (stepEligibility[stepIndex] ?? false) && (!checkpoint || sectionCheckpoint.passed);
+          (stepEligibility[stepIndex] ?? false) && (!activeCheckpoint || sectionCheckpoint.passed);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
         const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
           sectionId,
@@ -1348,7 +1348,7 @@ export function InteractiveSection({
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child as React.ReactElement<any>).props,
           ...enhancedProps,
-          ...(schema.kind === 'guided' ? { checkpointPaused: !!checkpoint && !sectionCheckpoint.passed } : {}),
+          ...(schema.kind === 'guided' ? { checkpointPaused: !!activeCheckpoint && !sectionCheckpoint.passed } : {}),
           key: stepInfo.stepId,
           ...(refCallback ? { ref: refCallback } : {}),
         });
@@ -1367,7 +1367,7 @@ export function InteractiveSection({
     sectionId,
     title,
     sectionReady,
-    checkpoint,
+    activeCheckpoint,
     sectionCheckpoint.passed,
   ]);
 
@@ -1380,7 +1380,7 @@ export function InteractiveSection({
       id={sectionId}
       className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}${
         isCollapsed ? ' collapsed' : ''
-      }${checkpoint && sectionRequirementsStatus.passed && !sectionCheckpoint.passed ? ' checkpoint-paused' : ''}`}
+      }${activeCheckpoint && sectionRequirementsStatus.passed && !sectionCheckpoint.passed ? ' checkpoint-paused' : ''}`}
       data-testid={testIds.interactive.section(sectionId)}
       data-interactive-section="true"
     >
@@ -1438,7 +1438,7 @@ export function InteractiveSection({
         </div>
       )}
 
-      {!isCollapsed && checkpoint && sectionRequirementsStatus.passed && !sectionCheckpoint.passed && (
+      {!isCollapsed && activeCheckpoint && sectionRequirementsStatus.passed && !sectionCheckpoint.passed && (
         <div className="interactive-section-checkpoint">
           <span role="status" className="interactive-section-checkpoint-label">
             {sectionCheckpoint.restoring ? 'Restoring…' : 'Let’s get you back on track'}
@@ -1459,7 +1459,7 @@ export function InteractiveSection({
           )}
           {!sectionCheckpoint.restoring && !sectionCheckpoint.status.canRestore && (
             <p className="interactive-section-checkpoint-help" role="status">
-              {checkpoint.manualRecovery || sectionCheckpoint.status.explanation}
+              {activeCheckpoint.manualRecovery || sectionCheckpoint.status.explanation}
             </p>
           )}
         </div>
