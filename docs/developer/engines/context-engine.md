@@ -235,7 +235,7 @@ Implementation: `src/context-engine/recommend-completions-attachment.ts`, `src/c
 
 Items are built field by field with no object spread from backend rows, so a new backend field cannot leak. At most 250 items are sent, newest `recorded_at` first; `truncated` says whether any were dropped.
 
-**Known residual risk.** The filter uses the stored `guideSource` only. `sourceConfirmed` is analytics-only and never stored, and the write path stores an unresolved source as `interactive-tutorials`, so a private guide whose source was unresolved at write time is sent. A milestone recorded with no repository is stored as `bundled` (`resolveMilestoneCompletionIdentity`) and passes the filter too, as does a tenant custom guide whose id collides with a bundled guide. Only the `guide_source` and `guide_id` of such a row are sent. The fix is to stamp `guideSource` at write time, which is out of scope here. Dropping ids found in the tenant's custom-guide catalogue would mitigate the collision case.
+**Known residual risk.** The filter uses the stored `guideSource` only. `sourceConfirmed` is analytics-only and never stored, and the write path stores an unresolved source as `interactive-tutorials`, so a private guide whose source was unresolved at write time is sent. A milestone recorded with no repository is stored as `bundled` (`resolveMilestoneCompletionIdentity`) and passes the filter too, as does a tenant custom guide whose id collides with a bundled guide. Such a row is identified only by its `guide_source` and `guide_id`; no title or path is sent. The fix is to stamp `guideSource` at write time, which is out of scope here. Dropping ids found in the tenant's custom-guide catalogue would mitigate the collision case.
 
 ### Wire contract and versioning
 
