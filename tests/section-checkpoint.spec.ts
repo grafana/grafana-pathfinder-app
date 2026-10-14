@@ -4,7 +4,7 @@ import { StorageKeys } from '../src/lib/storage-keys';
 import { TIMEOUTS } from './constants';
 import { openDocsPanel } from './helpers/completion.helpers';
 
-const QUERY_ROW_TOGGLE = "[data-testid='data-testid Query editor row'] button[aria-label$='query row']";
+const QUERY_ROW_TOGGLE = "button[aria-label$='query row']";
 
 const guide = {
   id: 'section-checkpoint-e2e',
@@ -22,8 +22,8 @@ const guide = {
         {
           type: 'interactive',
           action: 'highlight',
-          reftarget: "[data-testid='data-testid Query editor row']",
-          content: 'This is your query.',
+          reftarget: "button[aria-label='Run query']",
+          content: 'Run your query.',
         },
       ],
     },

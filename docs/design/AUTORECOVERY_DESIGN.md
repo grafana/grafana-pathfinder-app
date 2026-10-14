@@ -47,11 +47,11 @@ A check can declare `recover`, a compact sequence using the existing `button` an
   "recover": [
     {
       "action": "button",
-      "reftarget": "[data-testid='data-testid Query editor row'] button[aria-label$='query row']",
+      "reftarget": "button[aria-label$='query row']",
       "replaySafe": true,
       "objectives": [
         {
-          "target": "[data-testid='data-testid Query editor row'] button[aria-label$='query row']",
+          "target": "button[aria-label$='query row']",
           "state": "expanded"
         }
       ]

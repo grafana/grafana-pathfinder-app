@@ -434,7 +434,7 @@ Groups related interactive steps into a sequence with "Do Section" functionality
   "checkpoint": {
     "checks": [
       { "requirement": "on-page:/explore" },
-      { "target": "[data-testid='data-testid Query editor row'] button[aria-label$='query row']", "state": "expanded" }
+      { "target": "button[aria-label$='query row']", "state": "expanded" }
     ],
     "manualRecovery": "Reopen Explore and expand the query row, then check again."
   },
