@@ -1,3 +1,4 @@
+import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import { openGuideInSidebar } from './open-prepared-guide';
 import { panelModeManager } from '../../../global-state/panel-mode';
 import { sidebarState } from '../../../global-state/sidebar';
@@ -23,11 +24,14 @@ jest.mock('../../../global-state/guide-launch', () => ({ guideLaunchStore: { sta
 jest.mock('../../../global-state/link-interception', () => ({ linkInterceptionState: { addToQueue: jest.fn() } }));
 jest.mock('../../../lib/telemetry/surface', () => ({ getPathfinderSurface: jest.fn() }));
 jest.mock('../../../lib/storage/extension-sidebar', () => ({ isExtensionSidebarOwnedByOther: jest.fn() }));
-jest.mock('../../../lib/analytics', () => ({ reportAppInteraction: jest.fn(), UserInteraction: {} }));
+jest.mock('../../../lib/analytics', () => ({
+  reportAppInteraction: jest.fn(),
+  UserInteraction: { GuideLaunchSurfaceChosen: 'surface-chosen' },
+}));
 jest.mock('@grafana/runtime', () => ({ locationService: { push: jest.fn() } }));
 
 const launch = {
-  url: 'bundled:welcome',
+  url: 'bundled:welcome-to-grafana',
   title: 'Welcome',
   source: 'package_browser',
   requiresGrafanaUi: false,
@@ -81,4 +85,52 @@ it('switches the sidebar when another app owns the slot', () => {
   openGuideInSidebar(launch);
   expect(sidebarState.openSidebar).toHaveBeenCalledWith('Interactive learning');
   expect(linkInterceptionState.addToQueue).toHaveBeenCalled();
+});
+
+it('reports the sidebar override and public attribution with Grafana UI requirements', () => {
+  openGuideInSidebar({ ...launch, requiresGrafanaUi: true });
+  expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.GuideLaunchSurfaceChosen, {
+    surface: 'sidebar',
+    source: 'package_browser',
+    requires_grafana_ui: true,
+    content_url: launch.url,
+  });
+});
+
+it.each(['backend-guide:secret', 'https://grafana.example/apis/guides/interactiveguides/secret'])(
+  'omits private launch attribution for %s',
+  (url) => {
+    openGuideInSidebar({ ...launch, url, title: 'Private title' });
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.GuideLaunchSurfaceChosen, {
+      surface: 'sidebar',
+      source: 'package_browser',
+      requires_grafana_ui: false,
+    });
+  }
+);
+
+it('omits arbitrary and local authoring URLs even with a public-looking repository stamp', () => {
+  openGuideInSidebar({
+    ...launch,
+    url: 'https://custom.example/private-name?secret=token',
+    packageInfo: { repository: 'online-cdn' },
+  });
+  expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.GuideLaunchSurfaceChosen, {
+    surface: 'sidebar',
+    source: 'package_browser',
+    requires_grafana_ui: false,
+  });
+});
+
+it('retains official attribution without URL credentials, query, or fragment', () => {
+  openGuideInSidebar({
+    ...launch,
+    url: 'https://user:secret@interactive-learning.grafana.net/path/content.json?token=secret#private',
+  });
+  expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.GuideLaunchSurfaceChosen, {
+    surface: 'sidebar',
+    source: 'package_browser',
+    requires_grafana_ui: false,
+    content_url: 'https://interactive-learning.grafana.net/path/content.json',
+  });
 });

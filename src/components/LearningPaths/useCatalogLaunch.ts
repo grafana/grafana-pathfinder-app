@@ -5,10 +5,24 @@ import type { CatalogProgress } from '../../learning-paths';
 import { AppPlatformPackageResolver } from '../../package-engine';
 import { beginGuideLoad, finishGuideLoad } from '../../lib/telemetry/guide-load';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
-import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
+import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
+import { AnalyticsContentType, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
-export function useCatalogLaunch(items: CatalogPackage[], scope: string, progress: Map<string, CatalogProgress>) {
+type CatalogInteractionLocation = 'package_browser' | 'my_learning_discover_more' | 'my_learning_continue';
+
+interface CatalogLaunchOptions {
+  onOpenGuide?: (launch: PreparedGuideLaunch) => void;
+  onAcceptedLaunch?: (item: CatalogPackage) => void;
+  interactionLocation?: CatalogInteractionLocation;
+}
+
+export function useCatalogLaunch(
+  items: CatalogPackage[],
+  scope: string,
+  progress: Map<string, CatalogProgress>,
+  options: CatalogLaunchOptions = {}
+) {
   const mounted = useRef(true);
   const currentScope = useRef(scope);
   const lock = useRef(false);
@@ -25,7 +39,10 @@ export function useCatalogLaunch(items: CatalogPackage[], scope: string, progres
     };
   }, [scope]);
 
-  const launch = async (item: CatalogPackage) => {
+  const launch = async (
+    item: CatalogPackage,
+    interactionLocation: CatalogInteractionLocation = options.interactionLocation ?? 'my_learning_continue'
+  ) => {
     if (lock.current) {
       return;
     }
@@ -34,6 +51,13 @@ export function useCatalogLaunch(items: CatalogPackage[], scope: string, progres
     setError(null);
     const stillCurrent = () => mounted.current && currentScope.current === scope;
     try {
+      options.onAcceptedLaunch?.(item);
+      reportAppInteraction(UserInteraction.OpenResourceClick, {
+        interaction_location: interactionLocation,
+        content_type:
+          item.format === 'path' ? AnalyticsContentType.LearningJourney : AnalyticsContentType.InteractiveGuide,
+        ...(item.source === 'grafana' ? { content_title: item.title, content_url: item.url } : {}),
+      });
       let url = item.url;
       let title = item.title;
       let packageInfo = item.packageInfo;
@@ -69,7 +93,7 @@ export function useCatalogLaunch(items: CatalogPackage[], scope: string, progres
       if (!result.ok) {
         throw new Error('unavailable');
       }
-      openGuideInSidebar(result.launch);
+      (options.onOpenGuide ?? openGuideInSidebar)(result.launch);
     } catch {
       finishGuideLoad(preparingLoad.current, 'cancelled');
       preparingLoad.current = undefined;

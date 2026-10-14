@@ -54,6 +54,32 @@ it('keeps progress distinct for public and private packages with the same ID', a
   expect(result.current.get('app-platform:dashboard')?.percent).toBe(75);
 });
 
+it('honors completion evidence only for confirmed bundled guides, not colliding public or private IDs', async () => {
+  const id = 'first-dashboard';
+  const onlineUrl = 'https://grafana.com/first-dashboard/content.json';
+  const items = [
+    item(`bundled:${id}`, `bundled:${id}/content.json`, { id }),
+    item(`online-cdn:${id}`, onlineUrl, { id }),
+    item(`app-platform:${id}`, `backend-guide:${id}`, { id, source: 'organization' }),
+    item('bundled:not-in-repository', 'bundled:not-in-repository', { id: 'not-in-repository' }),
+  ];
+  jest.mocked(learningProgressStorage.get).mockResolvedValue({
+    ...emptyProgress,
+    completedGuides: [id, 'not-in-repository'],
+  });
+  jest.mocked(interactiveCompletionStorage.getAll).mockResolvedValue({
+    [`bundled:${id}`]: 30,
+    [onlineUrl]: 25,
+    [`backend-guide:${id}`]: 75,
+  });
+  const { result } = renderHook(() => useCatalogProgress(items, 'scope'));
+  await waitFor(() => expect(result.current.size).toBe(4));
+  expect(result.current.get(`bundled:${id}`)?.percent).toBe(100);
+  expect(result.current.get(`online-cdn:${id}`)?.percent).toBe(25);
+  expect(result.current.get(`app-platform:${id}`)?.percent).toBe(75);
+  expect(result.current.get('bundled:not-in-repository')?.percent).toBe(0);
+});
+
 it.each([
   { url: 'bundled:dashboard', storedUrl: 'bundled:dashboard/content.json' },
   { url: 'bundled:dashboard/content.json', storedUrl: 'bundled:dashboard' },

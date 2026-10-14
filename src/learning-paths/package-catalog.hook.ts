@@ -14,6 +14,14 @@ import { fetchOnlinePackageRecommendations } from '../lib/package-recommendation
 import { fetchCustomGuideCatalogue } from '../lib/custom-guide-repository-client';
 import { getPathsData } from './paths-data';
 
+const ABSENT_ORGANIZATION_CAPABILITIES = new Set([
+  'unsupported',
+  'feature-toggle-disabled',
+  'obo-unavailable',
+  'identity-unavailable',
+  'identity-unverifiable',
+]);
+
 export function usePackageCatalog() {
   const namespace = config.namespace || '';
   const scope = `${namespace}:${config.bootData?.user?.orgId ?? ''}:${config.bootData?.user?.id ?? ''}`;
@@ -77,7 +85,8 @@ export function usePackageCatalog() {
               }),
           scope,
           organization: organizationCatalog(response.entries),
-          privateUnavailable: response.available === false && response.reason !== 'unsupported',
+          privateUnavailable:
+            response.available === false && !ABSENT_ORGANIZATION_CAPABILITIES.has(response.reason ?? ''),
         }));
       }
     });

@@ -375,7 +375,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         ? { packageId: item.id, packageManifest: { ...item.manifest, id: item.id } }
         : undefined,
     };
-    return catalogLaunch.launch(entry);
+    return catalogLaunch.launch(entry, 'my_learning_discover_more');
   };
 
   const handleResetProgress = useCallback(async () => {

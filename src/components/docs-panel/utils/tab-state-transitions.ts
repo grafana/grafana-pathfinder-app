@@ -35,11 +35,11 @@ export function closeTabState(state: TabStateSnapshot, tabId: string): TabStateR
   };
 }
 
-export function pruneGatedTabState(
-  state: TabStateSnapshot,
-  gates: Pick<TabGates, 'allowEditor' | 'allowDevTools'>
-): TabStateResult {
+export function pruneGatedTabState(state: TabStateSnapshot, gates: TabGates): TabStateResult {
   const tabs = state.tabs.filter((tab) => {
+    if (tab.type === 'browse' && !gates.allowBrowse) {
+      return false;
+    }
     if (tab.type === 'editor' && !gates.allowEditor) {
       return false;
     }

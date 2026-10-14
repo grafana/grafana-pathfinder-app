@@ -1,24 +1,13 @@
-import React, {
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import React, { useCallback, useId, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { Alert, Button, Icon, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { CATALOG_BATCH_SIZE, type CatalogPackage, type CatalogViewState } from '../../types/package-catalog.types';
 import { filterCatalog } from '../../lib/package-catalog';
-import { beginGuideLoad, finishGuideLoad } from '../../lib/telemetry/guide-load';
-import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 import { getCatalogView, subscribeCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { usePackageCatalog, useCatalogProgress } from '../../learning-paths';
 import { catalogStarters, catalogTopic, catalogTopicCounts, catalogTopicShortcuts } from '../../lib/catalog-discovery';
-import { AppPlatformPackageResolver } from '../../package-engine';
-import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
+import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
+import { useCatalogLaunch } from '../LearningPaths/useCatalogLaunch';
 import { getPackageBrowserStyles } from './package-browser.styles';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
@@ -83,23 +72,13 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
   const starters = useMemo(() => catalogStarters(catalog.items), [catalog.items]);
   const shortcuts = useMemo(() => catalogTopicShortcuts(catalog.items), [catalog.items]);
   const cardButtons = useRef(new Map<string, HTMLButtonElement>());
-  const mounted = useRef(true);
-  const currentScope = useRef(catalog.scope);
-  const preparingLoad = useRef<GuideLoadContext | undefined>(undefined);
-  const launchLock = useRef(false);
-  const [launchingKey, setLaunchingKey] = useState<string | null>(null);
-  const [launchError, setLaunchError] = useState<{ key: string; message: string } | null>(null);
+  const { launch, launchingKey, launchError } = useCatalogLaunch(catalog.items, catalog.scope, progress, {
+    onOpenGuide,
+    onAcceptedLaunch: (item) => update({ focusKey: item.key }),
+    interactionLocation: 'package_browser',
+  });
   const searchId = useId();
 
-  useEffect(() => {
-    mounted.current = true;
-    currentScope.current = catalog.scope;
-    return () => {
-      mounted.current = false;
-      finishGuideLoad(preparingLoad.current, 'cancelled');
-      preparingLoad.current = undefined;
-    };
-  }, [catalog.scope]);
   useLayoutEffect(() => {
     if (container.current) {
       container.current.scrollTop = view.scrollTop;
@@ -110,71 +89,6 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
       cardButtons.current.get(view.focusKey)?.focus({ preventScroll: true });
     }
   }, [catalog.scope, view.focusKey]);
-  const launch = async (item: CatalogPackage) => {
-    if (launchLock.current) {
-      return;
-    }
-    launchLock.current = true;
-    setLaunchingKey(item.key);
-    setLaunchError(null);
-    update({ focusKey: item.key });
-    try {
-      let url = item.url;
-      let title = item.title;
-      let packageInfo = item.packageInfo;
-      if (item.source === 'organization') {
-        const resolution = await new AppPlatformPackageResolver().resolve(item.id, { loadContent: 'metadata-only' });
-        if (!resolution.ok) {
-          throw new Error('unavailable');
-        }
-        packageInfo = { packageId: item.id, packageManifest: resolution.manifest, repository: 'app-platform' };
-      }
-      if (item.curatedPath && !url) {
-        const id = progress.get(item.key)?.nextId ?? item.memberIds?.[0];
-        const member = catalog.items.find(
-          (candidate) => candidate.id === id && candidate.source === 'grafana' && candidate.format === 'guide'
-        );
-        if (!member) {
-          throw new Error('unavailable');
-        }
-        url = member.url;
-        title = member.title;
-        packageInfo = member.packageInfo;
-      }
-      if (!mounted.current || currentScope.current !== catalog.scope) {
-        return;
-      }
-      const loadContext = beginGuideLoad(url);
-      preparingLoad.current = loadContext;
-      const result = await prepareGuideLaunch(url, { title, source: 'package_browser', packageInfo, loadContext });
-      if (!mounted.current || currentScope.current !== catalog.scope) {
-        return;
-      }
-      preparingLoad.current = undefined;
-      if (!result.ok) {
-        throw new Error('unavailable');
-      }
-      onOpenGuide(result.launch);
-    } catch {
-      finishGuideLoad(preparingLoad.current, 'cancelled');
-      preparingLoad.current = undefined;
-      if (mounted.current && currentScope.current === catalog.scope) {
-        setLaunchError({
-          key: item.key,
-          message: t(
-            'packageBrowser.launchError',
-            'Could not open this guide. It may have been removed or unpublished. Try again.'
-          ),
-        });
-      }
-    } finally {
-      launchLock.current = false;
-      if (mounted.current) {
-        setLaunchingKey(null);
-      }
-    }
-  };
-
   const effort = (item: CatalogPackage) =>
     [
       item.memberIds

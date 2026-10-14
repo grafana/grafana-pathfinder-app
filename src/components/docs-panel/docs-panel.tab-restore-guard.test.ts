@@ -1,3 +1,4 @@
+jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(() => true), useBooleanFlag: () => true }));
 /**
  * Tests for CombinedLearningJourneyPanel tab restoration guard.
  *
@@ -273,6 +274,7 @@ function setupRestoreMocks() {
 describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.requireMock('../../utils/openfeature').getFeatureFlagValue.mockReturnValue(true);
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
     setupRestoreMocks();
   });
@@ -564,6 +566,7 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.requireMock('../../utils/openfeature').getFeatureFlagValue.mockReturnValue(true);
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
     setupRestoreMocks();
   });
@@ -644,5 +647,49 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
     expect(tabs.some((t) => t.type === 'devtools')).toBe(false);
     expect((panel as any).state.activeTabId).toBe('recommendations');
     expect(tabStorage.setTabs).toHaveBeenCalled();
+  });
+});
+
+describe('Browse feature gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    setupRestoreMocks();
+  });
+
+  it('restores Recommendations instead of a saved Browse tab when disabled', async () => {
+    jest.requireMock('../../utils/openfeature').getFeatureFlagValue.mockReturnValue(false);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('browse');
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    expect(panel.state.activeTabId).toBe('recommendations');
+    expect(panel.state.tabs.some((tab) => tab.type === 'browse')).toBe(false);
+  });
+
+  it('ignores a pending Browse activation after the feature has been disabled', () => {
+    jest.requireMock('../../utils/openfeature').getFeatureFlagValue.mockReturnValue(false);
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setActiveTab('browse');
+    expect(panel.state.activeTabId).toBe('recommendations');
+    expect(panel.state.tabs.some((tab) => tab.type === 'browse')).toBe(false);
+  });
+
+  it('persists the fallback when Browse closes and recreates navigation when enabled', async () => {
+    const { getFeatureFlagValue } = jest.requireMock('../../utils/openfeature');
+    getFeatureFlagValue.mockReturnValue(true);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('browse');
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    expect(panel.state.activeTabId).toBe('browse');
+    getFeatureFlagValue.mockReturnValue(false);
+    panel.pruneGatedTabs();
+    expect(panel.state.activeTabId).toBe('recommendations');
+    expect(panel.state.tabs.some((tab) => tab.type === 'browse')).toBe(false);
+    await panel.saveTabsToStorage();
+    expect(jest.requireMock('../../lib/user-storage').tabStorage.setActiveTab).toHaveBeenCalledWith('recommendations');
+    getFeatureFlagValue.mockReturnValue(true);
+    panel.pruneGatedTabs();
+    expect(panel.state.tabs.filter((tab) => tab.type === 'browse')).toHaveLength(1);
+    expect(panel.state.activeTabId).toBe('recommendations');
   });
 });

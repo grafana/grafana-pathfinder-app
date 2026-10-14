@@ -30,6 +30,7 @@ const TerminalProviderLazy = lazy(() =>
 );
 // Lazy so @grafana/assistant stays out of the docs-panel init chain (see AiFixOrchestrator).
 const AiFixOrchestrator = lazy(() => import('./AiFixOrchestrator'));
+import { useBooleanFlag } from '../../utils/openfeature';
 import { PathfinderPluginConfig } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
@@ -105,6 +106,7 @@ import {
   loadDocsTabContentResult,
   RECOMMENDATIONS_TAB_ID,
   createBrowseTab,
+  BROWSE_TAB_ID,
   DEVTOOLS_TAB_ID,
   EDITOR_TAB_ID,
   isNonContentTab,
@@ -217,7 +219,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       },
     ];
 
-    defaultTabs.push(createBrowseTab());
+    if (resolveTabGates(pluginConfig).allowBrowse) {
+      defaultTabs.push(createBrowseTab());
+    }
 
     const contextPanel = new ContextPanel(
       (url: string, title: string) => this.openRecommendation(url, title, 'recommender', undefined, true),
@@ -309,17 +313,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.pruneGatedTabs();
   }
 
-  /**
-   * Remove editor / devtools tabs when their gates are off, so stale tabs
-   * cannot linger in the strip after a role downgrade or a dev-mode flip.
-   *
-   * Gates are derived from this model's own `pluginConfig` — never from flags
-   * a caller computed against a second config source, which is how restore
-   * and the renderer used to disagree.
-   */
   public pruneGatedTabs(): void {
-    const pruned = this.pruneUnauthorizedGatedTabs(this.state.tabs, this.state.activeTabId);
-    if (!pruned.changed) {
+    const tabs =
+      resolveTabGates(this.state.pluginConfig).allowBrowse && !this.state.tabs.some((tab) => tab.type === 'browse')
+        ? [...this.state.tabs, createBrowseTab()]
+        : this.state.tabs;
+    const pruned = this.pruneUnauthorizedGatedTabs(tabs, this.state.activeTabId);
+    if (!pruned.changed && tabs === this.state.tabs) {
       return;
     }
     this.setState({ tabs: pruned.tabs, activeTabId: pruned.activeTabId });
@@ -328,11 +328,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  /**
-   * Apply the current gates and record them, so a later prune can tell an
-   * observed gate closure apart from a first read of an unresolved config.
-   * Storage is only rewritten for the former — see `didGateClose`.
-   */
   private pruneUnauthorizedGatedTabs(tabs: LearningJourneyTab[], activeTabId: string) {
     const gates = resolveTabGates(this.state.pluginConfig);
     const gateClosed = didGateClose(this._tabGates, gates);
@@ -731,6 +726,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public setActiveTab(tabId: string) {
+    if (tabId === BROWSE_TAB_ID) {
+      this.pruneGatedTabs();
+      if (!this.state.tabs.some((tab) => tab.id === BROWSE_TAB_ID)) {
+        return;
+      }
+    }
     cancelCatalogActivation();
     pauseGuideLoad(this.guideLoads.get(this.state.activeTabId));
     if (!this.state.tabs.find((tab) => tab.id === tabId)?.pendingAlignment) {
@@ -1092,6 +1093,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const { config: pluginConfig, isResolved: isPluginConfigResolved } = usePathfinderPluginConfig();
 
   const isDevMode = isDevModeEnabled(pluginConfig);
+  const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
 
   const isEditorUser = isCurrentUserEditor();
 
@@ -1218,7 +1220,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // config in place rather than stripping tabs on a default-shaped read.
   React.useEffect(() => {
     model.syncPluginConfig(isPluginConfigResolved ? pluginConfig : null);
-  }, [isPluginConfigResolved, pluginConfig, model, tabs]);
+  }, [isPluginConfigResolved, pluginConfig, model, tabs, browseEnabled]);
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues

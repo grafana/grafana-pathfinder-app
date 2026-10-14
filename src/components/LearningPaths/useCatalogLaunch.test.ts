@@ -3,6 +3,7 @@ import { useCatalogLaunch } from './useCatalogLaunch';
 import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import type { CatalogPackage } from '../../types/package-catalog.types';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({ prepareGuideLaunch: jest.fn() }));
@@ -10,6 +11,11 @@ jest.mock('../docs-panel/utils/open-prepared-guide', () => ({ openGuideInSidebar
 jest.mock('../../lib/telemetry/guide-load', () => ({
   beginGuideLoad: jest.fn(() => ({ id: 'load' })),
   finishGuideLoad: jest.fn(),
+}));
+jest.mock('../../lib/analytics', () => ({
+  reportAppInteraction: jest.fn(),
+  UserInteraction: { OpenResourceClick: 'open_resource_click' },
+  AnalyticsContentType: { InteractiveGuide: 'interactive-guide', LearningJourney: 'learning-journey' },
 }));
 const mockResolve = jest.fn();
 jest.mock('../../package-engine', () => ({
@@ -51,6 +57,13 @@ it('prepares once and hands the prepared result directly to the sidebar', async 
     await result.current.launch(entry);
   });
   expect(prepareMock).toHaveBeenCalledTimes(1);
+  expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+  expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+    interaction_location: 'my_learning_continue',
+    content_type: 'interactive-guide',
+    content_title: entry.title,
+    content_url: entry.url,
+  });
   await act(async () => {
     pending.resolve({ ok: true, launch });
     await first;
@@ -118,4 +131,61 @@ it('resumes the next existing curated member without writing enrollment or progr
     expect.objectContaining({ title: entry.title, source: 'package_browser' })
   );
   expect(openGuideInSidebar).toHaveBeenCalledWith(launch);
+});
+
+it('reports Discover and Browse separately while omitting organization identities', async () => {
+  const privateEntry = {
+    ...entry,
+    source: 'organization' as const,
+    key: 'app-platform:private',
+    id: 'private',
+    url: 'backend-guide:private',
+    title: 'Private title',
+  };
+  mockResolve.mockResolvedValue({ ok: true, manifest: { id: 'private' } });
+  const { result } = renderHook(() =>
+    useCatalogLaunch([entry, privateEntry], 'org:1', progress, { interactionLocation: 'package_browser' })
+  );
+  await act(async () => {
+    await result.current.launch(privateEntry);
+  });
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.OpenResourceClick, {
+    interaction_location: 'package_browser',
+    content_type: 'interactive-guide',
+  });
+  await act(async () => {
+    await result.current.launch({ ...entry, format: 'path' }, 'my_learning_discover_more');
+  });
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.OpenResourceClick, {
+    interaction_location: 'my_learning_discover_more',
+    content_type: 'learning-journey',
+    content_title: entry.title,
+    content_url: entry.url,
+  });
+});
+
+it('hides old scope errors and ignores late failures after identity changes', async () => {
+  prepareMock.mockResolvedValue({ ok: false });
+  const { result, rerender } = renderHook(({ scope }) => useCatalogLaunch([entry], scope, progress), {
+    initialProps: { scope: 'org:1:user:1' },
+  });
+  await act(async () => {
+    await result.current.launch(entry);
+  });
+  expect(result.current.launchError?.key).toBe(entry.key);
+  rerender({ scope: 'org:2:user:2' });
+  expect(result.current.launchError).toBeNull();
+  const pending = deferred();
+  prepareMock.mockReturnValue(pending.promise);
+  let first!: Promise<void>;
+  act(() => {
+    first = result.current.launch(entry);
+  });
+  rerender({ scope: 'org:3:user:3' });
+  await act(async () => {
+    pending.resolve({ ok: false });
+    await first;
+  });
+  expect(result.current.launchError).toBeNull();
+  expect(result.current.launchingKey).toBeNull();
 });

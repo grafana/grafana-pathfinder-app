@@ -1,4 +1,4 @@
-jest.mock('../../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
+jest.mock('../../../utils/openfeature', () => ({ useBooleanFlag: jest.fn(() => true) }));
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -84,6 +84,7 @@ function makeProps(overrides: Partial<DocsPanelTabBarProps> = {}): DocsPanelTabB
 describe('DocsPanelTabBar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.requireMock('../../../utils/openfeature').useBooleanFlag.mockReturnValue(true);
     localStorage.clear();
     resetEditorChromeStatus();
   });
@@ -94,6 +95,13 @@ describe('DocsPanelTabBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
     expect(props.onSetActiveTab).toHaveBeenCalledWith('browse');
     expect(props.onCloseTab).not.toHaveBeenCalled();
+  });
+
+  it('keeps Recommendations selected and hides Browse when disabled', () => {
+    jest.requireMock('../../../utils/openfeature').useBooleanFlag.mockReturnValue(false);
+    render(<DocsPanelTabBar {...makeProps()} />);
+    expect(screen.queryByRole('button', { name: 'Browse' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Recommendations' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('navigates to the My Learning page when the "My learning" button is clicked', () => {

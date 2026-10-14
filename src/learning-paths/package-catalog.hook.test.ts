@@ -25,6 +25,32 @@ it('retains bundled content when online content is unavailable', async () => {
   expect(result.current.items.some((item) => item.id === 'first-dashboard')).toBe(true);
 });
 
+it.each(['unsupported', 'feature-toggle-disabled', 'obo-unavailable', 'identity-unavailable', 'identity-unverifiable'])(
+  'treats %s organization capability as absent rather than a retryable failure',
+  async (reason) => {
+    jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({ entries: [], available: false, reason });
+    const { result } = renderHook(usePackageCatalog);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.privateUnavailable).toBe(false);
+    expect(result.current.items.some((entry) => entry.source === 'organization')).toBe(false);
+  }
+);
+
+it.each(['request-failed', 'upstream-503', 'signing-keys-unreachable', 'malformed-response', undefined])(
+  'reports %s organization failure and retries with fresh catalog data',
+  async (reason) => {
+    jest.mocked(fetchCustomGuideCatalogue).mockResolvedValueOnce({ entries: [], available: false, reason });
+    const { result } = renderHook(usePackageCatalog);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.privateUnavailable).toBe(true);
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.privateUnavailable).toBe(false);
+    expect(fetchCustomGuideCatalogue).toHaveBeenLastCalledWith('org-a', { refresh: true });
+    expect(fetchOnlinePackageRecommendations).toHaveBeenLastCalledWith({ refresh: true });
+  }
+);
+
 it('never displays an old organization response after the scope changes', async () => {
   let finish: (value: Awaited<ReturnType<typeof fetchCustomGuideCatalogue>>) => void = () => {};
   jest.mocked(fetchCustomGuideCatalogue).mockImplementationOnce(

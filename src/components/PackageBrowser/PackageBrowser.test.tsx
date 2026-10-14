@@ -30,6 +30,7 @@ const mockItems: CatalogPackage[] = [
     packageInfo: { packageId: 'team', repository: 'app-platform' },
   },
 ];
+let mockScope = 'test';
 const mockRetry = jest.fn();
 const mockResolve = jest.fn();
 const originalObserver = global.IntersectionObserver;
@@ -52,7 +53,7 @@ afterAll(() => {
 jest.mock('../../learning-paths', () => ({
   useCatalogProgress: () => new Map(),
   usePackageCatalog: () => ({
-    scope: 'test',
+    scope: mockScope,
     items: mockItems,
     loading: false,
     publicUnavailable: false,
@@ -79,6 +80,7 @@ jest.mock('@grafana/i18n', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockScope = 'test';
   mockItems.splice(2);
   updateCatalogView('test', {
     mode: 'all',
@@ -291,4 +293,33 @@ it('search from Explore searches the whole catalog and opens All content', () =>
   expect(screen.getByText('Team guide')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'All content' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.queryByRole('heading', { name: 'Explore by topic' })).not.toBeInTheDocument();
+});
+
+it('hides launch failures from the previous identity and ignores late scope launches', async () => {
+  jest.mocked(prepareGuideLaunch).mockResolvedValue({ ok: false, error: 'unavailable', errorCode: 'fetch-failed' });
+  const onOpen = jest.fn();
+  const { rerender } = render(<PackageBrowser onOpenGuide={onOpen} />);
+  fireEvent.click(within(screen.getByText('Build a dashboard').closest('article')!).getByText('Start guide'));
+  await waitFor(() => expect(screen.getByText(/Could not open this guide/)).toBeInTheDocument());
+  mockScope = 'test:other-user';
+  updateCatalogView(mockScope, { mode: 'all' });
+  rerender(<PackageBrowser onOpenGuide={onOpen} />);
+  expect(screen.queryByText(/Could not open this guide/)).not.toBeInTheDocument();
+  let finish: (value: unknown) => void = () => {};
+  jest.mocked(prepareGuideLaunch).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve as (value: unknown) => void;
+      })
+  );
+  fireEvent.click(within(screen.getByText('Build a dashboard').closest('article')!).getByText('Start guide'));
+  expect(screen.getByRole('button', { name: 'Opening…' })).toBeDisabled();
+  mockScope = 'test:other-org';
+  updateCatalogView(mockScope, { mode: 'all' });
+  rerender(<PackageBrowser onOpenGuide={onOpen} />);
+  expect(screen.queryByRole('button', { name: 'Opening…' })).not.toBeInTheDocument();
+  await act(async () => {
+    finish({ ok: true, launch: { url: 'bundled:dashboard' } });
+  });
+  expect(onOpen).not.toHaveBeenCalled();
 });

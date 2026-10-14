@@ -144,6 +144,17 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 
 ### Source attribution
 
+Catalog Start and Resume report `open_resource_click` once per accepted click.
+The locations are `package_browser`, `my_learning_discover_more` and
+`my_learning_continue`. Confirmed official content retains its title and URL;
+organization content omits titles, URLs and resource identifiers. Duplicate
+clicks while a launch is pending do not emit another event.
+
+`guide_launch_surface_chosen` reports `surface: sidebar`, the launch source and
+`requires_grafana_ui` for catalog card launches. Public content retains its URL;
+private content omits it. Sidebar selection is intentional for discovery cards,
+including reading-only guides, and does not change the stored surface preference.
+
 `guide_source` is the repository that resolved the guide, not its URL scheme: a `backend-guide:` guide reports `app-platform`, and a CDN package reports whatever its resolver returned. Learning journeys served from the Grafana docs site resolve no repository, so their milestones fall back to `bundled` and the journey to `interactive-tutorials`; a standalone guide whose manifest names no repository also falls back to `interactive-tutorials`. Those fallbacks are used for the durable key, but analytics reports them as `unresolved` unless the journey is a curated path. The guard is per `(kind, guide_source, guide_id)`, so a guide reached through two repositories reports once under each.
 
 ### Delivery

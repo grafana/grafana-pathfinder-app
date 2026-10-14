@@ -9,13 +9,41 @@ import {
   REQUEST_FLOATING_GUIDE_EVENT,
   REQUEST_FULLSCREEN_GUIDE_EVENT,
 } from '../../../lib/event-names';
-import { PLUGIN_BASE_URL, ROUTES } from '../../../constants';
+import {
+  ALLOWED_GRAFANA_DOCS_HOSTNAMES,
+  ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES,
+  PLUGIN_BASE_URL,
+  ROUTES,
+} from '../../../constants';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import { buildFullScreenRouteUrl } from '../../../utils/pathfinder-search-params';
 import pluginJson from '../../../plugin.json';
 import { getPathfinderSurface } from '../../../lib/telemetry/surface';
+import { guideSource } from '../../../lib/guide-diagnostics';
+import bundledRepository from '../../../bundled-interactives/repository.json';
+import { parseUrlSafely } from '../../../security/url-validator';
 import { cancelCatalogActivation } from '../../../global-state/package-browser';
 import type { PreparedGuideLaunch } from './prepare-guide-launch';
+
+function publicLaunchUrl(url: string): string | undefined {
+  if (url.startsWith('bundled:')) {
+    const id = url.slice('bundled:'.length).split('/')[0] ?? '';
+    return Object.hasOwn(bundledRepository, id) ? url : undefined;
+  }
+  const parsed = parseUrlSafely(url);
+  if (
+    !parsed ||
+    parsed.protocol !== 'https:' ||
+    ![...ALLOWED_GRAFANA_DOCS_HOSTNAMES, ...ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES].includes(parsed.hostname)
+  ) {
+    return undefined;
+  }
+  parsed.username = '';
+  parsed.password = '';
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed.toString();
+}
 
 function reportSurfaceChoice(surface: 'sidebar' | 'floating' | 'fullscreen', launch: PreparedGuideLaunch): void {
   reportAppInteraction(UserInteraction.GuideLaunchSurfaceChosen, {
@@ -117,7 +145,16 @@ export function openGuideInSidebar(
     packageInfo: launch.packageInfo,
     source: launch.source,
   });
-  reportAppInteraction(UserInteraction.GuideLaunchSurfaceChosen, { surface: 'sidebar', source: launch.source });
+  const contentUrl =
+    guideSource(launch.url) === 'app-platform' || launch.packageInfo?.repository === 'app-platform'
+      ? undefined
+      : publicLaunchUrl(launch.url);
+  reportAppInteraction(UserInteraction.GuideLaunchSurfaceChosen, {
+    surface: 'sidebar',
+    source: launch.source,
+    ...(launch.requiresGrafanaUi !== undefined ? { requires_grafana_ui: launch.requiresGrafanaUi } : {}),
+    ...(contentUrl ? { content_url: contentUrl } : {}),
+  });
   if (sidebarMounted) {
     panelModeManager.setModeTransient('sidebar');
     document.dispatchEvent(

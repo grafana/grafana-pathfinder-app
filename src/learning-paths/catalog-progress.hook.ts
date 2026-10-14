@@ -4,6 +4,8 @@ import { interactiveCompletionStorage, journeyCompletionStorage, learningProgres
 import { meanOfMemberPercentages } from '../lib/guide-stats/rollup';
 import { sanitizeContentKey } from '../global-state/content-key';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../global-state/progress-events';
+import bundledRepository from '../bundled-interactives/repository.json';
+import type { RepositoryJson } from '../types/package.types';
 
 export interface CatalogProgress {
   percent: number;
@@ -19,6 +21,15 @@ function readGuidePercent(id: string, url: string, record: Record<string, number
       .filter(
         (value): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
       )
+  );
+}
+
+function isBundledGuide(item: CatalogPackage): boolean {
+  return (
+    item.source === 'grafana' &&
+    item.key === `bundled:${item.id}` &&
+    (item.url === `bundled:${item.id}` || item.url === `bundled:${item.id}/content.json`) &&
+    (bundledRepository as RepositoryJson)[item.id]?.type === 'guide'
   );
 }
 
@@ -58,7 +69,9 @@ export function useCatalogProgress(items: CatalogPackage[], scope: string): Map<
           } else {
             const percent =
               item.format === 'guide'
-                ? readGuidePercent(item.id, item.url, guides)
+                ? isBundledGuide(item) && progress.completedGuides.includes(item.id)
+                  ? 100
+                  : readGuidePercent(item.id, item.url, guides)
                 : journeys[sanitizeContentKey(item.url)];
             values.set(item.key, {
               percent:

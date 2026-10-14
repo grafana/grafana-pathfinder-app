@@ -13,8 +13,6 @@ export function getLearningTopicMetadata(topic: string | undefined, kind: 'guide
   switch (normalized) {
     case undefined:
       break;
-    case undefined:
-      break;
     case 'dashboard':
     case 'dashboards':
     case 'visualization':

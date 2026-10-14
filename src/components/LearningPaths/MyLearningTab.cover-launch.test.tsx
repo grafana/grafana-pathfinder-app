@@ -13,7 +13,7 @@ import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
 import { testIds } from '../../constants/testIds';
-import { reportAppInteraction } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
 jest.mock('../docs-panel/utils/open-prepared-guide', () => ({ openGuideInSidebar: jest.fn() }));
 jest.mock('../docs-panel/utils/open-catalog-browser', () => ({ openCatalogBrowser: jest.fn() }));
@@ -129,6 +129,12 @@ describe('MyLearningTab cover-page launch routing', () => {
     await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
     expect(prepareMock).toHaveBeenCalledWith(pathBaseUrl, expect.objectContaining({ title: 'First path' }));
     expect(openGuideInSidebar).toHaveBeenCalledWith(okResult.ok ? okResult.launch : undefined);
+    expect(reportMock).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+      content_title: 'First path',
+      content_url: pathBaseUrl,
+      content_type: 'LearningJourney',
+      interaction_location: 'my_learning_discover_more',
+    });
   });
 
   it('resuming an in-progress path also lands on the cover page', async () => {

@@ -1,4 +1,4 @@
-jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
+jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: jest.fn(() => true) }));
 
 /**
  * Tests for MyLearningTab:
@@ -235,6 +235,7 @@ const okResult: PrepareGuideLaunchResult = {
 } as PrepareGuideLaunchResult;
 
 beforeEach(() => {
+  jest.requireMock('../../utils/openfeature').useBooleanFlag.mockReturnValue(true);
   jest.clearAllMocks();
   // Default: the repartition fixture — one URL-based path in progress, two at
   // the 1%/99% boundaries, one untouched, one complete.
@@ -943,6 +944,13 @@ describe('MyLearningTab launch flow', () => {
     expect(prepareMock).not.toHaveBeenCalled();
   });
 
+  it('hides the Discover Browse entry point when the browser flag is off', () => {
+    jest.requireMock('../../utils/openfeature').useBooleanFlag.mockReturnValue(false);
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Browse all' })).not.toBeInTheDocument();
+    expect(openCatalogBrowser).not.toHaveBeenCalled();
+  });
+
   it('opens Browse all in the sidebar', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
@@ -1009,6 +1017,12 @@ describe('MyLearningTab launch flow', () => {
       'https://cdn.example/pkg-1/content.json',
       expect.objectContaining({ title: 'Package one', packageInfo: undefined, source: 'package_browser' })
     );
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+      content_title: 'Package one',
+      content_url: 'https://cdn.example/pkg-1/content.json',
+      content_type: 'LearningJourney',
+      interaction_location: 'my_learning_discover_more',
+    });
   });
 
   it('threads the inlined manifest through as packageInfo so the item resolves its milestone context', async () => {
