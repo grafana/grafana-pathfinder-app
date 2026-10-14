@@ -5,6 +5,7 @@ import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { testIds } from '../../../constants/testIds';
 import { slugify } from '../../../utils/slug';
+import { createInstanceId } from '../../../lib/create-instance-id';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonInputBlock } from '../../../types/json-guide.types';
 
@@ -54,7 +55,7 @@ export function InputBlockForm({
   const [variableName, setVariableName] = useState(initial?.variableName ?? '');
   const [placeholder, setPlaceholder] = useState(initial?.placeholder ?? '');
   const [checkboxLabel, setCheckboxLabel] = useState(initial?.checkboxLabel ?? '');
-  const [choices, setChoices] = useState(() => initial?.choices ?? [{ id: crypto.randomUUID(), text: '' }]);
+  const [choices, setChoices] = useState(() => initial?.choices ?? [{ id: createInstanceId(), text: '' }]);
   const [defaultValue, setDefaultValue] = useState<string | boolean>(initial?.defaultValue ?? '');
   const [required, setRequired] = useState(initial?.required ?? false);
   const [pattern, setPattern] = useState(initial?.pattern ?? '');
@@ -200,7 +201,7 @@ export function InputBlockForm({
           onChange={(value) => {
             setInputType(value);
             if (value === 'checkbox-group' && !variableName.trim()) {
-              setVariableName(`choices_${crypto.randomUUID().replace(/-/g, '_')}`);
+              setVariableName(`choices_${createInstanceId().replace(/-/g, '_')}`);
             }
           }}
         />
@@ -303,7 +304,7 @@ export function InputBlockForm({
               type="button"
               variant="secondary"
               disabled={choices.length >= 20}
-              onClick={() => setChoices((previous) => [...previous, { id: crypto.randomUUID(), text: '' }])}
+              onClick={() => setChoices((previous) => [...previous, { id: createInstanceId(), text: '' }])}
             >
               Add option
             </Button>

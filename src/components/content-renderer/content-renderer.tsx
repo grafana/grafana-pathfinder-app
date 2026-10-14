@@ -669,7 +669,7 @@ function ContentWithVariables({
 }: ContentWithVariablesProps) {
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
   // This avoids breaking JSON structure when user values contain special characters
-  const { responses } = useGuideResponses();
+  const { responses, isLoading: responsesLoading } = useGuideResponses();
 
   // Intercept clicks on interactive-learning links inside content.
   // Instead of navigating away, open the guide as a new tab in the sidebar.
@@ -753,6 +753,7 @@ function ContentWithVariables({
         baseUrl={baseUrl}
         onReady={onContentReady}
         responses={responses}
+        responsesLoading={responsesLoading}
         fullScreenFallbackLocation={fullScreenFallbackLocation}
       />
       {afterContent}
@@ -778,6 +779,7 @@ interface ContentProcessorProps {
   onReady?: () => void;
   /** User responses for variable substitution at render time */
   responses: Record<string, unknown>;
+  responsesLoading: boolean;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
 }
@@ -787,6 +789,7 @@ function ContentProcessor({
   countingSource,
   baseUrl,
   responses,
+  responsesLoading,
   fullScreenFallbackLocation,
   onReady,
 }: ContentProcessorProps) {
@@ -938,13 +941,19 @@ function ContentProcessor({
     refreshGuidePercentageOnLoad(contentKey);
   }, [rawGuide, countingGuide, baseUrl, guideIndexEvictionRevision]);
 
+  React.useLayoutEffect(() => {
+    if (responsesLoading) {
+      setGuideChoiceResponses(resolveGuideContentKey(baseUrl), undefined);
+    }
+  }, [responsesLoading, baseUrl]);
+
   useEffect(() => {
     const key = resolveGuideContentKey(baseUrl);
-    if (getGuideIndex(key)?.choiceModel) {
+    if (!responsesLoading && getGuideIndex(key)?.choiceModel) {
       setGuideChoiceResponses(key, responses);
       refreshAndNotifyGuideProgress(key);
     }
-  }, [responses, baseUrl, rawGuide, guideIndexEvictionRevision]);
+  }, [responses, responsesLoading, baseUrl, rawGuide, guideIndexEvictionRevision]);
 
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.

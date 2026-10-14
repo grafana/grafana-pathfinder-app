@@ -5,7 +5,7 @@ import { testIds } from '../../constants/testIds';
 import { UserInteraction } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import type { JsonBlock } from '../../types/json-guide.types';
-import { createChoiceProgressModel, CHOICE_COMPLETION_VARIABLE } from '../../lib/guide-stats/choice-progress';
+import { createChoiceProgressModel } from '../../lib/guide-stats/choice-progress';
 import { computeGuideBlockIndex } from '../../lib/guide-stats';
 import { evictAllGuideIndexes, publishGuideIndex } from '../../global-state/active-guide-index';
 import { MarkCompleteFooter } from './MarkCompleteFooter';
@@ -29,13 +29,14 @@ jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: (...args: unknown[]) => reportAppInteraction(...args),
 }));
 
-const markStorage = { get: jest.fn(), set: jest.fn(), clear: jest.fn() };
+const markStorage = { get: jest.fn(), set: jest.fn(), clear: jest.fn(), getChoiceCompletionKeys: jest.fn(() => []) };
 const setCompletionPercentage = jest.fn();
 jest.mock('../../lib/user-storage', () => ({
   guideCompletionMarkStorage: {
     get: (...a: unknown[]) => markStorage.get(...a),
     set: (...a: unknown[]) => markStorage.set(...a),
     clear: (...a: unknown[]) => markStorage.clear(...a),
+    getChoiceCompletionKeys: () => markStorage.getChoiceCompletionKeys(),
   },
   interactiveCompletionStorage: { set: (...a: unknown[]) => setCompletionPercentage(...a) },
 }));
@@ -132,6 +133,7 @@ describe('MarkCompleteFooter', () => {
         index,
         denominatorSource: 'live-pre-inlining',
         choiceModel: createChoiceProgressModel(blocks, index),
+        responses: {},
       });
       mockChoiceResponses = { responses: {}, getResponse: () => undefined, setResponse: jest.fn(), isLoading: false };
     });
@@ -150,9 +152,8 @@ describe('MarkCompleteFooter', () => {
       mockChoiceResponses!.responses = { signals: 'logs' };
       render(<MarkCompleteFooter context="guide" />);
       await clickWhenReady();
-      expect(mockChoiceResponses!.setResponse).toHaveBeenCalledWith(CHOICE_COMPLETION_VARIABLE, expect.any(String));
-      const saved = JSON.parse(mockChoiceResponses!.setResponse.mock.calls[0]![1]);
-      expect(saved).toContain('logs-step');
+      expect(markStorage.set).toHaveBeenCalledWith('guide-key', true, expect.arrayContaining(['logs-step']));
+      expect(mockChoiceResponses!.setResponse).not.toHaveBeenCalled();
       markStorage.get.mockResolvedValue(true);
       percentage = 100;
       await act(async () => notifyProgress?.());

@@ -40,8 +40,14 @@ import { StorageKeys, buildVersionedSectionStorageKey, parseVersionedStorageKey 
 import { logger } from '../lib/logging';
 import { furthestEvidencedPosition, guideProgress, type CompletionEvidence } from '../lib/guide-stats';
 
-import { choiceGuideProgress } from '../lib/guide-stats/choice-progress';
-import { evictAllGuideIndexes, evictGuideIndex, getGuideIndex, getHiddenGuideSections } from './active-guide-index';
+import { choiceGuideProgress, CHOICE_COMPLETION_VARIABLE } from '../lib/guide-stats/choice-progress';
+import {
+  evictAllGuideIndexes,
+  evictGuideIndex,
+  getGuideIndex,
+  getHiddenGuideSections,
+  isGuideChoiceProgressReady,
+} from './active-guide-index';
 import { getContentKey } from './content-key';
 import { dispatchProgress, type ProgressOrigin, type ProgressReason } from './progress-events';
 
@@ -349,11 +355,21 @@ interface GuidePercentage {
 function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
   const active = getGuideIndex(contentKey);
   if (active?.choiceModel) {
+    if (!isGuideChoiceProgressReady(contentKey)) {
+      return undefined;
+    }
     const progress = choiceGuideProgress(
       active.choiceModel,
       active.index,
       collectEvidence(contentKey),
-      active.responses ?? {},
+      {
+        ...active.responses,
+        [CHOICE_COMPLETION_VARIABLE]: JSON.stringify(
+          isPreviewContentKey(contentKey)
+            ? (active.previewChoiceCompletionKeys ?? [])
+            : guideCompletionMarkStorage.getChoiceCompletionKeys(contentKey)
+        ),
+      },
       getHiddenGuideSections(contentKey)
     );
     return { percent: progress.percent, complete: progress.complete, evidenced: progress.position > 0 };

@@ -8,6 +8,7 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useStyles2 } from '@grafana/ui';
+import { createInstanceId } from '../../lib/create-instance-id';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { useRecordingPersistence, type PersistedRecordingState } from './hooks/useRecordingPersistence';
@@ -459,10 +460,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
 
       let instanceId = readNestedInstanceId(nested);
       if (!instanceId) {
-        instanceId =
-          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : `pf-nested-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+        instanceId = createInstanceId();
         editor.updateNestedBlock(sectionId, nestedIndex, assignNestedInstanceId(nested, instanceId), {
           markDirty: false,
           notifyChange: false,

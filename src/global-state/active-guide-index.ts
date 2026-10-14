@@ -31,6 +31,7 @@
  */
 
 import type { ChoiceProgressModel } from '../lib/guide-stats/choice-progress';
+import { evaluateChoiceConditions } from '../lib/choice-response';
 import type { GuideBlockIndex } from '../lib/guide-stats';
 
 /** Where the frozen denominator came from. Reported in telemetry, never branched on by UI. */
@@ -42,12 +43,18 @@ export interface ActiveGuideIndex {
   denominatorSource: ActiveGuideIndexDenominatorSource;
   choiceModel?: ChoiceProgressModel;
   responses?: Readonly<Record<string, unknown>>;
+  /** Preview-only completion evidence. Eviction resets it without a storage write. */
+  previewChoiceCompletionKeys?: string[];
 }
 
 const activeIndexes = new Map<string, ActiveGuideIndex>();
-const sectionVisibility = new Map<string, Map<string, boolean>>();
+const sectionVisibility = new Map<string, Map<string, boolean | undefined>>();
 
-export function setGuideSectionVisibility(contentKey: string, sectionId: string, visible: boolean): boolean {
+export function setGuideSectionVisibility(
+  contentKey: string,
+  sectionId: string,
+  visible: boolean | undefined
+): boolean {
   let sections = sectionVisibility.get(contentKey);
   if (!sections) {
     sections = new Map();
@@ -73,11 +80,34 @@ export function getHiddenGuideSections(contentKey: string): ReadonlySet<string> 
   return new Set(
     model?.positions
       .flatMap((item) => item.visibility)
-      .filter((id) => sectionVisibility.get(contentKey)?.get(id) !== true)
+      .filter((id) => sectionVisibility.get(contentKey)?.get(id) === false)
   );
 }
 
-export function setGuideChoiceResponses(contentKey: string, responses: Readonly<Record<string, unknown>>): void {
+/** Unknown responses or environment gates cannot exclude unfinished content. */
+export function isGuideChoiceProgressReady(contentKey: string): boolean {
+  const active = activeIndexes.get(contentKey);
+  if (!active?.choiceModel) {
+    return true;
+  }
+  if (active.responses === undefined) {
+    return false;
+  }
+  return active.choiceModel.positions.every((item) => {
+    const gates = item.visibility.map(
+      (id) =>
+        evaluateChoiceConditions(active.choiceModel!.sectionConditions[id], active.responses!) ??
+        sectionVisibility.get(contentKey)?.get(id)
+    );
+    // Descendants of a settled hidden section need not mount or report.
+    return gates.includes(false) || gates.every((visible) => visible !== undefined);
+  });
+}
+
+export function setGuideChoiceResponses(
+  contentKey: string,
+  responses: Readonly<Record<string, unknown>> | undefined
+): void {
   const active = activeIndexes.get(contentKey);
   if (active) {
     active.responses = responses;

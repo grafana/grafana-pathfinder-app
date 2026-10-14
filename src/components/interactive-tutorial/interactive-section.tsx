@@ -257,18 +257,25 @@ export function InteractiveSection({
   const focusReturnRoot = useRef<Element | null>(null);
   const hadContentFocus = useRef(false);
   const guideResponses = useGuideResponsesOptional();
-  const visibilityPassed =
-    evaluateChoiceConditions(requirements, guideResponses?.responses ?? {}) ?? sectionRequirementsStatus.passed;
+  const choiceVisibility = evaluateChoiceConditions(requirements, guideResponses?.responses ?? {});
+  const visibilityPassed = choiceVisibility ?? sectionRequirementsStatus.passed;
+  const progressVisibility =
+    guideResponses?.isLoading || (choiceVisibility === undefined && sectionRequirementsStatus.checking)
+      ? undefined
+      : visibilityPassed;
   useEffect(() => {
     if (whenRequirementsUnmet === 'disable') {
       return;
     }
     const contentKey = resolveOwnerContentKey?.() ?? getContentKey();
-    if (setGuideSectionVisibility(contentKey, sectionId, visibilityPassed)) {
+    if (setGuideSectionVisibility(contentKey, sectionId, progressVisibility)) {
       refreshAndNotifyGuideProgress(contentKey);
     }
+  }, [resolveOwnerContentKey, sectionId, whenRequirementsUnmet, progressVisibility]);
+  useEffect(() => {
+    const contentKey = resolveOwnerContentKey?.() ?? getContentKey();
     return () => forgetGuideSectionVisibility(contentKey, sectionId);
-  }, [resolveOwnerContentKey, sectionId, whenRequirementsUnmet, visibilityPassed]);
+  }, [resolveOwnerContentKey, sectionId]);
 
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {

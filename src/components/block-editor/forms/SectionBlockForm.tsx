@@ -169,8 +169,9 @@ export function SectionBlockForm({
         testId="section-block-requirements-lint"
       />
 
-      <Field label="When requirements are not met">
+      <Field label="When requirements are not met" htmlFor="section-visibility-mode">
         <Select<NonNullable<JsonSectionBlock['whenRequirementsUnmet']>>
+          inputId="section-visibility-mode"
           aria-label="When requirements are not met"
           value={whenRequirementsUnmet}
           options={[

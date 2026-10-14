@@ -1547,9 +1547,9 @@ export const sectionDoneStorage = {
  * content key alone: the mark evidences the whole guide, so unlike
  * `sectionAcknowledgementStorage` there is no section to qualify it with.
  *
- * Two-state — `true` or absent (`null`) — for the same reason that
- * namespace is: reset paths call `.clear()` rather than writing a `false`
- * sentinel, so absence is the only "not marked" representation.
+ * Ordinary guides store `true`. Choice guides store the marked block keys
+ * in the same entry. All reset paths therefore remove both the mark and its
+ * path evidence, without removing the reader's saved input selections.
  */
 function guideCompletionMarkKey(contentKey: string): string {
   return buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, contentKey);
@@ -1560,8 +1560,10 @@ export const guideCompletionMarkStorage = {
   async get(contentKey: string): Promise<true | null> {
     try {
       const storage = createUserStorage();
-      const marked = await storage.getItem<boolean>(guideCompletionMarkKey(contentKey));
-      return marked === true ? true : null;
+      const marked = await storage.getItem<true | { choiceCompletionKeys: string[] }>(
+        guideCompletionMarkKey(contentKey)
+      );
+      return marked === true || (marked && Array.isArray(marked.choiceCompletionKeys)) ? true : null;
     } catch {
       return null;
     }
@@ -1576,17 +1578,33 @@ export const guideCompletionMarkStorage = {
    */
   isMarked(contentKey: string): boolean {
     try {
-      return localStorage.getItem(guideCompletionMarkKey(contentKey)) === 'true';
+      const marked = JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
+      return marked === true || Array.isArray(marked?.choiceCompletionKeys);
     } catch {
       return false;
     }
   },
 
+  /** Read only content-keyed completion evidence, never saved input responses. */
+  getChoiceCompletionKeys(contentKey: string): string[] {
+    try {
+      const marked = JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
+      return Array.isArray(marked?.choiceCompletionKeys)
+        ? marked.choiceCompletionKeys.filter((key: unknown): key is string => typeof key === 'string')
+        : [];
+    } catch {
+      return [];
+    }
+  },
+
   /** Only `true` is accepted; use `.clear()` to remove an entry. */
-  async set(contentKey: string, isMarked: true): Promise<void> {
+  async set(contentKey: string, isMarked: true, choiceCompletionKeys?: string[]): Promise<void> {
     try {
       const storage = createUserStorage();
-      await storage.setItem(guideCompletionMarkKey(contentKey), isMarked);
+      await storage.setItem(
+        guideCompletionMarkKey(contentKey),
+        choiceCompletionKeys === undefined ? isMarked : { choiceCompletionKeys }
+      );
     } catch (error) {
       logger.warn('Failed to save guide completion mark', { error });
     }
