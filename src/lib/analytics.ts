@@ -56,6 +56,7 @@ export enum UserInteraction {
   JumpIntoMilestoneClick = 'jump_into_milestone_click',
   StartLearningJourneyClick = 'start_learning_journey_click',
   OpenResourceClick = 'open_resource_click',
+  CompletionPanelViewed = 'completion_panel_viewed',
   MilestoneArrowInteractionClick = 'milestone_arrow_interaction_click',
 
   // Media Interactions

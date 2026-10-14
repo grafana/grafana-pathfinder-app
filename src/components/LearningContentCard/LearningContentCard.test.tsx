@@ -155,3 +155,19 @@ it('labels known topics and keeps the leading icon decorative without inventing 
   expect(screen.queryByText('Other topics')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Start guide' })).toBeInTheDocument();
 });
+
+it('uses contextual featured copy without changing the default starter wording', () => {
+  const { rerender } = render(
+    <LearningContentCard
+      title="Next dashboard"
+      kind="guide"
+      variant="featured"
+      eyebrow="More on dashboards"
+      onLaunch={jest.fn()}
+    />
+  );
+  expect(screen.getByText('More on dashboards')).toBeInTheDocument();
+  expect(screen.queryByText('A good place to start')).not.toBeInTheDocument();
+  rerender(<LearningContentCard title="Starter path" kind="path" variant="featured" onLaunch={jest.fn()} />);
+  expect(screen.getByText('A good place to start')).toBeInTheDocument();
+});

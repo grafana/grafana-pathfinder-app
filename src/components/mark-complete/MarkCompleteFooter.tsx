@@ -70,6 +70,7 @@ export interface MarkCompleteFooterProps {
   onMarkComplete?: () => void;
   /** Advance to the next milestone. Absent when there is nowhere to continue to. */
   onContinue?: () => void;
+  renderCompleted?: (celebrating: boolean) => React.ReactNode;
 }
 
 const CELEBRATION_MS = 1400;
@@ -89,6 +90,7 @@ export function MarkCompleteFooter({
   totalMilestones,
   onMarkComplete,
   onContinue,
+  renderCompleted,
 }: MarkCompleteFooterProps) {
   const styles = useStyles2(getStyles);
   // Carries the resolved key alongside the mark and is tagged with the guide
@@ -115,6 +117,7 @@ export function MarkCompleteFooter({
     ),
     useCallback(() => (contentKey === undefined ? 0 : peekGuidePercentage(contentKey)), [contentKey])
   );
+  const completed = marked || Boolean(renderCompleted && hydrated && percentage === 100);
 
   // Both producers of the content key publish it from a layout effect — the
   // panel's active tab URL and this renderer's own override — so resolving it
@@ -189,7 +192,7 @@ export function MarkCompleteFooter({
   });
 
   const handleClick = useCallback(() => {
-    if (contentKey === undefined || marked) {
+    if (contentKey === undefined || completed) {
       return;
     }
     // The button the reader just activated is about to unmount, and React
@@ -236,19 +239,23 @@ export function MarkCompleteFooter({
     // intent, and holding them for an animation they asked not to see is the
     // same delay with none of the reward.
     if (prefersReducedMotion()) {
-      onContinue?.();
+      if (!renderCompleted) {
+        onContinue?.();
+      }
       return;
     }
 
     setCelebrating(true);
     celebrationTimer.current = setTimeout(() => {
       setCelebrating(false);
-      onContinue?.();
+      if (!renderCompleted) {
+        onContinue?.();
+      }
     }, CELEBRATION_MS);
   }, [
     contentKey,
     completionIdentity,
-    marked,
+    completed,
     context,
     percentage,
     contentUrl,
@@ -256,41 +263,52 @@ export function MarkCompleteFooter({
     totalMilestones,
     onMarkComplete,
     onContinue,
+    renderCompleted,
   ]);
 
   const displayPercentage = marked ? 100 : percentage;
   const label =
     context === 'milestone' && onContinue
-      ? t('markComplete.milestoneButton', 'Mark complete and continue')
+      ? renderCompleted
+        ? t('markComplete.completeModule', 'Complete module')
+        : t('markComplete.milestoneButton', 'Mark complete and continue')
       : t('markComplete.guideButton', 'Mark complete');
 
   return (
     <div
-      className={styles.footer}
+      className={renderCompleted && completed ? styles.panelFooter : styles.footer}
       data-testid={testIds.markComplete.footer}
       // Testing contract: `pending` until the stored mark has been read, while
       // the percentage below still reads 0 for every guide.
       data-test-progress-state={hydrated ? 'ready' : 'pending'}
     >
-      <div className={styles.progress}>
-        <div className={styles.track}>
-          <div className={styles.fill} style={{ width: `${displayPercentage}%` }} />
+      {!(renderCompleted && completed) && (
+        <div className={styles.progress}>
+          <div className={styles.track}>
+            <div className={styles.fill} style={{ width: `${displayPercentage}%` }} />
+          </div>
+          <span className={styles.percentage} data-testid={testIds.markComplete.percentage}>
+            {t('markComplete.percentComplete', '{{percent}}% complete', { percent: displayPercentage })}
+          </span>
         </div>
-        <span className={styles.percentage} data-testid={testIds.markComplete.percentage}>
-          {t('markComplete.percentComplete', '{{percent}}% complete', { percent: displayPercentage })}
-        </span>
-      </div>
+      )}
 
-      {marked ? (
+      {completed ? (
         <div
           ref={completedRef}
-          role="status"
+          role={renderCompleted ? undefined : 'status'}
           tabIndex={-1}
-          className={celebrating ? styles.celebration : styles.completed}
+          className={renderCompleted ? styles.panelContent : celebrating ? styles.celebration : styles.completed}
           data-testid={testIds.markComplete.completed}
         >
-          <Icon name="check-circle" />
-          <span>{t('markComplete.completed', 'Completed')}</span>
+          {renderCompleted ? (
+            renderCompleted(celebrating)
+          ) : (
+            <>
+              <Icon name="check-circle" />
+              <span>{t('markComplete.completed', 'Completed')}</span>
+            </>
+          )}
         </div>
       ) : (
         <Button
@@ -324,6 +342,12 @@ function getStyles(theme: GrafanaTheme2) {
   } as const;
 
   return {
+    panelFooter: css({ width: '100%', minWidth: 0 }),
+    panelContent: css({
+      width: '100%',
+      minWidth: 0,
+      '&:focus-visible': { outline: `2px solid ${theme.colors.primary.border}`, outlineOffset: theme.spacing(0.5) },
+    }),
     footer: css({
       display: 'flex',
       alignItems: 'center',

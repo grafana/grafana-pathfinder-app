@@ -9,6 +9,7 @@ import { getLearningContentCardStyles } from './learning-content-card.styles';
 export interface LearningContentCardProps {
   title: string;
   variant?: 'compact' | 'featured';
+  eyebrow?: string;
   topic?: string;
   kind: 'guide' | 'path' | 'docs';
   description?: string;
@@ -36,6 +37,7 @@ export interface LearningContentCardProps {
 export function LearningContentCard({
   title,
   variant = 'compact',
+  eyebrow,
   topic,
   kind,
   description,
@@ -160,9 +162,11 @@ export function LearningContentCard({
       <div className={styles.content}>
         {featured ? (
           <div className={styles.featuredHeader}>
-            <LearningTopicIcon topic="getting-started" size="lg" />
+            <LearningTopicIcon topic={topic ?? 'getting-started'} kind={kind} size="lg" />
             <div className={styles.featuredHeading}>
-              <div className={styles.eyebrow}>{t('learningCard.starterEyebrow', 'A good place to start')}</div>
+              <div className={styles.eyebrow}>
+                {eyebrow ?? t('learningCard.starterEyebrow', 'A good place to start')}
+              </div>
               <h3 data-testid={titleTestId}>{title}</h3>
             </div>
           </div>

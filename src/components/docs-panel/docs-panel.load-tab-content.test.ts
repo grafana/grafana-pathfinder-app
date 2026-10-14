@@ -298,6 +298,30 @@ describe('CombinedLearningJourneyPanel — milestone toolbar navigation threads 
     jest.clearAllMocks();
   });
 
+  it('keeps next-module navigation pending until the loader settles', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const content = { url: 'bundled:one', metadata: {} };
+    jest
+      .spyOn(panel, 'getActiveTab')
+      .mockReturnValue({ id: 'guide', content } as ReturnType<typeof panel.getActiveTab>);
+    jest.requireMock('../../docs-retrieval').getNextMilestoneUrlFromContent.mockReturnValue('bundled:two');
+    let finish!: () => void;
+    jest.spyOn(panel, 'loadTab').mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      })
+    );
+    let settled = false;
+    const navigation = panel.navigateToNextMilestone().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish();
+    await navigation;
+    expect(settled).toBe(true);
+  });
+
   it('navigateToNextMilestone passes the next milestone id as explicitGuideId', async () => {
     const panel = new CombinedLearningJourneyPanel();
     const tab = { ...makeTab('journey-tab'), content: { url: 'x', metadata: {} } };

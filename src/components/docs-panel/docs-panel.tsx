@@ -762,14 +762,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         activeTab.activeTrackMilestones
       );
       if (nextUrl) {
-        // Unified dispatcher: package-backed journeys need the docs
-        // loader so the next milestone re-resolves the manifest.
-        // explicitGuideId: the toolbar arrows are a click just like
-        // GuideList's row or the cover CTA — the target milestone's own id
-        // is already known here, so this load classifies by direct lookup
-        // too, not the URL-comparison fallback (undefined only when the
-        // target is a locked placeholder with no real id).
-        this.loadTab(activeTab.id, nextUrl, {
+        // Resolve the target by manifest ID, including selected-track members.
+        await this.loadTab(activeTab.id, nextUrl, {
           explicitGuideId: getNextMilestoneIdFromContent(
             activeTab.content,
             activeTab.activeTrackId,

@@ -22,6 +22,7 @@ import { getGuideReaderStyles } from './guide-reader.styles';
 import { OutlineRail } from './OutlineRail';
 import { beginGuideLoad, finishGuideLoad, markGuideLoadStage } from '../../lib/telemetry/guide-load';
 import { diagnoseGuideError } from '../../lib/guide-diagnostics';
+import { useBooleanFlag } from '../../utils/openfeature';
 
 interface GuideReaderOverlayProps {
   doc: string;
@@ -99,6 +100,7 @@ function GuideReaderInner({
   mode: InteractiveMode;
   controllerPairing: ControllerPairingLaunch | null;
 }) {
+  const completionPanelEnabled = useBooleanFlag('pathfinder.completion-panel', true);
   const styles = useStyles2(getGuideReaderStyles);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
@@ -211,6 +213,7 @@ function GuideReaderInner({
           className={contentClassName}
           onContentReady={handleContentReady}
           completion={{ kind: 'tracked', input: surfaceCompletionInput }}
+          completionPanelEnabled={completionPanelEnabled}
         />
       </div>
     ) : null;

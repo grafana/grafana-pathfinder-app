@@ -38,9 +38,13 @@ argument.
 | Level     | Progress is                                                    | Reaches 100% by                                                    |
 | --------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
 | Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**    |
-| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Mark complete and continue**                       |
+| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Complete module** or the legacy combined control   |
 | Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9)                               |
 | Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be) |
+
+With `pathfinder.completion-panel` enabled, completion and continuation are separate actions. The shared reader records completion immediately and presents a named next module or existing catalog content. It advances only after the reader chooses Continue. Disabling the flag restores the existing footer and its combined control without changing completion evidence or stored progress.
+
+The panel uses established completed state, not scroll position. Path completion follows the existing best-of-sequences calculation in decision 4, including selected tracks and exclusion of locked entries. Reaching the last module alone does not establish completion. Related suggestions do not create enrollment or progress, and author previews retain the existing footer.
 
 **A vocabulary warning before you read further.** "Journey" in decision 5 means a
 level _above_ paths — a path of paths. That is not what "journey" means in the
