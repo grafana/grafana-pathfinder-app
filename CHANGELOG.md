@@ -1,5 +1,41 @@
 # Changelog
 
+## 2.22.1
+
+### Fixed
+
+- **Repeated startup settings reads**: Reuse confirmed absent settings for up to ten minutes per browser tab, refresh on opening learning or configuration, and invalidate the cache when settings are saved. Diagnosed upstream timeouts no longer trigger settings-read retries. (#2134)
+
+- **Image-renderer startup**: Skip interactive learning initialization and settings reads in authenticated image-renderer sessions. (#2057)
+
+- **Restored guide progress**: Reopening a guide with completed sections no longer creates a new progress attempt or queues a partial completion write solely from restoring saved progress. (#2116)
+
+- **Website inputs**: Accept pasted website addresses with paths, queries, bare hostnames, or surrounding whitespace, preview normalized values, and derive an HTTP origin from the saved URL when required. (#2119)
+
+- **Clipboard fallback**: Copy actions handle unavailable or failing clipboard APIs and provide a fallback or visible failure feedback. (#2081)
+
+- **Editor guide lists**: Read App Platform guide lists through the plugin backend proxy. (#2093)
+
+- **Learning streaks across daylight saving changes**: Calculate yesterday in UTC so clock changes do not incorrectly reset or preserve a streak. (#2140)
+
+- **Settings retry diagnostics**: Log retried settings reads separately so retries do not inflate the initial-failure alert count. (#2058)
+
+### Security
+
+- **Go networking update**: Update `golang.org/x/net` to v0.60.0 with HTTP/2 security fixes. (#2120)
+
+### Chore
+
+- **Smaller startup bundle**: Defer translations and learning views until needed, keep initial JavaScript below 100 KB, and provide recovery when feature loading fails. (#2082)
+
+- **Consistent completion recording**: Centralize renderer completion wiring and strengthen coverage for completion origins and recording boundaries. (#2118, #2124)
+
+- **Guide statistics version**: Mark the updated counting rules as version 2 and align regression fixtures. (#1978, #2132)
+
+- **Automated-test analytics isolation**: Guard the shared fixture imports that suppress production analytics during browser tests. (#2133)
+
+- **Developer context cleanup**: Correct stale documentation paths and remove unused constants exports. (#2125)
+
 ## 2.22.0
 
 ### Fixed
