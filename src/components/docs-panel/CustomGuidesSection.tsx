@@ -142,8 +142,8 @@ function CustomGuideCard({
       effort={learningEffort(guide.manifest as unknown as Record<string, unknown>, path ? 'path' : 'guide')}
       badges={assignment && <AssignmentBadges assignment={assignment} />}
       onLaunch={open}
-      disclosureLabel={path && ids.length ? t('learningCard.showModules', 'Show modules') : undefined}
-      collapseLabel={path && ids.length ? t('learningCard.hideModules', 'Hide modules') : undefined}
+      disclosureLabel={path && ids.length ? t('learningCard.showModules', 'Show milestones') : undefined}
+      collapseLabel={path && ids.length ? t('learningCard.hideModules', 'Hide milestones') : undefined}
       expanded={expanded}
       onToggleDetails={() => setExpanded((value) => !value)}
       testId={path ? testIds.contextPanel.customGuidePathCard(index) : testIds.contextPanel.customGuideItem(index)}
@@ -156,10 +156,10 @@ function CustomGuideCard({
       details={
         path && ids.length ? (
           <div data-testid={testIds.contextPanel.customGuidePathMembers(index)}>
-            {!members && <p role="status">{t('contextPanel.loadingMembers', 'Loading modules…')}</p>}
+            {!members && <p role="status">{t('contextPanel.loadingMembers', 'Loading milestones…')}</p>}
             {response?.key === requestKey && response.error ? (
               <div role="alert">
-                <p>{t('learningCard.membersError', 'Could not load module details.')}</p>
+                <p>{t('learningCard.membersError', 'Could not load milestone details.')}</p>
                 <button className={styles.summaryButton} onClick={() => setRevision((value) => value + 1)}>
                   {t('learningCard.retry', 'Retry')}
                 </button>

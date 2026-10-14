@@ -156,7 +156,7 @@ it('expands path details in the card without preparing content or moving scroll 
   const container = screen.getByTestId('package-browser');
   container.scrollTop = 420;
   fireEvent.scroll(container);
-  const toggle = screen.getByRole('button', { name: 'Show modules' });
+  const toggle = screen.getByRole('button', { name: 'Show milestones' });
   toggle.focus();
   fireEvent.click(toggle);
   const details = await screen.findByRole('region', { name: 'Details for Dashboard path' });
@@ -168,7 +168,7 @@ it('expands path details in the card without preparing content or moving scroll 
   unmount();
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
   expect(screen.getByLabelText('Search guides and paths')).toHaveValue('Dashboard path');
-  expect(screen.getByRole('button', { name: 'Hide modules' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'Hide milestones' })).toHaveAttribute('aria-expanded', 'true');
 });
 
 it('refuses stale unpublished private content before preparing or launching it', async () => {

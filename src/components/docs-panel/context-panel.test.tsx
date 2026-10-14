@@ -418,7 +418,7 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'Show modules' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show milestones' })).toBeInTheDocument();
     expect(screen.getByText('Learn alerting basics.')).toBeInTheDocument();
   });
 

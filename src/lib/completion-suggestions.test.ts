@@ -43,7 +43,7 @@ describe('selectCompletionSuggestions', () => {
     expect(selected.map((item) => item.id)).toEqual(['alternative', 'topic']);
   });
 
-  it('fills partially broken authored relationships with suggestions and credible topic matches', () => {
+  it('uses valid authored suggestions without padding the shortlist with inferred filler', () => {
     const items = [guide('current'), guide('alpha'), guide('z-authored', { category: 'metrics' })];
     expect(
       selectCompletionSuggestions(items, new Map(), {
@@ -51,7 +51,7 @@ describe('selectCompletionSuggestions', () => {
         recommends: ['missing'],
         suggests: ['z-authored'],
       }).map((item) => item.id)
-    ).toEqual(['z-authored', 'alpha']);
+    ).toEqual(['z-authored']);
   });
 
   it('excludes completed authored candidates while retaining partially completed OR alternatives', () => {
@@ -117,7 +117,6 @@ describe('selectCompletionSuggestions', () => {
     ];
     expect(selectCompletionSuggestions(items, new Map(), { ...context, platform }).map((item) => item.id)).toEqual([
       'a-compatible',
-      'b-unspecified',
     ]);
   });
 
@@ -141,7 +140,7 @@ describe('selectCompletionSuggestions', () => {
     ];
     expect(
       selectCompletionSuggestions(items, new Map(), { ...context, platform: 'oss' }).map((item) => item.id)
-    ).toEqual(['a-compatible', 'b-unknown']);
+    ).toEqual(['a-compatible']);
     expect(
       selectCompletionSuggestions([items[0]!, items[3]!, items[4]!], new Map(), { ...context, platform: 'oss' }).map(
         (item) => item.id
@@ -173,11 +172,10 @@ describe('selectCompletionSuggestions', () => {
     });
     const items = [guide('alpha'), guide('next', { category: 'metrics' }), path, guide('current')];
     const progress = new Map([['curated:path', { percent: 50, nextId: 'next' }]]);
-    expect(selectCompletionSuggestions(items, progress, context).map((item) => item.id)).toEqual(['next', 'alpha']);
-    expect(selectCompletionSuggestions(items, new Map(), context).map((item) => item.id)).toEqual(['next', 'alpha']);
+    expect(selectCompletionSuggestions(items, progress, context).map((item) => item.id)).toEqual(['next']);
+    expect(selectCompletionSuggestions(items, new Map(), context).map((item) => item.id)).toEqual(['next']);
     expect(selectCompletionSuggestions(items, progress, { ...context, inPath: true }).map((item) => item.id)).toEqual([
       'alpha',
-      'path',
     ]);
   });
 
@@ -260,7 +258,7 @@ describe('selectCompletionSuggestions', () => {
     }
   });
 
-  it('returns at most two stable suggestions, deduplicating ids and normalized URLs', () => {
+  it('returns one stable fallback instead of filling a second slot', () => {
     const items = [
       guide('z'),
       guide('a'),
@@ -269,10 +267,39 @@ describe('selectCompletionSuggestions', () => {
       guide('a-alias', { url: 'bundled:a' }),
       guide('current'),
     ];
-    expect(selectCompletionSuggestions(items, new Map(), context).map((item) => item.id)).toEqual(['a', 'b']);
-    expect(selectCompletionSuggestions([...items].reverse(), new Map(), context).map((item) => item.id)).toEqual([
-      'a',
-      'b',
-    ]);
+    expect(selectCompletionSuggestions(items, new Map(), context).map((item) => item.id)).toEqual(['a']);
+    expect(selectCompletionSuggestions([...items].reverse(), new Map(), context).map((item) => item.id)).toEqual(['a']);
   });
+});
+
+it('offers a broad introductory path after onboarding before a specialist curated member', () => {
+  const welcome = guide('welcome', { category: 'getting-started' });
+  const specialist = guide('prometheus', { category: 'metrics' });
+  const broadPath = guide('concepts', { format: 'path', category: 'getting-started' });
+  const containingPath = guide('getting-started', {
+    format: 'path',
+    category: 'metrics',
+    memberIds: ['welcome', 'prometheus'],
+    curatedPath: {
+      id: 'getting-started',
+      title: 'Getting started',
+      description: '',
+      guides: ['welcome', 'prometheus'],
+      badgeId: 'badge',
+    },
+  });
+  const candidates = [welcome, specialist, broadPath, containingPath];
+  const completion = { ...context, url: welcome.url, id: welcome.id };
+  expect(selectCompletionSuggestions(candidates, new Map(), completion)).toEqual([broadPath]);
+  expect(selectCompletionSuggestions(candidates, new Map(), { ...completion, recommends: [specialist.id] })).toEqual([
+    specialist,
+  ]);
+});
+
+it('deduplicates authored targets that share the same content URL', () => {
+  const a = guide('a');
+  const alias = guide('alias', { url: a.url });
+  expect(
+    selectCompletionSuggestions([guide('current'), a, alias], new Map(), { ...context, recommends: ['a', 'alias'] })
+  ).toEqual([a]);
 });

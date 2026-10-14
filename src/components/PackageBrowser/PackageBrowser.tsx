@@ -1,3 +1,4 @@
+import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import React, { useCallback, useId, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { Alert, Button, Icon, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -92,7 +93,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
   const effort = (item: CatalogPackage) =>
     [
       item.memberIds
-        ? t('packageBrowser.modules', '{{count}} modules', { count: item.memberIds.length })
+        ? milestoneCountText(item.memberIds.length)
         : item.format === 'guide' && item.activityCount !== undefined
           ? t('packageBrowser.activities', '{{count}} activities', { count: item.activityCount })
           : null,
@@ -126,8 +127,8 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
             : [...view.expandedKeys, item.key],
         })
       }
-      disclosureLabel={item.memberIds?.length ? t('learningCard.showModules', 'Show modules') : undefined}
-      collapseLabel={item.memberIds?.length ? t('learningCard.hideModules', 'Hide modules') : undefined}
+      disclosureLabel={item.memberIds?.length ? t('learningCard.showModules', 'Show milestones') : undefined}
+      collapseLabel={item.memberIds?.length ? t('learningCard.hideModules', 'Hide milestones') : undefined}
       details={
         item.memberIds?.length ? (
           <CatalogDetails

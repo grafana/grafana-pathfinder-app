@@ -482,23 +482,24 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </AlignmentPendingContext.Provider>
                 )}
 
-                {/* Go home button - always visible at bottom of content */}
-                <div className={styles.contentFooterAction}>
-                  <Button
-                    variant="secondary"
-                    icon="book-open"
-                    size="md"
-                    onClick={() => {
-                      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                        action: 'navigate_to_recommendations',
-                        source: 'content_footer',
-                      });
-                      model.setActiveTab(RECOMMENDATIONS_TAB_ID);
-                    }}
-                  >
-                    {t('docsPanel.returnToMyLearning', 'Return to my learning')}
-                  </Button>
-                </div>
+                {!completionPanelEnabled && (
+                  <div className={styles.contentFooterAction}>
+                    <Button
+                      variant="secondary"
+                      icon="book-open"
+                      size="md"
+                      onClick={() => {
+                        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                          action: 'navigate_to_recommendations',
+                          source: 'content_footer',
+                        });
+                        model.setActiveTab(RECOMMENDATIONS_TAB_ID);
+                      }}
+                    >
+                      {t('docsPanel.myLearning', 'My learning')}
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           );

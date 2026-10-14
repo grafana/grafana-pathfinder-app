@@ -35,18 +35,20 @@ argument.
 
 ## The model on one page
 
-| Level     | Progress is                                                    | Reaches 100% by                                                    |
-| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**    |
-| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Complete module** or the legacy combined control   |
-| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9)                               |
-| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be) |
+| Level     | Progress is                                                    | Reaches 100% by                                                     |
+| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**     |
+| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Complete milestone** or the legacy combined control |
+| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9)                                |
+| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be)  |
 
-With `pathfinder.completion-panel` enabled, completion and continuation are separate actions. The shared reader records completion immediately and presents a named next module or existing catalog content. It advances only after the reader chooses Continue. Disabling the flag restores the existing footer and its combined control without changing completion evidence or stored progress.
+With `pathfinder.completion-panel` enabled, completion and continuation are separate actions. The shared reader records completion immediately and presents a named next milestone or existing catalog content. It advances only after the reader chooses Continue. Disabling the flag restores the existing footer and its combined control without changing completion evidence or stored progress.
 
-The panel uses established completed state, not scroll position. Path completion follows the existing best-of-sequences calculation in decision 4, including selected tracks and exclusion of locked entries. Reaching the last module alone does not establish completion. Related suggestions do not create enrollment or progress, and author previews retain the existing footer.
+The panel uses established completed state, not scroll position. Path completion follows the existing best-of-sequences calculation in decision 4, including selected tracks and exclusion of locked entries. Reaching the last milestone alone does not establish completion. Related suggestions do not create enrollment or progress, and author previews retain the existing footer.
 
-After path navigation, authored `recommends` and `suggests` take priority over inferred curated-path or topic relationships. Their order is preserved, alternative groups offer one eligible member, and completed groups are skipped. `depends` remains prerequisite metadata, not next-content selection. A module's manifest and its owning path's manifest remain distinct; terminal path recommendations can use both without treating the parent's metadata as the module's own.
+After path navigation, authored `recommends` and `suggests` take priority over inferred curated-path or topic relationships. Their order is preserved, alternative groups offer one eligible member, and completed groups are skipped. `depends` remains prerequisite metadata, not next-content selection. A milestone's manifest and its owning path's manifest remain distinct; terminal path recommendations can use both without treating the parent's metadata as the milestone's own.
+
+Completion cards share a layout with full descriptions and bottom-aligned launch actions. The panel has one Explore learning and My learning navigation row. My learning opens the learning page, not the recommendations tab. Onboarding fallback prefers an introductory path; inferred fallback offers one destination rather than padding a second slot. Authored relationships can offer two distinct destinations. Returning to completed content does not replay the completion animation or move focus.
 
 Missing catalog references resolve through bounded metadata-only requests. Official references stay in official repositories, and organization references stay in the current organization. Private content without explicit authored relationships retains the neutral Explore action rather than inferred suggestions. Legacy private percentages cannot establish organization provenance, so private suggestion cards do not infer completion from them.
 

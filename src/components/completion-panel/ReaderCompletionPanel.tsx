@@ -13,7 +13,6 @@ interface Props {
   completionIdentity?: AnalyticsCompletionIdentity;
   sequence?: { currentMilestone: number; milestones: Milestone[]; baseUrl?: string };
   onContinue?: () => void | Promise<void>;
-  onReview: () => void;
   celebrating: boolean;
 }
 
@@ -24,7 +23,6 @@ export default function ReaderCompletionPanel({
   completionIdentity,
   sequence,
   onContinue,
-  onReview,
   celebrating,
 }: Props) {
   const scope = `${config?.namespace ?? ''}:${config?.bootData?.user?.orgId ?? ''}:${config?.bootData?.user?.id ?? ''}`;
@@ -120,7 +118,6 @@ export default function ReaderCompletionPanel({
         sequence ? { position: sequence.currentMilestone, total: sequence.milestones.length, pathComplete } : undefined
       }
       celebrating={celebrating}
-      onReview={onReview}
       onView={onView}
     />
   );

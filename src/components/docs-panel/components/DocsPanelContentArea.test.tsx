@@ -3,14 +3,6 @@ jest.mock('../../../utils/openfeature', () => ({
   useBooleanFlag: (flag: string) => (flag === 'pathfinder.completion-panel' ? mockCompletionPanelEnabled : true),
 }));
 
-/**
- * Tests for DocsPanelContentArea.
- *
- * Focused on the "Return to my learning" footer button, which must switch the
- * panel back to the recommendations tab in place (issue #1051) rather than
- * navigating away from the Grafana UI.
- */
-
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { config } from '@grafana/runtime';
@@ -182,12 +174,15 @@ describe('DocsPanelContentArea', () => {
     expect(screen.getByTestId(testIds.docsPanel.resetGuideButton)).toHaveAccessibleName('Reset guide');
   });
 
-  describe('Return to my learning footer button', () => {
+  describe('My learning footer button', () => {
+    beforeEach(() => {
+      mockCompletionPanelEnabled = false;
+    });
     it('switches to the recommendations tab in place instead of navigating away', () => {
       const props = makeProps();
       render(<DocsPanelContentArea {...props} />);
 
-      fireEvent.click(screen.getByRole('button', { name: 'Return to my learning' }));
+      fireEvent.click(screen.getByRole('button', { name: 'My learning' }));
 
       expect(props.model.setActiveTab).toHaveBeenCalledWith('recommendations');
     });
@@ -195,7 +190,7 @@ describe('DocsPanelContentArea', () => {
     it('reports the return-to-recommendations interaction', () => {
       render(<DocsPanelContentArea {...makeProps()} />);
 
-      fireEvent.click(screen.getByRole('button', { name: 'Return to my learning' }));
+      fireEvent.click(screen.getByRole('button', { name: 'My learning' }));
 
       expect(reportAppInteraction).toHaveBeenCalledWith('docs_panel_interaction', {
         action: 'navigate_to_recommendations',
@@ -848,4 +843,10 @@ describe('DocsPanelContentArea completion navigation', () => {
     expect(mockContinueToNextMilestone).toBeUndefined();
     expect(model.navigateToNextMilestone).not.toHaveBeenCalled();
   });
+});
+
+it('omits the duplicate reader footer when the completion panel owns navigation', () => {
+  mockCompletionPanelEnabled = true;
+  render(<DocsPanelContentArea {...makeProps()} />);
+  expect(screen.queryByRole('button', { name: 'My learning' })).not.toBeInTheDocument();
 });

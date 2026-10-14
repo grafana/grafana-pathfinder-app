@@ -138,10 +138,24 @@ export function selectCompletionSuggestions(
       }
       const next = alternatives
         .flatMap((id) => ordered.filter((item) => item.id === id))
-        .find((item) => !suggestions.some((suggestion) => suggestion.id === item.id));
+        .find(
+          (item) =>
+            !suggestions.some(
+              (suggestion) => suggestion.id === item.id || normalizedUrl(suggestion.url) === normalizedUrl(item.url)
+            )
+        );
       if (next) {
         suggestions.push(next);
       }
+    }
+  }
+  if (suggestions.length > 0) {
+    return suggestions.slice(0, 2);
+  }
+  if (context.public && topic === 'getting-started') {
+    const introductoryPath = ordered.find((item) => item.format === 'path' && catalogTopic(item) === topic);
+    if (introductoryPath) {
+      return [introductoryPath];
     }
   }
   const memberId = bundledId(context.url);
@@ -187,5 +201,5 @@ export function selectCompletionSuggestions(
       }
       return true;
     })
-    .slice(0, 2);
+    .slice(0, 1);
 }

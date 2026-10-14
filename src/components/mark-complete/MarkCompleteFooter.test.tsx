@@ -100,7 +100,7 @@ describe('completion panel handoff', () => {
         renderCompleted={() => <button onClick={onContinue}>Continue to next module</button>}
       />
     );
-    const complete = await screen.findByRole('button', { name: 'Complete module' });
+    const complete = await screen.findByRole('button', { name: 'Complete milestone' });
     await waitFor(() => expect(complete).toBeEnabled());
     fireEvent.click(complete);
     expect(onMarkComplete).toHaveBeenCalledTimes(1);

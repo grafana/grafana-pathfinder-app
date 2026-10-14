@@ -600,12 +600,6 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
                     sequence={completionSequence ?? (journey ? { ...journey } : undefined)}
                     onContinue={onContinueToNextMilestone}
                     celebrating={celebrating}
-                    onReview={() =>
-                      activeRef.current?.scrollIntoView({
-                        block: 'start',
-                        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-                      })
-                    }
                   />
                 </React.Suspense>
               </MyLearningErrorBoundary>

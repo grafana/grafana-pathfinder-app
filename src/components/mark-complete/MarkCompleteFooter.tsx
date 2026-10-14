@@ -270,7 +270,7 @@ export function MarkCompleteFooter({
   const label =
     context === 'milestone' && onContinue
       ? renderCompleted
-        ? t('markComplete.completeModule', 'Complete module')
+        ? t('markComplete.completeMilestone', 'Complete milestone')
         : t('markComplete.milestoneButton', 'Mark complete and continue')
       : t('markComplete.guideButton', 'Mark complete');
 

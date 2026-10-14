@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Icon, useStyles2 } from '@grafana/ui';
+import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { cx } from '@emotion/css';
 import type { Milestone, RawContent } from '../../types/content.types';
 import type { AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import { useBooleanFlag } from '../../utils/openfeature';
-import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
-import { openCatalogBrowser } from '../docs-panel/utils/open-catalog-browser';
+import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
+import { openLearningHome, openCatalogBrowser } from '../docs-panel/utils/open-catalog-browser';
 import { getCompletionPanelStyles } from './completion-panel.styles';
 import { CompletionSuggestions } from './CompletionSuggestions';
 
@@ -17,7 +17,6 @@ export interface CompletionPanelProps {
   onContinue?: () => void | Promise<void>;
   moduleContext?: { position: number; total: number; pathComplete?: boolean };
   celebrating?: boolean;
-  onReview: () => void;
   onView?: () => void;
 }
 
@@ -28,7 +27,6 @@ export function CompletionPanel({
   onContinue,
   moduleContext,
   celebrating = false,
-  onReview,
   onView,
 }: CompletionPanelProps) {
   const styles = useStyles2(getCompletionPanelStyles);
@@ -53,7 +51,7 @@ export function CompletionPanel({
   const heading = moduleContext?.pathComplete
     ? t('completionPanel.pathComplete', 'Path complete')
     : moduleContext
-      ? t('completionPanel.moduleComplete', 'Module complete')
+      ? t('completionPanel.milestoneComplete', 'Milestone complete')
       : t('completionPanel.guideComplete', 'Guide complete');
 
   return (
@@ -70,10 +68,9 @@ export function CompletionPanel({
         </span>
         <div className={styles.heading}>
           <h2>{heading}</h2>
-          <p>{content.metadata.title}</p>
           {moduleContext && !moduleContext.pathComplete && (
             <div className={styles.metadata}>
-              {t('completionPanel.modulePosition', 'Module {{position}} of {{total}}', moduleContext)}
+              {t('completionPanel.milestonePosition', 'Milestone {{position}} of {{total}}', moduleContext)}
             </div>
           )}
         </div>
@@ -88,17 +85,23 @@ export function CompletionPanel({
         />
       ) : null}
       <div className={styles.footer}>
-        {browseEnabled && nextModule && onContinue && (
+        {browseEnabled && (
           <Button
+            className={styles.navigationAction}
             variant="secondary"
-            size="sm"
+            icon="arrow-right"
             onClick={() => openCatalogBrowser({ source: 'content_completion_panel' })}
           >
             {t('completionPanel.explore', 'Explore learning')}
           </Button>
         )}
-        <Button variant="secondary" fill="text" size="sm" onClick={onReview}>
-          {t('completionPanel.review', 'Review this guide')}
+        <Button
+          className={styles.navigationAction}
+          variant="secondary"
+          icon="book-open"
+          onClick={() => openLearningHome({ source: 'content_completion_panel' })}
+        >
+          {t('completionPanel.myLearning', 'My learning')}
         </Button>
       </div>
     </section>
@@ -138,23 +141,32 @@ function NextModule({ module, onContinue }: { module: Milestone; onContinue: () 
     }
   };
   return (
-    <article className={styles.featured}>
-      <div className={styles.eyebrow}>{t('completionPanel.nextModule', 'Next in your path')}</div>
-      <LearningTopicIcon topic="getting-started" size="lg" />
-      <h3>{module.title}</h3>
-      {module.description && <p>{module.description}</p>}
-      {module.estimatedMinutes !== undefined && (
-        <div className={styles.metadata}>
-          {t('completionPanel.minutes', 'About {{minutes}} min', { minutes: module.estimatedMinutes })}
-        </div>
+    <div>
+      <LearningContentCard
+        variant="completion-primary"
+        eyebrow={t('completionPanel.nextMilestone', 'Next in your path')}
+        title={module.title}
+        topic="getting-started"
+        kind="guide"
+        description={module.description}
+        effort={
+          module.estimatedMinutes !== undefined
+            ? t('completionPanel.minutes', 'About {{minutes}} min', { minutes: module.estimatedMinutes })
+            : undefined
+        }
+        actionLabel={t('completionPanel.continueMilestone', 'Continue to next milestone')}
+        onLaunch={launch}
+        launching={pending}
+        launchDisabled={module.isLocked}
+        launchError={
+          failed ? t('completionPanel.milestoneLaunchError', 'Unable to open this milestone. Try again.') : undefined
+        }
+      />
+      {module.isLocked && (
+        <p className={styles.metadata}>
+          {t('completionPanel.milestoneUnavailable', 'This milestone is currently unavailable.')}
+        </p>
       )}
-      <Button icon="arrow-right" disabled={pending || module.isLocked} onClick={() => void launch()}>
-        {pending ? t('completionPanel.opening', 'Opening…') : t('completionPanel.continue', 'Continue to next module')}
-      </Button>
-      {module.isLocked && <p>{t('completionPanel.moduleUnavailable', 'This module is currently unavailable.')}</p>}
-      {failed && (
-        <Alert severity="error" title={t('completionPanel.launchError', 'Unable to open this module. Try again.')} />
-      )}
-    </article>
+    </div>
   );
 }

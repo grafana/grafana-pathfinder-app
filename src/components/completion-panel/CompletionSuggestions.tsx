@@ -1,5 +1,6 @@
+import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import React, { useMemo, useState } from 'react';
-import { Button, useStyles2 } from '@grafana/ui';
+import { useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import type { RawContent } from '../../types/content.types';
 import type { AnalyticsCompletionIdentity } from '../../docs-retrieval';
@@ -7,11 +8,9 @@ import { useCatalogProgress } from '../../learning-paths';
 import { useCompletionRecommendations } from './useCompletionRecommendations';
 import { selectCompletionSuggestions, completionSuggestionReason } from '../../lib/completion-suggestions';
 import { catalogTopic } from '../../lib/catalog-discovery';
-import { getPathfinderSurface } from '../../lib/telemetry/surface';
 import { useCatalogLaunch } from '../LearningPaths/useCatalogLaunch';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import { getCompletionPanelStyles } from './completion-panel.styles';
-import { openCatalogBrowser } from '../docs-panel/utils/open-catalog-browser';
 
 interface Props {
   content: RawContent;
@@ -31,12 +30,6 @@ function SuggestionFallback() {
           'Explore guides and paths for dashboards, data sources, alerting and more.'
         )}
       </p>
-      <Button icon="arrow-right" onClick={() => openCatalogBrowser({ source: 'content_completion_panel' })}>
-        {t('completionPanel.explore', 'Explore learning')}
-      </Button>
-      {getPathfinderSurface() !== 'sidebar' && (
-        <div className={styles.metadata}>{t('completionPanel.opensSidebar', 'Opens in sidebar')}</div>
-      )}
     </div>
   );
 }
@@ -89,32 +82,37 @@ export function CompletionSuggestions({ content, completionIdentity, inPath = fa
   if (suggestions.length === 0) {
     return <SuggestionFallback />;
   }
-  const outsideSidebar = getPathfinderSurface() !== 'sidebar';
   return (
     <div className={styles.suggestions}>
       {suggestions.map((item, index) => (
         <LearningContentCard
           key={`${catalog.scope}:${item.key}`}
           title={item.title}
-          variant={index === 0 ? 'featured' : 'compact'}
+          variant={index === 0 ? 'completion-primary' : 'completion-alternative'}
           eyebrow={
             completionSuggestionReason(item, catalog.context) === 'recommended'
               ? t('completionPanel.recommended', 'Recommended learning')
               : completionSuggestionReason(item, catalog.context) === 'suggested'
                 ? t('completionPanel.related', 'Related learning')
-                : t('completionPanel.nextExplore', 'A next step to explore')
+                : t('completionPanel.keepExploring', 'Keep exploring')
           }
           kind={item.format}
           organization={item.source === 'organization'}
           topic={catalogTopic(item)}
           description={item.description}
-          effort={
+          effort={[
+            item.format === 'path'
+              ? t('completionPanel.learningPath', 'Learning path')
+              : t('completionPanel.guide', 'Guide'),
             item.memberIds?.length
-              ? t('completionPanel.modules', '{{count}} modules', { count: item.memberIds.length })
+              ? milestoneCountText(item.memberIds.length)
               : item.estimatedMinutes
                 ? t('completionPanel.minutes', 'About {{minutes}} min', { minutes: item.estimatedMinutes })
-                : undefined
-          }
+                : undefined,
+            item.source === 'organization' ? t('completionPanel.organization', 'Your organization') : undefined,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
           progress={progress.get(item.key)?.percent}
           onLaunch={() => launch(item)}
           launching={launchingKey === item.key}
@@ -122,10 +120,6 @@ export function CompletionSuggestions({ content, completionIdentity, inPath = fa
           launchError={launchError?.key === item.key ? launchError.message : undefined}
         />
       ))}
-      {outsideSidebar && <div className={styles.metadata}>{t('completionPanel.opensSidebar', 'Opens in sidebar')}</div>}
-      <Button variant="secondary" size="sm" onClick={() => openCatalogBrowser({ source: 'content_completion_panel' })}>
-        {t('completionPanel.explore', 'Explore learning')}
-      </Button>
     </div>
   );
 }

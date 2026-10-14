@@ -65,7 +65,7 @@ describe('completion panel integration', () => {
         onContinueToNextMilestone={onContinue}
       />
     );
-    const complete = await screen.findByRole('button', { name: 'Complete module' });
+    const complete = await screen.findByRole('button', { name: 'Complete milestone' });
     await waitFor(() => expect(complete).toBeEnabled());
     fireEvent.click(complete);
     expect(await screen.findByTestId('completion-panel')).toBeInTheDocument();

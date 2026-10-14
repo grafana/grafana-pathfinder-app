@@ -52,6 +52,15 @@ export const getCompletionPanelStyles = (theme: GrafanaTheme2) => ({
   }),
   eyebrow: css({ fontSize: 11, fontWeight: theme.typography.fontWeightMedium, color: theme.colors.text.secondary }),
   metadata: css({ fontSize: 12, color: theme.colors.text.secondary }),
-  footer: css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: theme.spacing(1.5), minWidth: 0 }),
+  footer: css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+    minWidth: 0,
+    paddingTop: theme.spacing(0.5),
+    '& > button': { flex: '0 1 auto', width: 'auto', minHeight: 36 },
+  }),
+  navigationAction: css({ minHeight: 36, height: 'auto', whiteSpace: 'normal', padding: theme.spacing(1, 1.5) }),
   suggestions: css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(1.5), minWidth: 0 }),
 });

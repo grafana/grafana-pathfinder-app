@@ -21,7 +21,7 @@ jest.mock('@grafana/runtime', () => ({ config: { namespace: 'test', bootData: { 
 jest.mock('./CompletionPanel', () => ({
   CompletionPanel: ({ moduleContext, nextModule, onContinue, onView }: CompletionPanelProps) => (
     <div>
-      <h2>{moduleContext?.pathComplete ? 'Path complete' : 'Module complete'}</h2>
+      <h2>{moduleContext?.pathComplete ? 'Path complete' : 'Milestone complete'}</h2>
       <button onClick={onView}>Show panel</button>
       {nextModule && <button onClick={onContinue}>{nextModule.title}</button>}
     </div>
@@ -54,12 +54,11 @@ it('does not call the last module path completion until every required member co
     <ReaderCompletionPanel
       content={content}
       celebrating={false}
-      onReview={jest.fn()}
       sequence={{ currentMilestone: 2, milestones: modules }}
     />
   );
   await act(async () => {});
-  expect(screen.getByRole('heading', { name: 'Module complete' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Milestone complete' })).toBeInTheDocument();
   percentages = [100, 100];
   rerender(
     <ReaderCompletionPanel
@@ -71,7 +70,6 @@ it('does not call the last module path completion until every required member co
         },
       }}
       celebrating={false}
-      onReview={jest.fn()}
       sequence={{ currentMilestone: 2, milestones: modules }}
     />
   );
@@ -94,7 +92,6 @@ it('uses established progress for locked and selected-track sequences', async ()
     <ReaderCompletionPanel
       content={lockedContent}
       celebrating={false}
-      onReview={jest.fn()}
       sequence={{ currentMilestone: 2, milestones: modules }}
     />
   );
@@ -104,7 +101,6 @@ it('uses established progress for locked and selected-track sequences', async ()
     <ReaderCompletionPanel
       content={{ ...content, metadata: { title: 'Track member', trackMemberBaseUrl: 'backend-guide:path' } }}
       celebrating={false}
-      onReview={jest.fn()}
       sequence={{ currentMilestone: 2, milestones: modules }}
     />
   );
@@ -118,7 +114,6 @@ it('reports visible private completion without names, URLs or identifiers and de
       content={{ ...content, url: 'backend-guide:private-view' }}
       completionIdentity={privateIdentity}
       celebrating={false}
-      onReview={jest.fn()}
     />
   );
   fireEvent.click(screen.getByRole('button', { name: 'Show panel' }));
@@ -143,7 +138,6 @@ it('skips locked modules and retains asynchronous navigation without private cli
       content={content}
       completionIdentity={privateIdentity}
       celebrating={false}
-      onReview={jest.fn()}
       sequence={sequence}
       onContinue={onContinue}
     />
