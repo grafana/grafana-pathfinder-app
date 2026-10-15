@@ -17,7 +17,9 @@ import type {
   ObservationChangeMessage,
 } from '../../types/cross-tab.types';
 
-type ObservedStep = ObservationSubscriptionMessage['steps'][number] & { since: number };
+type ObservedStep = ObservationSubscriptionMessage['steps'][number] & { since: number; reportedAt?: number };
+
+export const EVIDENCE_CONFIRM_MS = 3000;
 
 export function createPassiveObserver(
   post: (
@@ -58,6 +60,7 @@ export function createPassiveObserver(
         continue;
       }
       step.cursor = advanceActionProgress(step.actions, step.cursor, index);
+      step.reportedAt = Date.now();
       post({
         kind: 'observation-evidence',
         subscriptionId: subscription.subscriptionId,
@@ -98,7 +101,14 @@ export function createPassiveObserver(
         if (old && old.epoch !== step.epoch) {
           return { ...step, since: nextObservationStamp() };
         }
-        return { ...step, cursor: Math.max(step.cursor, old?.cursor ?? 0), since: old?.since ?? 0 };
+        const awaitingController =
+          old !== undefined &&
+          old.cursor > step.cursor &&
+          old.reportedAt !== undefined &&
+          Date.now() - old.reportedAt < EVIDENCE_CONFIRM_MS;
+        return awaitingController
+          ? { ...step, cursor: old.cursor, since: old.since, reportedAt: old.reportedAt }
+          : { ...step, since: old?.since ?? 0 };
       }),
     };
     clearTimeout(expiry);

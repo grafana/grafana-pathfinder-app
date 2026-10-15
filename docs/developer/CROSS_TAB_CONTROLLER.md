@@ -99,10 +99,12 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
   coordinator changes over 50 milliseconds and re-sends every 2 seconds; the live tab drops a subscription
   it has not heard about for 6 seconds, ignores a lower `generation` for the
   same session, and accepts the inert `noop` and `popout` actions without
-  widening `KNOWN_TARGET_ACTIONS`. Within one subscription the live tab keeps
-  its own cursor for a step while `epoch` is unchanged; a new `epoch` means that
-  step was reset, so the live tab takes the sent cursor and ignores fields the
-  reader touched before it.
+  widening `KNOWN_TARGET_ACTIONS`. Within one subscription the live tab may run
+  ahead of the sent cursor for up to 3 seconds after reporting an action, while
+  the controller applies it; after that it takes the sent cursor, so a report
+  the controller dropped or rejected means repeating the action rather than a
+  stalled step. A new `epoch` means that step was reset, so the live tab takes
+  the sent cursor and ignores fields the reader touched before it.
 - `observation-cancel` — `{ subscriptionId }`, signed controller → live; a
   guide reset, reconnect and unmount cancel the old subscription. A single
   step or section reset keeps it and changes only that step's `epoch`.

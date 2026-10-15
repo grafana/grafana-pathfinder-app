@@ -1,7 +1,7 @@
 jest.mock('../../interactive-engine', () =>
   jest.requireActual('../../interactive-engine/auto-completion/passive-action')
 );
-import { createPassiveObserver } from './passive-observer';
+import { createPassiveObserver, EVIDENCE_CONFIRM_MS } from './passive-observer';
 import type { ObservationSubscriptionMessage } from '../../types/cross-tab.types';
 
 jest.mock('../../lib/dom', () => ({
@@ -169,5 +169,29 @@ it('rewinds only a reset step and ignores fields it touched before the reset', (
   document.querySelector<HTMLButtonElement>('#elsewhere')!.click();
   jest.advanceTimersByTime(200);
   expect(post).toHaveBeenCalledWith(expect.objectContaining({ id: 'url', index: 0 }));
+  observer.stop();
+});
+
+it('keeps its own cursor while a stale snapshot is still catching up', () => {
+  const post = jest.fn();
+  const observer = createPassiveObserver(post);
+  observer.update(message());
+  document.querySelector('button')!.click();
+  observer.update(message({ revision: 2 }));
+  document.querySelector('button')!.click();
+  expect(post.mock.calls.map(([evidence]) => evidence.index)).toEqual([0, 1]);
+  observer.stop();
+});
+
+it('takes the controller cursor back when the controller never applies a reported action', () => {
+  const post = jest.fn();
+  const observer = createPassiveObserver(post);
+  observer.update(message());
+  document.querySelector('button')!.click();
+  jest.advanceTimersByTime(EVIDENCE_CONFIRM_MS);
+  observer.update(message({ revision: 2 }));
+  document.querySelector('button')!.click();
+  const evidence = post.mock.calls.map(([sent]) => sent).filter(({ kind }) => kind === 'observation-evidence');
+  expect(evidence.map(({ index }) => index)).toEqual([0, 0]);
   observer.stop();
 });
