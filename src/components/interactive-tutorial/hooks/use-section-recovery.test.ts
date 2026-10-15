@@ -194,6 +194,40 @@ it('skips rechecks while a step runs and checks once when it finishes', async ()
   expect(inspect).toHaveBeenCalledTimes(1);
 });
 
+it('never confirms a pause once a step starts running', async () => {
+  const hook = render();
+  await settle();
+  inspect.mockResolvedValue(DRIFT);
+  await act(async () => {
+    await hook.result.current.recheck();
+  });
+  hook.rerender({ suspended: true });
+  await settle(750);
+  expect(hook.result.current.paused).toBe(false);
+});
+
+it('does not pause from a check that finishes after a step starts running', async () => {
+  const hook = render();
+  await settle();
+  inspect.mockResolvedValue(DRIFT);
+  await act(async () => {
+    await hook.result.current.recheck();
+  });
+  let finish!: (result: RecoveryResult) => void;
+  inspect.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+  await settle(700);
+  act(() => {
+    void hook.result.current.recheck();
+  });
+  hook.rerender({ suspended: true });
+  await act(async () => {
+    finish(DRIFT);
+  });
+  await settle(750);
+  expect(hook.result.current.paused).toBe(false);
+  expect(hook.onEvent).not.toHaveBeenCalled();
+});
+
 it('keeps an in-flight restore when the section requirements flicker', async () => {
   let finish!: (result: RecoveryResult) => void;
   restore.mockImplementation(() => new Promise((resolve) => (finish = resolve)));

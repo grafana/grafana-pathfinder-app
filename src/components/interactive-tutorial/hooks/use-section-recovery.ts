@@ -110,6 +110,11 @@ export function useSectionRecovery(
         if (pausedNow.current) {
           return answer(false);
         }
+        if (gate.current.suspended) {
+          pendingSince.current = null;
+          clearTimeout(confirmTimer.current);
+          return answer(false);
+        }
         const now = Date.now();
         if (pendingSince.current === null) {
           pendingSince.current = now;
