@@ -38,6 +38,7 @@ import { markStepCompleted, resetStep, useStepCompletion } from '../../global-st
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
+import { useReportExecuting } from './hooks/use-report-executing';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 
 /**
@@ -206,6 +207,7 @@ export const InteractiveStep = forwardRef<
       onStepComplete,
       resetTrigger,
       onStepReset, // New callback for individual step reset
+      onExecutingChange,
 
       // Step position tracking for analytics
       stepIndex,
@@ -238,6 +240,7 @@ export const InteractiveStep = forwardRef<
     const controllerChannel = useControllerChannel();
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
+    useReportExecuting(isShowRunning || isDoRunning, onExecutingChange);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
     const [lazyScrollError, setLazyScrollError] = useState<string | null>(null);
     const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);

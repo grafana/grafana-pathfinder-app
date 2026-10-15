@@ -48,6 +48,7 @@ import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
+import { useReportExecuting } from './hooks/use-report-executing';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -964,13 +965,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setWasCancelled,
     ]);
 
-    useEffect(() => {
-      if (!isExecuting) {
-        return;
-      }
-      onExecutingChange?.(true);
-      return () => onExecutingChange?.(false);
-    }, [isExecuting, onExecutingChange]);
+    useReportExecuting(isExecuting, onExecutingChange);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 

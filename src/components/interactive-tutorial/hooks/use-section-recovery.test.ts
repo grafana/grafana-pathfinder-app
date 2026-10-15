@@ -169,16 +169,18 @@ it('reports a pause the learner closed the guide on', async () => {
   expect(hook.events().at(-1)).toEqual({ kind: 'resolved', resolvedBy: 'unmount' });
 });
 
-it('rechecks on in-app navigation and once more after the page settles', async () => {
+it('waits for a new page to settle before checking it', async () => {
   render();
   await settle();
   expect(inspect).toHaveBeenCalledTimes(1);
   await act(async () => {
     locationService.push('/dashboards');
+    window.dispatchEvent(new Event('focus'));
   });
+  await settle(500);
+  expect(inspect).toHaveBeenCalledTimes(1);
+  await settle(250);
   expect(inspect).toHaveBeenCalledTimes(2);
-  await settle(750);
-  expect(inspect).toHaveBeenCalledTimes(3);
 });
 
 it('skips rechecks while a step runs and checks once when it finishes', async () => {
@@ -258,6 +260,23 @@ it('gives the adapter the URL the plan last passed on', async () => {
   locationService.push('/explore?panes=abc');
   render();
   await settle();
+  const lastReadyUrl = jest.mocked(createRecoveryAdapter).mock.calls.at(-1)![3];
+  expect(lastReadyUrl()).toBe('/explore?panes=abc');
+});
+
+it('does not remember a page the learner reached while the check was running', async () => {
+  locationService.push('/explore?panes=abc');
+  render();
+  await settle();
+  let finish!: (result: RecoveryResult) => void;
+  inspect.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+  act(() => {
+    window.dispatchEvent(new Event('focus'));
+  });
+  await act(async () => {
+    locationService.push('/dashboards');
+    finish(PASS);
+  });
   const lastReadyUrl = jest.mocked(createRecoveryAdapter).mock.calls.at(-1)![3];
   expect(lastReadyUrl()).toBe('/explore?panes=abc');
 });
