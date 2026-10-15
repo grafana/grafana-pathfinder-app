@@ -44,7 +44,7 @@ import { resetStep, useStepCompletion } from '../../global-state/completion-stor
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
-import { toCrossTabInternalAction } from '../../types/cross-tab.types';
+import { guidedStepWaitMs, toCrossTabInternalAction } from '../../types/cross-tab.types';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 /**
@@ -656,7 +656,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             setCurrentStepIndex(index);
             setCurrentStepStatus('waiting');
           });
-          const completion = controllerChannel.awaitStepComplete(renderedStepId, runId);
+          const completion = controllerChannel.awaitStepComplete(
+            renderedStepId,
+            runId,
+            guidedStepWaitMs(internalActions.length - startIndex)
+          );
           controllerChannel.post({
             kind: 'step-command',
             startIndex,

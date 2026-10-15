@@ -292,6 +292,7 @@ export function installLiveTabExecutor(
         { ...action, targetAction: action.targetAction as GuidedAction['targetAction'] },
         i,
         actions.length,
+        // Default per-substep budget; the controller's guidedStepWaitMs assumes it.
         undefined,
         undefined,
         { signal }

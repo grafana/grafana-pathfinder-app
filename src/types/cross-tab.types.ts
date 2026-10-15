@@ -1,5 +1,6 @@
 import type { ConditionInput } from './requirements.types';
 import type { InternalAction } from './interactive-actions.types';
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
@@ -11,6 +12,21 @@ export type CrossTabInternalAction = Omit<InternalAction, 'requirements'>;
 export function toCrossTabInternalAction(action: InternalAction): CrossTabInternalAction {
   const { requirements, ...wire } = action;
   return wire;
+}
+
+// How long the controller waits for a step-complete before it gives up on a run.
+export const DEFAULT_STEP_WAIT_MS = 15 * 60_000;
+
+// The live tab gives each guided substep INTERACTIVE_CONFIG.guided.stepTimeout
+// (live-tab-executor runGuided); the extra 10s per substep is controller-side
+// slack. The live tab runs commands one at a time, so a guided command can wait
+// behind another run before its budget starts: DEFAULT_STEP_WAIT_MS stays the
+// floor, and blocks whose budget is longer than that get the longer wait.
+export function guidedStepWaitMs(remainingSubsteps: number): number {
+  return Math.max(
+    DEFAULT_STEP_WAIT_MS,
+    Math.max(1, remainingSubsteps) * (INTERACTIVE_CONFIG.guided.stepTimeout + 10_000)
+  );
 }
 
 export interface CrossTabAction extends CrossTabInternalAction {
