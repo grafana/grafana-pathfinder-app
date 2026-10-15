@@ -3,6 +3,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 
 import { SelectorHealthBadge } from './SelectorHealthBadge';
 
+jest.mock('@grafana/ui', () => ({
+  ...jest.requireActual('@grafana/ui'),
+  Tooltip: ({ content, children }: { content: string; children: React.ReactNode }) => (
+    <span data-testid="selector-warnings" title={content}>
+      {children}
+    </span>
+  ),
+}));
+
 describe('SelectorHealthBadge', () => {
   afterEach(() => {
     document.body.innerHTML = '';
@@ -25,5 +34,17 @@ describe('SelectorHealthBadge', () => {
 
     await waitFor(() => expect(screen.getByText('nth-of-type')).toBeInTheDocument(), { timeout: 2000 });
     expect(screen.getByText('20')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['without a target state', '', true],
+    ['with a target state', 'aria-expanded:true', false],
+  ])('flags a toggle-shaped selector that does not match on this page %s', async (_label, targetstate, flagged) => {
+    render(
+      <SelectorHealthBadge reftarget='button[aria-label="Expand row"]' checkTargetState targetstate={targetstate} />
+    );
+
+    await waitFor(() => expect(screen.getByText('0 matches')).toBeInTheDocument(), { timeout: 2000 });
+    expect(screen.getByTestId('selector-warnings').title.includes('section recovery can reopen it')).toBe(flagged);
   });
 });
