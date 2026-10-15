@@ -78,6 +78,7 @@ export interface TerminalContextValue {
   _register: (opts: {
     status: ConnectionStatus;
     sessionId: string | null;
+    vmId?: string | null;
     error: string | null;
     connect: (vmOpts?: TerminalVMOptions) => void;
     disconnect: () => void;
@@ -138,7 +139,12 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
         waiter.leftConnected = true;
       });
     }
-    const settled = waiters.filter((waiter) => (status === 'connected' && waiter.leftConnected) || status === 'error');
+    const settled = waiters.filter(
+      (waiter) =>
+        (status === 'connected' && sessionId !== null && waiter.leftConnected) ||
+        status === 'error' ||
+        (status === 'disconnected' && !reconnectingRef.current && !pendingConnectTimerRef.current)
+    );
     if (settled.length === 0) {
       return;
     }
@@ -155,7 +161,6 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   useEffect(() => {
     _moduleTerminalSessionId = registeredSessionId;
-    invalidateGcxCredentialForSession(registeredSessionId);
   }, [registeredSessionId]);
 
   useEffect(() => {
@@ -174,6 +179,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     (opts: {
       status: ConnectionStatus;
       sessionId: string | null;
+      vmId?: string | null;
       error: string | null;
       connect: (vmOpts?: TerminalVMOptions) => void;
       disconnect: () => void;
@@ -186,6 +192,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       registeredConnectRef.current = opts.connect;
       registeredDisconnectRef.current = opts.disconnect;
       registeredSendCommandRef.current = opts.sendCommand;
+      invalidateGcxCredentialForSession(opts.sessionId, opts.vmId ?? null);
       settleWaiters(opts.status, opts.sessionId);
 
       // When a disconnect/error originates outside openTerminal (e.g. panel button,
@@ -247,7 +254,12 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
         (requestedTemplate !== activeTemplate || requestedApp !== activeApp || requestedScenario !== activeScenario);
 
       if (!needsConnect && !needsReconnect) {
-        return Promise.resolve(registeredSessionId);
+        if (registeredStatus === 'connected' && registeredSessionId) {
+          return Promise.resolve(registeredSessionId);
+        }
+        return new Promise((resolve) => {
+          sessionWaitersRef.current.push({ resolve, leftConnected: true });
+        });
       }
 
       if (needsReconnect) {

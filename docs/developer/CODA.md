@@ -208,11 +208,13 @@ both only when `gcx` is set, and guards its gcx render on the same flag, so an o
 that only needed a **Continue** click is never completed by someone else's credential. It is the
 additive contract holding: a block without `gcx` behaves exactly as it did before the field existed.
 
-**The store is keyed to the session, and a new session clears it.** `TerminalProvider` calls
-`invalidateGcxCredentialForSession` whenever the registered session id changes, because a reconnect
-provisions a _fresh_ VM holding no credential — keeping the old state would report gcx as ready for a
-box that no longer exists, and the ready line would name its path. A `null` id is only a disconnect,
-which may still reconnect to the same session, so it does not discard anything.
+**Completed GCX setup follows the VM across recovered sessions.** `TerminalProvider` registers both
+the session ID and VM ID with `invalidateGcxCredentialForSession`. A new session on the same known VM
+inherits a completed install and its step ownership without minting another token. A different or
+unknown VM clears the state. An unfinished install is never carried into a replacement session; its
+late result is ignored. A `null` session ID during an interruption preserves the stored result, but
+callers cannot use it until a connected session is available. `openTerminal` waits for that session
+when provisioning or recovery is already in progress.
 
 **An install that settles late cannot publish over its replacement.** Provisioning takes long enough
 for the terminal to reconnect underneath it, so every reset and every run start bumps a generation
@@ -447,7 +449,7 @@ Grafana restart.
 | `src/integrations/coda/SandboxRecovery.tsx`                     | Recovery actions for an unreachable sandbox                                                  |
 | `src/integrations/coda/WorkspaceLink.tsx`                       | Capability-gated IDE navigation for the connected VM                                         |
 | `src/integrations/coda/useGcxCredential.hook.ts`                | The gcx mint/paste flow, shared by the toolbar button and the guide step                     |
-| `src/integrations/coda/gcx-credential-store.ts`                 | One gcx credential per session; session-keyed invalidation, and the ladder's telemetry       |
+| `src/integrations/coda/gcx-credential-store.ts`                 | Shared gcx install state; same-VM recovery, session generation guards, and telemetry         |
 | `src/integrations/coda/gcx-service-account.ts`                  | Which service account a mint may use: the collision-free name, and the role reconcile        |
 | `src/integrations/coda/GcxSetupPanel.tsx`                       | The gcx form and its result line; test ids come in as a prop                                 |
 | `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                        |
