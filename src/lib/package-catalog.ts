@@ -23,13 +23,15 @@ function activityCount(stats: unknown): number | undefined {
   return parsed.success && parsed.data.version === GUIDE_STATS_VERSION ? parsed.data.completableBlockCount : undefined;
 }
 
-function members(manifest?: Record<string, unknown>): string[] | undefined {
+const ORGANIZATION_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,252}$/;
+
+const isPublicId = (id: string) => packageIdSchema.safeParse(id).success;
+
+function members(manifest?: Record<string, unknown>, isValidId = isPublicId): string[] | undefined {
   if (!Array.isArray(manifest?.milestones)) {
     return undefined;
   }
-  const ids = manifest.milestones.filter(
-    (id): id is string => typeof id === 'string' && packageIdSchema.safeParse(id).success
-  );
+  const ids = manifest.milestones.filter((id): id is string => typeof id === 'string' && isValidId(id));
   return ids.length === manifest.milestones.length ? ids : undefined;
 }
 
@@ -104,11 +106,7 @@ export function onlineCatalog(response: PackageRecommendationsResponse): Catalog
 
 export function organizationCatalog(entries: CustomGuideRepositoryEntry[]): CatalogPackage[] {
   return entries.flatMap((entry) => {
-    if (
-      entry.status !== 'published' ||
-      typeof entry.id !== 'string' ||
-      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,252}$/.test(entry.id)
-    ) {
+    if (entry.status !== 'published' || typeof entry.id !== 'string' || !ORGANIZATION_ID.test(entry.id)) {
       return [];
     }
     const manifest = { ...entry.manifest, id: entry.id, repository: 'app-platform' };
@@ -122,7 +120,7 @@ export function organizationCatalog(entries: CustomGuideRepositoryEntry[]): Cata
         source: 'organization' as const,
         category: displayText(entry.manifest?.category),
         url: `backend-guide:${entry.id}`,
-        memberIds: members(manifest),
+        memberIds: members(manifest, (id) => ORGANIZATION_ID.test(id)),
         packageInfo: { packageId: entry.id, packageManifest: manifest, repository: 'app-platform' },
       },
     ];

@@ -130,7 +130,7 @@ describe('package catalog', () => {
     expect(withoutPathMembers(entries).map((entry) => entry.key)).toEqual(['path', 'org-member', 'standalone']);
   });
 
-  it('omits track-only and legacy organization members while keeping module order', () => {
+  it('lists legacy organization members as modules and omits every path member from browse', () => {
     const entries = organizationCatalog([
       {
         id: 'team-path',
@@ -163,7 +163,7 @@ describe('package catalog', () => {
         manifest: { type: 'guide' as const },
       })),
     ]);
-    expect(entries[0]?.memberIds).toBeUndefined();
+    expect(entries[0]?.memberIds).toEqual(['foundation', 'team.guide_v1']);
     expect(entries[1]?.memberIds).toEqual(['canonical-member']);
     expect(withoutPathMembers(entries).map((entry) => entry.id)).toEqual(['team-path', 'canonical-path', 'standalone']);
   });
