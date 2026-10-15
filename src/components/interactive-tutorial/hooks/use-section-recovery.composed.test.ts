@@ -90,7 +90,7 @@ it('remembers the page a step was ready on, not the page the learner is leaving 
   await wait(750);
   expect(result.current.paused).toBe(true);
 
-  const unlisten = locationService.getHistory().listen(({ pathname }) => {
+  const unlisten = locationService.getHistory().listen(({ pathname }: { pathname: string }) => {
     if (pathname === '/explore') {
       document.body.insertAdjacentHTML('beforeend', '<button id="run">Run</button>');
     }
