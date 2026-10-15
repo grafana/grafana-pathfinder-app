@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.23.0
+
+### Added
+
+- **Choice-driven guide sections**: Guides can ask readers to pick options in a checkbox group and show, collapse to a heading, or hide sections based on those choices. Progress counts only the selected path, completion evidence survives deselecting and reselecting an option, and the editor gains controls for checkbox groups, option conditions, and section visibility. Existing guides keep their current rendering and progress. (#2150)
+
 ## 2.22.1
 
 ### Fixed
