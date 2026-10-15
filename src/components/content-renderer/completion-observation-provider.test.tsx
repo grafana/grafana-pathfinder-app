@@ -784,3 +784,28 @@ it('still resets a mounted step when its reset trigger changes', async () => {
   await act(async () => {});
   expect(done).not.toHaveBeenCalled();
 });
+
+it('provides no coordinator to a tab whose URL still says controller=1 outside controller mode', async () => {
+  const previous = window.location.href;
+  window.history.replaceState({}, '', '/?controller=1');
+  try {
+    mockCheck.mockResolvedValue({ pass: true, verdict: 'satisfied' });
+    const { useCompletionCoordinator } = jest.requireActual('../../global-state/observation/context');
+    const seen: unknown[] = [];
+    function Probe() {
+      seen.push(useCompletionCoordinator());
+      return null;
+    }
+    render(
+      <CompletionObservationProvider contentKey="guide">
+        <Probe />
+        <Step objectives={['has-datasources']} onComplete={jest.fn()} />
+      </CompletionObservationProvider>
+    );
+    await act(async () => {});
+    expect(seen.every((value) => value === null)).toBe(true);
+    expect(mockCheck).not.toHaveBeenCalled();
+  } finally {
+    window.history.replaceState({}, '', previous);
+  }
+});

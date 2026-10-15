@@ -924,3 +924,23 @@ it('keeps an objective seen unmet as a change across an unmount and remount', as
   expect(item.commit).toHaveBeenCalledWith('objectives', 'change');
   coordinator.stop();
 });
+
+it("keeps an assisted request waiting when the step's action recipe changes", async () => {
+  let verified = false;
+  const coordinator = new CompletionCoordinator(async () => verified);
+  const item = step({
+    verify: ['on-page:/done'],
+    actions: [{ targetAction: 'formfill', refTarget: '#a', targetValue: 'x' }],
+  });
+  coordinator.register(item);
+  coordinator.start();
+  coordinator.request(item.id);
+  await settle();
+  coordinator.update(item.id, { ...item, actions: [{ targetAction: 'formfill', refTarget: '#a', targetValue: 'y' }] });
+  expect(coordinator.waiting(item.id)).toBe(true);
+  verified = true;
+  coordinator.recheck();
+  await settle();
+  expect(item.commit).toHaveBeenCalledWith('manual', 'change');
+  coordinator.stop();
+});

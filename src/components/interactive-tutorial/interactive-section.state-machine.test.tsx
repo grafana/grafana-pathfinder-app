@@ -128,7 +128,7 @@ import {
   setCheckRequirementsResult,
   setStepCheckerCompletionReason,
 } from '../../test-utils/interactive-section-harness';
-import { evictAllContentCaches, resetSteps } from '../../global-state/completion-store';
+import { evictAllContentCaches, markStepCompleted, resetSteps } from '../../global-state/completion-store';
 import { StorageEvents } from '../../lib/event-names';
 import { subscribeProgressEvent, type ProgressEventDetail } from '../../global-state/progress-events';
 
@@ -952,6 +952,53 @@ describe('InteractiveSection — section objectives across a Do section run and 
 
     expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).not.toHaveClass('completed');
     expect(announcedAsChange()).toEqual([]);
+    coordinator.stop();
+  });
+});
+
+describe('InteractiveSection — Do section with a step already waiting on its outcome', () => {
+  it('waits for the step instead of running it again, then finishes the section', async () => {
+    let verified = false;
+    const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+    const { CompletionObservationContext } = await import('../../global-state/observation/context');
+    const coordinator = new CompletionCoordinator(async () => verified);
+    const id = JSON.stringify([NON_PREVIEW_KEY, SECTION_NOGATE, STEP_NOGATE]);
+    coordinator.register({
+      id,
+      stepId: STEP_NOGATE,
+      sectionId: SECTION_NOGATE,
+      actions: [{ targetAction: 'highlight', refTarget: '.a' }],
+      verify: ['on-page:/done'],
+      eligible: true,
+      executing: false,
+      completed: false,
+      commit: () => markStepCompleted(STEP_NOGATE, SECTION_NOGATE, 'manual'),
+    });
+    render(
+      <CompletionObservationContext.Provider value={coordinator}>
+        <InteractiveSection id="nogate" title="No-gate section" autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            Step
+          </InteractiveStep>
+        </InteractiveSection>
+      </CompletionObservationContext.Provider>
+    );
+    await act(async () => {
+      coordinator.start();
+      coordinator.request(id);
+    });
+    expect(coordinator.waiting(id)).toBe(true);
+
+    await click(doButton(SECTION_NOGATE));
+    await settle();
+    expect(executeInteractiveActionCalls).toHaveLength(0);
+
+    verified = true;
+    await act(async () => {
+      coordinator.recheck();
+    });
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    expect(executeInteractiveActionCalls).toHaveLength(0);
     coordinator.stop();
   });
 });

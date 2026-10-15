@@ -136,6 +136,8 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
   const connected = useControllerConnected();
   const { config } = usePathfinderPluginConfig();
   const enabled = config.enableAutoDetection !== false && getFeatureFlagValue('pathfinder.passive-completion', true);
+  const observing =
+    enabled && (mode === 'controller' || new URLSearchParams(window.location.search).get('controller') !== '1');
   const timeout = config.requirementsCheckTimeout ?? 4000;
   const [observationCheck] = useState(createObservationCheck);
   useLayoutEffect(() => {
@@ -144,7 +146,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
   const [coordinator] = useState(() => new CompletionCoordinator(observationCheck.check));
 
   useEffect(() => {
-    if (!enabled || (mode !== 'controller' && new URLSearchParams(window.location.search).get('controller') === '1')) {
+    if (!observing) {
       return;
     }
     const opened = takeObservationHandoff(contentKey);
@@ -274,9 +276,9 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       window.removeEventListener(TERMINAL_STATUS_CHANGED_EVENT, visibleCheck);
       document.removeEventListener('visibilitychange', visibleCheck);
     };
-  }, [coordinator, mode, contentKey, enabled]);
+  }, [coordinator, mode, contentKey, observing]);
   useEffect(() => {
-    if (!enabled || mode !== 'controller' || !channel || !connected) {
+    if (!observing || mode !== 'controller' || !channel || !connected) {
       return;
     }
     let generation = coordinator.generation;
@@ -330,14 +332,14 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       release();
       channel.post({ kind: 'observation-cancel', subscriptionId });
     };
-  }, [channel, connected, contentKey, coordinator, mode, enabled]);
+  }, [channel, connected, contentKey, coordinator, mode, observing]);
   useEffect(() => {
     if (mode === 'controller') {
       coordinator.invalidate();
     }
   }, [connected, coordinator, mode]);
   return (
-    <CompletionObservationContext.Provider value={enabled ? coordinator : null}>
+    <CompletionObservationContext.Provider value={observing ? coordinator : null}>
       {children}
     </CompletionObservationContext.Provider>
   );

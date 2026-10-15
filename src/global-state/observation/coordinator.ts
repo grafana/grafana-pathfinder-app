@@ -251,7 +251,9 @@ export class CompletionCoordinator {
     entry.step = step;
     if (recipeChanged) {
       entry.cursor = 0;
-      entry.requested = undefined;
+      if (entry.requested === 'observed') {
+        entry.requested = undefined;
+      }
     }
     if (changed) {
       entry.revision++;

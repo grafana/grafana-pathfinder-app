@@ -940,6 +940,17 @@ export function InteractiveSection({
         );
       };
 
+      const awaitStepOutcome = async (observationId: string, index: number) => {
+        stopSectionBlocking(sectionId);
+        if (!(await completionCoordinator!.waitForCompletion(observationId, controller.signal))) {
+          return false;
+        }
+        if (index < stepComponents.length - 1 && !controller.signal.aborted) {
+          startSectionBlocking(sectionId, dummyData, handleSectionCancel);
+        }
+        return true;
+      };
+
       let loopExitReason: LoopExitReason = 'ok';
       let completedStepsCount = startIndex; // Track number of completed steps for analytics (starts at startIndex since those are already done)
       // The completion store handles per-step persistence synchronously via
@@ -983,6 +994,18 @@ export function InteractiveSection({
               setCurrentlyExecutingStep(stepInfo.stepId);
               setExecutingStepNumber(i + 1); // 1-indexed for display
               scrollToStep(stepInfo.stepId); // Auto-scroll to the step
+
+              const observationId = JSON.stringify([getContentKey(), sectionId, stepInfo.stepId]);
+              if (completionCoordinator?.waiting(observationId)) {
+                setCurrentlyExecutingStep(null);
+                if (!(await awaitStepOutcome(observationId, i))) {
+                  loopExitReason = 'cancelled';
+                  break;
+                }
+                completedStepsCount = i + 1;
+                handleStepComplete(stepInfo.stepId, true);
+                continue;
+              }
 
               // Check step requirements before attempting execution
               if (stepInfo.requirements) {
@@ -1118,19 +1141,12 @@ export function InteractiveSection({
               const success = await executeStep(stepInfo);
 
               if (success) {
-                const observationId = JSON.stringify([getContentKey(), sectionId, stepInfo.stepId]);
                 if (completionCoordinator?.has(observationId)) {
                   completionCoordinator.request(observationId);
                   setCurrentlyExecutingStep(null);
-                  if (completionCoordinator.waiting(observationId)) {
-                    stopSectionBlocking(sectionId);
-                    if (!(await completionCoordinator.waitForCompletion(observationId, controller.signal))) {
-                      loopExitReason = 'cancelled';
-                      break;
-                    }
-                    if (i < stepComponents.length - 1 && !controller.signal.aborted) {
-                      startSectionBlocking(sectionId, dummyData, handleSectionCancel);
-                    }
+                  if (completionCoordinator.waiting(observationId) && !(await awaitStepOutcome(observationId, i))) {
+                    loopExitReason = 'cancelled';
+                    break;
                   }
                 } else {
                   markStepCompleted(stepInfo.stepId, sectionId, 'manual');
