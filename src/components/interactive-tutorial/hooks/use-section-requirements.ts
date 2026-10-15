@@ -97,6 +97,7 @@ export function useSectionRequirements({
   });
 
   const sectionMountedRef = useRef(true);
+  const checkRevision = useRef(0);
   useEffect(() => {
     sectionMountedRef.current = true;
     return () => {
@@ -105,7 +106,11 @@ export function useSectionRequirements({
   }, []);
 
   const recheck = useCallback(async () => {
-    if (!requirements || !sectionMountedRef.current) {
+    const revision = ++checkRevision.current;
+    if (!sectionMountedRef.current) {
+      return;
+    }
+    if (!requirements) {
       setStatus({ checking: false, passed: true });
       return;
     }
@@ -121,7 +126,7 @@ export function useSectionRequirements({
         tagName: 'section',
       };
       const result = await checkRequirementsFromData(data);
-      if (sectionMountedRef.current) {
+      if (sectionMountedRef.current && checkRevision.current === revision) {
         const fixableError = result.error?.find((e) => e.canFix);
         // Use the fixable error for explanation when one exists, so the
         // message matches the issue the Fix button will actually resolve.
@@ -141,8 +146,7 @@ export function useSectionRequirements({
       }
     } catch (error) {
       logger.warn('Section requirements check failed', { error });
-      if (sectionMountedRef.current) {
-        // On error, allow section to proceed (fail open for better UX).
+      if (sectionMountedRef.current && checkRevision.current === revision) {
         setStatus({ checking: false, passed: true });
       }
     }
@@ -200,6 +204,7 @@ export function useSectionRequirements({
     window.addEventListener('datasources-changed', handleDataSourcesChanged);
     window.addEventListener('plugins-changed', handlePluginsChanged);
     window.addEventListener('popstate', handleLocationChanged);
+    window.addEventListener('guide-response-changed', handleLocationChanged);
     const unsubscribeProgress = subscribeProgressEvent((detail) => {
       if (detail.kind === 'section' && detail.completed) {
         recheck();
@@ -212,6 +217,7 @@ export function useSectionRequirements({
       window.removeEventListener('datasources-changed', handleDataSourcesChanged);
       window.removeEventListener('plugins-changed', handlePluginsChanged);
       window.removeEventListener('popstate', handleLocationChanged);
+      window.removeEventListener('guide-response-changed', handleLocationChanged);
       unsubscribeProgress();
       clearInterval(intervalId);
     };

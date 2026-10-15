@@ -195,6 +195,7 @@ export interface JsonSectionBlock extends AuthorAnnotated {
   objectives?: string[];
   /** Whether to auto-collapse this section on completion. Defaults to true. */
   autoCollapse?: boolean;
+  whenRequirementsUnmet?: 'disable' | 'heading-only' | 'hide';
 }
 
 /**
@@ -561,7 +562,8 @@ export interface JsonInputBlock extends AuthorAnnotated {
   /** The prompt/question text (supports markdown) */
   prompt: string;
   /** Input type determines the UI: text input, checkbox, or datasource picker */
-  inputType: 'text' | 'boolean' | 'datasource';
+  inputType: 'text' | 'boolean' | 'datasource' | 'checkbox-group';
+  choices?: Array<{ id: string; text: string }>;
   format?: 'http-origin' | 'http-url';
   /** Variable name for storing/referencing the response */
   variableName: string;
