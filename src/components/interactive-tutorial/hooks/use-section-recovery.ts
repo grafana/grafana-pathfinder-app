@@ -24,6 +24,18 @@ function currentPath(): string {
   return pathname + search;
 }
 
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done, { once: true });
+  });
+}
+
 function leftLastReadyPage(lastReadyUrl: string | undefined): boolean {
   return (
     !!lastReadyUrl && new URL(lastReadyUrl, window.location.origin).pathname !== locationService.getLocation().pathname
@@ -96,7 +108,7 @@ export function useSectionRecovery(
       ): boolean => {
         if (result.passed) {
           armedKey.current = current.key;
-          if (locationService.getLocation().pathname === startedOnPath) {
+          if (!gate.current.suspended && locationService.getLocation().pathname === startedOnPath) {
             lastReadyUrl.current = currentPath();
           }
           gaveUp.current = null;
@@ -174,9 +186,19 @@ export function useSectionRecovery(
           () => lastReadyUrl.current
         );
         try {
-          const settleLeft = settlingUntil.current - Date.now();
-          if (!restore && settleLeft > 0) {
-            await new Promise((resolve) => setTimeout(resolve, settleLeft));
+          for (
+            let left = settlingUntil.current - Date.now();
+            !restore && left > 0 && !controller.signal.aborted;
+            left = settlingUntil.current - Date.now()
+          ) {
+            await sleep(left, controller.signal);
+          }
+          if (controller.signal.aborted) {
+            return inFlight.current && inFlight.current !== task ? inFlight.current : lastAnswer.current;
+          }
+          if (!gate.current.enabled || gate.current.controllerMode) {
+            endPause('inactive');
+            return answer(true);
           }
           const startedOnPath = locationService.getLocation().pathname;
           const result = restore
@@ -253,8 +275,12 @@ export function useSectionRecovery(
       }
     };
     let settle: ReturnType<typeof setTimeout> | undefined;
-    const onNavigate = () => {
-      settlingUntil.current = Date.now() + NAVIGATION_SETTLE_MS;
+    let pathname = locationService.getLocation().pathname;
+    const onNavigate = (location: { pathname: string }) => {
+      if (location.pathname !== pathname) {
+        pathname = location.pathname;
+        settlingUntil.current = Date.now() + NAVIGATION_SETTLE_MS;
+      }
       clearTimeout(settle);
       settle = setTimeout(recheck, NAVIGATION_SETTLE_MS);
     };

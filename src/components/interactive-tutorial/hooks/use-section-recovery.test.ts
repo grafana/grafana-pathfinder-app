@@ -316,6 +316,49 @@ describe('readiness answers for Do Section', () => {
     expect(await ready).toBe(false);
   });
 
+  it('checks a query-only URL change right away', async () => {
+    locationService.push('/explore?panes=abc');
+    const hook = render();
+    await settle();
+    await act(async () => {
+      locationService.replace('/explore?panes=abc&orgId=1');
+    });
+    await act(async () => {
+      await hook.result.current.recheck();
+    });
+    expect(inspect).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops a check waiting for the page to settle when the section unmounts', async () => {
+    const hook = render();
+    await settle();
+    await act(async () => {
+      locationService.push('/dashboards');
+    });
+    act(() => {
+      void hook.result.current.recheck();
+    });
+    hook.unmount();
+    await settle(750);
+    expect(inspect).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not remember a page reached while a step started during the settle wait', async () => {
+    locationService.push('/explore?panes=abc');
+    const hook = render();
+    await settle();
+    await act(async () => {
+      locationService.push('/dashboards');
+    });
+    act(() => {
+      void hook.result.current.recheck();
+    });
+    hook.rerender({ suspended: true });
+    await settle(750);
+    const lastReadyUrl = jest.mocked(createRecoveryAdapter).mock.calls.at(-1)![3];
+    expect(lastReadyUrl()).toBe('/explore?panes=abc');
+  });
+
   it('does not restart an in-flight check when the event handler changes', async () => {
     const first = jest.fn();
     const hook = renderHook(({ onEvent }) => useSectionRecovery(plan(), 'section', true, false, { onEvent }), {
