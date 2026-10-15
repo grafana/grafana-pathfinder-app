@@ -54,6 +54,7 @@ export function useSectionRecovery(
   const lastReadyUrl = useRef<string | undefined>(undefined);
   const armedKey = useRef<string | undefined>(undefined);
   const pendingSince = useRef<number | null>(null);
+  const settlingUntil = useRef(0);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const gaveUp = useRef<{ key: string; index?: number } | null>(null);
   const pausedNow = useRef(false);
@@ -84,14 +85,24 @@ export function useSectionRecovery(
       if (busy.current && (!restore || busyRestoring.current)) {
         return inFlight.current ?? Promise.resolve(lastAnswer.current);
       }
+      if (!restore && Date.now() < settlingUntil.current) {
+        return Promise.resolve(lastAnswer.current);
+      }
       const answer = (ready: boolean): boolean => {
         lastAnswer.current = ready;
         return ready;
       };
-      const observe = (current: SectionRecoveryPlan, result: RecoveryResult, restored: boolean): boolean => {
+      const observe = (
+        current: SectionRecoveryPlan,
+        result: RecoveryResult,
+        restored: boolean,
+        startedOn: string
+      ): boolean => {
         if (result.passed) {
           armedKey.current = current.key;
-          lastReadyUrl.current = currentPath();
+          if (currentPath() === startedOn) {
+            lastReadyUrl.current = startedOn;
+          }
           gaveUp.current = null;
           setUnrestorableKey(undefined);
           endPause(restored ? 'restore' : 'self');
@@ -112,6 +123,11 @@ export function useSectionRecovery(
         }
         setUnrestorableKey(undefined);
         if (pausedNow.current) {
+          return answer(false);
+        }
+        if (gate.current.suspended) {
+          pendingSince.current = null;
+          clearTimeout(confirmTimer.current);
           return answer(false);
         }
         const now = Date.now();
@@ -149,6 +165,7 @@ export function useSectionRecovery(
         }
         busy.current = true;
         busyRestoring.current = restore;
+        const startedOn = currentPath();
         restoreStartedAt.current = performance.now();
         setRestoring(restore);
         const adapter = createRecoveryAdapter(
@@ -183,7 +200,7 @@ export function useSectionRecovery(
               planRef.current
             );
           }
-          return observe(current, result, restore);
+          return observe(current, result, restore, startedOn);
         } catch {
           return lastAnswer.current;
         } finally {
@@ -241,7 +258,7 @@ export function useSectionRecovery(
     };
     let settle: ReturnType<typeof setTimeout> | undefined;
     const onNavigate = () => {
-      recheck();
+      settlingUntil.current = Date.now() + NAVIGATION_SETTLE_MS;
       clearTimeout(settle);
       settle = setTimeout(recheck, NAVIGATION_SETTLE_MS);
     };

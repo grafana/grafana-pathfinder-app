@@ -456,8 +456,6 @@ describe('Condition Types Coverage', () => {
     ParameterizedRequirementPrefix.PLUGIN_ENABLED,
     ParameterizedRequirementPrefix.HAS_DASHBOARD_NAMED,
     ParameterizedRequirementPrefix.ON_PAGE,
-    ParameterizedRequirementPrefix.DASHBOARD_GROUP_BY,
-    ParameterizedRequirementPrefix.DASHBOARD_FILTER_ABSENT,
     ParameterizedRequirementPrefix.HAS_FEATURE,
     ParameterizedRequirementPrefix.IN_ENVIRONMENT,
     ParameterizedRequirementPrefix.MIN_VERSION,
@@ -475,17 +473,5 @@ describe('Condition Types Coverage', () => {
   it('all ParameterizedRequirementPrefix values should be tested', () => {
     const allPrefixes = new Set(Object.values(ParameterizedRequirementPrefix));
     expect(TESTED_PARAMETERIZED_PREFIXES).toEqual(allPrefixes);
-  });
-});
-
-describe('dashboard state conditions', () => {
-  it.each(['dashboard-group-by:', 'dashboard-filter-absent:'])('validates %s arguments', (prefix) => {
-    expect(validateConditionString(`${prefix}canvvlh:filter:job`, [])).toEqual([]);
-    expect(validateConditionString(`${prefix}canvvlh:filter`, [])).toEqual([
-      expect.objectContaining({ code: 'invalid_format' }),
-    ]);
-    expect(validateConditionString(`${prefix}canvvlh:filter:job:extra`, [])).toEqual([
-      expect.objectContaining({ code: 'invalid_format' }),
-    ]);
   });
 });

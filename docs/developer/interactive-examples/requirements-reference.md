@@ -79,24 +79,6 @@ Examples:
 - `on-page:/connections` -- connections page
 - `on-page:/admin` -- any admin page
 
-### `dashboard-group-by:<dashboardUid>:<variable>:<label>`
-
-Ensures an ad hoc filter variable on the named dashboard groups by a label. Fails as unavailable until the dashboard and its filter controls have loaded. When the grouping was cleared, the fix adds it back while keeping the other filters in the URL.
-
-```json
-{
-  "type": "section",
-  "requirements": ["dashboard-group-by:canvvlh:filter:job"],
-  "blocks": []
-}
-```
-
-### `dashboard-filter-absent:<dashboardUid>:<variable>:<label>`
-
-Ensures the named ad hoc filter variable has no filter on a label (grouping by that label is allowed). The fix removes only that label's filter, and refuses when the visible filters don't match the URL.
-
-UID, variable and label accept letters, numbers, underscores and hyphens. Both are tab-local, so the two-tab controller checks them in the Grafana tab.
-
 ## User authentication and permissions
 
 ### `is-logged-in`

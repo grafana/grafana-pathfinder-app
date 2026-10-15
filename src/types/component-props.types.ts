@@ -55,6 +55,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   onStepReset?: (stepId: string) => void; // Signal to parent that step should be reset
+  onExecutingChange?: (executing: boolean) => void;
   resetTrigger?: number; // Signal from parent to reset local completion state
   recoveryHint?: RecoveryHint;
 

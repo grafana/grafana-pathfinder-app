@@ -1,4 +1,11 @@
-import { bundledCatalog, filterCatalog, mergeCatalog, onlineCatalog, organizationCatalog } from './package-catalog';
+import {
+  bundledCatalog,
+  filterCatalog,
+  mergeCatalog,
+  onlineCatalog,
+  organizationCatalog,
+  withoutPathMembers,
+} from './package-catalog';
 import type { CatalogPackage } from '../types/package-catalog.types';
 import type { RepositoryJson } from '../types/package.types';
 import { GUIDE_STATS_VERSION } from './guide-stats/summary';
@@ -19,6 +26,78 @@ const repository: RepositoryJson = {
 };
 
 describe('package catalog', () => {
+  it.each(['future', 42, { future: true }, 'markdown'])(
+    'preserves path metadata and exact prerequisite labels for format %p',
+    (format) => {
+      const label = '  Literal <b> & **syntax**  ';
+      const [entry] = onlineCatalog({
+        baseUrl: 'https://interactive-learning.grafana.net/packages/',
+        packages: [
+          {
+            id: 'test-path',
+            path: 'test-path/',
+            title: 'Path',
+            type: 'path',
+            manifest: {
+              id: 'test-path',
+              type: 'path',
+              milestones: ['first', 'second'],
+              prerequisites: [{ id: ' notice ', label, format }],
+            },
+          },
+        ],
+      });
+      expect(entry).toMatchObject({
+        format: 'path',
+        memberIds: ['first', 'second'],
+        packageInfo: {
+          packageId: 'test-path',
+          packageManifest: {
+            id: 'test-path',
+            type: 'path',
+            milestones: ['first', 'second'],
+            prerequisites: [{ id: ' notice ', label, ...(format === 'markdown' ? { format } : {}) }],
+          },
+        },
+      });
+    }
+  );
+
+  it.each([
+    [
+      [
+        { id: 'duplicate', label: 'First' },
+        { id: 'duplicate', label: 'Second' },
+      ],
+    ],
+    [[null]],
+    [[{ id: 'numeric-label', label: 42 }]],
+    [{ id: 'not-an-array', label: 'Setup' }],
+  ])('retains path navigation despite invalid prerequisites %p', (prerequisites) => {
+    const [entry] = onlineCatalog({
+      baseUrl: 'https://interactive-learning.grafana.net/packages/',
+      packages: [
+        {
+          id: 'test-path',
+          path: 'test-path/',
+          type: 'path',
+          manifest: {
+            id: 'test-path',
+            type: 'path',
+            milestones: ['first', 'second'],
+            prerequisites,
+          },
+        },
+      ],
+    });
+    expect(entry).toMatchObject({
+      format: 'path',
+      memberIds: ['first', 'second'],
+      packageInfo: { packageManifest: { id: 'test-path', type: 'path', milestones: ['first', 'second'] } },
+    });
+    expect(entry?.packageInfo?.packageManifest?.prerequisites).toBeUndefined();
+  });
+
   it('uses existing bundled estimates and supported activity counts, and excludes fixtures', () => {
     const entries = bundledCatalog(repository, { intro: { title: 'Introduction', estimatedMinutes: 5 } });
     expect(entries.map((entry) => entry.id)).toEqual(['intro', 'unknown']);
@@ -103,6 +182,62 @@ describe('package catalog', () => {
       'b',
     ]);
     expect(filterCatalog(entries, { ...all, source: 'grafana' }).map((entry) => entry.key)).toEqual(['a']);
+  });
+
+  it('omits guides that are milestones of a path from the same source', () => {
+    const guide = (key: string, id: string, source: CatalogPackage['source']): CatalogPackage => ({
+      key,
+      id,
+      title: id,
+      format: 'guide',
+      source,
+      url: `bundled:${id}`,
+    });
+    const entries: CatalogPackage[] = [
+      { ...guide('path', 'path', 'grafana'), format: 'path', memberIds: ['member', 'missing'] },
+      guide('member', 'member', 'grafana'),
+      guide('org-member', 'member', 'organization'),
+      guide('standalone', 'standalone', 'grafana'),
+    ];
+    expect(withoutPathMembers(entries).map((entry) => entry.key)).toEqual(['path', 'org-member', 'standalone']);
+  });
+
+  it('lists legacy organization members as modules and omits every path member from browse', () => {
+    const entries = organizationCatalog([
+      {
+        id: 'team-path',
+        status: 'published',
+        manifest: {
+          type: 'path',
+          milestones: ['foundation', 'team.guide_v1'],
+          tracks: [{ trackId: 'deep-dive', label: 'Deep dive', guides: ['track-only-guide'] }],
+        },
+      },
+      {
+        id: 'canonical-path',
+        status: 'published',
+        manifest: {
+          type: 'path',
+          milestones: ['canonical-member'],
+          tracks: [{ trackId: 'extras', label: 'Extras', guides: ['canonical-track-guide'] }],
+        },
+      },
+      ...[
+        'foundation',
+        'team.guide_v1',
+        'track-only-guide',
+        'canonical-member',
+        'canonical-track-guide',
+        'standalone',
+      ].map((id) => ({
+        id,
+        status: 'published',
+        manifest: { type: 'guide' as const },
+      })),
+    ]);
+    expect(entries[0]?.memberIds).toEqual(['foundation', 'team.guide_v1']);
+    expect(entries[1]?.memberIds).toEqual(['canonical-member']);
+    expect(withoutPathMembers(entries).map((entry) => entry.id)).toEqual(['team-path', 'canonical-path', 'standalone']);
   });
 });
 

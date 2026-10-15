@@ -15,7 +15,6 @@
 
 import { FixedRequirementType, ParameterizedRequirementPrefix } from '../types/requirements.types';
 import type { JsonGuide, JsonBlock, JsonStep } from '../types/json-guide.types';
-import { parseDashboardCondition } from '../lib/dashboard-condition';
 import { assertExhaustive } from '../lib/assert-exhaustive';
 
 // Maximum number of comma-separated components in a single condition string
@@ -119,17 +118,6 @@ function validateArgumentFormat(
   path: Array<string | number>
 ): ConditionIssue | null {
   switch (prefix) {
-    case ParameterizedRequirementPrefix.DASHBOARD_GROUP_BY:
-    case ParameterizedRequirementPrefix.DASHBOARD_FILTER_ABSENT:
-      if (!parseDashboardCondition(fullCondition)) {
-        return {
-          condition: fullCondition,
-          message: 'Expected dashboard UID:variable:label using letters, numbers, underscores or hyphens.',
-          code: 'invalid_format',
-          path,
-        };
-      }
-      break;
     case ParameterizedRequirementPrefix.ON_PAGE:
       // Path should start with '/'
       if (!argument.startsWith('/')) {

@@ -52,39 +52,53 @@ jest.mock('../../docs-retrieval', () => {
   return require('../../test-utils/interactive-section-harness').createDocsRetrievalMock();
 });
 
-jest.mock('./interactive-step', () => {
-  const { createElement } = require('react');
-  return {
-    resetStepCounter: jest.fn(),
-    InteractiveStep: (props: {
-      stepId: string;
-      isEligibleForChecking: boolean;
-      onStepComplete?: (stepId: string) => void;
-      recoveryHint?: unknown;
-    }) =>
+function mockRunnableStep(label: string) {
+  return function MockRunnableStep(props: {
+    stepId?: string;
+    isEligibleForChecking: boolean;
+    onExecutingChange?: (executing: boolean) => void;
+    onStepComplete?: (stepId: string) => void;
+    recoveryHint?: unknown;
+  }) {
+    const { createElement, Fragment } = require('react');
+    return createElement(
+      Fragment,
+      null,
       createElement(
-        'div',
-        null,
-        createElement(
-          'button',
-          { disabled: !props.isEligibleForChecking, onClick: () => props.onStepComplete?.(props.stepId) },
-          'Continue step'
-        ),
-        props.recoveryHint ? createElement('output', null, JSON.stringify(props.recoveryHint)) : null
+        'button',
+        { disabled: !props.isEligibleForChecking, onClick: () => props.stepId && props.onStepComplete?.(props.stepId) },
+        'Continue step'
       ),
+      props.recoveryHint ? createElement('output', null, JSON.stringify(props.recoveryHint)) : null,
+      createElement('button', { onClick: () => props.onExecutingChange?.(true) }, `Start ${label}`),
+      createElement('button', { onClick: () => props.onExecutingChange?.(false) }, `Finish ${label}`)
+    );
   };
-});
+}
+
+jest.mock('./interactive-step', () => ({
+  resetStepCounter: jest.fn(),
+  InteractiveStep: mockRunnableStep('step'),
+}));
 
 const mockRecovery = {
   plans: new Map<string, unknown>(),
+  suspended: new Map<string, boolean | undefined>(),
   paused: false,
   unrestorable: false,
   restore: jest.fn(),
   recheck: jest.fn(async () => true),
 };
 jest.mock('./hooks/use-section-recovery', () => ({
-  useSectionRecovery: (plan: unknown, sectionId: string) => {
+  useSectionRecovery: (
+    plan: unknown,
+    sectionId: string,
+    _enabled: boolean,
+    _controllerMode: boolean,
+    options: { suspended?: boolean } = {}
+  ) => {
     mockRecovery.plans.set(sectionId, plan);
+    mockRecovery.suspended.set(sectionId, options.suspended);
     return {
       paused: mockRecovery.paused,
       unrestorable: mockRecovery.unrestorable,
@@ -99,13 +113,15 @@ jest.mock('./hooks/use-section-recovery', () => ({
 const mockRecoveryEnabled = jest.fn(() => true);
 jest.mock('../../utils/section-recovery-enablement', () => ({ isSectionRecoveryEnabled: () => mockRecoveryEnabled() }));
 
-jest.mock('./interactive-multi-step', () => {
-  return require('../../test-utils/interactive-section-harness').createInteractiveMultiStepMock();
-});
+jest.mock('./interactive-multi-step', () => ({
+  resetMultiStepCounter: jest.fn(),
+  InteractiveMultiStep: mockRunnableStep('multistep'),
+}));
 
-jest.mock('./interactive-guided', () => {
-  return require('../../test-utils/interactive-section-harness').createInteractiveGuidedMock();
-});
+jest.mock('./interactive-guided', () => ({
+  resetGuidedCounter: jest.fn(),
+  InteractiveGuided: mockRunnableStep('guided'),
+}));
 
 jest.mock('./interactive-quiz', () => {
   return require('../../test-utils/interactive-section-harness').createInteractiveQuizMock();
@@ -130,8 +146,12 @@ jest.mock('./interactive-conditional', () => {
 // ─── Imports after mocks ────────────────────────────────────────────────────
 
 import { InteractiveStep } from './interactive-step';
+import { InteractiveMultiStep } from './interactive-multi-step';
+import { InteractiveGuided } from './interactive-guided';
+import { testIds } from '../../constants/testIds';
 import { InteractiveSection, resetInteractiveCounters } from './interactive-section';
 import {
+  executeInteractiveActionCalls,
   resetSectionHarness,
   setStepCheckerCompletionReason,
   silenceSectionWarnings,
@@ -156,8 +176,10 @@ afterEach(() => {
 
 beforeEach(() => {
   mockRecovery.plans.clear();
+  mockRecovery.suspended.clear();
   mockRecovery.paused = false;
   mockRecovery.unrestorable = false;
+  mockRecovery.recheck.mockResolvedValue(true);
   mockRecoveryEnabled.mockReturnValue(true);
 });
 
@@ -279,4 +301,45 @@ it('offers no setup pointer unless recovery has found the drift it cannot restor
   const { container } = render(setupSection());
   await completeFirstStep();
   expect(container.querySelector('output')).not.toBeInTheDocument();
+});
+
+it.each(['step', 'multistep', 'guided'])('suspends recovery while a %s runs', async (label) => {
+  render(
+    <InteractiveSection id="running" title="Running" autoCollapse={false}>
+      <InteractiveStep targetAction="button" refTarget="Run query">
+        Run it.
+      </InteractiveStep>
+      <InteractiveMultiStep internalActions={[{ targetAction: 'button', refTarget: 'Save' }]}>
+        Save it.
+      </InteractiveMultiStep>
+      <InteractiveGuided internalActions={[{ targetAction: 'button', refTarget: 'Apply' }]}>
+        Apply it.
+      </InteractiveGuided>
+    </InteractiveSection>
+  );
+  await waitFor(() => expect(mockRecovery.suspended.get('section-running')).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: `Start ${label}` }));
+  await waitFor(() => expect(mockRecovery.suspended.get('section-running')).toBe(true));
+  fireEvent.click(screen.getByRole('button', { name: `Finish ${label}` }));
+  await waitFor(() => expect(mockRecovery.suspended.get('section-running')).toBe(false));
+});
+
+it('suspends recovery while Do Section runs', async () => {
+  let finish!: (ready: boolean) => void;
+  mockRecovery.recheck.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+  render(exploreSection());
+  const doSection = await screen.findByTestId(testIds.interactive.doSectionButton('section-explore'));
+  fireEvent.click(doSection);
+  await waitFor(() => expect(mockRecovery.suspended.get('section-explore')).toBe(true));
+  finish(false);
+  await waitFor(() => expect(mockRecovery.suspended.get('section-explore')).toBe(false));
+});
+
+it('does not run Do Section when the recovery check fails', async () => {
+  mockRecovery.recheck.mockResolvedValue(false);
+  render(exploreSection());
+  fireEvent.click(await screen.findByTestId(testIds.interactive.doSectionButton('section-explore')));
+  await waitFor(() => expect(mockRecovery.recheck).toHaveBeenCalled());
+  await waitFor(() => expect(mockRecovery.suspended.get('section-explore')).toBe(false));
+  expect(executeInteractiveActionCalls).toHaveLength(0);
 });

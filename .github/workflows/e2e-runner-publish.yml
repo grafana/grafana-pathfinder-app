@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
+      - 'src/lib/runtime-manifest.ts'
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
       - 'src/lib/assert-exhaustive.ts'
-      - 'src/lib/dashboard-condition.ts'
       - 'src/lib/guide-stats/**'
       - 'src/lib/guide-version.ts'
       - 'tests/e2e-runner/**'
@@ -28,11 +28,11 @@ on:
     branches:
       - main
     paths:
+      - 'src/lib/runtime-manifest.ts'
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
       - 'src/lib/assert-exhaustive.ts'
-      - 'src/lib/dashboard-condition.ts'
       - 'src/lib/guide-stats/**'
       - 'src/lib/guide-version.ts'
       - 'tests/e2e-runner/**'

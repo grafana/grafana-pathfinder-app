@@ -231,9 +231,9 @@ export function InteractiveSection({
   );
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [executingGuided, setExecutingGuided] = useState<ReadonlySet<string>>(() => new Set());
-  const setGuidedExecuting = useCallback((stepId: string, executing: boolean) => {
-    setExecutingGuided((current) => {
+  const [executingSteps, setExecutingSteps] = useState<ReadonlySet<string>>(() => new Set());
+  const setStepExecuting = useCallback((stepId: string, executing: boolean) => {
+    setExecutingSteps((current) => {
       if (current.has(stepId) === executing) {
         return current;
       }
@@ -533,7 +533,7 @@ export function InteractiveSection({
     sectionId,
     sectionRequirementsStatus.passed,
     mode === 'controller',
-    { onEvent: onRecoveryEvent, suspended: isRunning || executingGuided.size > 0 }
+    { onEvent: onRecoveryEvent, suspended: isRunning || executingSteps.size > 0 }
   );
   const hasRecoveryPlan = !!recoveryPlan;
   const sectionReady = sectionRequirementsStatus.passed && !recovery.paused;
@@ -1465,8 +1465,8 @@ export function InteractiveSection({
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child as React.ReactElement<any>).props,
           ...enhancedProps,
-          ...(schema.kind === 'guided'
-            ? { onExecutingChange: (executing: boolean) => setGuidedExecuting(stepInfo.stepId, executing) }
+          ...(schema.kind === 'plain' || schema.kind === 'multistep' || schema.kind === 'guided'
+            ? { onExecutingChange: (executing: boolean) => setStepExecuting(stepInfo.stepId, executing) }
             : {}),
           key: stepInfo.stepId,
           ...(refCallback ? { ref: refCallback } : {}),
@@ -1487,7 +1487,7 @@ export function InteractiveSection({
     title,
     sectionReady,
     recovery.paused,
-    setGuidedExecuting,
+    setStepExecuting,
     recoveryHint,
     recoveryHintStepId,
   ]);
@@ -1580,7 +1580,7 @@ export function InteractiveSection({
                     data-testid={testIds.interactive.requirementFixButton(sectionId)}
                     onClick={fixSectionRequirements}
                   >
-                    {sectionRequirementsStatus.fixType === 'dashboard-state' ? 'Restore this section' : 'Fix this'}
+                    Fix this
                   </button>
                 </div>
               )}

@@ -93,6 +93,25 @@ describe('InteractiveStep: showMeText label override', () => {
   });
 });
 
+it('tells its section while Do it runs', async () => {
+  const onExecutingChange = jest.fn();
+  render(
+    <InteractiveStep
+      stepId="do-running"
+      targetAction="highlight"
+      refTarget="#missing-do-target"
+      showMe={false}
+      onExecutingChange={onExecutingChange}
+    >
+      Example
+    </InteractiveStep>
+  );
+  const doIt = await screen.findByTestId(testIds.interactive.doItButton('do-running'));
+  await waitFor(() => expect(doIt).toBeEnabled());
+  fireEvent.click(doIt);
+  await waitFor(() => expect(onExecutingChange.mock.calls).toEqual([[true], [false]]));
+});
+
 describe('InteractiveStep: objectives', () => {
   const SATISFIED_OBJECTIVE_TARGET = '#objectives-target';
   const UNSATISFIABLE_REQUIREMENT = 'on-page:/pathfinder-objectives-never-here';

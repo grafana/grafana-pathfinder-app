@@ -32,8 +32,6 @@ export enum ParameterizedRequirementPrefix {
   PLUGIN_ENABLED = 'plugin-enabled:',
   HAS_DASHBOARD_NAMED = 'has-dashboard-named:',
   ON_PAGE = 'on-page:',
-  DASHBOARD_GROUP_BY = 'dashboard-group-by:',
-  DASHBOARD_FILTER_ABSENT = 'dashboard-filter-absent:',
   HAS_FEATURE = 'has-feature:',
   IN_ENVIRONMENT = 'in-environment:',
   MIN_VERSION = 'min-version:',
@@ -68,8 +66,6 @@ export const isValidRequirement = (req: string): req is ValidRequirement => {
 export const LIVE_PAGE_REQUIREMENTS = [
   ParameterizedRequirementPrefix.ON_PAGE,
   FixedRequirementType.NAVMENU_OPEN,
-  ParameterizedRequirementPrefix.DASHBOARD_GROUP_BY,
-  ParameterizedRequirementPrefix.DASHBOARD_FILTER_ABSENT,
 ] as const;
 
 export const isLivePageRequirement = (req: string): boolean =>
@@ -120,8 +116,6 @@ export const PARAMETERIZED_REQUIREMENT_PREFIXES: readonly string[] = Object.free
  */
 export const PARAMETERIZED_REQUIREMENT_EXAMPLES: ReadonlyArray<{ prefix: string; example: string }> = Object.freeze([
   { prefix: 'on-page:', example: 'on-page:/dashboards' },
-  { prefix: 'dashboard-group-by:', example: 'dashboard-group-by:canvvlh:filter:job' },
-  { prefix: 'dashboard-filter-absent:', example: 'dashboard-filter-absent:canvvlh:filter:job' },
   { prefix: 'has-datasource:', example: 'has-datasource:prometheus' },
   { prefix: 'has-plugin:', example: 'has-plugin:grafana-clock-panel' },
   { prefix: 'has-permission:', example: 'has-permission:dashboards.create' },
@@ -170,9 +164,6 @@ export const REQUIREMENT_DESCRIPTIONS: Readonly<Record<string, string>> = Object
   'has-plugin:': 'A plugin with the given ID is installed (e.g. has-plugin:grafana-clock-panel)',
   'plugin-enabled:': 'A plugin with the given ID is installed and enabled',
   'has-dashboard-named:': 'A dashboard with the exact title (case-insensitive) exists',
-  'dashboard-group-by:': 'The named dashboard filter variable is grouped by a label (dashboard UID:variable:label)',
-  'dashboard-filter-absent:':
-    'The named dashboard filter variable has no filter for a label (dashboard UID:variable:label)',
   'on-page:': 'Current URL path matches the given value (e.g. on-page:/explore)',
   'has-feature:': 'A Grafana feature toggle is enabled (e.g. has-feature:publicDashboards)',
   'in-environment:': 'Running in a specific environment (e.g. in-environment:cloud)',

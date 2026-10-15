@@ -241,6 +241,32 @@ describe('useLinkClickHandler', () => {
         source: 'content_link',
       });
     });
+
+    it('leaves new-tab links to the browser without opening or progressing the guide in-panel', () => {
+      const { markMilestoneDone } = jest.requireMock('../../docs-retrieval');
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const externalLink = document.createElement('a');
+      externalLink.href = 'https://grafana.com/docs/grafana/latest/';
+      externalLink.target = '_blank';
+      externalLink.rel = 'noopener noreferrer';
+      externalLink.textContent = 'Prerequisite documentation';
+      contentDiv.appendChild(externalLink);
+
+      const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+      expect(externalLink.dispatchEvent(click)).toBe(true);
+      expect(mockModel.openDocsPage).not.toHaveBeenCalled();
+      expect(mockModel.openLearningJourney).not.toHaveBeenCalled();
+      expect(mockModel.loadTab).not.toHaveBeenCalled();
+      expect(markMilestoneDone).not.toHaveBeenCalled();
+    });
   });
 
   describe('Navigation Buttons', () => {
